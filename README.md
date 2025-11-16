@@ -248,8 +248,6 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-e, --prompt-editor`: Open your `$EDITOR` (or `$VISUAL`) to write the prompt interactively.
 - `-a, --agent <name>`: Override the default agent for this worktree (e.g., `gemini`).
 
-Note: The prompt options are mutually exclusive - you can only use one at a time.
-
 #### Skip options
 
 These options allow you to skip expensive setup steps when they're not needed (e.g., for
