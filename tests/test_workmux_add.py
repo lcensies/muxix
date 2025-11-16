@@ -73,13 +73,29 @@ def wait_for_pane_output(
 ) -> None:
     """Poll until the specified text appears in the pane."""
 
-    def _has_output() -> bool:
-        capture_result = env.tmux(["capture-pane", "-p", "-t", window_name])
-        return text in capture_result.stdout
+    final_content = f"Pane for window '{window_name}' was not captured."
 
-    assert poll_until(_has_output, timeout=timeout), (
-        f"Expected output {text!r} not found in window {window_name!r}"
-    )
+    def _has_output() -> bool:
+        nonlocal final_content
+        capture_result = env.tmux(
+            ["capture-pane", "-p", "-t", window_name], check=False
+        )
+        if capture_result.returncode == 0:
+            final_content = capture_result.stdout
+            return text in final_content
+        final_content = (
+            f"Error capturing pane for window '{window_name}':\n"
+            f"{capture_result.stderr}"
+        )
+        return False
+
+    if not poll_until(_has_output, timeout=timeout):
+        assert False, (
+            f"Expected output {text!r} not found in window {window_name!r} within {timeout}s.\n"
+            f"--- FINAL PANE CONTENT ---\n"
+            f"{final_content}\n"
+            f"--------------------------"
+        )
 
 
 def prompt_file_for_branch(branch_name: str) -> Path:
@@ -91,7 +107,73 @@ def assert_prompt_file_contents(branch_name: str, expected_text: str) -> None:
     """Assert that a prompt file exists for the branch and matches the expected text."""
     prompt_file = prompt_file_for_branch(branch_name)
     assert prompt_file.exists(), f"Prompt file not found at {prompt_file}"
-    assert prompt_file.read_text() == expected_text
+    actual_text = prompt_file.read_text()
+    assert actual_text == expected_text, (
+        f"Content mismatch for prompt file: {prompt_file}"
+    )
+
+
+def wait_for_file(
+    env: TmuxEnvironment,
+    file_path: Path,
+    timeout: float = 2.0,
+    *,
+    window_name: str | None = None,
+    worktree_path: Path | None = None,
+    debug_log_path: Path | None = None,
+) -> None:
+    """
+    Poll for a file to exist. On timeout, fail with diagnostics about panes, worktrees, and logs.
+    """
+
+    def _file_exists() -> bool:
+        return file_path.exists()
+
+    if poll_until(_file_exists, timeout=timeout):
+        return
+
+    diagnostics: list[str] = [f"Target file: {file_path}"]
+
+    if worktree_path is not None:
+        diagnostics.append(f"Worktree path: {worktree_path}")
+        if worktree_path.exists():
+            try:
+                files = sorted(p.name for p in worktree_path.iterdir())
+                diagnostics.append(f"Worktree files: {files}")
+            except Exception as exc:  # pragma: no cover - best effort diagnostics
+                diagnostics.append(f"Error listing worktree files: {exc}")
+        else:
+            diagnostics.append("Worktree directory not found.")
+
+    if debug_log_path is not None:
+        if debug_log_path.exists():
+            diagnostics.append(
+                f"Debug log '{debug_log_path.name}':\n{debug_log_path.read_text()}"
+            )
+        else:
+            diagnostics.append(
+                f"Debug log '{debug_log_path.name}' not found."
+            )
+
+    if window_name is not None:
+        pane_target = f"={window_name}.0"
+        pane_content = f"Could not capture pane for window '{window_name}'."
+        capture_result = env.tmux(
+            ["capture-pane", "-p", "-t", pane_target], check=False
+        )
+        if capture_result.returncode == 0:
+            pane_content = capture_result.stdout
+        else:
+            pane_content = (
+                f"{pane_content}\nError capturing pane:\n{capture_result.stderr}"
+            )
+        diagnostics.append(f"Tmux pane '{pane_target}' content:\n{pane_content}")
+
+    diag_str = "\n".join(diagnostics)
+    assert False, (
+        f"File not found after {timeout}s: {file_path}\n\n"
+        f"-- Diagnostics --\n{diag_str}\n-----------------"
+    )
 
 
 def file_for_commit(worktree_path: Path, commit_message: str) -> Path:
@@ -172,6 +254,7 @@ def test_add_inline_prompt_injects_into_claude(
     branch_name = "feature-inline-prompt"
     prompt_text = "Implement inline prompt"
     output_filename = "claude_prompt.txt"
+    window_name = get_window_name(branch_name)
 
     fake_claude_path = install_fake_agent(
         env,
@@ -206,24 +289,14 @@ printf '%s' "$1" > "{output_filename}"
     agent_output = worktree_path / output_filename
     debug_output = worktree_path / "debug_args.txt"
 
-    def agent_wrote_prompt():
-        return agent_output.exists()
-
-    if not poll_until(agent_wrote_prompt, timeout=2.0):
-        # Print debug info if test fails
-        print(f"\nWorktree path: {worktree_path}")
-        print(f"Files in worktree: {list(worktree_path.iterdir())}")
-        if debug_output.exists():
-            print(f"\nDebug output:\n{debug_output.read_text()}")
-        else:
-            print("\nDebug output file not found - script never executed")
-
-        # Check tmux pane output
-
-        pane_content = env.tmux(["capture-pane", "-t", f"=wm-{branch_name}.0", "-p"])
-        print(f"\nTmux pane content:\n{pane_content.stdout}")
-
-        assert False, "Agent output not found"
+    wait_for_file(
+        env,
+        agent_output,
+        timeout=2.0,
+        window_name=window_name,
+        worktree_path=worktree_path,
+        debug_log_path=debug_output,
+    )
 
     assert agent_output.read_text() == prompt_text
 
@@ -234,6 +307,7 @@ def test_add_prompt_file_injects_into_gemini(
     """Prompt file flag should populate PROMPT.md and pass it to gemini via command substitution."""
     env = isolated_tmux_server
     branch_name = "feature-file-prompt"
+    window_name = get_window_name(branch_name)
     prompt_source = repo_path / "prompt_source.txt"
     prompt_source.write_text("File-based instructions")
     output_filename = "gemini_prompt.txt"
@@ -271,11 +345,12 @@ printf '%s' "$2" > "{output_filename}"
 
     agent_output = worktree_path / output_filename
 
-    def agent_wrote_prompt():
-        return agent_output.exists()
-
-    assert poll_until(agent_wrote_prompt, timeout=2.0), (
-        "Prompt content was not passed to gemini"
+    wait_for_file(
+        env,
+        agent_output,
+        timeout=2.0,
+        window_name=window_name,
+        worktree_path=worktree_path,
     )
     assert agent_output.read_text() == prompt_source.read_text()
 
@@ -286,6 +361,7 @@ def test_add_uses_agent_from_config(
     """The <agent> placeholder should use the agent configured in .workmux.yaml when --agent is not passed."""
     env = isolated_tmux_server
     branch_name = "feature-config-agent"
+    window_name = get_window_name(branch_name)
     prompt_text = "Using configured agent"
     output_filename = "agent_output.txt"
 
@@ -314,10 +390,13 @@ printf '%s' "$2" > "{output_filename}"
 
     agent_output = worktree_path / output_filename
 
-    def agent_ran():
-        return agent_output.exists()
-
-    assert poll_until(agent_ran, timeout=2.0), "Configured agent did not run"
+    wait_for_file(
+        env,
+        agent_output,
+        timeout=2.0,
+        window_name=window_name,
+        worktree_path=worktree_path,
+    )
     assert agent_output.read_text() == prompt_text
 
 
@@ -327,6 +406,7 @@ def test_add_with_agent_flag_overrides_default(
     """The --agent flag should override the default agent and inject prompts correctly."""
     env = isolated_tmux_server
     branch_name = "feature-agent-override"
+    window_name = get_window_name(branch_name)
     prompt_text = "This is for the override agent"
     output_filename = "agent_output.txt"
 
@@ -363,10 +443,13 @@ printf '%s' "$2" > "{output_filename}"
     agent_output = worktree_path / output_filename
     default_agent_output = worktree_path / "default_agent.txt"
 
-    def override_agent_ran():
-        return agent_output.exists()
-
-    assert poll_until(override_agent_ran, timeout=2.0), "Override agent did not run"
+    wait_for_file(
+        env,
+        agent_output,
+        timeout=2.0,
+        window_name=window_name,
+        worktree_path=worktree_path,
+    )
     assert not default_agent_output.exists(), "Default agent should not have run"
     assert agent_output.read_text() == prompt_text
 
@@ -554,6 +637,7 @@ def test_agent_placeholder_respects_shell_aliases(
     """Verifies that the <agent> placeholder triggers aliases defined in shell rc files."""
     env = isolated_tmux_server
     branch_name = "feature-agent-alias"
+    window_name = get_window_name(branch_name)
     marker_content = "alias_was_expanded"
 
     (env.home_path / ".zshrc").write_text(
@@ -588,11 +672,12 @@ exit 1
     )
     marker_file = worktree_path / "alias_marker.txt"
 
-    def alias_marker_exists():
-        return marker_file.exists()
-
-    assert poll_until(alias_marker_exists, timeout=2.0), (
-        "Agent marker file missing; alias likely not executed."
+    wait_for_file(
+        env,
+        marker_file,
+        timeout=2.0,
+        window_name=window_name,
+        worktree_path=worktree_path,
     )
     assert marker_file.read_text().strip() == marker_content, (
         "Alias marker content incorrect; alias flag not detected."
