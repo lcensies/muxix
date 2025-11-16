@@ -15,7 +15,8 @@ Giga opinionated zero-friction workflow tool for managing [git
 worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated
 development environments.
 
-Perfect for running multiple AI agents in parallel without conflict.
+Perfect for running multiple AI agents in parallel without conflict. See also:
+[Why git worktrees?](#why-git-worktrees)
 
 ## Philosophy
 
@@ -315,6 +316,22 @@ workmux add quick-fix --no-file-ops
 workmux add feature/parallel-task --background
 ```
 
+#### AI agent integration
+
+When you provide a prompt via `--prompt`, `--prompt-file`, or
+`--prompt-editor`, workmux automatically injects the prompt into panes running
+the configured agent command (e.g., `claude`, `gemini`, or whatever you've set
+via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml`
+changes:
+
+- Panes with a command matching the configured agent are automatically started
+  with the given prompt.
+- You can keep your `.workmux.yaml` pane configuration simple (e.g., `panes: [{
+command: "<agent>" }]`) and let workmux handle prompt injection at runtime.
+
+This means you can launch AI agents with task-specific prompts without modifying your
+project configuration for each task.
+
 #### Parallel workflows & multi-worktree generation
 
 workmux can generate multiple worktrees from a single `add` command, which is
@@ -362,22 +379,6 @@ workmux add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platfor
 workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
 # Generates worktrees: my-feature-claude, my-feature-gemini
 ```
-
-#### AI agent integration
-
-When you provide a prompt via `--prompt`, `--prompt-file`, or
-`--prompt-editor`, workmux automatically injects the prompt into panes running
-the configured agent command (e.g., `claude`, `gemini`, or whatever you've set
-via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml`
-changes:
-
-- Panes with a command matching the configured agent are automatically started
-  with the given prompt.
-- You can keep your `.workmux.yaml` pane configuration simple (e.g., `panes: [{
-command: "<agent>" }]`) and let workmux handle prompt injection at runtime.
-
-This means you can launch AI agents with task-specific prompts without modifying your
-project configuration for each task.
 
 ---
 
@@ -701,6 +702,22 @@ workmux add feature/new-api
 workmux merge refactor/user-model
 workmux merge feature/new-api
 ```
+
+## Why git worktrees?
+
+Git worktrees enable parallel development by giving each branch its own
+isolated working directory.
+
+- Zero-friction context switching: Switch branches by switching tmux
+  windows - no stashing, no cleanup, your work stays exactly as you left it
+- Parallel AI agents: Multiple agents can work simultaneously without
+  stepping on each other's type errors, test failures, or build artifacts
+- Safe experimentation: Test multiple approaches side-by-side, merge the
+  winner
+
+Without worktrees, parallel work requires complex tooling or constant
+stash/commit/checkout cycles. With worktrees and workmux, it's just switching
+windows.
 
 ## Tips
 
