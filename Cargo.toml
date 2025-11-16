@@ -26,3 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 tracing-appender = "0.2"
 edit = "0.1"
 which = "8.0"
+tera = "1.19"
+
+[dev-dependencies]
+tempfile = "3.14"

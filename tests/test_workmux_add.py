@@ -84,8 +84,7 @@ def wait_for_pane_output(
             final_content = capture_result.stdout
             return text in final_content
         final_content = (
-            f"Error capturing pane for window '{window_name}':\n"
-            f"{capture_result.stderr}"
+            f"Error capturing pane for window '{window_name}':\n{capture_result.stderr}"
         )
         return False
 
@@ -151,9 +150,7 @@ def wait_for_file(
                 f"Debug log '{debug_log_path.name}':\n{debug_log_path.read_text()}"
             )
         else:
-            diagnostics.append(
-                f"Debug log '{debug_log_path.name}' not found."
-            )
+            diagnostics.append(f"Debug log '{debug_log_path.name}' not found.")
 
     if window_name is not None:
         pane_target = f"={window_name}.0"
@@ -244,6 +241,67 @@ def test_add_creates_tmux_window(
     add_branch_and_get_worktree(env, workmux_exe_path, repo_path, branch_name)
 
     assert_window_exists(env, window_name)
+
+
+def test_add_with_count_creates_numbered_worktrees(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `-n` spawns multiple numbered worktrees."""
+    env = isolated_tmux_server
+    base_name = "feature-counted"
+
+    write_workmux_config(repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {base_name} -n 2",
+    )
+
+    for idx in (1, 2):
+        branch = f"{base_name}-{idx}"
+        worktree = get_worktree_path(repo_path, branch)
+        assert worktree.is_dir()
+        assert_window_exists(env, get_window_name(branch))
+
+
+def test_add_with_count_and_agent_uses_agent_in_all_instances(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies count with a single agent uses that agent in all generated worktrees."""
+    env = isolated_tmux_server
+    base_name = "feature-counted-agent"
+    prompt_text = "Task {{ num }}"
+
+    install_fake_agent(
+        env,
+        "gemini",
+        '#!/bin/sh\nprintf \'%s\' "$2" > "gemini_task_${HOSTNAME}.txt"',
+    )
+    write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {base_name} -a gemini -n 2 --prompt '{prompt_text}'",
+    )
+
+    for idx in (1, 2):
+        branch = f"{base_name}-gemini-{idx}"
+        worktree = get_worktree_path(repo_path, branch)
+        assert worktree.is_dir()
+        files: list[Path] = []
+
+        def _has_output() -> bool:
+            files.clear()
+            files.extend(worktree.glob("gemini_task_*.txt"))
+            return len(files) == 1
+
+        assert poll_until(_has_output, timeout=2.0), (
+            f"gemini output file not found in worktree {worktree}"
+        )
+        assert files[0].read_text() == f"Task {idx}"
 
 
 def test_add_inline_prompt_injects_into_claude(
@@ -452,6 +510,179 @@ printf '%s' "$2" > "{output_filename}"
     )
     assert not default_agent_output.exists(), "Default agent should not have run"
     assert agent_output.read_text() == prompt_text
+
+
+def test_add_multi_agent_creates_separate_worktrees_and_runs_correct_agents(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `-a` with multiple agents creates distinct worktrees for each agent."""
+    env = isolated_tmux_server
+    base_name = "feature-multi-agent"
+    prompt_text = "Implement for {{ agent }}"
+
+    install_fake_agent(
+        env,
+        "claude",
+        "#!/bin/sh\nprintf '%s' \"$1\" > claude_out.txt",
+    )
+    install_fake_agent(
+        env,
+        "gemini",
+        "#!/bin/sh\nprintf '%s' \"$2\" > gemini_out.txt",
+    )
+
+    write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {base_name} -a claude -a gemini --prompt '{prompt_text}'",
+    )
+
+    claude_branch = f"{base_name}-claude"
+    claude_worktree = get_worktree_path(repo_path, claude_branch)
+    assert claude_worktree.is_dir()
+    claude_window = get_window_name(claude_branch)
+    assert_window_exists(env, claude_window)
+    wait_for_file(
+        env,
+        claude_worktree / "claude_out.txt",
+        window_name=claude_window,
+        worktree_path=claude_worktree,
+    )
+    assert (claude_worktree / "claude_out.txt").read_text() == "Implement for claude"
+
+    gemini_branch = f"{base_name}-gemini"
+    gemini_worktree = get_worktree_path(repo_path, gemini_branch)
+    assert gemini_worktree.is_dir()
+    gemini_window = get_window_name(gemini_branch)
+    assert_window_exists(env, gemini_window)
+    wait_for_file(
+        env,
+        gemini_worktree / "gemini_out.txt",
+        window_name=gemini_window,
+        worktree_path=gemini_worktree,
+    )
+    assert (gemini_worktree / "gemini_out.txt").read_text() == "Implement for gemini"
+
+
+def test_add_foreach_creates_worktrees_from_matrix(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies foreach matrix expands into multiple worktrees with templated prompts."""
+    env = isolated_tmux_server
+    base_name = "feature-matrix"
+    prompt_text = "Build for {{ platform }} using {{ lang }}"
+
+    install_fake_agent(
+        env,
+        "claude",
+        "#!/bin/sh\nprintf '%s' \"$1\" > out.txt",
+    )
+    write_workmux_config(repo_path, agent="claude", panes=[{"command": "<agent>"}])
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        (
+            f"add {base_name} --foreach "
+            "'platform:ios,android;lang:swift,kotlin' "
+            f"--prompt '{prompt_text}'"
+        ),
+    )
+
+    combos = [
+        ("ios", "swift"),
+        ("android", "kotlin"),
+    ]
+    for platform, lang in combos:
+        branch = f"{base_name}-{lang}-{platform}"
+        worktree = get_worktree_path(repo_path, branch)
+        assert worktree.is_dir()
+        window = get_window_name(branch)
+        assert_window_exists(env, window)
+        wait_for_file(
+            env,
+            worktree / "out.txt",
+            window_name=window,
+            worktree_path=worktree,
+        )
+        assert (
+            worktree / "out.txt"
+        ).read_text() == f"Build for {platform} using {lang}"
+
+
+def test_add_with_custom_branch_template(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `--branch-template` controls the branch naming scheme."""
+    env = isolated_tmux_server
+    base_name = "TICKET-123"
+    template = r"{{ agent }}/{{ base_name | lower }}-{{ num }}"
+
+    write_workmux_config(repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {base_name} -a Gemini -n 2 --branch-template '{template}'",
+    )
+
+    for idx in (1, 2):
+        branch = f"gemini/ticket-123-{idx}"
+        worktree = get_worktree_path(repo_path, branch)
+        assert worktree.is_dir(), f"Worktree {branch} not found"
+
+
+def test_add_fails_with_count_and_multiple_agents(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies --count cannot be combined with multiple --agent flags."""
+    env = isolated_tmux_server
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature -n 2 -a claude -a gemini",
+        expect_fail=True,
+    )
+    assert "--count can only be used with zero or one --agent" in result.stderr
+
+
+def test_add_fails_with_foreach_and_agent(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies clap rejects --foreach in combination with --agent."""
+    env = isolated_tmux_server
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature --foreach 'p:a' -a claude",
+        expect_fail=True,
+    )
+    assert (
+        "'--foreach <FOREACH>' cannot be used with '--agent <AGENT>'" in result.stderr
+    )
+
+
+def test_add_fails_with_foreach_mismatched_lengths(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies foreach parser enforces equal list lengths."""
+    env = isolated_tmux_server
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature --foreach 'platform:ios,android;lang:swift'",
+        expect_fail=True,
+    )
+    assert (
+        "All --foreach variables must have the same number of values" in result.stderr
+    )
 
 
 def test_add_executes_post_create_hooks(

@@ -3,8 +3,11 @@ use crate::{claude, config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use tera::{Context as TeraContext, Tera, Value, from_value, to_value};
 
 #[derive(Clone, Debug)]
 struct WorktreeBranchParser;
@@ -79,6 +82,15 @@ pub enum Prompt {
     FromFile(PathBuf),
 }
 
+#[derive(Debug, Clone)]
+struct WorktreeSpec {
+    branch_name: String,
+    agent: Option<String>,
+    template_context: TeraContext,
+}
+
+const BRANCH_TEMPLATE_NAME: &str = "branch_template";
+
 #[derive(clap::Args, Debug)]
 struct RemoveArgs {
     /// Name of the branch to remove (defaults to current branch)
@@ -150,9 +162,33 @@ enum Commands {
         #[arg(short = 'b', long = "background")]
         background: bool,
 
-        /// The agent to use for this worktree (e.g., claude, gemini)
+        /// The agent(s) to use. Creates one worktree per agent if -n is not specified.
         #[arg(short = 'a', long)]
-        agent: Option<String>,
+        agent: Vec<String>,
+
+        /// Number of worktree instances to create.
+        /// Can be used with zero or one --agent. Incompatible with --foreach.
+        #[arg(
+            short = 'n',
+            long,
+            value_parser = clap::value_parser!(u32).range(1..),
+            conflicts_with = "foreach"
+        )]
+        count: Option<u32>,
+
+        /// Generate multiple worktrees from a variable matrix.
+        /// Format: "var1:valA,valB;var2:valX,valY". Lists must have equal length.
+        /// Incompatible with --agent and --count.
+        #[arg(long, conflicts_with_all = ["agent", "count"])]
+        foreach: Option<String>,
+
+        /// Template for branch names in multi-worktree modes.
+        /// Variables: {{ base_name }}, {{ agent }}, {{ num }}, {{ foreach_vars }}.
+        #[arg(
+            long,
+            default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
+        )]
+        branch_template: String,
     },
 
     /// Open a tmux window for an existing worktree
@@ -241,18 +277,15 @@ pub fn run() -> Result<()> {
             no_pane_cmds,
             background,
             agent,
+            count,
+            foreach,
+            branch_template,
         } => {
             // Construct setup options from flags
             let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
             options.focus_window = !background;
 
-            // Check if branch_name is a remote ref (e.g., origin/feature/foo)
-            let remotes = git::list_remotes().context("Failed to list git remotes")?;
-            let detected_remote = remotes
-                .iter()
-                .find(|r| branch_name.starts_with(&format!("{}/", r)));
-
-            let prompt_data = if prompt_editor {
+            let prompt_template = if prompt_editor {
                 let editor_content =
                     edit::edit("").context("Failed to open editor or read content")?;
                 let trimmed = editor_content.trim();
@@ -269,8 +302,26 @@ pub fn run() -> Result<()> {
                 }
             };
 
-            if let Some(remote_name) = detected_remote {
-                // Auto-detected remote ref
+            if count.is_some() && agent.len() > 1 {
+                return Err(anyhow!(
+                    "--count can only be used with zero or one --agent, but {} were provided",
+                    agent.len()
+                ));
+            }
+
+            let mut tera = Tera::default();
+            tera.autoescape_on(vec![]);
+            tera.register_filter("slugify", slugify_filter);
+            tera.add_raw_template(BRANCH_TEMPLATE_NAME, &branch_template)
+                .context("Failed to parse branch template")?;
+
+            // Check if branch_name is a remote ref (e.g., origin/feature/foo)
+            let remotes = git::list_remotes().context("Failed to list git remotes")?;
+            let detected_remote = remotes
+                .iter()
+                .find(|r| branch_name.starts_with(&format!("{}/", r)));
+
+            let (remote_branch, template_base_name) = if let Some(remote_name) = detected_remote {
                 if base.is_some() || from_current {
                     return Err(anyhow!(
                         "Cannot use --base or --from-current with a remote branch reference. \
@@ -279,7 +330,6 @@ pub fn run() -> Result<()> {
                     ));
                 }
 
-                // Parse the remote ref
                 let spec = git::parse_remote_branch_spec(&branch_name)
                     .context("Invalid remote branch format. Use <remote>/<branch>")?;
 
@@ -287,35 +337,97 @@ pub fn run() -> Result<()> {
                     return Err(anyhow!("Mismatched remote detection"));
                 }
 
-                // Create worktree with local branch name derived from remote ref
-                // Pass the full remote ref as the remote_branch parameter
-                create_worktree(
-                    &spec.branch,
-                    None,
-                    Some(&branch_name),
-                    prompt_data.as_ref(),
-                    options,
-                    agent.as_deref(),
+                (Some(branch_name.clone()), spec.branch)
+            } else {
+                (None, branch_name.clone())
+            };
+
+            let resolved_base = if remote_branch.is_some() {
+                None
+            } else if from_current {
+                Some(
+                    git::get_current_branch()
+                        .context("Failed to determine the current branch for --from-current")?,
                 )
             } else {
-                // Regular local branch
-                let resolved_base = if from_current {
+                base
+            };
+
+            let cli_default_agent = agent.first().map(|s| s.as_str());
+            let config = config::Config::load(cli_default_agent)?;
+
+            let specs = generate_worktree_specs(
+                &template_base_name,
+                &agent,
+                count,
+                foreach.as_deref(),
+                &tera,
+            )?;
+
+            if specs.is_empty() {
+                return Err(anyhow!("No worktree specifications were generated"));
+            }
+
+            if specs.len() > 1 {
+                println!("Preparing to create {} worktrees...", specs.len());
+            }
+
+            for (i, spec) in specs.iter().enumerate() {
+                if specs.len() > 1 {
+                    println!(
+                        "\n--- [{}/{}] Creating worktree: {} ---",
+                        i + 1,
+                        specs.len(),
+                        spec.branch_name
+                    );
+                }
+
+                let prompt_for_spec = if let Some(ref prompt_src) = prompt_template {
                     Some(
-                        git::get_current_branch()
-                            .context("Failed to determine the current branch for --from-current")?,
+                        render_prompt_template(prompt_src, &mut tera, &spec.template_context)
+                            .with_context(|| {
+                                format!("Failed to render prompt for branch '{}'", spec.branch_name)
+                            })?,
                     )
                 } else {
-                    base
+                    None
                 };
-                create_worktree(
-                    &branch_name,
+
+                if options.run_hooks && config.post_create.as_ref().is_some_and(|v| !v.is_empty()) {
+                    println!("Running setup commands...");
+                }
+
+                let result = workflow::create(
+                    &spec.branch_name,
                     resolved_base.as_deref(),
-                    None,
-                    prompt_data.as_ref(),
-                    options,
-                    agent.as_deref(),
+                    remote_branch.as_deref(),
+                    prompt_for_spec.as_ref(),
+                    &config,
+                    options.clone(),
+                    spec.agent.as_deref(),
                 )
+                .with_context(|| {
+                    format!(
+                        "Failed to create worktree environment for branch '{}'",
+                        spec.branch_name
+                    )
+                })?;
+
+                if result.post_create_hooks_run > 0 {
+                    println!("✓ Setup complete");
+                }
+
+                println!(
+                    "✓ Successfully created worktree and tmux window for '{}'",
+                    result.branch_name
+                );
+                if let Some(ref base) = result.base_branch {
+                    println!("  Base: {}", base);
+                }
+                println!("  Worktree: {}", result.worktree_path.display());
             }
+
+            Ok(())
         }
         Commands::Open {
             branch_name,
@@ -357,47 +469,6 @@ pub fn run() -> Result<()> {
             Ok(())
         }
     }
-}
-
-fn create_worktree(
-    branch_name: &str,
-    base_branch: Option<&str>,
-    remote_branch: Option<&str>,
-    prompt: Option<&Prompt>,
-    options: SetupOptions,
-    agent: Option<&str>,
-) -> Result<()> {
-    let config = config::Config::load(agent)?;
-
-    // Print setup status if there are post-create hooks
-    if options.run_hooks && config.post_create.as_ref().is_some_and(|v| !v.is_empty()) {
-        println!("Running setup commands...");
-    }
-
-    let result = workflow::create(
-        branch_name,
-        base_branch,
-        remote_branch,
-        prompt,
-        &config,
-        options,
-    )
-    .context("Failed to create worktree environment")?;
-
-    if result.post_create_hooks_run > 0 {
-        println!("✓ Setup complete");
-    }
-
-    println!(
-        "✓ Successfully created worktree and tmux window for '{}'",
-        result.branch_name
-    );
-    if let Some(ref base) = result.base_branch {
-        println!("  Base: {}", base);
-    }
-    println!("  Worktree: {}", result.worktree_path.display());
-
-    Ok(())
 }
 
 fn open_worktree(branch_name: &str, options: SetupOptions) -> Result<()> {
@@ -700,4 +771,351 @@ fn list_worktrees() -> Result<()> {
 fn prune_claude_config() -> Result<()> {
     claude::prune_stale_entries().context("Failed to prune Claude configuration")?;
     Ok(())
+}
+
+fn render_prompt_template(
+    prompt: &Prompt,
+    tera: &mut Tera,
+    context: &TeraContext,
+) -> Result<Prompt> {
+    let template_str = match prompt {
+        Prompt::Inline(text) => text.clone(),
+        Prompt::FromFile(path) => fs::read_to_string(path)
+            .with_context(|| format!("Failed to read prompt file '{}'", path.display()))?,
+    };
+
+    let rendered = tera
+        .render_str(&template_str, context)
+        .context("Failed to render prompt template")?;
+    Ok(Prompt::Inline(rendered))
+}
+
+fn generate_worktree_specs(
+    base_name: &str,
+    agents: &[String],
+    count: Option<u32>,
+    foreach: Option<&str>,
+    tera: &Tera,
+) -> Result<Vec<WorktreeSpec>> {
+    let is_multi_mode = foreach.is_some() || count.is_some() || agents.len() > 1;
+
+    if !is_multi_mode {
+        let agent = agents.first().cloned();
+        let mut context = TeraContext::new();
+        context.insert("base_name", base_name);
+        context.insert("agent", &agent);
+        context.insert("num", &Option::<u32>::None);
+        context.insert("foreach_vars", &BTreeMap::<String, String>::new());
+
+        return Ok(vec![WorktreeSpec {
+            branch_name: base_name.to_string(),
+            agent,
+            template_context: context,
+        }]);
+    }
+
+    if let Some(matrix) = foreach {
+        let rows = parse_foreach_matrix(matrix)?;
+        return rows
+            .into_iter()
+            .map(|vars| build_spec(tera, base_name, None, None, vars))
+            .collect();
+    }
+
+    if let Some(times) = count {
+        let iterations = times as usize;
+        let default_agent = agents.first().cloned();
+        let mut specs = Vec::with_capacity(iterations);
+        for idx in 0..iterations {
+            let num = Some((idx + 1) as u32);
+            specs.push(build_spec(
+                tera,
+                base_name,
+                default_agent.clone(),
+                num,
+                BTreeMap::new(),
+            )?);
+        }
+        return Ok(specs);
+    }
+
+    if agents.is_empty() {
+        return Ok(vec![build_spec(
+            tera,
+            base_name,
+            None,
+            None,
+            BTreeMap::new(),
+        )?]);
+    }
+
+    let mut specs = Vec::with_capacity(agents.len());
+    for agent_name in agents {
+        specs.push(build_spec(
+            tera,
+            base_name,
+            Some(agent_name.clone()),
+            None,
+            BTreeMap::new(),
+        )?);
+    }
+    Ok(specs)
+}
+
+fn build_spec(
+    tera: &Tera,
+    base_name: &str,
+    agent: Option<String>,
+    num: Option<u32>,
+    foreach_vars: BTreeMap<String, String>,
+) -> Result<WorktreeSpec> {
+    let mut context = TeraContext::new();
+    context.insert("base_name", base_name);
+    context.insert("agent", &agent);
+    context.insert("num", &num);
+    context.insert("foreach_vars", &foreach_vars);
+    for (key, value) in &foreach_vars {
+        context.insert(key, value);
+    }
+    let branch_name = tera
+        .render(BRANCH_TEMPLATE_NAME, &context)
+        .context("Failed to render branch template")?;
+    Ok(WorktreeSpec {
+        branch_name,
+        agent,
+        template_context: context,
+    })
+}
+
+fn parse_foreach_matrix(input: &str) -> Result<Vec<BTreeMap<String, String>>> {
+    let mut columns: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw in input.split(';') {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let (key, values_str) = trimmed.split_once(':').ok_or_else(|| {
+            anyhow!(
+                "Invalid --foreach segment '{}'. Use the format name:value1,value2",
+                trimmed
+            )
+        })?;
+
+        let key = key.trim();
+        if key.is_empty() {
+            return Err(anyhow!(
+                "Invalid --foreach segment '{}': variable name cannot be empty",
+                trimmed
+            ));
+        }
+        if !seen.insert(key.to_string()) {
+            return Err(anyhow!(
+                "Duplicate variable '{}' found in --foreach option",
+                key
+            ));
+        }
+
+        let values: Vec<String> = values_str
+            .split(',')
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .collect();
+
+        if values.is_empty() {
+            return Err(anyhow!(
+                "Variable '{}' must have at least one value in --foreach",
+                key
+            ));
+        }
+
+        columns.push((key.to_string(), values));
+    }
+
+    if columns.is_empty() {
+        return Err(anyhow!(
+            "--foreach must include at least one variable with values"
+        ));
+    }
+
+    let expected_len = columns[0].1.len();
+    if columns
+        .iter()
+        .any(|(_, values)| values.len() != expected_len)
+    {
+        return Err(anyhow!(
+            "All --foreach variables must have the same number of values"
+        ));
+    }
+
+    let mut rows = Vec::with_capacity(expected_len);
+    for idx in 0..expected_len {
+        let mut map = BTreeMap::new();
+        for (key, values) in &columns {
+            map.insert(key.clone(), values[idx].clone());
+        }
+        rows.push(map);
+    }
+
+    Ok(rows)
+}
+
+fn slugify_filter(value: &Value, _: &HashMap<String, Value>) -> tera::Result<Value> {
+    let input = from_value::<String>(value.clone())?;
+    let slug = input
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | '0'..='9' => c,
+            _ => '-',
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    to_value(slug).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_tera(template: &str) -> Tera {
+        let mut tera = Tera::default();
+        tera.autoescape_on(vec![]);
+        tera.add_raw_template(BRANCH_TEMPLATE_NAME, template)
+            .expect("template should compile");
+        tera
+    }
+
+    #[test]
+    fn parse_foreach_matrix_parses_rows() {
+        let rows = parse_foreach_matrix("env:dev,prod;region:us,eu").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].get("env").unwrap(), "dev");
+        assert_eq!(rows[0].get("region").unwrap(), "us");
+        assert_eq!(rows[1].get("env").unwrap(), "prod");
+        assert_eq!(rows[1].get("region").unwrap(), "eu");
+    }
+
+    #[test]
+    fn parse_foreach_matrix_requires_matching_lengths() {
+        assert!(parse_foreach_matrix("env:dev,prod;region:us").is_err());
+    }
+
+    #[test]
+    fn generate_specs_with_agents() {
+        let tera = create_test_tera("{{ base_name }}{% if agent %}-{{ agent }}{% endif %}");
+        let agents = vec!["claude".to_string(), "gemini".to_string()];
+        let specs = generate_worktree_specs("feature", &agents, None, None, &tera).expect("specs");
+        let summary: Vec<(String, Option<String>)> = specs
+            .into_iter()
+            .map(|spec| (spec.branch_name, spec.agent))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("feature-claude".to_string(), Some("claude".to_string())),
+                ("feature-gemini".to_string(), Some("gemini".to_string()))
+            ]
+        );
+    }
+
+    #[test]
+    fn generate_specs_with_count_assigns_numbers() {
+        let tera = create_test_tera("{{ base_name }}{% if num %}-{{ num }}{% endif %}");
+        let specs = generate_worktree_specs("feature", &[], Some(2), None, &tera).expect("specs");
+        let names: Vec<String> = specs.into_iter().map(|s| s.branch_name).collect();
+        assert_eq!(
+            names,
+            vec!["feature-1".to_string(), "feature-2".to_string()]
+        );
+    }
+
+    #[test]
+    fn single_agent_override_preserves_branch_name() {
+        let tera = create_test_tera("{{ base_name }}{% if agent %}-{{ agent }}{% endif %}");
+        let specs =
+            generate_worktree_specs("feature", &[String::from("gemini")], None, None, &tera)
+                .expect("specs");
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].branch_name, "feature");
+        assert_eq!(specs[0].agent.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn foreach_context_exposes_variables() {
+        let mut tera = create_test_tera("{{ base_name }}");
+        let specs = generate_worktree_specs(
+            "feature",
+            &[],
+            None,
+            Some("platform:ios,android;lang:swift,kotlin"),
+            &tera,
+        )
+        .expect("specs");
+        let rendered = tera.render_str("{{ platform }}-{{ lang }}", &specs[0].template_context);
+        assert_eq!(rendered.expect("prompt render"), "ios-swift");
+    }
+
+    #[test]
+    fn render_prompt_template_inline_renders_variables() {
+        let mut tera = Tera::default();
+        tera.autoescape_on(vec![]);
+        let mut context = TeraContext::new();
+        context.insert("branch", "feature-123");
+
+        let prompt = Prompt::Inline("Working on {{ branch }}".to_string());
+        let result = render_prompt_template(&prompt, &mut tera, &context).expect("render success");
+
+        match result {
+            Prompt::Inline(text) => assert_eq!(text, "Working on feature-123"),
+            _ => panic!("Expected Inline prompt"),
+        }
+    }
+
+    #[test]
+    fn render_prompt_template_from_file_reads_and_renders() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut tera = Tera::default();
+        tera.autoescape_on(vec![]);
+        let mut context = TeraContext::new();
+        context.insert("name", "test-branch");
+
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        writeln!(temp_file, "Branch: {{{{ name }}}}").expect("write to temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        let prompt = Prompt::FromFile(temp_path);
+        let result = render_prompt_template(&prompt, &mut tera, &context).expect("render success");
+
+        match result {
+            Prompt::Inline(text) => assert_eq!(text, "Branch: test-branch\n"),
+            _ => panic!("Expected Inline prompt"),
+        }
+    }
+
+    #[test]
+    fn render_prompt_template_from_nonexistent_file_fails() {
+        let mut tera = Tera::default();
+        let context = TeraContext::new();
+
+        let prompt = Prompt::FromFile(PathBuf::from("/nonexistent/path/to/file.txt"));
+        let result = render_prompt_template(&prompt, &mut tera, &context);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to read prompt file")
+        );
+    }
 }

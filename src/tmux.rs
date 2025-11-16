@@ -274,15 +274,20 @@ pub struct PaneSetupResult {
     pub focus_pane_index: usize,
 }
 
+pub struct PaneSetupOptions<'a> {
+    pub run_commands: bool,
+    pub prompt_file_path: Option<&'a Path>,
+}
+
 /// Setup panes in a window according to configuration
 pub fn setup_panes(
     prefix: &str,
     window_name: &str,
     panes: &[PaneConfig],
     working_dir: &Path,
-    run_commands: bool,
-    prompt_file_path: Option<&Path>,
+    pane_options: PaneSetupOptions<'_>,
     config: &crate::config::Config,
+    task_agent: Option<&str>,
 ) -> Result<PaneSetupResult> {
     if panes.is_empty() {
         return Ok(PaneSetupResult {
@@ -291,17 +296,25 @@ pub fn setup_panes(
     }
 
     let mut focus_pane_index: Option<usize> = None;
+    let effective_agent = task_agent.or(config.agent.as_deref());
 
     // Handle the first pane (index 0), which already exists from window creation
     if let Some(pane_config) = panes.first() {
         let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-            config.agent.as_ref()
+            effective_agent.map(|agent_cmd| agent_cmd.to_string())
         } else {
-            pane_config.command.as_ref()
+            pane_config.command.clone()
         };
 
-        let adjusted_command = if run_commands {
-            command_to_run.map(|cmd| adjust_command(cmd, prompt_file_path, working_dir, config))
+        let adjusted_command = if pane_options.run_commands {
+            command_to_run.as_ref().map(|cmd| {
+                adjust_command(
+                    cmd,
+                    pane_options.prompt_file_path,
+                    working_dir,
+                    effective_agent,
+                )
+            })
         } else {
             None
         };
@@ -325,13 +338,20 @@ pub fn setup_panes(
             let target_pane_to_split = pane_config.target.unwrap_or(actual_pane_count - 1);
 
             let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-                config.agent.as_ref()
+                effective_agent.map(|agent_cmd| agent_cmd.to_string())
             } else {
-                pane_config.command.as_ref()
+                pane_config.command.clone()
             };
 
-            let adjusted_command = if run_commands {
-                command_to_run.map(|cmd| adjust_command(cmd, prompt_file_path, working_dir, config))
+            let adjusted_command = if pane_options.run_commands {
+                command_to_run.as_ref().map(|cmd| {
+                    adjust_command(
+                        cmd,
+                        pane_options.prompt_file_path,
+                        working_dir,
+                        effective_agent,
+                    )
+                })
             } else {
                 None
             };
@@ -365,10 +385,11 @@ fn adjust_command<'a>(
     command: &'a str,
     prompt_file_path: Option<&Path>,
     working_dir: &Path,
-    config: &crate::config::Config,
+    effective_agent: Option<&str>,
 ) -> Cow<'a, str> {
     if let Some(prompt_path) = prompt_file_path
-        && let Some(rewritten) = rewrite_agent_command(command, prompt_path, working_dir, config)
+        && let Some(rewritten) =
+            rewrite_agent_command(command, prompt_path, working_dir, effective_agent)
     {
         return Cow::Owned(rewritten);
     }
@@ -393,16 +414,16 @@ fn rewrite_agent_command(
     command: &str,
     prompt_file: &Path,
     working_dir: &Path,
-    config: &crate::config::Config,
+    effective_agent: Option<&str>,
 ) -> Option<String> {
+    let agent_command = effective_agent?;
     let trimmed_command = command.trim();
     if trimmed_command.is_empty() {
         return None;
     }
 
     let (pane_token, pane_rest) = crate::config::split_first_token(trimmed_command)?;
-    let configured_agent_str = config.agent.as_deref().unwrap_or("claude");
-    let (config_token, _) = crate::config::split_first_token(configured_agent_str)?;
+    let (config_token, _) = crate::config::split_first_token(agent_command)?;
 
     let resolved_pane_path = crate::config::resolve_executable_path(pane_token)
         .unwrap_or_else(|| pane_token.to_string());
@@ -446,23 +467,14 @@ fn rewrite_agent_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
     use std::path::PathBuf;
-
-    fn create_test_config(agent: &str) -> Config {
-        Config {
-            agent: Some(agent.to_string()),
-            ..Default::default()
-        }
-    }
 
     #[test]
     fn test_rewrite_claude_command() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("claude");
 
-        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("claude"));
         assert_eq!(result, Some("claude \"$(cat PROMPT.md)\"".to_string()));
     }
 
@@ -470,9 +482,8 @@ mod tests {
     fn test_rewrite_codex_command() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("codex");
 
-        let result = rewrite_agent_command("codex", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command("codex", &prompt_file, &working_dir, Some("codex"));
         assert_eq!(result, Some("codex \"$(cat PROMPT.md)\"".to_string()));
     }
 
@@ -480,9 +491,8 @@ mod tests {
     fn test_rewrite_gemini_command() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("gemini");
 
-        let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, Some("gemini"));
         assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
     }
 
@@ -490,10 +500,13 @@ mod tests {
     fn test_rewrite_command_with_path() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("/usr/local/bin/claude");
 
-        let result =
-            rewrite_agent_command("/usr/local/bin/claude", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command(
+            "/usr/local/bin/claude",
+            &prompt_file,
+            &working_dir,
+            Some("/usr/local/bin/claude"),
+        );
         assert_eq!(
             result,
             Some("/usr/local/bin/claude \"$(cat PROMPT.md)\"".to_string())
@@ -504,9 +517,13 @@ mod tests {
     fn test_rewrite_command_with_args() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("claude");
 
-        let result = rewrite_agent_command("claude --verbose", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command(
+            "claude --verbose",
+            &prompt_file,
+            &working_dir,
+            Some("claude"),
+        );
         assert_eq!(
             result,
             Some("claude \"$(cat PROMPT.md)\" --verbose".to_string())
@@ -517,10 +534,9 @@ mod tests {
     fn test_rewrite_mismatched_agent() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("gemini"); // Configured for gemini
 
         // Command is for claude
-        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("gemini"));
         assert_eq!(result, None);
     }
 
@@ -528,9 +544,13 @@ mod tests {
     fn test_rewrite_unknown_agent() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("unknown-agent");
 
-        let result = rewrite_agent_command("unknown-agent", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command(
+            "unknown-agent",
+            &prompt_file,
+            &working_dir,
+            Some("unknown-agent"),
+        );
         assert_eq!(
             result,
             Some("unknown-agent \"$(cat PROMPT.md)\"".to_string())
@@ -541,9 +561,8 @@ mod tests {
     fn test_rewrite_empty_command() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
-        let config = create_test_config("claude");
 
-        let result = rewrite_agent_command("", &prompt_file, &working_dir, &config);
+        let result = rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"));
         assert_eq!(result, None);
     }
 }

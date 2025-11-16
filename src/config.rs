@@ -108,7 +108,7 @@ pub struct PaneConfig {
     pub target: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SplitDirection {
     Horizontal,

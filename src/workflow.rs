@@ -102,6 +102,7 @@ pub fn create(
     prompt: Option<&cli::Prompt>,
     config: &config::Config,
     options: SetupOptions,
+    agent: Option<&str>,
 ) -> Result<CreateResult> {
     info!(
         branch = branch_name,
@@ -255,7 +256,13 @@ pub fn create(
         prompt_file_path,
         ..options
     };
-    let mut result = setup_environment(branch_name, &worktree_path, config, &options_with_prompt)?;
+    let mut result = setup_environment(
+        branch_name,
+        &worktree_path,
+        config,
+        &options_with_prompt,
+        agent,
+    )?;
     result.base_branch = base_branch_for_creation.clone();
     info!(
         branch = branch_name,
@@ -313,7 +320,7 @@ pub fn open(
     })?;
 
     // Setup the environment
-    let result = setup_environment(branch_name, &worktree_path, config, &options)?;
+    let result = setup_environment(branch_name, &worktree_path, config, &options, None)?;
     info!(
         branch = branch_name,
         path = %result.worktree_path.display(),
@@ -330,6 +337,7 @@ fn setup_environment(
     worktree_path: &Path,
     config: &config::Config,
     options: &SetupOptions,
+    agent: Option<&str>,
 ) -> Result<CreateResult> {
     debug!(
         branch = branch_name,
@@ -387,14 +395,18 @@ fn setup_environment(
 
     // Setup panes
     let panes = config.panes.as_deref().unwrap_or(&[]);
+    let resolved_panes = resolve_pane_configuration(panes, agent);
     let pane_setup_result = tmux::setup_panes(
         prefix,
         branch_name,
-        panes,
+        &resolved_panes,
         worktree_path,
-        options.run_pane_commands,
-        options.prompt_file_path.as_deref(),
+        tmux::PaneSetupOptions {
+            run_commands: options.run_pane_commands,
+            prompt_file_path: options.prompt_file_path.as_deref(),
+        },
         config,
+        agent,
     )
     .context("Failed to setup panes")?;
     debug!(
@@ -418,6 +430,41 @@ fn setup_environment(
         post_create_hooks_run: hooks_run,
         base_branch: None,
     })
+}
+
+fn resolve_pane_configuration(
+    original_panes: &[config::PaneConfig],
+    agent: Option<&str>,
+) -> Vec<config::PaneConfig> {
+    let Some(agent_cmd) = agent else {
+        return original_panes.to_vec();
+    };
+
+    if original_panes
+        .iter()
+        .any(|pane| pane.command.as_deref() == Some("<agent>"))
+    {
+        return original_panes.to_vec();
+    }
+
+    let mut panes = original_panes.to_vec();
+
+    if let Some(focused) = panes.iter_mut().find(|pane| pane.focus) {
+        focused.command = Some(agent_cmd.to_string());
+        return panes;
+    }
+
+    if let Some(first) = panes.get_mut(0) {
+        first.command = Some(agent_cmd.to_string());
+        return panes;
+    }
+
+    vec![config::PaneConfig {
+        command: Some(agent_cmd.to_string()),
+        focus: true,
+        split: None,
+        target: None,
+    }]
 }
 
 /// Performs copy and symlink operations from the repo root to the worktree
@@ -1133,4 +1180,80 @@ fn write_prompt_file(branch_name: &str, prompt: &cli::Prompt) -> Result<PathBuf>
     fs::write(&prompt_path, content)
         .with_context(|| format!("Failed to write prompt file '{}'", prompt_path.display()))?;
     Ok(prompt_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_pane_configuration_no_agent_returns_original() {
+        let original_panes = vec![config::PaneConfig {
+            command: Some("vim".to_string()),
+            focus: true,
+            split: None,
+            target: None,
+        }];
+
+        let result = resolve_pane_configuration(&original_panes, None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].command, Some("vim".to_string()));
+    }
+
+    #[test]
+    fn resolve_pane_configuration_agent_placeholder_returns_original() {
+        let original_panes = vec![config::PaneConfig {
+            command: Some("<agent>".to_string()),
+            focus: true,
+            split: None,
+            target: None,
+        }];
+
+        let result = resolve_pane_configuration(&original_panes, Some("claude"));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].command, Some("<agent>".to_string()));
+    }
+
+    #[test]
+    fn resolve_pane_configuration_agent_sets_focused_pane() {
+        let original_panes = vec![
+            config::PaneConfig {
+                command: Some("vim".to_string()),
+                focus: false,
+                split: None,
+                target: None,
+            },
+            config::PaneConfig {
+                command: Some("npm run dev".to_string()),
+                focus: true,
+                split: None,
+                target: None,
+            },
+        ];
+
+        let result = resolve_pane_configuration(&original_panes, Some("claude"));
+        assert_eq!(result[0].command, Some("vim".to_string()));
+        assert_eq!(result[1].command, Some("claude".to_string()));
+    }
+
+    #[test]
+    fn resolve_pane_configuration_agent_sets_first_pane_when_no_focus() {
+        let original_panes = vec![config::PaneConfig {
+            command: Some("vim".to_string()),
+            focus: false,
+            split: None,
+            target: None,
+        }];
+
+        let result = resolve_pane_configuration(&original_panes, Some("claude"));
+        assert_eq!(result[0].command, Some("claude".to_string()));
+    }
+
+    #[test]
+    fn resolve_pane_configuration_agent_creates_new_pane_when_empty() {
+        let result = resolve_pane_configuration(&[], Some("claude"));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].command, Some("claude".to_string()));
+        assert_eq!(result[0].focus, true);
+    }
 }

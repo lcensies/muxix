@@ -248,7 +248,9 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-P, --prompt-file <path>`: Provide a path to a file whose contents will be used as the
   prompt.
 - `-e, --prompt-editor`: Open your `$EDITOR` (or `$VISUAL`) to write the prompt interactively.
-- `-a, --agent <name>`: Override the default agent for this worktree (e.g., `gemini`).
+- `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
+  specified multiple times to generate a worktree for each agent. Overrides the
+  `agent` from your config file.
 
 #### Skip options
 
@@ -311,6 +313,54 @@ workmux add quick-fix --no-file-ops
 
 # Create a worktree in the background without switching to it
 workmux add feature/parallel-task --background
+```
+
+#### Parallel workflows & multi-worktree generation
+
+workmux can generate multiple worktrees from a single `add` command, which is
+ideal for running parallel experiments or delegating tasks to multiple AI
+agents. This is controlled by three mutually exclusive modes:
+
+- **By Agent (`-a`, `--agent`)**: Create a worktree for each specified agent.
+- **By Count (`-n`, `--count`)**: Create a specific number of worktrees.
+- **By Matrix (`--foreach`)**: Create worktrees based on a matrix of variables.
+
+When using any of these modes, branch names are generated from a template, and
+prompts can be templated with variables.
+
+##### Multi-worktree options
+
+- `-a, --agent <name>`: When used multiple times, creates one worktree for each agent.
+- `-n, --count <number>`: Creates `<number>` worktree instances. Can be combined with a single `--agent` flag to apply that agent to all instances.
+- `--foreach <matrix>`: Creates worktrees from a variable matrix string. The format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the same length.
+- `--branch-template <template>`: A [Tera](https://tera.netlify.app/docs/) template for generating branch names.
+  - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any variables from `--foreach`.
+  - Default: `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
+
+##### Prompt templating
+
+When generating multiple worktrees, any prompt provided via `-p`, `-P`, or `-e`
+is treated as a Tera template. You can use variables from your generation mode
+to create unique prompts for each agent or instance.
+
+##### Examples
+
+```bash
+# Create one worktree for claude and one for gemini with a focused prompt
+workmux add my-feature -a claude -a gemini -p "Implement the new search API integration"
+# Generates worktrees: my-feature-claude, my-feature-gemini
+
+# Create 2 instances of the default agent
+workmux add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
+# Generates worktrees: my-feature-1, my-feature-2
+
+# Create worktrees from a variable matrix
+workmux add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platform }}"
+# Generates worktrees: my-feature-ios, my-feature-android
+
+# Create agent-specific worktrees via --foreach
+workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
+# Generates worktrees: my-feature-claude, my-feature-gemini
 ```
 
 #### AI agent integration
