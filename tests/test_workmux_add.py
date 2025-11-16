@@ -1196,36 +1196,6 @@ def test_add_defaults_to_current_branch(
     assert_window_exists(env, window_name)
 
 
-def test_add_from_current_branch_flag(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
-):
-    """`workmux add --from-current` should base new branches on the active branch."""
-    env = isolated_tmux_server
-    base_branch = "feature-stack-base"
-    stacked_branch = "feature-stack-child"
-    commit_message = "Stack base change"
-
-    write_workmux_config(repo_path)
-
-    # Start a new branch and add a commit that the stacked branch should inherit.
-    env.run_command(["git", "checkout", "-b", base_branch], cwd=repo_path)
-    create_commit(env, repo_path, commit_message)
-
-    stacked_worktree = add_branch_and_get_worktree(
-        env,
-        workmux_exe_path,
-        repo_path,
-        stacked_branch,
-        extra_args="--from-current",
-    )
-
-    expected_file = file_for_commit(stacked_worktree, commit_message)
-    assert expected_file.exists()
-
-    window_name = get_window_name(stacked_branch)
-    assert_window_exists(env, window_name)
-
-
 def test_add_errors_when_detached_head_without_base(
     isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):

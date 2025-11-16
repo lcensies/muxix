@@ -237,11 +237,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 #### Useful options
 
 - `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch from
-  when creating a new branch. By default, new branches are created from your main
-  branch's remote tracking branch (e.g., `origin/main`).
-- `-c, --from-current`: Use your currently checked out branch as the base. This is a
-  shorthand for passing that branch explicitly via `--base` and is helpful when
-  stacking feature branches.
+  when creating a new branch. By default, new branches are created from the current
+  branch you have checked out.
 - `-b, --background`: Create the tmux window in the background without
   switching to it. Useful with `--prompt-editor`.
 - `-p, --prompt <text>`: Provide an inline prompt that will be automatically passed to
@@ -284,9 +281,6 @@ workmux add existing-work
 
 # Create a new branch from a specific base
 workmux add hotfix --base production
-
-# Use the current branch as the base (stacked branch)
-workmux add feature-2 --from-current
 
 # Create a worktree from a remote branch (creates local branch "user-auth-pr")
 workmux add origin/user-auth-pr

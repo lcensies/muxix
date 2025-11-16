@@ -130,10 +130,6 @@ enum Commands {
         #[arg(long)]
         base: Option<String>,
 
-        /// Explicitly use the current branch as the base (shorthand for --base <current-branch>)
-        #[arg(short = 'c', long = "from-current", conflicts_with = "base")]
-        from_current: bool,
-
         /// Inline prompt text to store in the new worktree
         #[arg(short = 'p', long, conflicts_with_all = ["prompt_file", "prompt_editor"])]
         prompt: Option<String>,
@@ -268,7 +264,6 @@ pub fn run() -> Result<()> {
         Commands::Add {
             branch_name,
             base,
-            from_current,
             prompt,
             prompt_file,
             prompt_editor,
@@ -322,9 +317,9 @@ pub fn run() -> Result<()> {
                 .find(|r| branch_name.starts_with(&format!("{}/", r)));
 
             let (remote_branch, template_base_name) = if let Some(remote_name) = detected_remote {
-                if base.is_some() || from_current {
+                if base.is_some() {
                     return Err(anyhow!(
-                        "Cannot use --base or --from-current with a remote branch reference. \
+                        "Cannot use --base with a remote branch reference. \
                         The remote branch '{}' will be used as the base.",
                         branch_name
                     ));
@@ -342,16 +337,7 @@ pub fn run() -> Result<()> {
                 (None, branch_name.clone())
             };
 
-            let resolved_base = if remote_branch.is_some() {
-                None
-            } else if from_current {
-                Some(
-                    git::get_current_branch()
-                        .context("Failed to determine the current branch for --from-current")?,
-                )
-            } else {
-                base
-            };
+            let resolved_base = if remote_branch.is_some() { None } else { base };
 
             let cli_default_agent = agent.first().map(|s| s.as_str());
             let config = config::Config::load(cli_default_agent)?;
