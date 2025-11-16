@@ -53,14 +53,20 @@ pub fn current_window_name() -> Result<Option<String>> {
 }
 
 /// Create a new tmux window with the given name and working directory
-pub fn create_window(prefix: &str, window_name: &str, working_dir: &Path) -> Result<()> {
+pub fn create_window(
+    prefix: &str,
+    window_name: &str,
+    working_dir: &Path,
+    detached: bool,
+) -> Result<()> {
     let prefixed_name = prefixed(prefix, window_name);
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
 
-    Cmd::new("tmux")
-        .args(&["new-window", "-n", &prefixed_name, "-c", working_dir_str])
+    let cmd = Cmd::new("tmux").arg("new-window");
+    let cmd = if detached { cmd.arg("-d") } else { cmd };
+    cmd.args(&["-n", &prefixed_name, "-c", working_dir_str])
         .run()
         .context("Failed to create tmux window")?;
 
@@ -158,7 +164,6 @@ pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
     // we use the form: `$SHELL -ic '<hooks>; <user_command>; exec $SHELL -l'`.
     // We must escape single quotes within the user command using POSIX-style escaping.
     let escaped_command = command.replace('\'', r#"'\''"#);
-
 
     // A new pane's interactive shell can have a different `PATH` than the tmux server,
     // especially after sourcing rc files (`.zshrc`, etc.). This can lead to "command not found"

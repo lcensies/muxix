@@ -63,9 +63,9 @@ def assert_window_exists(env: TmuxEnvironment, window_name: str) -> None:
     """Ensure a tmux window with the provided name exists."""
     result = env.tmux(["list-windows", "-F", "#{window_name}"])
     existing_windows = [w for w in result.stdout.strip().split("\n") if w]
-    assert (
-        window_name in existing_windows
-    ), f"Window {window_name!r} not found. Existing: {existing_windows!r}"
+    assert window_name in existing_windows, (
+        f"Window {window_name!r} not found. Existing: {existing_windows!r}"
+    )
 
 
 def wait_for_pane_output(
@@ -106,9 +106,9 @@ def assert_copied_file(
     """Assert that a copied file exists in the worktree and is not a symlink."""
     file_path = worktree_path / relative_path
     assert file_path.exists(), f"Expected copied file {relative_path} to exist"
-    assert (
-        not file_path.is_symlink()
-    ), f"Expected {relative_path} to be a regular file, but found a symlink"
+    assert not file_path.is_symlink(), (
+        f"Expected {relative_path} to be a regular file, but found a symlink"
+    )
     if expected_text is not None:
         assert file_path.read_text() == expected_text
     return file_path
@@ -594,9 +594,9 @@ exit 1
     assert poll_until(alias_marker_exists, timeout=2.0), (
         "Agent marker file missing; alias likely not executed."
     )
-    assert (
-        marker_file.read_text().strip() == marker_content
-    ), "Alias marker content incorrect; alias flag not detected."
+    assert marker_file.read_text().strip() == marker_content, (
+        "Alias marker content incorrect; alias flag not detected."
+    )
 
 
 def test_project_config_overrides_global_config(
@@ -1490,3 +1490,42 @@ def test_add_symlink_overwrites_conflicting_file_from_git(
 
     symlinked_target = assert_symlink_to(worktree_path, "node_modules")
     assert (symlinked_target / "dep.js").exists()
+
+
+def test_add_background_creates_window_without_switching(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that `workmux add --background` creates window without switching to it."""
+    env = isolated_tmux_server
+    branch_name = "feature-background"
+    initial_window = "initial"
+
+    write_workmux_config(repo_path)
+
+    # Create an initial window and remember it
+    env.tmux(["new-window", "-n", initial_window])
+    env.tmux(["select-window", "-t", initial_window])
+
+    # Get current window before running add
+    current_before = env.tmux(["display-message", "-p", "#{window_name}"])
+    assert initial_window in current_before.stdout
+
+    # Run workmux add with --background flag
+    worktree_path = add_branch_and_get_worktree(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        extra_args="--background",
+    )
+
+    # Verify worktree was created
+    assert worktree_path.is_dir()
+
+    # Verify the new window exists
+    window_name = get_window_name(branch_name)
+    assert_window_exists(env, window_name)
+
+    # Verify we're still on the initial window (didn't switch)
+    current_after = env.tmux(["display-message", "-p", "#{window_name}"])
+    assert initial_window in current_after.stdout

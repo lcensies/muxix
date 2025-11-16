@@ -241,6 +241,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-c, --from-current`: Use your currently checked out branch as the base. This is a
   shorthand for passing that branch explicitly via `--base` and is helpful when
   stacking feature branches.
+- `-b, --background`: Create the tmux window in the background without
+  switching to it. Useful with `--prompt-editor`.
 - `-p, --prompt <text>`: Provide an inline prompt that will be automatically passed to
   AI agent panes.
 - `-P, --prompt-file <path>`: Provide a path to a file whose contents will be used as the
@@ -306,6 +308,9 @@ workmux add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
 workmux add quick-fix --no-file-ops
+
+# Create a worktree in the background without switching to it
+workmux add feature/parallel-task --background
 ```
 
 #### AI agent integration

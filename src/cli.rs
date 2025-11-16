@@ -146,6 +146,10 @@ enum Commands {
         #[arg(short = 'C', long)]
         no_pane_cmds: bool,
 
+        /// Create tmux window in the background (do not switch to it)
+        #[arg(short = 'b', long = "background")]
+        background: bool,
+
         /// The agent to use for this worktree (e.g., claude, gemini)
         #[arg(short = 'a', long)]
         agent: Option<String>,
@@ -235,10 +239,12 @@ pub fn run() -> Result<()> {
             no_hooks,
             no_file_ops,
             no_pane_cmds,
+            background,
             agent,
         } => {
             // Construct setup options from flags
-            let options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
+            let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
+            options.focus_window = !background;
 
             // Check if branch_name is a remote ref (e.g., origin/feature/foo)
             let remotes = git::list_remotes().context("Failed to list git remotes")?;

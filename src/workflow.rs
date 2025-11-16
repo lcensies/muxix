@@ -48,6 +48,8 @@ pub struct SetupOptions {
     pub run_file_ops: bool,
     pub run_pane_commands: bool,
     pub prompt_file_path: Option<PathBuf>,
+    /// If true, switch to the new tmux window when done; if false, leave it in the background.
+    pub focus_window: bool,
 }
 
 impl SetupOptions {
@@ -59,6 +61,7 @@ impl SetupOptions {
             run_file_ops: true,
             run_pane_commands: true,
             prompt_file_path: None,
+            focus_window: true,
         }
     }
 
@@ -69,6 +72,7 @@ impl SetupOptions {
             run_file_ops,
             run_pane_commands,
             prompt_file_path: None,
+            focus_window: true,
         }
     }
 
@@ -85,6 +89,7 @@ impl SetupOptions {
             run_file_ops,
             run_pane_commands,
             prompt_file_path,
+            focus_window: true,
         }
     }
 }
@@ -368,8 +373,13 @@ fn setup_environment(
     }
 
     // Create tmux window once prep work is finished
-    tmux::create_window(prefix, branch_name, worktree_path)
-        .context("Failed to create tmux window")?;
+    tmux::create_window(
+        prefix,
+        branch_name,
+        worktree_path,
+        /* detached: */ !options.focus_window,
+    )
+    .context("Failed to create tmux window")?;
     info!(
         branch = branch_name,
         "setup_environment:tmux window created"
@@ -393,11 +403,14 @@ fn setup_environment(
         "setup_environment:panes configured"
     );
 
-    // Focus the configured pane
-    tmux::select_pane(prefix, branch_name, pane_setup_result.focus_pane_index)?;
-
-    // Switch to the new window
-    tmux::select_window(prefix, branch_name)?;
+    // Focus the configured pane and optionally switch to the window
+    if options.focus_window {
+        tmux::select_pane(prefix, branch_name, pane_setup_result.focus_pane_index)?;
+        tmux::select_window(prefix, branch_name)?;
+    } else {
+        // Background mode: do not steal focus from the current window.
+        // We intentionally skip select_window to keep the user's current window.
+    }
 
     Ok(CreateResult {
         worktree_path: worktree_path.to_path_buf(),
