@@ -100,16 +100,21 @@ replaced entirely when defined in the project config.
 
 ```yaml
 window_prefix: wm-
+
 panes:
   - command: nvim .
     focus: true
   # Just a default shell (command omitted)
   - split: horizontal
+
 post_create:
   - mise install
+
 files:
   symlink:
     - node_modules
+
+agent: claude
 ```
 
 ### Project configuration example
@@ -129,7 +134,7 @@ files:
 panes:
   - command: pnpm install
     focus: true
-  - command: claude
+  - command: <agent>
     split: horizontal
   - command: pnpm run dev
     split: vertical
@@ -245,7 +250,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
 
 Note: The prompt options are mutually exclusive - you can only use one at a time.
 
-**Skip options:**
+#### Skip options
 
 These options allow you to skip expensive setup steps when they're not needed (e.g., for
 documentation-only changes):
