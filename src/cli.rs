@@ -528,27 +528,15 @@ fn merge_worktree(
 ) -> Result<()> {
     let config = config::Config::load(None)?;
 
-    // Determine the branch to merge (must be done BEFORE changing CWD if running without branch name)
+    // Determine the branch to merge
+    // Note: If running without branch name, we must get current branch BEFORE workflow::merge
+    // changes the CWD (since it moves to main worktree for safety)
     let branch_to_merge = if let Some(name) = branch_name {
         name.to_string()
     } else {
         // Running from within a worktree - get current branch
         git::get_current_branch().context("Failed to get current branch")?
     };
-
-    // Change CWD to main worktree to prevent errors if the command is run from within
-    // the worktree that is about to be deleted. This must happen after getting current
-    // branch name but before any other git operations.
-    if git::is_git_repo()? {
-        let main_worktree_root = git::get_main_worktree_root()
-            .context("Could not find main worktree for merge operation")?;
-        std::env::set_current_dir(&main_worktree_root).with_context(|| {
-            format!(
-                "Could not change directory to '{}'",
-                main_worktree_root.display()
-            )
-        })?;
-    }
 
     // Print status if there are pre-delete hooks
     if config.pre_delete.as_ref().is_some_and(|v| !v.is_empty()) {
@@ -589,27 +577,15 @@ fn remove_worktree(
     delete_remote: bool,
     keep_branch: bool,
 ) -> Result<()> {
-    // Determine the branch to remove (must be done BEFORE changing CWD)
+    // Determine the branch to remove
+    // Note: If running without branch name, we must get current branch BEFORE workflow::remove
+    // changes the CWD (since it moves to main worktree for safety)
     let branch_to_remove = if let Some(name) = branch_name {
         name.to_string()
     } else {
         // Running from within a worktree - get current branch
         git::get_current_branch().context("Failed to get current branch")?
     };
-
-    // Change CWD to main worktree to prevent errors if the command is run from within
-    // the worktree that is about to be deleted. This must happen after getting current
-    // branch name but before any other git operations.
-    if git::is_git_repo()? {
-        let main_worktree_root = git::get_main_worktree_root()
-            .context("Could not find main worktree for remove operation")?;
-        std::env::set_current_dir(&main_worktree_root).with_context(|| {
-            format!(
-                "Could not change directory to '{}'",
-                main_worktree_root.display()
-            )
-        })?;
-    }
 
     // Handle user confirmation prompt if needed (before calling workflow)
     if !force {
