@@ -332,9 +332,9 @@ workmux can generate multiple worktrees from a single `add` command, which is
 ideal for running parallel experiments or delegating tasks to multiple AI
 agents. This is controlled by three mutually exclusive modes:
 
-- **By Agent (`-a`, `--agent`)**: Create a worktree for each specified agent.
-- **By Count (`-n`, `--count`)**: Create a specific number of worktrees.
-- **By Matrix (`--foreach`)**: Create worktrees based on a matrix of variables.
+- (`-a`, `--agent`): Create a worktree for each specified agent.
+- (`-n`, `--count`): Create a specific number of worktrees.
+- (`--foreach`): Create worktrees based on a matrix of variables.
 
 When using any of these modes, branch names are generated from a template, and
 prompts can be templated with variables.
@@ -344,7 +344,7 @@ prompts can be templated with variables.
 - `-a, --agent <name>`: When used multiple times, creates one worktree for each agent.
 - `-n, --count <number>`: Creates `<number>` worktree instances. Can be combined with a single `--agent` flag to apply that agent to all instances.
 - `--foreach <matrix>`: Creates worktrees from a variable matrix string. The format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the same length.
-- `--branch-template <template>`: A [Tera](https://tera.netlify.app/docs/) template for generating branch names.
+- `--branch-template <template>`: A [Tera](https://keats.github.io/tera/) template for generating branch names.
   - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any variables from `--foreach`.
   - Default: `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
 
