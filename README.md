@@ -215,7 +215,6 @@ alias wm='workmux'
 ## Commands
 
 - [`add`](#workmux-add-branch-name) - Create a new worktree and tmux window
-- [`rescue`](#workmux-rescue-branch-name) - Move uncommitted changes to a new worktree
 - [`merge`](#workmux-merge-branch-name) - Merge a branch and clean up everything
 - [`remove`](#workmux-remove-branch-name) - Remove a worktree without merging
 - [`list`](#workmux-list) - List all worktrees with status
@@ -242,6 +241,11 @@ immediately. If the branch doesn't exist, it will be created automatically.
   branch you have checked out.
 - `-b, --background`: Create the tmux window in the background without
   switching to it. Useful with `--prompt-editor`.
+- `-w, --with-changes`: Move uncommitted changes from the current worktree to the new worktree,
+  then reset the original worktree to a clean state. Useful when you've accidentally
+  started working on the wrong branch.
+- `-u, --include-untracked`: Also move untracked files (requires `--with-changes`). By default,
+  only staged and modified tracked files are moved.
 - `-p, --prompt <text>`: Provide an inline prompt that will be automatically passed to
   AI agent panes.
 - `-P, --prompt-file <path>`: Provide a path to a file whose contents will be used as the
@@ -288,6 +292,12 @@ workmux add origin/user-auth-pr
 
 # Remote branches with slashes work too (creates local branch "feature/foo")
 workmux add origin/feature/foo
+
+# Move uncommitted changes to a new worktree (including untracked files)
+workmux add feature/new-thing --with-changes -u
+
+# Move only staged/modified files (not untracked files)
+workmux add fix/bug --with-changes
 
 # Create a worktree with an inline prompt for AI agents
 workmux add feature/ai --prompt "Implement user authentication with OAuth"
@@ -556,42 +566,6 @@ workmux open user-auth --run-hooks
 
 # Open and restore configuration files
 workmux open user-auth --force-files
-```
-
----
-
-### `workmux rescue <branch-name>`
-
-Moves uncommitted changes from your current worktree to a new worktree and branch,
-then resets your current worktree to a clean state. Perfect for when you've
-accidentally started working on the wrong branch (e.g., `main`) and need to
-move your work to the correct location.
-
-- `<branch-name>`: The name of the new branch and worktree to create.
-
-#### Useful options
-
-- `-u, --include-untracked`: Also move untracked (new) files to the new worktree.
-  By default, only staged and modified tracked files are moved.
-- `-b, --background`: Create the tmux window in the background without switching to it
-
-#### What happens
-
-1. Checks that you have uncommitted changes (fails if working directory is clean)
-2. Stashes all changes (optionally including untracked files with `-u`)
-3. Creates a new branch and worktree with the specified name
-4. Applies the stashed changes to the new worktree
-5. Resets your original worktree to a clean state (`git reset --hard HEAD`)
-6. Switches your tmux session to the new worktree window
-
-#### Examples
-
-```bash
-# Move uncommitted changes to a new branch (including untracked files)
-workmux rescue feature/new-thing -u
-
-# Without untracked files (only staged/modified files)
-workmux rescue fix/bug
 ```
 
 ---

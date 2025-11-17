@@ -158,6 +158,14 @@ enum Commands {
         #[arg(short = 'b', long = "background")]
         background: bool,
 
+        /// Move uncommitted changes from the current worktree to the new worktree
+        #[arg(short = 'w', long, conflicts_with_all = ["count", "foreach"])]
+        with_changes: bool,
+
+        /// Also move untracked files (only applies with --with-changes)
+        #[arg(short = 'u', long, requires = "with_changes")]
+        include_untracked: bool,
+
         /// The agent(s) to use. Creates one worktree per agent if -n is not specified.
         #[arg(short = 'a', long)]
         agent: Vec<String>,
@@ -229,32 +237,6 @@ enum Commands {
     #[command(visible_alias = "rm")]
     Remove(RemoveArgs),
 
-    /// Move uncommitted changes to a new worktree and reset the current worktree
-    Rescue {
-        /// Name of the new branch to create for the uncommitted changes
-        branch_name: String,
-
-        /// Also move untracked files
-        #[arg(short = 'u', long)]
-        include_untracked: bool,
-
-        /// Skip running post-create hooks
-        #[arg(short = 'H', long)]
-        no_hooks: bool,
-
-        /// Skip file copy/symlink operations
-        #[arg(short = 'F', long)]
-        no_file_ops: bool,
-
-        /// Skip executing pane commands (panes open with plain shells)
-        #[arg(short = 'C', long)]
-        no_pane_cmds: bool,
-
-        /// Create tmux window in the background (do not switch to it)
-        #[arg(short = 'b', long = "background")]
-        background: bool,
-    },
-
     /// List all worktrees
     #[command(visible_alias = "ls")]
     List,
@@ -297,11 +279,34 @@ pub fn run() -> Result<()> {
             no_file_ops,
             no_pane_cmds,
             background,
+            with_changes,
+            include_untracked,
             agent,
             count,
             foreach,
             branch_template,
         } => {
+            // If --with-changes is set, use the rescue workflow instead
+            if with_changes {
+                let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
+                options.focus_window = !background;
+                let config = config::Config::load(None)?;
+                let result = workflow::create_with_changes(
+                    &branch_name,
+                    include_untracked,
+                    &config,
+                    options,
+                )
+                .context("Failed to move uncommitted changes")?;
+
+                println!(
+                    "✓ Moved uncommitted changes to new worktree for branch '{}'\n  Worktree: {}\n  Original worktree is now clean",
+                    result.branch_name,
+                    result.worktree_path.display()
+                );
+                return Ok(());
+            }
+
             // Construct setup options from flags
             let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
             options.focus_window = !background;
@@ -469,19 +474,6 @@ pub fn run() -> Result<()> {
             args.delete_remote,
             args.keep_branch,
         ),
-        Commands::Rescue {
-            branch_name,
-            include_untracked,
-            no_hooks,
-            no_file_ops,
-            no_pane_cmds,
-            background,
-        } => {
-            let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
-            options.focus_window = !background;
-            let config = config::Config::load(None)?;
-            rescue_worktree(&branch_name, include_untracked, &config, options)
-        }
         Commands::List => list_worktrees(),
         Commands::Init => config::Config::init(),
         Commands::Claude { command } => match command {
@@ -771,24 +763,6 @@ fn list_worktrees() -> Result<()> {
 
 fn prune_claude_config() -> Result<()> {
     claude::prune_stale_entries().context("Failed to prune Claude configuration")?;
-    Ok(())
-}
-
-fn rescue_worktree(
-    branch_name: &str,
-    include_untracked: bool,
-    config: &config::Config,
-    options: SetupOptions,
-) -> Result<()> {
-    let result = workflow::rescue_and_create(branch_name, include_untracked, config, options)
-        .context("Failed to rescue uncommitted changes")?;
-
-    println!(
-        "✓ Rescued uncommitted changes to new worktree for branch '{}'\n  Worktree: {}\n  Original worktree is now clean",
-        result.branch_name,
-        result.worktree_path.display()
-    );
-
     Ok(())
 }
 
