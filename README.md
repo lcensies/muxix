@@ -141,6 +141,9 @@ panes:
     split: vertical
 ```
 
+For a real-world example, see
+[workmux's own `.workmux.yaml`](https://github.com/raine/workmux/blob/main/.workmux.yaml).
+
 ### Configuration options
 
 - `main_branch`: Branch to merge into (optional, auto-detected from remote or
