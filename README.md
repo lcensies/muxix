@@ -669,8 +669,8 @@ workmux list
 
 ## Why workmux?
 
-`workmux` reduces manual setup to a pair of commands and makes it feasible to
-run AI-driven development workflows in parallel.
+workmux turns a multi-step manual workflow into two simple commands, making
+parallel development workflows practical.
 
 ### Without workmux
 
@@ -731,79 +731,16 @@ workmux merge feature/new-api
 
 ## Why git worktrees?
 
-Git worktrees enable parallel development by giving each branch its own isolated
-working directory.
+[Git worktrees](https://git-scm.com/docs/git-worktree) enable parallel
+development by giving each branch its own isolated working directory.
 
-- Zero-friction context switching: Switch branches by switching tmux windows -
-  no stashing, no cleanup, your work stays exactly as you left it
-- Parallel AI agents: Multiple agents can work simultaneously without stepping
-  on each other's type errors, test failures, or build artifacts
-- Safe experimentation: Test multiple approaches side-by-side, merge the winner
+- Zero-friction context switching: Switch between branches without stashing or
+  cleanup - your work stays exactly as you left it
+- Parallel workflows: Multiple branches can be actively worked on simultaneously
+  without conflicts from build artifacts, test failures, or dependencies
 
 Without worktrees, parallel work requires complex tooling or constant
-stash/commit/checkout cycles. With worktrees and workmux, it's just switching
-windows.
-
-## Tips
-
-### Closing tmux windows
-
-You can close workmux-managed tmux windows using tmux's standard `kill-window`
-command (e.g., `<prefix> &` or `tmux kill-window -t <window-name>`). This will
-properly terminate all processes running in the window's panes. The git worktree
-will remain on disk, and you can reopen a window for it anytime with:
-
-```bash
-workmux open <branch-name>
-```
-
-However, it's recommended to use `workmux merge` or `workmux remove` for cleanup
-instead, as these commands clean up both the tmux window and the git worktree
-together. Use `workmux list` to see which worktrees have detached tmux windows.
-
-## Shell completions
-
-To enable tab completions for commands and branch names, add the following to
-your shell's configuration file.
-
-For **bash**, add to your `.bashrc`:
-
-```bash
-eval "$(workmux completions bash)"
-```
-
-For **zsh**, add to your `.zshrc`:
-
-```bash
-eval "$(workmux completions zsh)"
-```
-
-For **fish**, add to your `config.fish`:
-
-```bash
-workmux completions fish | source
-```
-
-## Requirements
-
-- Rust (for building)
-- Git 2.5+ (for worktree support)
-- tmux
-
-## Inspiration and related tools
-
-workmux is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
-worktree management tool. While wtp streamlines worktree creation and setup,
-workmux takes this further by tightly coupling worktrees with tmux window
-management.
-
-For managing multiple AI agents in parallel, tools like
-[claude-squad](https://github.com/smtg-ai/claude-squad) and
-[vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
-interfaces, like a TUI or kanban board. workmux takes a different approach:
-**tmux is the interface**. If you already live in tmux, you don't need a new app
-or abstraction layer. With workmux, managing parallel agents is managing tmux
-windows.
+stash/commit/checkout cycles. With worktrees, it's just switching directories.
 
 ## Git worktree caveats
 
@@ -894,6 +831,67 @@ worktrees, causing them to appear in `git status`.
 For personal ignores, use a global git ignore file. For project-specific ignores
 that are safe to share with your team, add them to the project's main
 `.gitignore` file.
+
+## Tips
+
+### Closing tmux windows
+
+You can close workmux-managed tmux windows using tmux's standard `kill-window`
+command (e.g., `<prefix> &` or `tmux kill-window -t <window-name>`). This will
+properly terminate all processes running in the window's panes. The git worktree
+will remain on disk, and you can reopen a window for it anytime with:
+
+```bash
+workmux open <branch-name>
+```
+
+However, it's recommended to use `workmux merge` or `workmux remove` for cleanup
+instead, as these commands clean up both the tmux window and the git worktree
+together. Use `workmux list` to see which worktrees have detached tmux windows.
+
+## Shell completions
+
+To enable tab completions for commands and branch names, add the following to
+your shell's configuration file.
+
+For **bash**, add to your `.bashrc`:
+
+```bash
+eval "$(workmux completions bash)"
+```
+
+For **zsh**, add to your `.zshrc`:
+
+```bash
+eval "$(workmux completions zsh)"
+```
+
+For **fish**, add to your `config.fish`:
+
+```bash
+workmux completions fish | source
+```
+
+## Requirements
+
+- Rust (for building)
+- Git 2.5+ (for worktree support)
+- tmux
+
+## Inspiration and related tools
+
+workmux is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
+worktree management tool. While wtp streamlines worktree creation and setup,
+workmux takes this further by tightly coupling worktrees with tmux window
+management.
+
+For managing multiple AI agents in parallel, tools like
+[claude-squad](https://github.com/smtg-ai/claude-squad) and
+[vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
+interfaces, like a TUI or kanban board. workmux takes a different approach:
+**tmux is the interface**. If you already live in tmux, you don't need a new app
+or abstraction layer. With workmux, managing parallel agents is managing tmux
+windows.
 
 ## See also
 
