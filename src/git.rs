@@ -484,15 +484,31 @@ pub fn delete_remote_branch(branch_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Stash uncommitted changes, optionally including untracked files.
-pub fn stash_push(message: &str, include_untracked: bool) -> Result<()> {
-    let mut cmd = Cmd::new("git").args(&["stash", "push", "-m", message]);
+/// Stash uncommitted changes, optionally including untracked files or using patch mode.
+pub fn stash_push(message: &str, include_untracked: bool, patch: bool) -> Result<()> {
+    use std::process::Command;
 
-    if include_untracked {
-        cmd = cmd.arg("--include-untracked");
+    if patch {
+        // For --patch mode, we need an interactive terminal
+        let status = Command::new("git")
+            .args(["stash", "push", "-m", message, "--patch"])
+            .status()
+            .context("Failed to run interactive git stash")?;
+
+        if !status.success() {
+            return Err(anyhow!(
+                "Git stash --patch failed. Make sure you select at least one hunk."
+            ));
+        }
+    } else {
+        let mut cmd = Cmd::new("git").args(&["stash", "push", "-m", message]);
+
+        if include_untracked {
+            cmd = cmd.arg("--include-untracked");
+        }
+
+        cmd.run().context("Failed to stash changes")?;
     }
-
-    cmd.run().context("Failed to stash changes")?;
     Ok(())
 }
 

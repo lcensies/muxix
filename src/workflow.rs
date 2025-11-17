@@ -1186,12 +1186,13 @@ fn write_prompt_file(branch_name: &str, prompt: &cli::Prompt) -> Result<PathBuf>
 pub fn create_with_changes(
     branch_name: &str,
     include_untracked: bool,
+    patch: bool,
     config: &config::Config,
     options: SetupOptions,
 ) -> Result<CreateResult> {
     info!(
         branch = branch_name,
-        include_untracked, "create_with_changes:start"
+        include_untracked, patch, "create_with_changes:start"
     );
 
     // Pre-flight Checks
@@ -1219,7 +1220,7 @@ pub fn create_with_changes(
 
     // 1. Stash changes
     let stash_message = format!("workmux: moving changes to {}", branch_name);
-    git::stash_push(&stash_message, include_untracked)
+    git::stash_push(&stash_message, include_untracked, patch)
         .context("Failed to stash current changes")?;
     info!(branch = branch_name, "create_with_changes: changes stashed");
 

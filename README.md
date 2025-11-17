@@ -244,6 +244,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-w, --with-changes`: Move uncommitted changes from the current worktree to the new worktree,
   then reset the original worktree to a clean state. Useful when you've accidentally
   started working on the wrong branch.
+- `--patch`: Interactively select which changes to move (requires `--with-changes`). Opens
+  an interactive prompt for selecting hunks to stash.
 - `-u, --include-untracked`: Also move untracked files (requires `--with-changes`). By default,
   only staged and modified tracked files are moved.
 - `-p, --prompt <text>`: Provide an inline prompt that will be automatically passed to
@@ -298,6 +300,9 @@ workmux add feature/new-thing --with-changes -u
 
 # Move only staged/modified files (not untracked files)
 workmux add fix/bug --with-changes
+
+# Interactively select which changes to move
+workmux add feature/partial --with-changes --patch
 
 # Create a worktree with an inline prompt for AI agents
 workmux add feature/ai --prompt "Implement user authentication with OAuth"

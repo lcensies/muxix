@@ -162,6 +162,10 @@ enum Commands {
         #[arg(short = 'w', long, conflicts_with_all = ["count", "foreach"])]
         with_changes: bool,
 
+        /// Interactively select which changes to move (only applies with --with-changes)
+        #[arg(long, requires = "with_changes")]
+        patch: bool,
+
         /// Also move untracked files (only applies with --with-changes)
         #[arg(short = 'u', long, requires = "with_changes")]
         include_untracked: bool,
@@ -280,13 +284,14 @@ pub fn run() -> Result<()> {
             no_pane_cmds,
             background,
             with_changes,
+            patch,
             include_untracked,
             agent,
             count,
             foreach,
             branch_template,
         } => {
-            // If --with-changes is set, use the rescue workflow instead
+            // If --with-changes is set, use the create_with_changes workflow
             if with_changes {
                 let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
                 options.focus_window = !background;
@@ -294,6 +299,7 @@ pub fn run() -> Result<()> {
                 let result = workflow::create_with_changes(
                     &branch_name,
                     include_untracked,
+                    patch,
                     &config,
                     options,
                 )
