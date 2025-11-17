@@ -441,27 +441,25 @@ fn rewrite_agent_command(
     let prompt_path = relative.to_string_lossy();
     let rest = pane_rest.trim_start();
 
-    let rewritten = match pane_stem.and_then(|s| s.to_str()) {
-        Some("gemini") => {
-            let mut cmd = format!("{} -i \"$(cat {})\"", pane_token, prompt_path);
-            if !rest.is_empty() {
-                cmd.push(' ');
-                cmd.push_str(rest);
-            }
-            cmd
-        }
-        Some(_) => {
-            let mut cmd = format!("{} \"$(cat {})\"", pane_token, prompt_path);
-            if !rest.is_empty() {
-                cmd.push(' ');
-                cmd.push_str(rest);
-            }
-            cmd
-        }
-        _ => return None,
-    };
+    // Build the command step-by-step to ensure correct order:
+    // [agent_command] [agent_options] [user_args] -- [prompt_argument]
+    let mut cmd = pane_token.to_string();
 
-    Some(rewritten)
+    // Add agent-specific default flags
+    if let Some("gemini") = pane_stem.and_then(|s| s.to_str()) {
+        cmd.push_str(" -i");
+    }
+
+    // Add user-provided arguments from config (must come before --)
+    if !rest.is_empty() {
+        cmd.push(' ');
+        cmd.push_str(rest);
+    }
+
+    // Add the separator and the prompt argument
+    cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
+
+    Some(cmd)
 }
 
 #[cfg(test)]
@@ -475,7 +473,7 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("claude"));
-        assert_eq!(result, Some("claude \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(result, Some("claude -- \"$(cat PROMPT.md)\"".to_string()));
     }
 
     #[test]
@@ -484,7 +482,7 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("codex", &prompt_file, &working_dir, Some("codex"));
-        assert_eq!(result, Some("codex \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(result, Some("codex -- \"$(cat PROMPT.md)\"".to_string()));
     }
 
     #[test]
@@ -493,7 +491,10 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, Some("gemini"));
-        assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(
+            result,
+            Some("gemini -i -- \"$(cat PROMPT.md)\"".to_string())
+        );
     }
 
     #[test]
@@ -509,7 +510,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("/usr/local/bin/claude \"$(cat PROMPT.md)\"".to_string())
+            Some("/usr/local/bin/claude -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -526,7 +527,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("claude \"$(cat PROMPT.md)\" --verbose".to_string())
+            Some("claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -553,7 +554,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("unknown-agent \"$(cat PROMPT.md)\"".to_string())
+            Some("unknown-agent -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
