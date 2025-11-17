@@ -1182,6 +1182,97 @@ fn write_prompt_file(branch_name: &str, prompt: &cli::Prompt) -> Result<PathBuf>
     Ok(prompt_path)
 }
 
+/// Rescue uncommitted changes from the current worktree into a new one.
+pub fn rescue_and_create(
+    branch_name: &str,
+    include_untracked: bool,
+    config: &config::Config,
+    options: SetupOptions,
+) -> Result<CreateResult> {
+    info!(
+        branch = branch_name,
+        include_untracked, "rescue_and_create:start"
+    );
+
+    // Pre-flight Checks
+    if !git::is_git_repo()? {
+        return Err(anyhow!("Not in a git repository"));
+    }
+
+    let original_worktree_path = git::get_repo_root()?;
+
+    // Check for changes based on the include_untracked flag
+    let has_tracked_changes = git::has_tracked_changes(&original_worktree_path)?;
+    let has_rescuable_untracked =
+        include_untracked && git::has_untracked_files(&original_worktree_path)?;
+
+    if !has_tracked_changes && !has_rescuable_untracked {
+        return Err(anyhow!(
+            "No uncommitted changes to rescue. Use 'workmux add {}' to create a clean worktree.",
+            branch_name
+        ));
+    }
+
+    if git::branch_exists(branch_name)? {
+        return Err(anyhow!("Branch '{}' already exists.", branch_name));
+    }
+
+    // 1. Stash changes
+    let stash_message = format!("workmux-rescue: moving to {}", branch_name);
+    git::stash_push(&stash_message, include_untracked)
+        .context("Failed to stash current changes")?;
+    info!(branch = branch_name, "rescue_and_create: changes stashed");
+
+    // 2. Create new worktree
+    let create_result = match create(branch_name, None, None, None, config, options, None) {
+        Ok(result) => result,
+        Err(e) => {
+            warn!(error = %e, "rescue_and_create: worktree creation failed, popping stash");
+            // Best effort to restore the stash - if this fails, user still has stash@{0}
+            let _ = git::stash_pop(&original_worktree_path);
+            return Err(e).context(
+                "Failed to create new worktree. Stashed changes have been restored if possible.",
+            );
+        }
+    };
+
+    let new_worktree_path = &create_result.worktree_path;
+    info!(
+        path = %new_worktree_path.display(),
+        "rescue_and_create: worktree created"
+    );
+
+    // 3. Apply stash in new worktree
+    match git::stash_pop(new_worktree_path) {
+        Ok(_) => {
+            // 4. Success: Clean up original worktree
+            info!("rescue_and_create: stash applied successfully, cleaning original worktree");
+            git::reset_hard(&original_worktree_path)?;
+
+            info!(
+                branch = branch_name,
+                "rescue_and_create: completed successfully"
+            );
+            Ok(create_result)
+        }
+        Err(e) => {
+            // 5. Failure: Rollback
+            warn!(error = %e, "rescue_and_create: failed to apply stash, rolling back");
+
+            remove(branch_name, true, false, false, config).context(
+                "Rollback failed: could not clean up the new worktree. Please do so manually.",
+            )?;
+
+            Err(anyhow!(
+                "Could not apply rescued changes to '{}', likely due to conflicts.\n\n\
+                The new worktree has been removed.\n\
+                Your changes are safe in the latest stash. Run 'git stash pop' manually to resolve.",
+                branch_name
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

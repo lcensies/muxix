@@ -281,6 +281,39 @@ pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
     Ok(!output.is_empty())
 }
 
+/// Check if the worktree has tracked changes (staged or modified)
+/// This excludes untracked files
+pub fn has_tracked_changes(worktree_path: &Path) -> Result<bool> {
+    let output = Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["status", "--porcelain"])
+        .run_and_capture_stdout()?;
+
+    // Filter out untracked files (lines starting with "??")
+    for line in output.lines() {
+        if !line.starts_with("??") && !line.is_empty() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Check if the worktree has untracked files
+pub fn has_untracked_files(worktree_path: &Path) -> Result<bool> {
+    let output = Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["status", "--porcelain"])
+        .run_and_capture_stdout()?;
+
+    // Look for untracked files (lines starting with "??")
+    for line in output.lines() {
+        if line.starts_with("??") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Check if the worktree has staged changes
 pub fn has_staged_changes(worktree_path: &Path) -> Result<bool> {
     // Exit code 0 = no changes, 1 = has changes
@@ -448,5 +481,37 @@ pub fn delete_remote_branch(branch_name: &str) -> Result<()> {
         .args(&["push", "origin", "--delete", branch_name])
         .run()
         .with_context(|| format!("Failed to delete remote branch '{}'", branch_name))?;
+    Ok(())
+}
+
+/// Stash uncommitted changes, optionally including untracked files.
+pub fn stash_push(message: &str, include_untracked: bool) -> Result<()> {
+    let mut cmd = Cmd::new("git").args(&["stash", "push", "-m", message]);
+
+    if include_untracked {
+        cmd = cmd.arg("--include-untracked");
+    }
+
+    cmd.run().context("Failed to stash changes")?;
+    Ok(())
+}
+
+/// Pop the latest stash in a specific worktree.
+pub fn stash_pop(worktree_path: &Path) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["stash", "pop"])
+        .run()
+        .context("Failed to apply stashed changes. Conflicts may have occurred.")?;
+    Ok(())
+}
+
+/// Reset the worktree to HEAD, discarding all local changes.
+pub fn reset_hard(worktree_path: &Path) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["reset", "--hard", "HEAD"])
+        .run()
+        .context("Failed to reset worktree")?;
     Ok(())
 }
