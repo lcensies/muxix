@@ -11,9 +11,9 @@
 
 ---
 
-Giga opinionated zero-friction workflow tool for managing [git
-worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated
-development environments.
+Giga opinionated zero-friction workflow tool for managing
+[git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
+isolated development environments.
 
 Perfect for running multiple AI agents in parallel without conflict. See also:
 [Why git worktrees?](#why-git-worktrees)
@@ -150,9 +150,9 @@ panes:
 - `window_prefix`: Prefix for tmux window names (default: `wm-`)
 - `panes`: Array of pane configurations
   - `command`: Optional command to run when the pane is created. Use this for
-    long-running setup like dependency installs so output is visible in tmux.
-    If omitted, the pane starts with your default shell. Use `<agent>` to use
-    the configured agent.
+    long-running setup like dependency installs so output is visible in tmux. If
+    omitted, the pane starts with your default shell. Use `<agent>` to use the
+    configured agent.
   - `focus`: Whether this pane should receive focus (default: false)
   - `split`: How to split from previous pane (`horizontal` or `vertical`)
 - `post_create`: Commands to run after worktree creation but before the tmux
@@ -197,8 +197,8 @@ Here's how workmux organizes your worktrees by default:
         └── package.json
 ```
 
-Each worktree is a separate working directory for a different branch, all sharing
-the same git repository. This allows you to work on multiple branches
+Each worktree is a separate working directory for a different branch, all
+sharing the same git repository. This allows you to work on multiple branches
 simultaneously without conflicts.
 
 You can customize the worktree directory location using the `worktree_dir`
@@ -230,49 +230,54 @@ Creates a new git worktree with a matching tmux window and switches you to it
 immediately. If the branch doesn't exist, it will be created automatically.
 
 - `<branch-name>`: Name of the branch to create or switch to, or a remote branch
-  reference (e.g., `origin/feature-branch`). When you provide a remote reference,
-  workmux automatically fetches it and creates a local branch with the name derived
-  from the remote branch (e.g., `origin/feature/foo` creates local branch `feature/foo`).
+  reference (e.g., `origin/feature-branch`). When you provide a remote
+  reference, workmux automatically fetches it and creates a local branch with
+  the name derived from the remote branch (e.g., `origin/feature/foo` creates
+  local branch `feature/foo`).
 
 #### Useful options
 
-- `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch from
-  when creating a new branch. By default, new branches are created from the current
-  branch you have checked out.
-- `-b, --background`: Create the tmux window in the background without
-  switching to it. Useful with `--prompt-editor`.
-- `-w, --with-changes`: Move uncommitted changes from the current worktree to the new worktree,
-  then reset the original worktree to a clean state. Useful when you've accidentally
-  started working on the wrong branch.
-- `--patch`: Interactively select which changes to move (requires `--with-changes`). Opens
-  an interactive prompt for selecting hunks to stash.
-- `-u, --include-untracked`: Also move untracked files (requires `--with-changes`). By default,
-  only staged and modified tracked files are moved.
-- `-p, --prompt <text>`: Provide an inline prompt that will be automatically passed to
-  AI agent panes.
-- `-P, --prompt-file <path>`: Provide a path to a file whose contents will be used as the
-  prompt.
-- `-e, --prompt-editor`: Open your `$EDITOR` (or `$VISUAL`) to write the prompt interactively.
+- `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch
+  from when creating a new branch. By default, new branches are created from the
+  current branch you have checked out.
+- `-b, --background`: Create the tmux window in the background without switching
+  to it. Useful with `--prompt-editor`.
+- `-w, --with-changes`: Move uncommitted changes from the current worktree to
+  the new worktree, then reset the original worktree to a clean state. Useful
+  when you've accidentally started working on the wrong branch.
+- `--patch`: Interactively select which changes to move (requires
+  `--with-changes`). Opens an interactive prompt for selecting hunks to stash.
+- `-u, --include-untracked`: Also move untracked files (requires
+  `--with-changes`). By default, only staged and modified tracked files are
+  moved.
+- `-p, --prompt <text>`: Provide an inline prompt that will be automatically
+  passed to AI agent panes.
+- `-P, --prompt-file <path>`: Provide a path to a file whose contents will be
+  used as the prompt.
+- `-e, --prompt-editor`: Open your `$EDITOR` (or `$VISUAL`) to write the prompt
+  interactively.
 - `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
   specified multiple times to generate a worktree for each agent. Overrides the
   `agent` from your config file.
 
 #### Skip options
 
-These options allow you to skip expensive setup steps when they're not needed (e.g., for
-documentation-only changes):
+These options allow you to skip expensive setup steps when they're not needed
+(e.g., for documentation-only changes):
 
 - `-H, --no-hooks`: Skip running `post_create` commands
-- `-F, --no-file-ops`: Skip file copy/symlink operations (e.g., skip linking `node_modules`)
-- `-C, --no-pane-cmds`: Skip executing pane commands (panes open with plain shells instead)
+- `-F, --no-file-ops`: Skip file copy/symlink operations (e.g., skip linking
+  `node_modules`)
+- `-C, --no-pane-cmds`: Skip executing pane commands (panes open with plain
+  shells instead)
 
 #### What happens
 
 1. Creates a git worktree at
    `<project_root>/../<project_name>__worktrees/<branch-name>`
 2. Runs any configured file operations (copy/symlink)
-3. Executes `post_create` commands if defined (runs before the tmux window opens, so keep
-   them fast)
+3. Executes `post_create` commands if defined (runs before the tmux window
+   opens, so keep them fast)
 4. Creates a new tmux window named after the branch
 5. Sets up your configured tmux pane layout
 6. Automatically switches your tmux client to the new window
@@ -328,19 +333,19 @@ workmux add feature/parallel-task --background
 
 #### AI agent integration
 
-When you provide a prompt via `--prompt`, `--prompt-file`, or
-`--prompt-editor`, workmux automatically injects the prompt into panes running
-the configured agent command (e.g., `claude`, `gemini`, or whatever you've set
-via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml`
-changes:
+When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
+workmux automatically injects the prompt into panes running the configured agent
+command (e.g., `claude`, `gemini`, or whatever you've set via the `agent` config
+or `--agent` flag) without requiring any `.workmux.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started
   with the given prompt.
-- You can keep your `.workmux.yaml` pane configuration simple (e.g., `panes: [{
-command: "<agent>" }]`) and let workmux handle prompt injection at runtime.
+- You can keep your `.workmux.yaml` pane configuration simple (e.g.,
+  `panes: [{ command: "<agent>" }]`) and let workmux handle prompt injection at
+  runtime.
 
-This means you can launch AI agents with task-specific prompts without modifying your
-project configuration for each task.
+This means you can launch AI agents with task-specific prompts without modifying
+your project configuration for each task.
 
 #### Parallel workflows & multi-worktree generation
 
@@ -357,12 +362,19 @@ prompts can be templated with variables.
 
 ##### Multi-worktree options
 
-- `-a, --agent <name>`: When used multiple times, creates one worktree for each agent.
-- `-n, --count <number>`: Creates `<number>` worktree instances. Can be combined with a single `--agent` flag to apply that agent to all instances.
-- `--foreach <matrix>`: Creates worktrees from a variable matrix string. The format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the same length.
-- `--branch-template <template>`: A [Tera](https://keats.github.io/tera/) template for generating branch names.
-  - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any variables from `--foreach`.
-  - Default: `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
+- `-a, --agent <name>`: When used multiple times, creates one worktree for each
+  agent.
+- `-n, --count <number>`: Creates `<number>` worktree instances. Can be combined
+  with a single `--agent` flag to apply that agent to all instances.
+- `--foreach <matrix>`: Creates worktrees from a variable matrix string. The
+  format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the
+  same length.
+- `--branch-template <template>`: A [Tera](https://keats.github.io/tera/)
+  template for generating branch names.
+  - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any
+    variables from `--foreach`.
+  - Default:
+    `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
 
 ##### Prompt templating
 
@@ -462,8 +474,8 @@ workmux merge user-auth --delete-remote
 
 ### `workmux remove <branch-name>` (alias: `rm`)
 
-Removes a worktree, tmux window, and branch without merging (unless you keep
-the branch). Useful for abandoning work or cleaning up experimental branches.
+Removes a worktree, tmux window, and branch without merging (unless you keep the
+branch). Useful for abandoning work or cleaning up experimental branches.
 
 - `<branch-name>`: Name of the branch to remove.
 
@@ -547,7 +559,8 @@ tmux window for a worktree you are still working on.
 
 #### Useful options
 
-- `--run-hooks`: Re-runs the `post_create` commands (these block window creation).
+- `--run-hooks`: Re-runs the `post_create` commands (these block window
+  creation).
 - `--force-files`: Re-applies file copy/symlink operations. Useful for restoring
   a deleted `.env` file.
 
@@ -715,15 +728,14 @@ workmux merge feature/new-api
 
 ## Why git worktrees?
 
-Git worktrees enable parallel development by giving each branch its own
-isolated working directory.
+Git worktrees enable parallel development by giving each branch its own isolated
+working directory.
 
-- Zero-friction context switching: Switch branches by switching tmux
-  windows - no stashing, no cleanup, your work stays exactly as you left it
-- Parallel AI agents: Multiple agents can work simultaneously without
-  stepping on each other's type errors, test failures, or build artifacts
-- Safe experimentation: Test multiple approaches side-by-side, merge the
-  winner
+- Zero-friction context switching: Switch branches by switching tmux windows -
+  no stashing, no cleanup, your work stays exactly as you left it
+- Parallel AI agents: Multiple agents can work simultaneously without stepping
+  on each other's type errors, test failures, or build artifacts
+- Safe experimentation: Test multiple approaches side-by-side, merge the winner
 
 Without worktrees, parallel work requires complex tooling or constant
 stash/commit/checkout cycles. With worktrees and workmux, it's just switching
@@ -742,10 +754,9 @@ will remain on disk, and you can reopen a window for it anytime with:
 workmux open <branch-name>
 ```
 
-However, it's recommended to use `workmux merge` or `workmux remove` for
-cleanup instead, as these commands clean up both the tmux window and the git
-worktree together. Use `workmux list` to see which worktrees have detached tmux
-windows.
+However, it's recommended to use `workmux merge` or `workmux remove` for cleanup
+instead, as these commands clean up both the tmux window and the git worktree
+together. Use `workmux list` to see which worktrees have detached tmux windows.
 
 ## Shell completions
 
@@ -790,6 +801,96 @@ interfaces, like a TUI or kanban board. workmux takes a different approach:
 **tmux is the interface**. If you already live in tmux, you don't need a new app
 or abstraction layer. With workmux, managing parallel agents is managing tmux
 windows.
+
+## Git worktree caveats
+
+While powerful, git worktrees have nuances that are important to understand.
+workmux is designed to automate solutions to these, but awareness of the
+underlying mechanics helps.
+
+### Gitignored files require configuration
+
+When `git worktree add` creates a new working directory, it's a clean checkout.
+Files listed in your `.gitignore` (e.g., `.env` files, `node_modules`, IDE
+configuration) will not exist in the new worktree by default. Your application
+will be broken in the new worktree until you manually create or link these
+necessary files.
+
+This is a primary feature of workmux. Use the `files` section in your
+`.workmux.yaml` to automatically copy or symlink these files on creation:
+
+```yaml
+# .workmux.yaml
+files:
+  copy:
+    - .env # Copy environment variables
+  symlink:
+    - .next/cache # Share Next.js build cache
+```
+
+Note: Symlinking `node_modules` can be efficient but only works if all worktrees
+share identical dependencies. If different branches have different dependency
+versions, each worktree needs its own installation. For dependency installation,
+consider using a pane command instead of `post_create` hooks - this runs the
+install in the background without blocking the worktree and window creation:
+
+```yaml
+panes:
+  - command: npm install
+    focus: true
+  - split: horizontal
+```
+
+### Conflicts
+
+Worktrees isolate your filesystem, but they do not prevent merge conflicts. If
+you modify the area of code on two different branches (in two different
+worktrees), you will still have a conflict when you merge one into the other.
+
+The best practice is to work on logically separate features in parallel
+worktrees. When conflicts are unavoidable, use standard git tools to resolve
+them. You can also leverage an AI agent within the worktree to assist with the
+conflict resolution.
+
+### Package manager considerations (pnpm, yarn)
+
+Modern package managers like `pnpm` use a global store with symlinks to
+`node_modules`. Each worktree typically needs its own `pnpm install` to set up
+the correct dependency versions for that branch.
+
+If your worktrees always have identical dependencies (e.g., working on multiple
+features from the same base), you could potentially symlink `node_modules`
+between worktrees. However, this breaks as soon as branches diverge in their
+dependencies, so it's generally safer to run a fresh install in each worktree.
+
+Note: In large monorepos, cleaning up `node_modules` during worktree removal can
+take significant time. workmux has a
+[special cleanup mechanism](https://github.com/raine/workmux/blob/main/src/config.rs#L12)
+that moves `node_modules` to a temporary location and deletes it in the
+background, making the `remove` command return almost instantly.
+
+### Build directories (Rust `target`, etc.)
+
+For compiled languages, symlinking build directories can save disk space and
+speed up builds:
+
+```yaml
+# .workmux.yaml
+files:
+  symlink:
+    - target
+```
+
+### Local git ignores (`.git/info/exclude`) are not shared
+
+The local git ignore file, `.git/info/exclude`, is specific to the main
+worktree's git directory and is not respected in other worktrees. Personal
+ignore patterns for your editor or temporary files may not apply in new
+worktrees, causing them to appear in `git status`.
+
+For personal ignores, use a global git ignore file. For project-specific ignores
+that are safe to share with your team, add them to the project's main
+`.gitignore` file.
 
 ## See also
 
