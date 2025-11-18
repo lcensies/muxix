@@ -372,7 +372,8 @@ prompts can be templated with variables.
 - `--foreach <matrix>`: Creates worktrees from a variable matrix string. The
   format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the
   same length.
-- `--branch-template <template>`: A [Tera](https://keats.github.io/tera/)
+- `--branch-template <template>`: A
+  [MiniJinja](https://docs.rs/minijinja/latest/minijinja/) (Jinja2-compatible)
   template for generating branch names.
   - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any
     variables from `--foreach`.
@@ -382,8 +383,8 @@ prompts can be templated with variables.
 ##### Prompt templating
 
 When generating multiple worktrees, any prompt provided via `-p`, `-P`, or `-e`
-is treated as a Tera template. You can use variables from your generation mode
-to create unique prompts for each agent or instance.
+is treated as a MiniJinja template. You can use variables from your generation
+mode to create unique prompts for each agent or instance.
 
 ##### Examples
 

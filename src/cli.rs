@@ -3,11 +3,12 @@ use crate::{claude, config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use minijinja::{AutoEscape, Environment};
+use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use tera::{Context as TeraContext, Tera, Value, from_value, to_value};
 
 #[derive(Clone, Debug)]
 struct WorktreeBranchParser;
@@ -86,10 +87,10 @@ pub enum Prompt {
 struct WorktreeSpec {
     branch_name: String,
     agent: Option<String>,
-    template_context: TeraContext,
+    template_context: JsonValue,
 }
 
-const BRANCH_TEMPLATE_NAME: &str = "branch_template";
+type TemplateEnv = Environment<'static>;
 
 #[derive(clap::Args, Debug)]
 struct RemoveArgs {
@@ -341,11 +342,10 @@ pub fn run() -> Result<()> {
                 ));
             }
 
-            let mut tera = Tera::default();
-            tera.autoescape_on(vec![]);
-            tera.register_filter("slugify", slugify_filter);
-            tera.add_raw_template(BRANCH_TEMPLATE_NAME, &branch_template)
-                .context("Failed to parse branch template")?;
+            let mut env = Environment::new();
+            env.set_auto_escape_callback(|_| AutoEscape::None);
+            env.set_keep_trailing_newline(true);
+            env.add_filter("slugify", slugify_filter);
 
             // Check if branch_name is a remote ref (e.g., origin/feature/foo)
             let remotes = git::list_remotes().context("Failed to list git remotes")?;
@@ -384,7 +384,8 @@ pub fn run() -> Result<()> {
                 &agent,
                 count,
                 foreach.as_deref(),
-                &tera,
+                &env,
+                &branch_template,
             )?;
 
             if specs.is_empty() {
@@ -407,7 +408,7 @@ pub fn run() -> Result<()> {
 
                 let prompt_for_spec = if let Some(ref prompt_src) = prompt_template {
                     Some(
-                        render_prompt_template(prompt_src, &mut tera, &spec.template_context)
+                        render_prompt_template(prompt_src, &env, &spec.template_context)
                             .with_context(|| {
                                 format!("Failed to render prompt for branch '{}'", spec.branch_name)
                             })?,
@@ -792,8 +793,8 @@ fn prune_claude_config() -> Result<()> {
 
 fn render_prompt_template(
     prompt: &Prompt,
-    tera: &mut Tera,
-    context: &TeraContext,
+    env: &TemplateEnv,
+    context: &JsonValue,
 ) -> Result<Prompt> {
     let template_str = match prompt {
         Prompt::Inline(text) => text.clone(),
@@ -801,7 +802,7 @@ fn render_prompt_template(
             .with_context(|| format!("Failed to read prompt file '{}'", path.display()))?,
     };
 
-    let rendered = tera
+    let rendered = env
         .render_str(&template_str, context)
         .context("Failed to render prompt template")?;
     Ok(Prompt::Inline(rendered))
@@ -812,18 +813,20 @@ fn generate_worktree_specs(
     agents: &[String],
     count: Option<u32>,
     foreach: Option<&str>,
-    tera: &Tera,
+    env: &TemplateEnv,
+    branch_template: &str,
 ) -> Result<Vec<WorktreeSpec>> {
     let is_multi_mode = foreach.is_some() || count.is_some() || agents.len() > 1;
 
     if !is_multi_mode {
         let agent = agents.first().cloned();
-        let mut context = TeraContext::new();
-        context.insert("base_name", base_name);
-        context.insert("agent", &agent);
-        context.insert("num", &Option::<u32>::None);
-        context.insert("foreach_vars", &BTreeMap::<String, String>::new());
+        let num: Option<u32> = None;
+        let foreach_vars = BTreeMap::<String, String>::new();
+        let context = build_template_context(base_name, &agent, &num, &foreach_vars);
 
+        // Intentional: in single-agent/instance mode the CLI keeps the provided
+        // branch name verbatim so users can opt into templating only when they
+        // request multiple worktrees.
         return Ok(vec![WorktreeSpec {
             branch_name: base_name.to_string(),
             agent,
@@ -835,7 +838,7 @@ fn generate_worktree_specs(
         let rows = parse_foreach_matrix(matrix)?;
         return rows
             .into_iter()
-            .map(|vars| build_spec(tera, base_name, None, None, vars))
+            .map(|vars| build_spec(env, branch_template, base_name, None, None, vars))
             .collect();
     }
 
@@ -846,7 +849,8 @@ fn generate_worktree_specs(
         for idx in 0..iterations {
             let num = Some((idx + 1) as u32);
             specs.push(build_spec(
-                tera,
+                env,
+                branch_template,
                 base_name,
                 default_agent.clone(),
                 num,
@@ -858,7 +862,8 @@ fn generate_worktree_specs(
 
     if agents.is_empty() {
         return Ok(vec![build_spec(
-            tera,
+            env,
+            branch_template,
             base_name,
             None,
             None,
@@ -869,7 +874,8 @@ fn generate_worktree_specs(
     let mut specs = Vec::with_capacity(agents.len());
     for agent_name in agents {
         specs.push(build_spec(
-            tera,
+            env,
+            branch_template,
             base_name,
             Some(agent_name.clone()),
             None,
@@ -880,28 +886,56 @@ fn generate_worktree_specs(
 }
 
 fn build_spec(
-    tera: &Tera,
+    env: &TemplateEnv,
+    branch_template: &str,
     base_name: &str,
     agent: Option<String>,
     num: Option<u32>,
     foreach_vars: BTreeMap<String, String>,
 ) -> Result<WorktreeSpec> {
-    let mut context = TeraContext::new();
-    context.insert("base_name", base_name);
-    context.insert("agent", &agent);
-    context.insert("num", &num);
-    context.insert("foreach_vars", &foreach_vars);
-    for (key, value) in &foreach_vars {
-        context.insert(key, value);
-    }
-    let branch_name = tera
-        .render(BRANCH_TEMPLATE_NAME, &context)
+    let context = build_template_context(base_name, &agent, &num, &foreach_vars);
+    let branch_name = env
+        .render_str(branch_template, &context)
         .context("Failed to render branch template")?;
     Ok(WorktreeSpec {
         branch_name,
         agent,
         template_context: context,
     })
+}
+
+fn build_template_context(
+    base_name: &str,
+    agent: &Option<String>,
+    num: &Option<u32>,
+    foreach_vars: &BTreeMap<String, String>,
+) -> JsonValue {
+    let mut context = JsonMap::new();
+    context.insert(
+        "base_name".to_string(),
+        JsonValue::String(base_name.to_string()),
+    );
+
+    let agent_value = agent
+        .as_ref()
+        .map(|value| JsonValue::String(value.clone()))
+        .unwrap_or(JsonValue::Null);
+    context.insert("agent".to_string(), agent_value);
+
+    let num_value = num
+        .as_ref()
+        .map(|value| JsonValue::Number(JsonNumber::from(*value)))
+        .unwrap_or(JsonValue::Null);
+    context.insert("num".to_string(), num_value);
+
+    let mut foreach_json = JsonMap::new();
+    for (key, value) in foreach_vars {
+        foreach_json.insert(key.clone(), JsonValue::String(value.clone()));
+        context.insert(key.clone(), JsonValue::String(value.clone()));
+    }
+    context.insert("foreach_vars".to_string(), JsonValue::Object(foreach_json));
+
+    JsonValue::Object(context)
 }
 
 fn parse_foreach_matrix(input: &str) -> Result<Vec<BTreeMap<String, String>>> {
@@ -980,9 +1014,8 @@ fn parse_foreach_matrix(input: &str) -> Result<Vec<BTreeMap<String, String>>> {
     Ok(rows)
 }
 
-fn slugify_filter(value: &Value, _: &HashMap<String, Value>) -> tera::Result<Value> {
-    let input = from_value::<String>(value.clone())?;
-    let slug = input
+fn slugify_filter(input: String) -> String {
+    input
         .to_lowercase()
         .chars()
         .map(|c| match c {
@@ -993,21 +1026,19 @@ fn slugify_filter(value: &Value, _: &HashMap<String, Value>) -> tera::Result<Val
         .split('-')
         .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>()
-        .join("-");
-
-    to_value(slug).map_err(Into::into)
+        .join("-")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn create_test_tera(template: &str) -> Tera {
-        let mut tera = Tera::default();
-        tera.autoescape_on(vec![]);
-        tera.add_raw_template(BRANCH_TEMPLATE_NAME, template)
-            .expect("template should compile");
-        tera
+    fn create_test_env() -> TemplateEnv {
+        let mut env = Environment::new();
+        env.set_auto_escape_callback(|_| AutoEscape::None);
+        env.set_keep_trailing_newline(true);
+        env.add_filter("slugify", slugify_filter);
+        env
     }
 
     #[test]
@@ -1027,9 +1058,17 @@ mod tests {
 
     #[test]
     fn generate_specs_with_agents() {
-        let tera = create_test_tera("{{ base_name }}{% if agent %}-{{ agent }}{% endif %}");
+        let env = create_test_env();
         let agents = vec!["claude".to_string(), "gemini".to_string()];
-        let specs = generate_worktree_specs("feature", &agents, None, None, &tera).expect("specs");
+        let specs = generate_worktree_specs(
+            "feature",
+            &agents,
+            None,
+            None,
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent }}{% endif %}",
+        )
+        .expect("specs");
         let summary: Vec<(String, Option<String>)> = specs
             .into_iter()
             .map(|spec| (spec.branch_name, spec.agent))
@@ -1045,8 +1084,16 @@ mod tests {
 
     #[test]
     fn generate_specs_with_count_assigns_numbers() {
-        let tera = create_test_tera("{{ base_name }}{% if num %}-{{ num }}{% endif %}");
-        let specs = generate_worktree_specs("feature", &[], Some(2), None, &tera).expect("specs");
+        let env = create_test_env();
+        let specs = generate_worktree_specs(
+            "feature",
+            &[],
+            Some(2),
+            None,
+            &env,
+            "{{ base_name }}{% if num %}-{{ num }}{% endif %}",
+        )
+        .expect("specs");
         let names: Vec<String> = specs.into_iter().map(|s| s.branch_name).collect();
         assert_eq!(
             names,
@@ -1056,10 +1103,16 @@ mod tests {
 
     #[test]
     fn single_agent_override_preserves_branch_name() {
-        let tera = create_test_tera("{{ base_name }}{% if agent %}-{{ agent }}{% endif %}");
-        let specs =
-            generate_worktree_specs("feature", &[String::from("gemini")], None, None, &tera)
-                .expect("specs");
+        let env = create_test_env();
+        let specs = generate_worktree_specs(
+            "feature",
+            &[String::from("gemini")],
+            None,
+            None,
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent }}{% endif %}",
+        )
+        .expect("specs");
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].branch_name, "feature");
         assert_eq!(specs[0].agent.as_deref(), Some("gemini"));
@@ -1067,28 +1120,34 @@ mod tests {
 
     #[test]
     fn foreach_context_exposes_variables() {
-        let mut tera = create_test_tera("{{ base_name }}");
+        let env = create_test_env();
         let specs = generate_worktree_specs(
             "feature",
             &[],
             None,
             Some("platform:ios,android;lang:swift,kotlin"),
-            &tera,
+            &env,
+            "{{ base_name }}",
         )
         .expect("specs");
-        let rendered = tera.render_str("{{ platform }}-{{ lang }}", &specs[0].template_context);
-        assert_eq!(rendered.expect("prompt render"), "ios-swift");
+        let rendered = env
+            .render_str("{{ platform }}-{{ lang }}", &specs[0].template_context)
+            .expect("prompt render");
+        assert_eq!(rendered, "ios-swift");
     }
 
     #[test]
     fn render_prompt_template_inline_renders_variables() {
-        let mut tera = Tera::default();
-        tera.autoescape_on(vec![]);
-        let mut context = TeraContext::new();
-        context.insert("branch", "feature-123");
+        let env = create_test_env();
+        let mut context_map = JsonMap::new();
+        context_map.insert(
+            "branch".to_string(),
+            JsonValue::String("feature-123".to_string()),
+        );
+        let context = JsonValue::Object(context_map);
 
         let prompt = Prompt::Inline("Working on {{ branch }}".to_string());
-        let result = render_prompt_template(&prompt, &mut tera, &context).expect("render success");
+        let result = render_prompt_template(&prompt, &env, &context).expect("render success");
 
         match result {
             Prompt::Inline(text) => assert_eq!(text, "Working on feature-123"),
@@ -1101,17 +1160,20 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let mut tera = Tera::default();
-        tera.autoescape_on(vec![]);
-        let mut context = TeraContext::new();
-        context.insert("name", "test-branch");
+        let env = create_test_env();
+        let mut context_map = JsonMap::new();
+        context_map.insert(
+            "name".to_string(),
+            JsonValue::String("test-branch".to_string()),
+        );
+        let context = JsonValue::Object(context_map);
 
         let mut temp_file = NamedTempFile::new().expect("create temp file");
         writeln!(temp_file, "Branch: {{{{ name }}}}").expect("write to temp file");
         let temp_path = temp_file.path().to_path_buf();
 
         let prompt = Prompt::FromFile(temp_path);
-        let result = render_prompt_template(&prompt, &mut tera, &context).expect("render success");
+        let result = render_prompt_template(&prompt, &env, &context).expect("render success");
 
         match result {
             Prompt::Inline(text) => assert_eq!(text, "Branch: test-branch\n"),
@@ -1121,11 +1183,11 @@ mod tests {
 
     #[test]
     fn render_prompt_template_from_nonexistent_file_fails() {
-        let mut tera = Tera::default();
-        let context = TeraContext::new();
+        let env = create_test_env();
+        let context = JsonValue::Null;
 
         let prompt = Prompt::FromFile(PathBuf::from("/nonexistent/path/to/file.txt"));
-        let result = render_prompt_template(&prompt, &mut tera, &context);
+        let result = render_prompt_template(&prompt, &env, &context);
 
         assert!(result.is_err());
         assert!(
