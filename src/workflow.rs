@@ -244,6 +244,21 @@ pub fn create(
     )
     .context("Failed to create git worktree")?;
 
+    // Store the base branch in git config for future reference (used during removal checks)
+    if let Some(ref base) = base_branch_for_creation {
+        git::set_branch_base(branch_name, base).with_context(|| {
+            format!(
+                "Failed to store base branch '{}' for branch '{}'",
+                base, branch_name
+            )
+        })?;
+        debug!(
+            branch = branch_name,
+            base = base,
+            "create:stored base branch in git config"
+        );
+    }
+
     // Setup the rest of the environment (tmux, files, hooks)
     let prompt_file_path = if let Some(p) = prompt {
         Some(write_prompt_file(branch_name, p)?)

@@ -39,6 +39,10 @@ class TmuxEnvironment:
         # Create a copy of the current environment variables
         self.env = os.environ.copy()
 
+        # Ensure we never accidentally target the user's tmux server
+        # This prevents any subprocess from connecting to the host tmux session
+        self.env.pop("TMUX", None)
+
         # Isolate the shell environment completely to prevent history pollution
         # and other side effects from user's shell configuration
         self.env["HOME"] = str(self.home_path)
@@ -373,6 +377,9 @@ def run_workmux_add(
     repo_path: Path,
     branch_name: str,
     pre_run_tmux_cmds: Optional[List[List[str]]] = None,
+    *,
+    base: Optional[str] = None,
+    background: bool = False,
 ) -> None:
     """
     Helper to run `workmux add` command inside the isolated tmux session.
@@ -385,9 +392,23 @@ def run_workmux_add(
         repo_path: Path to the git repository
         branch_name: Name of the branch/worktree to create
         pre_run_tmux_cmds: Optional list of tmux commands to run before workmux add
+        base: Optional base branch for the new worktree (passed as `--base`)
+        background: If True, pass `--background` so the window is created without focus
     """
+    args = ["add", branch_name]
+    if base:
+        args.extend(["--base", base])
+    if background:
+        args.append("--background")
+
+    command = " ".join(args)
+
     run_workmux_command(
-        env, workmux_exe_path, repo_path, f"add {branch_name}", pre_run_tmux_cmds
+        env,
+        workmux_exe_path,
+        repo_path,
+        command,
+        pre_run_tmux_cmds=pre_run_tmux_cmds,
     )
 
 

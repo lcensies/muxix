@@ -531,3 +531,35 @@ pub fn reset_hard(worktree_path: &Path) -> Result<()> {
         .context("Failed to reset worktree")?;
     Ok(())
 }
+
+/// Store the base branch/commit that a branch was created from
+pub fn set_branch_base(branch: &str, base: &str) -> Result<()> {
+    Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            &format!("branch.{}.workmux-base", branch),
+            base,
+        ])
+        .run()
+        .context("Failed to set workmux-base config")?;
+    Ok(())
+}
+
+/// Retrieve the base branch/commit that a branch was created from
+pub fn get_branch_base(branch: &str) -> Result<String> {
+    let output = Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            &format!("branch.{}.workmux-base", branch),
+        ])
+        .run_and_capture_stdout()
+        .context("Failed to get workmux-base config")?;
+
+    if output.is_empty() {
+        return Err(anyhow!("No workmux-base found for branch '{}'", branch));
+    }
+
+    Ok(output)
+}

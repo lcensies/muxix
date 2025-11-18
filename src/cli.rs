@@ -600,8 +600,26 @@ fn remove_worktree(
 
         // Check if we need to prompt for unmerged commits (only relevant when deleting the branch)
         if !keep_branch {
-            let main_branch = git::get_default_branch()?;
-            let base_branch = git::get_merge_base(&main_branch)?;
+            // Try to get the stored base branch, fall back to default branch
+            let base = git::get_branch_base(&branch_to_remove)
+                .ok()
+                .unwrap_or_else(|| {
+                    git::get_default_branch().unwrap_or_else(|_| "main".to_string())
+                });
+
+            // Get the merge base with fallback if the stored base is invalid
+            let base_branch = match git::get_merge_base(&base) {
+                Ok(b) => b,
+                Err(_) => {
+                    let default_main = git::get_default_branch()?;
+                    eprintln!(
+                        "Warning: Could not resolve base '{}'; falling back to '{}'",
+                        base, default_main
+                    );
+                    git::get_merge_base(&default_main)?
+                }
+            };
+
             let unmerged_branches = git::get_unmerged_branches(&base_branch)?;
             let has_unmerged = unmerged_branches.contains(&branch_to_remove);
 
@@ -614,8 +632,8 @@ fn remove_worktree(
                     println!("The remote branch will also be deleted.");
                 }
                 println!(
-                    "Warning: Branch '{}' has commits that are not merged into '{}'.",
-                    branch_to_remove, base_branch
+                    "Warning: Branch '{}' has commits that are not merged into '{}' (base: '{}').",
+                    branch_to_remove, base_branch, base
                 );
                 println!("This action cannot be undone.");
                 print!("Are you sure you want to continue? [y/N] ");

@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 
@@ -243,3 +244,77 @@ def test_remove_with_keep_branch_flag(
     # Verify branch still exists
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name in branch_list_result.stdout, "Branch should still exist"
+
+
+def test_remove_checks_against_stored_base_branch(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that remove checks for unmerged changes against the stored base branch, not main."""
+    env = isolated_tmux_server
+    # Use unique branch names to avoid collisions in parallel test execution
+    unique_id = uuid.uuid4().hex[:8]
+    parent_branch = f"stored-base-parent-{unique_id}"
+    child_branch = f"stored-base-child-{unique_id}"
+    write_workmux_config(repo_path)
+
+    # Create parent branch from main
+    run_workmux_add(env, workmux_exe_path, repo_path, parent_branch)
+    parent_worktree = get_worktree_path(repo_path, parent_branch)
+    create_commit(env, parent_worktree, "feat: parent work")
+
+    # Create child branch from parent using --base
+    run_workmux_add(
+        env,
+        workmux_exe_path,
+        repo_path,
+        child_branch,
+        base=parent_branch,
+        background=True,
+    )
+
+    child_worktree = get_worktree_path(repo_path, child_branch)
+    create_commit(env, child_worktree, "feat: child work")
+
+    # Verify the base branch was stored in git config
+    config_result = env.run_command(
+        ["git", "config", "--local", f"branch.{child_branch}.workmux-base"],
+        cwd=repo_path,
+    )
+    assert config_result.returncode == 0, "Base branch should be stored in git config"
+    assert parent_branch in config_result.stdout, (
+        f"Stored base should be '{parent_branch}', got: {config_result.stdout}"
+    )
+
+    # Try to remove child branch - should prompt because it has commits not merged into parent
+    # (even though parent itself might not be merged into main)
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        child_branch,
+        force=False,
+        user_input="n",  # Abort to verify the prompt appears
+    )
+
+    # Verify worktree still exists (removal was aborted)
+    assert child_worktree.exists(), "Worktree should still exist after aborting"
+
+    # Now confirm the removal
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        child_branch,
+        force=False,
+        user_input="y",  # Confirm removal
+    )
+
+    # Verify child branch was removed
+    assert not child_worktree.exists(), "Child worktree should be removed"
+    branch_list_result = env.run_command(["git", "branch", "--list", child_branch])
+    assert child_branch not in branch_list_result.stdout, (
+        "Child branch should be deleted"
+    )
+
+    # Parent should still exist
+    assert parent_worktree.exists(), "Parent worktree should still exist"
