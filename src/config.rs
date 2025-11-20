@@ -101,6 +101,16 @@ pub struct PaneConfig {
     #[serde(default)]
     pub split: Option<SplitDirection>,
 
+    /// The size of the new pane in lines (for vertical splits) or cells (for horizontal splits).
+    /// Mutually exclusive with `percentage`.
+    #[serde(default)]
+    pub size: Option<u16>,
+
+    /// The size of the new pane as a percentage of the available space.
+    /// Mutually exclusive with `size`.
+    #[serde(default)]
+    pub percentage: Option<u8>,
+
     /// The 0-based index of the pane to split.
     /// If not specified, splits the most recently created pane.
     /// Only used when `split` is specified.
@@ -118,14 +128,38 @@ pub enum SplitDirection {
 /// Validate pane configuration
 pub fn validate_panes_config(panes: &[PaneConfig]) -> anyhow::Result<()> {
     for (i, pane) in panes.iter().enumerate() {
-        // First pane cannot have a split
-        if i == 0 && pane.split.is_some() {
-            anyhow::bail!("First pane (index 0) cannot have a 'split' direction.");
+        if i == 0 {
+            // First pane cannot have a split or size
+            if pane.split.is_some() {
+                anyhow::bail!("First pane (index 0) cannot have a 'split' direction.");
+            }
+            if pane.size.is_some() || pane.percentage.is_some() {
+                anyhow::bail!("First pane (index 0) cannot have 'size' or 'percentage'.");
+            }
+        } else {
+            // Subsequent panes must have a split
+            if pane.split.is_none() {
+                anyhow::bail!("Pane {} must have a 'split' direction specified.", i);
+            }
         }
 
-        // Subsequent panes must have a split
-        if i > 0 && pane.split.is_none() {
-            anyhow::bail!("Pane {} must have a 'split' direction specified.", i);
+        // size and percentage are mutually exclusive
+        if pane.size.is_some() && pane.percentage.is_some() {
+            anyhow::bail!(
+                "Pane {} cannot have both 'size' and 'percentage' specified.",
+                i
+            );
+        }
+
+        // Validate percentage range
+        if let Some(p) = pane.percentage
+            && !(1..=100).contains(&p)
+        {
+            anyhow::bail!(
+                "Pane {} has invalid percentage {}. Must be between 1 and 100.",
+                i,
+                p
+            );
         }
 
         // If target is specified, validate it's a valid index
@@ -296,12 +330,16 @@ impl Config {
                 command: None, // Default shell
                 focus: true,
                 split: None,
+                size: None,
+                percentage: None,
                 target: None,
             },
             PaneConfig {
                 command: Some("clear".to_string()),
                 focus: false,
                 split: Some(SplitDirection::Horizontal),
+                size: None,
+                percentage: None,
                 target: None, // Splits most recent (pane 0)
             },
         ]
@@ -314,12 +352,16 @@ impl Config {
                 command: Some("<agent>".to_string()),
                 focus: true,
                 split: None,
+                size: None,
+                percentage: None,
                 target: None,
             },
             PaneConfig {
                 command: Some("clear".to_string()),
                 focus: false,
                 split: Some(SplitDirection::Horizontal),
+                size: None,
+                percentage: None,
                 target: None, // Splits most recent (pane 0)
             },
         ]

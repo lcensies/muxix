@@ -478,6 +478,8 @@ fn resolve_pane_configuration(
         command: Some(agent_cmd.to_string()),
         focus: true,
         split: None,
+        size: None,
+        percentage: None,
         target: None,
     }]
 }
@@ -1299,6 +1301,8 @@ mod tests {
             command: Some("vim".to_string()),
             focus: true,
             split: None,
+            size: None,
+            percentage: None,
             target: None,
         }];
 
@@ -1313,6 +1317,8 @@ mod tests {
             command: Some("<agent>".to_string()),
             focus: true,
             split: None,
+            size: None,
+            percentage: None,
             target: None,
         }];
 
@@ -1328,12 +1334,16 @@ mod tests {
                 command: Some("vim".to_string()),
                 focus: false,
                 split: None,
+                size: None,
+                percentage: None,
                 target: None,
             },
             config::PaneConfig {
                 command: Some("npm run dev".to_string()),
                 focus: true,
                 split: None,
+                size: None,
+                percentage: None,
                 target: None,
             },
         ];
@@ -1349,6 +1359,8 @@ mod tests {
             command: Some("vim".to_string()),
             focus: false,
             split: None,
+            size: None,
+            percentage: None,
             target: None,
         }];
 

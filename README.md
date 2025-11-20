@@ -158,6 +158,11 @@ For a real-world example, see
     configured agent.
   - `focus`: Whether this pane should receive focus (default: false)
   - `split`: How to split from previous pane (`horizontal` or `vertical`)
+  - `size`: Optional absolute size in lines (for vertical splits) or cells (for
+    horizontal splits). Mutually exclusive with `percentage`. If neither is
+    specified, tmux splits 50/50.
+  - `percentage`: Optional size as a percentage (1-100) of the available space.
+    Mutually exclusive with `size`. If neither is specified, tmux splits 50/50.
 - `post_create`: Commands to run after worktree creation but before the tmux
   window opens. These block window creation, so keep them short (e.g., copying
   config files).

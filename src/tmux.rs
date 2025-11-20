@@ -207,6 +207,8 @@ pub fn split_pane_with_command(
     direction: &SplitDirection,
     working_dir: &Path,
     command: Option<&str>,
+    size: Option<u16>,
+    percentage: Option<u8>,
 ) -> Result<()> {
     let split_arg = match direction {
         SplitDirection::Horizontal => "-h",
@@ -219,7 +221,7 @@ pub fn split_pane_with_command(
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
 
-    let cmd = Cmd::new("tmux").args(&[
+    let mut cmd = Cmd::new("tmux").args(&[
         "split-window",
         split_arg,
         "-t",
@@ -228,10 +230,17 @@ pub fn split_pane_with_command(
         working_dir_str,
     ]);
 
-    let cmd = if let Some(cmd_str) = command {
-        cmd.arg(cmd_str)
-    } else {
-        cmd
+    let size_arg;
+    if let Some(p) = percentage {
+        size_arg = format!("{}%", p);
+        cmd = cmd.args(&["-l", &size_arg]);
+    } else if let Some(s) = size {
+        size_arg = s.to_string();
+        cmd = cmd.args(&["-l", &size_arg]);
+    }
+
+    if let Some(cmd_str) = command {
+        cmd = cmd.arg(cmd_str);
     };
 
     cmd.run().context("Failed to split pane")?;
@@ -365,6 +374,8 @@ pub fn setup_panes(
                 direction,
                 working_dir,
                 startup_cmd.as_deref(),
+                pane_config.size,
+                pane_config.percentage,
             )?;
 
             let new_pane_index = actual_pane_count;
