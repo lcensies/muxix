@@ -276,7 +276,7 @@ def test_add_with_count_and_agent_uses_agent_in_all_instances(
     install_fake_agent(
         env,
         "gemini",
-        '#!/bin/sh\nprintf \'%s\' "$3" > "gemini_task_${HOSTNAME}.txt"',
+        '#!/bin/sh\nprintf \'%s\' "$2" > "gemini_task_${HOSTNAME}.txt"',
     )
     write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
 
@@ -375,17 +375,13 @@ def test_add_prompt_file_injects_into_gemini(
         "gemini",
         f"""#!/bin/sh
 set -e
-# The implementation calls: gemini -i -- "$(cat PROMPT.md)"
-# So we expect -i flag first, then --, then the prompt content as the third argument
+# The implementation calls: gemini -i "$(cat PROMPT.md)"
+# So we expect -i flag first, then the prompt content as the second argument
 if [ "$1" != "-i" ]; then
     echo "Expected -i flag first" >&2
     exit 1
 fi
-if [ "$2" != "--" ]; then
-    echo "Expected -- separator second" >&2
-    exit 1
-fi
-printf '%s' "$3" > "{output_filename}"
+printf '%s' "$2" > "{output_filename}"
 """,
     )
 
@@ -433,8 +429,8 @@ def test_add_uses_agent_from_config(
         "gemini",
         f"""#!/bin/sh
 set -e
-# Gemini gets a -i flag, then --, then the prompt as $3
-printf '%s' "$3" > "{output_filename}"
+# Gemini gets a -i flag, then the prompt as $2
+printf '%s' "$2" > "{output_filename}"
 """,
     )
 
@@ -485,8 +481,8 @@ def test_add_with_agent_flag_overrides_default(
         env,
         "gemini",
         f"""#!/bin/sh
-# Gemini gets a -i flag, then --, then the prompt as $3
-printf '%s' "$3" > "{output_filename}"
+# Gemini gets a -i flag, then the prompt as $2
+printf '%s' "$2" > "{output_filename}"
 """,
     )
 
@@ -532,7 +528,7 @@ def test_add_multi_agent_creates_separate_worktrees_and_runs_correct_agents(
     install_fake_agent(
         env,
         "gemini",
-        "#!/bin/sh\nprintf '%s' \"$3\" > gemini_out.txt",
+        "#!/bin/sh\nprintf '%s' \"$2\" > gemini_out.txt",
     )
 
     write_workmux_config(repo_path, panes=[{"command": "<agent>"}])

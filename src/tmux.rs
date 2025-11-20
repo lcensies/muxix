@@ -442,22 +442,24 @@ fn rewrite_agent_command(
     let rest = pane_rest.trim_start();
 
     // Build the command step-by-step to ensure correct order:
-    // [agent_command] [agent_options] [user_args] -- [prompt_argument]
+    // [agent_command] [agent_options] [user_args] [prompt_argument]
     let mut cmd = pane_token.to_string();
 
-    // Add agent-specific default flags
-    if let Some("gemini") = pane_stem.and_then(|s| s.to_str()) {
-        cmd.push_str(" -i");
-    }
-
-    // Add user-provided arguments from config (must come before --)
+    // Add user-provided arguments from config (must come before the prompt)
     if !rest.is_empty() {
         cmd.push(' ');
         cmd.push_str(rest);
     }
 
-    // Add the separator and the prompt argument
-    cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
+    // Add the prompt argument (agent-specific handling)
+    let is_gemini = pane_stem.and_then(|s| s.to_str()) == Some("gemini");
+    if is_gemini {
+        // gemini uses -i flag with the prompt as its argument
+        cmd.push_str(&format!(" -i \"$(cat {})\"", prompt_path));
+    } else {
+        // Other agents use -- separator
+        cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
+    }
 
     Some(cmd)
 }
@@ -491,10 +493,7 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, Some("gemini"));
-        assert_eq!(
-            result,
-            Some("gemini -i -- \"$(cat PROMPT.md)\"".to_string())
-        );
+        assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
     }
 
     #[test]
