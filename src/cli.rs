@@ -3,6 +3,7 @@ use crate::{claude, config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
+use edit::Builder;
 use minijinja::{AutoEscape, Environment};
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
@@ -335,8 +336,10 @@ pub fn run() -> Result<()> {
             options.focus_window = !background;
 
             let prompt_template = if prompt_editor {
-                let editor_content =
-                    edit::edit("").context("Failed to open editor or read content")?;
+                let mut builder = Builder::new();
+                builder.suffix(".md");
+                let editor_content = edit::edit_with_builder("", &builder)
+                    .context("Failed to open editor or read content")?;
                 let trimmed = editor_content.trim();
                 if trimmed.is_empty() {
                     return Err(anyhow!("Aborting: prompt is empty"));
