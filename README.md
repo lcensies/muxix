@@ -371,7 +371,9 @@ prompts can be templated with variables.
   with a single `--agent` flag to apply that agent to all instances.
 - `--foreach <matrix>`: Creates worktrees from a variable matrix string. The
   format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the
-  same length.
+  same length. Values are paired by index position (zip, not Cartesian
+  product): the first value of each variable goes together, the second with the
+  second, etc.
 - `--branch-template <template>`: A
   [MiniJinja](https://docs.rs/minijinja/latest/minijinja/) (Jinja2-compatible)
   template for generating branch names.
@@ -385,6 +387,60 @@ prompts can be templated with variables.
 When generating multiple worktrees, any prompt provided via `-p`, `-P`, or `-e`
 is treated as a MiniJinja template. You can use variables from your generation
 mode to create unique prompts for each agent or instance.
+
+##### Variable matrices in prompt files
+
+Instead of passing `--foreach` on the command line, you can specify the
+variable matrix directly in your prompt file using YAML frontmatter. This is
+more convenient for complex matrices and keeps the variables close to the
+prompt that uses them.
+
+**Format:**
+
+Create a prompt file with YAML frontmatter at the top, separated by `---`:
+
+**Example 1:** `mobile-task.md`
+
+```markdown
+---
+foreach:
+  platform: [iOS, Android]
+  lang: [swift, kotlin]
+---
+
+Build a {{ platform }} app using {{ lang }}.
+Implement user authentication and data persistence.
+```
+
+```bash
+workmux add mobile-app --prompt-file mobile-task.md
+# Generates worktrees: mobile-app-ios-swift, mobile-app-android-kotlin
+```
+
+**Example 2:** `agent-task.md` (using `agent` as a foreach variable)
+
+```markdown
+---
+foreach:
+  agent: [claude, gemini]
+---
+
+Implement the dashboard refactor using your preferred approach.
+```
+
+```bash
+workmux add refactor --prompt-file agent-task.md
+# Generates worktrees: refactor-claude, refactor-gemini
+```
+
+**Behavior:**
+
+- Variables from the frontmatter are available in both the prompt template and
+  the branch name template
+- All value lists must have the same length, and values are paired by index
+  position (same zip behavior as `--foreach`)
+- CLI `--foreach` overrides frontmatter with a warning if both are present
+- Works with both `--prompt-file` and `--prompt-editor`
 
 ##### Examples
 
@@ -404,6 +460,17 @@ workmux add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platfor
 # Create agent-specific worktrees via --foreach
 workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
 # Generates worktrees: my-feature-claude, my-feature-gemini
+
+# Use frontmatter in a prompt file for cleaner syntax
+# task.md contains:
+# ---
+# foreach:
+#   env: [staging, production]
+#   task: [smoke-tests, integration-tests]
+# ---
+# Run {{ task }} against the {{ env }} environment
+workmux add testing --prompt-file task.md
+# Generates worktrees: testing-staging-smoke-tests, testing-production-integration-tests
 ```
 
 ---

@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 use minijinja::{AutoEscape, Environment};
+use serde::Deserialize;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -83,6 +84,18 @@ pub enum Prompt {
     FromFile(PathBuf),
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct PromptMetadata {
+    #[serde(default)]
+    foreach: Option<BTreeMap<String, Vec<String>>>,
+}
+
+#[derive(Debug)]
+struct PromptDocument {
+    body: String,
+    meta: PromptMetadata,
+}
+
 #[derive(Debug, Clone)]
 struct WorktreeSpec {
     branch_name: String,
@@ -91,6 +104,9 @@ struct WorktreeSpec {
 }
 
 type TemplateEnv = Environment<'static>;
+
+/// Reserved template variable names that cannot be used in foreach
+const RESERVED_TEMPLATE_KEYS: &[&str] = &["base_name", "agent", "num", "foreach_vars"];
 
 #[derive(clap::Args, Debug)]
 struct RemoveArgs {
@@ -195,7 +211,7 @@ enum Commands {
         /// Variables: {{ base_name }}, {{ agent }}, {{ num }}, {{ foreach_vars }}.
         #[arg(
             long,
-            default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
+            default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
         )]
         branch_template: String,
     },
@@ -335,10 +351,46 @@ pub fn run() -> Result<()> {
                 }
             };
 
+            // Parse prompt document to extract frontmatter (if applicable)
+            let prompt_doc = if let Some(ref prompt_src) = prompt_template {
+                // Parse frontmatter from file or editor content, but skip for inline prompts
+                // that didn't come from the editor (those are pure strings from -p flag)
+                let should_parse_frontmatter =
+                    prompt_editor || matches!(prompt_src, Prompt::FromFile(_));
+
+                if should_parse_frontmatter {
+                    Some(parse_prompt_document(prompt_src)?)
+                } else {
+                    // Inline prompt without editor: no frontmatter parsing
+                    Some(PromptDocument {
+                        body: match prompt_src {
+                            Prompt::Inline(s) => s.clone(),
+                            Prompt::FromFile(_) => unreachable!(),
+                        },
+                        meta: PromptMetadata::default(),
+                    })
+                }
+            } else {
+                None
+            };
+
             if count.is_some() && agent.len() > 1 {
                 return Err(anyhow!(
                     "--count can only be used with zero or one --agent, but {} were provided",
                     agent.len()
+                ));
+            }
+
+            // Validate that --agent CLI flag and frontmatter foreach are not both present
+            let has_foreach_in_prompt = prompt_doc
+                .as_ref()
+                .and_then(|d| d.meta.foreach.as_ref())
+                .is_some();
+
+            if has_foreach_in_prompt && !agent.is_empty() {
+                return Err(anyhow!(
+                    "Cannot use --agent when 'foreach' is defined in the prompt frontmatter. \
+                    These multi-worktree generation methods are mutually exclusive."
                 ));
             }
 
@@ -379,11 +431,25 @@ pub fn run() -> Result<()> {
             let cli_default_agent = agent.first().map(|s| s.as_str());
             let config = config::Config::load(cli_default_agent)?;
 
+            // Determine effective foreach matrix: CLI overrides frontmatter
+            let effective_foreach_rows = match (
+                &foreach,
+                prompt_doc.as_ref().and_then(|d| d.meta.foreach.as_ref()),
+            ) {
+                (Some(cli_str), Some(_frontmatter_map)) => {
+                    eprintln!("Warning: --foreach overrides prompt frontmatter");
+                    Some(parse_foreach_matrix(cli_str)?)
+                }
+                (Some(cli_str), None) => Some(parse_foreach_matrix(cli_str)?),
+                (None, Some(frontmatter_map)) => Some(foreach_from_frontmatter(frontmatter_map)?),
+                (None, None) => None,
+            };
+
             let specs = generate_worktree_specs(
                 &template_base_name,
                 &agent,
                 count,
-                foreach.as_deref(),
+                effective_foreach_rows.as_deref(),
                 &env,
                 &branch_template,
             )?;
@@ -406,13 +472,12 @@ pub fn run() -> Result<()> {
                     );
                 }
 
-                let prompt_for_spec = if let Some(ref prompt_src) = prompt_template {
-                    Some(
-                        render_prompt_template(prompt_src, &env, &spec.template_context)
-                            .with_context(|| {
-                                format!("Failed to render prompt for branch '{}'", spec.branch_name)
-                            })?,
-                    )
+                let prompt_for_spec = if let Some(ref doc) = prompt_doc {
+                    Some(Prompt::Inline(
+                        render_prompt_body(&doc.body, &env, &spec.template_context).with_context(
+                            || format!("Failed to render prompt for branch '{}'", spec.branch_name),
+                        )?,
+                    ))
                 } else {
                     None
                 };
@@ -791,6 +856,7 @@ fn prune_claude_config() -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn render_prompt_template(
     prompt: &Prompt,
     env: &TemplateEnv,
@@ -808,15 +874,21 @@ fn render_prompt_template(
     Ok(Prompt::Inline(rendered))
 }
 
+/// Render a prompt body string with the given template context.
+fn render_prompt_body(body: &str, env: &TemplateEnv, context: &JsonValue) -> Result<String> {
+    env.render_str(body, context)
+        .context("Failed to render prompt template")
+}
+
 fn generate_worktree_specs(
     base_name: &str,
     agents: &[String],
     count: Option<u32>,
-    foreach: Option<&str>,
+    foreach_rows: Option<&[BTreeMap<String, String>]>,
     env: &TemplateEnv,
     branch_template: &str,
 ) -> Result<Vec<WorktreeSpec>> {
-    let is_multi_mode = foreach.is_some() || count.is_some() || agents.len() > 1;
+    let is_multi_mode = foreach_rows.is_some() || count.is_some() || agents.len() > 1;
 
     if !is_multi_mode {
         let agent = agents.first().cloned();
@@ -834,11 +906,10 @@ fn generate_worktree_specs(
         }]);
     }
 
-    if let Some(matrix) = foreach {
-        let rows = parse_foreach_matrix(matrix)?;
+    if let Some(rows) = foreach_rows {
         return rows
-            .into_iter()
-            .map(|vars| build_spec(env, branch_template, base_name, None, None, vars))
+            .iter()
+            .map(|vars| build_spec(env, branch_template, base_name, None, None, vars.clone()))
             .collect();
     }
 
@@ -893,13 +964,16 @@ fn build_spec(
     num: Option<u32>,
     foreach_vars: BTreeMap<String, String>,
 ) -> Result<WorktreeSpec> {
-    let context = build_template_context(base_name, &agent, &num, &foreach_vars);
+    // Extract agent from foreach_vars if present (treat "agent" as a special reserved key)
+    let effective_agent = agent.or_else(|| foreach_vars.get("agent").cloned());
+
+    let context = build_template_context(base_name, &effective_agent, &num, &foreach_vars);
     let branch_name = env
         .render_str(branch_template, &context)
         .context("Failed to render branch template")?;
     Ok(WorktreeSpec {
         branch_name,
-        agent,
+        agent: effective_agent,
         template_context: context,
     })
 }
@@ -930,12 +1004,123 @@ fn build_template_context(
 
     let mut foreach_json = JsonMap::new();
     for (key, value) in foreach_vars {
-        foreach_json.insert(key.clone(), JsonValue::String(value.clone()));
-        context.insert(key.clone(), JsonValue::String(value.clone()));
+        // Filter out ALL reserved keys to avoid collisions in templates
+        // Reserved keys: base_name, agent, num, foreach_vars
+        if !RESERVED_TEMPLATE_KEYS.contains(&key.as_str()) {
+            foreach_json.insert(key.clone(), JsonValue::String(value.clone()));
+            context.insert(key.clone(), JsonValue::String(value.clone()));
+        }
     }
     context.insert("foreach_vars".to_string(), JsonValue::Object(foreach_json));
 
     JsonValue::Object(context)
+}
+
+/// Split frontmatter from markdown content.
+/// Returns (Some(frontmatter_yaml), body) if frontmatter exists, or (None, content) if not.
+fn split_frontmatter(content: &str) -> (Option<String>, &str) {
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Check if content starts with "---"
+    if lines.is_empty() || lines[0].trim() != "---" {
+        return (None, content);
+    }
+
+    // Find the closing "---" or "..."
+    let closing_idx = lines.iter().skip(1).position(|line| {
+        let trimmed = line.trim();
+        trimmed == "---" || trimmed == "..."
+    });
+
+    match closing_idx {
+        Some(idx) => {
+            // closing_idx is relative to skip(1), so actual index is idx + 1
+            let actual_idx = idx + 1;
+            let frontmatter = lines[1..actual_idx].join("\n");
+            // Body starts after the closing fence
+            let body_start = lines
+                .iter()
+                .take(actual_idx + 1)
+                .map(|l| l.len() + 1)
+                .sum::<usize>();
+            let body = &content[body_start.min(content.len())..];
+            (Some(frontmatter), body)
+        }
+        None => {
+            // No closing fence found, treat entire content as body
+            (None, content)
+        }
+    }
+}
+
+/// Parse a prompt document, extracting frontmatter metadata and body.
+fn parse_prompt_document(prompt: &Prompt) -> Result<PromptDocument> {
+    // Store the file content to avoid dangling reference
+    let content_storage: String;
+    let content = match prompt {
+        Prompt::Inline(text) => text.as_str(),
+        Prompt::FromFile(path) => {
+            content_storage = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read prompt file: {}", path.display()))?;
+            &content_storage
+        }
+    };
+
+    let (frontmatter_yaml, body) = split_frontmatter(content);
+
+    let meta = if let Some(ref yaml) = frontmatter_yaml {
+        serde_yaml::from_str(yaml).context("Failed to parse YAML frontmatter")?
+    } else {
+        PromptMetadata::default()
+    };
+
+    Ok(PromptDocument {
+        body: body.to_string(),
+        meta,
+    })
+}
+
+/// Convert frontmatter foreach (BTreeMap<String, Vec<String>>) to matrix rows.
+/// Validates that all value lists have equal length (zip constraint).
+fn foreach_from_frontmatter(
+    foreach_map: &BTreeMap<String, Vec<String>>,
+) -> Result<Vec<BTreeMap<String, String>>> {
+    if foreach_map.is_empty() {
+        return Err(anyhow!(
+            "foreach in frontmatter must include at least one variable"
+        ));
+    }
+
+    // Get the first list length as reference
+    let expected_len = foreach_map.values().next().unwrap().len();
+
+    if expected_len == 0 {
+        return Err(anyhow!("foreach variables must have at least one value"));
+    }
+
+    // Validate all lists have the same length
+    for (key, values) in foreach_map.iter() {
+        if values.len() != expected_len {
+            return Err(anyhow!(
+                "All foreach variables must have the same number of values (expected {}, but '{}' has {})",
+                expected_len,
+                key,
+                values.len()
+            ));
+        }
+    }
+
+    // Zip values by index to create row dictionaries
+    let mut rows = Vec::with_capacity(expected_len);
+    for idx in 0..expected_len {
+        let mut row = BTreeMap::new();
+        for (key, values) in foreach_map {
+            row.insert(key.clone(), values[idx].clone());
+        }
+        rows.push(row);
+    }
+
+    Ok(rows)
 }
 
 fn parse_foreach_matrix(input: &str) -> Result<Vec<BTreeMap<String, String>>> {
@@ -1121,15 +1306,10 @@ mod tests {
     #[test]
     fn foreach_context_exposes_variables() {
         let env = create_test_env();
-        let specs = generate_worktree_specs(
-            "feature",
-            &[],
-            None,
-            Some("platform:ios,android;lang:swift,kotlin"),
-            &env,
-            "{{ base_name }}",
-        )
-        .expect("specs");
+        let rows = parse_foreach_matrix("platform:ios,android;lang:swift,kotlin").expect("parse");
+        let specs =
+            generate_worktree_specs("feature", &[], None, Some(&rows), &env, "{{ base_name }}")
+                .expect("specs");
         let rendered = env
             .render_str("{{ platform }}-{{ lang }}", &specs[0].template_context)
             .expect("prompt render");
@@ -1196,5 +1376,300 @@ mod tests {
                 .to_string()
                 .contains("Failed to read prompt file")
         );
+    }
+
+    #[test]
+    fn split_frontmatter_extracts_yaml_and_body() {
+        let content = "---\nkey: value\n---\n\nBody content here";
+        let (frontmatter, body) = split_frontmatter(content);
+
+        assert_eq!(frontmatter, Some("key: value".to_string()));
+        assert_eq!(body, "\nBody content here");
+    }
+
+    #[test]
+    fn split_frontmatter_handles_no_frontmatter() {
+        let content = "Just body content";
+        let (frontmatter, body) = split_frontmatter(content);
+
+        assert_eq!(frontmatter, None);
+        assert_eq!(body, "Just body content");
+    }
+
+    #[test]
+    fn split_frontmatter_handles_missing_closing_fence() {
+        let content = "---\nkey: value\nno closing fence";
+        let (frontmatter, body) = split_frontmatter(content);
+
+        assert_eq!(frontmatter, None);
+        assert_eq!(body, "---\nkey: value\nno closing fence");
+    }
+
+    #[test]
+    fn parse_prompt_document_with_frontmatter() {
+        let content = "---\nforeach:\n  platform: [iOS, Android]\n---\n\nBuild for {{ platform }}";
+        let prompt = Prompt::Inline(content.to_string());
+        let doc = parse_prompt_document(&prompt).expect("parse success");
+
+        assert_eq!(doc.body, "\nBuild for {{ platform }}");
+        assert!(doc.meta.foreach.is_some());
+
+        let foreach = doc.meta.foreach.unwrap();
+        assert_eq!(
+            foreach.get("platform").unwrap(),
+            &vec!["iOS".to_string(), "Android".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_prompt_document_without_frontmatter() {
+        let content = "Build for {{ platform }}";
+        let prompt = Prompt::Inline(content.to_string());
+        let doc = parse_prompt_document(&prompt).expect("parse success");
+
+        assert_eq!(doc.body, "Build for {{ platform }}");
+        assert!(doc.meta.foreach.is_none());
+    }
+
+    #[test]
+    fn foreach_from_frontmatter_creates_rows() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "platform".to_string(),
+            vec!["iOS".to_string(), "Android".to_string()],
+        );
+        map.insert(
+            "lang".to_string(),
+            vec!["swift".to_string(), "kotlin".to_string()],
+        );
+
+        let rows = foreach_from_frontmatter(&map).expect("conversion success");
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].get("platform").unwrap(), "iOS");
+        assert_eq!(rows[0].get("lang").unwrap(), "swift");
+        assert_eq!(rows[1].get("platform").unwrap(), "Android");
+        assert_eq!(rows[1].get("lang").unwrap(), "kotlin");
+    }
+
+    #[test]
+    fn foreach_from_frontmatter_requires_equal_lengths() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "platform".to_string(),
+            vec!["iOS".to_string(), "Android".to_string()],
+        );
+        map.insert("lang".to_string(), vec!["swift".to_string()]);
+
+        let result = foreach_from_frontmatter(&map);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("same number of values")
+        );
+    }
+
+    #[test]
+    fn foreach_from_frontmatter_rejects_empty_values() {
+        let mut map = BTreeMap::new();
+        map.insert("platform".to_string(), vec![]);
+
+        let result = foreach_from_frontmatter(&map);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("at least one value")
+        );
+    }
+
+    #[test]
+    fn branch_template_renders_with_foreach_vars() {
+        let env = create_test_env();
+        let mut foreach_vars = BTreeMap::new();
+        foreach_vars.insert("platform".to_string(), "ios".to_string());
+        foreach_vars.insert("lang".to_string(), "swift".to_string());
+
+        let context = build_template_context("feature", &None, &None, &foreach_vars);
+        // MiniJinja doesn't support unpacking in for loops, so we iterate over keys
+        let template = "{{ base_name }}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}";
+        let result = env.render_str(template, &context).expect("render");
+
+        // The foreach_vars iteration should include both platform and lang values
+        // BTreeMap is sorted, so lang comes before platform alphabetically
+        assert_eq!(result, "feature-swift-ios");
+    }
+
+    #[test]
+    fn parse_prompt_document_from_file_with_frontmatter() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let content = "---\nforeach:\n  platform: [iOS, Android]\n  lang: [swift, kotlin]\n---\n\nBuild for {{ platform }} using {{ lang }}";
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        write!(temp_file, "{}", content).expect("write to temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        let prompt = Prompt::FromFile(temp_path);
+        let doc = parse_prompt_document(&prompt).expect("parse success");
+
+        assert_eq!(doc.body, "\nBuild for {{ platform }} using {{ lang }}");
+        assert!(doc.meta.foreach.is_some());
+
+        let foreach = doc.meta.foreach.unwrap();
+        assert_eq!(foreach.len(), 2);
+        assert_eq!(
+            foreach.get("platform").unwrap(),
+            &vec!["iOS".to_string(), "Android".to_string()]
+        );
+        assert_eq!(
+            foreach.get("lang").unwrap(),
+            &vec!["swift".to_string(), "kotlin".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_prompt_document_from_file_without_frontmatter() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let content = "Build for {{ platform }}";
+        let mut temp_file = NamedTempFile::new().expect("create temp file");
+        write!(temp_file, "{}", content).expect("write to temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        let prompt = Prompt::FromFile(temp_path);
+        let doc = parse_prompt_document(&prompt).expect("parse success");
+
+        assert_eq!(doc.body, "Build for {{ platform }}");
+        assert!(doc.meta.foreach.is_none());
+    }
+
+    #[test]
+    fn foreach_with_agent_key_populates_spec_agent() {
+        let env = create_test_env();
+        let mut map = BTreeMap::new();
+        map.insert(
+            "agent".to_string(),
+            vec!["claude".to_string(), "gemini".to_string()],
+        );
+
+        let rows = foreach_from_frontmatter(&map).expect("conversion success");
+        let specs = generate_worktree_specs(
+            "feature",
+            &[],
+            None,
+            Some(&rows),
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}",
+        )
+        .expect("specs");
+
+        assert_eq!(specs.len(), 2);
+
+        // First spec should have agent=claude and branch name should NOT include agent twice
+        assert_eq!(specs[0].branch_name, "feature-claude");
+        assert_eq!(specs[0].agent.as_deref(), Some("claude"));
+
+        // Second spec should have agent=gemini
+        assert_eq!(specs[1].branch_name, "feature-gemini");
+        assert_eq!(specs[1].agent.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn foreach_with_agent_and_other_vars_filters_agent_from_iteration() {
+        let env = create_test_env();
+        let mut map = BTreeMap::new();
+        map.insert(
+            "agent".to_string(),
+            vec!["claude".to_string(), "gemini".to_string()],
+        );
+        map.insert(
+            "platform".to_string(),
+            vec!["ios".to_string(), "android".to_string()],
+        );
+
+        let rows = foreach_from_frontmatter(&map).expect("conversion success");
+        let specs = generate_worktree_specs(
+            "feature",
+            &[],
+            None,
+            Some(&rows),
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}",
+        )
+        .expect("specs");
+
+        assert_eq!(specs.len(), 2);
+
+        // Branch names should be: base-agent-platform (NOT base-agent-agent-platform or base-agent-platform-agent)
+        // BTreeMap is sorted, so "agent" comes before "platform" alphabetically, but agent is filtered from foreach_vars
+        assert_eq!(specs[0].branch_name, "feature-claude-ios");
+        assert_eq!(specs[0].agent.as_deref(), Some("claude"));
+
+        assert_eq!(specs[1].branch_name, "feature-gemini-android");
+        assert_eq!(specs[1].agent.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn foreach_filters_all_reserved_keys() {
+        let env = create_test_env();
+        let mut map = BTreeMap::new();
+        // Try to use reserved keys in foreach
+        map.insert(
+            "base_name".to_string(),
+            vec!["bad1".to_string(), "bad2".to_string()],
+        );
+        map.insert(
+            "num".to_string(),
+            vec!["bad3".to_string(), "bad4".to_string()],
+        );
+        map.insert(
+            "foreach_vars".to_string(),
+            vec!["bad5".to_string(), "bad6".to_string()],
+        );
+        map.insert(
+            "agent".to_string(),
+            vec!["bad7".to_string(), "bad8".to_string()],
+        );
+        map.insert(
+            "platform".to_string(),
+            vec!["ios".to_string(), "android".to_string()],
+        );
+
+        let rows = foreach_from_frontmatter(&map).expect("conversion success");
+
+        // Verify that reserved keys are NOT in the rows at the top level (only in the BTreeMap for lookup)
+        // But the row itself should still contain them for extraction
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].get("platform").unwrap(), "ios");
+        assert_eq!(rows[1].get("platform").unwrap(), "android");
+
+        let specs = generate_worktree_specs(
+            "base",
+            &[],
+            None,
+            Some(&rows),
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}",
+        )
+        .expect("specs");
+
+        // Branch name should only include platform, not the reserved keys
+        // Reserved keys should be filtered from foreach_vars iteration
+        assert_eq!(specs[0].branch_name, "base-bad7-ios");
+        assert_eq!(specs[1].branch_name, "base-bad8-android");
+
+        // base_name should be "base" (from function param), not "bad1" or "bad2"
+        let context0 = &specs[0].template_context;
+        assert_eq!(context0["base_name"].as_str().unwrap(), "base");
+
+        // agent should be from foreach (bad7/bad8), not overwritten by reserved key collision
+        assert_eq!(context0["agent"].as_str().unwrap(), "bad7");
     }
 }
