@@ -110,22 +110,83 @@ type TemplateEnv = Environment<'static>;
 const RESERVED_TEMPLATE_KEYS: &[&str] = &["base_name", "agent", "num", "foreach_vars"];
 
 #[derive(clap::Args, Debug)]
-struct RemoveArgs {
-    /// Name of the branch to remove (defaults to current branch)
-    #[arg(value_parser = WorktreeBranchParser::new())]
-    branch_name: Option<String>,
+struct PromptArgs {
+    /// Inline prompt text to store in the new worktree
+    #[arg(short = 'p', long, conflicts_with_all = ["prompt_file", "prompt_editor"])]
+    prompt: Option<String>,
 
-    /// Skip confirmation and ignore uncommitted changes
-    #[arg(short, long)]
-    force: bool,
+    /// Path to a file whose contents should be used as the prompt
+    #[arg(short = 'P', long = "prompt-file", conflicts_with_all = ["prompt", "prompt_editor"])]
+    prompt_file: Option<PathBuf>,
 
-    /// Also delete the remote branch
-    #[arg(short = 'r', long)]
-    delete_remote: bool,
+    /// Open $EDITOR to write the prompt
+    #[arg(short = 'e', long = "prompt-editor", conflicts_with_all = ["prompt", "prompt_file"])]
+    prompt_editor: bool,
+}
 
-    /// Keep the local branch (only remove worktree and tmux window)
-    #[arg(short = 'k', long, conflicts_with = "delete_remote")]
-    keep_branch: bool,
+#[derive(clap::Args, Debug)]
+struct SetupFlags {
+    /// Skip running post-create hooks
+    #[arg(short = 'H', long)]
+    no_hooks: bool,
+
+    /// Skip file copy/symlink operations
+    #[arg(short = 'F', long)]
+    no_file_ops: bool,
+
+    /// Skip executing pane commands (panes open with plain shells)
+    #[arg(short = 'C', long)]
+    no_pane_cmds: bool,
+
+    /// Create tmux window in the background (do not switch to it)
+    #[arg(short = 'b', long = "background")]
+    background: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct MultiArgs {
+    /// The agent(s) to use. Creates one worktree per agent if -n is not specified.
+    #[arg(short = 'a', long)]
+    agent: Vec<String>,
+
+    /// Number of worktree instances to create.
+    /// Can be used with zero or one --agent. Incompatible with --foreach.
+    #[arg(
+        short = 'n',
+        long,
+        value_parser = clap::value_parser!(u32).range(1..),
+        conflicts_with = "foreach"
+    )]
+    count: Option<u32>,
+
+    /// Generate multiple worktrees from a variable matrix.
+    /// Format: "var1:valA,valB;var2:valX,valY". Lists must have equal length.
+    /// Incompatible with --agent and --count.
+    #[arg(long, conflicts_with_all = ["agent", "count"])]
+    foreach: Option<String>,
+
+    /// Template for branch names in multi-worktree modes.
+    /// Variables: {{ base_name }}, {{ agent }}, {{ num }}, {{ foreach_vars }}.
+    #[arg(
+        long,
+        default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
+    )]
+    branch_template: String,
+}
+
+#[derive(clap::Args, Debug)]
+struct RescueArgs {
+    /// Move uncommitted changes from the current worktree to the new worktree
+    #[arg(short = 'w', long, conflicts_with_all = ["count", "foreach"])]
+    with_changes: bool,
+
+    /// Interactively select which changes to move (only applies with --with-changes)
+    #[arg(long, requires = "with_changes")]
+    patch: bool,
+
+    /// Also move untracked files (only applies with --with-changes)
+    #[arg(short = 'u', long, requires = "with_changes")]
+    include_untracked: bool,
 }
 
 #[derive(Parser)]
@@ -148,73 +209,17 @@ enum Commands {
         #[arg(long)]
         base: Option<String>,
 
-        /// Inline prompt text to store in the new worktree
-        #[arg(short = 'p', long, conflicts_with_all = ["prompt_file", "prompt_editor"])]
-        prompt: Option<String>,
+        #[command(flatten)]
+        prompt: PromptArgs,
 
-        /// Path to a file whose contents should be used as the prompt
-        #[arg(short = 'P', long = "prompt-file", conflicts_with_all = ["prompt", "prompt_editor"])]
-        prompt_file: Option<PathBuf>,
+        #[command(flatten)]
+        setup: SetupFlags,
 
-        /// Open $EDITOR to write the prompt
-        #[arg(short = 'e', long = "prompt-editor", conflicts_with_all = ["prompt", "prompt_file"])]
-        prompt_editor: bool,
+        #[command(flatten)]
+        rescue: RescueArgs,
 
-        /// Skip running post-create hooks
-        #[arg(short = 'H', long)]
-        no_hooks: bool,
-
-        /// Skip file copy/symlink operations
-        #[arg(short = 'F', long)]
-        no_file_ops: bool,
-
-        /// Skip executing pane commands (panes open with plain shells)
-        #[arg(short = 'C', long)]
-        no_pane_cmds: bool,
-
-        /// Create tmux window in the background (do not switch to it)
-        #[arg(short = 'b', long = "background")]
-        background: bool,
-
-        /// Move uncommitted changes from the current worktree to the new worktree
-        #[arg(short = 'w', long, conflicts_with_all = ["count", "foreach"])]
-        with_changes: bool,
-
-        /// Interactively select which changes to move (only applies with --with-changes)
-        #[arg(long, requires = "with_changes")]
-        patch: bool,
-
-        /// Also move untracked files (only applies with --with-changes)
-        #[arg(short = 'u', long, requires = "with_changes")]
-        include_untracked: bool,
-
-        /// The agent(s) to use. Creates one worktree per agent if -n is not specified.
-        #[arg(short = 'a', long)]
-        agent: Vec<String>,
-
-        /// Number of worktree instances to create.
-        /// Can be used with zero or one --agent. Incompatible with --foreach.
-        #[arg(
-            short = 'n',
-            long,
-            value_parser = clap::value_parser!(u32).range(1..),
-            conflicts_with = "foreach"
-        )]
-        count: Option<u32>,
-
-        /// Generate multiple worktrees from a variable matrix.
-        /// Format: "var1:valA,valB;var2:valX,valY". Lists must have equal length.
-        /// Incompatible with --agent and --count.
-        #[arg(long, conflicts_with_all = ["agent", "count"])]
-        foreach: Option<String>,
-
-        /// Template for branch names in multi-worktree modes.
-        /// Variables: {{ base_name }}, {{ agent }}, {{ num }}, {{ foreach_vars }}.
-        #[arg(
-            long,
-            default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
-        )]
-        branch_template: String,
+        #[command(flatten)]
+        multi: MultiArgs,
     },
 
     /// Open a tmux window for an existing worktree
@@ -257,7 +262,23 @@ enum Commands {
 
     /// Remove a worktree, tmux window, and branch without merging
     #[command(visible_alias = "rm")]
-    Remove(RemoveArgs),
+    Remove {
+        /// Name of the branch to remove (defaults to current branch)
+        #[arg(value_parser = WorktreeBranchParser::new())]
+        branch_name: Option<String>,
+
+        /// Skip confirmation and ignore uncommitted changes
+        #[arg(short, long)]
+        force: bool,
+
+        /// Also delete the remote branch
+        #[arg(short = 'r', long)]
+        delete_remote: bool,
+
+        /// Keep the local branch (only remove worktree and tmux window)
+        #[arg(short = 'k', long, conflicts_with = "delete_remote")]
+        keep_branch: bool,
+    },
 
     /// List all worktrees
     #[command(visible_alias = "ls")]
@@ -295,232 +316,10 @@ pub fn run() -> Result<()> {
             branch_name,
             base,
             prompt,
-            prompt_file,
-            prompt_editor,
-            no_hooks,
-            no_file_ops,
-            no_pane_cmds,
-            background,
-            with_changes,
-            patch,
-            include_untracked,
-            agent,
-            count,
-            foreach,
-            branch_template,
-        } => {
-            // If --with-changes is set, use the create_with_changes workflow
-            if with_changes {
-                let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
-                options.focus_window = !background;
-                let config = config::Config::load(None)?;
-                let result = workflow::create_with_changes(
-                    &branch_name,
-                    include_untracked,
-                    patch,
-                    &config,
-                    options,
-                )
-                .context("Failed to move uncommitted changes")?;
-
-                println!(
-                    "✓ Moved uncommitted changes to new worktree for branch '{}'\n  Worktree: {}\n  Original worktree is now clean",
-                    result.branch_name,
-                    result.worktree_path.display()
-                );
-                return Ok(());
-            }
-
-            // Construct setup options from flags
-            let mut options = SetupOptions::new(!no_hooks, !no_file_ops, !no_pane_cmds);
-            options.focus_window = !background;
-
-            let prompt_template = if prompt_editor {
-                let mut builder = Builder::new();
-                builder.suffix(".md");
-                let editor_content = edit::edit_with_builder("", &builder)
-                    .context("Failed to open editor or read content")?;
-                let trimmed = editor_content.trim();
-                if trimmed.is_empty() {
-                    return Err(anyhow!("Aborting: prompt is empty"));
-                }
-                Some(Prompt::Inline(trimmed.to_string()))
-            } else {
-                match (prompt, prompt_file) {
-                    (Some(inline), None) => Some(Prompt::Inline(inline)),
-                    (None, Some(path)) => Some(Prompt::FromFile(path)),
-                    (None, None) => None,
-                    _ => None, // clap enforces exclusivity; this is unreachable
-                }
-            };
-
-            // Parse prompt document to extract frontmatter (if applicable)
-            let prompt_doc = if let Some(ref prompt_src) = prompt_template {
-                // Parse frontmatter from file or editor content, but skip for inline prompts
-                // that didn't come from the editor (those are pure strings from -p flag)
-                let should_parse_frontmatter =
-                    prompt_editor || matches!(prompt_src, Prompt::FromFile(_));
-
-                if should_parse_frontmatter {
-                    Some(parse_prompt_document(prompt_src)?)
-                } else {
-                    // Inline prompt without editor: no frontmatter parsing
-                    Some(PromptDocument {
-                        body: match prompt_src {
-                            Prompt::Inline(s) => s.clone(),
-                            Prompt::FromFile(_) => unreachable!(),
-                        },
-                        meta: PromptMetadata::default(),
-                    })
-                }
-            } else {
-                None
-            };
-
-            if count.is_some() && agent.len() > 1 {
-                return Err(anyhow!(
-                    "--count can only be used with zero or one --agent, but {} were provided",
-                    agent.len()
-                ));
-            }
-
-            // Validate that --agent CLI flag and frontmatter foreach are not both present
-            let has_foreach_in_prompt = prompt_doc
-                .as_ref()
-                .and_then(|d| d.meta.foreach.as_ref())
-                .is_some();
-
-            if has_foreach_in_prompt && !agent.is_empty() {
-                return Err(anyhow!(
-                    "Cannot use --agent when 'foreach' is defined in the prompt frontmatter. \
-                    These multi-worktree generation methods are mutually exclusive."
-                ));
-            }
-
-            let mut env = Environment::new();
-            env.set_auto_escape_callback(|_| AutoEscape::None);
-            env.set_keep_trailing_newline(true);
-            env.add_filter("slugify", slugify_filter);
-
-            // Check if branch_name is a remote ref (e.g., origin/feature/foo)
-            let remotes = git::list_remotes().context("Failed to list git remotes")?;
-            let detected_remote = remotes
-                .iter()
-                .find(|r| branch_name.starts_with(&format!("{}/", r)));
-
-            let (remote_branch, template_base_name) = if let Some(remote_name) = detected_remote {
-                if base.is_some() {
-                    return Err(anyhow!(
-                        "Cannot use --base with a remote branch reference. \
-                        The remote branch '{}' will be used as the base.",
-                        branch_name
-                    ));
-                }
-
-                let spec = git::parse_remote_branch_spec(&branch_name)
-                    .context("Invalid remote branch format. Use <remote>/<branch>")?;
-
-                if spec.remote != *remote_name {
-                    return Err(anyhow!("Mismatched remote detection"));
-                }
-
-                (Some(branch_name.clone()), spec.branch)
-            } else {
-                (None, branch_name.clone())
-            };
-
-            let resolved_base = if remote_branch.is_some() { None } else { base };
-
-            let cli_default_agent = agent.first().map(|s| s.as_str());
-            let config = config::Config::load(cli_default_agent)?;
-
-            // Determine effective foreach matrix: CLI overrides frontmatter
-            let effective_foreach_rows = match (
-                &foreach,
-                prompt_doc.as_ref().and_then(|d| d.meta.foreach.as_ref()),
-            ) {
-                (Some(cli_str), Some(_frontmatter_map)) => {
-                    eprintln!("Warning: --foreach overrides prompt frontmatter");
-                    Some(parse_foreach_matrix(cli_str)?)
-                }
-                (Some(cli_str), None) => Some(parse_foreach_matrix(cli_str)?),
-                (None, Some(frontmatter_map)) => Some(foreach_from_frontmatter(frontmatter_map)?),
-                (None, None) => None,
-            };
-
-            let specs = generate_worktree_specs(
-                &template_base_name,
-                &agent,
-                count,
-                effective_foreach_rows.as_deref(),
-                &env,
-                &branch_template,
-            )?;
-
-            if specs.is_empty() {
-                return Err(anyhow!("No worktree specifications were generated"));
-            }
-
-            if specs.len() > 1 {
-                println!("Preparing to create {} worktrees...", specs.len());
-            }
-
-            for (i, spec) in specs.iter().enumerate() {
-                if specs.len() > 1 {
-                    println!(
-                        "\n--- [{}/{}] Creating worktree: {} ---",
-                        i + 1,
-                        specs.len(),
-                        spec.branch_name
-                    );
-                }
-
-                let prompt_for_spec = if let Some(ref doc) = prompt_doc {
-                    Some(Prompt::Inline(
-                        render_prompt_body(&doc.body, &env, &spec.template_context).with_context(
-                            || format!("Failed to render prompt for branch '{}'", spec.branch_name),
-                        )?,
-                    ))
-                } else {
-                    None
-                };
-
-                if options.run_hooks && config.post_create.as_ref().is_some_and(|v| !v.is_empty()) {
-                    println!("Running setup commands...");
-                }
-
-                let result = workflow::create(
-                    &spec.branch_name,
-                    resolved_base.as_deref(),
-                    remote_branch.as_deref(),
-                    prompt_for_spec.as_ref(),
-                    &config,
-                    options.clone(),
-                    spec.agent.as_deref(),
-                )
-                .with_context(|| {
-                    format!(
-                        "Failed to create worktree environment for branch '{}'",
-                        spec.branch_name
-                    )
-                })?;
-
-                if result.post_create_hooks_run > 0 {
-                    println!("✓ Setup complete");
-                }
-
-                println!(
-                    "✓ Successfully created worktree and tmux window for '{}'",
-                    result.branch_name
-                );
-                if let Some(ref base) = result.base_branch {
-                    println!("  Base: {}", base);
-                }
-                println!("  Worktree: {}", result.worktree_path.display());
-            }
-
-            Ok(())
-        }
+            setup,
+            rescue,
+            multi,
+        } => add_worktree(&branch_name, base.as_deref(), prompt, setup, rescue, multi),
         Commands::Open {
             branch_name,
             run_hooks,
@@ -543,12 +342,12 @@ pub fn run() -> Result<()> {
             rebase,
             squash,
         ),
-        Commands::Remove(args) => remove_worktree(
-            args.branch_name.as_deref(),
-            args.force,
-            args.delete_remote,
-            args.keep_branch,
-        ),
+        Commands::Remove {
+            branch_name,
+            force,
+            delete_remote,
+            keep_branch,
+        } => remove_worktree(branch_name.as_deref(), force, delete_remote, keep_branch),
         Commands::List => list_worktrees(),
         Commands::Init => config::Config::init(),
         Commands::Claude { command } => match command {
@@ -561,6 +360,228 @@ pub fn run() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn add_worktree(
+    branch_name: &str,
+    base: Option<&str>,
+    prompt_args: PromptArgs,
+    setup: SetupFlags,
+    rescue: RescueArgs,
+    multi: MultiArgs,
+) -> Result<()> {
+    // If --with-changes is set, use the create_with_changes workflow
+    if rescue.with_changes {
+        let mut options =
+            SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
+        options.focus_window = !setup.background;
+        let config = config::Config::load(None)?;
+        let result = workflow::create_with_changes(
+            branch_name,
+            rescue.include_untracked,
+            rescue.patch,
+            &config,
+            options,
+        )
+        .context("Failed to move uncommitted changes")?;
+
+        println!(
+            "✓ Moved uncommitted changes to new worktree for branch '{}'\n  Worktree: {}\n  Original worktree is now clean",
+            result.branch_name,
+            result.worktree_path.display()
+        );
+        return Ok(());
+    }
+
+    // Construct setup options from flags
+    let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
+    options.focus_window = !setup.background;
+
+    let prompt_template = if prompt_args.prompt_editor {
+        let mut builder = Builder::new();
+        builder.suffix(".md");
+        let editor_content = edit::edit_with_builder("", &builder)
+            .context("Failed to open editor or read content")?;
+        let trimmed = editor_content.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!("Aborting: prompt is empty"));
+        }
+        Some(Prompt::Inline(trimmed.to_string()))
+    } else {
+        match (prompt_args.prompt, prompt_args.prompt_file) {
+            (Some(inline), None) => Some(Prompt::Inline(inline)),
+            (None, Some(path)) => Some(Prompt::FromFile(path)),
+            (None, None) => None,
+            _ => None, // clap enforces exclusivity; this is unreachable
+        }
+    };
+
+    // Parse prompt document to extract frontmatter (if applicable)
+    let prompt_doc = if let Some(ref prompt_src) = prompt_template {
+        // Parse frontmatter from file or editor content, but skip for inline prompts
+        // that didn't come from the editor (those are pure strings from -p flag)
+        let should_parse_frontmatter =
+            prompt_args.prompt_editor || matches!(prompt_src, Prompt::FromFile(_));
+
+        if should_parse_frontmatter {
+            Some(parse_prompt_document(prompt_src)?)
+        } else {
+            // Inline prompt without editor: no frontmatter parsing
+            Some(PromptDocument {
+                body: match prompt_src {
+                    Prompt::Inline(s) => s.clone(),
+                    Prompt::FromFile(_) => unreachable!(),
+                },
+                meta: PromptMetadata::default(),
+            })
+        }
+    } else {
+        None
+    };
+
+    if multi.count.is_some() && multi.agent.len() > 1 {
+        return Err(anyhow!(
+            "--count can only be used with zero or one --agent, but {} were provided",
+            multi.agent.len()
+        ));
+    }
+
+    // Validate that --agent CLI flag and frontmatter foreach are not both present
+    let has_foreach_in_prompt = prompt_doc
+        .as_ref()
+        .and_then(|d| d.meta.foreach.as_ref())
+        .is_some();
+
+    if has_foreach_in_prompt && !multi.agent.is_empty() {
+        return Err(anyhow!(
+            "Cannot use --agent when 'foreach' is defined in the prompt frontmatter. \
+            These multi-worktree generation methods are mutually exclusive."
+        ));
+    }
+
+    let mut env = Environment::new();
+    env.set_auto_escape_callback(|_| AutoEscape::None);
+    env.set_keep_trailing_newline(true);
+    env.add_filter("slugify", slugify_filter);
+
+    // Check if branch_name is a remote ref (e.g., origin/feature/foo)
+    let remotes = git::list_remotes().context("Failed to list git remotes")?;
+    let detected_remote = remotes
+        .iter()
+        .find(|r| branch_name.starts_with(&format!("{}/", r)));
+
+    let (remote_branch, template_base_name) = if let Some(remote_name) = detected_remote {
+        if base.is_some() {
+            return Err(anyhow!(
+                "Cannot use --base with a remote branch reference. \
+                The remote branch '{}' will be used as the base.",
+                branch_name
+            ));
+        }
+
+        let spec = git::parse_remote_branch_spec(branch_name)
+            .context("Invalid remote branch format. Use <remote>/<branch>")?;
+
+        if spec.remote != *remote_name {
+            return Err(anyhow!("Mismatched remote detection"));
+        }
+
+        (Some(branch_name.to_string()), spec.branch)
+    } else {
+        (None, branch_name.to_string())
+    };
+
+    let resolved_base = if remote_branch.is_some() { None } else { base };
+
+    let cli_default_agent = multi.agent.first().map(|s| s.as_str());
+    let config = config::Config::load(cli_default_agent)?;
+
+    // Determine effective foreach matrix: CLI overrides frontmatter
+    let effective_foreach_rows = match (
+        &multi.foreach,
+        prompt_doc.as_ref().and_then(|d| d.meta.foreach.as_ref()),
+    ) {
+        (Some(cli_str), Some(_frontmatter_map)) => {
+            eprintln!("Warning: --foreach overrides prompt frontmatter");
+            Some(parse_foreach_matrix(cli_str)?)
+        }
+        (Some(cli_str), None) => Some(parse_foreach_matrix(cli_str)?),
+        (None, Some(frontmatter_map)) => Some(foreach_from_frontmatter(frontmatter_map)?),
+        (None, None) => None,
+    };
+
+    let specs = generate_worktree_specs(
+        &template_base_name,
+        &multi.agent,
+        multi.count,
+        effective_foreach_rows.as_deref(),
+        &env,
+        &multi.branch_template,
+    )?;
+
+    if specs.is_empty() {
+        return Err(anyhow!("No worktree specifications were generated"));
+    }
+
+    if specs.len() > 1 {
+        println!("Preparing to create {} worktrees...", specs.len());
+    }
+
+    for (i, spec) in specs.iter().enumerate() {
+        if specs.len() > 1 {
+            println!(
+                "\n--- [{}/{}] Creating worktree: {} ---",
+                i + 1,
+                specs.len(),
+                spec.branch_name
+            );
+        }
+
+        let prompt_for_spec = if let Some(ref doc) = prompt_doc {
+            Some(Prompt::Inline(
+                render_prompt_body(&doc.body, &env, &spec.template_context).with_context(|| {
+                    format!("Failed to render prompt for branch '{}'", spec.branch_name)
+                })?,
+            ))
+        } else {
+            None
+        };
+
+        if options.run_hooks && config.post_create.as_ref().is_some_and(|v| !v.is_empty()) {
+            println!("Running setup commands...");
+        }
+
+        let result = workflow::create(
+            &spec.branch_name,
+            resolved_base,
+            remote_branch.as_deref(),
+            prompt_for_spec.as_ref(),
+            &config,
+            options.clone(),
+            spec.agent.as_deref(),
+        )
+        .with_context(|| {
+            format!(
+                "Failed to create worktree environment for branch '{}'",
+                spec.branch_name
+            )
+        })?;
+
+        if result.post_create_hooks_run > 0 {
+            println!("✓ Setup complete");
+        }
+
+        println!(
+            "✓ Successfully created worktree and tmux window for '{}'",
+            result.branch_name
+        );
+        if let Some(ref base) = result.base_branch {
+            println!("  Base: {}", base);
+        }
+        println!("  Worktree: {}", result.worktree_path.display());
+    }
+
+    Ok(())
 }
 
 fn open_worktree(branch_name: &str, options: SetupOptions) -> Result<()> {
