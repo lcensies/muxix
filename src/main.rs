@@ -1,9 +1,12 @@
 mod claude;
 mod cli;
 mod cmd;
+mod command;
 mod config;
 mod git;
 mod logger;
+mod prompt;
+mod template;
 mod tmux;
 mod workflow;
 

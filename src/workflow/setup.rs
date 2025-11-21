@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{cli, cmd, config, git, tmux};
+use crate::{cmd, config, git, prompt::Prompt, tmux};
 use tracing::{debug, info, trace};
 
 use fs_extra::dir as fs_dir;
@@ -329,10 +329,10 @@ pub fn handle_file_operations(
     Ok(())
 }
 
-pub fn write_prompt_file(branch_name: &str, prompt: &cli::Prompt) -> Result<PathBuf> {
+pub fn write_prompt_file(branch_name: &str, prompt: &Prompt) -> Result<PathBuf> {
     let content = match prompt {
-        cli::Prompt::Inline(text) => text.clone(),
-        cli::Prompt::FromFile(path) => fs::read_to_string(path)
+        Prompt::Inline(text) => text.clone(),
+        Prompt::FromFile(path) => fs::read_to_string(path)
             .with_context(|| format!("Failed to read prompt file '{}'", path.display()))?,
     };
 

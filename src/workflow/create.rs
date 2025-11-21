@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::{cli, config, git, tmux};
+use crate::{config, git, prompt::Prompt, tmux};
 use tracing::{debug, info, warn};
 
 use super::setup;
@@ -12,7 +12,7 @@ pub fn create(
     branch_name: &str,
     base_branch: Option<&str>,
     remote_branch: Option<&str>,
-    prompt: Option<&cli::Prompt>,
+    prompt: Option<&Prompt>,
     config: &config::Config,
     options: SetupOptions,
     agent: Option<&str>,
