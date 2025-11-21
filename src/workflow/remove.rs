@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::{config, git, tmux};
+use crate::{config, git};
 use tracing::{debug, info};
 
 use super::cleanup;
@@ -88,12 +88,8 @@ pub fn remove(
         config,
     )?;
 
-    // Navigate to the main branch window if it exists
-    if tmux::is_running()? && tmux::window_exists(prefix, &main_branch)? {
-        tmux::select_window(prefix, &main_branch)?;
-    }
-
-    cleanup::schedule_window_close_if_needed(prefix, branch_name, &cleanup_result);
+    // Navigate to the main branch window and close the target window
+    cleanup::navigate_to_main_and_close(prefix, &main_branch, branch_name, &cleanup_result)?;
 
     Ok(RemoveResult {
         branch_removed: branch_name.to_string(),

@@ -112,6 +112,15 @@ pub fn kill_window(prefix: &str, window_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Execute a shell script via tmux run-shell
+pub fn run_shell(script: &str) -> Result<()> {
+    Cmd::new("tmux")
+        .args(&["run-shell", script])
+        .run()
+        .context("Failed to run shell command via tmux")?;
+    Ok(())
+}
+
 /// Schedule a tmux window to be killed after a short delay. This is useful when
 /// the current command is running inside the window that needs to close.
 pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -> Result<()> {
@@ -123,12 +132,7 @@ pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -
         window = prefixed_name
     );
 
-    Cmd::new("tmux")
-        .args(&["run-shell", &script])
-        .run()
-        .context("Failed to schedule tmux window close")?;
-
-    Ok(())
+    run_shell(&script)
 }
 
 /// Builds a shell command string for tmux that executes an optional user command
