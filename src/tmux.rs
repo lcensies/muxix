@@ -52,34 +52,45 @@ pub fn current_window_name() -> Result<Option<String>> {
     }
 }
 
-/// Create a new tmux window with the given name and working directory
+/// Create a new tmux window with the given name and working directory.
+/// Returns the pane ID of the initial pane in the window.
 pub fn create_window(
     prefix: &str,
     window_name: &str,
     working_dir: &Path,
     detached: bool,
-) -> Result<()> {
+) -> Result<String> {
     let prefixed_name = prefixed(prefix, window_name);
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
 
-    let cmd = Cmd::new("tmux").arg("new-window");
-    let cmd = if detached { cmd.arg("-d") } else { cmd };
-    cmd.args(&["-n", &prefixed_name, "-c", working_dir_str])
-        .run()
-        .context("Failed to create tmux window")?;
+    let mut cmd = Cmd::new("tmux").arg("new-window");
+    if detached {
+        cmd = cmd.arg("-d");
+    }
 
-    Ok(())
+    // Use -P to print pane info, -F to format output to just the pane ID
+    let pane_id = cmd
+        .args(&[
+            "-n",
+            &prefixed_name,
+            "-c",
+            working_dir_str,
+            "-P",
+            "-F",
+            "#{pane_id}",
+        ])
+        .run_and_capture_stdout()
+        .context("Failed to create tmux window and get pane ID")?;
+
+    Ok(pane_id.trim().to_string())
 }
 
-/// Select a specific pane
-pub fn select_pane(prefix: &str, window_name: &str, pane_index: usize) -> Result<()> {
-    let prefixed_name = prefixed(prefix, window_name);
-    let target = format!("={}.{}", prefixed_name, pane_index);
-
+/// Select a specific pane by its ID
+pub fn select_pane(pane_id: &str) -> Result<()> {
     Cmd::new("tmux")
-        .args(&["select-pane", "-t", &target])
+        .args(&["select-pane", "-t", pane_id])
         .run()
         .context("Failed to select pane")?;
 
@@ -203,24 +214,20 @@ pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
     Ok(Some(full_command))
 }
 
-/// Split a pane with optional command
+/// Split a pane with optional command and return the new pane's ID
 pub fn split_pane_with_command(
-    prefix: &str,
-    window_name: &str,
-    pane_index: usize,
+    target_pane_id: &str,
     direction: &SplitDirection,
     working_dir: &Path,
     command: Option<&str>,
     size: Option<u16>,
     percentage: Option<u8>,
-) -> Result<()> {
+) -> Result<String> {
     let split_arg = match direction {
         SplitDirection::Horizontal => "-h",
         SplitDirection::Vertical => "-v",
     };
 
-    let prefixed_name = prefixed(prefix, window_name);
-    let target = format!("={}.{}", prefixed_name, pane_index);
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
@@ -229,9 +236,12 @@ pub fn split_pane_with_command(
         "split-window",
         split_arg,
         "-t",
-        &target,
+        target_pane_id,
         "-c",
         working_dir_str,
+        "-P", // Print new pane info
+        "-F", // Format to get just the ID
+        "#{pane_id}",
     ]);
 
     let size_arg;
@@ -247,20 +257,15 @@ pub fn split_pane_with_command(
         cmd = cmd.arg(cmd_str);
     };
 
-    cmd.run().context("Failed to split pane")?;
-    Ok(())
+    let new_pane_id = cmd
+        .run_and_capture_stdout()
+        .context("Failed to split pane")?;
+
+    Ok(new_pane_id.trim().to_string())
 }
 
-/// Respawn a pane with a new command
-pub fn respawn_pane(
-    prefix: &str,
-    window_name: &str,
-    pane_index: usize,
-    working_dir: &Path,
-    command: &str,
-) -> Result<()> {
-    let prefixed_name = prefixed(prefix, window_name);
-    let target = format!("={}.{}", prefixed_name, pane_index);
+/// Respawn a pane with a new command by its ID
+pub fn respawn_pane(pane_id: &str, working_dir: &Path, command: &str) -> Result<()> {
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
@@ -269,7 +274,7 @@ pub fn respawn_pane(
         .args(&[
             "respawn-pane",
             "-t",
-            &target,
+            pane_id,
             "-c",
             working_dir_str,
             "-k",
@@ -283,8 +288,8 @@ pub fn respawn_pane(
 
 /// Result of setting up panes
 pub struct PaneSetupResult {
-    /// The index of the pane that should receive focus.
-    pub focus_pane_index: usize,
+    /// The ID of the pane that should receive focus.
+    pub focus_pane_id: String,
 }
 
 pub struct PaneSetupOptions<'a> {
@@ -294,8 +299,7 @@ pub struct PaneSetupOptions<'a> {
 
 /// Setup panes in a window according to configuration
 pub fn setup_panes(
-    prefix: &str,
-    window_name: &str,
+    initial_pane_id: &str,
     panes: &[PaneConfig],
     working_dir: &Path,
     pane_options: PaneSetupOptions<'_>,
@@ -304,14 +308,15 @@ pub fn setup_panes(
 ) -> Result<PaneSetupResult> {
     if panes.is_empty() {
         return Ok(PaneSetupResult {
-            focus_pane_index: 0,
+            focus_pane_id: initial_pane_id.to_string(),
         });
     }
 
-    let mut focus_pane_index: Option<usize> = None;
+    let mut focus_pane_id: Option<String> = None;
+    let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
     let effective_agent = task_agent.or(config.agent.as_deref());
 
-    // Handle the first pane (index 0), which already exists from window creation
+    // Handle the first pane (initial pane from window creation)
     if let Some(pane_config) = panes.first() {
         let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
             effective_agent.map(|agent_cmd| agent_cmd.to_string())
@@ -335,20 +340,21 @@ pub fn setup_panes(
         if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref())
             && let Some(startup_cmd) = build_startup_command(Some(cmd_str))?
         {
-            respawn_pane(prefix, window_name, 0, working_dir, &startup_cmd)?;
+            respawn_pane(initial_pane_id, working_dir, &startup_cmd)?;
         }
         if pane_config.focus {
-            focus_pane_index = Some(0);
+            focus_pane_id = Some(initial_pane_id.to_string());
         }
     }
 
-    let mut actual_pane_count = 1;
-
     // Create additional panes by splitting
-    for (_i, pane_config) in panes.iter().enumerate().skip(1) {
+    for pane_config in panes.iter().skip(1) {
         if let Some(ref direction) = pane_config.split {
-            // Determine which pane to split
-            let target_pane_to_split = pane_config.target.unwrap_or(actual_pane_count - 1);
+            // Determine which pane to split based on logical index, then get its ID
+            let target_pane_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+            let target_pane_id = pane_ids
+                .get(target_pane_idx)
+                .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_pane_idx))?;
 
             let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
                 effective_agent.map(|agent_cmd| agent_cmd.to_string())
@@ -371,10 +377,8 @@ pub fn setup_panes(
 
             let startup_cmd = build_startup_command(adjusted_command.as_ref().map(|c| c.as_ref()))?;
 
-            split_pane_with_command(
-                prefix,
-                window_name,
-                target_pane_to_split,
+            let new_pane_id = split_pane_with_command(
+                target_pane_id,
                 direction,
                 working_dir,
                 startup_cmd.as_deref(),
@@ -382,17 +386,16 @@ pub fn setup_panes(
                 pane_config.percentage,
             )?;
 
-            let new_pane_index = actual_pane_count;
-
             if pane_config.focus {
-                focus_pane_index = Some(new_pane_index);
+                focus_pane_id = Some(new_pane_id.clone());
             }
-            actual_pane_count += 1;
+            pane_ids.push(new_pane_id);
         }
     }
 
     Ok(PaneSetupResult {
-        focus_pane_index: focus_pane_index.unwrap_or(0),
+        // Default to the first pane if no focus is specified
+        focus_pane_id: focus_pane_id.unwrap_or_else(|| initial_pane_id.to_string()),
     })
 }
 

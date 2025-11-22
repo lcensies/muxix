@@ -60,8 +60,8 @@ pub fn setup_environment(
         );
     }
 
-    // Create tmux window once prep work is finished
-    tmux::create_window(
+    // Create tmux window and get the initial pane's ID
+    let initial_pane_id = tmux::create_window(
         prefix,
         branch_name,
         worktree_path,
@@ -70,6 +70,7 @@ pub fn setup_environment(
     .context("Failed to create tmux window")?;
     info!(
         branch = branch_name,
+        pane_id = %initial_pane_id,
         "setup_environment:tmux window created"
     );
 
@@ -77,8 +78,7 @@ pub fn setup_environment(
     let panes = config.panes.as_deref().unwrap_or(&[]);
     let resolved_panes = resolve_pane_configuration(panes, agent);
     let pane_setup_result = tmux::setup_panes(
-        prefix,
-        branch_name,
+        &initial_pane_id,
         &resolved_panes,
         worktree_path,
         tmux::PaneSetupOptions {
@@ -91,13 +91,13 @@ pub fn setup_environment(
     .context("Failed to setup panes")?;
     debug!(
         branch = branch_name,
-        focus_index = pane_setup_result.focus_pane_index,
+        focus_id = %pane_setup_result.focus_pane_id,
         "setup_environment:panes configured"
     );
 
     // Focus the configured pane and optionally switch to the window
     if options.focus_window {
-        tmux::select_pane(prefix, branch_name, pane_setup_result.focus_pane_index)?;
+        tmux::select_pane(&pane_setup_result.focus_pane_id)?;
         tmux::select_window(prefix, branch_name)?;
     } else {
         // Background mode: do not steal focus from the current window.
