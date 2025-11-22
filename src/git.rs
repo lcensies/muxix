@@ -532,6 +532,16 @@ pub fn reset_hard(worktree_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Abort a merge in progress in a specific worktree
+pub fn abort_merge_in_worktree(worktree_path: &Path) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["merge", "--abort"])
+        .run()
+        .context("Failed to abort merge. The worktree may not be in a merging state.")?;
+    Ok(())
+}
+
 /// Store the base branch/commit that a branch was created from
 pub fn set_branch_base(branch: &str, base: &str) -> Result<()> {
     Cmd::new("git")

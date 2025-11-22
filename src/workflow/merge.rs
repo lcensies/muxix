@@ -71,6 +71,22 @@ pub fn merge(
     // Explicitly switch to the main branch to ensure correct merge target
     git::switch_branch_in_worktree(&context.main_worktree_root, &context.main_branch)?;
 
+    // Helper closure to generate the error message for merge conflicts
+    let conflict_err = |branch: &str| -> anyhow::Error {
+        anyhow!(
+            "Merge failed due to conflicts. Main worktree kept clean.\n\n\
+            To resolve, update your branch in worktree at {}:\n\
+              git rebase {}  (recommended)\n\
+            Or:\n\
+              git merge {}\n\n\
+            After resolving conflicts, retry: workmux merge {}",
+            worktree_path.display(),
+            &context.main_branch,
+            &context.main_branch,
+            branch
+        )
+    };
+
     if rebase {
         // Rebase the feature branch on top of main inside its own worktree.
         // This is where conflicts will be detected.
@@ -98,8 +114,13 @@ pub fn merge(
         info!(branch = branch_to_merge, "merge:fast-forward complete");
     } else if squash {
         // Perform the squash merge. This stages all changes from the feature branch but does not commit.
-        git::merge_squash_in_worktree(&context.main_worktree_root, branch_to_merge)
-            .context("Failed to perform squash merge")?;
+        if let Err(e) = git::merge_squash_in_worktree(&context.main_worktree_root, branch_to_merge)
+        {
+            info!(branch = branch_to_merge, error = %e, "merge:squash merge failed, resetting main worktree");
+            // Best effort to reset; ignore failure as the user message is the priority.
+            let _ = git::reset_hard(&context.main_worktree_root);
+            return Err(conflict_err(branch_to_merge));
+        }
 
         // Prompt the user to provide a commit message for the squashed changes.
         println!("Staged squashed changes. Please provide a commit message in your editor.");
@@ -108,8 +129,12 @@ pub fn merge(
         info!(branch = branch_to_merge, "merge:squash merge committed");
     } else {
         // Default merge commit workflow
-        git::merge_in_worktree(&context.main_worktree_root, branch_to_merge)
-            .context("Failed to merge branch")?;
+        if let Err(e) = git::merge_in_worktree(&context.main_worktree_root, branch_to_merge) {
+            info!(branch = branch_to_merge, error = %e, "merge:standard merge failed, aborting merge in main worktree");
+            // Best effort to abort; ignore failure as the user message is the priority.
+            let _ = git::abort_merge_in_worktree(&context.main_worktree_root);
+            return Err(conflict_err(branch_to_merge));
+        }
         info!(branch = branch_to_merge, "merge:standard merge complete");
     }
 
