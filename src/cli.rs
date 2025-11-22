@@ -141,6 +141,10 @@ enum Commands {
         /// Squash all commits from the branch into a single commit on the main branch
         #[arg(long, group = "merge_strategy")]
         squash: bool,
+
+        /// Keep the worktree, window, and branch after merging (skip cleanup)
+        #[arg(short = 'k', long, conflicts_with = "delete_remote")]
+        keep: bool,
     },
 
     /// Remove a worktree, tmux window, and branch without merging
@@ -214,12 +218,14 @@ pub fn run() -> Result<()> {
             delete_remote,
             rebase,
             squash,
+            keep,
         } => command::merge::run(
             branch_name.as_deref(),
             ignore_uncommitted,
             delete_remote,
             rebase,
             squash,
+            keep,
         ),
         Commands::Remove {
             branch_name,

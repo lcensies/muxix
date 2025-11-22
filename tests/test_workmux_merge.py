@@ -240,3 +240,35 @@ def test_merge_fails_if_main_worktree_has_uncommitted_changes(
     run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, expect_fail=True)
 
     assert worktree_path.exists(), "Worktree should remain when merge fails"
+
+
+def test_merge_with_keep_flag_skips_cleanup(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies --keep flag merges without cleaning up worktree, window, or branch."""
+    env = isolated_tmux_server
+    branch_name = "feature-to-keep"
+    window_name = get_window_name(branch_name)
+    write_workmux_config(repo_path, env=env)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    commit_msg = "feat: add feature"
+    create_commit(env, worktree_path, commit_msg)
+
+    commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=worktree_path
+    ).stdout.strip()
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, keep=True)
+
+    # Verify the merge happened
+    log_result = env.run_command(["git", "log", "--oneline", "main"])
+    assert commit_hash in log_result.stdout, "Feature commit should be on main branch"
+
+    # Verify cleanup did NOT happen
+    assert worktree_path.exists(), "Worktree should still exist with --keep"
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert window_name in list_windows_result.stdout, "Tmux window should still exist"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name in branch_list_result.stdout, "Local branch should still exist"

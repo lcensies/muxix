@@ -494,6 +494,8 @@ resources (worktree, tmux window, and local branch).
   opening an editor
 - `--delete-remote`, `-r`: Also delete the remote branch after a successful
   merge
+- `--keep`, `-k`: Keep the worktree, window, and branch after merging (skip
+  cleanup). Useful when you want to verify the merge before cleaning up.
 
 #### Merge strategies
 
@@ -516,9 +518,9 @@ the merge behavior with these mutually exclusive flags:
 4. Merges your branch into main using the selected strategy (default: merge
    commit)
 5. Deletes the tmux window (including the one you're currently in if you ran
-   this from a worktree)
-6. Removes the worktree
-7. Deletes the local branch
+   this from a worktree) — skipped if `--keep` is used
+6. Removes the worktree — skipped if `--keep` is used
+7. Deletes the local branch — skipped if `--keep` is used
 
 #### Typical workflow
 
@@ -544,6 +546,11 @@ workmux merge user-auth --squash
 
 # Merge and also delete the remote branch
 workmux merge user-auth --delete-remote
+
+# Merge but keep the worktree/window/branch to verify before cleanup
+workmux merge user-auth --keep
+# ... verify the merge in main ...
+workmux remove user-auth  # clean up later when ready
 ```
 
 ---

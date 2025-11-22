@@ -551,6 +551,7 @@ def run_workmux_merge(
     delete_remote: bool = False,
     rebase: bool = False,
     squash: bool = False,
+    keep: bool = False,
     expect_fail: bool = False,
     from_window: Optional[str] = None,
 ) -> None:
@@ -569,6 +570,7 @@ def run_workmux_merge(
         delete_remote: Whether to use --delete-remote flag
         rebase: Whether to use --rebase flag
         squash: Whether to use --squash flag
+        keep: Whether to use --keep flag
         expect_fail: If True, asserts the command fails (non-zero exit code)
         from_window: Optional tmux window name to run the command from
     """
@@ -589,6 +591,8 @@ def run_workmux_merge(
         flags.append("--rebase")
     if squash:
         flags.append("--squash")
+    if keep:
+        flags.append("--keep")
 
     branch_arg = branch_name if branch_name else ""
     flags_str = " ".join(flags)

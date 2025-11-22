@@ -14,11 +14,12 @@ pub fn merge(
     delete_remote: bool,
     rebase: bool,
     squash: bool,
+    keep: bool,
     context: &WorkflowContext,
 ) -> Result<MergeResult> {
     info!(
         branch = branch_name,
-        ignore_uncommitted, delete_remote, rebase, squash, "merge:start"
+        ignore_uncommitted, delete_remote, rebase, squash, keep, "merge:start"
     );
 
     // Change CWD to main worktree to prevent errors if the command is run from within
@@ -112,7 +113,27 @@ pub fn merge(
         info!(branch = branch_to_merge, "merge:standard merge complete");
     }
 
+    // Skip cleanup if --keep flag is used
+    if keep {
+        info!(branch = branch_to_merge, "merge:skipping cleanup (--keep)");
+        return Ok(MergeResult {
+            branch_merged: branch_to_merge.to_string(),
+            main_branch: context.main_branch.clone(),
+            had_staged_changes,
+        });
+    }
+
     // Always force cleanup after a successful merge
+    // Print status if there are pre-delete hooks
+    if context
+        .config
+        .pre_delete
+        .as_ref()
+        .is_some_and(|v| !v.is_empty())
+    {
+        println!("Running pre-delete commands...");
+    }
+
     info!(
         branch = branch_to_merge,
         delete_remote, "merge:cleanup start"

@@ -8,6 +8,7 @@ pub fn run(
     delete_remote: bool,
     rebase: bool,
     squash: bool,
+    keep: bool,
 ) -> Result<()> {
     let config = config::Config::load(None)?;
 
@@ -17,7 +18,10 @@ pub fn run(
 
     let context = WorkflowContext::new(config)?;
 
-    super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
+    // Only announce pre-delete hooks if we're actually going to run cleanup
+    if !keep {
+        super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
+    }
 
     let result = workflow::merge(
         &branch_to_merge,
@@ -25,6 +29,7 @@ pub fn run(
         delete_remote,
         rebase,
         squash,
+        keep,
         &context,
     )
     .context("Failed to merge worktree")?;
@@ -39,10 +44,14 @@ pub fn run(
     );
     println!("✓ Merged '{}'", result.branch_merged);
 
-    println!(
-        "✓ Successfully merged and cleaned up '{}'",
-        result.branch_merged
-    );
+    if keep {
+        println!("Worktree, window, and branch kept (--keep)");
+    } else {
+        println!(
+            "✓ Successfully merged and cleaned up '{}'",
+            result.branch_merged
+        );
+    }
 
     Ok(())
 }
