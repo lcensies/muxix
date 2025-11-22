@@ -45,7 +45,7 @@ pub fn run(
     println!("✓ Merged '{}'", result.branch_merged);
 
     if keep {
-        println!("Worktree, window, and branch kept (--keep)");
+        println!("Worktree, window, and branch kept");
     } else {
         println!(
             "✓ Successfully merged and cleaned up '{}'",
