@@ -830,7 +830,8 @@ setup:
 In a standard Git setup, switching branches disrupts your flow by requiring a
 clean working tree. Worktrees remove this friction. `workmux` automates the
 entire process and pairs each worktree with a dedicated tmux window, creating
-fully isolated development environments.
+fully isolated development environments. See [Why workmux?](#why-workmux) for
+how workmux streamlines this workflow.
 
 ## Git worktree caveats
 
