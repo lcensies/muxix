@@ -1,4 +1,4 @@
-use crate::{config, git, workflow};
+use crate::{config, workflow};
 use anyhow::{Context, Result};
 
 pub fn run(
@@ -10,15 +10,8 @@ pub fn run(
 ) -> Result<()> {
     let config = config::Config::load(None)?;
 
-    // Determine the branch to merge
-    // Note: If running without branch name, we must get current branch BEFORE workflow::merge
-    // changes the CWD (since it moves to main worktree for safety)
-    let branch_to_merge = if let Some(name) = branch_name {
-        name.to_string()
-    } else {
-        // Running from within a worktree - get current branch
-        git::get_current_branch().context("Failed to get current branch")?
-    };
+    // Resolve branch name from argument or current branch
+    let branch_to_merge = super::resolve_branch(branch_name, "merge")?;
 
     super::announce_hooks(&config, None, super::HookPhase::PreDelete);
 

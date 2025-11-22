@@ -5,8 +5,8 @@ pub mod merge;
 pub mod open;
 pub mod remove;
 
-use crate::config::Config;
-use crate::workflow::SetupOptions;
+use crate::{config::Config, git, workflow::SetupOptions};
+use anyhow::{Context, Result};
 
 /// Represents the different phases where hooks can be executed
 pub enum HookPhase {
@@ -35,5 +35,15 @@ pub fn announce_hooks(config: &Config, options: Option<&SetupOptions>, phase: Ho
             }
             should_run
         }
+    }
+}
+
+/// Resolve the branch name from CLI argument or current branch.
+/// Note: Must be called BEFORE workflow operations that change CWD (like merge/remove).
+pub fn resolve_branch(arg: Option<&str>, operation: &str) -> Result<String> {
+    match arg {
+        Some(name) => Ok(name.to_string()),
+        None => git::get_current_branch()
+            .with_context(|| format!("Failed to get current branch for {} operation", operation)),
     }
 }

@@ -8,15 +8,8 @@ pub fn run(
     delete_remote: bool,
     keep_branch: bool,
 ) -> Result<()> {
-    // Determine the branch to remove
-    // Note: If running without branch name, we must get current branch BEFORE workflow::remove
-    // changes the CWD (since it moves to main worktree for safety)
-    let branch_to_remove = if let Some(name) = branch_name {
-        name.to_string()
-    } else {
-        // Running from within a worktree - get current branch
-        git::get_current_branch().context("Failed to get current branch")?
-    };
+    // Resolve branch name from argument or current branch
+    let branch_to_remove = super::resolve_branch(branch_name, "remove")?;
 
     // Handle user confirmation prompt if needed (before calling workflow)
     if !force {
