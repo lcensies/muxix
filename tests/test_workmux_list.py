@@ -29,21 +29,23 @@ def parse_list_output(output: str) -> List[Dict[str, str]]:
     Parses the tabular output of `workmux list` into a list of dictionaries.
     This parser is robust to variable column widths.
     """
-    lines = output.strip().split("\n")
-    if len(lines) < 2:  # Header + separator at minimum
+    lines = [line.rstrip() for line in output.strip().split("\n")]
+    if len(lines) < 1:  # Header at minimum
         return []
 
     header = lines[0]
     # Use regex to find column headers, robust against extra spaces
-    columns = re.split(r"\s{2,}", header)
-    columns = [c.strip() for c in columns]
+    columns = re.split(r"\s{2,}", header.strip())
+    columns = [c.strip() for c in columns if c.strip()]
 
     # Find the start index of each column in the header string
     indices = [header.find(col) for col in columns]
 
     results = []
-    # Data rows start after the header and separator line
-    for row_str in lines[2:]:
+    # Data rows start after the header (no separator line in blank style)
+    for row_str in lines[1:]:
+        if not row_str.strip():  # Skip empty lines
+            continue
         row_data = {}
         for i, col_name in enumerate(columns):
             start = indices[i]
@@ -68,15 +70,29 @@ def test_list_output_format(
     output = run_workmux_list(env, workmux_exe_path, repo_path)
     worktree_path = get_worktree_path(repo_path, branch_name)
 
-    # Assert the exact visual output
-    expected = (
-        f"BRANCH          TMUX    UNMERGED    PATH\n"
-        f"------------    ----    --------    ----\n"
-        f"main            -       -           {repo_path.resolve()}\n"
-        f"feature-test    ✓       -           {worktree_path.resolve()}\n"
-    )
+    # Parse and verify the output contains the expected data
+    parsed_output = parse_list_output(output)
+    assert len(parsed_output) == 2
 
-    assert output == expected
+    # Verify header is present
+    assert "BRANCH" in output
+    assert "TMUX" in output
+    assert "UNMERGED" in output
+    assert "PATH" in output
+
+    # Verify main branch entry
+    main_entry = next((r for r in parsed_output if r["BRANCH"] == "main"), None)
+    assert main_entry is not None
+    assert main_entry["TMUX"] == "-"
+    assert main_entry["UNMERGED"] == "-"
+    assert Path(main_entry["PATH"]) == repo_path.resolve()
+
+    # Verify feature branch entry
+    feature_entry = next((r for r in parsed_output if r["BRANCH"] == branch_name), None)
+    assert feature_entry is not None
+    assert feature_entry["TMUX"] == "✓"
+    assert feature_entry["UNMERGED"] == "-"
+    assert Path(feature_entry["PATH"]) == worktree_path.resolve()
 
 
 def test_list_initial_state(

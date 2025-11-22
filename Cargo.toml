@@ -27,6 +27,7 @@ tracing-appender = "0.2"
 edit = "0.1"
 which = "8.0"
 minijinja = "2.0"
+tabled = "0.20"
 
 [dev-dependencies]
 tempfile = "3.14"
