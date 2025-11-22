@@ -20,10 +20,7 @@ pub fn run(
         git::get_current_branch().context("Failed to get current branch")?
     };
 
-    // Print status if there are pre-delete hooks
-    if config.pre_delete.as_ref().is_some_and(|v| !v.is_empty()) {
-        println!("Running pre-delete commands...");
-    }
+    super::announce_hooks(&config, None, super::HookPhase::PreDelete);
 
     let result = workflow::merge(
         Some(&branch_to_merge),

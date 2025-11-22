@@ -254,9 +254,7 @@ fn create_worktrees_from_specs(
             None
         };
 
-        if options.run_hooks && config.post_create.as_ref().is_some_and(|v| !v.is_empty()) {
-            println!("Running setup commands...");
-        }
+        super::announce_hooks(config, Some(&options), super::HookPhase::PostCreate);
 
         let result = workflow::create(
             &spec.branch_name,

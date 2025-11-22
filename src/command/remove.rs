@@ -91,10 +91,7 @@ pub fn run(
 
     let config = config::Config::load(None)?;
 
-    // Print status if there are pre-delete hooks
-    if config.pre_delete.as_ref().is_some_and(|v| !v.is_empty()) {
-        println!("Running pre-delete commands...");
-    }
+    super::announce_hooks(&config, None, super::HookPhase::PreDelete);
 
     let result = workflow::remove(
         &branch_to_remove,
