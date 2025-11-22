@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::{git, prompt::Prompt, tmux};
 use tracing::{debug, info, warn};
 
+use super::cleanup;
 use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
@@ -269,8 +270,24 @@ pub fn create_with_changes(
             // 5. Failure: Rollback
             warn!(error = %e, "create_with_changes: failed to apply stash, rolling back");
 
-            super::remove::remove(branch_name, true, false, false, context).context(
+            let cleanup_result = cleanup::cleanup(
+                context,
+                branch_name,
+                &create_result.worktree_path,
+                true,  // force
+                false, // delete_remote
+                false, // keep_branch
+            )
+            .context(
                 "Rollback failed: could not clean up the new worktree. Please do so manually.",
+            )?;
+
+            // Handle tmux window navigation/closing based on whether we're inside the target window
+            cleanup::navigate_to_main_and_close(
+                &context.prefix,
+                &context.main_branch,
+                branch_name,
+                &cleanup_result,
             )?;
 
             Err(anyhow!(

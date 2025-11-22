@@ -9,7 +9,11 @@ pub fn run(branch_name: &str, run_hooks: bool, force_files: bool) -> Result<()> 
     // Construct setup options (pane commands always run on open)
     let options = SetupOptions::new(run_hooks, force_files, true);
 
-    super::announce_hooks(&context.config, Some(&options), super::HookPhase::PostCreate);
+    super::announce_hooks(
+        &context.config,
+        Some(&options),
+        super::HookPhase::PostCreate,
+    );
 
     let result = workflow::open(branch_name, &context, options)
         .context("Failed to open worktree environment")?;
