@@ -130,7 +130,7 @@ fn check_unmerged_commits(branch_name: &str, delete_remote: bool) -> Result<User
     let unmerged_branches = git::get_unmerged_branches(&base_branch)
         .with_context(|| format!("Failed to get unmerged branches for base '{}'", base_branch))?;
 
-    let has_unmerged = unmerged_branches.contains(&branch_name.to_string());
+    let has_unmerged = unmerged_branches.contains(branch_name);
 
     if has_unmerged {
         prompt_unmerged_confirmation(branch_name, &base_branch, &base, delete_remote)

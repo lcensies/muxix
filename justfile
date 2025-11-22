@@ -8,7 +8,7 @@ default:
     @just --list
 
 # Run format, clippy-fix, build, unit tests, and integration tests
-check: parallel-checks test
+check: parallel-checks clippy test
 
 # Run format, clippy-fix, build, unit tests, ruff, and pyright in parallel
 [parallel]
@@ -19,9 +19,9 @@ format:
     cargo fmt --all
     ruff format tests --quiet
 
-# Run clippy with all warnings
+# Run clippy and fail on any warnings
 clippy:
-    cargo clippy -- -W clippy::all
+    cargo clippy -- -D clippy::all
 
 # Auto-fix clippy warnings
 clippy-fix:
