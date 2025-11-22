@@ -1,3 +1,4 @@
+use crate::workflow::WorkflowContext;
 use crate::{config, workflow};
 use anyhow::{Context, Result};
 
@@ -11,17 +12,20 @@ pub fn run(
     let config = config::Config::load(None)?;
 
     // Resolve branch name from argument or current branch
+    // Note: Must be done BEFORE creating WorkflowContext (which may change CWD)
     let branch_to_merge = super::resolve_branch(branch_name, "merge")?;
 
-    super::announce_hooks(&config, None, super::HookPhase::PreDelete);
+    let context = WorkflowContext::new(config)?;
+
+    super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
 
     let result = workflow::merge(
-        Some(&branch_to_merge),
+        &branch_to_merge,
         ignore_uncommitted,
         delete_remote,
         rebase,
         squash,
-        &config,
+        &context,
     )
     .context("Failed to merge worktree")?;
 

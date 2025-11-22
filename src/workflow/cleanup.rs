@@ -2,22 +2,22 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use std::{thread, time::Duration};
 
-use crate::{cmd, config, git, tmux};
+use crate::{cmd, git, tmux};
 use tracing::{debug, info, warn};
 
+use super::context::WorkflowContext;
 use super::types::CleanupResult;
 
 const WINDOW_CLOSE_DELAY_MS: u64 = 300;
 
 /// Centralized function to clean up tmux and git resources
 pub fn cleanup(
-    prefix: &str,
+    context: &WorkflowContext,
     branch_name: &str,
     worktree_path: &Path,
     force: bool,
     delete_remote: bool,
     keep_branch: bool,
-    config: &config::Config,
 ) -> Result<CleanupResult> {
     info!(
         branch = branch_name,
@@ -30,20 +30,12 @@ pub fn cleanup(
     // Change the CWD to main worktree before any destructive operations.
     // This prevents "Unable to read current working directory" errors when the command
     // is run from within the worktree being deleted.
-    let main_worktree_root = git::get_main_worktree_root()
-        .context("Could not find main worktree to run cleanup operations")?;
-    debug!(safe_cwd = %main_worktree_root.display(), "cleanup:changing to main worktree");
-    std::env::set_current_dir(&main_worktree_root).with_context(|| {
-        format!(
-            "Could not change directory to '{}'",
-            main_worktree_root.display()
-        )
-    })?;
+    context.chdir_to_main_worktree()?;
 
     let tmux_running = tmux::is_running().unwrap_or(false);
     let running_inside_target_window = if tmux_running {
         match tmux::current_window_name() {
-            Ok(Some(current_name)) => current_name == tmux::prefixed(prefix, branch_name),
+            Ok(Some(current_name)) => current_name == tmux::prefixed(&context.prefix, branch_name),
             _ => false,
         }
     } else {
@@ -63,7 +55,7 @@ pub fn cleanup(
     // This avoids code duplication while enforcing the correct operational order.
     let perform_fs_git_cleanup = |result: &mut CleanupResult| -> Result<()> {
         // Run pre-delete hooks before removing the worktree directory
-        if let Some(pre_delete_hooks) = &config.pre_delete {
+        if let Some(pre_delete_hooks) = &context.config.pre_delete {
             info!(
                 branch = branch_name,
                 count = pre_delete_hooks.len(),
@@ -139,8 +131,9 @@ pub fn cleanup(
     } else {
         // Not running inside the target window, so we kill the window first
         // to release any shell locks on the directory.
-        if tmux_running && tmux::window_exists(prefix, branch_name).unwrap_or(false) {
-            tmux::kill_window(prefix, branch_name).context("Failed to kill tmux window")?;
+        if tmux_running && tmux::window_exists(&context.prefix, branch_name).unwrap_or(false) {
+            tmux::kill_window(&context.prefix, branch_name)
+                .context("Failed to kill tmux window")?;
             result.tmux_window_killed = true;
             info!(branch = branch_name, "cleanup:tmux window killed");
 
@@ -151,7 +144,7 @@ pub fn cleanup(
             const RETRY_DELAY: Duration = Duration::from_millis(50);
             let mut window_is_gone = false;
             for _ in 0..MAX_RETRIES {
-                if !tmux::window_exists(prefix, branch_name)? {
+                if !tmux::window_exists(&context.prefix, branch_name)? {
                     window_is_gone = true;
                     break;
                 }

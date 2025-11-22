@@ -1,15 +1,16 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::{config, git, tmux};
+use crate::{git, tmux};
 use tracing::info;
 
+use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
 
 /// Open a tmux window for an existing worktree
 pub fn open(
     branch_name: &str,
-    config: &config::Config,
+    context: &WorkflowContext,
     options: SetupOptions,
 ) -> Result<CreateResult> {
     info!(
@@ -20,27 +21,18 @@ pub fn open(
     );
 
     // Validate pane config before any other operations
-    if let Some(panes) = &config.panes {
-        config::validate_panes_config(panes)?;
+    if let Some(panes) = &context.config.panes {
+        crate::config::validate_panes_config(panes)?;
     }
 
     // Pre-flight checks
-    if !git::is_git_repo()? {
-        return Err(anyhow!("Not in a git repository"));
-    }
+    context.ensure_tmux_running()?;
 
-    if !tmux::is_running()? {
-        return Err(anyhow!(
-            "tmux is not running. Please start a tmux session first."
-        ));
-    }
-
-    let prefix = config.window_prefix();
-    if tmux::window_exists(prefix, branch_name)? {
+    if tmux::window_exists(&context.prefix, branch_name)? {
         return Err(anyhow!(
             "A tmux window named '{}' already exists. To switch to it, run: tmux select-window -t '{}'",
             branch_name,
-            tmux::prefixed(prefix, branch_name)
+            tmux::prefixed(&context.prefix, branch_name)
         ));
     }
 
@@ -53,7 +45,8 @@ pub fn open(
     })?;
 
     // Setup the environment
-    let result = setup::setup_environment(branch_name, &worktree_path, config, &options, None)?;
+    let result =
+        setup::setup_environment(branch_name, &worktree_path, &context.config, &options, None)?;
     info!(
         branch = branch_name,
         path = %result.worktree_path.display(),

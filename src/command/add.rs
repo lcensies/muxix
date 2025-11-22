@@ -34,10 +34,10 @@ pub fn run(
     }
 
     // Handle rescue flow early if requested
-    // Load config with first agent (or None) for rescue flow only
     if rescue.with_changes {
         let rescue_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
-        if handle_rescue_flow(branch_name, &rescue, &rescue_config, options.clone())? {
+        let rescue_context = workflow::WorkflowContext::new(rescue_config)?;
+        if handle_rescue_flow(branch_name, &rescue, &rescue_context, options.clone())? {
             return Ok(());
         }
     }
@@ -128,7 +128,7 @@ pub fn run(
 fn handle_rescue_flow(
     branch_name: &str,
     rescue: &RescueArgs,
-    config: &config::Config,
+    context: &workflow::WorkflowContext,
     options: SetupOptions,
 ) -> Result<bool> {
     if !rescue.with_changes {
@@ -139,7 +139,7 @@ fn handle_rescue_flow(
         branch_name,
         rescue.include_untracked,
         rescue.patch,
-        config,
+        context,
         options,
     )
     .context("Failed to move uncommitted changes")?;
@@ -267,12 +267,15 @@ fn create_worktrees_from_specs(
 
         super::announce_hooks(&config, Some(&options), super::HookPhase::PostCreate);
 
+        // Create a WorkflowContext for this spec's config
+        let context = workflow::WorkflowContext::new(config)?;
+
         let result = workflow::create(
             &spec.branch_name,
             resolved_base,
             remote_branch,
             prompt_for_spec.as_ref(),
-            &config,
+            &context,
             options.clone(),
             spec.agent.as_deref(),
         )

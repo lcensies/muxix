@@ -1,9 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::{config, git, prompt::Prompt, tmux};
+use crate::{git, prompt::Prompt, tmux};
 use tracing::{debug, info, warn};
 
+use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
 
@@ -13,7 +14,7 @@ pub fn create(
     base_branch: Option<&str>,
     remote_branch: Option<&str>,
     prompt: Option<&Prompt>,
-    config: &config::Config,
+    context: &WorkflowContext,
     options: SetupOptions,
     agent: Option<&str>,
 ) -> Result<CreateResult> {
@@ -25,23 +26,14 @@ pub fn create(
     );
 
     // Validate pane config before any other operations
-    if let Some(panes) = &config.panes {
-        config::validate_panes_config(panes)?;
+    if let Some(panes) = &context.config.panes {
+        crate::config::validate_panes_config(panes)?;
     }
 
     // Pre-flight checks
-    if !git::is_git_repo()? {
-        return Err(anyhow!("Not in a git repository"));
-    }
+    context.ensure_tmux_running()?;
 
-    if !tmux::is_running()? {
-        return Err(anyhow!(
-            "tmux is not running. Please start a tmux session first."
-        ));
-    }
-
-    let prefix = config.window_prefix();
-    if tmux::window_exists(prefix, branch_name)? {
+    if tmux::window_exists(&context.prefix, branch_name)? {
         return Err(anyhow!(
             "A tmux window named '{}' already exists",
             branch_name
@@ -116,23 +108,24 @@ pub fn create(
     };
 
     // Determine worktree path: use config.worktree_dir or default to <project>__worktrees pattern
-    let repo_root = git::get_repo_root()?;
-    let base_dir = if let Some(ref worktree_dir) = config.worktree_dir {
+    let base_dir = if let Some(ref worktree_dir) = context.config.worktree_dir {
         let path = Path::new(worktree_dir);
         if path.is_absolute() {
             // Use absolute path as-is
             path.to_path_buf()
         } else {
             // Relative path: resolve from repo root
-            repo_root.join(path)
+            context.repo_root.join(path)
         }
     } else {
         // Default behavior: <project_root>/../<project_name>__worktrees
-        let project_name = repo_root
+        let project_name = context
+            .repo_root
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow!("Could not determine project name"))?;
-        repo_root
+        context
+            .repo_root
             .parent()
             .ok_or_else(|| anyhow!("Could not determine parent directory"))?
             .join(format!("{}__worktrees", project_name))
@@ -187,7 +180,7 @@ pub fn create(
     let mut result = setup::setup_environment(
         branch_name,
         &worktree_path,
-        config,
+        &context.config,
         &options_with_prompt,
         agent,
     )?;
@@ -206,7 +199,7 @@ pub fn create_with_changes(
     branch_name: &str,
     include_untracked: bool,
     patch: bool,
-    config: &config::Config,
+    context: &WorkflowContext,
     options: SetupOptions,
 ) -> Result<CreateResult> {
     info!(
@@ -214,12 +207,9 @@ pub fn create_with_changes(
         include_untracked, patch, "create_with_changes:start"
     );
 
-    // Pre-flight Checks
-    if !git::is_git_repo()? {
-        return Err(anyhow!("Not in a git repository"));
-    }
-
-    let original_worktree_path = git::get_repo_root()?;
+    // Capture the current working directory, which is the worktree with the changes.
+    let original_worktree_path = std::env::current_dir()
+        .context("Failed to get current working directory to rescue changes from")?;
 
     // Check for changes based on the include_untracked flag
     let has_tracked_changes = git::has_tracked_changes(&original_worktree_path)?;
@@ -244,7 +234,7 @@ pub fn create_with_changes(
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
     // 2. Create new worktree
-    let create_result = match create(branch_name, None, None, None, config, options, None) {
+    let create_result = match create(branch_name, None, None, None, context, options, None) {
         Ok(result) => result,
         Err(e) => {
             warn!(error = %e, "create_with_changes: worktree creation failed, popping stash");
@@ -279,7 +269,7 @@ pub fn create_with_changes(
             // 5. Failure: Rollback
             warn!(error = %e, "create_with_changes: failed to apply stash, rolling back");
 
-            super::remove::remove(branch_name, true, false, false, config).context(
+            super::remove::remove(branch_name, true, false, false, context).context(
                 "Rollback failed: could not clean up the new worktree. Please do so manually.",
             )?;
 

@@ -1,3 +1,4 @@
+use crate::workflow::WorkflowContext;
 use crate::{config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use std::io::{self, Write};
@@ -26,15 +27,16 @@ pub fn run(
         };
 
     let config = config::Config::load(None)?;
+    let context = WorkflowContext::new(config)?;
 
-    super::announce_hooks(&config, None, super::HookPhase::PreDelete);
+    super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
 
     let result = workflow::remove(
         &branch_to_remove,
         effective_force,
         delete_remote,
         keep_branch,
-        &config,
+        &context,
     )
     .context("Failed to remove worktree")?;
 

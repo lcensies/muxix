@@ -1,5 +1,6 @@
 // Module declarations
 mod cleanup;
+mod context;
 mod create;
 mod list;
 mod merge;
@@ -16,4 +17,5 @@ pub use open::open;
 pub use remove::remove;
 
 // Re-export commonly used types for convenience
+pub use context::WorkflowContext;
 pub use types::SetupOptions;
