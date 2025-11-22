@@ -376,9 +376,9 @@ prompts can be templated with variables.
   with a single `--agent` flag to apply that agent to all instances.
 - `--foreach <matrix>`: Creates worktrees from a variable matrix string. The
   format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the
-  same length. Values are paired by index position (zip, not Cartesian
-  product): the first value of each variable goes together, the second with the
-  second, etc.
+  same length. Values are paired by index position (zip, not Cartesian product):
+  the first value of each variable goes together, the second with the second,
+  etc.
 - `--branch-template <template>`: A
   [MiniJinja](https://docs.rs/minijinja/latest/minijinja/) (Jinja2-compatible)
   template for generating branch names.
@@ -395,10 +395,10 @@ mode to create unique prompts for each agent or instance.
 
 ##### Variable matrices in prompt files
 
-Instead of passing `--foreach` on the command line, you can specify the
-variable matrix directly in your prompt file using YAML frontmatter. This is
-more convenient for complex matrices and keeps the variables close to the
-prompt that uses them.
+Instead of passing `--foreach` on the command line, you can specify the variable
+matrix directly in your prompt file using YAML frontmatter. This is more
+convenient for complex matrices and keeps the variables close to the prompt that
+uses them.
 
 **Format:**
 
@@ -413,8 +413,8 @@ foreach:
   lang: [swift, kotlin]
 ---
 
-Build a {{ platform }} app using {{ lang }}.
-Implement user authentication and data persistence.
+Build a {{ platform }} app using {{ lang }}. Implement user authentication and
+data persistence.
 ```
 
 ```bash
@@ -811,22 +811,38 @@ workmux merge feature/new-api
 
 ## Why git worktrees?
 
-[Git worktrees](https://git-scm.com/docs/git-worktree) enable parallel
-development by giving each branch its own isolated working directory.
+[Git worktrees](https://git-scm.com/docs/git-worktree) let you have multiple
+branches checked out at once in the same repository, each in a separate
+directory. This provides two main advantages over a standard single-directory
+setup:
 
-- Zero-friction context switching: Switch between branches without stashing or
-  cleanup - your work stays exactly as you left it
-- Parallel workflows: Multiple branches can be actively worked on simultaneously
-  without conflicts from build artifacts, test failures, or dependencies
+- **Painless context switching**: Switch between tasks just by changing
+  directories (`cd ../other-branch`). There's no need to `git stash` or make
+  temporary commits. Your work-in-progress, editor state, and command history
+  remain isolated and intact for each branch.
 
-Without worktrees, parallel work requires complex tooling or constant
-stash/commit/checkout cycles. With worktrees, it's just switching directories.
+- **True parallel development**: Work on multiple branches simultaneously
+  without interference. You can run builds, install dependencies
+  (`npm install`), or run tests in one worktree while actively coding in
+  another. This isolation is perfect for running multiple AI agents in parallel
+  on different tasks.
+
+In a standard Git setup, switching branches disrupts your flow by requiring a
+clean working tree. Worktrees remove this friction. `workmux` automates the
+entire process and pairs each worktree with a dedicated tmux window, creating
+fully isolated development environments.
 
 ## Git worktree caveats
 
 While powerful, git worktrees have nuances that are important to understand.
 workmux is designed to automate solutions to these, but awareness of the
 underlying mechanics helps.
+
+- [Gitignored files require configuration](#gitignored-files-require-configuration)
+- [Conflicts](#conflicts)
+- [Package manager considerations (pnpm, yarn)](#package-manager-considerations-pnpm-yarn)
+- [Build directories (Rust `target`, etc.)](#build-directories-rust-target-etc)
+- [Local git ignores (`.git/info/exclude`) are not shared](#local-git-ignores-gitinfoexclude-are-not-shared)
 
 ### Gitignored files require configuration
 
