@@ -26,10 +26,20 @@ pub fn run(
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
 
+    // Validate --with-changes compatibility
+    if rescue.with_changes && multi.agent.len() > 1 {
+        return Err(anyhow!(
+            "--with-changes cannot be used with multiple --agent flags. Use zero or one --agent."
+        ));
+    }
+
     // Handle rescue flow early if requested
-    let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
-    if handle_rescue_flow(branch_name, &rescue, &config, options.clone())? {
-        return Ok(());
+    // Load config with first agent (or None) for rescue flow only
+    if rescue.with_changes {
+        let rescue_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+        if handle_rescue_flow(branch_name, &rescue, &rescue_config, options.clone())? {
+            return Ok(());
+        }
     }
 
     // Load prompt from arguments
@@ -108,7 +118,6 @@ pub fn run(
         resolved_base,
         remote_branch.as_deref(),
         prompt_doc.as_ref(),
-        &config,
         options,
         &env,
     )
@@ -226,7 +235,6 @@ fn create_worktrees_from_specs(
     resolved_base: Option<&str>,
     remote_branch: Option<&str>,
     prompt_doc: Option<&PromptDocument>,
-    config: &config::Config,
     options: SetupOptions,
     env: &TemplateEnv,
 ) -> Result<()> {
@@ -244,6 +252,9 @@ fn create_worktrees_from_specs(
             );
         }
 
+        // Load config for this specific agent to ensure correct agent resolution
+        let config = config::Config::load(spec.agent.as_deref())?;
+
         let prompt_for_spec = if let Some(doc) = prompt_doc {
             Some(Prompt::Inline(
                 render_prompt_body(&doc.body, env, &spec.template_context).with_context(|| {
@@ -254,14 +265,14 @@ fn create_worktrees_from_specs(
             None
         };
 
-        super::announce_hooks(config, Some(&options), super::HookPhase::PostCreate);
+        super::announce_hooks(&config, Some(&options), super::HookPhase::PostCreate);
 
         let result = workflow::create(
             &spec.branch_name,
             resolved_base,
             remote_branch,
             prompt_for_spec.as_ref(),
-            config,
+            &config,
             options.clone(),
             spec.agent.as_deref(),
         )
