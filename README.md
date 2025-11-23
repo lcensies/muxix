@@ -18,7 +18,7 @@ isolated development environments.
 Perfect for running multiple AI agents in parallel without conflict. See also:
 [Why git worktrees?](#why-git-worktrees)
 
-![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
+![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/workmux-demo.gif)
 
 ## Philosophy
 
@@ -36,7 +36,6 @@ Perfect for running multiple AI agents in parallel without conflict. See also:
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new
   worktrees
-- Start agents with a prompt directly via `--prompt` or `--prompt-file`
 - Merge branches and clean up everything (worktree, tmux window, branches) in
   one command (`merge`)
 - List all worktrees with their tmux and merge status
