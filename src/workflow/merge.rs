@@ -149,16 +149,6 @@ pub fn merge(
     }
 
     // Always force cleanup after a successful merge
-    // Print status if there are pre-delete hooks
-    if context
-        .config
-        .pre_delete
-        .as_ref()
-        .is_some_and(|v| !v.is_empty())
-    {
-        println!("Running pre-delete commands...");
-    }
-
     info!(
         branch = branch_to_merge,
         delete_remote, "merge:cleanup start"
