@@ -18,6 +18,8 @@ isolated development environments.
 Perfect for running multiple AI agents in parallel without conflict. See also:
 [Why git worktrees?](#why-git-worktrees)
 
+![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
+
 ## Philosophy
 
 - **One worktree, one tmux window**: Each git worktree gets its own dedicated,
