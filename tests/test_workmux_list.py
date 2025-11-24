@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import Dict, List
@@ -80,19 +81,21 @@ def test_list_output_format(
     assert "UNMERGED" in output
     assert "PATH" in output
 
-    # Verify main branch entry
+    # Verify main branch entry - should show "(here)" when run from repo_path
     main_entry = next((r for r in parsed_output if r["BRANCH"] == "main"), None)
     assert main_entry is not None
     assert main_entry["TMUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
-    assert Path(main_entry["PATH"]) == repo_path.resolve()
+    assert main_entry["PATH"] == "(here)"
 
-    # Verify feature branch entry
+    # Verify feature branch entry - shows as relative path
     feature_entry = next((r for r in parsed_output if r["BRANCH"] == branch_name), None)
     assert feature_entry is not None
     assert feature_entry["TMUX"] == "✓"
     assert feature_entry["UNMERGED"] == "-"
-    assert Path(feature_entry["PATH"]) == worktree_path.resolve()
+    # Convert relative path to absolute and compare
+    expected_relative = os.path.relpath(worktree_path, repo_path)
+    assert feature_entry["PATH"] == expected_relative
 
 
 def test_list_initial_state(
@@ -109,8 +112,8 @@ def test_list_initial_state(
     assert main_entry["BRANCH"] == "main"
     assert main_entry["TMUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
-    # The path should be the main repo path, not a worktree subdir
-    assert Path(main_entry["PATH"]) == repo_path.resolve()
+    # When run from repo_path, main branch shows as "(here)"
+    assert main_entry["PATH"] == "(here)"
 
 
 def test_list_with_active_worktree(
@@ -134,8 +137,10 @@ def test_list_with_active_worktree(
     assert worktree_entry is not None
     assert worktree_entry["TMUX"] == "✓"
     assert worktree_entry["UNMERGED"] == "-"
+    # Path shows as relative when run from repo_path
     expected_path = get_worktree_path(repo_path, branch_name)
-    assert Path(worktree_entry["PATH"]).resolve() == expected_path.resolve()
+    expected_relative = os.path.relpath(expected_path, repo_path)
+    assert worktree_entry["PATH"] == expected_relative
 
 
 def test_list_with_unmerged_commits(
@@ -198,3 +203,5 @@ def test_list_alias_ls_works(
     parsed_output = parse_list_output(ls_output)
     assert len(parsed_output) == 1
     assert parsed_output[0]["BRANCH"] == "main"
+    # When run from repo_path, main branch shows as "(here)"
+    assert parsed_output[0]["PATH"] == "(here)"
