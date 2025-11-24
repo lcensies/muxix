@@ -338,9 +338,14 @@ def run_workmux_command(
     stderr_str = shlex.quote(str(stderr_file))
     exit_code_str = shlex.quote(str(exit_code_file))
 
+    # Prepend the updated PATH to ensure fake commands (like gh) are found.
+    # The shell in the existing tmux pane does not automatically pick up
+    # changes from `tmux set-environment -g`.
+    path_str = shlex.quote(env.env["PATH"])
+
     workmux_cmd = (
         f"cd {workdir_str} && "
-        f"{exe_str} {command} "
+        f"env PATH={path_str} {exe_str} {command} "
         f"> {stdout_str} 2> {stderr_str}; "
         f"echo $? > {exit_code_str}"
     )
@@ -630,3 +635,64 @@ def run_workmux_merge(
             raise AssertionError(
                 f"workmux merge failed with exit code {exit_code}\nStderr:\n{stderr}"
             )
+
+
+def install_fake_gh_cli(
+    env: TmuxEnvironment,
+    pr_number: int,
+    json_response: Optional[Dict[str, Any]] = None,
+    stderr: str = "",
+    exit_code: int = 0,
+):
+    """
+    Creates a fake 'gh' command that responds to 'pr view <number> --json' with controlled output.
+
+    Args:
+        env: The isolated tmux environment
+        pr_number: The PR number to respond to
+        json_response: Dict containing the PR data to return as JSON (or None to return error)
+        stderr: Error message to output to stderr
+        exit_code: Exit code for the fake gh command (0 for success, non-zero for error)
+    """
+    import json
+
+    # Create a bin directory in the test home
+    bin_dir = env.home_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+
+    # Create the fake gh script
+    gh_script = bin_dir / "gh"
+
+    # Build the script content
+    json_output = json.dumps(json_response) if json_response else ""
+
+    # Escape single quotes in JSON for shell script
+    json_output_escaped = json_output.replace("'", "'\\''")
+
+    script_content = f"""#!/bin/sh
+# Fake gh CLI for testing
+
+# Check if this is a 'pr view' command for our PR number
+# The command will be: gh pr view {pr_number} --json fields...
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && [ "$3" = "{pr_number}" ]; then
+    if [ {exit_code} -ne 0 ]; then
+        echo "{stderr}" >&2
+        exit {exit_code}
+    fi
+    echo '{json_output_escaped}'
+    exit 0
+fi
+
+# For any other command, fail
+echo "gh: command not implemented in fake" >&2
+exit 1
+"""
+
+    gh_script.write_text(script_content)
+    gh_script.chmod(0o755)
+
+    # Add the bin directory to PATH
+    new_path = f"{bin_dir}:{env.env.get('PATH', '')}"
+    env.env["PATH"] = new_path
+    # CRITICAL: Also set PATH in the tmux session so workmux can find the fake gh
+    env.tmux(["set-environment", "-g", "PATH", new_path])

@@ -1,0 +1,99 @@
+{
+  "same_repo_open_pr": {
+    "number": 12189,
+    "author": {
+      "is_bot": true,
+      "login": "app/dependabot"
+    },
+    "baseRefName": "trunk",
+    "headRefName": "dependabot/github_actions/golangci/golangci-lint-action-9.1.0",
+    "headRepository": {
+      "id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+      "name": "cli"
+    },
+    "headRepositoryOwner": {
+      "id": "MDEyOk9yZ2FuaXphdGlvbjU5NzA0NzEx",
+      "login": "cli"
+    },
+    "isDraft": false,
+    "state": "OPEN",
+    "title": "chore(deps): bump golangci/golangci-lint-action from 9.0.0 to 9.1.0"
+  },
+  "same_repo_merged_pr": {
+    "number": 1,
+    "author": {
+      "id": "MDQ6VXNlcjk4NDgy",
+      "is_bot": false,
+      "login": "vilmibm",
+      "name": "Nate Smith"
+    },
+    "headRefName": "gh-pr",
+    "headRepository": {
+      "id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+      "name": "cli"
+    },
+    "isDraft": false,
+    "state": "MERGED",
+    "title": "interactive pr list"
+  },
+  "fork_pr_example": {
+    "_comment": "This is a hypothetical example - actual fork PR structure to be verified",
+    "number": 999,
+    "author": {
+      "is_bot": false,
+      "login": "contributor",
+      "name": "External Contributor"
+    },
+    "baseRefName": "main",
+    "headRefName": "feature-branch",
+    "headRepository": {
+      "id": "fork-repo-id",
+      "name": "cli",
+      "owner": {
+        "login": "contributor"
+      },
+      "url": "https://github.com/contributor/cli"
+    },
+    "headRepositoryOwner": {
+      "id": "fork-owner-id",
+      "login": "contributor"
+    },
+    "isDraft": false,
+    "state": "OPEN",
+    "title": "Add new feature from fork"
+  },
+  "draft_pr_example": {
+    "number": 888,
+    "author": {
+      "is_bot": false,
+      "login": "developer",
+      "name": "Dev User"
+    },
+    "baseRefName": "main",
+    "headRefName": "wip-feature",
+    "headRepository": {
+      "id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+      "name": "cli"
+    },
+    "headRepositoryOwner": {
+      "id": "MDEyOk9yZ2FuaXphdGlvbjU5NzA0NzEx",
+      "login": "cli"
+    },
+    "isDraft": true,
+    "state": "OPEN",
+    "title": "WIP: Working on new feature"
+  },
+  "notes": {
+    "fields_needed": [
+      "headRefName - the branch name to checkout",
+      "headRepository - repo info (for same-repo PRs, may be minimal)",
+      "headRepositoryOwner - owner info (critical for fork detection)",
+      "state - OPEN, CLOSED, MERGED",
+      "isDraft - boolean",
+      "title - for display to user",
+      "author.login - for display to user"
+    ],
+    "fork_detection": "Compare headRepositoryOwner.login with the current repo owner. If different, it's a fork.",
+    "minimal_fields_for_implementation": "headRefName,headRepositoryOwner,state,isDraft,title,author"
+  }
+}

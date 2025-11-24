@@ -9,13 +9,16 @@ use crate::workflow::SetupOptions;
 use crate::{config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use edit::Builder;
+use git_url_parse::GitUrl;
+use git_url_parse::types::provider::GenericProvider;
 use std::collections::BTreeMap;
 
 // Re-export the arg types that are used by the CLI
 pub use super::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
 
 pub fn run(
-    branch_name: &str,
+    branch_name: Option<&str>,
+    pr: Option<u32>,
     base: Option<&str>,
     prompt_args: PromptArgs,
     setup: SetupFlags,
@@ -25,6 +28,29 @@ pub fn run(
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
+
+    // Handle PR checkout if --pr flag is provided
+    let (final_branch_name, remote_branch_for_pr, resolved_base_for_pr) =
+        if let Some(pr_number) = pr {
+            handle_pr_checkout(pr_number, branch_name)?
+        } else {
+            // Normal flow: use provided branch name and base
+            (
+                branch_name
+                    .expect("branch_name required when --pr not provided")
+                    .to_string(),
+                None,
+                base,
+            )
+        };
+
+    // Use the determined branch name and override base/remote_branch if from PR
+    let branch_name = &final_branch_name;
+    let base = if remote_branch_for_pr.is_some() {
+        resolved_base_for_pr
+    } else {
+        base
+    };
 
     // Validate --with-changes compatibility
     if rescue.with_changes && multi.agent.len() > 1 {
@@ -92,7 +118,12 @@ pub fn run(
     let env = create_template_env();
 
     // Detect remote branch and extract base name
-    let (remote_branch, template_base_name) = detect_remote_branch(branch_name, base)?;
+    // If we have a PR remote branch, use that; otherwise detect from branch_name
+    let (remote_branch, template_base_name) = if let Some(ref pr_remote) = remote_branch_for_pr {
+        (Some(pr_remote.clone()), branch_name.to_string())
+    } else {
+        detect_remote_branch(branch_name, base)?
+    };
     let resolved_base = if remote_branch.is_some() { None } else { base };
 
     // Determine effective foreach matrix
@@ -301,4 +332,110 @@ fn create_worktrees_from_specs(
     }
 
     Ok(())
+}
+
+/// Handle PR checkout: fetch PR details, setup remote, and return branch info
+/// Returns (local_branch_name, remote_branch, base)
+fn handle_pr_checkout(
+    pr_number: u32,
+    custom_branch_name: Option<&str>,
+) -> Result<(String, Option<String>, Option<&'static str>)> {
+    use crate::github;
+
+    // Fetch PR details
+    println!("Fetching PR #{}...", pr_number);
+    let pr_details = github::get_pr_details(pr_number)
+        .with_context(|| format!("Failed to fetch details for PR #{}", pr_number))?;
+
+    // Display PR information
+    println!("PR #{}: {}", pr_number, pr_details.title);
+    println!("Author: {}", pr_details.author.login);
+    println!("Branch: {}", pr_details.head_ref_name);
+
+    // Warn about PR state
+    if pr_details.state != "OPEN" {
+        eprintln!(
+            "\n⚠️  Warning: PR #{} is {}. Proceeding with checkout...",
+            pr_number, pr_details.state
+        );
+    }
+    if pr_details.is_draft {
+        eprintln!("\n⚠️  Warning: PR #{} is a DRAFT.", pr_number);
+    }
+
+    // Determine local branch name
+    // Match gh pr checkout behavior: default to the PR's actual branch name
+    let local_branch_name = if let Some(custom) = custom_branch_name {
+        custom.to_string()
+    } else {
+        pr_details.head_ref_name.clone()
+    };
+
+    // Determine if this is a fork PR
+    let current_repo_owner =
+        git::get_repo_owner().context("Failed to determine repository owner from origin remote")?;
+
+    let remote_name = if pr_details.is_fork(&current_repo_owner) {
+        // Fork PR: need to add or update remote for the fork
+        let fork_owner = &pr_details.head_repository_owner.login;
+        let remote_name = format!("fork-{}", fork_owner);
+
+        // Construct fork URL based on origin URL format, preserving host and protocol
+        let origin_url = git::get_remote_url("origin")?;
+        let parsed_url = GitUrl::parse(&origin_url).with_context(|| {
+            format!(
+                "Failed to parse origin URL for fork remote construction: {}",
+                origin_url
+            )
+        })?;
+
+        let host = parsed_url.host().unwrap_or("github.com");
+        let scheme = parsed_url.scheme().unwrap_or("ssh");
+
+        let provider: GenericProvider = parsed_url
+            .provider_info()
+            .with_context(|| "Failed to extract provider info from origin URL")?;
+        let repo_name = provider.repo();
+
+        let fork_url = match scheme {
+            "https" => format!("https://{}/{}/{}.git", host, fork_owner, repo_name),
+            "http" => format!("http://{}/{}/{}.git", host, fork_owner, repo_name),
+            _ => {
+                // SSH or other schemes
+                format!("git@{}:{}/{}.git", host, fork_owner, repo_name)
+            }
+        };
+
+        // Check if remote exists and update URL if needed
+        if git::remote_exists(&remote_name)? {
+            let current_url = git::get_remote_url(&remote_name)?;
+            if current_url != fork_url {
+                println!("Updating remote '{}' URL...", remote_name);
+                git::set_remote_url(&remote_name, &fork_url).with_context(|| {
+                    format!("Failed to update remote for fork '{}'", fork_owner)
+                })?;
+            }
+        } else {
+            println!("Adding remote '{}' for fork...", remote_name);
+            git::add_remote(&remote_name, &fork_url)
+                .with_context(|| format!("Failed to add remote for fork '{}'", fork_owner))?;
+        }
+
+        remote_name
+    } else {
+        // Same-repo PR: use origin
+        "origin".to_string()
+    };
+
+    // Fetch the PR branch
+    println!(
+        "Fetching branch '{}' from '{}'...",
+        pr_details.head_ref_name, remote_name
+    );
+    git::fetch_remote(&remote_name)
+        .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+
+    // Return the branch info
+    let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
+    Ok((local_branch_name, Some(remote_branch), None))
 }

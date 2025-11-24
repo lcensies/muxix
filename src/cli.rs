@@ -85,8 +85,14 @@ struct Cli {
 enum Commands {
     /// Create a new worktree and tmux window
     Add {
-        /// Name of the branch (creates if it doesn't exist) or remote ref (e.g., origin/feature)
-        branch_name: String,
+        /// Name of the branch (creates if it doesn't exist) or remote ref (e.g., origin/feature).
+        /// When used with --pr, this becomes the custom local branch name.
+        #[arg(required_unless_present = "pr")]
+        branch_name: Option<String>,
+
+        /// Pull request number to checkout
+        #[arg(long, conflicts_with = "base")]
+        pr: Option<u32>,
 
         /// Base branch/commit/tag to branch from (defaults to current branch)
         #[arg(long)]
@@ -201,12 +207,21 @@ pub fn run() -> Result<()> {
     match cli.command {
         Commands::Add {
             branch_name,
+            pr,
             base,
             prompt,
             setup,
             rescue,
             multi,
-        } => command::add::run(&branch_name, base.as_deref(), prompt, setup, rescue, multi),
+        } => command::add::run(
+            branch_name.as_deref(),
+            pr,
+            base.as_deref(),
+            prompt,
+            setup,
+            rescue,
+            multi,
+        ),
         Commands::Open {
             branch_name,
             run_hooks,

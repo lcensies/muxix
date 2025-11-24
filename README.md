@@ -247,13 +247,18 @@ immediately. If the branch doesn't exist, it will be created automatically.
   reference (e.g., `origin/feature-branch`). When you provide a remote
   reference, workmux automatically fetches it and creates a local branch with
   the name derived from the remote branch (e.g., `origin/feature/foo` creates
-  local branch `feature/foo`).
+  local branch `feature/foo`). Optional when using `--pr`.
 
 #### Useful options
 
 - `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch
   from when creating a new branch. By default, new branches are created from the
   current branch you have checked out.
+- `--pr <number>`: Checkout a GitHub pull request by its number into a new
+  worktree. **Requires the `gh` command-line tool to be installed and
+  authenticated.**
+  - The local branch name defaults to the PR's head branch name, but can be
+    overridden (e.g., `workmux add custom-name --pr 123`).
 - `-b, --background`: Create the tmux window in the background without switching
   to it. Useful with `--prompt-editor`.
 - `-w, --with-changes`: Move uncommitted changes from the current worktree to
@@ -343,6 +348,16 @@ workmux add quick-fix --no-file-ops
 
 # Create a worktree in the background without switching to it
 workmux add feature/parallel-task --background
+```
+
+#### Checking out Pull Requests
+
+```bash
+# Checkout PR #123. The local branch will be named after the PR's branch.
+workmux add --pr 123
+
+# Checkout PR #456 with a custom local branch name
+workmux add fix/api-bug --pr 456
 ```
 
 #### AI agent integration

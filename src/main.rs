@@ -4,6 +4,7 @@ mod cmd;
 mod command;
 mod config;
 mod git;
+mod github;
 mod logger;
 mod prompt;
 mod template;
