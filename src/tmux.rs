@@ -185,11 +185,12 @@ pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
     // errors for executables that `workmux` can resolve but the pane's shell cannot.
     //
     // To ensure consistency, explicitly fetch the tmux server's global `PATH` and
-    // prepend it to the pane's `PATH` before executing the user's command. This
-    // guarantees that agents and other tools are discoverable.
+    // append it to the pane's `PATH` before executing the user's command. This
+    // guarantees that agents and other tools are discoverable while allowing
+    // version managers (nvm, rbenv, mise, corepack) to take precedence.
     let command_prologue = crate::config::tmux_global_path().map(|tmux_path| {
         let escaped_path = tmux_path.replace('\'', r#"'\''"#);
-        format!("export PATH='{}':$PATH; ", escaped_path)
+        format!("export PATH=$PATH:'{}'; ", escaped_path)
     });
 
     let inner_command = format!(

@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use minijinja::{AutoEscape, Environment};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
 
 /// Reserved template variable names that cannot be used in foreach
 const RESERVED_TEMPLATE_KEYS: &[&str] = &["base_name", "agent", "num", "foreach_vars"];
@@ -128,6 +129,17 @@ fn build_spec(
     })
 }
 
+/// Extract the display name from an agent path or name.
+/// For paths like "/usr/local/bin/claude", returns "claude".
+/// For simple names like "claude", returns as-is.
+fn agent_display_name(agent: &str) -> String {
+    Path::new(agent)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(agent)
+        .to_string()
+}
+
 fn build_template_context(
     base_name: &str,
     agent: &Option<String>,
@@ -140,9 +152,11 @@ fn build_template_context(
         JsonValue::String(base_name.to_string()),
     );
 
+    // Use just the filename (without path) for template context so branch names
+    // are clean (e.g., "feature-claude" not "feature-usr-local-bin-claude")
     let agent_value = agent
         .as_ref()
-        .map(|value| JsonValue::String(value.clone()))
+        .map(|value| JsonValue::String(agent_display_name(value)))
         .unwrap_or(JsonValue::Null);
     context.insert("agent".to_string(), agent_value);
 

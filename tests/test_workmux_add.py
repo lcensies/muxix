@@ -273,7 +273,7 @@ def test_add_with_count_and_agent_uses_agent_in_all_instances(
     base_name = "feature-counted-agent"
     prompt_text = "Task {{ num }}"
 
-    install_fake_agent(
+    fake_gemini_path = install_fake_agent(
         env,
         "gemini",
         '#!/bin/sh\nprintf \'%s\' "$2" > "gemini_task_${HOSTNAME}.txt"',
@@ -284,7 +284,7 @@ def test_add_with_count_and_agent_uses_agent_in_all_instances(
         env,
         workmux_exe_path,
         repo_path,
-        f"add {base_name} -a gemini -n 2 --prompt '{prompt_text}'",
+        f"add {base_name} -a {shlex.quote(str(fake_gemini_path))} -n 2 --prompt '{prompt_text}'",
     )
 
     for idx in (1, 2):
@@ -424,7 +424,7 @@ def test_add_uses_agent_from_config(
     output_filename = "agent_output.txt"
 
     # Install fake gemini agent
-    install_fake_agent(
+    fake_gemini_path = install_fake_agent(
         env,
         "gemini",
         f"""#!/bin/sh
@@ -434,8 +434,10 @@ printf '%s' "$2" > "{output_filename}"
 """,
     )
 
-    # Configure .workmux.yaml to use gemini with <agent> placeholder
-    write_workmux_config(repo_path, agent="gemini", panes=[{"command": "<agent>"}])
+    # Configure .workmux.yaml to use the absolute path to the fake agent
+    write_workmux_config(
+        repo_path, agent=str(fake_gemini_path), panes=[{"command": "<agent>"}]
+    )
 
     # Run 'add' WITHOUT --agent flag, should use gemini from config
     worktree_path = add_branch_and_get_worktree(
@@ -477,7 +479,7 @@ def test_add_with_agent_flag_overrides_default(
     )
 
     # Override agent (gemini)
-    install_fake_agent(
+    fake_gemini_path = install_fake_agent(
         env,
         "gemini",
         f"""#!/bin/sh
@@ -489,13 +491,13 @@ printf '%s' "$2" > "{output_filename}"
     # Configure workmux to use <agent> placeholder. The default should be 'claude'.
     write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
 
-    # Run 'add' with the --agent flag to override the default
+    # Run 'add' with the --agent flag to override the default, using absolute path
     worktree_path = add_branch_and_get_worktree(
         env,
         workmux_exe_path,
         repo_path,
         branch_name,
-        extra_args=f"--agent gemini --prompt {shlex.quote(prompt_text)}",
+        extra_args=f"--agent {shlex.quote(str(fake_gemini_path))} --prompt {shlex.quote(prompt_text)}",
     )
 
     agent_output = worktree_path / output_filename
@@ -520,12 +522,12 @@ def test_add_multi_agent_creates_separate_worktrees_and_runs_correct_agents(
     base_name = "feature-multi-agent"
     prompt_text = "Implement for {{ agent }}"
 
-    install_fake_agent(
+    claude_path = install_fake_agent(
         env,
         "claude",
         "#!/bin/sh\nprintf '%s' \"$2\" > claude_out.txt",
     )
-    install_fake_agent(
+    gemini_path = install_fake_agent(
         env,
         "gemini",
         "#!/bin/sh\nprintf '%s' \"$2\" > gemini_out.txt",
@@ -537,7 +539,7 @@ def test_add_multi_agent_creates_separate_worktrees_and_runs_correct_agents(
         env,
         workmux_exe_path,
         repo_path,
-        f"add {base_name} -a claude -a gemini --prompt '{prompt_text}'",
+        f"add {base_name} -a {shlex.quote(str(claude_path))} -a {shlex.quote(str(gemini_path))} --prompt '{prompt_text}'",
     )
 
     claude_branch = f"{base_name}-claude"
@@ -575,12 +577,14 @@ def test_add_foreach_creates_worktrees_from_matrix(
     base_name = "feature-matrix"
     prompt_text = "Build for {{ platform }} using {{ lang }}"
 
-    install_fake_agent(
+    claude_path = install_fake_agent(
         env,
         "claude",
         "#!/bin/sh\nprintf '%s' \"$2\" > out.txt",
     )
-    write_workmux_config(repo_path, agent="claude", panes=[{"command": "<agent>"}])
+    write_workmux_config(
+        repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
+    )
 
     run_workmux_command(
         env,
@@ -871,8 +875,14 @@ def test_agent_placeholder_respects_shell_aliases(
     window_name = get_window_name(branch_name)
     marker_content = "alias_was_expanded"
 
+    # Get the path where the fake agent will be installed
+    fake_bin_dir = env.tmp_path / "agents-bin"
+
+    # Write a .zshrc that prepends our fake bin to the PATH and defines the alias.
+    # This ensures the shell finds our fake `claude` before any system-wide one.
     (env.home_path / ".zshrc").write_text(
-        """
+        f"""
+export PATH="{fake_bin_dir}:$PATH"
 alias claude='claude --aliased'
 """.strip()
         + "\n"
