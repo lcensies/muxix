@@ -47,7 +47,23 @@ agents, is as simple as managing tmux windows.
 - Bootstrap projects with an initial configuration file (`init`)
 - Dynamic shell completions for branch names
 
+## What people are saying
+
+> "I've been using (and loving) workmux which brings together tmux, git
+> worktrees, and CLI agents into an opinionated workflow."
+>
+> — @Coolin96 [🔗](https://news.ycombinator.com/item?id=46029809)
+
+> "Thank you so much for your work with workmux! It's a tool I've been wanting
+> to exist for a long time."
+>
+> — @rstacruz [🔗](https://github.com/raine/workmux/issues/2)
+
 ## Installation
+
+Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
+
+Then install workmux:
 
 ```bash
 cargo install workmux
@@ -255,15 +271,16 @@ immediately. If the branch doesn't exist, it will be created automatically.
   from when creating a new branch. By default, new branches are created from the
   current branch you have checked out.
 - `--pr <number>`: Checkout a GitHub pull request by its number into a new
-  worktree. **Requires the `gh` command-line tool to be installed and
-  authenticated.**
+  worktree.
+  - Requires the `gh` command-line tool to be installed and authenticated.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
 - `-b, --background`: Create the tmux window in the background without switching
   to it. Useful with `--prompt-editor`.
 - `-w, --with-changes`: Move uncommitted changes from the current worktree to
   the new worktree, then reset the original worktree to a clean state. Useful
-  when you've accidentally started working on the wrong branch.
+  when you've started working on main and want to move your branches to a new
+  worktree.
 - `--patch`: Interactively select which changes to move (requires
   `--with-changes`). Opens an interactive prompt for selecting hunks to stash.
 - `-u, --include-untracked`: Also move untracked files (requires
