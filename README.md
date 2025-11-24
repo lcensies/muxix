@@ -23,10 +23,15 @@ Perfect for running multiple AI agents in parallel without conflict. See also:
 ## Philosophy
 
 - **One worktree, one tmux window**: Each git worktree gets its own dedicated,
-  pre-configured tmux window
-- **Frictionless**: Multi-step workflows reduced to simple commands
+  pre-configured tmux window.
+- **Frictionless**: Multi-step workflows are reduced to simple commands.
 - **Configuration as code**: Define your tmux layout and setup steps in
-  `.workmux.yaml`
+  `.workmux.yaml`.
+
+The core principle is that **tmux is the interface**. If you already live in
+tmux, you shouldn't need to learn a new TUI app or separate interface to manage
+your work. With workmux, managing parallel development tasks, or multiple AI
+agents, is as simple as managing tmux windows.
 
 ## Features
 
@@ -986,10 +991,9 @@ management.
 For managing multiple AI agents in parallel, tools like
 [claude-squad](https://github.com/smtg-ai/claude-squad) and
 [vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
-interfaces, like a TUI or kanban board. workmux takes a different approach:
-**tmux is the interface**. If you already live in tmux, you don't need a new app
-or abstraction layer. With workmux, managing parallel agents is managing tmux
-windows.
+interfaces, like a TUI or kanban board. In contrast, workmux adheres to its
+philosophy that **tmux is the interface**, providing a native tmux experience
+for managing parallel workflows without requiring a separate interface to learn.
 
 ## See also
 
