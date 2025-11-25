@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  BIN_NAME: workmux
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          bin="target/${{ matrix.target }}/release/${BIN_NAME}"
+          strip "$bin" || true
+          tar -C "$(dirname "$bin")" -czf ${{ matrix.target }}.tar.gz ${BIN_NAME}
+          shasum -a 256 ${{ matrix.target }}.tar.gz > ${{ matrix.target }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ matrix.target }}.tar.gz
+            ${{ matrix.target }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: '*.tar.gz'
+
+  update-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Generate formula and push to tap
+        env:
+          TAP_GH_TOKEN: ${{ secrets.TAP_GH_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA_ARM=$(cut -d' ' -f1 aarch64-apple-darwin.sha256)
+          SHA_INTEL=$(cut -d' ' -f1 x86_64-apple-darwin.sha256)
+          SHA_LINUX=$(cut -d' ' -f1 x86_64-unknown-linux-gnu.sha256)
+
+          git clone https://x-access-token:${TAP_GH_TOKEN}@github.com/raine/homebrew-workmux tap
+
+          cat > tap/Formula/workmux.rb <<EOF
+          class Workmux < Formula
+            desc "Opinionated workflow tool that orchestrates git worktrees and tmux"
+            homepage "https://github.com/raine/workmux"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-apple-darwin.tar.gz"
+                sha256 "${SHA_ARM}"
+              else
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-apple-darwin.tar.gz"
+                sha256 "${SHA_INTEL}"
+              end
+            end
+
+            on_linux do
+              url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-unknown-linux-gnu.tar.gz"
+              sha256 "${SHA_LINUX}"
+            end
+
+            def install
+              bin.install "workmux"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/workmux --version")
+            end
+          end
+          EOF
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/workmux.rb
+          git commit -m "workmux ${VERSION}"
+          git push
