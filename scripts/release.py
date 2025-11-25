@@ -10,7 +10,6 @@ from typing import Tuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
-CARGO_LOCK = ROOT / "Cargo.lock"
 
 
 def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
@@ -77,7 +76,7 @@ def bump_version(current: str, bump: str) -> str:
     return f"{major}.{minor}.{patch}"
 
 
-def update_cargo_files(crate_name: str, new_version: str) -> None:
+def update_cargo_files(new_version: str) -> None:
     toml_text = CARGO_TOML.read_text()
     new_toml_text, replaced = re.subn(
         r'(?m)^(version\s*=\s*")([^"]+)(")',
@@ -90,25 +89,13 @@ def update_cargo_files(crate_name: str, new_version: str) -> None:
         sys.exit(1)
     CARGO_TOML.write_text(new_toml_text)
 
-    if CARGO_LOCK.exists():
-        lock_text = CARGO_LOCK.read_text()
-        pattern = re.compile(
-            rf'(\[\[package\]\]\nname = "{re.escape(crate_name)}"\nversion = ")([^"]+)(")'
-        )
-        new_lock_text, lock_replaced = pattern.subn(
-            lambda m: f"{m.group(1)}{new_version}{m.group(3)}",
-            lock_text,
-        )
-        if lock_replaced:
-            CARGO_LOCK.write_text(new_lock_text)
+    # Let cargo update Cargo.lock automatically
+    run(["cargo", "check", "--quiet"])
 
 
 def commit_release(new_version: str) -> None:
     message = f"release v{new_version}"
-    paths_to_stage = ["Cargo.toml"]
-    if CARGO_LOCK.exists():
-        paths_to_stage.append("Cargo.lock")
-    run(["git", "add", *paths_to_stage])
+    run(["git", "add", "Cargo.toml", "Cargo.lock"])
     run(["git", "commit", "-m", message])
 
 
@@ -140,7 +127,7 @@ def main() -> None:
     crate_name, current_version = read_package_info()
     new_version = bump_version(current_version, args.bump)
 
-    update_cargo_files(crate_name, new_version)
+    update_cargo_files(new_version)
 
     status_after_update = run_capture(
         ["git", "status", "--porcelain", "--ignore-submodules"]
