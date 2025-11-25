@@ -61,9 +61,15 @@ agents, is as simple as managing tmux windows.
 
 ## Installation
 
-Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
+### Homebrew (macOS/Linux)
 
-Then install workmux:
+```bash
+brew install raine/workmux/workmux
+```
+
+### Cargo
+
+Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
 
 ```bash
 cargo install workmux
