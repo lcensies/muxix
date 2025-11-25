@@ -42,7 +42,10 @@ jobs:
       - name: Package
         run: |
           bin="target/${{ matrix.target }}/release/${BIN_NAME}"
-          strip "$bin" || true
+          # Only strip on Linux to avoid corrupting macOS code signatures
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            strip "$bin" || true
+          fi
           tar -C "$(dirname "$bin")" -czf ${{ matrix.target }}.tar.gz ${BIN_NAME}
           shasum -a 256 ${{ matrix.target }}.tar.gz > ${{ matrix.target }}.sha256
       - uses: actions/upload-artifact@v4
@@ -65,6 +68,7 @@ jobs:
         # Only create release for real tags, not manual dispatch
         if: ${{ github.event_name == 'push' }}
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: true
           files: '*.tar.gz'
       - name: List artifacts (manual test)
@@ -89,9 +93,9 @@ jobs:
           TAP_GH_TOKEN: ${{ secrets.TAP_GH_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          SHA_ARM=$(cut -d' ' -f1 aarch64-apple-darwin.sha256)
-          SHA_INTEL=$(cut -d' ' -f1 x86_64-apple-darwin.sha256)
-          SHA_LINUX=$(cut -d' ' -f1 x86_64-unknown-linux-gnu.sha256)
+          SHA_ARM=$(awk '{print $1}' aarch64-apple-darwin.sha256)
+          SHA_INTEL=$(awk '{print $1}' x86_64-apple-darwin.sha256)
+          SHA_LINUX=$(awk '{print $1}' x86_64-unknown-linux-gnu.sha256)
 
           git clone https://x-access-token:${TAP_GH_TOKEN}@github.com/raine/homebrew-workmux tap
 
