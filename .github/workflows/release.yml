@@ -68,7 +68,7 @@ jobs:
         # Only create release for real tags, not manual dispatch
         if: ${{ github.event_name == 'push' }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.TAP_GH_TOKEN }}
           generate_release_notes: true
           files: '*.tar.gz'
       - name: List artifacts (manual test)
