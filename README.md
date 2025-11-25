@@ -13,10 +13,10 @@
 
 Giga opinionated zero-friction workflow tool for managing
 [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
-isolated development environments.
+isolated development environments. Perfect for running multiple AI agents in
+parallel without conflict.
 
-Perfect for running multiple AI agents in parallel without conflict. See also:
-[Why git worktrees?](#why-git-worktrees)
+→ [Why git worktrees?](#why-git-worktrees)
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/workmux-demo.gif)
 
@@ -47,16 +47,14 @@ agents, is as simple as managing tmux windows.
 - Bootstrap projects with an initial configuration file (`init`)
 - Dynamic shell completions for branch names
 
-## What people are saying
+## Hype
 
 > "I've been using (and loving) workmux which brings together tmux, git
-> worktrees, and CLI agents into an opinionated workflow."
->
+> worktrees, and CLI agents into an opinionated workflow."  
 > — @Coolin96 [🔗](https://news.ycombinator.com/item?id=46029809)
 
 > "Thank you so much for your work with workmux! It's a tool I've been wanting
-> to exist for a long time."
->
+> to exist for a long time."  
 > — @rstacruz [🔗](https://github.com/raine/workmux/issues/2)
 
 ## Installation
@@ -79,33 +77,34 @@ cargo install workmux
 
 1. **Initialize configuration (optional)**:
 
-```bash
-workmux init
-```
+   ```bash
+   workmux init
+   ```
 
-This creates a `.workmux.yaml` file to customize your workflow (pane layouts,
-setup commands, file operations, etc.). workmux works out of the box with
-sensible defaults, so this step is optional.
+   This creates a `.workmux.yaml` file to customize your workflow (pane layouts,
+   setup commands, file operations, etc.). workmux works out of the box with
+   sensible defaults, so this step is optional.
 
 2. **Create a new worktree and tmux window**:
 
-```bash
-workmux add new-feature
-```
+   ```bash
+   workmux add new-feature
+   ```
 
-This will:
+   This will:
+   - Create a git worktree at
+     `<project_root>/../<project_name>__worktrees/new-feature`
+   - Create a tmux window named `new-feature`
+   - Automatically switch your tmux client to the new window
 
-- Create a git worktree at
-  `<project_root>/../<project_name>__worktrees/new-feature`
-- Create a tmux window named `new-feature`
-- Automatically switch your tmux client to the new window
+3. **Do your thing**
 
-3. **When done, merge and clean up**:
+4. **When done, merge and clean up**:
 
-```bash
-# Run in the worktree window
-workmux merge
-```
+   ```bash
+   # Run in the worktree window
+   workmux merge
+   ```
 
 Merges your branch into main and cleans up everything (tmux window, worktree,
 and local branch).
