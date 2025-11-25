@@ -87,42 +87,38 @@ jobs:
           SHA_INTEL=$(awk '{print $1}' x86_64-apple-darwin.sha256)
           SHA_LINUX=$(awk '{print $1}' x86_64-unknown-linux-gnu.sha256)
 
-          cat > tap/Formula/workmux.rb <<'FORMULA'
-class Workmux < Formula
-  desc "Opinionated workflow tool that orchestrates git worktrees and tmux"
-  homepage "https://github.com/raine/workmux"
-  version "VERSION_PLACEHOLDER"
-  license "MIT"
+          cat > tap/Formula/workmux.rb << EOF
+          class Workmux < Formula
+            desc "Opinionated workflow tool that orchestrates git worktrees and tmux"
+            homepage "https://github.com/raine/workmux"
+            version "${VERSION}"
+            license "MIT"
 
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/raine/workmux/releases/download/vVERSION_PLACEHOLDER/aarch64-apple-darwin.tar.gz"
-      sha256 "SHA_ARM_PLACEHOLDER"
-    else
-      url "https://github.com/raine/workmux/releases/download/vVERSION_PLACEHOLDER/x86_64-apple-darwin.tar.gz"
-      sha256 "SHA_INTEL_PLACEHOLDER"
-    end
-  end
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-apple-darwin.tar.gz"
+                sha256 "${SHA_ARM}"
+              else
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-apple-darwin.tar.gz"
+                sha256 "${SHA_INTEL}"
+              end
+            end
 
-  on_linux do
-    url "https://github.com/raine/workmux/releases/download/vVERSION_PLACEHOLDER/x86_64-unknown-linux-gnu.tar.gz"
-    sha256 "SHA_LINUX_PLACEHOLDER"
-  end
+            on_linux do
+              url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-unknown-linux-gnu.tar.gz"
+              sha256 "${SHA_LINUX}"
+            end
 
-  def install
-    bin.install "workmux"
-  end
+            def install
+              bin.install "workmux"
+            end
 
-  test do
-    assert_match version.to_s, shell_output("#{bin}/workmux --version")
-  end
-end
-FORMULA
-
-          sed -i "s/VERSION_PLACEHOLDER/${VERSION}/g" tap/Formula/workmux.rb
-          sed -i "s/SHA_ARM_PLACEHOLDER/${SHA_ARM}/g" tap/Formula/workmux.rb
-          sed -i "s/SHA_INTEL_PLACEHOLDER/${SHA_INTEL}/g" tap/Formula/workmux.rb
-          sed -i "s/SHA_LINUX_PLACEHOLDER/${SHA_LINUX}/g" tap/Formula/workmux.rb
+            test do
+              assert_match version.to_s, shell_output("\#{bin}/workmux --version")
+            end
+          end
+          EOF
+          sed -i 's/^          //' tap/Formula/workmux.rb
 
           cd tap
           git config user.name "github-actions[bot]"
