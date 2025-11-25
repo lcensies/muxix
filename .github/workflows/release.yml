@@ -3,12 +3,6 @@ name: Release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      test_version:
-        description: 'Test version (e.g., 0.0.0-test)'
-        required: true
-        default: '0.0.0-test'
 
 permissions:
   contents: write
@@ -65,25 +59,14 @@ jobs:
         with:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
-        # Only create release for real tags, not manual dispatch
-        if: ${{ github.event_name == 'push' }}
         with:
           token: ${{ secrets.RELEASE_TOKEN }}
           generate_release_notes: true
           files: '*.tar.gz'
-      - name: List artifacts (manual test)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: |
-          echo "=== Test build completed ==="
-          ls -la *.tar.gz
-          echo "=== SHA256 checksums ==="
-          cat *.sha256
 
   update-tap:
     needs: release
     runs-on: ubuntu-latest
-    # Skip tap update for manual test runs
-    if: ${{ !inputs.test_version }}
     steps:
       - uses: actions/download-artifact@v4
         with:
