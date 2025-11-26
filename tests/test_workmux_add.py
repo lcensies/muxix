@@ -97,14 +97,16 @@ def wait_for_pane_output(
         )
 
 
-def prompt_file_for_branch(branch_name: str) -> Path:
+def prompt_file_for_branch(tmp_path: Path, branch_name: str) -> Path:
     """Return the path to the prompt file for the given branch."""
-    return Path(f"/tmp/workmux-prompt-{branch_name}.md")
+    return tmp_path / f"workmux-prompt-{branch_name}.md"
 
 
-def assert_prompt_file_contents(branch_name: str, expected_text: str) -> None:
+def assert_prompt_file_contents(
+    env: TmuxEnvironment, branch_name: str, expected_text: str
+) -> None:
     """Assert that a prompt file exists for the branch and matches the expected text."""
-    prompt_file = prompt_file_for_branch(branch_name)
+    prompt_file = prompt_file_for_branch(env.tmp_path, branch_name)
     assert prompt_file.exists(), f"Prompt file not found at {prompt_file}"
     actual_text = prompt_file.read_text()
     assert actual_text == expected_text, (
@@ -341,8 +343,8 @@ printf '%s' "$2" > "{output_filename}"
         extra_args=f"--prompt {shlex.quote(prompt_text)}",
     )
 
-    # Prompt file is now written to /tmp instead of the worktree
-    assert_prompt_file_contents(branch_name, prompt_text)
+    # Prompt file is now written to the test's temp directory
+    assert_prompt_file_contents(env, branch_name, prompt_text)
 
     agent_output = worktree_path / output_filename
     debug_output = worktree_path / "debug_args.txt"
@@ -398,8 +400,8 @@ printf '%s' "$2" > "{output_filename}"
         extra_args=f"--prompt-file {shlex.quote(str(prompt_source))}",
     )
 
-    # Prompt file is now written to /tmp instead of the worktree
-    assert_prompt_file_contents(branch_name, prompt_source.read_text())
+    # Prompt file is now written to the test's temp directory
+    assert_prompt_file_contents(env, branch_name, prompt_source.read_text())
 
     agent_output = worktree_path / output_filename
 
@@ -721,8 +723,8 @@ def test_add_without_prompt_skips_prompt_file(
     )
     # Verify no PROMPT.md in worktree
     assert not (worktree_path / "PROMPT.md").exists()
-    # Verify no prompt file in /tmp either
-    assert not prompt_file_for_branch(branch_name).exists()
+    # Verify no prompt file in temp dir either
+    assert not prompt_file_for_branch(env.tmp_path, branch_name).exists()
 
 
 def test_add_can_skip_post_create_hooks(

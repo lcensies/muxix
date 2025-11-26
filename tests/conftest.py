@@ -43,6 +43,10 @@ class TmuxEnvironment:
         # This prevents any subprocess from connecting to the host tmux session
         self.env.pop("TMUX", None)
 
+        # Force temporary directory to the isolated test path.
+        # Rust's std::env::temp_dir() respects TMPDIR on Unix.
+        self.env["TMPDIR"] = str(self.tmp_path)
+
         # Isolate the shell environment completely to prevent history pollution
         # and other side effects from user's shell configuration
         self.env["HOME"] = str(self.home_path)
