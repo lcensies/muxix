@@ -146,125 +146,14 @@ pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -
     run_shell(&script)
 }
 
-/// Builds a shell command string for tmux that executes an optional user command
-/// and then leaves an interactive shell open.
+/// Split a pane and return the new pane's ID
 ///
-/// The escaping strategy uses POSIX-style quote escaping ('\'\'). This works
-/// correctly with bash, zsh, fish, and other common shells.
-pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
-    let command = match command {
-        Some(c) => c,
-        None => return Ok(None),
-    };
-
-    let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    let shell_name = std::path::Path::new(&shell_path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    // Nushell requires completely different syntax - it's not POSIX-compatible
-    if shell_name == "nu" {
-        return build_nushell_startup_command(command, &shell_path);
-    }
-
-    // Manually trigger shell pre-prompt hooks to ensure tools like direnv,
-    // nvm, and rbenv are loaded before the user command is executed. These
-    // hooks are normally only triggered before an interactive prompt.
-    let pre_command_hook = match shell_name {
-        "zsh" => {
-            "if (( ${#precmd_functions[@]} )); then for f in \"${precmd_functions[@]}\"; do \"$f\"; done; fi"
-        }
-        "bash" => "eval \"${PROMPT_COMMAND:-}\"",
-        "fish" => "functions -q fish_prompt; and emit fish_prompt",
-        _ => "true", // No-op for other shells
-    };
-
-    // To run `user_command` and then `exec shell` inside a new shell instance,
-    // we use the form: `$SHELL -ic '<hooks>; <user_command>; exec $SHELL -l'`.
-    // We must escape single quotes within the user command using POSIX-style escaping.
-    let escaped_command = command.replace('\'', r#"'\''"#);
-
-    // A new pane's interactive shell can have a different `PATH` than the tmux server,
-    // especially after sourcing rc files (`.zshrc`, etc.). This can lead to "command not found"
-    // errors for executables that `workmux` can resolve but the pane's shell cannot.
-    //
-    // To ensure consistency, explicitly fetch the tmux server's global `PATH` and
-    // append it to the pane's `PATH` before executing the user's command. This
-    // guarantees that agents and other tools are discoverable while allowing
-    // version managers (nvm, rbenv, mise, corepack) to take precedence.
-    let command_prologue = crate::config::tmux_global_path().map(|tmux_path| {
-        let escaped_path = tmux_path.replace('\'', r#"'\''"#);
-        format!("export PATH=$PATH:'{}'; ", escaped_path)
-    });
-
-    let inner_command = format!(
-        "{prologue}{pre_hook}; {user_cmd}; exec {shell} -l",
-        prologue = command_prologue.as_deref().unwrap_or(""),
-        pre_hook = pre_command_hook,
-        user_cmd = escaped_command,
-        shell = shell_path,
-    );
-
-    // The initial shell is interactive (-i) to ensure rc files (~/.bashrc,
-    // ~/.zshrc) are sourced, which is where shell hooks are configured. It is
-    // NOT a login shell (-l), as this can prevent rc files from sourcing in
-    // bash. The final `exec $SHELL -l` ensures the user is left in a login
-    // shell, matching tmux's default behavior.
-    let full_command = format!(
-        "{shell} -ic '{inner_command}'",
-        shell = shell_path,
-        inner_command = inner_command,
-    );
-
-    Ok(Some(full_command))
-}
-
-/// Builds a Nushell-compatible startup command.
-///
-/// Nushell is not POSIX-compatible and requires different syntax:
-/// - Uses `$env.PATH` instead of `export PATH`
-/// - Uses `-l -e` for "login shell, execute, then interactive"
-/// - Has different quoting and escaping rules
-fn build_nushell_startup_command(command: &str, shell_path: &str) -> Result<Option<String>> {
-    // Build PATH append command if tmux has a global PATH set
-    let path_prologue = crate::config::tmux_global_path()
-        .map(|tmux_path| {
-            // Escape backslashes and double quotes for Nushell string
-            let escaped_path = tmux_path.replace('\\', "\\\\").replace('"', "\\\"");
-            format!(r#"$env.PATH = ($env.PATH | append "{}"); "#, escaped_path)
-        })
-        .unwrap_or_default();
-
-    // Escape the user command for embedding in single-quoted Nushell string
-    // Single quotes in Nushell are literal strings, escape by doubling
-    let escaped_command = command.replace('\'', "''");
-
-    // Build the command to execute: append PATH, then run user command
-    let inner_command = format!(
-        "{path_prologue}{user_cmd}",
-        path_prologue = path_prologue.replace('\'', "''"),
-        user_cmd = escaped_command,
-    );
-
-    // Use -l (login) to source config files and -e (execute) to run command
-    // then enter interactive mode. The -e flag keeps the shell open after
-    // the command completes, which is exactly what we need.
-    let full_command = format!(
-        "{shell} -l -e '{inner}'",
-        shell = shell_path,
-        inner = inner_command,
-    );
-
-    Ok(Some(full_command))
-}
-
-/// Split a pane with optional command and return the new pane's ID
+/// Creates a new pane with the user's default shell. Use `send_keys` to send
+/// commands to the pane after creation.
 pub fn split_pane_with_command(
     target_pane_id: &str,
     direction: &SplitDirection,
     working_dir: &Path,
-    command: Option<&str>,
     size: Option<u16>,
     percentage: Option<u8>,
 ) -> Result<String> {
@@ -298,10 +187,6 @@ pub fn split_pane_with_command(
         cmd = cmd.args(&["-l", &size_arg]);
     }
 
-    if let Some(cmd_str) = command {
-        cmd = cmd.arg(cmd_str);
-    };
-
     let new_pane_id = cmd
         .run_and_capture_stdout()
         .context("Failed to split pane")?;
@@ -309,24 +194,36 @@ pub fn split_pane_with_command(
     Ok(new_pane_id.trim().to_string())
 }
 
-/// Respawn a pane with a new command by its ID
-pub fn respawn_pane(pane_id: &str, working_dir: &Path, command: &str) -> Result<()> {
+/// Respawn a pane by its ID (starts a fresh shell)
+pub fn respawn_pane(pane_id: &str, working_dir: &Path) -> Result<()> {
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
 
     Cmd::new("tmux")
-        .args(&[
-            "respawn-pane",
-            "-t",
-            pane_id,
-            "-c",
-            working_dir_str,
-            "-k",
-            command,
-        ])
+        .args(&["respawn-pane", "-t", pane_id, "-c", working_dir_str, "-k"])
         .run()
         .context("Failed to respawn pane")?;
+
+    Ok(())
+}
+
+/// Send keys to a pane using tmux send-keys
+///
+/// This is shell-agnostic - it works with any shell (bash, zsh, fish, nushell, etc.)
+/// by typing the command as if the user had typed it, then pressing Enter.
+pub fn send_keys(pane_id: &str, command: &str) -> Result<()> {
+    // Use -l for literal keys (avoids interpretation of special characters)
+    // Then send Enter separately to execute the command
+    Cmd::new("tmux")
+        .args(&["send-keys", "-t", pane_id, "-l", command])
+        .run()
+        .context("Failed to send keys to pane")?;
+
+    Cmd::new("tmux")
+        .args(&["send-keys", "-t", pane_id, "Enter"])
+        .run()
+        .context("Failed to send Enter key to pane")?;
 
     Ok(())
 }
@@ -382,10 +279,10 @@ pub fn setup_panes(
             None
         };
 
-        if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref())
-            && let Some(startup_cmd) = build_startup_command(Some(cmd_str))?
-        {
-            respawn_pane(initial_pane_id, working_dir, &startup_cmd)?;
+        if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
+            // Respawn the pane to get a fresh shell, then send the command
+            respawn_pane(initial_pane_id, working_dir)?;
+            send_keys(initial_pane_id, cmd_str)?;
         }
         if pane_config.focus {
             focus_pane_id = Some(initial_pane_id.to_string());
@@ -420,16 +317,18 @@ pub fn setup_panes(
                 None
             };
 
-            let startup_cmd = build_startup_command(adjusted_command.as_ref().map(|c| c.as_ref()))?;
-
             let new_pane_id = split_pane_with_command(
                 target_pane_id,
                 direction,
                 working_dir,
-                startup_cmd.as_deref(),
                 pane_config.size,
                 pane_config.percentage,
             )?;
+
+            // Send the command to the new pane if there is one
+            if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
+                send_keys(&new_pane_id, cmd_str)?;
+            }
 
             if pane_config.focus {
                 focus_pane_id = Some(new_pane_id.clone());
@@ -627,45 +526,5 @@ mod tests {
 
         let result = rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"));
         assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_build_nushell_startup_command_uses_correct_flags() {
-        let result = build_nushell_startup_command("echo hello", "/usr/bin/nu").unwrap();
-        let cmd = result.unwrap();
-
-        // Should use -l (login) and -e (execute then interactive) flags
-        assert!(cmd.contains("-l -e"), "Expected -l -e flags, got: {}", cmd);
-        assert!(
-            cmd.starts_with("/usr/bin/nu"),
-            "Should start with shell path"
-        );
-    }
-
-    #[test]
-    fn test_build_nushell_startup_command_escapes_single_quotes() {
-        let result = build_nushell_startup_command("echo 'hello world'", "/usr/bin/nu").unwrap();
-        let cmd = result.unwrap();
-
-        // Nushell escapes single quotes by doubling them
-        assert!(
-            cmd.contains("echo ''hello world''"),
-            "Expected doubled single quotes, got: {}",
-            cmd
-        );
-    }
-
-    #[test]
-    fn test_build_nushell_startup_command_structure() {
-        let result = build_nushell_startup_command("my-command", "/opt/homebrew/bin/nu").unwrap();
-        let cmd = result.unwrap();
-
-        // Should be: /path/to/nu -l -e 'command'
-        assert!(
-            cmd.starts_with("/opt/homebrew/bin/nu -l -e '"),
-            "Expected shell -l -e 'command' format, got: {}",
-            cmd
-        );
-        assert!(cmd.ends_with("'"), "Should end with single quote");
     }
 }
