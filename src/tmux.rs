@@ -163,6 +163,11 @@ pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
         .and_then(|s| s.to_str())
         .unwrap_or("");
 
+    // Nushell requires completely different syntax - it's not POSIX-compatible
+    if shell_name == "nu" {
+        return build_nushell_startup_command(command, &shell_path);
+    }
+
     // Manually trigger shell pre-prompt hooks to ensure tools like direnv,
     // nvm, and rbenv are loaded before the user command is executed. These
     // hooks are normally only triggered before an interactive prompt.
@@ -210,6 +215,45 @@ pub fn build_startup_command(command: Option<&str>) -> Result<Option<String>> {
         "{shell} -ic '{inner_command}'",
         shell = shell_path,
         inner_command = inner_command,
+    );
+
+    Ok(Some(full_command))
+}
+
+/// Builds a Nushell-compatible startup command.
+///
+/// Nushell is not POSIX-compatible and requires different syntax:
+/// - Uses `$env.PATH` instead of `export PATH`
+/// - Uses `-l -e` for "login shell, execute, then interactive"
+/// - Has different quoting and escaping rules
+fn build_nushell_startup_command(command: &str, shell_path: &str) -> Result<Option<String>> {
+    // Build PATH append command if tmux has a global PATH set
+    let path_prologue = crate::config::tmux_global_path()
+        .map(|tmux_path| {
+            // Escape backslashes and double quotes for Nushell string
+            let escaped_path = tmux_path.replace('\\', "\\\\").replace('"', "\\\"");
+            format!(r#"$env.PATH = ($env.PATH | append "{}"); "#, escaped_path)
+        })
+        .unwrap_or_default();
+
+    // Escape the user command for embedding in single-quoted Nushell string
+    // Single quotes in Nushell are literal strings, escape by doubling
+    let escaped_command = command.replace('\'', "''");
+
+    // Build the command to execute: append PATH, then run user command
+    let inner_command = format!(
+        "{path_prologue}{user_cmd}",
+        path_prologue = path_prologue.replace('\'', "''"),
+        user_cmd = escaped_command,
+    );
+
+    // Use -l (login) to source config files and -e (execute) to run command
+    // then enter interactive mode. The -e flag keeps the shell open after
+    // the command completes, which is exactly what we need.
+    let full_command = format!(
+        "{shell} -l -e '{inner}'",
+        shell = shell_path,
+        inner = inner_command,
     );
 
     Ok(Some(full_command))
@@ -583,5 +627,45 @@ mod tests {
 
         let result = rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"));
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_build_nushell_startup_command_uses_correct_flags() {
+        let result = build_nushell_startup_command("echo hello", "/usr/bin/nu").unwrap();
+        let cmd = result.unwrap();
+
+        // Should use -l (login) and -e (execute then interactive) flags
+        assert!(cmd.contains("-l -e"), "Expected -l -e flags, got: {}", cmd);
+        assert!(
+            cmd.starts_with("/usr/bin/nu"),
+            "Should start with shell path"
+        );
+    }
+
+    #[test]
+    fn test_build_nushell_startup_command_escapes_single_quotes() {
+        let result = build_nushell_startup_command("echo 'hello world'", "/usr/bin/nu").unwrap();
+        let cmd = result.unwrap();
+
+        // Nushell escapes single quotes by doubling them
+        assert!(
+            cmd.contains("echo ''hello world''"),
+            "Expected doubled single quotes, got: {}",
+            cmd
+        );
+    }
+
+    #[test]
+    fn test_build_nushell_startup_command_structure() {
+        let result = build_nushell_startup_command("my-command", "/opt/homebrew/bin/nu").unwrap();
+        let cmd = result.unwrap();
+
+        // Should be: /path/to/nu -l -e 'command'
+        assert!(
+            cmd.starts_with("/opt/homebrew/bin/nu -l -e '"),
+            "Expected shell -l -e 'command' format, got: {}",
+            cmd
+        );
+        assert!(cmd.ends_with("'"), "Should end with single quote");
     }
 }
