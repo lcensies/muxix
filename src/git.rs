@@ -512,6 +512,35 @@ pub fn get_current_branch() -> Result<String> {
         .run_and_capture_stdout()
 }
 
+/// List all checkout-able branches (local and remote) for shell completion.
+/// Excludes branches that are already checked out in existing worktrees.
+pub fn list_checkout_branches() -> Result<Vec<String>> {
+    let output = Cmd::new("git")
+        .args(&[
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "refs/heads/",
+            "refs/remotes/",
+        ])
+        .run_and_capture_stdout()
+        .context("Failed to list git branches")?;
+
+    // Get branches currently checked out in worktrees to exclude them
+    let worktree_branches: HashSet<String> = list_worktrees()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(_, branch)| branch)
+        .collect();
+
+    Ok(output
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "HEAD" && !s.ends_with("/HEAD"))
+        .filter(|s| !worktree_branches.contains(*s))
+        .map(String::from)
+        .collect())
+}
+
 /// Delete a local branch
 pub fn delete_branch(branch_name: &str, force: bool) -> Result<()> {
     // Run from main worktree root to avoid issues when deleting from within a worktree

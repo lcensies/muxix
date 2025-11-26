@@ -60,6 +60,48 @@ impl clap::builder::TypedValueParser for WorktreeBranchParser {
     }
 }
 
+#[derive(Clone, Debug)]
+struct GitBranchParser;
+
+impl GitBranchParser {
+    fn new() -> Self {
+        Self
+    }
+
+    fn get_branches() -> Vec<String> {
+        // Don't attempt completions if not in a git repo.
+        if !git::is_git_repo().unwrap_or(false) {
+            return Vec::new();
+        }
+
+        // Fail silently on completion; don't disrupt the user's shell.
+        git::list_checkout_branches().unwrap_or_default()
+    }
+}
+
+impl clap::builder::TypedValueParser for GitBranchParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        // Use the default string parser for validation.
+        clap::builder::StringValueParser::new().parse_ref(cmd, None, value)
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        // Return None to avoid running git operations during completion script generation.
+        // Dynamic completions are handled by the __complete-git-branches subcommand,
+        // which is called by the shell only when the user presses TAB.
+        None
+    }
+}
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(name = "workmux")]
@@ -75,7 +117,7 @@ enum Commands {
     Add {
         /// Name of the branch (creates if it doesn't exist) or remote ref (e.g., origin/feature).
         /// When used with --pr, this becomes the custom local branch name.
-        #[arg(required_unless_present = "pr")]
+        #[arg(required_unless_present = "pr", value_parser = GitBranchParser::new())]
         branch_name: Option<String>,
 
         /// Pull request number to checkout
@@ -184,6 +226,10 @@ enum Commands {
     /// Output branch names for shell completion (internal use)
     #[command(hide = true, name = "__complete-branches")]
     CompleteBranches,
+
+    /// Output git branches for shell completion (internal use)
+    #[command(hide = true, name = "__complete-git-branches")]
+    CompleteGitBranches,
 }
 
 #[derive(Subcommand)]
@@ -255,6 +301,12 @@ pub fn run() -> Result<()> {
             }
             Ok(())
         }
+        Commands::CompleteGitBranches => {
+            for branch in GitBranchParser::get_branches() {
+                println!("{branch}");
+            }
+            Ok(())
+        }
     }
 }
 
@@ -294,6 +346,13 @@ _workmux_branches() {{
     compadd -a branches
 }}
 
+# Dynamic git branch completion for add command
+_workmux_git_branches() {{
+    local branches
+    branches=("${{(@f)$(workmux __complete-git-branches 2>/dev/null)}}")
+    compadd -a branches
+}}
+
 # Override completion for commands that take branch names
 _workmux_dynamic() {{
     # Get the subcommand (second word)
@@ -310,6 +369,18 @@ _workmux_dynamic() {{
             # For positional args after the subcommand, offer branches
             if (( CURRENT > 2 )); then
                 _workmux_branches
+                return
+            fi
+            ;;
+        add)
+            # If completing a flag, use generated completions
+            if [[ "${{words[CURRENT]}}" == -* ]]; then
+                _workmux "$@"
+                return
+            fi
+            # For positional args after the subcommand, offer git branches
+            if (( CURRENT > 2 )); then
+                _workmux_git_branches
                 return
             fi
             ;;
@@ -332,10 +403,25 @@ _workmux_branches() {{
     workmux __complete-branches 2>/dev/null
 }}
 
+# Dynamic git branch completion for add command
+_workmux_git_branches() {{
+    workmux __complete-git-branches 2>/dev/null
+}}
+
 # Wrapper that adds dynamic branch completion
 _workmux_dynamic() {{
     local cur prev words cword
-    _init_completion || return
+
+    # Use _init_completion if available, otherwise fall back to manual parsing
+    if declare -F _init_completion >/dev/null 2>&1; then
+        _init_completion || return
+    else
+        COMPREPLY=()
+        cur="${{COMP_WORDS[COMP_CWORD]}}"
+        prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+        words=("${{COMP_WORDS[@]}}")
+        cword=$COMP_CWORD
+    fi
 
     # Check if we're completing a branch argument for specific commands
     if [[ ${{cword}} -ge 2 ]]; then
@@ -345,6 +431,13 @@ _workmux_dynamic() {{
                 # If not typing a flag, complete with branches
                 if [[ "$cur" != -* ]]; then
                     COMPREPLY=($(compgen -W "$(_workmux_branches)" -- "$cur"))
+                    return
+                fi
+                ;;
+            add)
+                # If not typing a flag, complete with git branches
+                if [[ "$cur" != -* ]]; then
+                    COMPREPLY=($(compgen -W "$(_workmux_git_branches)" -- "$cur"))
                     return
                 fi
                 ;;
@@ -368,8 +461,14 @@ function __workmux_branches
     workmux __complete-branches 2>/dev/null
 end
 
+# Dynamic git branch completion for add command
+function __workmux_git_branches
+    workmux __complete-git-branches 2>/dev/null
+end
+
 # Add dynamic completions for commands that take branch names
 complete -c workmux -n '__fish_seen_subcommand_from open merge remove rm' -f -a '(__workmux_branches)'
+complete -c workmux -n '__fish_seen_subcommand_from add' -f -a '(__workmux_git_branches)'
 "#
     );
 }
