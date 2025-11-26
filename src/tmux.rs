@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::config::{PaneConfig, SplitDirection};
@@ -146,16 +146,71 @@ pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -
     run_shell(&script)
 }
 
+/// Get the default shell configured in tmux
+fn get_default_shell() -> Result<String> {
+    let output = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "default-shell"])
+        .run_and_capture_stdout()?;
+    let shell = output.trim();
+    if shell.is_empty() {
+        Ok("/bin/bash".to_string())
+    } else {
+        Ok(shell.to_string())
+    }
+}
+
+/// Initialize a tmux wait-for channel by locking it.
+/// Returns the channel name for use in the handshake.
+fn init_wait_channel() -> Result<String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let channel = format!("wm_ready_{}", nanos);
+
+    // Handshake Part 1: Lock the channel
+    // This ensures we don't miss the signal even if shell starts instantly
+    Cmd::new("tmux")
+        .args(&["wait-for", "-L", &channel])
+        .run()
+        .context("Failed to initialize wait channel")?;
+
+    Ok(channel)
+}
+
+/// Wait for the pane to signal it is ready (unlock the channel),
+/// then clean up the channel.
+fn wait_for_pane_ready(channel: &str) -> Result<()> {
+    // Handshake Part 3: Wait for shell to unlock (by attempting to lock again)
+    // This blocks until the shell runs `tmux wait-for -U`
+    Cmd::new("tmux")
+        .args(&["wait-for", "-L", channel])
+        .run()
+        .context("Failed to wait for pane ready signal")?;
+
+    // Handshake Part 4: Cleanup - unlock the channel we just re-locked
+    Cmd::new("tmux")
+        .args(&["wait-for", "-U", channel])
+        .run()
+        .context("Failed to cleanup wait channel")?;
+
+    Ok(())
+}
+
+/// Build the wrapper command that signals readiness before starting the shell.
+/// Uses stty -echo to prevent double-echo, then signals via wait-for -U.
+fn build_ready_wrapper(channel: &str, shell: &str) -> String {
+    format!("stty -echo; tmux wait-for -U {}; exec {}", channel, shell)
+}
+
 /// Split a pane and return the new pane's ID
-///
-/// Creates a new pane with the user's default shell. Use `send_keys` to send
-/// commands to the pane after creation.
 pub fn split_pane_with_command(
     target_pane_id: &str,
     direction: &SplitDirection,
     working_dir: &Path,
     size: Option<u16>,
     percentage: Option<u8>,
+    shell_command: Option<&str>,
 ) -> Result<String> {
     let split_arg = match direction {
         SplitDirection::Horizontal => "-h",
@@ -187,6 +242,10 @@ pub fn split_pane_with_command(
         cmd = cmd.args(&["-l", &size_arg]);
     }
 
+    if let Some(shell_cmd) = shell_command {
+        cmd = cmd.arg(shell_cmd);
+    }
+
     let new_pane_id = cmd
         .run_and_capture_stdout()
         .context("Failed to split pane")?;
@@ -194,16 +253,20 @@ pub fn split_pane_with_command(
     Ok(new_pane_id.trim().to_string())
 }
 
-/// Respawn a pane by its ID (starts a fresh shell)
-pub fn respawn_pane(pane_id: &str, working_dir: &Path) -> Result<()> {
+/// Respawn a pane by its ID
+pub fn respawn_pane(pane_id: &str, working_dir: &Path, shell_command: Option<&str>) -> Result<()> {
     let working_dir_str = working_dir
         .to_str()
         .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
 
-    Cmd::new("tmux")
-        .args(&["respawn-pane", "-t", pane_id, "-c", working_dir_str, "-k"])
-        .run()
-        .context("Failed to respawn pane")?;
+    let mut cmd =
+        Cmd::new("tmux").args(&["respawn-pane", "-t", pane_id, "-c", working_dir_str, "-k"]);
+
+    if let Some(shell_cmd) = shell_command {
+        cmd = cmd.arg(shell_cmd);
+    }
+
+    cmd.run().context("Failed to respawn pane")?;
 
     Ok(())
 }
@@ -280,8 +343,13 @@ pub fn setup_panes(
         };
 
         if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-            // Respawn the pane to get a fresh shell, then send the command
-            respawn_pane(initial_pane_id, working_dir)?;
+            // Use wait-for handshake to ensure shell is ready before sending keys
+            let channel = init_wait_channel()?;
+            let default_shell = get_default_shell()?;
+            let wrapper = build_ready_wrapper(&channel, &default_shell);
+
+            respawn_pane(initial_pane_id, working_dir, Some(&wrapper))?;
+            wait_for_pane_ready(&channel)?;
             send_keys(initial_pane_id, cmd_str)?;
         }
         if pane_config.focus {
@@ -317,18 +385,34 @@ pub fn setup_panes(
                 None
             };
 
-            let new_pane_id = split_pane_with_command(
-                target_pane_id,
-                direction,
-                working_dir,
-                pane_config.size,
-                pane_config.percentage,
-            )?;
+            let new_pane_id = if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
+                // Use wait-for handshake to ensure shell is ready before sending keys
+                let channel = init_wait_channel()?;
+                let default_shell = get_default_shell()?;
+                let wrapper = build_ready_wrapper(&channel, &default_shell);
 
-            // Send the command to the new pane if there is one
-            if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                send_keys(&new_pane_id, cmd_str)?;
-            }
+                let pane_id = split_pane_with_command(
+                    target_pane_id,
+                    direction,
+                    working_dir,
+                    pane_config.size,
+                    pane_config.percentage,
+                    Some(&wrapper),
+                )?;
+
+                wait_for_pane_ready(&channel)?;
+                send_keys(&pane_id, cmd_str)?;
+                pane_id
+            } else {
+                split_pane_with_command(
+                    target_pane_id,
+                    direction,
+                    working_dir,
+                    pane_config.size,
+                    pane_config.percentage,
+                    None,
+                )?
+            };
 
             if pane_config.focus {
                 focus_pane_id = Some(new_pane_id.clone());
