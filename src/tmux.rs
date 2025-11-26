@@ -166,7 +166,8 @@ fn init_wait_channel() -> Result<String> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let channel = format!("wm_ready_{}", nanos);
+    let pid = std::process::id();
+    let channel = format!("wm_ready_{}_{}", pid, nanos);
 
     // Handshake Part 1: Lock the channel
     // This ensures we don't miss the signal even if shell starts instantly
@@ -178,29 +179,54 @@ fn init_wait_channel() -> Result<String> {
     Ok(channel)
 }
 
+/// Timeout for waiting for pane readiness (seconds)
+const HANDSHAKE_TIMEOUT_SECS: u64 = 5;
+
 /// Wait for the pane to signal it is ready (unlock the channel),
 /// then clean up the channel.
 fn wait_for_pane_ready(channel: &str) -> Result<()> {
     // Handshake Part 3: Wait for shell to unlock (by attempting to lock again)
     // This blocks until the shell runs `tmux wait-for -U`
-    Cmd::new("tmux")
-        .args(&["wait-for", "-L", channel])
-        .run()
-        .context("Failed to wait for pane ready signal")?;
+    // Use timeout command to prevent indefinite hangs if pane fails to start
+    let result = std::process::Command::new("timeout")
+        .args([
+            &HANDSHAKE_TIMEOUT_SECS.to_string(),
+            "tmux",
+            "wait-for",
+            "-L",
+            channel,
+        ])
+        .status();
 
-    // Handshake Part 4: Cleanup - unlock the channel we just re-locked
-    Cmd::new("tmux")
-        .args(&["wait-for", "-U", channel])
-        .run()
-        .context("Failed to cleanup wait channel")?;
-
-    Ok(())
+    match result {
+        Ok(status) if status.success() => {
+            // Handshake Part 4: Cleanup - unlock the channel we just re-locked
+            Cmd::new("tmux")
+                .args(&["wait-for", "-U", channel])
+                .run()
+                .context("Failed to cleanup wait channel")?;
+            Ok(())
+        }
+        _ => {
+            // Attempt cleanup even on failure/timeout
+            let _ = Cmd::new("tmux").args(&["wait-for", "-U", channel]).run();
+            Err(anyhow!(
+                "Pane handshake timed out after {}s - shell may have failed to start",
+                HANDSHAKE_TIMEOUT_SECS
+            ))
+        }
+    }
 }
 
 /// Build the wrapper command that signals readiness before starting the shell.
 /// Uses stty -echo to prevent double-echo, then signals via wait-for -U.
 fn build_ready_wrapper(channel: &str, shell: &str) -> String {
-    format!("stty -echo; tmux wait-for -U {}; exec {}", channel, shell)
+    // Quote shell path in case it contains spaces
+    // Silence stty errors in case it's not available in minimal environments
+    format!(
+        "stty -echo 2>/dev/null; tmux wait-for -U {}; exec '{}'",
+        channel, shell
+    )
 }
 
 /// Split a pane and return the new pane's ID
