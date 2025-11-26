@@ -3,7 +3,6 @@ use crate::{claude, command, git};
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
-use std::io;
 
 #[derive(Clone, Debug)]
 struct WorktreeBranchParser;
@@ -54,21 +53,10 @@ impl clap::builder::TypedValueParser for WorktreeBranchParser {
     fn possible_values(
         &self,
     ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
-        let branches = self.get_branches();
-        // Note: Box::leak is used here because clap's PossibleValue::new requires 'static str.
-        // This is unavoidable with the current clap API for dynamic completions.
-        // The memory leak is small (proportional to number of branches) and only occurs
-        // during shell completion queries, which are infrequent.
-        let branches_static: Vec<&'static str> = branches
-            .into_iter()
-            .map(|s| Box::leak(s.into_boxed_str()) as &'static str)
-            .collect();
-
-        Some(Box::new(
-            branches_static
-                .into_iter()
-                .map(clap::builder::PossibleValue::new),
-        ))
+        // Return None to avoid running git operations during completion script generation.
+        // Dynamic completions are handled by the __complete-branches subcommand,
+        // which is called by the shell only when the user presses TAB.
+        None
     }
 }
 
@@ -192,6 +180,10 @@ enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// Output branch names for shell completion (internal use)
+    #[command(hide = true, name = "__complete-branches")]
+    CompleteBranches,
 }
 
 #[derive(Subcommand)]
@@ -254,9 +246,13 @@ pub fn run() -> Result<()> {
             ClaudeCommands::Prune => prune_claude_config(),
         },
         Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            let name = cmd.get_name().to_string();
-            generate(shell, &mut cmd, name, &mut io::stdout());
+            generate_completions(shell);
+            Ok(())
+        }
+        Commands::CompleteBranches => {
+            for branch in WorktreeBranchParser::new().get_branches() {
+                println!("{branch}");
+            }
             Ok(())
         }
     }
@@ -265,4 +261,115 @@ pub fn run() -> Result<()> {
 fn prune_claude_config() -> Result<()> {
     claude::prune_stale_entries().context("Failed to prune Claude configuration")?;
     Ok(())
+}
+
+fn generate_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    let name = cmd.get_name().to_string();
+
+    // Generate base completions
+    let mut buf = Vec::new();
+    generate(shell, &mut cmd, &name, &mut buf);
+    let base_script = String::from_utf8_lossy(&buf);
+    print!("{base_script}");
+
+    // Append dynamic branch completion for each shell
+    // Note: PowerShell and Elvish are not supported because clap_complete generates
+    // anonymous completers that can't be wrapped without breaking standard completions.
+    match shell {
+        Shell::Zsh => print_zsh_dynamic_completion(),
+        Shell::Bash => print_bash_dynamic_completion(),
+        Shell::Fish => print_fish_dynamic_completion(),
+        _ => {}
+    }
+}
+
+fn print_zsh_dynamic_completion() {
+    print!(
+        r#"
+# Dynamic branch completion - runs git only when TAB is pressed
+_workmux_branches() {{
+    local branches
+    branches=("${{(@f)$(workmux __complete-branches 2>/dev/null)}}")
+    compadd -a branches
+}}
+
+# Override completion for commands that take branch names
+_workmux_dynamic() {{
+    # Get the subcommand (second word)
+    local cmd="${{words[2]}}"
+
+    # Only handle commands that need dynamic branch completion
+    case "$cmd" in
+        open|merge|remove|rm)
+            # If completing a flag, use generated completions
+            if [[ "${{words[CURRENT]}}" == -* ]]; then
+                _workmux "$@"
+                return
+            fi
+            # For positional args after the subcommand, offer branches
+            if (( CURRENT > 2 )); then
+                _workmux_branches
+                return
+            fi
+            ;;
+    esac
+
+    # For all other commands and cases, use generated completions
+    _workmux "$@"
+}}
+
+compdef _workmux_dynamic workmux
+"#
+    );
+}
+
+fn print_bash_dynamic_completion() {
+    print!(
+        r#"
+# Dynamic branch completion for open/merge/remove commands
+_workmux_branches() {{
+    workmux __complete-branches 2>/dev/null
+}}
+
+# Wrapper that adds dynamic branch completion
+_workmux_dynamic() {{
+    local cur prev words cword
+    _init_completion || return
+
+    # Check if we're completing a branch argument for specific commands
+    if [[ ${{cword}} -ge 2 ]]; then
+        local cmd="${{words[1]}}"
+        case "$cmd" in
+            open|merge|remove|rm)
+                # If not typing a flag, complete with branches
+                if [[ "$cur" != -* ]]; then
+                    COMPREPLY=($(compgen -W "$(_workmux_branches)" -- "$cur"))
+                    return
+                fi
+                ;;
+        esac
+    fi
+
+    # Fall back to generated completions
+    _workmux
+}}
+
+complete -F _workmux_dynamic -o bashdefault -o default workmux
+"#
+    );
+}
+
+fn print_fish_dynamic_completion() {
+    print!(
+        r#"
+# Dynamic branch completion for open/merge/remove commands
+function __workmux_branches
+    workmux __complete-branches 2>/dev/null
+end
+
+# Add dynamic completions for commands that take branch names
+complete -c workmux -n '__fish_seen_subcommand_from open merge remove rm' -f -a '(__workmux_branches)'
+"#
+    );
 }
