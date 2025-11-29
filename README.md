@@ -9,14 +9,20 @@
   <strong>Git worktrees + tmux windows</strong>
 </p>
 
+<p align="center">
+  <a href="#why-git-worktrees">Why?</a> ·
+  <a href="#installation">Install</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
 ---
 
 Giga opinionated zero-friction workflow tool for managing
 [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
-
-→ [Why git worktrees?](#why-git-worktrees)
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/workmux-demo.gif)
 
