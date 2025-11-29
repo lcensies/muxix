@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>Git worktrees + tmux windows</strong>
+  <strong>Parallel development in tmux with git worktrees</strong>
 </p>
 
 <p align="center">
@@ -289,7 +289,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   the name derived from the remote branch (e.g., `origin/feature/foo` creates
   local branch `feature/foo`). Optional when using `--pr`.
 
-#### Useful options
+#### Options
 
 - `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch
   from when creating a new branch. By default, new branches are created from the
@@ -575,7 +575,7 @@ resources (worktree, tmux window, and local branch).
 - `[branch-name]`: Optional name of the branch to merge. If omitted,
   automatically detects the current branch from the worktree you're in.
 
-#### Useful options
+#### Options
 
 - `--ignore-uncommitted`: Commit any staged changes before merging without
   opening an editor
@@ -650,7 +650,7 @@ branch). Useful for abandoning work or cleaning up experimental branches.
 
 - `<branch-name>`: Name of the branch to remove.
 
-#### Useful options
+#### Options
 
 - `--force`, `-f`: Skip confirmation prompt and ignore uncommitted changes
 - `--delete-remote`, `-r`: Also delete the remote branch
@@ -728,7 +728,7 @@ tmux window for a worktree you are still working on.
 
 - `<branch-name>`: Name of the branch that has an existing worktree.
 
-#### Useful options
+#### Options
 
 - `--run-hooks`: Re-runs the `post_create` commands (these block window
   creation).
