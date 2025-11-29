@@ -325,6 +325,8 @@ These options allow you to skip expensive setup steps when they're not needed
 
 #### Examples
 
+##### Basic usage
+
 ```bash
 # Create a new branch and worktree
 workmux add user-auth
@@ -341,6 +343,23 @@ workmux add origin/user-auth-pr
 # Remote branches with slashes work too (creates local branch "feature/foo")
 workmux add origin/feature/foo
 
+# Create a worktree in the background without switching to it
+workmux add feature/parallel-task --background
+```
+
+##### Checking out pull requests
+
+```bash
+# Checkout PR #123. The local branch will be named after the PR's branch.
+workmux add --pr 123
+
+# Checkout PR #456 with a custom local branch name
+workmux add fix/api-bug --pr 456
+```
+
+##### Moving changes to a new worktree
+
+```bash
 # Move uncommitted changes to a new worktree (including untracked files)
 workmux add feature/new-thing --with-changes -u
 
@@ -349,7 +368,11 @@ workmux add fix/bug --with-changes
 
 # Interactively select which changes to move
 workmux add feature/partial --with-changes --patch
+```
 
+##### AI agent prompts
+
+```bash
 # Create a worktree with an inline prompt for AI agents
 workmux add feature/ai --prompt "Implement user authentication with OAuth"
 
@@ -361,25 +384,16 @@ workmux add feature/refactor --prompt-file task-description.md
 
 # Open your editor to write a prompt interactively
 workmux add feature/new-api --prompt-editor
+```
 
+##### Skipping setup steps
+
+```bash
 # Skip expensive setup for documentation-only changes
 workmux add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
 workmux add quick-fix --no-file-ops
-
-# Create a worktree in the background without switching to it
-workmux add feature/parallel-task --background
-```
-
-#### Checking out Pull Requests
-
-```bash
-# Checkout PR #123. The local branch will be named after the PR's branch.
-workmux add --pr 123
-
-# Checkout PR #456 with a custom local branch name
-workmux add fix/api-bug --pr 456
 ```
 
 #### AI agent integration
