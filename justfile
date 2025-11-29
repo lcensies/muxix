@@ -56,7 +56,7 @@ test *ARGS: build
     set -euo pipefail
     source tests/venv/bin/activate
     if [ $# -eq 0 ]; then
-        pytest tests/ -n 4
+        pytest tests/ -n auto
     else
         pytest "$@"
     fi
