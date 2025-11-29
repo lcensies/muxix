@@ -109,10 +109,18 @@ impl<'a> Cmd<'a> {
     }
 }
 
-/// Helper to create a shell command that runs in a shell
-pub fn shell_command(command: &str, workdir: &Path) -> Result<()> {
+/// Helper to create a shell command with additional environment variables
+pub fn shell_command_with_env(
+    command: &str,
+    workdir: &Path,
+    env_vars: &[(&str, &str)],
+) -> Result<()> {
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(command).current_dir(workdir);
+
+    for (key, value) in env_vars {
+        cmd.env(key, value);
+    }
 
     let status = cmd
         .status()

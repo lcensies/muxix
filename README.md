@@ -202,6 +202,15 @@ For a real-world example, see
 - `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
   `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
   Default: `merge`.
+- `worktree_naming`: Strategy for deriving worktree/window names from branch
+  names
+  - `full` (default): Use the full branch name (slashes become dashes)
+  - `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
+    `feature`)
+- `worktree_prefix`: Prefix prepended to worktree directory and window names.
+  Note: This stacks with `window_prefix`, so a worktree with
+  `worktree_prefix: web-` and default `window_prefix: wm-` creates windows like
+  `wm-web-feature`.
 
 #### Default behavior
 

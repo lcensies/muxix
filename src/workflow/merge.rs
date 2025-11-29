@@ -37,6 +37,17 @@ pub fn merge(
         "merge:worktree resolved"
     );
 
+    // The handle is the basename of the worktree directory (used for tmux operations)
+    let handle = worktree_path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "Could not derive handle from worktree path: {}",
+                worktree_path.display()
+            )
+        })?;
+
     // Handle changes in the source worktree
     if git::has_unstaged_changes(&worktree_path)? && !ignore_uncommitted {
         return Err(anyhow!(
@@ -156,6 +167,7 @@ pub fn merge(
     let cleanup_result = cleanup::cleanup(
         context,
         branch_to_merge,
+        handle,
         &worktree_path,
         true,
         delete_remote,
@@ -166,7 +178,7 @@ pub fn merge(
     cleanup::navigate_to_main_and_close(
         &context.prefix,
         &context.main_branch,
-        branch_to_merge,
+        handle,
         &cleanup_result,
     )?;
 

@@ -38,8 +38,16 @@ pub fn list(config: &config::Config) -> Result<Vec<WorktreeInfo>> {
     let worktrees: Vec<WorktreeInfo> = worktrees_data
         .into_iter()
         .map(|(path, branch)| {
-            let prefixed_branch_name = tmux::prefixed(prefix, &branch);
-            let has_tmux = tmux_windows.contains(&prefixed_branch_name);
+            // Extract handle from worktree path basename (the source of truth)
+            let handle = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&branch)
+                .to_string();
+
+            // Use handle for tmux window check, not branch name
+            let prefixed_window_name = tmux::prefixed(prefix, &handle);
+            let has_tmux = tmux_windows.contains(&prefixed_window_name);
 
             // Check for unmerged commits, but only if this isn't the main branch
             let has_unmerged = if let Some(ref main) = main_branch {

@@ -75,8 +75,9 @@ pub fn run(
     if rescue.with_changes {
         let rescue_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
         let rescue_context = workflow::WorkflowContext::new(rescue_config)?;
-        // Derive handle for rescue flow
-        let handle = crate::naming::derive_handle(branch_name, name.as_deref())?;
+        // Derive handle for rescue flow (uses config for naming strategy/prefix)
+        let handle =
+            crate::naming::derive_handle(branch_name, name.as_deref(), &rescue_context.config)?;
         if handle_rescue_flow(
             branch_name,
             &handle,
@@ -307,12 +308,12 @@ fn create_worktrees_from_specs(
             );
         }
 
-        // Derive handle from branch name and optional explicit name
-        // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
-        let handle = crate::naming::derive_handle(&spec.branch_name, explicit_name)?;
-
         // Load config for this specific agent to ensure correct agent resolution
         let config = config::Config::load(spec.agent.as_deref())?;
+
+        // Derive handle from branch name, optional explicit name, and config
+        // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
+        let handle = crate::naming::derive_handle(&spec.branch_name, explicit_name, &config)?;
 
         let prompt_for_spec = if let Some(doc) = prompt_doc {
             Some(Prompt::Inline(

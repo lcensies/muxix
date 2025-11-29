@@ -314,6 +314,7 @@ pub fn create_with_changes(
             let cleanup_result = cleanup::cleanup(
                 context,
                 branch_name,
+                handle,
                 &create_result.worktree_path,
                 true,  // force
                 false, // delete_remote
@@ -327,7 +328,7 @@ pub fn create_with_changes(
             cleanup::navigate_to_main_and_close(
                 &context.prefix,
                 &context.main_branch,
-                branch_name,
+                handle,
                 &cleanup_result,
             )?;
 

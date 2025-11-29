@@ -83,6 +83,14 @@ pub struct Config {
     #[serde(default)]
     pub merge_strategy: Option<MergeStrategy>,
 
+    /// Strategy for deriving worktree/window names from branch names
+    #[serde(default)]
+    pub worktree_naming: WorktreeNaming,
+
+    /// Prefix for worktree directory and window names
+    #[serde(default)]
+    pub worktree_prefix: Option<String>,
+
     /// File operations to perform after creating the worktree
     #[serde(default)]
     pub files: FileConfig,
@@ -136,6 +144,32 @@ pub enum MergeStrategy {
     Merge,
     Rebase,
     Squash,
+}
+
+/// Strategy for deriving worktree/window names from branch names
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WorktreeNaming {
+    /// Use the full branch name (slashes become dashes after slugification)
+    #[default]
+    Full,
+    /// Use only the part after the last `/` (e.g., `prj-123/feature` → `feature`)
+    Basename,
+}
+
+impl WorktreeNaming {
+    /// Derive a name from a branch name using this strategy
+    pub fn derive_name(&self, branch: &str) -> String {
+        match self {
+            Self::Full => branch.to_string(),
+            Self::Basename => branch
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or(branch)
+                .to_string(),
+        }
+    }
 }
 
 /// Validate pane configuration
@@ -321,6 +355,14 @@ impl Config {
             window_prefix: project.window_prefix.or(self.window_prefix),
             agent: project.agent.or(self.agent),
             merge_strategy: project.merge_strategy.or(self.merge_strategy),
+
+            // Worktree naming: project wins if not default
+            worktree_naming: if project.worktree_naming != WorktreeNaming::default() {
+                project.worktree_naming
+            } else {
+                self.worktree_naming
+            },
+            worktree_prefix: project.worktree_prefix.or(self.worktree_prefix),
 
             // Panes: project replaces global (no placeholder support)
             panes: project.panes.or(self.panes),

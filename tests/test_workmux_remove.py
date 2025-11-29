@@ -318,3 +318,57 @@ def test_remove_checks_against_stored_base_branch(
 
     # Parent should still exist
     assert parent_worktree.exists(), "Parent worktree should still exist"
+
+
+def test_remove_closes_window_with_basename_naming_config(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """
+    Verifies that `workmux rm` correctly closes the tmux window when the worktree
+    was created with a naming config that differs from the raw branch name.
+
+    This is a lifecycle test that catches bugs where `add` and `rm` derive the
+    window name inconsistently. See: the bug where rm used raw branch_name instead
+    of the handle derived from the worktree directory basename.
+    """
+    env = isolated_tmux_server
+
+    # Branch name with a prefix that will be stripped by basename strategy
+    branch_name = "feature/TICKET-123-fix-bug"
+    # With basename, only "TICKET-123-fix-bug" is used, then slugified
+    expected_handle = "ticket-123-fix-bug"
+    expected_window = f"wm-{expected_handle}"
+
+    # Configure basename naming strategy
+    write_workmux_config(repo_path, worktree_naming="basename")
+
+    # Create the worktree
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Verify worktree exists with the derived handle (not the full branch name)
+    worktree_parent = repo_path.parent / f"{repo_path.name}__worktrees"
+    worktree_path = worktree_parent / expected_handle
+    assert worktree_path.is_dir(), (
+        f"Worktree should exist at {worktree_path}, "
+        f"found: {list(worktree_parent.iterdir()) if worktree_parent.exists() else 'parent not found'}"
+    )
+
+    # Verify window exists with the derived name
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert expected_window in list_windows_result.stdout, (
+        f"Window {expected_window!r} should exist. "
+        f"Found: {list_windows_result.stdout.strip()}"
+    )
+
+    # Remove the worktree using the branch name (as users would)
+    run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+
+    # Verify worktree is gone
+    assert not worktree_path.exists(), "Worktree should be removed"
+
+    # Verify window is closed - this is the key assertion that catches the bug
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert expected_window not in list_windows_result.stdout, (
+        f"Window {expected_window!r} should be closed after rm. "
+        f"Still found: {list_windows_result.stdout.strip()}"
+    )

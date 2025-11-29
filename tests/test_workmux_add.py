@@ -2530,3 +2530,135 @@ def test_add_with_name_works_with_rescue(
 
     # Verify original worktree is clean
     assert not (repo_path / "uncommitted.txt").exists()
+
+
+# ==============================================================================
+# worktree_naming and worktree_prefix config tests
+# ==============================================================================
+
+
+def test_add_respects_basename_naming_strategy(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that worktree_naming: basename uses only the last part of the branch."""
+    env = isolated_tmux_server
+    branch_name = "feature/user-auth"
+    expected_handle = "user-auth"
+
+    write_workmux_config(repo_path, worktree_naming="basename")
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Verify worktree directory uses basename
+    worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
+    assert (worktrees_dir / expected_handle).is_dir()
+
+    # Verify tmux window uses basename
+    assert_window_exists(env, f"wm-{expected_handle}")
+
+
+def test_add_respects_worktree_prefix(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that worktree_prefix is prepended to the handle."""
+    env = isolated_tmux_server
+    branch_name = "api-fix"
+    prefix = "backend-"
+    expected_handle = f"{prefix}{branch_name}"
+
+    write_workmux_config(repo_path, worktree_prefix=prefix)
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
+    assert (worktrees_dir / expected_handle).is_dir()
+    assert_window_exists(env, f"wm-{expected_handle}")
+
+
+def test_add_combines_basename_and_prefix(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that basename strategy and prefix work together."""
+    env = isolated_tmux_server
+    branch_name = "team/frontend/login"
+    expected_handle = "web-login"
+
+    write_workmux_config(
+        repo_path,
+        worktree_naming="basename",
+        worktree_prefix="web-",
+    )
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
+    assert (worktrees_dir / expected_handle).is_dir()
+    assert_window_exists(env, f"wm-{expected_handle}")
+
+
+def test_explicit_name_overrides_naming_config(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies that --name overrides all config (naming strategy and prefix)."""
+    env = isolated_tmux_server
+    branch_name = "feature/complex-stuff"
+    explicit_name = "simple-name"
+
+    # Configure options that should be ignored when --name is used
+    write_workmux_config(
+        repo_path,
+        worktree_naming="basename",
+        worktree_prefix="ignored-",
+    )
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {branch_name} --name {explicit_name}",
+    )
+
+    worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
+
+    # Should be exactly what was passed in --name, ignoring prefix
+    assert (worktrees_dir / explicit_name).is_dir()
+    assert_window_exists(env, f"wm-{explicit_name}")
+
+    # Verify the config was ignored
+    assert not (worktrees_dir / "complex-stuff").exists()
+    assert not (worktrees_dir / "ignored-simple-name").exists()
+
+
+def test_post_create_hook_receives_workmux_handle_env_var(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """
+    Verifies that post_create hooks receive the WORKMUX_HANDLE environment variable
+    with the derived handle (not the raw branch name).
+    """
+    env = isolated_tmux_server
+
+    # Branch with prefix that will be stripped by basename
+    branch_name = "feature/my-feature"
+    expected_handle = "my-feature"  # basename of branch, slugified
+
+    # Output file where the hook will write the env var
+    handle_output_file = repo_path / "handle_from_hook.txt"
+
+    # Configure basename naming and a hook that writes WORKMUX_HANDLE to a file
+    write_workmux_config(
+        repo_path,
+        worktree_naming="basename",
+        post_create=[f"echo $WORKMUX_HANDLE > {handle_output_file}"],
+    )
+
+    # Create the worktree
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Verify the hook was run and received the correct handle
+    assert handle_output_file.exists(), "Hook should have created the output file"
+    actual_handle = handle_output_file.read_text().strip()
+    assert actual_handle == expected_handle, (
+        f"WORKMUX_HANDLE should be '{expected_handle}' (derived handle), "
+        f"not '{actual_handle}' (which might be the raw branch name)"
+    )
