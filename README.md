@@ -1046,9 +1046,7 @@ interfaces, like a TUI or kanban board. In contrast, workmux adheres to its
 philosophy that **tmux is the interface**, providing a native tmux experience
 for managing parallel workflows without requiring a separate interface to learn.
 
-## See also
-
-Check out my other tools:
+## Related projects
 
 - [tmux-file-picker](https://github.com/raine/tmux-file-picker) — Pop up fzf in
   tmux to quickly insert file paths, perfect for AI coding assistants
