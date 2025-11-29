@@ -207,6 +207,13 @@ enum Commands {
     #[command(visible_alias = "ls")]
     List,
 
+    /// Get the filesystem path of a worktree
+    Path {
+        /// Name of the branch
+        #[arg(value_parser = WorktreeBranchParser::new())]
+        branch_name: String,
+    },
+
     /// Generate example .workmux.yaml configuration file
     Init,
 
@@ -287,6 +294,7 @@ pub fn run() -> Result<()> {
             keep_branch,
         } => command::remove::run(branch_name.as_deref(), force, delete_remote, keep_branch),
         Commands::List => command::list::run(),
+        Commands::Path { branch_name } => command::path::run(&branch_name),
         Commands::Init => crate::config::Config::init(),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
@@ -360,7 +368,7 @@ _workmux_dynamic() {{
 
     # Only handle commands that need dynamic branch completion
     case "$cmd" in
-        open|merge|remove|rm)
+        open|merge|remove|rm|path)
             # If completing a flag, use generated completions
             if [[ "${{words[CURRENT]}}" == -* ]]; then
                 _workmux "$@"
@@ -427,7 +435,7 @@ _workmux_dynamic() {{
     if [[ ${{cword}} -ge 2 ]]; then
         local cmd="${{words[1]}}"
         case "$cmd" in
-            open|merge|remove|rm)
+            open|merge|remove|rm|path)
                 # If not typing a flag, complete with branches
                 if [[ "$cur" != -* ]]; then
                     COMPREPLY=($(compgen -W "$(_workmux_branches)" -- "$cur"))
@@ -467,7 +475,7 @@ function __workmux_git_branches
 end
 
 # Add dynamic completions for commands that take branch names
-complete -c workmux -n '__fish_seen_subcommand_from open merge remove rm' -f -a '(__workmux_branches)'
+complete -c workmux -n '__fish_seen_subcommand_from open merge remove rm path' -f -a '(__workmux_branches)'
 complete -c workmux -n '__fish_seen_subcommand_from add' -f -a '(__workmux_git_branches)'
 "#
     );
