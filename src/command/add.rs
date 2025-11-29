@@ -355,12 +355,12 @@ fn handle_pr_checkout(
     // Warn about PR state
     if pr_details.state != "OPEN" {
         eprintln!(
-            "\n⚠️  Warning: PR #{} is {}. Proceeding with checkout...",
+            "⚠️  Warning: PR #{} is {}. Proceeding with checkout...",
             pr_number, pr_details.state
         );
     }
     if pr_details.is_draft {
-        eprintln!("\n⚠️  Warning: PR #{} is a DRAFT.", pr_number);
+        eprintln!("⚠️  Warning: PR #{} is a DRAFT.", pr_number);
     }
 
     // Determine local branch name
