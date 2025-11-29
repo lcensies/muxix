@@ -1,8 +1,10 @@
 import os
+import re
 import shlex
 import subprocess
 import tempfile
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional
 
@@ -10,6 +12,32 @@ from dataclasses import dataclass
 
 import pytest
 import yaml
+
+
+def slugify(text: str) -> str:
+    """
+    Convert text to a slug, matching the behavior of the Rust `slug` crate.
+
+    - Converts to lowercase
+    - Replaces non-alphanumeric characters with dashes
+    - Removes leading/trailing dashes
+    - Collapses multiple dashes to single dash
+    """
+    # Normalize unicode characters (e.g., é -> e)
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+
+    # Convert to lowercase
+    text = text.lower()
+
+    # Replace non-alphanumeric characters with dashes
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+
+    # Remove leading/trailing dashes and collapse multiple dashes
+    text = re.sub(r"-+", "-", text)
+    text = text.strip("-")
+
+    return text
 
 
 class TmuxEnvironment:
@@ -294,13 +322,23 @@ def write_global_workmux_config(
 
 
 def get_worktree_path(repo_path: Path, branch_name: str) -> Path:
-    """Returns the expected path for a worktree directory."""
-    return repo_path.parent / f"{repo_path.name}__worktrees" / branch_name
+    """Returns the expected path for a worktree directory.
+
+    The directory name is the slugified version of the branch name,
+    matching the Rust workmux behavior.
+    """
+    handle = slugify(branch_name)
+    return repo_path.parent / f"{repo_path.name}__worktrees" / handle
 
 
 def get_window_name(branch_name: str) -> str:
-    """Returns the expected tmux window name for a worktree."""
-    return f"wm-{branch_name}"
+    """Returns the expected tmux window name for a worktree.
+
+    The window name uses the slugified version of the branch name,
+    matching the Rust workmux behavior.
+    """
+    handle = slugify(branch_name)
+    return f"wm-{handle}"
 
 
 def run_workmux_command(

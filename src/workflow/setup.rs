@@ -12,8 +12,17 @@ use super::types::CreateResult;
 
 /// Sets up the tmux window, files, and hooks for a worktree.
 /// This is the shared logic between `create` and `open`.
+///
+/// # Arguments
+/// * `branch_name` - The git branch name (for logging/reference)
+/// * `handle` - The display name used for tmux window naming
+/// * `worktree_path` - Path to the worktree directory
+/// * `config` - Configuration settings
+/// * `options` - Setup options (hooks, file ops, etc.)
+/// * `agent` - Optional agent override
 pub fn setup_environment(
     branch_name: &str,
+    handle: &str,
     worktree_path: &Path,
     config: &config::Config,
     options: &super::types::SetupOptions,
@@ -21,6 +30,7 @@ pub fn setup_environment(
 ) -> Result<CreateResult> {
     debug!(
         branch = branch_name,
+        handle = handle,
         path = %worktree_path.display(),
         run_hooks = options.run_hooks,
         run_file_ops = options.run_file_ops,
@@ -61,15 +71,17 @@ pub fn setup_environment(
     }
 
     // Create tmux window and get the initial pane's ID
+    // Use handle for the window name (not branch_name)
     let initial_pane_id = tmux::create_window(
         prefix,
-        branch_name,
+        handle,
         worktree_path,
         /* detached: */ !options.focus_window,
     )
     .context("Failed to create tmux window")?;
     info!(
         branch = branch_name,
+        handle = handle,
         pane_id = %initial_pane_id,
         "setup_environment:tmux window created"
     );
@@ -98,7 +110,8 @@ pub fn setup_environment(
     // Focus the configured pane and optionally switch to the window
     if options.focus_window {
         tmux::select_pane(&pane_setup_result.focus_pane_id)?;
-        tmux::select_window(prefix, branch_name)?;
+        // Use handle for window selection (not branch_name)
+        tmux::select_window(prefix, handle)?;
     } else {
         // Background mode: do not steal focus from the current window.
         // We intentionally skip select_window to keep the user's current window.

@@ -6,6 +6,7 @@ mod config;
 mod git;
 mod github;
 mod logger;
+mod naming;
 mod prompt;
 mod template;
 mod tmux;

@@ -128,6 +128,10 @@ enum Commands {
         #[arg(long)]
         base: Option<String>,
 
+        /// Explicit name for the worktree directory and tmux window (overrides worktree_naming strategy and worktree_prefix)
+        #[arg(long)]
+        name: Option<String>,
+
         #[command(flatten)]
         prompt: PromptArgs,
 
@@ -254,6 +258,7 @@ pub fn run() -> Result<()> {
             branch_name,
             pr,
             base,
+            name,
             prompt,
             setup,
             rescue,
@@ -262,6 +267,7 @@ pub fn run() -> Result<()> {
             branch_name.as_deref(),
             pr,
             base.as_deref(),
+            name,
             prompt,
             setup,
             rescue,

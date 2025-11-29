@@ -94,7 +94,7 @@ cargo install workmux
    This will:
    - Create a git worktree at
      `<project_root>/../<project_name>__worktrees/new-feature`
-   - Create a tmux window named `new-feature`
+   - Create a tmux window named `wm-new-feature` (the prefix is configurable)
    - Automatically switch your tmux client to the new window
 
 3. **Do your thing**
@@ -284,6 +284,10 @@ immediately. If the branch doesn't exist, it will be created automatically.
   - Requires the `gh` command-line tool to be installed and authenticated.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
+- `--name <name>`: Override the worktree directory and tmux window name. By
+  default, these are derived from the branch name (slugified). Cannot be used
+  with multi-worktree generation (`--count`, `--foreach`, or multiple
+  `--agent`).
 - `-b, --background`: Create the tmux window in the background without switching
   to it. Useful with `--prompt-editor`.
 - `-w, --with-changes`: Move uncommitted changes from the current worktree to
@@ -318,14 +322,18 @@ These options allow you to skip expensive setup steps when they're not needed
 
 #### What happens
 
-1. Creates a git worktree at
-   `<project_root>/../<project_name>__worktrees/<branch-name>`
-2. Runs any configured file operations (copy/symlink)
-3. Executes `post_create` commands if defined (runs before the tmux window
+1. Determines the **handle** for the worktree by slugifying the branch name
+   (e.g., `feature/auth` becomes `feature-auth`). This can be overridden with
+   the `--name` flag.
+2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is
+   configurable and defaults to a sibling directory of your project)
+3. Runs any configured file operations (copy/symlink)
+4. Executes `post_create` commands if defined (runs before the tmux window
    opens, so keep them fast)
-4. Creates a new tmux window named after the branch
-5. Sets up your configured tmux pane layout
-6. Automatically switches your tmux client to the new window
+5. Creates a new tmux window named `<window_prefix><handle>` (e.g.,
+   `wm-feature-auth`)
+6. Sets up your configured tmux pane layout
+7. Automatically switches your tmux client to the new window
 
 #### Examples
 
@@ -349,6 +357,9 @@ workmux add origin/feature/foo
 
 # Create a worktree in the background without switching to it
 workmux add feature/parallel-task --background
+
+# Use a custom name for the worktree directory and tmux window
+workmux add feature/long-descriptive-branch-name --name short
 ```
 
 ##### Checking out pull requests

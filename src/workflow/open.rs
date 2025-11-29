@@ -28,14 +28,6 @@ pub fn open(
     // Pre-flight checks
     context.ensure_tmux_running()?;
 
-    if tmux::window_exists(&context.prefix, branch_name)? {
-        return Err(anyhow!(
-            "A tmux window named '{}' already exists. To switch to it, run: tmux select-window -t '{}'",
-            branch_name,
-            tmux::prefixed(&context.prefix, branch_name)
-        ));
-    }
-
     // This command requires the worktree to already exist
     let worktree_path = git::get_worktree_path(branch_name).with_context(|| {
         format!(
@@ -44,9 +36,33 @@ pub fn open(
         )
     })?;
 
+    // Extract handle from the existing worktree path
+    // This is robust even if config changed since creation
+    let handle = worktree_path
+        .file_name()
+        .ok_or_else(|| anyhow!("Invalid worktree path: no directory name"))?
+        .to_string_lossy()
+        .to_string();
+
+    // Check if tmux window exists using handle (the directory name)
+    if tmux::window_exists(&context.prefix, &handle)? {
+        return Err(anyhow!(
+            "A tmux window named '{}{}' already exists. To switch to it, run: tmux select-window -t '{}'",
+            context.prefix,
+            handle,
+            tmux::prefixed(&context.prefix, &handle)
+        ));
+    }
+
     // Setup the environment
-    let result =
-        setup::setup_environment(branch_name, &worktree_path, &context.config, &options, None)?;
+    let result = setup::setup_environment(
+        branch_name,
+        &handle,
+        &worktree_path,
+        &context.config,
+        &options,
+        None,
+    )?;
     info!(
         branch = branch_name,
         path = %result.worktree_path.display(),

@@ -2416,3 +2416,117 @@ def test_rescue_with_gitignored_files(
     # Verify gitignored files still exist in original worktree
     assert (repo_path / "test.log").exists()
     assert (repo_path / "ignored_dir" / "file.txt").exists()
+
+
+# ==============================================================================
+# --name flag tests
+# ==============================================================================
+
+
+def test_add_with_name_uses_custom_handle(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies --name overrides the default handle for worktree directory and tmux window,
+    while preserving the original git branch name."""
+    from .conftest import slugify
+
+    env = isolated_tmux_server
+    branch_name = "feature/my-new-feature"
+    custom_name = "my-feature"
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {branch_name} --name {custom_name}",
+    )
+
+    # Worktree should use the custom name (slugified)
+    expected_handle = slugify(custom_name)
+    worktree_path = repo_path.parent / f"{repo_path.name}__worktrees" / expected_handle
+    assert worktree_path.is_dir(), f"Expected worktree at {worktree_path}"
+
+    # Worktree should NOT exist at the default (branch-derived) path
+    default_handle = slugify(branch_name)
+    default_path = repo_path.parent / f"{repo_path.name}__worktrees" / default_handle
+    assert not default_path.exists()
+
+    # Tmux window should use the custom name
+    expected_window = f"wm-{expected_handle}"
+    assert_window_exists(env, expected_window)
+
+    # Git branch should use the original name, not the handle
+    result = env.run_command(
+        ["git", "-C", str(worktree_path), "rev-parse", "--abbrev-ref", "HEAD"]
+    )
+    assert result.stdout.strip() == branch_name
+
+
+def test_add_with_name_fails_with_multi_worktree_flags(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies --name cannot be combined with multi-worktree generation flags."""
+    env = isolated_tmux_server
+
+    # Test with --count > 1
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature --name custom -n 2",
+        expect_fail=True,
+    )
+    assert "--name cannot be used with multi-worktree generation" in result.stderr
+
+    # Test with --foreach
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature --name custom --foreach 'platform:ios,android'",
+        expect_fail=True,
+    )
+    assert "--name cannot be used with multi-worktree generation" in result.stderr
+
+    # Test with multiple --agent flags
+    result = run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        "add my-feature --name custom -a claude -a gemini",
+        expect_fail=True,
+    )
+    assert "--name cannot be used with multi-worktree generation" in result.stderr
+
+
+def test_add_with_name_works_with_rescue(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies --name works with --with-changes (rescue) flow."""
+    from .conftest import slugify
+
+    env = isolated_tmux_server
+    branch_name = "rescue-feature"
+    custom_name = "rescued"
+
+    # Create uncommitted changes in the main repo
+    test_file = repo_path / "uncommitted.txt"
+    test_file.write_text("uncommitted content")
+
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add --with-changes {branch_name} --name {custom_name} -u",
+    )
+
+    # Verify worktree uses custom name
+    expected_handle = slugify(custom_name)
+    worktree_path = repo_path.parent / f"{repo_path.name}__worktrees" / expected_handle
+    assert worktree_path.is_dir()
+
+    # Verify the changes were moved
+    assert (worktree_path / "uncommitted.txt").exists()
+
+    # Verify original worktree is clean
+    assert not (repo_path / "uncommitted.txt").exists()

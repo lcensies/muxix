@@ -16,10 +16,12 @@ use std::collections::BTreeMap;
 // Re-export the arg types that are used by the CLI
 pub use super::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     branch_name: Option<&str>,
     pr: Option<u32>,
     base: Option<&str>,
+    name: Option<String>,
     prompt_args: PromptArgs,
     setup: SetupFlags,
     rescue: RescueArgs,
@@ -59,11 +61,29 @@ pub fn run(
         ));
     }
 
+    // Validate --name compatibility with multi-worktree generation
+    let has_multi_worktree =
+        multi.agent.len() > 1 || multi.count.is_some_and(|c| c > 1) || multi.foreach.is_some();
+    if name.is_some() && has_multi_worktree {
+        return Err(anyhow!(
+            "--name cannot be used with multi-worktree generation (multiple --agent, --count, or --foreach).\n\
+             Use the default naming or set worktree_naming/worktree_prefix in config instead."
+        ));
+    }
+
     // Handle rescue flow early if requested
     if rescue.with_changes {
         let rescue_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
         let rescue_context = workflow::WorkflowContext::new(rescue_config)?;
-        if handle_rescue_flow(branch_name, &rescue, &rescue_context, options.clone())? {
+        // Derive handle for rescue flow
+        let handle = crate::naming::derive_handle(branch_name, name.as_deref())?;
+        if handle_rescue_flow(
+            branch_name,
+            &handle,
+            &rescue,
+            &rescue_context,
+            options.clone(),
+        )? {
             return Ok(());
         }
     }
@@ -151,6 +171,7 @@ pub fn run(
         prompt_doc.as_ref(),
         options,
         &env,
+        name.as_deref(),
     )
 }
 
@@ -158,6 +179,7 @@ pub fn run(
 /// Returns Ok(true) if rescue flow was handled, Ok(false) if normal flow should continue.
 fn handle_rescue_flow(
     branch_name: &str,
+    handle: &str,
     rescue: &RescueArgs,
     context: &workflow::WorkflowContext,
     options: SetupOptions,
@@ -168,6 +190,7 @@ fn handle_rescue_flow(
 
     let result = workflow::create_with_changes(
         branch_name,
+        handle,
         rescue.include_untracked,
         rescue.patch,
         context,
@@ -268,6 +291,7 @@ fn create_worktrees_from_specs(
     prompt_doc: Option<&PromptDocument>,
     options: SetupOptions,
     env: &TemplateEnv,
+    explicit_name: Option<&str>,
 ) -> Result<()> {
     if specs.len() > 1 {
         println!("Preparing to create {} worktrees...", specs.len());
@@ -282,6 +306,10 @@ fn create_worktrees_from_specs(
                 spec.branch_name
             );
         }
+
+        // Derive handle from branch name and optional explicit name
+        // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
+        let handle = crate::naming::derive_handle(&spec.branch_name, explicit_name)?;
 
         // Load config for this specific agent to ensure correct agent resolution
         let config = config::Config::load(spec.agent.as_deref())?;
@@ -303,6 +331,7 @@ fn create_worktrees_from_specs(
 
         let result = workflow::create(
             &spec.branch_name,
+            &handle,
             resolved_base,
             remote_branch,
             prompt_for_spec.as_ref(),

@@ -10,8 +10,20 @@ use super::setup;
 use super::types::{CreateResult, SetupOptions};
 
 /// Create a new worktree with tmux window and panes
+///
+/// # Arguments
+/// * `branch_name` - The git branch name (used for git operations)
+/// * `handle` - The display name for worktree directory and tmux window
+/// * `base_branch` - Optional base branch/commit/tag to branch from
+/// * `remote_branch` - Optional remote branch reference
+/// * `prompt` - Optional prompt for AI agents
+/// * `context` - Workflow context with config and repo info
+/// * `options` - Setup options (hooks, file ops, etc.)
+/// * `agent` - Optional agent override
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     branch_name: &str,
+    handle: &str,
     base_branch: Option<&str>,
     remote_branch: Option<&str>,
     prompt: Option<&Prompt>,
@@ -21,6 +33,7 @@ pub fn create(
 ) -> Result<CreateResult> {
     info!(
         branch = branch_name,
+        handle = handle,
         base = ?base_branch,
         remote = ?remote_branch,
         "create:start"
@@ -34,13 +47,16 @@ pub fn create(
     // Pre-flight checks
     context.ensure_tmux_running()?;
 
-    if tmux::window_exists(&context.prefix, branch_name)? {
+    // Check tmux window using handle (the display name)
+    if tmux::window_exists(&context.prefix, handle)? {
         return Err(anyhow!(
-            "A tmux window named '{}' already exists",
-            branch_name
+            "A tmux window named '{}{}' already exists",
+            context.prefix,
+            handle
         ));
     }
 
+    // Check if branch already has a worktree
     if git::worktree_exists(branch_name)? {
         return Err(anyhow!(
             "A worktree for branch '{}' already exists. Use 'workmux open {}' to open it.",
@@ -131,7 +147,18 @@ pub fn create(
             .ok_or_else(|| anyhow!("Could not determine parent directory"))?
             .join(format!("{}__worktrees", project_name))
     };
-    let worktree_path = base_dir.join(branch_name);
+    // Use handle for the worktree directory name (not branch_name)
+    let worktree_path = base_dir.join(handle);
+
+    // Check if path already exists (handle collision detection)
+    if worktree_path.exists() {
+        return Err(anyhow!(
+            "Worktree directory '{}' already exists.\n\
+             This may be from another branch with the same handle.\n\
+             Hint: Use --name to specify a different name.",
+            worktree_path.display()
+        ));
+    }
 
     // Create worktree
     info!(
@@ -180,6 +207,7 @@ pub fn create(
     };
     let mut result = setup::setup_environment(
         branch_name,
+        handle,
         &worktree_path,
         &context.config,
         &options_with_prompt,
@@ -198,6 +226,7 @@ pub fn create(
 /// Create a new worktree and move uncommitted changes from the current worktree into it.
 pub fn create_with_changes(
     branch_name: &str,
+    handle: &str,
     include_untracked: bool,
     patch: bool,
     context: &WorkflowContext,
@@ -205,7 +234,10 @@ pub fn create_with_changes(
 ) -> Result<CreateResult> {
     info!(
         branch = branch_name,
-        include_untracked, patch, "create_with_changes:start"
+        handle = handle,
+        include_untracked,
+        patch,
+        "create_with_changes:start"
     );
 
     // Capture the current working directory, which is the worktree with the changes.
@@ -235,7 +267,16 @@ pub fn create_with_changes(
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
     // 2. Create new worktree
-    let create_result = match create(branch_name, None, None, None, context, options, None) {
+    let create_result = match create(
+        branch_name,
+        handle,
+        None,
+        None,
+        None,
+        context,
+        options,
+        None,
+    ) {
         Ok(result) => result,
         Err(e) => {
             warn!(error = %e, "create_with_changes: worktree creation failed, popping stash");
