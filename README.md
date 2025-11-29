@@ -256,6 +256,7 @@ alias wm='workmux'
 - [`init`](#workmux-init) - Generate configuration file
 - [`open`](#workmux-open-branch-name) - Open a tmux window for an existing
   worktree
+- [`path`](#workmux-path-branch-name) - Get the filesystem path of a worktree
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
 
@@ -724,6 +725,29 @@ workmux open user-auth --run-hooks
 
 # Open and restore configuration files
 workmux open user-auth --force-files
+```
+
+---
+
+### `workmux path <branch-name>`
+
+Prints the filesystem path of an existing worktree. Useful for scripting or
+quickly navigating to a worktree directory.
+
+- `<branch-name>`: Name of the branch that has an existing worktree.
+
+#### Examples
+
+```bash
+# Get the path of a worktree
+workmux path user-auth
+# Output: /Users/you/project__worktrees/user-auth
+
+# Use in scripts or with cd
+cd "$(workmux path user-auth)"
+
+# Copy a file to a worktree
+cp config.json "$(workmux path feature-branch)/"
 ```
 
 ---
