@@ -129,6 +129,41 @@ def test_merge_rebase_strategy_succeeds(
     )
 
 
+def test_merge_strategy_config_rebase(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge_strategy config option applies rebase without CLI flag."""
+    env = isolated_tmux_server
+    branch_name = "feature-config-rebase"
+    write_workmux_config(repo_path, env=env, merge_strategy="rebase")
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Create a commit on main after branching to create divergent history
+    main_file = repo_path / "main_config_update.txt"
+    main_file.write_text("update on main")
+    env.run_command(["git", "add", "main_config_update.txt"], cwd=repo_path)
+    main_commit_msg = "docs: update on main for config test"
+    env.run_command(["git", "commit", "-m", main_commit_msg], cwd=repo_path)
+
+    # Create a commit on the feature branch
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    feature_commit_msg = "feat: feature via config rebase"
+    create_commit(env, worktree_path, feature_commit_msg)
+
+    # Run merge WITHOUT --rebase flag - should use config
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    assert not worktree_path.exists()
+
+    log_result = env.run_command(["git", "log", "--oneline", "main"])
+    assert feature_commit_msg in log_result.stdout, (
+        "Feature commit should be in main history"
+    )
+    assert "Merge branch" not in log_result.stdout, (
+        "No merge commit should exist when merge_strategy: rebase is configured"
+    )
+
+
 def test_merge_squash_strategy_succeeds(
     isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):

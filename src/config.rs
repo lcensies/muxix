@@ -79,6 +79,10 @@ pub struct Config {
     #[serde(default)]
     pub agent: Option<String>,
 
+    /// Default merge strategy for `workmux merge`
+    #[serde(default)]
+    pub merge_strategy: Option<MergeStrategy>,
+
     /// File operations to perform after creating the worktree
     #[serde(default)]
     pub files: FileConfig,
@@ -123,6 +127,15 @@ pub struct PaneConfig {
 pub enum SplitDirection {
     Horizontal,
     Vertical,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MergeStrategy {
+    #[default]
+    Merge,
+    Rebase,
+    Squash,
 }
 
 /// Validate pane configuration
@@ -307,6 +320,7 @@ impl Config {
             worktree_dir: project.worktree_dir.or(self.worktree_dir),
             window_prefix: project.window_prefix.or(self.window_prefix),
             agent: project.agent.or(self.agent),
+            merge_strategy: project.merge_strategy.or(self.merge_strategy),
 
             // Panes: project replaces global (no placeholder support)
             panes: project.panes.or(self.panes),
@@ -401,6 +415,11 @@ impl Config {
 
 # The agent command to use when <agent> is specified in pane commands.
 # agent: claude
+
+# Default merge strategy for `workmux merge`.
+# Options: merge (default), rebase, squash
+# CLI flags (--rebase, --squash) always override this setting.
+# merge_strategy: rebase
 
 # Commands to run in the new worktree before the tmux window is opened.
 # These hooks block window creation, so reserve them for short tasks.

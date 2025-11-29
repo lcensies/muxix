@@ -1,3 +1,4 @@
+use crate::config::MergeStrategy;
 use crate::workflow::WorkflowContext;
 use crate::{config, workflow};
 use anyhow::{Context, Result};
@@ -6,11 +7,23 @@ pub fn run(
     branch_name: Option<&str>,
     ignore_uncommitted: bool,
     delete_remote: bool,
-    rebase: bool,
-    squash: bool,
+    mut rebase: bool,
+    mut squash: bool,
     keep: bool,
 ) -> Result<()> {
     let config = config::Config::load(None)?;
+
+    // Apply default strategy from config if no CLI flags are provided
+    if !rebase
+        && !squash
+        && let Some(strategy) = config.merge_strategy
+    {
+        match strategy {
+            MergeStrategy::Rebase => rebase = true,
+            MergeStrategy::Squash => squash = true,
+            MergeStrategy::Merge => {}
+        }
+    }
 
     // Resolve branch name from argument or current branch
     // Note: Must be done BEFORE creating WorkflowContext (which may change CWD)

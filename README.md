@@ -199,6 +199,9 @@ For a real-world example, see
 - `agent`: The default agent command to use for `<agent>` in pane commands
   (e.g., `claude`, `gemini`). This can be overridden by the `--agent` flag.
   Default: `claude`.
+- `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
+  `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
+  Default: `merge`.
 
 #### Default behavior
 
@@ -557,8 +560,9 @@ resources (worktree, tmux window, and local branch).
 
 #### Merge strategies
 
-By default, `workmux merge` performs a standard merge commit. You can customize
-the merge behavior with these mutually exclusive flags:
+By default, `workmux merge` performs a standard merge commit (configurable via
+`merge_strategy`). You can override the configured behavior with these mutually
+exclusive flags:
 
 - `--rebase`: Rebase the feature branch onto main before merging (creates a
   linear history via fast-forward merge). If conflicts occur, you'll need to

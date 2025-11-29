@@ -237,6 +237,7 @@ def write_workmux_config(
     env: Optional[TmuxEnvironment] = None,
     window_prefix: Optional[str] = None,
     agent: Optional[str] = None,
+    merge_strategy: Optional[str] = None,
 ):
     """Creates a .workmux.yaml file from structured data and optionally commits it."""
     config: Dict[str, Any] = {}
@@ -250,6 +251,8 @@ def write_workmux_config(
         config["window_prefix"] = window_prefix
     if agent:
         config["agent"] = agent
+    if merge_strategy:
+        config["merge_strategy"] = merge_strategy
     (repo_path / ".workmux.yaml").write_text(yaml.dump(config))
 
     # If env is provided, commit the config file to avoid uncommitted changes in merge tests
