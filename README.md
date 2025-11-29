@@ -178,6 +178,15 @@ For a real-world example, see
 - `worktree_dir`: Custom directory for worktrees (absolute or relative to repo
   root)
 - `window_prefix`: Prefix for tmux window names (default: `wm-`)
+- `worktree_naming`: Strategy for deriving worktree/window names from branch
+  names
+  - `full` (default): Use the full branch name (slashes become dashes)
+  - `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
+    `feature`)
+- `worktree_prefix`: Prefix prepended to worktree directory and window names.
+  Note: This stacks with `window_prefix`, so a worktree with
+  `worktree_prefix: web-` and default `window_prefix: wm-` creates windows like
+  `wm-web-feature`.
 - `panes`: Array of pane configurations
   - `command`: Optional command to run when the pane is created. Use this for
     long-running setup like dependency installs so output is visible in tmux. If
@@ -202,15 +211,6 @@ For a real-world example, see
 - `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
   `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
   Default: `merge`.
-- `worktree_naming`: Strategy for deriving worktree/window names from branch
-  names
-  - `full` (default): Use the full branch name (slashes become dashes)
-  - `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
-    `feature`)
-- `worktree_prefix`: Prefix prepended to worktree directory and window names.
-  Note: This stacks with `window_prefix`, so a worktree with
-  `worktree_prefix: web-` and default `window_prefix: wm-` creates windows like
-  `wm-web-feature`.
 
 #### Default behavior
 
