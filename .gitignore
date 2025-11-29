@@ -14,3 +14,4 @@ __pycache__/
 .Python
 venv/
 .pytest_cache/
+tests/venv
