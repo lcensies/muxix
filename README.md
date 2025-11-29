@@ -1048,5 +1048,13 @@ for managing parallel workflows without requiring a separate interface to learn.
 
 ## See also
 
-- [tmux-bro](https://github.com/raine/tmux-bro)
-- [tmux-file-picker](https://github.com/raine/tmux-file-picker)
+Check out my other tools:
+
+- [tmux-file-picker](https://github.com/raine/tmux-file-picker) — Pop up fzf in
+  tmux to quickly insert file paths, perfect for AI coding assistants
+- [tmux-bro](https://github.com/raine/tmux-bro) — Smart tmux session manager
+  that sets up project-specific sessions automatically
+- [claude-history](https://github.com/raine/claude-history) — Search and view
+  Claude Code conversation history with fzf
+- [consult-llm-mcp](https://github.com/raine/consult-llm-mcp) — MCP server that
+  lets Claude Code consult stronger AI models (o3, Gemini, GPT-5.1 Codex)
