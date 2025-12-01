@@ -309,6 +309,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
   - Requires the `gh` command-line tool to be installed and authenticated.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
+- `-A, --auto-name`: Generate branch name from prompt using LLM. See
+  [Automatic branch name generation](#automatic-branch-name-generation).
 - `--name <name>`: Override the worktree directory and tmux window name. By
   default, these are derived from the branch name (slugified). Cannot be used
   with multi-worktree generation (`--count`, `--foreach`, or multiple
@@ -454,6 +456,56 @@ or `--agent` flag) without requiring any `.workmux.yaml` changes:
 
 This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
+
+#### Automatic branch name generation
+
+The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
+LLM via the [`llm`](https://llm.datasette.io/) CLI tool.
+
+##### Usage
+
+```bash
+# Opens editor for prompt, generates branch name
+workmux add -A
+
+# With inline prompt
+workmux add -A -p "Add OAuth authentication"
+
+# With prompt file
+workmux add -A -P task-spec.md
+```
+
+##### Requirements
+
+Install the `llm` CLI tool:
+
+```bash
+pipx install llm
+```
+
+Configure a model (e.g., OpenAI):
+
+```bash
+llm keys set openai
+# Or use a local model
+llm install llm-ollama
+```
+
+##### Configuration
+
+Optionally specify a model in `.workmux.yaml`:
+
+```yaml
+auto_name:
+  model: 'gemini-2.5-flash-lite-preview-06-2025'
+```
+
+If not configured, uses `llm`'s default model.
+
+Recommended models for fast, cheap branch name generation:
+
+- `gemini-2.5-flash-lite-preview-06-2025` (recommended)
+- `gpt-5-nano`
 
 #### Parallel workflows & multi-worktree generation
 

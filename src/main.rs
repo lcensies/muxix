@@ -5,6 +5,7 @@ mod command;
 mod config;
 mod git;
 mod github;
+mod llm;
 mod logger;
 mod naming;
 mod prompt;

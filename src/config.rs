@@ -49,6 +49,14 @@ impl StatusIcons {
     }
 }
 
+/// Configuration for LLM-based branch name generation
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct AutoNameConfig {
+    /// Model to use with llm CLI (e.g., "gpt-4o-mini", "claude-3-5-sonnet").
+    /// If not set, uses llm's default model.
+    pub model: Option<String>,
+}
+
 /// Configuration for the workmux tool, read from .workmux.yaml
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Config {
@@ -105,6 +113,10 @@ pub struct Config {
     /// Custom icons for agent status display.
     #[serde(default)]
     pub status_icons: StatusIcons,
+
+    /// Configuration for LLM-based branch name generation
+    #[serde(default)]
+    pub auto_name: Option<AutoNameConfig>,
 }
 
 /// Configuration for a single tmux pane
@@ -409,6 +421,7 @@ impl Config {
             worktree_prefix,
             panes,
             status_format,
+            auto_name,
         );
 
         // Special case: worktree_naming (project wins if not default)

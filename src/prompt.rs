@@ -10,6 +10,19 @@ pub enum Prompt {
     FromFile(PathBuf),
 }
 
+impl Prompt {
+    /// Read the prompt content as a string.
+    /// For Inline prompts, returns the string directly.
+    /// For FromFile prompts, reads the file content.
+    pub fn read_content(&self) -> Result<String> {
+        match self {
+            Prompt::Inline(s) => Ok(s.clone()),
+            Prompt::FromFile(path) => fs::read_to_string(path)
+                .with_context(|| format!("Failed to read prompt file: {}", path.display())),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct PromptMetadata {
     #[serde(default)]

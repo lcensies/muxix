@@ -117,12 +117,16 @@ enum Commands {
     Add {
         /// Name of the branch (creates if it doesn't exist) or remote ref (e.g., origin/feature).
         /// When used with --pr, this becomes the custom local branch name.
-        #[arg(required_unless_present = "pr", value_parser = GitBranchParser::new())]
+        #[arg(required_unless_present_any = ["pr", "auto_name"], value_parser = GitBranchParser::new())]
         branch_name: Option<String>,
 
         /// Pull request number to checkout
-        #[arg(long, conflicts_with = "base")]
+        #[arg(long, conflicts_with_all = ["base", "auto_name"])]
         pr: Option<u32>,
+
+        /// Generate branch name from prompt using LLM
+        #[arg(short = 'A', long = "auto-name", conflicts_with = "pr")]
+        auto_name: bool,
 
         /// Base branch/commit/tag to branch from (defaults to current branch)
         #[arg(long)]
@@ -260,6 +264,7 @@ pub fn run() -> Result<()> {
         Commands::Add {
             branch_name,
             pr,
+            auto_name,
             base,
             name,
             prompt,
@@ -269,6 +274,7 @@ pub fn run() -> Result<()> {
         } => command::add::run(
             branch_name.as_deref(),
             pr,
+            auto_name,
             base.as_deref(),
             name,
             prompt,

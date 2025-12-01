@@ -17,6 +17,7 @@ pub use super::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
 pub fn run(
     branch_name: Option<&str>,
     pr: Option<u32>,
+    auto_name: bool,
     base: Option<&str>,
     name: Option<String>,
     prompt_args: PromptArgs,
@@ -28,16 +29,40 @@ pub fn run(
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
 
-    // Handle PR checkout if --pr flag is provided
-    let (final_branch_name, remote_branch_for_pr) = if let Some(pr_number) = pr {
+    // Handle auto-name: load prompt first, generate branch name
+    let (final_branch_name, preloaded_prompt, remote_branch_for_pr) = if auto_name {
+        // Use editor if no prompt source specified, otherwise use provided source
+        let use_editor = prompt_args.prompt.is_none() && prompt_args.prompt_file.is_none();
+
+        let prompt = load_prompt(&PromptLoadArgs {
+            prompt_editor: use_editor || prompt_args.prompt_editor,
+            prompt_inline: prompt_args.prompt.as_deref(),
+            prompt_file: prompt_args.prompt_file.as_ref(),
+        })?
+        .ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
+
+        let prompt_text = prompt.read_content()?;
+
+        // Load config for model setting
+        let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+        let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
+
+        println!("Generating branch name...");
+        let generated = crate::llm::generate_branch_name(&prompt_text, model)?;
+        println!("  Branch: {}", generated);
+
+        (generated, Some(prompt), None)
+    } else if let Some(pr_number) = pr {
+        // Handle PR checkout if --pr flag is provided
         let result = workflow::pr::resolve_pr_ref(pr_number, branch_name)?;
-        (result.local_branch, Some(result.remote_branch))
+        (result.local_branch, None, Some(result.remote_branch))
     } else {
         // Normal flow: use provided branch name
         (
             branch_name
-                .expect("branch_name required when --pr not provided")
+                .expect("branch_name required when --pr and --auto-name not provided")
                 .to_string(),
+            None,
             None,
         )
     };
@@ -85,17 +110,25 @@ pub fn run(
         }
     }
 
-    // Load prompt from arguments
-    let prompt_template = load_prompt(&PromptLoadArgs {
-        prompt_editor: prompt_args.prompt_editor,
-        prompt_inline: prompt_args.prompt.as_deref(),
-        prompt_file: prompt_args.prompt_file.as_ref(),
-    })?;
+    // Use preloaded prompt (from auto-name) OR load it now (standard flow)
+    let prompt_template = if let Some(p) = preloaded_prompt {
+        Some(p)
+    } else {
+        load_prompt(&PromptLoadArgs {
+            prompt_editor: prompt_args.prompt_editor,
+            prompt_inline: prompt_args.prompt.as_deref(),
+            prompt_file: prompt_args.prompt_file.as_ref(),
+        })?
+    };
 
     // Parse prompt document to extract frontmatter (if applicable)
     let prompt_doc = if let Some(ref prompt_src) = prompt_template {
-        let from_editor_or_file =
-            prompt_args.prompt_editor || matches!(prompt_src, Prompt::FromFile(_));
+        // Account for implicit editor usage triggered by auto_name
+        let implicit_editor =
+            auto_name && prompt_args.prompt.is_none() && prompt_args.prompt_file.is_none();
+        let from_editor_or_file = prompt_args.prompt_editor
+            || implicit_editor
+            || matches!(prompt_src, Prompt::FromFile(_));
         Some(parse_prompt_with_frontmatter(
             prompt_src,
             from_editor_or_file,
