@@ -193,6 +193,42 @@ class TestBaseFlag:
         window_name = get_window_name(stacked_branch)
         assert_window_exists(env, window_name)
 
+    def test_add_with_base_does_not_set_upstream(
+        self, isolated_tmux_server, workmux_exe_path, repo_path, remote_repo_path
+    ):
+        """Verifies that `--base origin/main` does not set origin/main as upstream."""
+        env = isolated_tmux_server
+        new_branch = "feature-no-upstream"
+
+        write_workmux_config(repo_path)
+
+        # Set up remote and push main
+        env.run_command(
+            ["git", "remote", "add", "origin", str(remote_repo_path)], cwd=repo_path
+        )
+        env.run_command(["git", "push", "-u", "origin", "main"], cwd=repo_path)
+
+        # Create a new branch based on origin/main
+        add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            repo_path,
+            new_branch,
+            extra_args="--base origin/main",
+        )
+
+        # Verify NO upstream config remains (neither merge nor remote)
+        for key in ["merge", "remote"]:
+            result = env.run_command(
+                ["git", "config", "--get", f"branch.{new_branch}.{key}"],
+                cwd=repo_path,
+                check=False,
+            )
+            assert result.returncode != 0, (
+                f"Branch '{new_branch}' should not have 'branch.{new_branch}.{key}' set, "
+                f"but found: {result.stdout.strip()}"
+            )
+
 
 class TestDetachedHead:
     """Tests for behavior with detached HEAD states."""

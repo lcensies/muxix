@@ -342,15 +342,20 @@ pub fn unset_branch_upstream(branch_name: &str) -> Result<()> {
 }
 
 fn branch_has_upstream(branch_name: &str) -> Result<bool> {
-    // Ask git to resolve <branch>@{upstream}; success means an upstream exists.
-    let upstream_ref = format!("{branch_name}@{{upstream}}");
+    // Check for the existence of tracking config for this branch.
+    // We check both 'merge' and 'remote' to catch edge cases where one might be set without the other.
+    // This confirms if tracking configuration exists (which is what we want to unset),
+    // rather than checking if it resolves to a valid commit (which rev-parse does).
+    let has_merge = Cmd::new("git")
+        .args(&["config", "--get", &format!("branch.{}.merge", branch_name)])
+        .run_as_check()?;
+
+    if has_merge {
+        return Ok(true);
+    }
+
     Cmd::new("git")
-        .args(&[
-            "rev-parse",
-            "--abbrev-ref",
-            "--symbolic-full-name",
-            &upstream_ref,
-        ])
+        .args(&["config", "--get", &format!("branch.{}.remote", branch_name)])
         .run_as_check()
 }
 
