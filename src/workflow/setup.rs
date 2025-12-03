@@ -72,6 +72,11 @@ pub fn setup_environment(
         );
     }
 
+    // Find the last workmux-managed window to insert the new one after.
+    // This keeps worktree windows grouped together instead of appending at the end.
+    // If not found (or error), falls back to default append behavior.
+    let last_wm_window = tmux::find_last_window_with_prefix(prefix).unwrap_or(None);
+
     // Create tmux window and get the initial pane's ID
     // Use handle for the window name (not branch_name)
     let initial_pane_id = tmux::create_window(
@@ -79,6 +84,7 @@ pub fn setup_environment(
         handle,
         worktree_path,
         /* detached: */ !options.focus_window,
+        last_wm_window.as_deref(),
     )
     .context("Failed to create tmux window")?;
     info!(

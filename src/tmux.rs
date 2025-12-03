@@ -30,6 +30,29 @@ pub fn is_running() -> Result<bool> {
     Cmd::new("tmux").arg("has-session").run_as_check()
 }
 
+/// Find the last window (by index) that starts with the given prefix.
+/// Returns the window ID (e.g. @1) to be used as a target for inserting new windows.
+/// Uses window IDs rather than names for stability.
+pub fn find_last_window_with_prefix(prefix: &str) -> Result<Option<String>> {
+    // tmux list-windows outputs in index order, so the last match is the highest index.
+    let output = Cmd::new("tmux")
+        .args(&["list-windows", "-F", "#{window_id} #{window_name}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let mut last_match: Option<String> = None;
+
+    for line in output.lines() {
+        // Split on first space: "@id name..."
+        if let Some((id, name)) = line.split_once(' ')
+            && name.starts_with(prefix) {
+                last_match = Some(id.to_string());
+            }
+    }
+
+    Ok(last_match)
+}
+
 /// Check if a tmux window with the given name exists
 pub fn window_exists(prefix: &str, window_name: &str) -> Result<bool> {
     let prefixed_name = prefixed(prefix, window_name);
@@ -56,11 +79,16 @@ pub fn current_window_name() -> Result<Option<String>> {
 
 /// Create a new tmux window with the given name and working directory.
 /// Returns the pane ID of the initial pane in the window.
+///
+/// If `after_window` is provided (e.g., a window ID like "@1"), the new window
+/// will be inserted immediately after that window using `tmux new-window -a`.
+/// This keeps workmux windows grouped together.
 pub fn create_window(
     prefix: &str,
     window_name: &str,
     working_dir: &Path,
     detached: bool,
+    after_window: Option<&str>,
 ) -> Result<String> {
     let prefixed_name = prefixed(prefix, window_name);
     let working_dir_str = working_dir
@@ -70,6 +98,11 @@ pub fn create_window(
     let mut cmd = Cmd::new("tmux").arg("new-window");
     if detached {
         cmd = cmd.arg("-d");
+    }
+
+    // Insert after the target window if specified (keeps workmux windows grouped)
+    if let Some(target) = after_window {
+        cmd = cmd.arg("-a").args(&["-t", target]);
     }
 
     // Use -P to print pane info, -F to format output to just the pane ID
