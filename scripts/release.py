@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
 import sys
 from typing import Tuple
 
+import update_changelog
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
@@ -95,7 +97,7 @@ def update_cargo_files(new_version: str) -> None:
 
 def commit_release(new_version: str) -> None:
     message = f"release v{new_version}"
-    run(["git", "add", "Cargo.toml", "Cargo.lock"])
+    run(["git", "add", "Cargo.toml", "Cargo.lock", "CHANGELOG.md"])
     run(["git", "commit", "-m", message])
 
 
@@ -114,11 +116,19 @@ def publish_crate() -> None:
 
 
 def main() -> None:
+    # Change to repo root so update_changelog module works correctly
+    os.chdir(ROOT)
+
     parser = argparse.ArgumentParser(description="Release helper for cargo crate")
     parser.add_argument(
         "bump",
         choices=("patch", "minor", "major"),
         help="Semver component to bump",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate changelog only, don't commit/publish/push",
     )
     args = parser.parse_args()
 
@@ -129,11 +139,28 @@ def main() -> None:
 
     update_cargo_files(new_version)
 
+    # Generate changelog entry for the new version
+    update_changelog.generate_for_pending(f"v{new_version}")
+
     status_after_update = run_capture(
         ["git", "status", "--porcelain", "--ignore-submodules"]
     )
     if not status_after_update.strip():
         sys.stderr.write("error: version bump produced no changes; aborting\n")
+        sys.exit(1)
+
+    if args.dry_run:
+        print(f"Dry run complete for {crate_name} v{new_version}")
+        print("Changes staged but not committed. Run 'git diff' to review.")
+        return
+
+    # Let user review/edit changelog before proceeding
+    editor = os.environ.get("EDITOR", "vim")
+    subprocess.run([editor, "CHANGELOG.md"], check=True)
+
+    response = input("Proceed with release? [y/N] ").strip().lower()
+    if response != "y":
+        print("Aborting release.")
         sys.exit(1)
 
     commit_release(new_version)

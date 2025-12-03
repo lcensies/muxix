@@ -43,23 +43,13 @@ Generate a user-focused changelog entry for a git tag and insert it into CHANGEL
 
    Read relevant changed files as needed to understand what the changes do.
 
-4. **Consult Gemini for changelog summary**
-
-   Use `mcp__consult-llm__consult_llm` to get help writing user-focused changelog entries:
-
-   - `model`: "gemini-3-pro-preview"
-   - `prompt`: Ask Gemini to summarize the changes for a changelog, focusing on user-facing impact. Include the commit log and diff stat in the prompt.
-   - `files`: Include the key changed files as context
-
-   Use Gemini's response to inform your changelog entry.
-
-5. **Get the tag date**
+4. **Get the tag date**
 
    ```bash
    git log -1 --format=%as {input}
    ```
 
-6. **Update CHANGELOG.md**
+5. **Update CHANGELOG.md**
 
    - If CHANGELOG.md doesn't exist, create it with `# Changelog` header
    - Insert the new entry in the correct position by version order (newest first)
@@ -83,6 +73,98 @@ Generate a user-focused changelog entry for a git tag and insert it into CHANGEL
 - Another change description
 ```
 """
+
+PENDING_PROMPT = """\
+# Changelog Updater (Pending Release)
+
+## Task
+
+Generate a user-focused changelog entry for the upcoming release `{input}` and insert it into CHANGELOG.md.
+
+## Steps
+
+1. **Find the previous tag**
+
+   ```bash
+   git describe --tags --abbrev=0
+   ```
+
+   If this fails (no previous tag exists), this is the first release—compare against the initial commit instead, or skip if there's nothing meaningful to document.
+
+2. **Get the commits since the last tag**
+
+   ```bash
+   git log --oneline PREVIOUS_TAG..HEAD
+   ```
+
+3. **Review the actual changes** to understand context
+
+   ```bash
+   git diff PREVIOUS_TAG..HEAD --stat
+   ```
+
+   Read relevant changed files as needed to understand what the changes do.
+
+4. **Update CHANGELOG.md**
+
+   - If CHANGELOG.md doesn't exist, create it with `# Changelog` header
+   - Insert the new entry at the top (after the header), as the newest release
+   - Use heading level `##` for version entries
+   - Use today's date in YYYY-MM-DD format
+
+## Writing Guidelines
+
+- Write from the user's perspective: what can they now do, what's fixed, what's improved?
+- Use plain language, avoid implementation details like function names, file paths, or internal refactors
+- Focus on behavior changes, new capabilities, and bug fixes users would notice
+- Skip purely internal changes (refactoring, test improvements, CI changes) unless they affect users
+- Keep entries concise—one line per change is usually enough
+- If there are no user-facing changes, still create a minimal entry noting the release
+
+## Entry Format
+
+```markdown
+## {input} (YYYY-MM-DD)
+
+- Change description
+- Another change description
+```
+"""
+
+
+def run_cc_batch(prompt_template: str, input_str: str) -> None:
+    """Run cc-batch with a specific prompt template."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".md", delete=False
+    ) as prompt_file:
+        prompt_file.write(prompt_template)
+        prompt_path = prompt_file.name
+
+    try:
+        subprocess.run(
+            ["cc-batch", prompt_path, "--dangerously-skip-permissions"],
+            input=input_str,
+            text=True,
+            check=True,
+        )
+    finally:
+        Path(prompt_path).unlink(missing_ok=True)
+
+
+def generate_for_pending(version_tag: str) -> None:
+    """
+    Generate a changelog entry for a pending release (HEAD) and update CHANGELOG.md.
+    This is used during the release process before the tag is created.
+    """
+    print(f"Generating changelog entry for {version_tag}...")
+    prompt = PENDING_PROMPT.replace("{input}", version_tag)
+    subprocess.run(
+        ["claude", "--dangerously-skip-permissions", "-p", prompt],
+        check=True,
+    )
+
+    # Format with prettier
+    subprocess.run(["prettier", "--write", "CHANGELOG.md"], capture_output=True)
 
 
 def get_all_tags() -> list[str]:
@@ -200,22 +282,9 @@ def main():
         subprocess.run(["prettier", "--write", "CHANGELOG.md"], capture_output=True)
         return
 
-    # Write prompt to temp file and run cc-batch
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".md", delete=False
-    ) as prompt_file:
-        prompt_file.write(PROMPT)
-        prompt_path = prompt_file.name
-
-    try:
-        tags_input = "\n".join(missing_tags)
-        subprocess.run(
-            ["cc-batch", prompt_path, "--dangerously-skip-permissions"],
-            input=tags_input,
-            text=True,
-        )
-    finally:
-        Path(prompt_path).unlink(missing_ok=True)
+    # Run cc-batch for missing tags
+    tags_input = "\n".join(missing_tags)
+    run_cc_batch(PROMPT, tags_input)
 
     # Check which tags are still missing and mark them as skipped
     updated_tags = get_tags_in_changelog()
