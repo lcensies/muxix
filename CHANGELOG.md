@@ -4,6 +4,14 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.40 (2025-12-03)
+
+- Added `--auto-name` (`-A`) flag to automatically generate branch names from
+  your prompt using an LLM (uses the `llm` tool), so you can skip naming
+  branches yourself
+- Added `auto_name.model` and `auto_name.system_prompt` config options to
+  customize the LLM model and prompt used for branch name generation
+
 ## v0.1.39 (2025-12-03)
 
 - New worktree windows are now inserted after the last workmux window instead of
