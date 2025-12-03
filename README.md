@@ -186,8 +186,8 @@ For a real-world example, see
   checks for `main`/`master`)
 - `worktree_dir`: Custom directory for worktrees (absolute or relative to repo
   root)
-- `window_prefix`: Prefix for tmux window names (default: `wm-`). Set to
-  `"\uf418 "` (nerdfont git branch icon) for a nicer look if you have nerdfonts.
+- `window_prefix`: Prefix for tmux window names (default: `wm-`). See
+  [Nerdfont window prefix](#nerdfont-window-prefix) for a nicer look.
 - `worktree_naming`: Strategy for deriving worktree/window names from branch
   names
   - `full` (default): Use the full branch name (slashes become dashes)
@@ -886,17 +886,6 @@ Workmux automatically modifies your tmux `window-status-format` to display the
 status icons. This happens once per session and only affects the current tmux
 session (not your global config).
 
-### Nerdfont window prefix
-
-If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched with icons for developers), you can use the git branch icon as your window prefix for a cleaner look:
-
-```yaml
-# ~/.config/workmux/config.yaml
-window_prefix: "\uf418 "
-```
-
-![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
-
 ### Customization
 
 You can customize the icons in your config:
@@ -1127,6 +1116,17 @@ that are safe to share with your team, add them to the project's main
 `.gitignore` file.
 
 ## Tips
+
+### Nerdfont window prefix
+
+If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched with icons for developers), you can use the git branch icon as your window prefix for a cleaner look:
+
+```yaml
+# ~/.config/workmux/config.yaml
+window_prefix: "\uf418 "
+```
+
+![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
 
 ### Closing tmux windows
 
