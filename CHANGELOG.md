@@ -4,6 +4,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.38 (2025-12-03)
+
+- Fixed branches created with `--base` not having upstream tracking
+  configuration properly unset from the base branch
+
 ## v0.1.37 (2025-12-03)
 
 - Fixed panes not loading shell profiles, which broke tools like nvm etc. that
