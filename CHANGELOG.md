@@ -4,6 +4,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.39 (2025-12-03)
+
+- New worktree windows are now inserted after the last workmux window instead of
+  at the end of the window list, keeping your worktree windows grouped together
+
 ## v0.1.38 (2025-12-03)
 
 - Fixed branches created with `--base` not having upstream tracking
