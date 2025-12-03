@@ -4,6 +4,12 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.41 (2025-12-04)
+
+- Commands `open`, `path`, `remove`, and `merge` now accept worktree names (the
+  directory name shown in tmux) in addition to branch names, making it easier to
+  work with worktrees when the directory name differs from the branch
+
 ## v0.1.40 (2025-12-03)
 
 - Added `--auto-name` (`-A`) flag to automatically generate branch names from
