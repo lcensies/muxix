@@ -45,9 +45,10 @@ pub fn find_last_window_with_prefix(prefix: &str) -> Result<Option<String>> {
     for line in output.lines() {
         // Split on first space: "@id name..."
         if let Some((id, name)) = line.split_once(' ')
-            && name.starts_with(prefix) {
-                last_match = Some(id.to_string());
-            }
+            && name.starts_with(prefix)
+        {
+            last_match = Some(id.to_string());
+        }
     }
 
     Ok(last_match)
