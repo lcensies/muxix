@@ -137,12 +137,14 @@ pub fn run_shell(script: &str) -> Result<()> {
 /// Schedule a tmux window to be killed after a short delay. This is useful when
 /// the current command is running inside the window that needs to close.
 pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -> Result<()> {
-    let prefixed_name = prefixed(prefix, window_name);
     let delay_secs = format!("{:.3}", delay.as_secs_f64());
+    // Shell-escape the target with = inside quotes to handle spaces in window names
+    let target = format!("={}", prefixed(prefix, window_name));
+    let escaped_target = format!("'{}'", target.replace('\'', r#"'\''"#));
     let script = format!(
-        "sleep {delay}; tmux kill-window -t ={window} >/dev/null 2>&1",
+        "sleep {delay}; tmux kill-window -t {target} >/dev/null 2>&1",
         delay = delay_secs,
-        window = prefixed_name
+        target = escaped_target
     );
 
     run_shell(&script)

@@ -196,13 +196,16 @@ pub fn navigate_to_target_and_close(
         // Running inside source window: schedule both navigation and kill together
         let delay = Duration::from_millis(WINDOW_CLOSE_DELAY_MS);
         let delay_secs = format!("{:.3}", delay.as_secs_f64());
-        let target_prefixed = shell_escape(&tmux::prefixed(prefix, target_window_name));
-        let source_prefixed = shell_escape(&tmux::prefixed(prefix, source_handle));
+        // Put = inside quotes to handle spaces in window names
+        let target_spec = format!("={}", tmux::prefixed(prefix, target_window_name));
+        let source_spec = format!("={}", tmux::prefixed(prefix, source_handle));
+        let target_escaped = shell_escape(&target_spec);
+        let source_escaped = shell_escape(&source_spec);
         let script = format!(
-            "sleep {delay}; tmux select-window -t ={target} >/dev/null 2>&1; tmux kill-window -t ={source} >/dev/null 2>&1",
+            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1",
             delay = delay_secs,
-            target = target_prefixed,
-            source = source_prefixed,
+            target = target_escaped,
+            source = source_escaped,
         );
 
         match tmux::run_shell(&script) {
