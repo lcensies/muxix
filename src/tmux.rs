@@ -263,8 +263,9 @@ fn wait_for_pane_ready(channel: &str) -> Result<()> {
 fn build_ready_wrapper(channel: &str, shell: &str) -> String {
     // Quote shell path in case it contains spaces
     // Silence stty errors in case it's not available in minimal environments
+    // Use -l to start as login shell, ensuring ~/.zprofile etc. are sourced (fixes nvm, etc.)
     format!(
-        "stty -echo 2>/dev/null; tmux wait-for -U {}; exec '{}'",
+        "stty -echo 2>/dev/null; tmux wait-for -U {}; exec '{}' -l",
         channel, shell
     )
 }
