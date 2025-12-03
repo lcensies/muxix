@@ -43,12 +43,16 @@ pub fn run(
 
         let prompt_text = prompt.read_content()?;
 
-        // Load config for model setting
+        // Load config for model and system prompt settings
         let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
         let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
+        let system_prompt = config
+            .auto_name
+            .as_ref()
+            .and_then(|c| c.system_prompt.as_deref());
 
         println!("Generating branch name...");
-        let generated = crate::llm::generate_branch_name(&prompt_text, model)?;
+        let generated = crate::llm::generate_branch_name(&prompt_text, model, system_prompt)?;
         println!("  Branch: {}", generated);
 
         (generated, Some(prompt), None)

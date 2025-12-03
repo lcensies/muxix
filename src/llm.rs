@@ -2,14 +2,16 @@ use anyhow::{Context, Result, anyhow};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-const SYSTEM_PROMPT: &str = r#"Generate a short, valid git branch name (kebab-case) based on the user's input.
-Output ONLY the branch name.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"Generate a short, valid git branch name (kebab-case) based on the user's input.
+Output ONLY the branch name."#;
 
-User Input:
-"#;
-
-pub fn generate_branch_name(prompt: &str, model: Option<&str>) -> Result<String> {
-    let full_prompt = format!("{}{}", SYSTEM_PROMPT, prompt);
+pub fn generate_branch_name(
+    prompt: &str,
+    model: Option<&str>,
+    system_prompt: Option<&str>,
+) -> Result<String> {
+    let system = system_prompt.unwrap_or(DEFAULT_SYSTEM_PROMPT);
+    let full_prompt = format!("{}\n\nUser Input:\n{}", system, prompt);
 
     let mut cmd = Command::new("llm");
     if let Some(m) = model {

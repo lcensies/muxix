@@ -457,7 +457,7 @@ or `--agent` flag) without requiring any `.workmux.yaml` changes:
 This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
 
-#### Automatic branch name generation
+#### Automatic branch name generation (experimental)
 
 The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
 LLM via the [`llm`](https://llm.datasette.io/) CLI tool.
@@ -493,18 +493,19 @@ llm install llm-ollama
 
 ##### Configuration
 
-Optionally specify a model in `.workmux.yaml`:
+Optionally specify a model and/or custom system prompt in `.workmux.yaml`:
 
 ```yaml
 auto_name:
-  model: 'gemini-2.5-flash-lite-preview-06-2025'
+  model: 'gemini-2.5-flash-lite'
+  # Custom system prompt (optional). Default prompt asks for kebab-case branch names.
 ```
 
-If not configured, uses `llm`'s default model.
+If `model` is not configured, uses `llm`'s default model.
 
 Recommended models for fast, cheap branch name generation:
 
-- `gemini-2.5-flash-lite-preview-06-2025` (recommended)
+- `gemini-2.5-flash-lite` (recommended)
 - `gpt-5-nano`
 
 #### Parallel workflows & multi-worktree generation

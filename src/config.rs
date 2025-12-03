@@ -55,6 +55,10 @@ pub struct AutoNameConfig {
     /// Model to use with llm CLI (e.g., "gpt-4o-mini", "claude-3-5-sonnet").
     /// If not set, uses llm's default model.
     pub model: Option<String>,
+
+    /// Custom system prompt for branch name generation.
+    /// If not set, uses the default prompt that asks for a kebab-case branch name.
+    pub system_prompt: Option<String>,
 }
 
 /// Configuration for the workmux tool, read from .workmux.yaml
