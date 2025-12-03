@@ -10,33 +10,45 @@ enum UserChoice {
     NotNeeded, // No prompt needed (no unmerged commits)
 }
 
-pub fn run(branch_name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
-    // Resolve branch name from argument or current branch
-    let branch_to_remove = super::resolve_branch(branch_name, "remove")?;
+pub fn run(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
+    // Resolve name from argument or current worktree directory
+    let input_name = super::resolve_name(name)?;
+
+    // Smart resolution: try handle first, then branch name
+    let (worktree_path, branch_name) = git::find_worktree(&input_name)
+        .with_context(|| format!("No worktree found with name '{}'", input_name))?;
+
+    // Derive handle from the worktree path (in case user provided branch name)
+    let handle = worktree_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("Could not derive handle from worktree path"))?
+        .to_string();
 
     // Validate removal safety and get effective force flag
-    let effective_force = match validate_removal_safety(&branch_to_remove, force, keep_branch)? {
-        Some(force_flag) => force_flag,
-        None => return Ok(()), // User aborted
-    };
+    let effective_force =
+        match validate_removal_safety(&handle, &worktree_path, &branch_name, force, keep_branch)? {
+            Some(force_flag) => force_flag,
+            None => return Ok(()), // User aborted
+        };
 
     let config = config::Config::load(None)?;
     let context = WorkflowContext::new(config)?;
 
     super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
 
-    let result = workflow::remove(&branch_to_remove, effective_force, keep_branch, &context)
+    let result = workflow::remove(&handle, effective_force, keep_branch, &context)
         .context("Failed to remove worktree")?;
 
     if keep_branch {
         println!(
-            "✓ Successfully removed worktree for branch '{}'. The local branch was kept.",
-            result.branch_removed
+            "✓ Successfully removed worktree '{}' (branch '{}' was kept)",
+            handle, result.branch_removed
         );
     } else {
         println!(
-            "✓ Successfully removed worktree and branch '{}'",
-            result.branch_removed
+            "✓ Successfully removed worktree '{}' and branch '{}'",
+            handle, result.branch_removed
         );
     }
 
@@ -46,6 +58,8 @@ pub fn run(branch_name: Option<&str>, force: bool, keep_branch: bool) -> Result<
 /// Validates whether it's safe to remove the branch/worktree.
 /// Returns Some(force_flag) to proceed, or None if user aborted.
 fn validate_removal_safety(
+    handle: &str,
+    worktree_path: &std::path::Path,
     branch_name: &str,
     force: bool,
     keep_branch: bool,
@@ -56,11 +70,11 @@ fn validate_removal_safety(
 
     // First check for uncommitted changes (must be checked before unmerged prompt)
     // to avoid prompting user about unmerged commits only to error on uncommitted changes
-    check_uncommitted_changes(branch_name)?;
+    check_uncommitted_changes(worktree_path)?;
 
     // Check if we need to prompt for unmerged commits (only relevant when deleting the branch)
     if !keep_branch {
-        match check_unmerged_commits(branch_name)? {
+        match check_unmerged_commits(handle, branch_name)? {
             UserChoice::Confirmed => return Ok(Some(true)), // User confirmed - use force
             UserChoice::Aborted => return Ok(None),         // User aborted
             UserChoice::NotNeeded => {}                     // No unmerged commits
@@ -71,12 +85,9 @@ fn validate_removal_safety(
 }
 
 /// Check for uncommitted changes in the worktree.
-fn check_uncommitted_changes(branch_name: &str) -> Result<()> {
-    let worktree_path = git::get_worktree_path(branch_name)
-        .with_context(|| format!("Failed to get worktree path for branch '{}'", branch_name))?;
-
+fn check_uncommitted_changes(worktree_path: &std::path::Path) -> Result<()> {
     if worktree_path.exists() {
-        let has_changes = git::has_uncommitted_changes(&worktree_path).with_context(|| {
+        let has_changes = git::has_uncommitted_changes(worktree_path).with_context(|| {
             format!(
                 "Failed to check for uncommitted changes in worktree at '{}'",
                 worktree_path.display()
@@ -94,7 +105,7 @@ fn check_uncommitted_changes(branch_name: &str) -> Result<()> {
 }
 
 /// Check for unmerged commits and prompt user for confirmation.
-fn check_unmerged_commits(branch_name: &str) -> Result<UserChoice> {
+fn check_unmerged_commits(handle: &str, branch_name: &str) -> Result<UserChoice> {
     // Try to get the stored base branch, fall back to default branch
     let base = git::get_branch_base(branch_name)
         .ok()
@@ -120,7 +131,7 @@ fn check_unmerged_commits(branch_name: &str) -> Result<UserChoice> {
     let has_unmerged = unmerged_branches.contains(branch_name);
 
     if has_unmerged {
-        prompt_unmerged_confirmation(branch_name, &base_branch, &base)
+        prompt_unmerged_confirmation(handle, branch_name, &base_branch, &base)
     } else {
         Ok(UserChoice::NotNeeded)
     }
@@ -128,13 +139,14 @@ fn check_unmerged_commits(branch_name: &str) -> Result<UserChoice> {
 
 /// Prompt user to confirm deletion of branch with unmerged commits.
 fn prompt_unmerged_confirmation(
+    handle: &str,
     branch_name: &str,
     base_branch: &str,
     base: &str,
 ) -> Result<UserChoice> {
     println!(
-        "This will delete the worktree, tmux window, and local branch for '{}'.",
-        branch_name
+        "This will delete the worktree '{}', tmux window, and local branch '{}'.",
+        handle, branch_name
     );
     println!(
         "Warning: Branch '{}' has commits that are not merged into '{}' (base: '{}').",

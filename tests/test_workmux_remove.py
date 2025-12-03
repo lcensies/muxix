@@ -361,8 +361,8 @@ def test_remove_closes_window_with_basename_naming_config(
         f"Found: {list_windows_result.stdout.strip()}"
     )
 
-    # Remove the worktree using the branch name (as users would)
-    run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+    # Remove the worktree using the handle (worktree directory name)
+    run_workmux_remove(env, workmux_exe_path, repo_path, expected_handle, force=True)
 
     # Verify worktree is gone
     assert not worktree_path.exists(), "Worktree should be removed"

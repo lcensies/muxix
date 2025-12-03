@@ -8,13 +8,9 @@ use super::setup;
 use super::types::{CreateResult, SetupOptions};
 
 /// Open a tmux window for an existing worktree
-pub fn open(
-    branch_name: &str,
-    context: &WorkflowContext,
-    options: SetupOptions,
-) -> Result<CreateResult> {
+pub fn open(name: &str, context: &WorkflowContext, options: SetupOptions) -> Result<CreateResult> {
     info!(
-        branch = branch_name,
+        name = name,
         run_hooks = options.run_hooks,
         run_file_ops = options.run_file_ops,
         "open:start"
@@ -29,15 +25,15 @@ pub fn open(
     context.ensure_tmux_running()?;
 
     // This command requires the worktree to already exist
-    let worktree_path = git::get_worktree_path(branch_name).with_context(|| {
+    // Smart resolution: try handle first, then branch name
+    let (worktree_path, branch_name) = git::find_worktree(name).with_context(|| {
         format!(
-            "No worktree found for branch '{}'. Use 'workmux add {}' to create it.",
-            branch_name, branch_name
+            "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
+            name
         )
     })?;
 
-    // Extract handle from the existing worktree path
-    // This is robust even if config changed since creation
+    // Derive handle from the worktree path (in case user provided branch name)
     let handle = worktree_path
         .file_name()
         .ok_or_else(|| anyhow!("Invalid worktree path: no directory name"))?
@@ -56,7 +52,7 @@ pub fn open(
 
     // Setup the environment
     let result = setup::setup_environment(
-        branch_name,
+        &branch_name,
         &handle,
         &worktree_path,
         &context.config,
@@ -64,6 +60,7 @@ pub fn open(
         None,
     )?;
     info!(
+        handle = handle,
         branch = branch_name,
         path = %result.worktree_path.display(),
         hooks_run = result.post_create_hooks_run,

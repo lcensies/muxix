@@ -7,8 +7,9 @@ pub mod path;
 pub mod remove;
 pub mod set_window_status;
 
-use crate::{config::Config, git, workflow::SetupOptions};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+
+use crate::{config::Config, workflow::SetupOptions};
 
 /// Represents the different phases where hooks can be executed
 pub enum HookPhase {
@@ -40,12 +41,16 @@ pub fn announce_hooks(config: &Config, options: Option<&SetupOptions>, phase: Ho
     }
 }
 
-/// Resolve the branch name from CLI argument or current branch.
-/// Note: Must be called BEFORE workflow operations that change CWD (like merge/remove).
-pub fn resolve_branch(arg: Option<&str>, operation: &str) -> Result<String> {
+/// Resolve name from argument or current worktree directory.
+pub fn resolve_name(arg: Option<&str>) -> Result<String> {
     match arg {
         Some(name) => Ok(name.to_string()),
-        None => git::get_current_branch()
-            .with_context(|| format!("Failed to get current branch for {} operation", operation)),
+        None => {
+            let cwd = std::env::current_dir().context("Failed to get current directory")?;
+            cwd.file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow!("Could not determine worktree name from current directory"))
+        }
     }
 }

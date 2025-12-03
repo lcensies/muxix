@@ -22,8 +22,8 @@ pub struct ForkBranchSpec {
 
 /// Custom error type for worktree not found
 #[derive(Debug, thiserror::Error)]
-#[error("Worktree not found for branch: {0}")]
-pub struct WorktreeNotFound(String);
+#[error("Worktree not found: {0}")]
+pub struct WorktreeNotFound(pub String);
 
 /// Check if we're in a git repository
 pub fn is_git_repo() -> Result<bool> {
@@ -411,6 +411,36 @@ pub fn get_worktree_path(branch_name: &str) -> Result<PathBuf> {
     }
 
     Err(WorktreeNotFound(branch_name.to_string()).into())
+}
+
+/// Find a worktree by handle (directory name) or branch name.
+/// Tries handle first, then falls back to branch lookup.
+/// Returns both the path and the branch name checked out in that worktree.
+pub fn find_worktree(name: &str) -> Result<(PathBuf, String)> {
+    let list_str = Cmd::new("git")
+        .args(&["worktree", "list", "--porcelain"])
+        .run_and_capture_stdout()
+        .context("Failed to list worktrees")?;
+
+    let worktrees = parse_worktree_list_porcelain(&list_str)?;
+
+    // First: try to match by handle (directory name)
+    for (path, branch) in &worktrees {
+        if let Some(dir_name) = path.file_name()
+            && dir_name.to_string_lossy() == name
+        {
+            return Ok((path.clone(), branch.clone()));
+        }
+    }
+
+    // Fallback: try to match by branch name
+    for (path, branch) in worktrees {
+        if branch == name {
+            return Ok((path, branch));
+        }
+    }
+
+    Err(WorktreeNotFound(name.to_string()).into())
 }
 
 /// List all worktrees with their branches

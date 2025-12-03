@@ -1,8 +1,9 @@
-# Dynamic branch completion - runs git only when TAB is pressed
-_workmux_branches() {
-    local branches
-    branches=("${(@f)$(workmux __complete-branches 2>/dev/null)}")
-    compadd -a branches
+# Dynamic worktree handle completion (directory names)
+# Used for open/remove/merge/path - these accept handles or branch names
+_workmux_handles() {
+    local handles
+    handles=("${(@f)$(workmux __complete-handles 2>/dev/null)}")
+    compadd -a handles
 }
 
 # Dynamic git branch completion for add command
@@ -12,22 +13,23 @@ _workmux_git_branches() {
     compadd -a branches
 }
 
-# Override completion for commands that take branch names
+# Override completion for commands that need dynamic completion
 _workmux_dynamic() {
     # Get the subcommand (second word)
     local cmd="${words[2]}"
 
-    # Only handle commands that need dynamic branch completion
+    # Only handle commands that need dynamic completion
     case "$cmd" in
-        open|merge|remove|rm|path)
+        open|remove|rm|path|merge)
             # If completing a flag, use generated completions
             if [[ "${words[CURRENT]}" == -* ]]; then
                 _workmux "$@"
                 return
             fi
-            # For positional args after the subcommand, offer branches
+            # For positional args after the subcommand, offer worktree handles
+            # (commands also accept branch names but handles are the primary identifier)
             if (( CURRENT > 2 )); then
-                _workmux_branches
+                _workmux_handles
                 return
             fi
             ;;

@@ -9,35 +9,18 @@ use super::types::RemoveResult;
 
 /// Remove a worktree without merging
 pub fn remove(
-    branch_name: &str,
+    handle: &str,
     force: bool,
     keep_branch: bool,
     context: &WorkflowContext,
 ) -> Result<RemoveResult> {
-    info!(branch = branch_name, force, keep_branch, "remove:start");
+    info!(handle = handle, force, keep_branch, "remove:start");
 
-    // Get worktree path - this also validates that the worktree exists
-    let worktree_path = git::get_worktree_path(branch_name)
-        .with_context(|| format!("No worktree found for branch '{}'", branch_name))?;
-    debug!(branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
-
-    // The handle is the basename of the worktree directory. This is the source of truth
-    // for tmux window naming, as it was derived during `workmux add` using the config's
-    // naming strategy and prefix at that time.
-    let handle = worktree_path
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        .ok_or_else(|| {
-            anyhow!(
-                "Could not derive handle from worktree path: {}",
-                worktree_path.display()
-            )
-        })?;
-    debug!(
-        branch = branch_name,
-        handle = handle,
-        "remove:derived handle from path"
-    );
+    // Get worktree path and branch - this also validates that the worktree exists
+    // Smart resolution: try handle first, then branch name
+    let (worktree_path, branch_name) = git::find_worktree(handle)
+        .with_context(|| format!("No worktree found with name '{}'", handle))?;
+    debug!(handle = handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
 
     // Safety Check: Prevent deleting the main worktree itself, regardless of branch.
     let is_main_worktree = match (
@@ -82,10 +65,10 @@ pub fn remove(
 
     // Note: Unmerged branch check removed - git branch -d/D handles this natively
     // The CLI provides a user-friendly confirmation prompt before calling this function
-    info!(branch = branch_name, keep_branch, "remove:cleanup start");
+    info!(branch = %branch_name, keep_branch, "remove:cleanup start");
     let cleanup_result = cleanup::cleanup(
         context,
-        branch_name,
+        &branch_name,
         handle,
         &worktree_path,
         force,

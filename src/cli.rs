@@ -60,6 +60,67 @@ impl clap::builder::TypedValueParser for WorktreeBranchParser {
     }
 }
 
+/// Parser for worktree handles (directory names), used for open/path/remove commands.
+#[derive(Clone, Debug)]
+struct WorktreeHandleParser;
+
+impl WorktreeHandleParser {
+    fn new() -> Self {
+        Self
+    }
+
+    fn get_handles() -> Vec<String> {
+        // Don't attempt completions if not in a git repo.
+        if !git::is_git_repo().unwrap_or(false) {
+            return Vec::new();
+        }
+
+        let worktrees = match git::list_worktrees() {
+            Ok(wt) => wt,
+            // Fail silently on completion; don't disrupt the user's shell.
+            Err(_) => return Vec::new(),
+        };
+
+        let main_worktree_root = git::get_main_worktree_root().ok();
+
+        worktrees
+            .into_iter()
+            .filter_map(|(path, _)| {
+                // Filter out the main worktree
+                if main_worktree_root.as_ref() == Some(&path) {
+                    return None;
+                }
+                // Extract directory name as the handle
+                path.file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
+            .collect()
+    }
+}
+
+impl clap::builder::TypedValueParser for WorktreeHandleParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        // Use the default string parser for validation.
+        clap::builder::StringValueParser::new().parse_ref(cmd, None, value)
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        // Return None to avoid running git operations during completion script generation.
+        // Dynamic completions are handled by the __complete-handles subcommand,
+        // which is called by the shell only when the user presses TAB.
+        None
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GitBranchParser;
 
@@ -151,9 +212,9 @@ enum Commands {
 
     /// Open a tmux window for an existing worktree
     Open {
-        /// Name of the branch with an existing worktree
-        #[arg(value_parser = WorktreeBranchParser::new())]
-        branch_name: String,
+        /// Worktree name (directory name, visible in tmux window)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: String,
 
         /// Re-run post-create hooks (e.g., pnpm install)
         #[arg(long)]
@@ -166,9 +227,9 @@ enum Commands {
 
     /// Merge a branch, then clean up the worktree and tmux window
     Merge {
-        /// Name of the branch to merge (defaults to current branch)
-        #[arg(value_parser = WorktreeBranchParser::new())]
-        branch_name: Option<String>,
+        /// Worktree name or branch (defaults to current directory)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: Option<String>,
 
         /// The target branch to merge into (defaults to main_branch from config)
         #[arg(long, value_parser = GitBranchParser::new())]
@@ -194,9 +255,9 @@ enum Commands {
     /// Remove a worktree, tmux window, and branch without merging
     #[command(visible_alias = "rm")]
     Remove {
-        /// Name of the branch to remove (defaults to current branch)
-        #[arg(value_parser = WorktreeBranchParser::new())]
-        branch_name: Option<String>,
+        /// Worktree name (defaults to current directory name)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: Option<String>,
 
         /// Skip confirmation and ignore uncommitted changes
         #[arg(short, long)]
@@ -213,9 +274,9 @@ enum Commands {
 
     /// Get the filesystem path of a worktree
     Path {
-        /// Name of the branch
-        #[arg(value_parser = WorktreeBranchParser::new())]
-        branch_name: String,
+        /// Worktree name (directory name)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: String,
     },
 
     /// Generate example .workmux.yaml configuration file
@@ -241,9 +302,13 @@ enum Commands {
         shell: Shell,
     },
 
-    /// Output branch names for shell completion (internal use)
+    /// Output worktree branch names for shell completion (internal use)
     #[command(hide = true, name = "__complete-branches")]
     CompleteBranches,
+
+    /// Output worktree handles for shell completion (internal use)
+    #[command(hide = true, name = "__complete-handles")]
+    CompleteHandles,
 
     /// Output git branches for shell completion (internal use)
     #[command(hide = true, name = "__complete-git-branches")]
@@ -283,19 +348,19 @@ pub fn run() -> Result<()> {
             multi,
         ),
         Commands::Open {
-            branch_name,
+            name,
             run_hooks,
             force_files,
-        } => command::open::run(&branch_name, run_hooks, force_files),
+        } => command::open::run(&name, run_hooks, force_files),
         Commands::Merge {
-            branch_name,
+            name,
             into,
             ignore_uncommitted,
             rebase,
             squash,
             keep,
         } => command::merge::run(
-            branch_name.as_deref(),
+            name.as_deref(),
             into.as_deref(),
             ignore_uncommitted,
             rebase,
@@ -303,12 +368,12 @@ pub fn run() -> Result<()> {
             keep,
         ),
         Commands::Remove {
-            branch_name,
+            name,
             force,
             keep_branch,
-        } => command::remove::run(branch_name.as_deref(), force, keep_branch),
+        } => command::remove::run(name.as_deref(), force, keep_branch),
         Commands::List => command::list::run(),
-        Commands::Path { branch_name } => command::path::run(&branch_name),
+        Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
@@ -321,6 +386,12 @@ pub fn run() -> Result<()> {
         Commands::CompleteBranches => {
             for branch in WorktreeBranchParser::new().get_branches() {
                 println!("{branch}");
+            }
+            Ok(())
+        }
+        Commands::CompleteHandles => {
+            for handle in WorktreeHandleParser::get_handles() {
+                println!("{handle}");
             }
             Ok(())
         }

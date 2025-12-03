@@ -10,7 +10,7 @@ use super::types::MergeResult;
 /// Merge a branch into the target branch and clean up
 #[allow(clippy::too_many_arguments)]
 pub fn merge(
-    branch_name: &str,
+    name: &str,
     into_branch: Option<&str>,
     ignore_uncommitted: bool,
     rebase: bool,
@@ -19,7 +19,7 @@ pub fn merge(
     context: &WorkflowContext,
 ) -> Result<MergeResult> {
     info!(
-        branch = branch_name,
+        name = name,
         into = into_branch,
         ignore_uncommitted,
         rebase,
@@ -32,7 +32,29 @@ pub fn merge(
     // the worktree that is about to be deleted.
     context.chdir_to_main_worktree()?;
 
-    let branch_to_merge = branch_name;
+    // Smart resolution: try handle first, then branch name
+    let (worktree_path, branch_to_merge) = git::find_worktree(name)
+        .with_context(|| format!("No worktree found with name '{}'", name))?;
+
+    // The handle is the basename of the worktree directory (used for tmux operations)
+    let handle = worktree_path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "Could not derive handle from worktree path: {}",
+                worktree_path.display()
+            )
+        })?;
+
+    debug!(
+        name = name,
+        handle = handle,
+        branch = branch_to_merge,
+        path = %worktree_path.display(),
+        "merge:worktree resolved"
+    );
+
     let target_branch = into_branch.unwrap_or(&context.main_branch);
 
     // Resolve the worktree path and window handle for the TARGET branch.
@@ -79,26 +101,6 @@ pub fn merge(
         }
     };
 
-    // Get worktree path for the branch to be merged
-    let worktree_path = git::get_worktree_path(branch_to_merge)
-        .with_context(|| format!("No worktree found for branch '{}'", branch_to_merge))?;
-    debug!(
-        branch = branch_to_merge,
-        path = %worktree_path.display(),
-        "merge:worktree resolved"
-    );
-
-    // The handle is the basename of the worktree directory (used for tmux operations)
-    let handle = worktree_path
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        .ok_or_else(|| {
-            anyhow!(
-                "Could not derive handle from worktree path: {}",
-                worktree_path.display()
-            )
-        })?;
-
     // Handle changes in the source worktree
     // Check for both unstaged changes and untracked files to prevent data loss during cleanup
     let has_unstaged = git::has_unstaged_changes(&worktree_path)?;
@@ -133,7 +135,7 @@ pub fn merge(
         ));
     }
     debug!(
-        branch = branch_to_merge,
+        branch = %branch_to_merge,
         target = target_branch,
         "merge:target branch resolved"
     );
@@ -180,7 +182,7 @@ pub fn merge(
             &branch_to_merge, target_branch
         );
         info!(
-            branch = branch_to_merge,
+            branch = %branch_to_merge,
             base = target_branch,
             "merge:rebase start"
         );
@@ -194,49 +196,49 @@ pub fn merge(
         })?;
 
         // After a successful rebase, merge into target. This will be a fast-forward.
-        git::merge_in_worktree(&target_worktree_path, branch_to_merge)
+        git::merge_in_worktree(&target_worktree_path, &branch_to_merge)
             .context("Failed to merge rebased branch. This should have been a fast-forward.")?;
-        info!(branch = branch_to_merge, "merge:fast-forward complete");
+        info!(branch = %branch_to_merge, "merge:fast-forward complete");
     } else if squash {
         // Perform the squash merge. This stages all changes from the feature branch but does not commit.
-        if let Err(e) = git::merge_squash_in_worktree(&target_worktree_path, branch_to_merge) {
-            info!(branch = branch_to_merge, error = %e, "merge:squash merge failed, resetting target worktree");
+        if let Err(e) = git::merge_squash_in_worktree(&target_worktree_path, &branch_to_merge) {
+            info!(branch = %branch_to_merge, error = %e, "merge:squash merge failed, resetting target worktree");
             // Best effort to reset; ignore failure as the user message is the priority.
             let _ = git::reset_hard(&target_worktree_path);
-            return Err(conflict_err(branch_to_merge));
+            return Err(conflict_err(&branch_to_merge));
         }
 
         // Prompt the user to provide a commit message for the squashed changes.
         println!("Staged squashed changes. Please provide a commit message in your editor.");
         git::commit_with_editor(&target_worktree_path)
             .context("Failed to commit squashed changes. You may need to commit them manually.")?;
-        info!(branch = branch_to_merge, "merge:squash merge committed");
+        info!(branch = %branch_to_merge, "merge:squash merge committed");
     } else {
         // Default merge commit workflow
-        if let Err(e) = git::merge_in_worktree(&target_worktree_path, branch_to_merge) {
-            info!(branch = branch_to_merge, error = %e, "merge:standard merge failed, aborting merge in target worktree");
+        if let Err(e) = git::merge_in_worktree(&target_worktree_path, &branch_to_merge) {
+            info!(branch = %branch_to_merge, error = %e, "merge:standard merge failed, aborting merge in target worktree");
             // Best effort to abort; ignore failure as the user message is the priority.
             let _ = git::abort_merge_in_worktree(&target_worktree_path);
-            return Err(conflict_err(branch_to_merge));
+            return Err(conflict_err(&branch_to_merge));
         }
-        info!(branch = branch_to_merge, "merge:standard merge complete");
+        info!(branch = %branch_to_merge, "merge:standard merge complete");
     }
 
     // Skip cleanup if --keep flag is used
     if keep {
-        info!(branch = branch_to_merge, "merge:skipping cleanup (--keep)");
+        info!(branch = %branch_to_merge, "merge:skipping cleanup (--keep)");
         return Ok(MergeResult {
-            branch_merged: branch_to_merge.to_string(),
+            branch_merged: branch_to_merge,
             main_branch: target_branch.to_string(),
             had_staged_changes,
         });
     }
 
     // Always force cleanup after a successful merge
-    info!(branch = branch_to_merge, "merge:cleanup start");
+    info!(branch = %branch_to_merge, "merge:cleanup start");
     let cleanup_result = cleanup::cleanup(
         context,
-        branch_to_merge,
+        &branch_to_merge,
         handle,
         &worktree_path,
         true,
@@ -252,7 +254,7 @@ pub fn merge(
     )?;
 
     Ok(MergeResult {
-        branch_merged: branch_to_merge.to_string(),
+        branch_merged: branch_to_merge,
         main_branch: target_branch.to_string(),
         had_staged_changes,
     })

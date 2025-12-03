@@ -280,12 +280,11 @@ alias wm='workmux'
 
 - [`add`](#workmux-add-branch-name) - Create a new worktree and tmux window
 - [`merge`](#workmux-merge-branch-name) - Merge a branch and clean up everything
-- [`remove`](#workmux-remove-branch-name) - Remove a worktree without merging
+- [`remove`](#workmux-remove-name-alias-rm) - Remove a worktree without merging
 - [`list`](#workmux-list) - List all worktrees with status
 - [`init`](#workmux-init) - Generate configuration file
-- [`open`](#workmux-open-branch-name) - Open a tmux window for an existing
-  worktree
-- [`path`](#workmux-path-branch-name) - Get the filesystem path of a worktree
+- [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
+- [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
 
@@ -712,12 +711,13 @@ workmux merge feature/subtask --into feature/parent
 
 ---
 
-### `workmux remove <branch-name>` (alias: `rm`)
+### `workmux remove [name]` (alias: `rm`)
 
 Removes a worktree, tmux window, and branch without merging (unless you keep the
 branch). Useful for abandoning work or cleaning up experimental branches.
 
-- `<branch-name>`: Name of the branch to remove.
+- `[name]`: Worktree name (the directory name). Defaults to current directory
+  name if omitted.
 
 #### Options
 
@@ -728,7 +728,10 @@ branch). Useful for abandoning work or cleaning up experimental branches.
 #### Examples
 
 ```bash
-# Remove with confirmation if unmerged
+# Remove the current worktree (run from within the worktree)
+workmux remove
+
+# Remove a specific worktree with confirmation if unmerged
 workmux remove experiment
 
 # Use the alias
@@ -788,13 +791,14 @@ workmux init
 
 ---
 
-### `workmux open <branch-name>`
+### `workmux open <name>`
 
 Opens a new tmux window for a pre-existing git worktree, setting up the
 configured pane layout and environment. This is useful any time you closed the
 tmux window for a worktree you are still working on.
 
-- `<branch-name>`: Name of the branch that has an existing worktree.
+- `<name>`: Worktree name (the directory name, which is also the tmux window
+  name without the prefix). This is the name you see in your tmux window list.
 
 #### Options
 
@@ -805,9 +809,8 @@ tmux window for a worktree you are still working on.
 
 #### What happens
 
-1. Verifies that a worktree for `<branch-name>` exists and a tmux window does
-   not.
-2. Creates a new tmux window named after the branch.
+1. Verifies that a worktree with `<name>` exists and a tmux window does not.
+2. Creates a new tmux window named after the worktree.
 3. (If specified) Runs file operations and `post_create` hooks.
 4. Sets up your configured tmux pane layout.
 5. Automatically switches your tmux client to the new window.
@@ -827,12 +830,12 @@ workmux open user-auth --force-files
 
 ---
 
-### `workmux path <branch-name>`
+### `workmux path <name>`
 
 Prints the filesystem path of an existing worktree. Useful for scripting or
 quickly navigating to a worktree directory.
 
-- `<branch-name>`: Name of the branch that has an existing worktree.
+- `<name>`: Worktree name (the directory name).
 
 #### Examples
 

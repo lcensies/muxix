@@ -1,6 +1,7 @@
-# Dynamic branch completion for open/merge/remove commands
-_workmux_branches() {
-    workmux __complete-branches 2>/dev/null
+# Dynamic worktree handle completion (directory names)
+# Used for open/remove/merge/path - these accept handles or branch names
+_workmux_handles() {
+    workmux __complete-handles 2>/dev/null
 }
 
 # Dynamic git branch completion for add command
@@ -8,7 +9,7 @@ _workmux_git_branches() {
     workmux __complete-git-branches 2>/dev/null
 }
 
-# Wrapper that adds dynamic branch completion
+# Wrapper that adds dynamic completion
 _workmux_dynamic() {
     local cur prev words cword
 
@@ -23,14 +24,15 @@ _workmux_dynamic() {
         cword=$COMP_CWORD
     fi
 
-    # Check if we're completing a branch argument for specific commands
+    # Check if we're completing an argument for specific commands
     if [[ ${cword} -ge 2 ]]; then
         local cmd="${words[1]}"
         case "$cmd" in
-            open|merge|remove|rm|path)
-                # If not typing a flag, complete with branches
+            open|remove|rm|path|merge)
+                # If not typing a flag, complete with worktree handles
+                # (commands also accept branch names but handles are the primary identifier)
                 if [[ "$cur" != -* ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_branches)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
                     return
                 fi
                 ;;

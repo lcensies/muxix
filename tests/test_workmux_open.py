@@ -65,7 +65,7 @@ def test_open_fails_when_worktree_missing(
 ):
     """Verifies `workmux open` fails if the worktree does not exist."""
     env = isolated_tmux_server
-    branch_name = "missing-worktree"
+    worktree_name = "missing-worktree"
 
     write_workmux_config(repo_path)
 
@@ -73,11 +73,11 @@ def test_open_fails_when_worktree_missing(
         env,
         workmux_exe_path,
         repo_path,
-        branch_name,
+        worktree_name,
         expect_fail=True,
     )
 
-    assert "No worktree found for branch" in result.stderr
+    assert "No worktree found with name" in result.stderr
 
 
 def test_open_with_run_hooks_reexecutes_post_create_commands(
