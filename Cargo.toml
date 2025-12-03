@@ -1,6 +1,6 @@
 [package]
 name = "workmux"
-version = "0.1.36"
+version = "0.1.37"
 edition = "2024"
 authors = ["workmux contributors"]
 description = "An opinionated workflow tool that orchestrates git worktrees and tmux"
