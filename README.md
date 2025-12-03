@@ -310,7 +310,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
 - `-A, --auto-name`: Generate branch name from prompt using LLM. See
-  [Automatic branch name generation](#automatic-branch-name-generation).
+  [Automatic branch name generation](#automatic-branch-name-generation-experimental).
 - `--name <name>`: Override the worktree directory and tmux window name. By
   default, these are derived from the branch name (slugified). Cannot be used
   with multi-worktree generation (`--count`, `--foreach`, or multiple
