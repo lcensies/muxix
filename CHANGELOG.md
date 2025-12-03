@@ -4,6 +4,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.37 (2025-12-03)
+
+- Fixed panes not loading shell profiles, which broke tools like nvm etc. that
+  depend on login shell initialization
+
 ## v0.1.36 (2025-12-01)
 
 - Added `--into` flag to `merge` command for merging into branches other than
