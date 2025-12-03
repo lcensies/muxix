@@ -886,6 +886,17 @@ Workmux automatically modifies your tmux `window-status-format` to display the
 status icons. This happens once per session and only affects the current tmux
 session (not your global config).
 
+### Nerdfont window prefix
+
+If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched with icons for developers), you can use the git branch icon as your window prefix for a cleaner look:
+
+```yaml
+# ~/.config/workmux/config.yaml
+window_prefix: "\uf418 "
+```
+
+![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
+
 ### Customization
 
 You can customize the icons in your config:
