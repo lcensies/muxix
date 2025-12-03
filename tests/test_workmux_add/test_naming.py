@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from ..conftest import (
+    DEFAULT_WINDOW_PREFIX,
     TmuxEnvironment,
     assert_window_exists,
     run_workmux_add,
@@ -49,7 +50,7 @@ class TestNameFlag:
         assert not default_path.exists()
 
         # Tmux window should use the custom name
-        expected_window = f"wm-{expected_handle}"
+        expected_window = f"{DEFAULT_WINDOW_PREFIX}{expected_handle}"
         assert_window_exists(env, expected_window)
 
         # Git branch should use the original name, not the handle
@@ -156,7 +157,7 @@ class TestWorktreeNaming:
         assert (worktrees_dir / expected_handle).is_dir()
 
         # Verify tmux window uses basename
-        assert_window_exists(env, f"wm-{expected_handle}")
+        assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}{expected_handle}")
 
 
 class TestWorktreePrefix:
@@ -180,7 +181,7 @@ class TestWorktreePrefix:
 
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
         assert (worktrees_dir / expected_handle).is_dir()
-        assert_window_exists(env, f"wm-{expected_handle}")
+        assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}{expected_handle}")
 
 
 class TestCombinedNamingOptions:
@@ -207,7 +208,7 @@ class TestCombinedNamingOptions:
 
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
         assert (worktrees_dir / expected_handle).is_dir()
-        assert_window_exists(env, f"wm-{expected_handle}")
+        assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}{expected_handle}")
 
     def test_explicit_name_overrides_naming_config(
         self,
@@ -238,7 +239,7 @@ class TestCombinedNamingOptions:
 
         # Should be exactly what was passed in --name, ignoring prefix
         assert (worktrees_dir / explicit_name).is_dir()
-        assert_window_exists(env, f"wm-{explicit_name}")
+        assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}{explicit_name}")
 
         # Verify the config was ignored
         assert not (worktrees_dir / "complex-stuff").exists()

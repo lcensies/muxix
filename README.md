@@ -52,7 +52,8 @@ agents, is as simple as managing tmux windows.
 - Merge branches and clean up everything (worktree, tmux window, branches) in
   one command (`merge`)
 - List all worktrees with their tmux and merge status
-- Display Claude agent status in tmux window names → [setup](#agent-status-tracking)
+- Display Claude agent status in tmux window names →
+  [setup](#agent-status-tracking)
 - Shell completions
 
 ## Hype
@@ -185,7 +186,8 @@ For a real-world example, see
   checks for `main`/`master`)
 - `worktree_dir`: Custom directory for worktrees (absolute or relative to repo
   root)
-- `window_prefix`: Prefix for tmux window names (default: `wm-`)
+- `window_prefix`: Prefix for tmux window names (default: `wm-`). Set to
+  `"\uf418 "` (nerdfont git branch icon) for a nicer look if you have nerdfonts.
 - `worktree_naming`: Strategy for deriving worktree/window names from branch
   names
   - `full` (default): Use the full branch name (slashes become dashes)
@@ -193,7 +195,7 @@ For a real-world example, see
     `feature`)
 - `worktree_prefix`: Prefix prepended to worktree directory and window names.
   Note: This stacks with `window_prefix`, so a worktree with
-  `worktree_prefix: web-` and default `window_prefix: wm-` creates windows like
+  `worktree_prefix: web-` and `window_prefix: wm-` creates windows like
   `wm-web-feature`.
 - `panes`: Array of pane configurations
   - `command`: Optional command to run when the pane is created. Use this for
@@ -354,7 +356,7 @@ These options allow you to skip expensive setup steps when they're not needed
 4. Executes `post_create` commands if defined (runs before the tmux window
    opens, so keep them fast)
 5. Creates a new tmux window named `<window_prefix><handle>` (e.g.,
-   `wm-feature-auth`)
+   `wm-feature-auth` with `window_prefix: wm-`)
 6. Sets up your configured tmux pane layout
 7. Automatically switches your tmux client to the new window
 

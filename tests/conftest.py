@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 import pytest
 import yaml
 
+# Default window prefix - must match src/config.rs window_prefix() default
+DEFAULT_WINDOW_PREFIX = "wm-"
 
 # =============================================================================
 # Shared Assertion Helpers
@@ -615,7 +617,7 @@ def get_window_name(branch_name: str) -> str:
     matching the Rust workmux behavior.
     """
     handle = slugify(branch_name)
-    return f"wm-{handle}"
+    return f"{DEFAULT_WINDOW_PREFIX}{handle}"
 
 
 def run_workmux_command(
@@ -830,7 +832,9 @@ def run_workmux_remove(
 
     # If from_window is specified, we need to change to that window's working directory
     if from_window:
-        worktree_path = get_worktree_path(repo_path, from_window.replace("wm-", ""))
+        worktree_path = get_worktree_path(
+            repo_path, from_window.replace(DEFAULT_WINDOW_PREFIX, "")
+        )
         remove_script = (
             f"cd {worktree_path} && "
             f"{input_cmd}"
@@ -925,7 +929,7 @@ def run_workmux_merge(
     flags_str = " ".join(flags)
 
     if from_window:
-        from_branch = from_window.replace("wm-", "")
+        from_branch = from_window.replace(DEFAULT_WINDOW_PREFIX, "")
         worktree_path = get_worktree_path(repo_path, from_branch)
         script_dir = worktree_path
     else:

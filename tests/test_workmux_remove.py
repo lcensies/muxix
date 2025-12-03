@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 from .conftest import (
+    DEFAULT_WINDOW_PREFIX,
     TmuxEnvironment,
     create_commit,
     create_dirty_file,
@@ -337,7 +338,7 @@ def test_remove_closes_window_with_basename_naming_config(
     branch_name = "feature/TICKET-123-fix-bug"
     # With basename, only "TICKET-123-fix-bug" is used, then slugified
     expected_handle = "ticket-123-fix-bug"
-    expected_window = f"wm-{expected_handle}"
+    expected_window = f"{DEFAULT_WINDOW_PREFIX}{expected_handle}"
 
     # Configure basename naming strategy
     write_workmux_config(repo_path, worktree_naming="basename")
