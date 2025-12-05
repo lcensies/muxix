@@ -497,7 +497,23 @@ Optionally specify a model and/or custom system prompt in `.workmux.yaml`:
 ```yaml
 auto_name:
   model: 'gemini-2.5-flash-lite'
-  # Custom system prompt (optional). Default prompt asks for kebab-case branch names.
+  system_prompt: |
+    Generate a concise git branch name based on the task description.
+
+    Rules:
+    - Use kebab-case (lowercase with hyphens)
+    - Keep it short: 1-3 words, max 4 if necessary
+    - Focus on the core task/feature, not implementation details
+    - No prefixes like feat/, fix/, chore/
+
+    Examples of good branch names:
+    - "Add dark mode toggle" → dark-mode
+    - "Fix the search results not showing" → fix-search
+    - "Refactor the authentication module" → auth-refactor
+    - "Add CSV export to reports" → export-csv
+    - "Shell completion is broken" → shell-completion
+
+    Output ONLY the branch name, nothing else.
 ```
 
 If `model` is not configured, uses `llm`'s default model.
