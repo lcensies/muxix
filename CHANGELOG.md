@@ -4,6 +4,10 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.42 (2025-12-05)
+
+- Added pre-built binaries for Linux ARM64 (aarch64) architecture
+
 ## v0.1.41 (2025-12-04)
 
 - Commands `open`, `path`, `remove`, and `merge` now accept worktree names (the
