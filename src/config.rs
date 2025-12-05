@@ -268,36 +268,34 @@ impl Config {
         config.agent = Some(final_agent);
 
         // After merging, apply sensible defaults for any values that are not configured.
-        let needs_defaults = config.panes.is_none() || config.pre_delete.is_none();
+        if let Ok(repo_root) = git::get_repo_root() {
+            // Apply defaults that require inspecting the repository.
+            let has_node_modules = repo_root.join("pnpm-lock.yaml").exists()
+                || repo_root.join("package-lock.json").exists()
+                || repo_root.join("yarn.lock").exists();
 
-        if needs_defaults {
-            if let Ok(repo_root) = git::get_repo_root() {
-                // Apply defaults that require inspecting the repository.
-
-                // Default panes based on project type
-                if config.panes.is_none() {
-                    if repo_root.join("CLAUDE.md").exists() {
-                        config.panes = Some(Self::claude_default_panes());
-                    } else {
-                        config.panes = Some(Self::default_panes());
-                    }
-                }
-
-                // Default pre_delete hooks based on package manager
-                if config.pre_delete.is_none() {
-                    let has_node_modules = repo_root.join("pnpm-lock.yaml").exists()
-                        || repo_root.join("package-lock.json").exists()
-                        || repo_root.join("yarn.lock").exists();
-
-                    if has_node_modules {
-                        config.pre_delete = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
-                    }
-                }
-            } else {
-                // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
-                if config.panes.is_none() {
+            // Default panes based on project type
+            if config.panes.is_none() {
+                if repo_root.join("CLAUDE.md").exists() {
+                    config.panes = Some(Self::claude_default_panes());
+                } else {
                     config.panes = Some(Self::default_panes());
                 }
+            }
+
+            // Default pre_delete hook for Node.js projects
+            if config.pre_delete.is_none() && has_node_modules {
+                config.pre_delete = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
+            }
+
+            // Default symlink for Node.js projects
+            if config.files.symlink.is_none() && has_node_modules {
+                config.files.symlink = Some(vec!["node_modules".to_string()]);
+            }
+        } else {
+            // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
+            if config.panes.is_none() {
+                config.panes = Some(Self::default_panes());
             }
         }
 
@@ -518,72 +516,112 @@ impl Config {
 
         let example_config = r#"# workmux project configuration
 # For global settings, edit ~/.config/workmux/config.yaml
+# All options below are commented out - uncomment to override defaults.
+
+#-------------------------------------------------------------------------------
+# Git
+#-------------------------------------------------------------------------------
 
 # The primary branch to merge into.
-# Default: Auto-detected from remote's HEAD, or falls back to main or master.
+# Default: Auto-detected from remote HEAD, falls back to main/master.
 # main_branch: main
-
-# Custom directory where worktrees should be created.
-# Can be relative to the repository root or an absolute path.
-# Default: A sibling directory named '<project_name>__worktrees'.
-# worktree_dir: .worktrees
-
-# Custom prefix for tmux window names.
-# window_prefix: wm-
-
-# The agent command to use when <agent> is specified in pane commands.
-# agent: claude
 
 # Default merge strategy for `workmux merge`.
 # Options: merge (default), rebase, squash
-# CLI flags (--rebase, --squash) always override this setting.
+# CLI flags (--rebase, --squash) always override this.
 # merge_strategy: rebase
 
-# Commands to run in the new worktree before the tmux window is opened.
-# These hooks block window creation, so reserve them for short tasks.
-# For long-running setup (e.g., pnpm install), prefer pane `command`s instead.
-# To disable, set to an empty list: `post_create: []`
-# post_create:
-  # Use "<global>" to inherit hooks from your global config.
-  # - "<global>"
-  # - mise use
+#-------------------------------------------------------------------------------
+# Naming & Paths
+#-------------------------------------------------------------------------------
 
-# Cleanup commands run before worktree deletion
-# Default: Auto-detects Node.js projects and fast-deletes node_modules in background
-# You can override or disable this behavior:
-# pre_delete:
-#   - echo "Custom cleanup"
-# Or disable:
-# pre_delete: []
+# Directory where worktrees are created.
+# Can be relative to repo root or absolute.
+# Default: Sibling directory '<project>__worktrees'.
+# worktree_dir: .worktrees
 
-# Custom tmux pane layout for this project.
-# Default: A two-pane layout with a shell and clear command
+# Strategy for deriving names from branch names.
+# Options: full (default), basename (part after last '/').
+# worktree_naming: basename
+
+# Prefix added to worktree directories and tmux window names.
+# worktree_prefix: ""
+
+# Prefix for tmux window names.
+# Default: "wm-"
+# window_prefix: "wm-"
+
+#-------------------------------------------------------------------------------
+# Tmux
+#-------------------------------------------------------------------------------
+
+# Custom tmux pane layout.
+# Default: Two-pane layout with shell and clear command.
 # panes:
-#   # Run a long-running command like pnpm install; a shell remains afterward
 #   - command: pnpm install
 #     focus: true
-#
-#   # Just a default shell (command is omitted)
 #   - split: horizontal
-#
-#   # Run a command that exits immediately
 #   - command: clear
 #     split: vertical
+#     size: 5
 
-# File operations to perform when creating a worktree.
-files:
-  # Glob patterns for files to copy from the repo root.
-  # Useful for files that need to be unique per worktree.
-  # copy:
-    # - .env
+# Auto-apply agent status icons to tmux window format.
+# Default: true
+# status_format: true
 
-  # Glob patterns for files/directories to symlink from the repo root.
-  # Ideal for shared resources like dependency caches to save disk space and time.
-  # Use "<global>" to inherit patterns from your global config.
-  symlink:
-    # - "<global>"
-    - node_modules
-    # - .pnpm-store
+# Custom icons for agent status display.
+# status_icons:
+#   working: "🤖"
+#   waiting: "💬"
+#   done: "✅"
+
+#-------------------------------------------------------------------------------
+# Agent & AI
+#-------------------------------------------------------------------------------
+
+# Agent command for '<agent>' placeholder in pane commands.
+# Default: "claude"
+# agent: claude
+
+# LLM-based branch name generation (`workmux add -a`).
+# auto_name:
+#   model: "gpt-4o-mini"
+#   system_prompt: "Generate a kebab-case git branch name."
+
+#-------------------------------------------------------------------------------
+# Hooks
+#-------------------------------------------------------------------------------
+
+# Commands to run in new worktree before tmux window opens.
+# These block window creation - use for short tasks only.
+# Use "<global>" to inherit from global config.
+# Set to empty list to disable: `post_create: []`
+# post_create:
+#   - "<global>"
+#   - mise use
+
+# Commands to run before worktree deletion.
+# Default: Auto-detects Node.js projects and fast-deletes node_modules.
+# Set to empty list to disable: `pre_delete: []`
+# pre_delete:
+#   - echo "Custom cleanup"
+
+#-------------------------------------------------------------------------------
+# Files
+#-------------------------------------------------------------------------------
+
+# File operations when creating a worktree.
+# files:
+#   # Files to copy (useful for .env files that need to be unique).
+#   copy:
+#     - .env.local
+#
+#   # Files/directories to symlink (saves disk space, shares caches).
+#   # Default: Auto-detects Node.js projects and symlinks node_modules.
+#   # Use "<global>" to inherit from global config.
+#   symlink:
+#     - "<global>"
+#     - .pnpm-store
 "#;
 
         fs::write(&config_path, example_config)?;
