@@ -225,7 +225,8 @@ For a real-world example, see
   status icons in the window list. Default: `true`.
 - `status_icons`: Custom icons for agent status display.
   - `working`: Icon shown when agent is processing (default: `🤖`)
-  - `waiting`: Icon shown when agent needs user input (default: `💬`)
+  - `waiting`: Icon shown when agent needs user input (default: `💬`) -
+    auto-clears on window focus
   - `done`: Icon shown when agent finished (default: `✅`) - auto-clears on
     window focus
 

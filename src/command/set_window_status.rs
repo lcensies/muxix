@@ -9,7 +9,7 @@ use crate::tmux;
 pub enum SetWindowStatusCommand {
     /// Set status to "working" (agent is processing)
     Working,
-    /// Set status to "waiting" (agent needs user input)
+    /// Set status to "waiting" (agent needs user input) - auto-clears on window focus
     Waiting,
     /// Set status to "done" (agent finished) - auto-clears on window focus
     Done,
@@ -33,8 +33,12 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
     match cmd {
         SetWindowStatusCommand::Working => set_status(&pane, config.status_icons.working()),
-        SetWindowStatusCommand::Waiting => set_status(&pane, config.status_icons.waiting()),
-        SetWindowStatusCommand::Done => set_done_status(&pane, config.status_icons.done()),
+        SetWindowStatusCommand::Waiting => {
+            set_status_with_auto_clear(&pane, config.status_icons.waiting())
+        }
+        SetWindowStatusCommand::Done => {
+            set_status_with_auto_clear(&pane, config.status_icons.done())
+        }
         SetWindowStatusCommand::Clear => clear_status(&pane),
     }
 }
@@ -49,7 +53,7 @@ fn set_status(pane: &str, icon: &str) -> Result<()> {
     Ok(())
 }
 
-fn set_done_status(pane: &str, icon: &str) -> Result<()> {
+fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
     // Set the status icon
     if let Err(e) = Cmd::new("tmux")
         .args(&["set-option", "-w", "-t", pane, "@workmux_status", icon])
@@ -59,7 +63,7 @@ fn set_done_status(pane: &str, icon: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Attach hook to clear on focus (only if status still matches the done icon)
+    // Attach hook to clear on focus (only if status still matches the icon)
     // Uses tmux conditional: if @workmux_status equals the icon, unset it
     let hook_cmd = format!(
         "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \"set-option -uw @workmux_status\"",
