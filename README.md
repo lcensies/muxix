@@ -1192,7 +1192,9 @@ that are safe to share with your team, add them to the project's main
 
 ### Nerdfont window prefix
 
-If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched with icons for developers), you can use the git branch icon as your window prefix for a cleaner look:
+If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched
+with icons for developers), you can use the git branch icon as your window
+prefix for a cleaner look:
 
 ```yaml
 # ~/.config/workmux/config.yaml
@@ -1258,6 +1260,18 @@ For managing multiple AI agents in parallel, tools like
 interfaces, like a TUI or kanban board. In contrast, workmux adheres to its
 philosophy that **tmux is the interface**, providing a native tmux experience
 for managing parallel workflows without requiring a separate interface to learn.
+
+## Contributing
+
+Thank you for your interest in contributing! Bug reports and feature suggestions
+are always welcome via issues.
+
+My goal is to keep the project simple and fun to maintain. I am generally not
+interested in reviewing complex PRs, refactors, or major feature additions, as
+they turn a fun hobby project into administrative work.
+
+If you have a small fix, feel free to submit it. For anything larger, please
+open an issue first. Thanks for understanding.
 
 ## Related projects
 
