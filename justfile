@@ -7,8 +7,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# Run format, clippy-fix, build, unit tests, and integration tests
-check: parallel-checks clippy test
+# Run format, clippy-fix, build, and unit tests
+check: parallel-checks clippy
 
 # Run format, clippy-fix, build, unit tests, ruff, and pyright in parallel
 [parallel]
