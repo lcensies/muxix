@@ -1101,7 +1101,6 @@ underlying mechanics helps.
 - [Gitignored files require configuration](#gitignored-files-require-configuration)
 - [Conflicts](#conflicts)
 - [Package manager considerations (pnpm, yarn)](#package-manager-considerations-pnpm-yarn)
-- [Build directories (Rust `target`, etc.)](#build-directories-rust-target-etc)
 - [Local git ignores (`.git/info/exclude`) are not shared](#local-git-ignores-gitinfoexclude-are-not-shared)
 
 ### Gitignored files require configuration
@@ -1164,18 +1163,6 @@ take significant time. workmux has a
 [special cleanup mechanism](https://github.com/raine/workmux/blob/main/src/scripts/cleanup_node_modules.sh)
 that moves `node_modules` to a temporary location and deletes it in the
 background, making the `remove` command return almost instantly.
-
-### Build directories (Rust `target`, etc.)
-
-For compiled languages, symlinking build directories can save disk space and
-speed up builds:
-
-```yaml
-# .workmux.yaml
-files:
-  symlink:
-    - target
-```
 
 ### Local git ignores (`.git/info/exclude`) are not shared
 
