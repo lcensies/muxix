@@ -1101,6 +1101,7 @@ underlying mechanics helps.
 - [Gitignored files require configuration](#gitignored-files-require-configuration)
 - [Conflicts](#conflicts)
 - [Package manager considerations (pnpm, yarn)](#package-manager-considerations-pnpm-yarn)
+- [Rust projects](#rust-projects)
 - [Local git ignores (`.git/info/exclude`) are not shared](#local-git-ignores-gitinfoexclude-are-not-shared)
 
 ### Gitignored files require configuration
@@ -1163,6 +1164,29 @@ take significant time. workmux has a
 [special cleanup mechanism](https://github.com/raine/workmux/blob/main/src/scripts/cleanup_node_modules.sh)
 that moves `node_modules` to a temporary location and deletes it in the
 background, making the `remove` command return almost instantly.
+
+### Rust projects
+
+Unlike `node_modules`, Rust's `target/` directory should **not** be symlinked
+between worktrees. Cargo locks the `target` directory during builds, so sharing
+it would block parallel builds and defeat the purpose of worktrees.
+
+Instead, use [sccache](https://github.com/mozilla/sccache) to share compiled
+dependencies across worktrees:
+
+```bash
+brew install sccache
+```
+
+Add to `~/.cargo/config.toml`:
+
+```toml
+[build]
+rustc-wrapper = "sccache"
+```
+
+This caches compiled dependencies globally, so new worktrees benefit from cached
+artifacts without any lock contention.
 
 ### Local git ignores (`.git/info/exclude`) are not shared
 
