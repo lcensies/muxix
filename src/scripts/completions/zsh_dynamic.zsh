@@ -15,40 +15,56 @@ _workmux_git_branches() {
 
 # Override completion for commands that need dynamic completion
 _workmux_dynamic() {
+    # Ensure standard zsh array indexing (1-based) regardless of user settings
+    emulate -L zsh
+    setopt extended_glob  # Required for _files glob qualifiers like *(-/)
+    setopt no_nomatch     # Allow failed globs to resolve to empty list
+
     # Get the subcommand (second word)
     local cmd="${words[2]}"
+
+    # List of flags that take arguments (values).
+    # We must defer to _workmux for these so it can offer files/custom hints.
+    # Boolean flags are excluded so we can offer positional completions after them.
+    local -a arg_flags
+    arg_flags=(
+        # add flags
+        -p --prompt
+        -P --prompt-file
+        --name
+        -a --agent
+        -n --count
+        --foreach
+        --branch-template
+        --pr
+        # Note: --base and --into are excluded because they need dynamic completion
+        # (--base takes git branches, --into takes worktree handles)
+    )
+
+    # Check if we are currently completing a flag (starts with -)
+    # OR if the previous word is a flag that requires an argument.
+    if [[ "${words[CURRENT]}" == -* ]] || [[ -n "${arg_flags[(r)${words[CURRENT-1]}]}" ]]; then
+        _workmux "$@"
+        return
+    fi
 
     # Only handle commands that need dynamic completion
     case "$cmd" in
         open|remove|rm|path|merge)
-            # If completing a flag, use generated completions
-            if [[ "${words[CURRENT]}" == -* ]]; then
-                _workmux "$@"
-                return
-            fi
-            # For positional args after the subcommand, offer worktree handles
-            # (commands also accept branch names but handles are the primary identifier)
-            if (( CURRENT > 2 )); then
-                _workmux_handles
-                return
-            fi
+            # Offer handles mixed with any remaining flags
+            _workmux "$@"
+            _workmux_handles
             ;;
         add)
-            # If completing a flag, use generated completions
-            if [[ "${words[CURRENT]}" == -* ]]; then
-                _workmux "$@"
-                return
-            fi
-            # For positional args after the subcommand, offer git branches
-            if (( CURRENT > 2 )); then
-                _workmux_git_branches
-                return
-            fi
+            # Offer git branches mixed with any remaining flags
+            _workmux "$@"
+            _workmux_git_branches
+            ;;
+        *)
+            # For all other commands, strictly use generated completions
+            _workmux "$@"
             ;;
     esac
-
-    # For all other commands and cases, use generated completions
-    _workmux "$@"
 }
 
 compdef _workmux_dynamic workmux

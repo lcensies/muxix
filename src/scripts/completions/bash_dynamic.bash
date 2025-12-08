@@ -28,16 +28,39 @@ _workmux_dynamic() {
     if [[ ${cword} -ge 2 ]]; then
         local cmd="${words[1]}"
         case "$cmd" in
-            open|remove|rm|path|merge)
-                # If not typing a flag, complete with worktree handles
-                # (commands also accept branch names but handles are the primary identifier)
+            merge)
+                # Handle --into flag (takes worktree handle)
+                if [[ "$prev" == "--into" ]]; then
+                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
+                    return
+                fi
+                # Positional arg: handles
+                if [[ "$cur" != -* ]]; then
+                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
+                    return
+                fi
+                ;;
+            open|remove|rm|path)
+                # Positional arg: handles
                 if [[ "$cur" != -* ]]; then
                     COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
                     return
                 fi
                 ;;
             add)
-                # If not typing a flag, complete with git branches
+                # Handle flags that take specific argument types
+                case "$prev" in
+                    --base|-b)
+                        COMPREPLY=($(compgen -W "$(_workmux_git_branches)" -- "$cur"))
+                        return
+                        ;;
+                    --prompt-file|-P)
+                        # File path completion
+                        COMPREPLY=($(compgen -f -- "$cur"))
+                        return
+                        ;;
+                esac
+                # Positional arg: branches
                 if [[ "$cur" != -* ]]; then
                     COMPREPLY=($(compgen -W "$(_workmux_git_branches)" -- "$cur"))
                     return

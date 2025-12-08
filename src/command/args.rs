@@ -7,7 +7,12 @@ pub struct PromptArgs {
     pub prompt: Option<String>,
 
     /// Path to a file whose contents should be used as the prompt
-    #[arg(short = 'P', long = "prompt-file", conflicts_with_all = ["prompt", "prompt_editor"])]
+    #[arg(
+        short = 'P',
+        long = "prompt-file",
+        conflicts_with_all = ["prompt", "prompt_editor"],
+        value_hint = clap::ValueHint::FilePath
+    )]
     pub prompt_file: Option<PathBuf>,
 
     /// Open $EDITOR to write the prompt
