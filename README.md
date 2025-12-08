@@ -52,8 +52,10 @@ agents, is as simple as managing tmux windows.
 - Merge branches and clean up everything (worktree, tmux window, branches) in
   one command (`merge`)
 - List all worktrees with their tmux and merge status
-- Display Claude agent status in tmux window names →
-  [setup](#agent-status-tracking)
+- [Automatic branch name generation](#automatic-branch-name-generation) from
+  prompts using LLM
+- Display Claude agent status in tmux window names
+  ([setup](#agent-status-tracking))
 - Shell completions
 
 ## Hype
@@ -310,7 +312,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
 - `-A, --auto-name`: Generate branch name from prompt using LLM. See
-  [Automatic branch name generation](#automatic-branch-name-generation-experimental).
+  [Automatic branch name generation](#automatic-branch-name-generation).
 - `--name <name>`: Override the worktree directory and tmux window name. By
   default, these are derived from the branch name (slugified). Cannot be used
   with multi-worktree generation (`--count`, `--foreach`, or multiple
@@ -457,7 +459,7 @@ or `--agent` flag) without requiring any `.workmux.yaml` changes:
 This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
 
-#### Automatic branch name generation (experimental)
+#### Automatic branch name generation
 
 The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
 LLM via the [`llm`](https://llm.datasette.io/) CLI tool.
