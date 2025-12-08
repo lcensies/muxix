@@ -1102,6 +1102,7 @@ underlying mechanics helps.
 - [Conflicts](#conflicts)
 - [Package manager considerations (pnpm, yarn)](#package-manager-considerations-pnpm-yarn)
 - [Rust projects](#rust-projects)
+- [Symlinks and `.gitignore` trailing slashes](#symlinks-and-gitignore-trailing-slashes)
 - [Local git ignores (`.git/info/exclude`) are not shared](#local-git-ignores-gitinfoexclude-are-not-shared)
 
 ### Gitignored files require configuration
@@ -1187,6 +1188,20 @@ rustc-wrapper = "sccache"
 
 This caches compiled dependencies globally, so new worktrees benefit from cached
 artifacts without any lock contention.
+
+### Symlinks and `.gitignore` trailing slashes
+
+If your `.gitignore` uses a trailing slash to ignore directories (e.g.,
+`tests/venv/`), symlinks to that path in the created worktree will **not** be
+ignored and will show up in `git status`. This is because `venv/` only matches
+directories, not files (symlinks).
+
+To ignore both directories and symlinks, remove the trailing slash:
+
+```diff
+- tests/venv/
++ tests/venv
+```
 
 ### Local git ignores (`.git/info/exclude`) are not shared
 
