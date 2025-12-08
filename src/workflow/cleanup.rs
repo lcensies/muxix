@@ -54,20 +54,29 @@ pub fn cleanup(
     // Helper closure to perform the actual filesystem and git cleanup.
     // This avoids code duplication while enforcing the correct operational order.
     let perform_fs_git_cleanup = |result: &mut CleanupResult| -> Result<()> {
-        // Run pre-delete hooks before removing the worktree directory
-        if let Some(pre_delete_hooks) = &context.config.pre_delete {
-            info!(
-                branch = branch_name,
-                count = pre_delete_hooks.len(),
-                "cleanup:running pre-delete hooks"
-            );
-            let hook_env = [("WORKMUX_HANDLE", handle)];
-            for command in pre_delete_hooks {
-                // Run the hook with the worktree path as the working directory.
-                // This allows for relative paths like `node_modules` in the command.
-                cmd::shell_command_with_env(command, worktree_path, &hook_env)
-                    .with_context(|| format!("Failed to run pre-delete command: '{}'", command))?;
+        // Run pre-delete hooks before removing the worktree directory.
+        // Skip if the worktree directory doesn't exist (e.g., user manually deleted it).
+        if worktree_path.exists() {
+            if let Some(pre_delete_hooks) = &context.config.pre_delete {
+                info!(
+                    branch = branch_name,
+                    count = pre_delete_hooks.len(),
+                    "cleanup:running pre-delete hooks"
+                );
+                let hook_env = [("WORKMUX_HANDLE", handle)];
+                for command in pre_delete_hooks {
+                    // Run the hook with the worktree path as the working directory.
+                    // This allows for relative paths like `node_modules` in the command.
+                    cmd::shell_command_with_env(command, worktree_path, &hook_env).with_context(
+                        || format!("Failed to run pre-delete command: '{}'", command),
+                    )?;
+                }
             }
+        } else {
+            debug!(
+                path = %worktree_path.display(),
+                "cleanup:skipping pre-delete hooks, worktree directory does not exist"
+            );
         }
 
         // 1. Forcefully remove the worktree directory from the filesystem.
