@@ -4,6 +4,13 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.45 (2025-12-08)
+
+- Shell completions now suggest proper values for `--base`, `--into`, and
+  `--prompt-file` flags (bash, zsh)
+- Fixed an error with the `pre_delete` hook when removing worktrees that were
+  manually deleted from the filesystem
+
 ## v0.1.44 (2025-12-06)
 
 - In agent status tracking, the "waiting" (💬) status icon now auto-clears
