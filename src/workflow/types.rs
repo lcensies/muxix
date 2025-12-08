@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::github::PrSummary;
 use crate::prompt::Prompt;
 
 /// Arguments for creating a worktree
@@ -100,4 +101,5 @@ pub struct WorktreeInfo {
     pub path: PathBuf,
     pub has_tmux: bool,
     pub has_unmerged: bool,
+    pub pr_info: Option<PrSummary>,
 }

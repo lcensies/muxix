@@ -270,7 +270,11 @@ enum Commands {
 
     /// List all worktrees
     #[command(visible_alias = "ls")]
-    List,
+    List {
+        /// Show PR status for each worktree (requires gh CLI)
+        #[arg(long)]
+        pr: bool,
+    },
 
     /// Get the filesystem path of a worktree
     Path {
@@ -372,7 +376,7 @@ pub fn run() -> Result<()> {
             force,
             keep_branch,
         } => command::remove::run(name.as_deref(), force, keep_branch),
-        Commands::List => command::list::run(),
+        Commands::List { pr } => command::list::run(pr),
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Claude { command } => match command {

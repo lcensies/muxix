@@ -27,7 +27,7 @@ tracing-appender = "0.2"
 edit = "0.1"
 which = "8.0"
 minijinja = "2.0"
-tabled = "0.20"
+tabled = { version = "0.20", features = ["ansi"] }
 git-url-parse = "0.6.0"
 slug = "0.1"
 

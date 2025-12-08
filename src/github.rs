@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::process::Command;
 use tracing::debug;
 
@@ -33,7 +34,7 @@ impl PrDetails {
 }
 
 /// Summary of a PR found by head ref search
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PrSummary {
     pub number: u32,
     pub title: String,
@@ -156,4 +157,70 @@ pub fn get_pr_details(pr_number: u32) -> Result<PrDetails> {
         serde_json::from_str(&json_str).context("Failed to parse gh JSON output")?;
 
     Ok(pr_details)
+}
+
+/// Internal struct for parsing batch PR list results
+#[derive(Debug, Deserialize)]
+struct PrBatchItem {
+    number: u32,
+    title: String,
+    state: String,
+    #[serde(rename = "isDraft")]
+    is_draft: bool,
+    #[serde(rename = "headRefName")]
+    head_ref_name: String,
+}
+
+/// Fetch all PRs for the current repository.
+pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--json",
+            "number,title,state,isDraft,headRefName",
+            "--limit",
+            "200",
+        ])
+        .output();
+
+    let output = match output {
+        Ok(out) => out,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            debug!("github:gh CLI not found, skipping PR lookup");
+            return Ok(HashMap::new());
+        }
+        Err(e) => {
+            return Err(e).context("Failed to execute gh command");
+        }
+    };
+
+    if !output.status.success() {
+        debug!("github:pr list batch failed, treating as no PRs found");
+        return Ok(HashMap::new());
+    }
+
+    let json_str = String::from_utf8(output.stdout).context("gh output is not valid UTF-8")?;
+
+    let prs: Vec<PrBatchItem> =
+        serde_json::from_str(&json_str).context("Failed to parse gh JSON output")?;
+
+    let pr_map = prs
+        .into_iter()
+        .map(|pr| {
+            (
+                pr.head_ref_name,
+                PrSummary {
+                    number: pr.number,
+                    title: pr.title,
+                    state: pr.state,
+                    is_draft: pr.is_draft,
+                },
+            )
+        })
+        .collect();
+
+    Ok(pr_map)
 }

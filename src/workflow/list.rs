@@ -1,11 +1,11 @@
 use anyhow::{Result, anyhow};
 
-use crate::{config, git, tmux};
+use crate::{config, git, github, tmux};
 
 use super::types::WorktreeInfo;
 
 /// List all worktrees with their status
-pub fn list(config: &config::Config) -> Result<Vec<WorktreeInfo>> {
+pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<WorktreeInfo>> {
     if !git::is_git_repo()? {
         return Err(anyhow!("Not in a git repository"));
     }
@@ -34,6 +34,13 @@ pub fn list(config: &config::Config) -> Result<Vec<WorktreeInfo>> {
         .and_then(|base| git::get_unmerged_branches(&base).ok())
         .unwrap_or_default(); // Use an empty set on failure
 
+    // Batch fetch all PRs if requested (single API call)
+    let pr_map = if fetch_pr_status {
+        github::list_prs().unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    };
+
     let prefix = config.window_prefix();
     let worktrees: Vec<WorktreeInfo> = worktrees_data
         .into_iter()
@@ -60,11 +67,15 @@ pub fn list(config: &config::Config) -> Result<Vec<WorktreeInfo>> {
                 false
             };
 
+            // Lookup PR info from batch fetch
+            let pr_info = pr_map.get(&branch).cloned();
+
             WorktreeInfo {
                 branch,
                 path,
                 has_tmux,
                 has_unmerged,
+                pr_info,
             }
         })
         .collect();

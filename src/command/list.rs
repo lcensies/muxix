@@ -3,13 +3,15 @@ use anyhow::Result;
 use pathdiff::diff_paths;
 use tabled::{
     Table, Tabled,
-    settings::{Padding, Style, object::Columns},
+    settings::{Padding, Style, disable::Remove, object::Columns},
 };
 
 #[derive(Tabled)]
 struct WorktreeRow {
     #[tabled(rename = "BRANCH")]
     branch: String,
+    #[tabled(rename = "PR")]
+    pr_status: String,
     #[tabled(rename = "TMUX")]
     tmux_status: String,
     #[tabled(rename = "UNMERGED")]
@@ -18,9 +20,26 @@ struct WorktreeRow {
     path_str: String,
 }
 
-pub fn run() -> Result<()> {
+fn format_pr_status(pr_info: Option<crate::github::PrSummary>) -> String {
+    pr_info
+        .map(|pr| {
+            // Nerd Font icons with GitHub-style colors
+            // Green for open, gray for draft, purple for merged, red for closed
+            let (icon, color) = match pr.state.as_str() {
+                "OPEN" if pr.is_draft => ("\u{f177}", "\x1b[90m"), // gray
+                "OPEN" => ("\u{f407}", "\x1b[32m"),                // green
+                "MERGED" => ("\u{f419}", "\x1b[35m"),              // purple/magenta
+                "CLOSED" => ("\u{f406}", "\x1b[31m"),              // red
+                _ => ("\u{f407}", "\x1b[32m"),
+            };
+            format!("#{} {}{}\x1b[0m", pr.number, color, icon)
+        })
+        .unwrap_or_else(|| "-".to_string())
+}
+
+pub fn run(show_pr: bool) -> Result<()> {
     let config = config::Config::load(None)?;
-    let worktrees = workflow::list(&config)?;
+    let worktrees = workflow::list(&config, show_pr)?;
 
     if worktrees.is_empty() {
         println!("No worktrees found");
@@ -45,6 +64,7 @@ pub fn run() -> Result<()> {
 
             WorktreeRow {
                 branch: wt.branch,
+                pr_status: format_pr_status(wt.pr_info),
                 path_str,
                 tmux_status: if wt.has_tmux {
                     "✓".to_string()
@@ -63,7 +83,12 @@ pub fn run() -> Result<()> {
     let mut table = Table::new(display_data);
     table
         .with(Style::blank())
-        .modify(Columns::new(0..3), Padding::new(0, 1, 0, 0));
+        .modify(Columns::new(0..4), Padding::new(0, 1, 0, 0));
+
+    // Hide PR column if --pr flag not used
+    if !show_pr {
+        table.with(Remove::column(Columns::new(1..2)));
+    }
 
     println!("{table}");
 
