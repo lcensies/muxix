@@ -287,11 +287,6 @@ impl Config {
             if config.pre_delete.is_none() && has_node_modules {
                 config.pre_delete = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
             }
-
-            // Default symlink for Node.js projects
-            if config.files.symlink.is_none() && has_node_modules {
-                config.files.symlink = Some(vec!["node_modules".to_string()]);
-            }
         } else {
             // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
             if config.panes.is_none() {
@@ -617,11 +612,11 @@ impl Config {
 #     - .env.local
 #
 #   # Files/directories to symlink (saves disk space, shares caches).
-#   # Default: Auto-detects Node.js projects and symlinks node_modules.
+#   # Default: None.
 #   # Use "<global>" to inherit from global config.
 #   symlink:
 #     - "<global>"
-#     - .pnpm-store
+#     - node_modules
 "#;
 
         fs::write(&config_path, example_config)?;
