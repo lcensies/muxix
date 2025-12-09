@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 
-use crate::{config, git, github, tmux};
+use crate::{config, git, github, spinner, tmux};
 
 use super::types::WorktreeInfo;
 
@@ -36,7 +36,9 @@ pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<Worktr
 
     // Batch fetch all PRs if requested (single API call)
     let pr_map = if fetch_pr_status {
-        github::list_prs().unwrap_or_default()
+        spinner::with_spinner("Fetching PR status", || {
+            Ok(github::list_prs().unwrap_or_default())
+        })?
     } else {
         std::collections::HashMap::new()
     };

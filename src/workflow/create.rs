@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::{git, tmux};
+use crate::{git, spinner, tmux};
 use tracing::{debug, info, warn};
 
 use super::cleanup;
@@ -80,8 +80,10 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
                 git::list_remotes()?
             ));
         }
-        git::fetch_remote(&spec.remote)
-            .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
+        spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
+            git::fetch_remote(&spec.remote)
+        })
+        .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
         let remote_ref = format!("{}/{}", spec.remote, spec.branch);
         if !git::branch_exists(&remote_ref)? {
             return Err(anyhow!(

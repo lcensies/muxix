@@ -1,4 +1,5 @@
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
+use crate::spinner;
 use crate::template::{
     TemplateEnv, WorktreeSpec, create_template_env, generate_worktree_specs, parse_foreach_matrix,
     render_prompt_body,
@@ -51,8 +52,9 @@ pub fn run(
             .as_ref()
             .and_then(|c| c.system_prompt.as_deref());
 
-        println!("Generating branch name...");
-        let generated = crate::llm::generate_branch_name(&prompt_text, model, system_prompt)?;
+        let generated = spinner::with_spinner("Generating branch name", || {
+            crate::llm::generate_branch_name(&prompt_text, model, system_prompt)
+        })?;
         println!("  Branch: {}", generated);
 
         (generated, Some(prompt), None)

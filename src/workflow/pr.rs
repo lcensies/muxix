@@ -3,7 +3,7 @@
 //! This module extracts domain logic for resolving pull requests and fork branches
 //! from the command layer, making it reusable and testable.
 
-use crate::{git, github};
+use crate::{git, github, spinner};
 use anyhow::{Context, Result, anyhow};
 
 /// Result of resolving a PR checkout.
@@ -20,9 +20,10 @@ pub fn resolve_pr_ref(
     pr_number: u32,
     custom_branch_name: Option<&str>,
 ) -> Result<PrCheckoutResult> {
-    println!("Fetching PR #{}...", pr_number);
-    let pr_details = github::get_pr_details(pr_number)
-        .with_context(|| format!("Failed to fetch details for PR #{}", pr_number))?;
+    let pr_details = spinner::with_spinner(&format!("Fetching PR #{}", pr_number), || {
+        github::get_pr_details(pr_number)
+    })
+    .with_context(|| format!("Failed to fetch details for PR #{}", pr_number))?;
 
     // Display PR information
     println!("PR #{}: {}", pr_number, pr_details.title);
@@ -57,12 +58,14 @@ pub fn resolve_pr_ref(
     };
 
     // Fetch the PR branch
-    println!(
-        "Fetching branch '{}' from '{}'...",
-        pr_details.head_ref_name, remote_name
-    );
-    git::fetch_remote(&remote_name)
-        .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+    spinner::with_spinner(
+        &format!(
+            "Fetching branch '{}' from '{}'",
+            pr_details.head_ref_name, remote_name
+        ),
+        || git::fetch_remote(&remote_name),
+    )
+    .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
 
     let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
 
@@ -98,12 +101,14 @@ pub fn resolve_fork_branch(fork_spec: &git::ForkBranchSpec) -> Result<ForkBranch
     let remote_name = git::ensure_fork_remote(&fork_spec.owner)?;
 
     // Fetch to get the latest refs
-    println!(
-        "Fetching branch '{}' from '{}'...",
-        fork_spec.branch, remote_name
-    );
-    git::fetch_remote(&remote_name)
-        .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
+    spinner::with_spinner(
+        &format!(
+            "Fetching branch '{}' from '{}'",
+            fork_spec.branch, remote_name
+        ),
+        || git::fetch_remote(&remote_name),
+    )
+    .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
 
     // Verify the branch exists on the remote
     let remote_ref = format!("{}/{}", remote_name, fork_spec.branch);

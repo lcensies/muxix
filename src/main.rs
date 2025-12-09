@@ -9,6 +9,7 @@ mod llm;
 mod logger;
 mod naming;
 mod prompt;
+mod spinner;
 mod template;
 mod tmux;
 mod workflow;
