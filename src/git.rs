@@ -583,6 +583,36 @@ pub fn get_unmerged_branches(base_branch: &str) -> Result<HashSet<String>> {
     }
 }
 
+/// Fetch from remote with prune to update remote-tracking refs
+pub fn fetch_prune() -> Result<()> {
+    Cmd::new("git")
+        .args(&["fetch", "--prune"])
+        .run()
+        .context("Failed to fetch with prune")?;
+    Ok(())
+}
+
+/// Get a set of branches whose upstream remote-tracking branch has been deleted.
+pub fn get_gone_branches() -> Result<HashSet<String>> {
+    let output = Cmd::new("git")
+        .args(&[
+            "for-each-ref",
+            "--format=%(refname:short)|%(upstream:track)",
+            "refs/heads",
+        ])
+        .run_and_capture_stdout()?;
+
+    let mut gone = HashSet::new();
+    for line in output.lines() {
+        if let Some((branch, track)) = line.split_once('|')
+            && track.trim() == "[gone]"
+        {
+            gone.insert(branch.to_string());
+        }
+    }
+    Ok(gone)
+}
+
 /// Merge a branch into the current branch in a specific worktree
 pub fn merge_in_worktree(worktree_path: &Path, branch_name: &str) -> Result<()> {
     Cmd::new("git")

@@ -256,8 +256,12 @@ enum Commands {
     #[command(visible_alias = "rm")]
     Remove {
         /// Worktree name (defaults to current directory name)
-        #[arg(value_parser = WorktreeHandleParser::new())]
+        #[arg(value_parser = WorktreeHandleParser::new(), conflicts_with = "gone")]
         name: Option<String>,
+
+        /// Remove worktrees whose upstream remote branch has been deleted (e.g., after PR merge)
+        #[arg(long)]
+        gone: bool,
 
         /// Skip confirmation and ignore uncommitted changes
         #[arg(short, long)]
@@ -373,9 +377,10 @@ pub fn run() -> Result<()> {
         ),
         Commands::Remove {
             name,
+            gone,
             force,
             keep_branch,
-        } => command::remove::run(name.as_deref(), force, keep_branch),
+        } => command::remove::run(name.as_deref(), gone, force, keep_branch),
         Commands::List { pr } => command::list::run(pr),
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),

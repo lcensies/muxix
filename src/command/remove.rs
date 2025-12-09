@@ -1,7 +1,8 @@
 use crate::workflow::WorkflowContext;
-use crate::{config, git, workflow};
+use crate::{config, git, spinner, workflow};
 use anyhow::{Context, Result, anyhow};
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 /// User's choice when prompted about unmerged commits.
 enum UserChoice {
@@ -10,7 +11,16 @@ enum UserChoice {
     NotNeeded, // No prompt needed (no unmerged commits)
 }
 
-pub fn run(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
+pub fn run(name: Option<&str>, gone: bool, force: bool, keep_branch: bool) -> Result<()> {
+    if gone {
+        return run_gone(force, keep_branch);
+    }
+
+    run_single(name, force, keep_branch)
+}
+
+/// Remove a single worktree by name
+fn run_single(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
     // Resolve name from argument or current worktree directory
     let input_name = super::resolve_name(name)?;
 
@@ -32,22 +42,154 @@ pub fn run(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
             None => return Ok(()), // User aborted
         };
 
+    remove_worktree(&handle, effective_force, keep_branch)
+}
+
+/// Remove worktrees whose upstream remote branch has been deleted
+fn run_gone(force: bool, keep_branch: bool) -> Result<()> {
+    // Fetch with prune to update remote-tracking refs
+    spinner::with_spinner("Fetching from remote", git::fetch_prune)?;
+
+    let worktrees = git::list_worktrees()?;
+    let main_branch = git::get_default_branch()?;
+    let main_worktree_root = git::get_main_worktree_root()?;
+
+    let gone_branches = git::get_gone_branches().unwrap_or_default();
+
+    // Find worktrees whose upstream is gone
+    let mut to_remove: Vec<(PathBuf, String, String)> = Vec::new();
+    let mut skipped_uncommitted: Vec<String> = Vec::new();
+
+    for (path, branch) in worktrees {
+        // Skip main branch/worktree and detached HEAD
+        if branch == main_branch || branch == "(detached)" {
+            continue;
+        }
+
+        // Skip the main worktree itself
+        if path == main_worktree_root {
+            continue;
+        }
+
+        // Check if upstream is gone
+        if !gone_branches.contains(&branch) {
+            continue;
+        }
+
+        // Check for uncommitted changes
+        if !force && path.exists() && git::has_uncommitted_changes(&path).unwrap_or(false) {
+            skipped_uncommitted.push(branch);
+            continue;
+        }
+
+        let handle = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&branch)
+            .to_string();
+
+        to_remove.push((path, branch, handle));
+    }
+
+    if to_remove.is_empty() && skipped_uncommitted.is_empty() {
+        println!("No worktrees with gone upstreams found.");
+        return Ok(());
+    }
+
+    if to_remove.is_empty() {
+        println!("No worktrees to remove.");
+        if !skipped_uncommitted.is_empty() {
+            println!(
+                "\nSkipped {} worktree(s) with uncommitted changes:",
+                skipped_uncommitted.len()
+            );
+            for branch in &skipped_uncommitted {
+                println!("  - {}", branch);
+            }
+            println!("\nUse --force to remove these anyway.");
+        }
+        return Ok(());
+    }
+
+    // Show what will be removed
+    println!("The following worktrees have gone upstreams and will be removed:");
+    for (_, branch, _) in &to_remove {
+        println!("  - {}", branch);
+    }
+
+    if !skipped_uncommitted.is_empty() {
+        println!(
+            "\nSkipping {} worktree(s) with uncommitted changes:",
+            skipped_uncommitted.len()
+        );
+        for branch in &skipped_uncommitted {
+            println!("  - {}", branch);
+        }
+    }
+
+    // Confirm with user unless --force
+    if !force {
+        print!(
+            "\nAre you sure you want to remove {} worktree(s)? [y/N] ",
+            to_remove.len()
+        );
+        io::stdout().flush().context("Failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read user input")?;
+
+        if input.trim().to_lowercase() != "y" {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    // Execute removal
+    let mut success_count = 0;
+    let mut failed: Vec<(String, String)> = Vec::new();
+
+    for (_, branch, handle) in to_remove {
+        match remove_worktree(&handle, true, keep_branch) {
+            Ok(()) => success_count += 1,
+            Err(e) => failed.push((branch, e.to_string())),
+        }
+    }
+
+    // Report results
+    if success_count > 0 {
+        println!("\n✓ Successfully removed {} worktree(s)", success_count);
+    }
+
+    if !failed.is_empty() {
+        eprintln!("\nFailed to remove {} worktree(s):", failed.len());
+        for (branch, error) in &failed {
+            eprintln!("  - {}: {}", branch, error);
+        }
+    }
+
+    Ok(())
+}
+
+/// Execute the actual worktree removal
+fn remove_worktree(handle: &str, force: bool, keep_branch: bool) -> Result<()> {
     let config = config::Config::load(None)?;
     let context = WorkflowContext::new(config)?;
 
     super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
 
-    let result = workflow::remove(&handle, effective_force, keep_branch, &context)
+    let result = workflow::remove(handle, force, keep_branch, &context)
         .context("Failed to remove worktree")?;
 
     if keep_branch {
         println!(
-            "✓ Successfully removed worktree '{}' (branch '{}' was kept)",
+            "✓ Removed worktree '{}' (branch '{}' kept)",
             handle, result.branch_removed
         );
     } else {
         println!(
-            "✓ Successfully removed worktree '{}' and branch '{}'",
+            "✓ Removed worktree '{}' and branch '{}'",
             handle, result.branch_removed
         );
     }

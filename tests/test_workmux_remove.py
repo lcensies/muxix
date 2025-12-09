@@ -373,3 +373,91 @@ def test_remove_closes_window_with_basename_naming_config(
         f"Window {expected_window!r} should be closed after rm. "
         f"Still found: {list_windows_result.stdout.strip()}"
     )
+
+
+def test_remove_gone_flag(
+    isolated_tmux_server: TmuxEnvironment,
+    workmux_exe_path: Path,
+    repo_path: Path,
+    remote_repo_path: Path,
+):
+    """Verifies `workmux remove --gone` removes worktrees whose upstream was deleted."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    # Add remote to the repo
+    env.run_command(
+        ["git", "remote", "add", "origin", str(remote_repo_path)], cwd=repo_path
+    )
+
+    # 1. Setup a branch with upstream that will be deleted (simulating merged PR)
+    gone_branch = "gone-branch"
+    window_gone = get_window_name(gone_branch)
+    run_workmux_add(env, workmux_exe_path, repo_path, gone_branch)
+    gone_worktree = get_worktree_path(repo_path, gone_branch)
+    create_commit(env, gone_worktree, "feat: gone work")
+
+    # Push to remote and set upstream
+    env.run_command(["git", "push", "-u", "origin", gone_branch], cwd=gone_worktree)
+
+    # Delete the remote branch (simulating what happens after PR merge on GitHub)
+    env.run_command(["git", "branch", "-D", gone_branch], cwd=remote_repo_path)
+
+    # 2. Setup a branch with upstream that still exists
+    active_branch = "active-branch"
+    window_active = get_window_name(active_branch)
+    run_workmux_add(env, workmux_exe_path, repo_path, active_branch)
+    active_worktree = get_worktree_path(repo_path, active_branch)
+    create_commit(env, active_worktree, "feat: active work")
+
+    # Push to remote and set upstream (but don't delete it)
+    env.run_command(["git", "push", "-u", "origin", active_branch], cwd=active_worktree)
+
+    # 3. Setup a branch without upstream (local only)
+    local_branch = "local-branch"
+    window_local = get_window_name(local_branch)
+    run_workmux_add(env, workmux_exe_path, repo_path, local_branch)
+    local_worktree = get_worktree_path(repo_path, local_branch)
+
+    # Verify all worktrees exist before removal
+    assert gone_worktree.exists(), "Gone worktree should exist"
+    assert active_worktree.exists(), "Active worktree should exist"
+    assert local_worktree.exists(), "Local worktree should exist"
+
+    # 4. Run remove --gone with 'y' confirmation
+    # (--gone runs git fetch --prune internally)
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=None,
+        gone=True,
+        user_input="y",
+    )
+
+    # 5. Verify only the "gone" worktree was removed
+    assert not gone_worktree.exists(), "Gone branch worktree should be removed"
+    assert active_worktree.exists(), "Active branch worktree should remain"
+    assert local_worktree.exists(), "Local branch worktree should remain"
+
+    # Verify windows
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert window_gone not in list_windows_result.stdout, "Gone window should be closed"
+    assert window_active in list_windows_result.stdout, "Active window should remain"
+    assert window_local in list_windows_result.stdout, "Local window should remain"
+
+    # Verify branches
+    gone_result = env.run_command(
+        ["git", "branch", "--list", gone_branch], cwd=repo_path
+    )
+    assert gone_branch not in gone_result.stdout, "Gone branch should be deleted"
+
+    active_result = env.run_command(
+        ["git", "branch", "--list", active_branch], cwd=repo_path
+    )
+    assert active_branch in active_result.stdout, "Active branch should remain"
+
+    local_result = env.run_command(
+        ["git", "branch", "--list", local_branch], cwd=repo_path
+    )
+    assert local_branch in local_result.stdout, "Local branch should remain"

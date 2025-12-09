@@ -740,6 +740,8 @@ branch). Useful for abandoning work or cleaning up experimental branches.
 
 #### Options
 
+- `--gone`: Remove worktrees whose upstream remote branch has been deleted (e.g.,
+  after a PR is merged on GitHub). Automatically runs `git fetch --prune` first.
 - `--force`, `-f`: Skip confirmation prompt and ignore uncommitted changes
 - `--keep-branch`, `-k`: Remove only the worktree and tmux window while keeping
   the local branch
@@ -762,8 +764,11 @@ workmux remove --keep-branch experiment
 # Force remove without prompts
 workmux rm -f experiment
 
-# Force remove and delete remote branch
-workmux rm -f -r old-work
+# Remove worktrees whose remote branches were deleted (e.g., after PR merge)
+workmux rm --gone
+
+# Force remove all gone worktrees (no confirmation)
+workmux rm --gone -f
 ```
 
 ---
