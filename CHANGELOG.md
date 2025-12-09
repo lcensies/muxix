@@ -4,6 +4,12 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.46 (2025-12-09)
+
+- Added `--pr` flag to `list` command to show PR status alongside worktrees,
+  displaying PR numbers and state icons (open, draft, merged, closed)
+- Added spinner feedback for slow operations like GitHub API calls
+
 ## v0.1.45 (2025-12-08)
 
 - Shell completions now suggest proper values for `--base`, `--into`, and
