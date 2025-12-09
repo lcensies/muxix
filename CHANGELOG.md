@@ -4,6 +4,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.47 (2025-12-09)
+
+- Added `--gone` flag to `rm` command to clean up worktrees whose remote
+  branches have been deleted (e.g., after PRs are merged)
+
 ## v0.1.46 (2025-12-09)
 
 - Added `--pr` flag to `list` command to show PR status alongside worktrees,
