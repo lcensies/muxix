@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+"""
+Release helper for cargo crate.
+
+Usage:
+    python scripts/release.py patch|minor|major   # Normal release
+    python scripts/release.py --dry-run patch     # Preview changes without committing
+    python scripts/release.py --continue          # Resume a failed release
+
+The --continue flag is useful when cargo publish fails (e.g., network issues)
+after the release commit has been created. It will:
+  1. Verify the last commit is a release commit
+  2. Retry cargo publish
+  3. Create the git tag (if not already created)
+  4. Push the commit and tags
+"""
 
 import argparse
 import os
@@ -115,6 +130,50 @@ def publish_crate() -> None:
     run(["cargo", "publish"])
 
 
+def continue_release() -> None:
+    """Continue a release that failed after commit but before completion."""
+    # Get the last commit message to extract version
+    last_commit = run_capture(["git", "log", "-1", "--format=%s"]).strip()
+
+    match = re.match(r"^release v(\d+\.\d+\.\d+)$", last_commit)
+    if not match:
+        sys.stderr.write(
+            f"error: last commit doesn't look like a release commit: '{last_commit}'\n"
+        )
+        sys.stderr.write("Expected format: 'release vX.Y.Z'\n")
+        sys.exit(1)
+
+    version = match.group(1)
+    crate_name, cargo_version = read_package_info()
+
+    if cargo_version != version:
+        sys.stderr.write(
+            f"error: Cargo.toml version ({cargo_version}) doesn't match "
+            f"commit version ({version})\n"
+        )
+        sys.exit(1)
+
+    # Check if tag already exists
+    tag_exists = subprocess.run(
+        ["git", "rev-parse", f"v{version}"],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+    print(f"Continuing release of {crate_name} v{version}")
+
+    publish_crate()
+
+    if not tag_exists:
+        tag_release(version)
+
+    push_release()
+
+    print(f"Released {crate_name} v{version}")
+
+
 def main() -> None:
     # Change to repo root so update_changelog module works correctly
     os.chdir(ROOT)
@@ -122,6 +181,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Release helper for cargo crate")
     parser.add_argument(
         "bump",
+        nargs="?",
         choices=("patch", "minor", "major"),
         help="Semver component to bump",
     )
@@ -130,7 +190,22 @@ def main() -> None:
         action="store_true",
         help="Generate changelog only, don't commit/publish/push",
     )
+    parser.add_argument(
+        "--continue",
+        dest="continue_release",
+        action="store_true",
+        help="Continue a failed release (publish, tag, and push)",
+    )
     args = parser.parse_args()
+
+    if args.continue_release:
+        if args.bump:
+            parser.error("--continue does not take a bump argument")
+        continue_release()
+        return
+
+    if not args.bump:
+        parser.error("bump is required unless using --continue")
 
     ensure_clean_worktree()
 
