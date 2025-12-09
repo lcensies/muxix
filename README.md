@@ -740,8 +740,9 @@ branch). Useful for abandoning work or cleaning up experimental branches.
 
 #### Options
 
-- `--gone`: Remove worktrees whose upstream remote branch has been deleted (e.g.,
-  after a PR is merged on GitHub). Automatically runs `git fetch --prune` first.
+- `--gone`: Remove worktrees whose upstream remote branch has been deleted
+  (e.g., after a PR is merged on GitHub). Automatically runs `git fetch --prune`
+  first.
 - `--force`, `-f`: Skip confirmation prompt and ignore uncommitted changes
 - `--keep-branch`, `-k`: Remove only the worktree and tmux window while keeping
   the local branch
@@ -816,12 +817,6 @@ bug-fix     ✓       ●           ~/project__worktrees/bug-fix
 
 Generates `.workmux.yaml` with example configuration and `"<global>"`
 placeholder usage.
-
-#### Examples
-
-```bash
-workmux init
-```
 
 ---
 
