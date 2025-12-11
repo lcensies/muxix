@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::Path;
+use std::time::SystemTime;
 use std::{thread, time::Duration};
 
 use crate::{cmd, git, tmux};
@@ -9,6 +10,29 @@ use super::context::WorkflowContext;
 use super::types::CleanupResult;
 
 const WINDOW_CLOSE_DELAY_MS: u64 = 300;
+
+/// Best-effort recursive deletion of directory contents.
+/// Used to ensure files are removed even if the directory itself is locked (e.g., CWD).
+fn remove_dir_contents(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+        if is_dir {
+            let _ = std::fs::remove_dir_all(&entry_path);
+        } else {
+            let _ = std::fs::remove_file(&entry_path);
+        }
+    }
+}
 
 /// Centralized function to clean up tmux and git resources.
 /// `branch_name` is used for git operations (branch deletion).
@@ -79,15 +103,47 @@ pub fn cleanup(
             );
         }
 
-        // 1. Forcefully remove the worktree directory from the filesystem.
+        // Track the trash path for best-effort deletion at the end
+        let mut trash_path: Option<std::path::PathBuf> = None;
+
+        // 1. Rename the worktree directory to a trash location.
+        // This immediately frees the original path for reuse, even if a shell process
+        // still has it as CWD (the shell's CWD moves with the rename).
+        // This fixes a race condition where running `workmux remove` from inside the
+        // target tmux window could leave the directory behind.
         if worktree_path.exists() {
-            std::fs::remove_dir_all(worktree_path).with_context(|| {
+            let parent = worktree_path.parent().unwrap_or_else(|| Path::new("."));
+            let dir_name = worktree_path
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Invalid worktree path: no directory name"))?;
+
+            // Generate unique trash name: .workmux_trash_<name>_<timestamp>
+            let timestamp = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let trash_name = format!(
+                ".workmux_trash_{}_{}",
+                dir_name.to_string_lossy(),
+                timestamp
+            );
+            let target_trash_path = parent.join(&trash_name);
+
+            debug!(
+                from = %worktree_path.display(),
+                to = %target_trash_path.display(),
+                "cleanup:renaming worktree to trash"
+            );
+
+            std::fs::rename(worktree_path, &target_trash_path).with_context(|| {
                 format!(
-                    "Failed to remove worktree directory at {}. \
-                Please close any terminals or editors using this directory and try again.",
-                    worktree_path.display()
+                    "Failed to rename worktree directory to trash location '{}'. \
+                    Please close any terminals or editors using this directory and try again.",
+                    target_trash_path.display()
                 )
             })?;
+
+            trash_path = Some(target_trash_path);
             result.worktree_removed = true;
             info!(branch = branch_name, path = %worktree_path.display(), "cleanup:worktree directory removed");
         }
@@ -104,6 +160,7 @@ pub fn cleanup(
         }
 
         // 2. Prune worktrees to clean up git's metadata.
+        // Git will see the original path as missing since we renamed it.
         git::prune_worktrees().context("Failed to prune worktrees")?;
         debug!("cleanup:git worktrees pruned");
 
@@ -112,6 +169,26 @@ pub fn cleanup(
             git::delete_branch(branch_name, force).context("Failed to delete local branch")?;
             result.local_branch_deleted = true;
             info!(branch = branch_name, "cleanup:local branch deleted");
+        }
+
+        // 4. Best-effort deletion of the trash directory.
+        // If the shell is inside this directory, remove_dir_all on the root might fail
+        // immediately. Clearing children first ensures we reclaim the space.
+        if let Some(tp) = trash_path {
+            // First, aggressively clear contents to reclaim disk space
+            remove_dir_contents(&tp);
+
+            // Then try to remove the (now empty) directory
+            if let Err(e) = std::fs::remove_dir(&tp) {
+                warn!(
+                    path = %tp.display(),
+                    error = %e,
+                    "cleanup:failed to remove trash directory (likely held by active shell). \
+                    The directory is empty and harmless."
+                );
+            } else {
+                debug!(path = %tp.display(), "cleanup:trash directory removed");
+            }
         }
 
         Ok(())
