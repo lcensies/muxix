@@ -46,6 +46,13 @@ def run_capture(cmd: list[str]) -> str:
     return result.stdout
 
 
+def ensure_main_branch() -> None:
+    branch = run_capture(["git", "rev-parse", "--abbrev-ref", "HEAD"]).strip()
+    if branch != "main":
+        sys.stderr.write(f"error: releases must be made from main branch (currently on '{branch}')\n")
+        sys.exit(1)
+
+
 def ensure_clean_worktree() -> None:
     status = run_capture(["git", "status", "--porcelain", "--ignore-submodules"])
     if status.strip():
@@ -197,6 +204,8 @@ def main() -> None:
         help="Continue a failed release (publish, tag, and push)",
     )
     args = parser.parse_args()
+
+    ensure_main_branch()
 
     if args.continue_release:
         if args.bump:
