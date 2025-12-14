@@ -740,6 +740,9 @@ branch). Useful for abandoning work or cleaning up experimental branches.
 
 #### Options
 
+- `--all`: Remove all worktrees at once (except the main worktree). Prompts for
+  confirmation unless `--force` is used. Safely skips worktrees with uncommitted
+  changes or unmerged commits.
 - `--gone`: Remove worktrees whose upstream remote branch has been deleted
   (e.g., after a PR is merged on GitHub). Automatically runs `git fetch --prune`
   first.
@@ -770,6 +773,9 @@ workmux rm --gone
 
 # Force remove all gone worktrees (no confirmation)
 workmux rm --gone -f
+
+# Remove all worktrees at once
+workmux rm --all
 ```
 
 ---
