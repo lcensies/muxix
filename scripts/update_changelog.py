@@ -1,4 +1,27 @@
 #!/usr/bin/env python3
+# Usage:
+#   1. Backfill missing tags (batch mode):
+#      ./scripts/update_changelog.py
+#
+#   2. Generate entry for pending release (before tagging):
+#      python -c "from scripts.update_changelog import generate_for_pending; generate_for_pending('v0.1.50')"
+#
+# Workflows:
+#   Batch mode (main):
+#     - Finds all git tags missing from CHANGELOG.md
+#     - Promotes "## Unreleased" header to the latest tag if present
+#     - Generates missing entries using cc-batch (parallel AI processing)
+#     - Marks tags without user-facing changes as skipped
+#     - Formats output with Prettier
+#
+#   Pending release (generate_for_pending):
+#     - Generates changelog for HEAD compared to the latest tag
+#     - Used during release process before the tag is created
+#     - Uses claude CLI directly (single invocation)
+#
+# Prerequisites:
+#   - CLI Tools: git, cc-batch, prettier, claude
+#   - LLM API keys configured in environment
 """
 Find git tags missing from CHANGELOG.md and use cc-batch to add them.
 """
@@ -254,7 +277,9 @@ def insert_skipped_comments(tags: list[str]) -> None:
     if header_end == -1:
         content = content + "\n\n" + skipped_block
     else:
-        content = content[: header_end + 1] + "\n" + skipped_block + content[header_end + 1 :]
+        content = (
+            content[: header_end + 1] + "\n" + skipped_block + content[header_end + 1 :]
+        )
 
     with open("CHANGELOG.md", "w") as f:
         f.write(content)
@@ -290,7 +315,9 @@ def main():
     updated_tags = get_tags_in_changelog()
     still_missing = [t for t in missing_tags if t not in updated_tags]
     if still_missing:
-        print(f"Marking {len(still_missing)} tags as skipped: {', '.join(still_missing)}")
+        print(
+            f"Marking {len(still_missing)} tags as skipped: {', '.join(still_missing)}"
+        )
         insert_skipped_comments(still_missing)
 
     # Format with prettier
