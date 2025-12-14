@@ -182,7 +182,7 @@ def generate_for_pending(version_tag: str) -> None:
     print(f"Generating changelog entry for {version_tag}...")
     prompt = PENDING_PROMPT.replace("{input}", version_tag)
     subprocess.run(
-        ["claude", "--dangerously-skip-permissions", "-p", prompt],
+        ["claude", "--dangerously-skip-permissions", "--no-session-persistence", "-p", prompt],
         check=True,
     )
 
