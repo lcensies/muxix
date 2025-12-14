@@ -11,7 +11,17 @@ enum UserChoice {
     NotNeeded, // No prompt needed (no unmerged commits)
 }
 
-pub fn run(name: Option<&str>, gone: bool, force: bool, keep_branch: bool) -> Result<()> {
+pub fn run(
+    name: Option<&str>,
+    gone: bool,
+    all: bool,
+    force: bool,
+    keep_branch: bool,
+) -> Result<()> {
+    if all {
+        return run_all(force, keep_branch);
+    }
+
     if gone {
         return run_gone(force, keep_branch);
     }
@@ -43,6 +53,156 @@ fn run_single(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> 
         };
 
     remove_worktree(&handle, effective_force, keep_branch)
+}
+
+/// Remove all managed worktrees (except main)
+fn run_all(force: bool, keep_branch: bool) -> Result<()> {
+    let worktrees = git::list_worktrees()?;
+    let main_branch = git::get_default_branch()?;
+    let main_worktree_root = git::get_main_worktree_root()?;
+
+    let mut to_remove: Vec<(PathBuf, String, String)> = Vec::new();
+    let mut skipped_uncommitted: Vec<String> = Vec::new();
+    let mut skipped_unmerged: Vec<String> = Vec::new();
+
+    for (path, branch) in worktrees {
+        // Skip main branch/worktree and detached HEAD
+        if branch == main_branch || branch == "(detached)" {
+            continue;
+        }
+
+        // Skip the main worktree itself (safety check)
+        if path == main_worktree_root {
+            continue;
+        }
+
+        // Check for uncommitted changes
+        if !force && path.exists() && git::has_uncommitted_changes(&path).unwrap_or(false) {
+            skipped_uncommitted.push(branch);
+            continue;
+        }
+
+        // Check for unmerged commits (only when deleting the branch)
+        if !force && !keep_branch {
+            let base = git::get_branch_base(&branch)
+                .ok()
+                .unwrap_or_else(|| main_branch.clone());
+            if let Ok(merge_base) = git::get_merge_base(&base)
+                && let Ok(unmerged_branches) = git::get_unmerged_branches(&merge_base)
+                && unmerged_branches.contains(&branch)
+            {
+                skipped_unmerged.push(branch);
+                continue;
+            }
+        }
+
+        let handle = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&branch)
+            .to_string();
+
+        to_remove.push((path, branch, handle));
+    }
+
+    if to_remove.is_empty() && skipped_uncommitted.is_empty() && skipped_unmerged.is_empty() {
+        println!("No worktrees to remove.");
+        return Ok(());
+    }
+
+    if to_remove.is_empty() {
+        println!("No removable worktrees found.");
+        if !skipped_uncommitted.is_empty() {
+            println!(
+                "\nSkipped {} worktree(s) with uncommitted changes:",
+                skipped_uncommitted.len()
+            );
+            for branch in &skipped_uncommitted {
+                println!("  - {}", branch);
+            }
+        }
+        if !skipped_unmerged.is_empty() {
+            println!(
+                "\nSkipped {} worktree(s) with unmerged commits:",
+                skipped_unmerged.len()
+            );
+            for branch in &skipped_unmerged {
+                println!("  - {}", branch);
+            }
+        }
+        println!("\nUse --force to remove these anyway.");
+        return Ok(());
+    }
+
+    // Show what will be removed
+    println!("The following worktrees will be removed:");
+    for (_, branch, _) in &to_remove {
+        println!("  - {}", branch);
+    }
+
+    if !skipped_uncommitted.is_empty() {
+        println!(
+            "\nSkipping {} worktree(s) with uncommitted changes:",
+            skipped_uncommitted.len()
+        );
+        for branch in &skipped_uncommitted {
+            println!("  - {}", branch);
+        }
+    }
+
+    if !skipped_unmerged.is_empty() {
+        println!(
+            "\nSkipping {} worktree(s) with unmerged commits:",
+            skipped_unmerged.len()
+        );
+        for branch in &skipped_unmerged {
+            println!("  - {}", branch);
+        }
+    }
+
+    // Confirm with user unless --force
+    if !force {
+        print!(
+            "\nAre you sure you want to remove ALL {} worktree(s)? [y/N] ",
+            to_remove.len()
+        );
+        io::stdout().flush().context("Failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read user input")?;
+
+        if input.trim().to_lowercase() != "y" {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    // Execute removal
+    let mut success_count = 0;
+    let mut failed: Vec<(String, String)> = Vec::new();
+
+    for (_, branch, handle) in to_remove {
+        match remove_worktree(&handle, true, keep_branch) {
+            Ok(()) => success_count += 1,
+            Err(e) => failed.push((branch, e.to_string())),
+        }
+    }
+
+    // Report results
+    if success_count > 0 {
+        println!("\n✓ Successfully removed {} worktree(s)", success_count);
+    }
+
+    if !failed.is_empty() {
+        eprintln!("\nFailed to remove {} worktree(s):", failed.len());
+        for (branch, error) in &failed {
+            eprintln!("  - {}: {}", branch, error);
+        }
+    }
+
+    Ok(())
 }
 
 /// Remove worktrees whose upstream remote branch has been deleted

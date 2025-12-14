@@ -796,6 +796,7 @@ def run_workmux_remove(
     force: bool = False,
     keep_branch: bool = False,
     gone: bool = False,
+    all: bool = False,
     user_input: Optional[str] = None,
     expect_fail: bool = False,
     from_window: Optional[str] = None,
@@ -814,6 +815,7 @@ def run_workmux_remove(
         force: Whether to use -f flag to skip confirmation
         keep_branch: Whether to use --keep-branch flag to keep the local branch
         gone: Whether to use --gone flag to remove worktrees with deleted upstreams
+        all: Whether to use --all flag to remove all worktrees
         user_input: Optional string to pipe to stdin (e.g., 'y' for confirmation)
         expect_fail: If True, asserts the command fails (non-zero exit code)
         from_window: Optional tmux window name to run the command from (useful for testing remove from within worktree window)
@@ -830,6 +832,7 @@ def run_workmux_remove(
     force_flag = "-f " if force else ""
     keep_branch_flag = "--keep-branch " if keep_branch else ""
     gone_flag = "--gone " if gone else ""
+    all_flag = "--all " if all else ""
     branch_arg = branch_name if branch_name else ""
     input_cmd = f"echo '{user_input}' | " if user_input else ""
 
@@ -841,7 +844,7 @@ def run_workmux_remove(
         remove_script = (
             f"cd {worktree_path} && "
             f"{input_cmd}"
-            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{branch_arg} "
+            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
             f"> {stdout_file} 2> {stderr_file}; "
             f"echo $? > {exit_code_file}"
         )
@@ -849,7 +852,7 @@ def run_workmux_remove(
         remove_script = (
             f"cd {repo_path} && "
             f"{input_cmd}"
-            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{branch_arg} "
+            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
             f"> {stdout_file} 2> {stderr_file}; "
             f"echo $? > {exit_code_file}"
         )

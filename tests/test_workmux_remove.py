@@ -461,3 +461,173 @@ def test_remove_gone_flag(
         ["git", "branch", "--list", local_branch], cwd=repo_path
     )
     assert local_branch in local_result.stdout, "Local branch should remain"
+
+
+def test_remove_all_flag(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove --all` removes all worktrees except the main branch."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    # Create multiple worktrees
+    branch1 = "feature-one"
+    branch2 = "feature-two"
+    branch3 = "feature-three"
+
+    window1 = get_window_name(branch1)
+    window2 = get_window_name(branch2)
+    window3 = get_window_name(branch3)
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch3)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+    worktree3 = get_worktree_path(repo_path, branch3)
+
+    # Verify all worktrees exist
+    assert worktree1.exists(), "Worktree 1 should exist"
+    assert worktree2.exists(), "Worktree 2 should exist"
+    assert worktree3.exists(), "Worktree 3 should exist"
+
+    # Run remove --all with confirmation
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        all=True,
+        user_input="y",
+    )
+
+    # Verify all worktrees were removed
+    assert not worktree1.exists(), "Worktree 1 should be removed"
+    assert not worktree2.exists(), "Worktree 2 should be removed"
+    assert not worktree3.exists(), "Worktree 3 should be removed"
+
+    # Verify windows are closed
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert window1 not in list_windows_result.stdout, "Window 1 should be closed"
+    assert window2 not in list_windows_result.stdout, "Window 2 should be closed"
+    assert window3 not in list_windows_result.stdout, "Window 3 should be closed"
+
+    # Verify branches are deleted
+    for branch in [branch1, branch2, branch3]:
+        result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
+        assert branch not in result.stdout, f"Branch {branch} should be deleted"
+
+
+def test_remove_all_with_force(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove --all -f` removes all worktrees without confirmation."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "force-all-one"
+    branch2 = "force-all-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+
+    # Create uncommitted changes in one worktree
+    create_dirty_file(worktree1)
+
+    # Create unmerged commits in another worktree
+    create_commit(env, worktree2, "feat: unmerged work")
+
+    # Run remove --all --force (should succeed without prompts)
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        all=True,
+        force=True,
+    )
+
+    # Verify all worktrees were removed
+    assert not worktree1.exists(), "Worktree with uncommitted changes should be removed"
+    assert not worktree2.exists(), "Worktree with unmerged commits should be removed"
+
+
+def test_remove_all_skips_unmerged_without_force(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove --all` skips worktrees with unmerged commits unless --force is used."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    # Create a clean branch (no unmerged commits)
+    clean_branch = "all-clean-branch"
+    run_workmux_add(env, workmux_exe_path, repo_path, clean_branch)
+    clean_worktree = get_worktree_path(repo_path, clean_branch)
+
+    # Create a branch with unmerged commits
+    unmerged_branch = "all-unmerged-branch"
+    run_workmux_add(env, workmux_exe_path, repo_path, unmerged_branch)
+    unmerged_worktree = get_worktree_path(repo_path, unmerged_branch)
+    create_commit(env, unmerged_worktree, "feat: unmerged work")
+
+    # Run remove --all with confirmation
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        all=True,
+        user_input="y",
+    )
+
+    # Clean branch should be removed
+    assert not clean_worktree.exists(), "Clean worktree should be removed"
+
+    # Unmerged branch should be skipped (still exists)
+    assert unmerged_worktree.exists(), "Unmerged worktree should be skipped"
+
+    # Verify the unmerged branch still exists
+    result = env.run_command(
+        ["git", "branch", "--list", unmerged_branch], cwd=repo_path
+    )
+    assert unmerged_branch in result.stdout, "Unmerged branch should still exist"
+
+
+def test_remove_all_with_keep_branch(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove --all --keep-branch` removes worktrees but keeps branches."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "keep-all-one"
+    branch2 = "keep-all-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    # Add unmerged commits (should not block removal when using --keep-branch)
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+    create_commit(env, worktree1, "feat: work one")
+    create_commit(env, worktree2, "feat: work two")
+
+    # Run remove --all --keep-branch with confirmation
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        all=True,
+        keep_branch=True,
+        user_input="y",
+    )
+
+    # Verify worktrees were removed
+    assert not worktree1.exists(), "Worktree 1 should be removed"
+    assert not worktree2.exists(), "Worktree 2 should be removed"
+
+    # Verify branches still exist
+    for branch in [branch1, branch2]:
+        result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
+        assert branch in result.stdout, f"Branch {branch} should still exist"
