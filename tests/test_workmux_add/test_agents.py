@@ -587,3 +587,66 @@ class TestAgentErrors:
             "All --foreach variables must have the same number of values"
             in result.stderr
         )
+
+    def test_add_fails_with_prompt_but_no_pane_has_agent_placeholder(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies -p fails when panes don't include <agent> placeholder and don't run the default agent."""
+        env = isolated_tmux_server
+        # Config with no <agent> placeholder - agent defaults to "claude" but no pane runs it
+        write_workmux_config(repo_path, panes=[{"command": "clear"}])
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add my-feature --prompt 'do something'",
+            expect_fail=True,
+        )
+        # Agent defaults to "claude", so error says no pane runs claude
+        assert "no pane is configured to run the agent" in result.stderr
+        assert "claude" in result.stderr
+
+    def test_add_fails_with_prompt_but_no_pane_runs_agent(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies -p fails when panes don't run the configured agent."""
+        env = isolated_tmux_server
+        # Config with agent but panes don't use it
+        write_workmux_config(
+            repo_path,
+            agent="claude",
+            panes=[{"command": "vim"}, {"command": "clear", "split": "horizontal"}],
+        )
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add my-feature --prompt 'do something'",
+            expect_fail=True,
+        )
+        assert "no pane is configured to run the agent" in result.stderr
+        assert "claude" in result.stderr
+
+    def test_add_fails_with_prompt_and_no_pane_cmds(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies -p fails when combined with --no-pane-cmds."""
+        env = isolated_tmux_server
+        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add my-feature --prompt 'do something' --no-pane-cmds",
+            expect_fail=True,
+        )
+        assert "pane commands are disabled" in result.stderr

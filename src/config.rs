@@ -685,9 +685,41 @@ pub fn split_first_token(command: &str) -> Option<(&str, &str)> {
     )
 }
 
+/// Checks if a command string corresponds to the given agent command.
+///
+/// Returns true if:
+/// 1. The command is the literal placeholder "<agent>"
+/// 2. The command's executable stem matches the agent's executable stem
+///    (e.g., "claude" matches "/usr/bin/claude")
+pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
+    let trimmed = command_line.trim();
+
+    let Some((cmd_token, _)) = split_first_token(trimmed) else {
+        return false;
+    };
+
+    // Allow <agent> token regardless of what follows (e.g., "<agent> --verbose")
+    if cmd_token == "<agent>" {
+        return true;
+    }
+
+    let Some((agent_token, _)) = split_first_token(agent_command) else {
+        return false;
+    };
+
+    let resolved_cmd = resolve_executable_path(cmd_token).unwrap_or_else(|| cmd_token.to_string());
+    let resolved_agent =
+        resolve_executable_path(agent_token).unwrap_or_else(|| agent_token.to_string());
+
+    let cmd_stem = Path::new(&resolved_cmd).file_stem();
+    let agent_stem = Path::new(&resolved_agent).file_stem();
+
+    cmd_stem.is_some() && cmd_stem == agent_stem
+}
+
 #[cfg(test)]
 mod tests {
-    use super::split_first_token;
+    use super::{is_agent_command, split_first_token};
 
     #[test]
     fn split_first_token_single_word() {
@@ -726,5 +758,39 @@ mod tests {
     #[test]
     fn split_first_token_only_whitespace() {
         assert_eq!(split_first_token("   "), None);
+    }
+
+    #[test]
+    fn is_agent_command_placeholder() {
+        assert!(is_agent_command("<agent>", "claude"));
+        assert!(is_agent_command("  <agent>  ", "gemini"));
+        // <agent> with arguments should also match
+        assert!(is_agent_command("<agent> --verbose", "claude"));
+        assert!(is_agent_command("<agent> -p foo", "gemini"));
+    }
+
+    #[test]
+    fn is_agent_command_exact_match() {
+        assert!(is_agent_command("claude", "claude"));
+        assert!(is_agent_command("gemini", "gemini"));
+    }
+
+    #[test]
+    fn is_agent_command_with_args() {
+        assert!(is_agent_command("claude --verbose", "claude"));
+        assert!(is_agent_command("gemini -i", "gemini --model foo"));
+    }
+
+    #[test]
+    fn is_agent_command_mismatch() {
+        assert!(!is_agent_command("claude", "gemini"));
+        assert!(!is_agent_command("vim", "claude"));
+        assert!(!is_agent_command("clear", "claude"));
+    }
+
+    #[test]
+    fn is_agent_command_empty() {
+        assert!(!is_agent_command("", "claude"));
+        assert!(!is_agent_command("   ", "claude"));
     }
 }

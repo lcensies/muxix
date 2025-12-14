@@ -97,6 +97,12 @@ pub fn setup_environment(
     // Setup panes
     let panes = config.panes.as_deref().unwrap_or(&[]);
     let resolved_panes = resolve_pane_configuration(panes, agent);
+
+    // Validate that prompt will be consumed if one was provided
+    if options.prompt_file_path.is_some() {
+        validate_prompt_consumption(&resolved_panes, agent, config, options)?;
+    }
+
     let pane_setup_result = tmux::setup_panes(
         &initial_pane_id,
         &resolved_panes,
@@ -447,4 +453,233 @@ mod tests {
         assert_eq!(result[0].command, Some("claude".to_string()));
         assert!(result[0].focus);
     }
+
+    // --- validate_prompt_consumption tests ---
+
+    fn make_config_with_agent(agent: Option<&str>) -> config::Config {
+        config::Config {
+            agent: agent.map(|s| s.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn make_options_with_prompt(run_pane_commands: bool) -> crate::workflow::types::SetupOptions {
+        crate::workflow::types::SetupOptions {
+            run_hooks: true,
+            run_file_ops: true,
+            run_pane_commands,
+            prompt_file_path: Some(std::path::PathBuf::from("/tmp/prompt.md")),
+            focus_window: true,
+        }
+    }
+
+    #[test]
+    fn validate_prompt_errors_when_pane_commands_disabled() {
+        let panes = vec![config::PaneConfig {
+            command: Some("<agent>".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(Some("claude"));
+        let options = make_options_with_prompt(false); // pane commands disabled
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("pane commands are disabled")
+        );
+    }
+
+    #[test]
+    fn validate_prompt_errors_when_no_agent_configured() {
+        let panes = vec![config::PaneConfig {
+            command: Some("vim".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(None); // no agent
+        let options = make_options_with_prompt(true);
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no agent is configured")
+        );
+    }
+
+    #[test]
+    fn validate_prompt_errors_when_no_pane_runs_agent() {
+        let panes = vec![
+            config::PaneConfig {
+                command: None, // shell
+                focus: true,
+                split: None,
+                size: None,
+                percentage: None,
+                target: None,
+            },
+            config::PaneConfig {
+                command: Some("clear".to_string()),
+                focus: false,
+                split: Some(config::SplitDirection::Horizontal),
+                size: None,
+                percentage: None,
+                target: None,
+            },
+        ];
+        let config = make_config_with_agent(Some("claude"));
+        let options = make_options_with_prompt(true);
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("no pane is configured to run the agent"));
+        assert!(err_msg.contains("claude"));
+    }
+
+    #[test]
+    fn validate_prompt_succeeds_with_agent_placeholder() {
+        let panes = vec![config::PaneConfig {
+            command: Some("<agent>".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(Some("claude"));
+        let options = make_options_with_prompt(true);
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_prompt_succeeds_with_matching_agent_command() {
+        let panes = vec![config::PaneConfig {
+            command: Some("claude".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(Some("claude"));
+        let options = make_options_with_prompt(true);
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_prompt_cli_agent_overrides_config() {
+        let panes = vec![config::PaneConfig {
+            command: Some("gemini".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(Some("claude")); // config says claude
+        let options = make_options_with_prompt(true);
+
+        // CLI agent is gemini, which matches the pane
+        let result = super::validate_prompt_consumption(&panes, Some("gemini"), &config, &options);
+        assert!(result.is_ok());
+
+        // CLI agent is None, falls back to config (claude), which doesn't match
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_prompt_succeeds_when_any_pane_matches() {
+        let panes = vec![
+            config::PaneConfig {
+                command: Some("vim".to_string()), // doesn't match
+                focus: false,
+                split: None,
+                size: None,
+                percentage: None,
+                target: None,
+            },
+            config::PaneConfig {
+                command: Some("claude --verbose".to_string()), // matches
+                focus: true,
+                split: Some(config::SplitDirection::Horizontal),
+                size: None,
+                percentage: None,
+                target: None,
+            },
+        ];
+        let config = make_config_with_agent(Some("claude"));
+        let options = make_options_with_prompt(true);
+
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_ok());
+    }
+}
+
+/// Validates that a prompt will actually be consumed by an agent pane.
+///
+/// This prevents the case where a user provides `-p "some prompt"` but no pane
+/// is configured to run an agent that would receive it.
+fn validate_prompt_consumption(
+    panes: &[config::PaneConfig],
+    cli_agent: Option<&str>,
+    config: &config::Config,
+    options: &super::types::SetupOptions,
+) -> Result<()> {
+    if !options.run_pane_commands {
+        return Err(anyhow!(
+            "Prompt provided (-p/-P/-e) but pane commands are disabled (--no-pane-cmds). \
+             The prompt would be ignored."
+        ));
+    }
+
+    let effective_agent = cli_agent.or(config.agent.as_deref());
+
+    let Some(agent_cmd) = effective_agent else {
+        return Err(anyhow!(
+            "Prompt provided but no agent is configured to consume it. \
+             Set 'agent' in config or use -a/--agent flag."
+        ));
+    };
+
+    let consumes_prompt = panes.iter().any(|pane| {
+        pane.command
+            .as_deref()
+            .map(|cmd| config::is_agent_command(cmd, agent_cmd))
+            .unwrap_or(false)
+    });
+
+    if !consumes_prompt {
+        let commands: Vec<_> = panes
+            .iter()
+            .map(|p| p.command.as_deref().unwrap_or("<shell>"))
+            .collect();
+
+        return Err(anyhow!(
+            "Prompt provided, but no pane is configured to run the agent '{}'.\n\
+             Resolved pane commands: {:?}\n\
+             Ensure your panes config includes '<agent>' or runs the configured agent.",
+            agent_cmd,
+            commands
+        ));
+    }
+
+    Ok(())
 }
