@@ -4,6 +4,14 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.49 (2025-12-15)
+
+- Added `--all` flag to `remove` command to remove all worktrees at once (except
+  the main worktree), with safety checks for uncommitted changes and unmerged
+  commits
+- Now shows an error when using `-p`/`--prompt` without an agent pane configured,
+  instead of silently ignoring the prompt
+
 ## v0.1.48 (2025-12-10)
 
 - Removed automatic `node_modules` symlink default for Node.js projects
