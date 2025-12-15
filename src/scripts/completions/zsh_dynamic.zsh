@@ -2,14 +2,14 @@
 # Used for open/remove/merge/path - these accept handles or branch names
 _workmux_handles() {
     local handles
-    handles=("${(@f)$(workmux __complete-handles 2>/dev/null)}")
+    handles=("${(@f)$(workmux _complete-handles 2>/dev/null)}")
     compadd -a handles
 }
 
 # Dynamic git branch completion for add command
 _workmux_git_branches() {
     local branches
-    branches=("${(@f)$(workmux __complete-git-branches 2>/dev/null)}")
+    branches=("${(@f)$(workmux _complete-git-branches 2>/dev/null)}")
     compadd -a branches
 }
 

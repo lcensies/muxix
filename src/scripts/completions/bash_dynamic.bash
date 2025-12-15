@@ -1,12 +1,12 @@
 # Dynamic worktree handle completion (directory names)
 # Used for open/remove/merge/path - these accept handles or branch names
 _workmux_handles() {
-    workmux __complete-handles 2>/dev/null
+    workmux _complete-handles 2>/dev/null
 }
 
 # Dynamic git branch completion for add command
 _workmux_git_branches() {
-    workmux __complete-git-branches 2>/dev/null
+    workmux _complete-git-branches 2>/dev/null
 }
 
 # Wrapper that adds dynamic completion

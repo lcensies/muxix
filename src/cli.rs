@@ -54,7 +54,7 @@ impl clap::builder::TypedValueParser for WorktreeBranchParser {
         &self,
     ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
         // Return None to avoid running git operations during completion script generation.
-        // Dynamic completions are handled by the __complete-branches subcommand,
+        // Dynamic completions are handled by the _complete-branches subcommand,
         // which is called by the shell only when the user presses TAB.
         None
     }
@@ -115,7 +115,7 @@ impl clap::builder::TypedValueParser for WorktreeHandleParser {
         &self,
     ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
         // Return None to avoid running git operations during completion script generation.
-        // Dynamic completions are handled by the __complete-handles subcommand,
+        // Dynamic completions are handled by the _complete-handles subcommand,
         // which is called by the shell only when the user presses TAB.
         None
     }
@@ -157,7 +157,7 @@ impl clap::builder::TypedValueParser for GitBranchParser {
         &self,
     ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
         // Return None to avoid running git operations during completion script generation.
-        // Dynamic completions are handled by the __complete-git-branches subcommand,
+        // Dynamic completions are handled by the _complete-git-branches subcommand,
         // which is called by the shell only when the user presses TAB.
         None
     }
@@ -315,15 +315,15 @@ enum Commands {
     },
 
     /// Output worktree branch names for shell completion (internal use)
-    #[command(hide = true, name = "__complete-branches")]
+    #[command(hide = true, name = "_complete-branches")]
     CompleteBranches,
 
     /// Output worktree handles for shell completion (internal use)
-    #[command(hide = true, name = "__complete-handles")]
+    #[command(hide = true, name = "_complete-handles")]
     CompleteHandles,
 
     /// Output git branches for shell completion (internal use)
-    #[command(hide = true, name = "__complete-git-branches")]
+    #[command(hide = true, name = "_complete-git-branches")]
     CompleteGitBranches,
 }
 
