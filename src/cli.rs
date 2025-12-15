@@ -303,7 +303,7 @@ enum Commands {
     /// Set agent status for the current tmux window (used by hooks)
     #[command(hide = true)]
     SetWindowStatus {
-        #[command(subcommand)]
+        #[arg(value_enum)]
         command: command::set_window_status::SetWindowStatusCommand,
     },
 

@@ -1,11 +1,11 @@
 use anyhow::Result;
-use clap::Subcommand;
+use clap::ValueEnum;
 
 use crate::cmd::Cmd;
 use crate::config::Config;
 use crate::tmux;
 
-#[derive(Subcommand, Debug, Clone)]
+#[derive(ValueEnum, Debug, Clone)]
 pub enum SetWindowStatusCommand {
     /// Set status to "working" (agent is processing)
     Working,
