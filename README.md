@@ -574,6 +574,11 @@ prompts can be templated with variables.
     `{{ index }}`, `{{ input }}` (stdin), and any variables from `--foreach`.
   - Default:
     `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
+- `--max-concurrent <number>`: Limits how many worktrees run simultaneously.
+  When set, workmux creates up to `<number>` worktrees, then waits for any
+  window to close before starting the next. Requires agents to close windows
+  when done (e.g., via prompt instruction to run
+  `workmux remove --keep-branch`).
 
 ##### Prompt templating
 
@@ -694,6 +699,33 @@ workmux add testing --prompt-file task.md
 echo -e "auth\npayments\napi" | workmux add review -A -P review.md
 # Generates worktrees with LLM-generated branch names for each module
 ```
+
+##### Recipe: Batch processing with worker pools
+
+Combine stdin input, prompt templating, and concurrency limits to create a
+worker pool that processes items from an external command.
+
+**Example: Generate test scaffolding for untested files**
+
+```bash
+# generate-tests.md contains:
+# Read the file at {{ input }} and generate a test suite covering
+# the exported functions. Focus on happy path and edge cases.
+# When done, run: workmux remove --keep-branch
+
+find src/utils -name "*.ts" ! -name "*.test.ts" | \
+  workmux add add-tests \
+    --branch-template '{{ base_name }}-{{ index }}' \
+    --prompt-file generate-tests.md \
+    --max-concurrent 3 \
+    --background
+```
+
+- `find ...` lists files without tests (one per line) piped to stdin
+- `--branch-template` uses `{{ index }}` for unique branch names
+- `--prompt-file` uses `{{ input }}` to pass each file path to the agent
+- `--max-concurrent 3` limits parallel agents to avoid rate limits
+- `--background` runs without switching focus
 
 ---
 

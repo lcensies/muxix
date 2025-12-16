@@ -68,6 +68,11 @@ pub struct MultiArgs {
         default_value = r#"{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}"#
     )]
     pub branch_template: String,
+
+    /// Maximum number of worktrees to run concurrently.
+    /// When set, waits for a slot to open before creating new worktrees.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    pub max_concurrent: Option<u32>,
 }
 
 #[derive(clap::Args, Debug)]

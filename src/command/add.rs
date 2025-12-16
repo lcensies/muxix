@@ -266,6 +266,7 @@ pub fn run(
         name.as_deref(),
         wait,
         deferred_auto_name,
+        multi.max_concurrent,
     )
 }
 
@@ -355,6 +356,9 @@ fn determine_foreach_matrix(
     }
 }
 
+/// Polling interval for checking window status in worker pool mode
+const WORKER_POOL_POLL_MS: u64 = 250;
+
 /// Create worktrees from the provided specs.
 #[allow(clippy::too_many_arguments)]
 fn create_worktrees_from_specs(
@@ -367,14 +371,32 @@ fn create_worktrees_from_specs(
     explicit_name: Option<&str>,
     wait: bool,
     deferred_auto_name: bool,
+    max_concurrent: Option<u32>,
 ) -> Result<()> {
     if specs.len() > 1 {
         println!("Preparing to create {} worktrees...", specs.len());
     }
 
+    // Track windows for --wait (all created windows)
     let mut created_windows = Vec::new();
+    // Track currently active windows for --max-concurrent
+    let mut active_windows: Vec<String> = Vec::new();
 
     for (i, spec) in specs.iter().enumerate() {
+        // Concurrency control: wait for a slot if at limit
+        if let Some(limit) = max_concurrent {
+            let limit = limit as usize;
+            // Only enter polling loop if we're at capacity
+            if active_windows.len() >= limit {
+                loop {
+                    active_windows = tmux::filter_active_windows(&active_windows)?;
+                    if active_windows.len() < limit {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(WORKER_POOL_POLL_MS));
+                }
+            }
+        }
         // Load config for this specific agent to ensure correct agent resolution
         let config = config::Config::load(spec.agent.as_deref())?;
 
@@ -429,8 +451,16 @@ fn create_worktrees_from_specs(
         // Create a WorkflowContext for this spec's config
         let context = workflow::WorkflowContext::new(config)?;
 
+        // Calculate window name for tracking
+        let full_window_name = tmux::prefixed(&context.prefix, &handle);
+
         if wait {
-            created_windows.push(tmux::prefixed(&context.prefix, &handle));
+            created_windows.push(full_window_name.clone());
+        }
+
+        // Track for concurrency control
+        if max_concurrent.is_some() {
+            active_windows.push(full_window_name);
         }
 
         let result = workflow::create(

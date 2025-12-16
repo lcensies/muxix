@@ -25,6 +25,18 @@ pub fn get_all_window_names() -> Result<HashSet<String>> {
     Ok(windows.lines().map(String::from).collect())
 }
 
+/// Filter a list of window names, returning only those that still exist.
+/// Used by the worker pool to track which windows are still active.
+pub fn filter_active_windows(windows: &[String]) -> Result<Vec<String>> {
+    let all_current = get_all_window_names()?;
+
+    Ok(windows
+        .iter()
+        .filter(|w| all_current.contains(*w))
+        .cloned()
+        .collect())
+}
+
 /// Check if tmux server is running
 pub fn is_running() -> Result<bool> {
     Cmd::new("tmux").arg("has-session").run_as_check()
