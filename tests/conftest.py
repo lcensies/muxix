@@ -628,6 +628,7 @@ def run_workmux_command(
     pre_run_tmux_cmds: Optional[List[List[str]]] = None,
     expect_fail: bool = False,
     working_dir: Optional[Path] = None,
+    stdin_input: Optional[str] = None,
 ) -> WorkmuxCommandResult:
     """
     Helper to run a workmux command inside the isolated tmux session.
@@ -642,6 +643,7 @@ def run_workmux_command(
         pre_run_tmux_cmds: Optional list of tmux commands to run before the command
         expect_fail: Whether the command is expected to fail (non-zero exit)
         working_dir: Optional directory to run the command from (defaults to repo_path)
+        stdin_input: Optional text to pipe to the command's stdin
     """
     stdout_file = env.tmp_path / "workmux_stdout.txt"
     stderr_file = env.tmp_path / "workmux_stderr.txt"
@@ -667,8 +669,14 @@ def run_workmux_command(
     # changes from `tmux set-environment -g`.
     path_str = shlex.quote(env.env["PATH"])
 
+    # Handle stdin piping via printf
+    pipe_cmd = ""
+    if stdin_input is not None:
+        pipe_cmd = f"printf {shlex.quote(stdin_input)} | "
+
     workmux_cmd = (
         f"cd {workdir_str} && "
+        f"{pipe_cmd}"
         f"env PATH={path_str} {exe_str} {command} "
         f"> {stdout_str} 2> {stderr_str}; "
         f"echo $? > {exit_code_str}"

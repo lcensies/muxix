@@ -546,11 +546,12 @@ Recommended models for fast, cheap branch name generation:
 
 workmux can generate multiple worktrees from a single `add` command, which is
 ideal for running parallel experiments or delegating tasks to multiple AI
-agents. This is controlled by three mutually exclusive modes:
+agents. This is controlled by four mutually exclusive modes:
 
 - (`-a`, `--agent`): Create a worktree for each specified agent.
 - (`-n`, `--count`): Create a specific number of worktrees.
 - (`--foreach`): Create worktrees based on a matrix of variables.
+- **stdin**: Pipe input lines to create worktrees with templated prompts.
 
 When using any of these modes, branch names are generated from a template, and
 prompts can be templated with variables.
@@ -634,6 +635,30 @@ workmux add refactor --prompt-file agent-task.md
 - CLI `--foreach` overrides frontmatter with a warning if both are present
 - Works with both `--prompt-file` and `--prompt-editor`
 
+##### Stdin input
+
+You can pipe input lines to `workmux add` to create multiple worktrees. Each
+line becomes available as the `{{ input }}` template variable in your prompt.
+This is useful for batch-processing tasks from external sources.
+
+**Example:** Process a list of modules from stdin
+
+```bash
+# Create a prompt file that uses the input variable
+# refactor-task.md:
+# Refactor the {{ input }} module to use the new API patterns.
+
+echo -e "api\nauth\ndatabase" | workmux add refactor -A -P refactor-task.md
+# Generates worktrees with LLM-generated branch names based on each rendered prompt
+```
+
+**Behavior:**
+
+- Empty lines and whitespace-only lines are filtered out
+- Stdin input cannot be combined with `--foreach` (mutually exclusive)
+- The `{{ input }}` variable is available in both prompt and branch name
+  templates
+
 ##### Examples
 
 ```bash
@@ -663,6 +688,11 @@ workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboa
 # Run {{ task }} against the {{ env }} environment
 workmux add testing --prompt-file task.md
 # Generates worktrees: testing-staging-smoke-tests, testing-production-integration-tests
+
+# Pipe input from stdin to create worktrees
+# review.md contains: Review the {{ input }} module for security issues.
+echo -e "auth\npayments\napi" | workmux add review -A -P review.md
+# Generates worktrees with LLM-generated branch names for each module
 ```
 
 ---

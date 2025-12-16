@@ -10,9 +10,37 @@ use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt, parse_prompt_w
 use crate::{config, tmux, workflow};
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
+use std::io::{IsTerminal, Read};
 
 // Re-export the arg types that are used by the CLI
 pub use super::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
+
+/// Variable name exposed to templates for stdin input lines
+const STDIN_INPUT_VAR: &str = "input";
+
+/// Maximum stdin size to read (10MB) to prevent OOM from infinite streams
+const STDIN_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Check for and read lines from stdin if available.
+fn read_stdin_lines() -> Result<Vec<String>> {
+    if std::io::stdin().is_terminal() {
+        return Ok(Vec::new());
+    }
+
+    let mut buffer = String::new();
+    std::io::stdin()
+        .take(STDIN_MAX_BYTES)
+        .read_to_string(&mut buffer)
+        .context("Failed to read from stdin")?;
+
+    let lines: Vec<String> = buffer
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    Ok(lines)
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -31,48 +59,78 @@ pub fn run(
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
 
+    // Detect stdin input early
+    let stdin_lines = read_stdin_lines()?;
+    let has_stdin = !stdin_lines.is_empty();
+
+    // Determine if we're in explicit multi-worktree mode (before loading prompt)
+    let is_explicit_multi =
+        has_stdin || multi.foreach.is_some() || multi.count.is_some() || multi.agent.len() > 1;
+
     // Handle auto-name: load prompt first, generate branch name
-    let (final_branch_name, preloaded_prompt, remote_branch_for_pr) = if auto_name {
-        // Use editor if no prompt source specified, otherwise use provided source
-        let use_editor = prompt_args.prompt.is_none() && prompt_args.prompt_file.is_none();
+    // In multi-worktree mode with auto-name, we defer LLM generation to the loop
+    let (final_branch_name, preloaded_prompt, remote_branch_for_pr, deferred_auto_name) =
+        if auto_name {
+            // Use editor if no prompt source specified, otherwise use provided source
+            let use_editor = prompt_args.prompt.is_none() && prompt_args.prompt_file.is_none();
 
-        let prompt = load_prompt(&PromptLoadArgs {
-            prompt_editor: use_editor || prompt_args.prompt_editor,
-            prompt_inline: prompt_args.prompt.as_deref(),
-            prompt_file: prompt_args.prompt_file.as_ref(),
-        })?
-        .ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
+            // Cannot use interactive editor when stdin is piped (editor can't read terminal)
+            if has_stdin && (prompt_args.prompt_editor || use_editor) {
+                return Err(anyhow!(
+                    "Cannot use interactive prompt editor when piping input from stdin.\n\
+                    Please provide a prompt via --prompt or --prompt-file."
+                ));
+            }
 
-        let prompt_text = prompt.read_content()?;
+            let prompt = load_prompt(&PromptLoadArgs {
+                prompt_editor: use_editor || prompt_args.prompt_editor,
+                prompt_inline: prompt_args.prompt.as_deref(),
+                prompt_file: prompt_args.prompt_file.as_ref(),
+            })?
+            .ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
 
-        // Load config for model and system prompt settings
-        let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
-        let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
-        let system_prompt = config
-            .auto_name
-            .as_ref()
-            .and_then(|c| c.system_prompt.as_deref());
+            // Check if we need to defer auto-name generation to the loop
+            // This happens when we have multi-worktree mode OR frontmatter foreach
+            let prompt_doc_preview = parse_prompt_with_frontmatter(&prompt, true)?;
+            let has_frontmatter_foreach = prompt_doc_preview.meta.foreach.is_some();
 
-        let generated = spinner::with_spinner("Generating branch name", || {
-            crate::llm::generate_branch_name(&prompt_text, model, system_prompt)
-        })?;
-        println!("  Branch: {}", generated);
+            if is_explicit_multi || has_frontmatter_foreach {
+                // Defer LLM generation - use placeholder branch name
+                ("deferred".to_string(), Some(prompt), None, true)
+            } else {
+                // Single worktree mode - generate branch name now
+                let prompt_text = prompt.read_content()?;
 
-        (generated, Some(prompt), None)
-    } else if let Some(pr_number) = pr {
-        // Handle PR checkout if --pr flag is provided
-        let result = workflow::pr::resolve_pr_ref(pr_number, branch_name)?;
-        (result.local_branch, None, Some(result.remote_branch))
-    } else {
-        // Normal flow: use provided branch name
-        (
-            branch_name
-                .expect("branch_name required when --pr and --auto-name not provided")
-                .to_string(),
-            None,
-            None,
-        )
-    };
+                // Load config for model and system prompt settings
+                let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+                let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
+                let system_prompt = config
+                    .auto_name
+                    .as_ref()
+                    .and_then(|c| c.system_prompt.as_deref());
+
+                let generated = spinner::with_spinner("Generating branch name", || {
+                    crate::llm::generate_branch_name(&prompt_text, model, system_prompt)
+                })?;
+                println!("  Branch: {}", generated);
+
+                (generated, Some(prompt), None, false)
+            }
+        } else if let Some(pr_number) = pr {
+            // Handle PR checkout if --pr flag is provided
+            let result = workflow::pr::resolve_pr_ref(pr_number, branch_name)?;
+            (result.local_branch, None, Some(result.remote_branch), false)
+        } else {
+            // Normal flow: use provided branch name
+            (
+                branch_name
+                    .expect("branch_name required when --pr and --auto-name not provided")
+                    .to_string(),
+                None,
+                None,
+                false,
+            )
+        };
 
     // Use the determined branch name and override base if from PR
     let branch_name = &final_branch_name;
@@ -90,11 +148,13 @@ pub fn run(
     }
 
     // Validate --name compatibility with multi-worktree generation
-    let has_multi_worktree =
-        multi.agent.len() > 1 || multi.count.is_some_and(|c| c > 1) || multi.foreach.is_some();
+    let has_multi_worktree = multi.agent.len() > 1
+        || multi.count.is_some_and(|c| c > 1)
+        || multi.foreach.is_some()
+        || has_stdin;
     if name.is_some() && has_multi_worktree {
         return Err(anyhow!(
-            "--name cannot be used with multi-worktree generation (multiple --agent, --count, or --foreach).\n\
+            "--name cannot be used with multi-worktree generation (multiple --agent, --count, --foreach, or stdin).\n\
              Use the default naming or set worktree_naming/worktree_prefix in config instead."
         ));
     }
@@ -178,7 +238,8 @@ pub fn run(
     let resolved_base = if remote_branch.is_some() { None } else { base };
 
     // Determine effective foreach matrix
-    let effective_foreach_rows = determine_foreach_matrix(&multi, prompt_doc.as_ref())?;
+    let effective_foreach_rows =
+        determine_foreach_matrix(&multi, prompt_doc.as_ref(), stdin_lines)?;
 
     // Generate worktree specifications
     let specs = generate_worktree_specs(
@@ -204,6 +265,7 @@ pub fn run(
         &env,
         name.as_deref(),
         wait,
+        deferred_auto_name,
     )
 }
 
@@ -245,11 +307,40 @@ fn handle_rescue_flow(
     Ok(true)
 }
 
-/// Determine the effective foreach matrix from CLI or frontmatter.
+/// Determine the effective foreach matrix from CLI, stdin, or frontmatter.
+/// Priority: CLI --foreach > stdin > frontmatter foreach
 fn determine_foreach_matrix(
     multi: &MultiArgs,
     prompt_doc: Option<&PromptDocument>,
+    stdin_lines: Vec<String>,
 ) -> Result<Option<Vec<BTreeMap<String, String>>>> {
+    let has_stdin = !stdin_lines.is_empty();
+    let has_frontmatter_foreach = prompt_doc.and_then(|d| d.meta.foreach.as_ref()).is_some();
+
+    // Stdin conflicts with --foreach
+    if has_stdin && multi.foreach.is_some() {
+        return Err(anyhow!("Cannot use --foreach when piping input from stdin"));
+    }
+
+    // Handle stdin input - converts lines to matrix with "input" key
+    if has_stdin {
+        if has_frontmatter_foreach {
+            eprintln!("Warning: stdin input overrides prompt frontmatter 'foreach'");
+        }
+
+        let rows = stdin_lines
+            .into_iter()
+            .map(|line| {
+                let mut map = BTreeMap::new();
+                map.insert(STDIN_INPUT_VAR.to_string(), line);
+                map
+            })
+            .collect();
+
+        return Ok(Some(rows));
+    }
+
+    // Fall back to existing CLI/frontmatter logic
     match (
         &multi.foreach,
         prompt_doc.and_then(|d| d.meta.foreach.as_ref()),
@@ -275,6 +366,7 @@ fn create_worktrees_from_specs(
     env: &TemplateEnv,
     explicit_name: Option<&str>,
     wait: bool,
+    deferred_auto_name: bool,
 ) -> Result<()> {
     if specs.len() > 1 {
         println!("Preparing to create {} worktrees...", specs.len());
@@ -283,31 +375,54 @@ fn create_worktrees_from_specs(
     let mut created_windows = Vec::new();
 
     for (i, spec) in specs.iter().enumerate() {
+        // Load config for this specific agent to ensure correct agent resolution
+        let config = config::Config::load(spec.agent.as_deref())?;
+
+        // Render prompt first (needed for deferred auto-name)
+        let rendered_prompt = if let Some(doc) = prompt_doc {
+            Some(
+                render_prompt_body(&doc.body, env, &spec.template_context)
+                    .with_context(|| format!("Failed to render prompt for spec index {}", i))?,
+            )
+        } else {
+            None
+        };
+
+        // If auto-name was deferred, run it now using the rendered prompt
+        let final_branch_name = if deferred_auto_name {
+            let prompt_text = rendered_prompt
+                .as_ref()
+                .ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
+
+            let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
+            let system_prompt = config
+                .auto_name
+                .as_ref()
+                .and_then(|c| c.system_prompt.as_deref());
+
+            let generated = spinner::with_spinner("Generating branch name", || {
+                crate::llm::generate_branch_name(prompt_text, model, system_prompt)
+            })?;
+            println!("  Branch: {}", generated);
+            generated
+        } else {
+            spec.branch_name.clone()
+        };
+
         if specs.len() > 1 {
             println!(
                 "\n--- [{}/{}] Creating worktree: {} ---",
                 i + 1,
                 specs.len(),
-                spec.branch_name
+                final_branch_name
             );
         }
 
-        // Load config for this specific agent to ensure correct agent resolution
-        let config = config::Config::load(spec.agent.as_deref())?;
-
         // Derive handle from branch name, optional explicit name, and config
         // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
-        let handle = crate::naming::derive_handle(&spec.branch_name, explicit_name, &config)?;
+        let handle = crate::naming::derive_handle(&final_branch_name, explicit_name, &config)?;
 
-        let prompt_for_spec = if let Some(doc) = prompt_doc {
-            Some(Prompt::Inline(
-                render_prompt_body(&doc.body, env, &spec.template_context).with_context(|| {
-                    format!("Failed to render prompt for branch '{}'", spec.branch_name)
-                })?,
-            ))
-        } else {
-            None
-        };
+        let prompt_for_spec = rendered_prompt.map(Prompt::Inline);
 
         super::announce_hooks(&config, Some(&options), super::HookPhase::PostCreate);
 
@@ -321,7 +436,7 @@ fn create_worktrees_from_specs(
         let result = workflow::create(
             &context,
             workflow::CreateArgs {
-                branch_name: &spec.branch_name,
+                branch_name: &final_branch_name,
                 handle: &handle,
                 base_branch: resolved_base,
                 remote_branch,
@@ -333,7 +448,7 @@ fn create_worktrees_from_specs(
         .with_context(|| {
             format!(
                 "Failed to create worktree environment for branch '{}'",
-                spec.branch_name
+                final_branch_name
             )
         })?;
 
