@@ -337,6 +337,9 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
   specified multiple times to generate a worktree for each agent. Overrides the
   `agent` from your config file.
+- `-W, --wait`: Block until the created tmux window is closed. Useful for
+  scripting when you want to wait for an agent to complete its work. The agent
+  can signal completion by running `workmux remove --keep-branch`.
 
 #### Skip options
 
@@ -441,6 +444,18 @@ workmux add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
 workmux add quick-fix --no-file-ops
+```
+
+##### Scripting with --wait
+
+```bash
+# Block until the agent completes and closes the window
+workmux add feature/api --wait -p "Implement the REST API, then run: workmux remove --keep-branch"
+
+# Use in a script to run sequential agent tasks
+for task in task1.md task2.md task3.md; do
+  workmux add "task-$(basename $task .md)" --wait -P "$task"
+done
 ```
 
 #### AI agent integration
