@@ -4,6 +4,15 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.52 (2025-12-17)
+
+- Added `--max-concurrent` flag to limit how many worktrees run simultaneously,
+  useful for creating worker pools that process items without overwhelming
+  system resources or hitting API rate limits
+- Added `{{ index }}` template variable for branch names and prompts in
+  multi-worktree modes, providing a 1-indexed counter across all generated
+  worktrees
+
 ## v0.1.51 (2025-12-16)
 
 - Added `--wait` (`-W`) flag to `add` command to block until the created tmux
