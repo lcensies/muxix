@@ -570,8 +570,8 @@ prompts can be templated with variables.
 - `--branch-template <template>`: A
   [MiniJinja](https://docs.rs/minijinja/latest/minijinja/) (Jinja2-compatible)
   template for generating branch names.
-  - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, and any
-    variables from `--foreach`.
+  - Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`,
+    `{{ index }}`, `{{ input }}` (stdin), and any variables from `--foreach`.
   - Default:
     `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
 

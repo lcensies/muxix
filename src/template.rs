@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 /// Reserved template variable names that cannot be used in foreach
-const RESERVED_TEMPLATE_KEYS: &[&str] = &["base_name", "agent", "num", "foreach_vars"];
+const RESERVED_TEMPLATE_KEYS: &[&str] = &["base_name", "agent", "num", "index", "foreach_vars"];
 
 #[derive(Debug, Clone)]
 pub struct WorktreeSpec {
@@ -45,7 +45,7 @@ pub fn generate_worktree_specs(
         let agent = agents.first().cloned();
         let num: Option<u32> = None;
         let foreach_vars = BTreeMap::<String, String>::new();
-        let context = build_template_context(base_name, &agent, &num, &foreach_vars);
+        let context = build_template_context(base_name, &agent, &num, None, &foreach_vars);
 
         // Intentional: in single-agent/instance mode the CLI keeps the provided
         // branch name verbatim so users can opt into templating only when they
@@ -60,7 +60,19 @@ pub fn generate_worktree_specs(
     if let Some(rows) = foreach_rows {
         return rows
             .iter()
-            .map(|vars| build_spec(env, branch_template, base_name, None, None, vars.clone()))
+            .enumerate()
+            .map(|(idx, vars)| {
+                let index = Some((idx + 1) as u32); // 1-indexed to match num
+                build_spec(
+                    env,
+                    branch_template,
+                    base_name,
+                    None,
+                    None,
+                    index,
+                    vars.clone(),
+                )
+            })
             .collect();
     }
 
@@ -70,12 +82,14 @@ pub fn generate_worktree_specs(
         let mut specs = Vec::with_capacity(iterations);
         for idx in 0..iterations {
             let num = Some((idx + 1) as u32);
+            let index = num; // index equals num for --count
             specs.push(build_spec(
                 env,
                 branch_template,
                 base_name,
                 default_agent.clone(),
                 num,
+                index,
                 BTreeMap::new(),
             )?);
         }
@@ -89,18 +103,21 @@ pub fn generate_worktree_specs(
             base_name,
             None,
             None,
+            None,
             BTreeMap::new(),
         )?]);
     }
 
     let mut specs = Vec::with_capacity(agents.len());
-    for agent_name in agents {
+    for (idx, agent_name) in agents.iter().enumerate() {
+        let index = Some((idx + 1) as u32);
         specs.push(build_spec(
             env,
             branch_template,
             base_name,
             Some(agent_name.clone()),
             None,
+            index,
             BTreeMap::new(),
         )?);
     }
@@ -113,12 +130,13 @@ fn build_spec(
     base_name: &str,
     agent: Option<String>,
     num: Option<u32>,
+    index: Option<u32>,
     foreach_vars: BTreeMap<String, String>,
 ) -> Result<WorktreeSpec> {
     // Extract agent from foreach_vars if present (treat "agent" as a special reserved key)
     let effective_agent = agent.or_else(|| foreach_vars.get("agent").cloned());
 
-    let context = build_template_context(base_name, &effective_agent, &num, &foreach_vars);
+    let context = build_template_context(base_name, &effective_agent, &num, index, &foreach_vars);
     let branch_name = env
         .render_str(branch_template, &context)
         .context("Failed to render branch template")?;
@@ -144,6 +162,7 @@ fn build_template_context(
     base_name: &str,
     agent: &Option<String>,
     num: &Option<u32>,
+    index: Option<u32>,
     foreach_vars: &BTreeMap<String, String>,
 ) -> JsonValue {
     let mut context = JsonMap::new();
@@ -165,6 +184,11 @@ fn build_template_context(
         .map(|value| JsonValue::Number(JsonNumber::from(*value)))
         .unwrap_or(JsonValue::Null);
     context.insert("num".to_string(), num_value);
+
+    let index_value = index
+        .map(|value| JsonValue::Number(JsonNumber::from(value)))
+        .unwrap_or(JsonValue::Null);
+    context.insert("index".to_string(), index_value);
 
     let mut foreach_json = JsonMap::new();
     for (key, value) in foreach_vars {
@@ -373,6 +397,29 @@ mod tests {
     }
 
     #[test]
+    fn foreach_provides_index_variable() {
+        let env = create_test_env();
+        let rows = parse_foreach_matrix("region:us,eu").expect("parse");
+        let specs = generate_worktree_specs(
+            "deploy",
+            &[],
+            None,
+            Some(&rows),
+            &env,
+            "{{ base_name }}-{{ index }}-{{ region }}",
+        )
+        .expect("specs");
+
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].branch_name, "deploy-1-us");
+        assert_eq!(specs[1].branch_name, "deploy-2-eu");
+
+        // Verify index is available in the template context for prompt rendering
+        assert_eq!(specs[0].template_context["index"], 1);
+        assert_eq!(specs[1].template_context["index"], 2);
+    }
+
+    #[test]
     fn render_prompt_template_inline_renders_variables() {
         let env = create_test_env();
         let mut context_map = JsonMap::new();
@@ -441,7 +488,7 @@ mod tests {
         foreach_vars.insert("platform".to_string(), "ios".to_string());
         foreach_vars.insert("lang".to_string(), "swift".to_string());
 
-        let context = build_template_context("feature", &None, &None, &foreach_vars);
+        let context = build_template_context("feature", &None, &None, None, &foreach_vars);
         // MiniJinja doesn't support unpacking in for loops, so we iterate over keys
         let template = "{{ base_name }}{% for key in foreach_vars %}-{{ foreach_vars[key] | slugify }}{% endfor %}";
         let result = env.render_str(template, &context).expect("render");
