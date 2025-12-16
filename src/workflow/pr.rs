@@ -57,16 +57,8 @@ pub fn resolve_pr_ref(
         "origin".to_string()
     };
 
-    // Fetch the PR branch
-    spinner::with_spinner(
-        &format!(
-            "Fetching branch '{}' from '{}'",
-            pr_details.head_ref_name, remote_name
-        ),
-        || git::fetch_remote(&remote_name),
-    )
-    .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
-
+    // Note: We do not fetch here. The `create` workflow handles fetching
+    // the remote branch to ensure the worktree base is up to date.
     let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
 
     Ok(PrCheckoutResult {
@@ -83,7 +75,7 @@ pub struct ForkBranchResult {
 
 /// Resolve a fork branch specified as "owner:branch".
 ///
-/// Sets up the fork remote, fetches, and optionally displays associated PR info.
+/// Sets up the fork remote and optionally displays associated PR info.
 pub fn resolve_fork_branch(fork_spec: &git::ForkBranchSpec) -> Result<ForkBranchResult> {
     // Try to find an associated PR and display info (optional, non-blocking)
     if let Ok(Some(pr)) = github::find_pr_by_head_ref(&fork_spec.owner, &fork_spec.branch) {
@@ -100,26 +92,9 @@ pub fn resolve_fork_branch(fork_spec: &git::ForkBranchSpec) -> Result<ForkBranch
     // Ensure the fork remote exists
     let remote_name = git::ensure_fork_remote(&fork_spec.owner)?;
 
-    // Fetch to get the latest refs
-    spinner::with_spinner(
-        &format!(
-            "Fetching branch '{}' from '{}'",
-            fork_spec.branch, remote_name
-        ),
-        || git::fetch_remote(&remote_name),
-    )
-    .with_context(|| format!("Failed to fetch from remote '{}'", remote_name))?;
-
-    // Verify the branch exists on the remote
+    // Note: We do not fetch or verify the branch exists here.
+    // The `create` workflow will perform the fetch and fail if the branch is missing.
     let remote_ref = format!("{}/{}", remote_name, fork_spec.branch);
-    if !git::branch_exists(&remote_ref)? {
-        return Err(anyhow!(
-            "Branch '{}' not found on remote '{}' (fork of {})",
-            fork_spec.branch,
-            remote_name,
-            fork_spec.owner
-        ));
-    }
 
     Ok(ForkBranchResult {
         remote_ref,
