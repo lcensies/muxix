@@ -218,8 +218,8 @@ For a real-world example, see
   - `copy`: List of glob patterns for files/directories to copy
   - `symlink`: List of glob patterns for files/directories to symlink
 - `agent`: The default agent command to use for `<agent>` in pane commands
-  (e.g., `claude`, `codex`, `opencode`, `gemini`). This can be overridden by the `--agent` flag.
-  Default: `claude`.
+  (e.g., `claude`, `codex`, `opencode`, `gemini`). This can be overridden by the
+  `--agent` flag. Default: `claude`.
 - `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
   `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
   Default: `merge`.
@@ -447,8 +447,9 @@ workmux add quick-fix --no-file-ops
 
 When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
 workmux automatically injects the prompt into panes running the configured agent
-command (e.g., `claude`, `codex`, `opencode`, `gemini`, or whatever you've set via the `agent` config
-or `--agent` flag) without requiring any `.workmux.yaml` changes:
+command (e.g., `claude`, `codex`, `opencode`, `gemini`, or whatever you've set
+via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml`
+changes:
 
 - Panes with a command matching the configured agent are automatically started
   with the given prompt.
@@ -945,8 +946,8 @@ instructions.
 
 ## Agent status tracking
 
-Workmux can display the status of Claude Code in your tmux window list, giving
-you at-a-glance visibility into what the agent in each window doing.
+Workmux can display the status of the agent in your tmux window list, giving you
+at-a-glance visibility into what the agent in each window doing.
 
 ![tmux status showing agent icons](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/status.webp)
 
@@ -956,9 +957,11 @@ you at-a-glance visibility into what the agent in each window doing.
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
 
-Currently only Claude Code seems to support hooks that enable this kind of
-functionality. Gemini's support is
-[on the way](https://github.com/google-gemini/gemini-cli/issues/9070).
+**Note**: Currently only Claude Code seems to support hooks that enable this
+kind of functionality. Gemini's support is
+[on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex
+support can tracked in
+[this issue](https://github.com/openai/codex/issues/2109).
 
 ### Setup
 
