@@ -218,7 +218,7 @@ For a real-world example, see
   - `copy`: List of glob patterns for files/directories to copy
   - `symlink`: List of glob patterns for files/directories to symlink
 - `agent`: The default agent command to use for `<agent>` in pane commands
-  (e.g., `claude`, `gemini`). This can be overridden by the `--agent` flag.
+  (e.g., `claude`, `codex`, `opencode`, `gemini`). This can be overridden by the `--agent` flag.
   Default: `claude`.
 - `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
   `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
@@ -447,7 +447,7 @@ workmux add quick-fix --no-file-ops
 
 When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
 workmux automatically injects the prompt into panes running the configured agent
-command (e.g., `claude`, `gemini`, or whatever you've set via the `agent` config
+command (e.g., `claude`, `codex`, `opencode`, `gemini`, or whatever you've set via the `agent` config
 or `--agent` flag) without requiring any `.workmux.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started
