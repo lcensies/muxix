@@ -1322,6 +1322,8 @@ open an issue first. Thanks for understanding.
 
 ## Related projects
 
+- [tmux-tools](https://github.com/raine/tmux-tools) — Collection of tmux
+  utilities including file picker, smart sessions, and more
 - [tmux-file-picker](https://github.com/raine/tmux-file-picker) — Pop up fzf in
   tmux to quickly insert file paths, perfect for AI coding assistants
 - [tmux-bro](https://github.com/raine/tmux-bro) — Smart tmux session manager
