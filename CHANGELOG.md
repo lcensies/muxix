@@ -4,6 +4,16 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.51 (2025-12-16)
+
+- Added `--wait` (`-W`) flag to `add` command to block until the created tmux
+  window is closed, useful for scripting workflows
+- Added stdin input support for multi-worktree generation: pipe lines to
+  `workmux add` to create multiple worktrees, with each line available as
+  `{{ input }}` in prompts
+- Fixed duplicate remote fetch when using `--pr` or fork branch syntax
+  (`user:branch`)
+
 ## v0.1.50 (2025-12-15)
 
 - Fixed a crash in `workmux completions bash`
