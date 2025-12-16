@@ -208,6 +208,10 @@ enum Commands {
 
         #[command(flatten)]
         multi: MultiArgs,
+
+        /// Block until the created tmux window is closed
+        #[arg(short = 'W', long)]
+        wait: bool,
     },
 
     /// Open a tmux window for an existing worktree
@@ -348,6 +352,7 @@ pub fn run() -> Result<()> {
             setup,
             rescue,
             multi,
+            wait,
         } => command::add::run(
             branch_name.as_deref(),
             pr,
@@ -358,6 +363,7 @@ pub fn run() -> Result<()> {
             setup,
             rescue,
             multi,
+            wait,
         ),
         Commands::Open {
             name,

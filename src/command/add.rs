@@ -7,7 +7,7 @@ use crate::template::{
 use crate::workflow::SetupOptions;
 use crate::workflow::pr::detect_remote_branch;
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt, parse_prompt_with_frontmatter};
-use crate::{config, workflow};
+use crate::{config, tmux, workflow};
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
 
@@ -25,6 +25,7 @@ pub fn run(
     setup: SetupFlags,
     rescue: RescueArgs,
     multi: MultiArgs,
+    wait: bool,
 ) -> Result<()> {
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
@@ -111,6 +112,7 @@ pub fn run(
             &rescue,
             &rescue_context,
             options.clone(),
+            wait,
         )? {
             return Ok(());
         }
@@ -201,6 +203,7 @@ pub fn run(
         options,
         &env,
         name.as_deref(),
+        wait,
     )
 }
 
@@ -212,6 +215,7 @@ fn handle_rescue_flow(
     rescue: &RescueArgs,
     context: &workflow::WorkflowContext,
     options: SetupOptions,
+    wait: bool,
 ) -> Result<bool> {
     if !rescue.with_changes {
         return Ok(false);
@@ -232,6 +236,11 @@ fn handle_rescue_flow(
         result.branch_name,
         result.worktree_path.display()
     );
+
+    if wait {
+        let full_window_name = tmux::prefixed(&context.prefix, handle);
+        tmux::wait_until_windows_closed(&[full_window_name])?;
+    }
 
     Ok(true)
 }
@@ -256,6 +265,7 @@ fn determine_foreach_matrix(
 }
 
 /// Create worktrees from the provided specs.
+#[allow(clippy::too_many_arguments)]
 fn create_worktrees_from_specs(
     specs: &[WorktreeSpec],
     resolved_base: Option<&str>,
@@ -264,10 +274,13 @@ fn create_worktrees_from_specs(
     options: SetupOptions,
     env: &TemplateEnv,
     explicit_name: Option<&str>,
+    wait: bool,
 ) -> Result<()> {
     if specs.len() > 1 {
         println!("Preparing to create {} worktrees...", specs.len());
     }
+
+    let mut created_windows = Vec::new();
 
     for (i, spec) in specs.iter().enumerate() {
         if specs.len() > 1 {
@@ -301,6 +314,10 @@ fn create_worktrees_from_specs(
         // Create a WorkflowContext for this spec's config
         let context = workflow::WorkflowContext::new(config)?;
 
+        if wait {
+            created_windows.push(tmux::prefixed(&context.prefix, &handle));
+        }
+
         let result = workflow::create(
             &context,
             workflow::CreateArgs {
@@ -332,6 +349,10 @@ fn create_worktrees_from_specs(
             println!("  Base: {}", base);
         }
         println!("  Worktree: {}", result.worktree_path.display());
+    }
+
+    if wait && !created_windows.is_empty() {
+        tmux::wait_until_windows_closed(&created_windows)?;
     }
 
     Ok(())

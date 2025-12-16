@@ -662,6 +662,44 @@ fn update_format_option(pane: &str, option: &str) -> Result<()> {
     Ok(())
 }
 
+/// Block execution until all specified windows (by full name including prefix) are closed.
+pub fn wait_until_windows_closed(full_window_names: &[String]) -> Result<()> {
+    if full_window_names.is_empty() {
+        return Ok(());
+    }
+
+    let targets: HashSet<String> = full_window_names.iter().cloned().collect();
+
+    if targets.len() == 1 {
+        println!("Waiting for window '{}' to close...", full_window_names[0]);
+    } else {
+        println!("Waiting for {} windows to close...", targets.len());
+    }
+
+    loop {
+        // If tmux server isn't running, windows are definitely gone
+        if !is_running()? {
+            return Ok(());
+        }
+
+        // Get current windows once per iteration
+        let current_windows = get_all_window_names()?;
+
+        // Check if any of our targets still exist
+        // We continue waiting as long as ANY target exists
+        let any_exists = targets
+            .iter()
+            .any(|target| current_windows.contains(target));
+
+        if !any_exists {
+            return Ok(());
+        }
+
+        // Standard polling interval
+        thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// Injects workmux status format into an existing format string.
 /// Inserts before window_flags if present, otherwise appends to end.
 fn inject_status_format(format: &str) -> String {
