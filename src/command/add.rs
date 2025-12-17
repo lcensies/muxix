@@ -22,6 +22,30 @@ const STDIN_INPUT_VAR: &str = "input";
 /// Maximum stdin size to read (10MB) to prevent OOM from infinite streams
 const STDIN_MAX_BYTES: u64 = 10 * 1024 * 1024;
 
+/// Generate a branch name from prompt text using LLM with spinner feedback.
+///
+/// This helper consolidates the duplicate branch name generation logic that was
+/// previously duplicated in both `run()` and `create_worktrees_from_specs()`.
+fn generate_branch_name_with_spinner(
+    prompt_text: Option<&str>,
+    config: &config::Config,
+) -> Result<String> {
+    let prompt_text = prompt_text.ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
+
+    let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
+    let system_prompt = config
+        .auto_name
+        .as_ref()
+        .and_then(|c| c.system_prompt.as_deref());
+
+    let generated = spinner::with_spinner("Generating branch name", || {
+        crate::llm::generate_branch_name(prompt_text, model, system_prompt)
+    })?;
+    println!("  Branch: {}", generated);
+
+    Ok(generated)
+}
+
 /// Check for and read lines from stdin if available.
 fn read_stdin_lines() -> Result<Vec<String>> {
     if std::io::stdin().is_terminal() {
@@ -101,20 +125,8 @@ pub fn run(
             } else {
                 // Single worktree mode - generate branch name now
                 let prompt_text = prompt.read_content()?;
-
-                // Load config for model and system prompt settings
                 let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
-                let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
-                let system_prompt = config
-                    .auto_name
-                    .as_ref()
-                    .and_then(|c| c.system_prompt.as_deref());
-
-                let generated = spinner::with_spinner("Generating branch name", || {
-                    crate::llm::generate_branch_name(&prompt_text, model, system_prompt)
-                })?;
-                println!("  Branch: {}", generated);
-
+                let generated = generate_branch_name_with_spinner(Some(&prompt_text), &config)?;
                 (generated, Some(prompt), None, false)
             }
         } else if let Some(pr_number) = pr {
@@ -266,18 +278,19 @@ pub fn run(
     }
 
     // Create worktrees from specs
-    create_worktrees_from_specs(
-        &specs,
+    let plan = CreationPlan {
+        specs: &specs,
         resolved_base,
-        remote_branch.as_deref(),
-        prompt_doc.as_ref(),
+        remote_branch: remote_branch.as_deref(),
+        prompt_doc: prompt_doc.as_ref(),
         options,
-        &env,
-        name.as_deref(),
+        env: &env,
+        explicit_name: name.as_deref(),
         wait,
         deferred_auto_name,
-        multi.max_concurrent,
-    )
+        max_concurrent: multi.max_concurrent,
+    };
+    plan.execute()
 }
 
 /// Handle the rescue flow (--with-changes).
@@ -389,146 +402,141 @@ fn determine_foreach_matrix(
 /// Polling interval for checking window status in worker pool mode
 const WORKER_POOL_POLL_MS: u64 = 250;
 
-/// Create worktrees from the provided specs.
-#[allow(clippy::too_many_arguments)]
-fn create_worktrees_from_specs(
-    specs: &[WorktreeSpec],
-    resolved_base: Option<&str>,
-    remote_branch: Option<&str>,
-    prompt_doc: Option<&PromptDocument>,
+/// Encapsulates all parameters needed for worktree creation.
+struct CreationPlan<'a> {
+    specs: &'a [WorktreeSpec],
+    resolved_base: Option<&'a str>,
+    remote_branch: Option<&'a str>,
+    prompt_doc: Option<&'a PromptDocument>,
     options: SetupOptions,
-    env: &TemplateEnv,
-    explicit_name: Option<&str>,
+    env: &'a TemplateEnv,
+    explicit_name: Option<&'a str>,
     wait: bool,
     deferred_auto_name: bool,
     max_concurrent: Option<u32>,
-) -> Result<()> {
-    if specs.len() > 1 {
-        println!("Preparing to create {} worktrees...", specs.len());
+}
+
+impl<'a> CreationPlan<'a> {
+    /// Execute the creation plan, creating all worktrees according to the specs.
+    fn execute(&self) -> Result<()> {
+        self.create_worktrees()
     }
 
-    // Track windows for --wait (all created windows)
-    let mut created_windows = Vec::new();
-    // Track currently active windows for --max-concurrent
-    let mut active_windows: Vec<String> = Vec::new();
+    fn create_worktrees(&self) -> Result<()> {
+        if self.specs.len() > 1 {
+            println!("Preparing to create {} worktrees...", self.specs.len());
+        }
 
-    for (i, spec) in specs.iter().enumerate() {
-        // Concurrency control: wait for a slot if at limit
-        if let Some(limit) = max_concurrent {
-            let limit = limit as usize;
-            // Only enter polling loop if we're at capacity
-            if active_windows.len() >= limit {
-                loop {
-                    active_windows = tmux::filter_active_windows(&active_windows)?;
-                    if active_windows.len() < limit {
-                        break;
+        // Track windows for --wait (all created windows)
+        let mut created_windows = Vec::new();
+        // Track currently active windows for --max-concurrent
+        let mut active_windows: Vec<String> = Vec::new();
+
+        for (i, spec) in self.specs.iter().enumerate() {
+            // Concurrency control: wait for a slot if at limit
+            if let Some(limit) = self.max_concurrent {
+                let limit = limit as usize;
+                // Only enter polling loop if we're at capacity
+                if active_windows.len() >= limit {
+                    loop {
+                        active_windows = tmux::filter_active_windows(&active_windows)?;
+                        if active_windows.len() < limit {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(WORKER_POOL_POLL_MS));
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(WORKER_POOL_POLL_MS));
                 }
             }
-        }
-        // Load config for this specific agent to ensure correct agent resolution
-        let config = config::Config::load(spec.agent.as_deref())?;
+            // Load config for this specific agent to ensure correct agent resolution
+            let config = config::Config::load(spec.agent.as_deref())?;
 
-        // Render prompt first (needed for deferred auto-name)
-        let rendered_prompt = if let Some(doc) = prompt_doc {
-            Some(
-                render_prompt_body(&doc.body, env, &spec.template_context)
-                    .with_context(|| format!("Failed to render prompt for spec index {}", i))?,
+            // Render prompt first (needed for deferred auto-name)
+            let rendered_prompt = if let Some(doc) = self.prompt_doc {
+                Some(
+                    render_prompt_body(&doc.body, self.env, &spec.template_context)
+                        .with_context(|| format!("Failed to render prompt for spec index {}", i))?,
+                )
+            } else {
+                None
+            };
+
+            // If auto-name was deferred, run it now using the rendered prompt
+            let final_branch_name = if self.deferred_auto_name {
+                generate_branch_name_with_spinner(rendered_prompt.as_deref(), &config)?
+            } else {
+                spec.branch_name.clone()
+            };
+
+            if self.specs.len() > 1 {
+                println!(
+                    "\n--- [{}/{}] Creating worktree: {} ---",
+                    i + 1,
+                    self.specs.len(),
+                    final_branch_name
+                );
+            }
+
+            // Derive handle from branch name, optional explicit name, and config
+            // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
+            let handle =
+                crate::naming::derive_handle(&final_branch_name, self.explicit_name, &config)?;
+
+            let prompt_for_spec = rendered_prompt.map(Prompt::Inline);
+
+            super::announce_hooks(&config, Some(&self.options), super::HookPhase::PostCreate);
+
+            // Create a WorkflowContext for this spec's config
+            let context = workflow::WorkflowContext::new(config)?;
+
+            // Calculate window name for tracking
+            let full_window_name = tmux::prefixed(&context.prefix, &handle);
+
+            if self.wait {
+                created_windows.push(full_window_name.clone());
+            }
+
+            // Track for concurrency control
+            if self.max_concurrent.is_some() {
+                active_windows.push(full_window_name);
+            }
+
+            let result = workflow::create(
+                &context,
+                workflow::CreateArgs {
+                    branch_name: &final_branch_name,
+                    handle: &handle,
+                    base_branch: self.resolved_base,
+                    remote_branch: self.remote_branch,
+                    prompt: prompt_for_spec.as_ref(),
+                    options: self.options.clone(),
+                    agent: spec.agent.as_deref(),
+                },
             )
-        } else {
-            None
-        };
-
-        // If auto-name was deferred, run it now using the rendered prompt
-        let final_branch_name = if deferred_auto_name {
-            let prompt_text = rendered_prompt
-                .as_ref()
-                .ok_or_else(|| anyhow!("Prompt is required for --auto-name"))?;
-
-            let model = config.auto_name.as_ref().and_then(|c| c.model.as_deref());
-            let system_prompt = config
-                .auto_name
-                .as_ref()
-                .and_then(|c| c.system_prompt.as_deref());
-
-            let generated = spinner::with_spinner("Generating branch name", || {
-                crate::llm::generate_branch_name(prompt_text, model, system_prompt)
+            .with_context(|| {
+                format!(
+                    "Failed to create worktree environment for branch '{}'",
+                    final_branch_name
+                )
             })?;
-            println!("  Branch: {}", generated);
-            generated
-        } else {
-            spec.branch_name.clone()
-        };
 
-        if specs.len() > 1 {
+            if result.post_create_hooks_run > 0 {
+                println!("✓ Setup complete");
+            }
+
             println!(
-                "\n--- [{}/{}] Creating worktree: {} ---",
-                i + 1,
-                specs.len(),
-                final_branch_name
+                "✓ Successfully created worktree and tmux window for '{}'",
+                result.branch_name
             );
+            if let Some(ref base) = result.base_branch {
+                println!("  Base: {}", base);
+            }
+            println!("  Worktree: {}", result.worktree_path.display());
         }
 
-        // Derive handle from branch name, optional explicit name, and config
-        // For single specs, explicit_name overrides; for multi-specs, it's None (disallowed)
-        let handle = crate::naming::derive_handle(&final_branch_name, explicit_name, &config)?;
-
-        let prompt_for_spec = rendered_prompt.map(Prompt::Inline);
-
-        super::announce_hooks(&config, Some(&options), super::HookPhase::PostCreate);
-
-        // Create a WorkflowContext for this spec's config
-        let context = workflow::WorkflowContext::new(config)?;
-
-        // Calculate window name for tracking
-        let full_window_name = tmux::prefixed(&context.prefix, &handle);
-
-        if wait {
-            created_windows.push(full_window_name.clone());
+        if self.wait && !created_windows.is_empty() {
+            tmux::wait_until_windows_closed(&created_windows)?;
         }
 
-        // Track for concurrency control
-        if max_concurrent.is_some() {
-            active_windows.push(full_window_name);
-        }
-
-        let result = workflow::create(
-            &context,
-            workflow::CreateArgs {
-                branch_name: &final_branch_name,
-                handle: &handle,
-                base_branch: resolved_base,
-                remote_branch,
-                prompt: prompt_for_spec.as_ref(),
-                options: options.clone(),
-                agent: spec.agent.as_deref(),
-            },
-        )
-        .with_context(|| {
-            format!(
-                "Failed to create worktree environment for branch '{}'",
-                final_branch_name
-            )
-        })?;
-
-        if result.post_create_hooks_run > 0 {
-            println!("✓ Setup complete");
-        }
-
-        println!(
-            "✓ Successfully created worktree and tmux window for '{}'",
-            result.branch_name
-        );
-        if let Some(ref base) = result.base_branch {
-            println!("  Base: {}", base);
-        }
-        println!("  Worktree: {}", result.worktree_path.display());
+        Ok(())
     }
-
-    if wait && !created_windows.is_empty() {
-        tmux::wait_until_windows_closed(&created_windows)?;
-    }
-
-    Ok(())
 }
