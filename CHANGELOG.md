@@ -4,6 +4,12 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.54 (2025-12-17)
+
+- The `remove` command now accepts multiple worktree names, allowing you to
+  clean up several worktrees in a single command (e.g.,
+  `workmux rm feature-a feature-b`)
+
 ## v0.1.53 (2025-12-17)
 
 - Added JSON lines support for stdin input: pipe JSON objects to `workmux add`
