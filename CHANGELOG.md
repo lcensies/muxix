@@ -4,6 +4,17 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.53 (2025-12-17)
+
+- Added JSON lines support for stdin input: pipe JSON objects to `workmux add`
+  and each key automatically becomes a template variable, making it easy to use
+  structured data from tools like `jq` in prompts and branch names
+- Template errors now show which variables are missing and list available ones,
+  helping catch typos in branch name templates or prompts before worktrees are
+  created
+- Fixed "directory already exists" errors when creating worktrees after a
+  previous cleanup was interrupted by background processes recreating files
+
 ## v0.1.52 (2025-12-17)
 
 - Added `--max-concurrent` flag to limit how many worktrees run simultaneously,
