@@ -4,15 +4,8 @@ use anyhow::{Context, Result, anyhow};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-/// User's choice when prompted about unmerged commits.
-enum UserChoice {
-    Confirmed, // User confirmed deletion
-    Aborted,   // User aborted deletion
-    NotNeeded, // No prompt needed (no unmerged commits)
-}
-
 pub fn run(
-    name: Option<&str>,
+    names: Vec<String>,
     gone: bool,
     all: bool,
     force: bool,
@@ -26,33 +19,154 @@ pub fn run(
         return run_gone(force, keep_branch);
     }
 
-    run_single(name, force, keep_branch)
+    run_specified(names, force, keep_branch)
 }
 
-/// Remove a single worktree by name
-fn run_single(name: Option<&str>, force: bool, keep_branch: bool) -> Result<()> {
-    // Resolve name from argument or current worktree directory
-    let input_name = super::resolve_name(name)?;
+/// Remove specific worktrees provided by user (or current if empty)
+fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<()> {
+    // Normalize all inputs (handles "." and other special cases)
+    let resolved_names: Vec<String> = if names.is_empty() {
+        vec![super::resolve_name(None)?]
+    } else {
+        names
+            .iter()
+            .map(|n| super::resolve_name(Some(n)))
+            .collect::<Result<Vec<_>>>()?
+    };
 
-    // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_name) = git::find_worktree(&input_name)
-        .with_context(|| format!("No worktree found with name '{}'", input_name))?;
+    // 2. Resolve all targets and validate they exist
+    let mut candidates: Vec<(String, PathBuf, String)> = Vec::new();
+    for name in resolved_names {
+        let (worktree_path, branch_name) = git::find_worktree(&name)
+            .with_context(|| format!("No worktree found with name '{}'", name))?;
 
-    // Derive handle from the worktree path (in case user provided branch name)
-    let handle = worktree_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| anyhow!("Could not derive handle from worktree path"))?
-        .to_string();
+        let handle = worktree_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Could not derive handle from worktree path: {:?}",
+                    worktree_path
+                )
+            })?
+            .to_string();
 
-    // Validate removal safety and get effective force flag
-    let effective_force =
-        match validate_removal_safety(&handle, &worktree_path, &branch_name, force, keep_branch)? {
-            Some(force_flag) => force_flag,
-            None => return Ok(()), // User aborted
-        };
+        candidates.push((handle, worktree_path, branch_name));
+    }
 
-    remove_worktree(&handle, effective_force, keep_branch)
+    // 3. If forced, skip all checks and remove
+    if force {
+        let mut failed: Vec<(String, String)> = Vec::new();
+
+        for (handle, _, _) in candidates {
+            if let Err(e) = remove_worktree(&handle, true, keep_branch) {
+                failed.push((handle, e.to_string()));
+            }
+        }
+
+        if !failed.is_empty() {
+            eprintln!("\nFailed to remove {} worktree(s):", failed.len());
+            for (handle, error) in &failed {
+                eprintln!("  - {}: {}", handle, error);
+            }
+            return Err(anyhow!("Some worktrees could not be removed"));
+        }
+
+        return Ok(());
+    }
+
+    // 4. Safety checks: categorize candidates
+    let mut uncommitted: Vec<String> = Vec::new();
+    let mut unmerged: Vec<(String, String, String)> = Vec::new(); // (handle, branch, base)
+    let mut safe: Vec<String> = Vec::new();
+
+    for (handle, path, branch) in candidates {
+        // Check uncommitted (blocking)
+        if path.exists() && git::has_uncommitted_changes(&path).unwrap_or(false) {
+            uncommitted.push(handle);
+            continue;
+        }
+
+        // Check unmerged (promptable), only if we're deleting the branch
+        if !keep_branch && let Some(base) = is_unmerged(&branch)? {
+            unmerged.push((handle, branch, base));
+            continue;
+        }
+
+        safe.push(handle);
+    }
+
+    // 5. Handle blocking issues (uncommitted changes)
+    if !uncommitted.is_empty() {
+        eprintln!("The following worktrees have uncommitted changes:");
+        for handle in &uncommitted {
+            eprintln!("  - {}", handle);
+        }
+        return Err(anyhow!(
+            "Cannot remove worktrees with uncommitted changes. Use --force to override."
+        ));
+    }
+
+    // 6. Handle warnings (unmerged branches)
+    if !unmerged.is_empty() {
+        println!("The following branches have commits not merged into their base:");
+        for (_, branch, base) in &unmerged {
+            println!("  - {} (base: {})", branch, base);
+        }
+        println!("\nThis will delete the worktree, tmux window, and local branch.");
+        print!("Are you sure you want to continue? [y/N] ");
+        io::stdout().flush().context("Failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("Failed to read input")?;
+
+        if input.trim().to_lowercase() != "y" {
+            println!("Aborted.");
+            return Ok(());
+        }
+
+        // Add unmerged candidates to safe list for processing
+        for (handle, _, _) in unmerged {
+            safe.push(handle);
+        }
+    }
+
+    // 7. Execute removal
+    for handle in safe {
+        // force=true because we already checked/prompted
+        remove_worktree(&handle, true, keep_branch)?;
+    }
+
+    Ok(())
+}
+
+/// Check if a branch has unmerged commits. Returns Some(base) if unmerged, None otherwise.
+fn is_unmerged(branch: &str) -> Result<Option<String>> {
+    let main_branch = git::get_default_branch().unwrap_or_else(|_| "main".to_string());
+
+    let base = git::get_branch_base(branch)
+        .ok()
+        .unwrap_or_else(|| main_branch.clone());
+
+    let base_commit = match git::get_merge_base(&base) {
+        Ok(b) => b,
+        Err(_) => {
+            // If we can't determine base, try falling back to main
+            match git::get_merge_base(&main_branch) {
+                Ok(b) => b,
+                Err(_) => return Ok(None), // Can't determine, assume safe
+            }
+        }
+    };
+
+    let unmerged_branches = git::get_unmerged_branches(&base_commit)?;
+    if unmerged_branches.contains(branch) {
+        Ok(Some(base))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Remove all managed worktrees (except main)
@@ -355,120 +469,4 @@ fn remove_worktree(handle: &str, force: bool, keep_branch: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Validates whether it's safe to remove the branch/worktree.
-/// Returns Some(force_flag) to proceed, or None if user aborted.
-fn validate_removal_safety(
-    handle: &str,
-    worktree_path: &std::path::Path,
-    branch_name: &str,
-    force: bool,
-    keep_branch: bool,
-) -> Result<Option<bool>> {
-    if force {
-        return Ok(Some(true));
-    }
-
-    // First check for uncommitted changes (must be checked before unmerged prompt)
-    // to avoid prompting user about unmerged commits only to error on uncommitted changes
-    check_uncommitted_changes(worktree_path)?;
-
-    // Check if we need to prompt for unmerged commits (only relevant when deleting the branch)
-    if !keep_branch {
-        match check_unmerged_commits(handle, branch_name)? {
-            UserChoice::Confirmed => return Ok(Some(true)), // User confirmed - use force
-            UserChoice::Aborted => return Ok(None),         // User aborted
-            UserChoice::NotNeeded => {}                     // No unmerged commits
-        }
-    }
-
-    Ok(Some(false))
-}
-
-/// Check for uncommitted changes in the worktree.
-fn check_uncommitted_changes(worktree_path: &std::path::Path) -> Result<()> {
-    if worktree_path.exists() {
-        let has_changes = git::has_uncommitted_changes(worktree_path).with_context(|| {
-            format!(
-                "Failed to check for uncommitted changes in worktree at '{}'",
-                worktree_path.display()
-            )
-        })?;
-
-        if has_changes {
-            return Err(anyhow!(
-                "Worktree has uncommitted changes. Use --force to delete anyway."
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-/// Check for unmerged commits and prompt user for confirmation.
-fn check_unmerged_commits(handle: &str, branch_name: &str) -> Result<UserChoice> {
-    // Try to get the stored base branch, fall back to default branch
-    let base = git::get_branch_base(branch_name)
-        .ok()
-        .unwrap_or_else(|| git::get_default_branch().unwrap_or_else(|_| "main".to_string()));
-
-    // Get the merge base with fallback if the stored base is invalid
-    let base_branch = match git::get_merge_base(&base) {
-        Ok(b) => b,
-        Err(_) => {
-            let default_main = git::get_default_branch().context("Failed to get default branch")?;
-            eprintln!(
-                "Warning: Could not resolve base '{}'; falling back to '{}'",
-                base, default_main
-            );
-            git::get_merge_base(&default_main)
-                .with_context(|| format!("Failed to get merge base for '{}'", default_main))?
-        }
-    };
-
-    let unmerged_branches = git::get_unmerged_branches(&base_branch)
-        .with_context(|| format!("Failed to get unmerged branches for base '{}'", base_branch))?;
-
-    let has_unmerged = unmerged_branches.contains(branch_name);
-
-    if has_unmerged {
-        prompt_unmerged_confirmation(handle, branch_name, &base_branch, &base)
-    } else {
-        Ok(UserChoice::NotNeeded)
-    }
-}
-
-/// Prompt user to confirm deletion of branch with unmerged commits.
-fn prompt_unmerged_confirmation(
-    handle: &str,
-    branch_name: &str,
-    base_branch: &str,
-    base: &str,
-) -> Result<UserChoice> {
-    println!(
-        "This will delete the worktree '{}', tmux window, and local branch '{}'.",
-        handle, branch_name
-    );
-    println!(
-        "Warning: Branch '{}' has commits that are not merged into '{}' (base: '{}').",
-        branch_name, base_branch, base
-    );
-    println!("This action cannot be undone.");
-    print!("Are you sure you want to continue? [y/N] ");
-
-    // Flush stdout to ensure the prompt is displayed before reading input
-    io::stdout().flush().context("Failed to flush stdout")?;
-
-    let mut confirmation = String::new();
-    io::stdin()
-        .read_line(&mut confirmation)
-        .context("Failed to read user confirmation")?;
-
-    if confirmation.trim().to_lowercase() == "y" {
-        Ok(UserChoice::Confirmed)
-    } else {
-        println!("Aborted.");
-        Ok(UserChoice::Aborted)
-    }
 }

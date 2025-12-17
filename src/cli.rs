@@ -259,9 +259,9 @@ enum Commands {
     /// Remove a worktree, tmux window, and branch without merging
     #[command(visible_alias = "rm")]
     Remove {
-        /// Worktree name (defaults to current directory name)
-        #[arg(value_parser = WorktreeHandleParser::new(), conflicts_with_all = ["gone", "all"])]
-        name: Option<String>,
+        /// Worktree names (defaults to current directory name if empty)
+        #[arg(value_parser = WorktreeHandleParser::new(), conflicts_with_all = ["gone", "all"], num_args = 0..)]
+        names: Vec<String>,
 
         /// Remove worktrees whose upstream remote branch has been deleted (e.g., after PR merge)
         #[arg(long, conflicts_with = "all")]
@@ -386,12 +386,12 @@ pub fn run() -> Result<()> {
             keep,
         ),
         Commands::Remove {
-            name,
+            names,
             gone,
             all,
             force,
             keep_branch,
-        } => command::remove::run(name.as_deref(), gone, all, force, keep_branch),
+        } => command::remove::run(names, gone, all, force, keep_branch),
         Commands::List { pr } => command::list::run(pr),
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),

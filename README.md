@@ -283,7 +283,7 @@ alias wm='workmux'
 
 - [`add`](#workmux-add-branch-name) - Create a new worktree and tmux window
 - [`merge`](#workmux-merge-branch-name) - Merge a branch and clean up everything
-- [`remove`](#workmux-remove-name-alias-rm) - Remove a worktree without merging
+- [`remove`](#workmux-remove-name-alias-rm) - Remove worktrees without merging
 - [`list`](#workmux-list) - List all worktrees with status
 - [`init`](#workmux-init) - Generate configuration file
 - [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
@@ -819,13 +819,14 @@ workmux merge feature/subtask --into feature/parent
 
 ---
 
-### `workmux remove [name]` (alias: `rm`)
+### `workmux remove [name]...` (alias: `rm`)
 
-Removes a worktree, tmux window, and branch without merging (unless you keep the
-branch). Useful for abandoning work or cleaning up experimental branches.
+Removes worktrees, tmux windows, and branches without merging (unless you keep
+the branches). Useful for abandoning work or cleaning up experimental branches.
+Supports removing multiple worktrees in a single command.
 
-- `[name]`: Worktree name (the directory name). Defaults to current directory
-  name if omitted.
+- `[name]...`: One or more worktree names (the directory names). Defaults to
+  current directory name if omitted.
 
 #### Options
 
@@ -847,6 +848,12 @@ workmux remove
 
 # Remove a specific worktree with confirmation if unmerged
 workmux remove experiment
+
+# Remove multiple worktrees at once
+workmux rm feature-a feature-b feature-c
+
+# Remove multiple worktrees with force (no confirmation)
+workmux rm -f old-work stale-branch
 
 # Use the alias
 workmux rm old-work

@@ -631,3 +631,203 @@ def test_remove_all_with_keep_branch(
     for branch in [branch1, branch2]:
         result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
         assert branch in result.stdout, f"Branch {branch} should still exist"
+
+
+def test_remove_multiple_branches(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove branch1 branch2` removes multiple worktrees at once."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "multi-rm-one"
+    branch2 = "multi-rm-two"
+    branch3 = "multi-rm-three"
+
+    window1 = get_window_name(branch1)
+    window2 = get_window_name(branch2)
+    window3 = get_window_name(branch3)
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch3)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+    worktree3 = get_worktree_path(repo_path, branch3)
+
+    # Verify all worktrees exist
+    assert worktree1.exists(), "Worktree 1 should exist"
+    assert worktree2.exists(), "Worktree 2 should exist"
+    assert worktree3.exists(), "Worktree 3 should exist"
+
+    # Remove two of the three worktrees by specifying multiple names
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=f"{branch1} {branch2}",
+        force=True,
+    )
+
+    # Verify first two worktrees were removed
+    assert not worktree1.exists(), "Worktree 1 should be removed"
+    assert not worktree2.exists(), "Worktree 2 should be removed"
+
+    # Verify third worktree still exists
+    assert worktree3.exists(), "Worktree 3 should still exist"
+
+    # Verify windows are closed for removed worktrees
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert window1 not in list_windows_result.stdout, "Window 1 should be closed"
+    assert window2 not in list_windows_result.stdout, "Window 2 should be closed"
+    assert window3 in list_windows_result.stdout, "Window 3 should still exist"
+
+    # Verify branches are deleted for removed worktrees
+    for branch in [branch1, branch2]:
+        result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
+        assert branch not in result.stdout, f"Branch {branch} should be deleted"
+
+    # Verify third branch still exists
+    result = env.run_command(["git", "branch", "--list", branch3], cwd=repo_path)
+    assert branch3 in result.stdout, f"Branch {branch3} should still exist"
+
+
+def test_remove_multiple_with_unmerged_prompts_once(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove branch1 branch2` prompts once for all unmerged branches."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "multi-unmerged-one"
+    branch2 = "multi-unmerged-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+
+    # Add unmerged commits to both worktrees
+    create_commit(env, worktree1, "feat: unmerged work one")
+    create_commit(env, worktree2, "feat: unmerged work two")
+
+    # Remove both - should prompt once and remove both after confirmation
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=f"{branch1} {branch2}",
+        user_input="y",
+    )
+
+    # Verify both worktrees were removed
+    assert not worktree1.exists(), "Worktree 1 should be removed"
+    assert not worktree2.exists(), "Worktree 2 should be removed"
+
+
+def test_remove_multiple_aborted_keeps_all(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies aborting multi-branch removal keeps all worktrees."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "multi-abort-one"
+    branch2 = "multi-abort-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+
+    # Add unmerged commits
+    create_commit(env, worktree1, "feat: unmerged work one")
+    create_commit(env, worktree2, "feat: unmerged work two")
+
+    # Abort the removal
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=f"{branch1} {branch2}",
+        user_input="n",
+    )
+
+    # Verify both worktrees still exist
+    assert worktree1.exists(), "Worktree 1 should still exist"
+    assert worktree2.exists(), "Worktree 2 should still exist"
+
+
+def test_remove_multiple_with_uncommitted_fails(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies removing multiple branches fails if any has uncommitted changes."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "multi-dirty-one"
+    branch2 = "multi-dirty-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+
+    # Add uncommitted changes to one worktree
+    create_dirty_file(worktree1)
+
+    # Should fail because of uncommitted changes
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=f"{branch1} {branch2}",
+        expect_fail=True,
+    )
+
+    # Verify both worktrees still exist (none removed due to atomic behavior)
+    assert worktree1.exists(), "Worktree 1 should still exist"
+    assert worktree2.exists(), "Worktree 2 should still exist"
+
+
+def test_remove_multiple_with_keep_branch(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux remove --keep-branch branch1 branch2` removes worktrees but keeps branches."""
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    branch1 = "multi-keep-one"
+    branch2 = "multi-keep-two"
+
+    run_workmux_add(env, workmux_exe_path, repo_path, branch1)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch2)
+
+    worktree1 = get_worktree_path(repo_path, branch1)
+    worktree2 = get_worktree_path(repo_path, branch2)
+
+    # Add unmerged commits (should not prompt because --keep-branch doesn't delete branches)
+    create_commit(env, worktree1, "feat: work one")
+    create_commit(env, worktree2, "feat: work two")
+
+    # Remove both with --keep-branch (no confirmation needed)
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name=f"{branch1} {branch2}",
+        keep_branch=True,
+    )
+
+    # Verify worktrees were removed
+    assert not worktree1.exists(), "Worktree 1 should be removed"
+    assert not worktree2.exists(), "Worktree 2 should be removed"
+
+    # Verify branches still exist
+    for branch in [branch1, branch2]:
+        result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
+        assert branch in result.stdout, f"Branch {branch} should still exist"
