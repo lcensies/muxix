@@ -4,6 +4,30 @@ use std::path::Path;
 use crate::{git, spinner, tmux};
 use tracing::{debug, info, warn};
 
+/// Check if a path is registered as a git worktree.
+/// Uses canonicalize() to handle symlinks, case sensitivity, and relative paths.
+fn is_registered_worktree(path: &Path) -> Result<bool> {
+    // Canonicalize the input path for reliable comparison
+    let abs_path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return Ok(false), // Can't canonicalize = not a valid worktree
+    };
+
+    let worktrees = git::list_worktrees()?;
+    for (wt_path, _) in worktrees {
+        // Canonicalize git's reported path as well
+        if let Ok(abs_wt) = std::fs::canonicalize(&wt_path) {
+            if abs_wt == abs_path {
+                return Ok(true);
+            }
+        } else if wt_path == path {
+            // Fallback to string comparison if canonicalization fails
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 use super::cleanup;
 use super::context::WorkflowContext;
 use super::setup;
@@ -146,12 +170,43 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Check if path already exists (handle collision detection)
     if worktree_path.exists() {
-        return Err(anyhow!(
-            "Worktree directory '{}' already exists.\n\
-             This may be from another branch with the same handle.\n\
-             Hint: Use --name to specify a different name.",
-            worktree_path.display()
-        ));
+        // Check if this is an orphan directory (exists on disk but not registered with git).
+        // This can happen when cleanup renames a worktree but a background process (build tool,
+        // file watcher, shell prompt) recreates the directory structure using stale $PWD.
+        if is_registered_worktree(&worktree_path)? {
+            return Err(anyhow!(
+                "Worktree directory '{}' already exists and is registered with git.\n\
+                 This may be from another branch with the same handle.\n\
+                 Hint: Use --name to specify a different name.",
+                worktree_path.display()
+            ));
+        }
+
+        // Safety check: if the directory contains a .git file/folder, it might be a
+        // corrupted worktree or a manual clone. Don't auto-delete to prevent data loss.
+        if worktree_path.join(".git").exists() {
+            return Err(anyhow!(
+                "Directory '{}' exists and contains a .git resource, but is not registered.\n\
+                 This looks like a repository or worktree with corrupted metadata.\n\
+                 Please remove it manually to prevent data loss.",
+                worktree_path.display()
+            ));
+        }
+
+        // It's an orphan directory (not registered with git) - safe to remove.
+        // This typically happens when cleanup renames a worktree but a background process
+        // (build tool, file watcher) recreates files using stale $PWD paths.
+        // Since it's not a registered worktree, any files are just build artifacts.
+        info!(
+            path = %worktree_path.display(),
+            "create:removing orphan directory from previous cleanup"
+        );
+        std::fs::remove_dir_all(&worktree_path).with_context(|| {
+            format!(
+                "Failed to remove orphan directory '{}'. Please remove it manually.",
+                worktree_path.display()
+            )
+        })?;
     }
 
     // Create worktree
