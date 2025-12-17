@@ -209,113 +209,141 @@ fn get_default_shell() -> Result<String> {
     }
 }
 
-/// Initialize a tmux wait-for channel by locking it.
-/// Returns the channel name for use in the handshake.
-fn init_wait_channel() -> Result<String> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id();
-    let channel = format!("wm_ready_{}_{}", pid, nanos);
-
-    // Handshake Part 1: Lock the channel
-    // This ensures we don't miss the signal even if shell starts instantly
-    Cmd::new("tmux")
-        .args(&["wait-for", "-L", &channel])
-        .run()
-        .context("Failed to initialize wait channel")?;
-
-    Ok(channel)
-}
-
 /// Timeout for waiting for pane readiness (seconds)
 const HANDSHAKE_TIMEOUT_SECS: u64 = 5;
 
-/// Wait for the pane to signal it is ready (unlock the channel),
-/// then clean up the channel.
-fn wait_for_pane_ready(channel: &str) -> Result<()> {
-    // Handshake Part 3: Wait for shell to unlock (by attempting to lock again)
-    // This blocks until the shell runs `tmux wait-for -U`
-    // Use a polling loop with timeout to prevent indefinite hangs if pane fails to start
-    debug!(channel = channel, "tmux:handshake start");
+/// Manages the tmux wait-for handshake protocol for pane synchronization.
+///
+/// This struct encapsulates the channel-based handshake mechanism that ensures
+/// the shell is ready before sending commands. The handshake uses tmux's `wait-for`
+/// feature with channel locking to synchronize between the process spawning the
+/// pane and the shell that starts inside it.
+///
+/// # Protocol
+/// 1. Lock a unique channel (on construction)
+/// 2. Start the shell with a wrapper that unlocks the channel when ready
+/// 3. Wait for the shell to signal readiness (wait blocks until unlock)
+/// 4. Clean up the channel
+struct PaneHandshake {
+    channel: String,
+}
 
-    let mut child = std::process::Command::new("tmux")
-        .args(["wait-for", "-L", channel])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .context("Failed to spawn tmux wait-for command")?;
+impl PaneHandshake {
+    /// Create a new handshake and lock the channel.
+    ///
+    /// The channel must be locked before spawning the pane to ensure we don't
+    /// miss the signal even if the shell starts instantly.
+    fn new() -> Result<Self> {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let pid = std::process::id();
+        let channel = format!("wm_ready_{}_{}", pid, nanos);
 
-    let start = Instant::now();
-    let timeout = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
+        // Lock the channel (ensures we don't miss the signal)
+        Cmd::new("tmux")
+            .args(&["wait-for", "-L", &channel])
+            .run()
+            .context("Failed to initialize wait channel")?;
 
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if status.success() {
-                    // Handshake Part 4: Cleanup - unlock the channel we just re-locked
-                    Cmd::new("tmux")
-                        .args(&["wait-for", "-U", channel])
-                        .run()
-                        .context("Failed to cleanup wait channel")?;
-                    debug!(channel = channel, "tmux:handshake success");
-                    return Ok(());
-                } else {
-                    // Attempt cleanup even on failure
-                    let _ = Cmd::new("tmux").args(&["wait-for", "-U", channel]).run();
-                    warn!(channel = channel, status = ?status.code(), "tmux:handshake failed (wait-for error)");
-                    return Err(anyhow!(
-                        "Pane handshake failed - tmux wait-for returned error"
-                    ));
+        Ok(Self { channel })
+    }
+
+    /// Build a shell wrapper command that signals readiness.
+    ///
+    /// The wrapper disables echo, signals the channel, then exec's into the shell.
+    /// This ensures the shell appears "ready" (with proper TTY settings) before
+    /// we send any commands to it.
+    fn wrapper_command(&self, shell: &str) -> String {
+        // Quote shell path in case it contains spaces
+        // Silence stty errors in case it's not available in minimal environments
+        // Use -l to start as login shell, ensuring ~/.zprofile etc. are sourced
+        format!(
+            "stty -echo 2>/dev/null; tmux wait-for -U {}; exec '{}' -l",
+            self.channel, shell
+        )
+    }
+
+    /// Wait for the shell to signal it is ready, then clean up.
+    ///
+    /// This method consumes the handshake to ensure cleanup happens exactly once.
+    /// Uses a polling loop with timeout to prevent indefinite hangs if the pane
+    /// fails to start.
+    fn wait(self) -> Result<()> {
+        debug!(channel = %self.channel, "tmux:handshake start");
+
+        let mut child = std::process::Command::new("tmux")
+            .args(["wait-for", "-L", &self.channel])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .context("Failed to spawn tmux wait-for command")?;
+
+        let start = Instant::now();
+        let timeout = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
+
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if status.success() {
+                        // Cleanup: unlock the channel we just re-locked
+                        Cmd::new("tmux")
+                            .args(&["wait-for", "-U", &self.channel])
+                            .run()
+                            .context("Failed to cleanup wait channel")?;
+                        debug!(channel = %self.channel, "tmux:handshake success");
+                        return Ok(());
+                    } else {
+                        // Attempt cleanup even on failure
+                        let _ = Cmd::new("tmux")
+                            .args(&["wait-for", "-U", &self.channel])
+                            .run();
+                        warn!(channel = %self.channel, status = ?status.code(), "tmux:handshake failed (wait-for error)");
+                        return Err(anyhow!(
+                            "Pane handshake failed - tmux wait-for returned error"
+                        ));
+                    }
                 }
-            }
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait(); // Ensure process is reaped
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        let _ = child.kill();
+                        let _ = child.wait(); // Ensure process is reaped
 
-                    // Attempt cleanup
-                    let _ = Cmd::new("tmux").args(&["wait-for", "-U", channel]).run();
+                        // Attempt cleanup
+                        let _ = Cmd::new("tmux")
+                            .args(&["wait-for", "-U", &self.channel])
+                            .run();
 
-                    warn!(
-                        channel = channel,
-                        timeout_secs = HANDSHAKE_TIMEOUT_SECS,
-                        "tmux:handshake timeout"
+                        warn!(
+                            channel = %self.channel,
+                            timeout_secs = HANDSHAKE_TIMEOUT_SECS,
+                            "tmux:handshake timeout"
+                        );
+                        return Err(anyhow!(
+                            "Pane handshake timed out after {}s - shell may have failed to start",
+                            HANDSHAKE_TIMEOUT_SECS
+                        ));
+                    }
+                    trace!(
+                        channel = %self.channel,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        "tmux:handshake waiting"
                     );
-                    return Err(anyhow!(
-                        "Pane handshake timed out after {}s - shell may have failed to start",
-                        HANDSHAKE_TIMEOUT_SECS
-                    ));
+                    thread::sleep(Duration::from_millis(50));
                 }
-                trace!(
-                    channel = channel,
-                    elapsed_ms = start.elapsed().as_millis(),
-                    "tmux:handshake waiting"
-                );
-                thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = Cmd::new("tmux").args(&["wait-for", "-U", channel]).run();
-                warn!(channel = channel, error = %e, "tmux:handshake error");
-                return Err(anyhow!("Error waiting for pane handshake: {}", e));
+                Err(e) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = Cmd::new("tmux")
+                        .args(&["wait-for", "-U", &self.channel])
+                        .run();
+                    warn!(channel = %self.channel, error = %e, "tmux:handshake error");
+                    return Err(anyhow!("Error waiting for pane handshake: {}", e));
+                }
             }
         }
     }
-}
-
-/// Build the wrapper command that signals readiness before starting the shell.
-/// Uses stty -echo to prevent double-echo, then signals via wait-for -U.
-fn build_ready_wrapper(channel: &str, shell: &str) -> String {
-    // Quote shell path in case it contains spaces
-    // Silence stty errors in case it's not available in minimal environments
-    // Use -l to start as login shell, ensuring ~/.zprofile etc. are sourced (fixes nvm, etc.)
-    format!(
-        "stty -echo 2>/dev/null; tmux wait-for -U {}; exec '{}' -l",
-        channel, shell
-    )
 }
 
 /// Split a pane and return the new pane's ID
@@ -458,13 +486,12 @@ pub fn setup_panes(
         };
 
         if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-            // Use wait-for handshake to ensure shell is ready before sending keys
-            let channel = init_wait_channel()?;
-            let default_shell = get_default_shell()?;
-            let wrapper = build_ready_wrapper(&channel, &default_shell);
+            // Use PaneHandshake to ensure shell is ready before sending keys
+            let handshake = PaneHandshake::new()?;
+            let wrapper = handshake.wrapper_command(&get_default_shell()?);
 
             respawn_pane(initial_pane_id, working_dir, Some(&wrapper))?;
-            wait_for_pane_ready(&channel)?;
+            handshake.wait()?;
             send_keys(initial_pane_id, cmd_str)?;
         }
         if pane_config.focus {
@@ -501,10 +528,9 @@ pub fn setup_panes(
             };
 
             let new_pane_id = if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                // Use wait-for handshake to ensure shell is ready before sending keys
-                let channel = init_wait_channel()?;
-                let default_shell = get_default_shell()?;
-                let wrapper = build_ready_wrapper(&channel, &default_shell);
+                // Use PaneHandshake to ensure shell is ready before sending keys
+                let handshake = PaneHandshake::new()?;
+                let wrapper = handshake.wrapper_command(&get_default_shell()?);
 
                 let pane_id = split_pane_with_command(
                     target_pane_id,
@@ -515,7 +541,7 @@ pub fn setup_panes(
                     Some(&wrapper),
                 )?;
 
-                wait_for_pane_ready(&channel)?;
+                handshake.wait()?;
                 send_keys(&pane_id, cmd_str)?;
                 pane_id
             } else {
