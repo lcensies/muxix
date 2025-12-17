@@ -9,6 +9,7 @@ use crate::workflow::pr::detect_remote_branch;
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt, parse_prompt_with_frontmatter};
 use crate::{config, tmux, workflow};
 use anyhow::{Context, Result, anyhow};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{IsTerminal, Read};
 
@@ -323,7 +324,8 @@ fn determine_foreach_matrix(
         return Err(anyhow!("Cannot use --foreach when piping input from stdin"));
     }
 
-    // Handle stdin input - converts lines to matrix with "input" key
+    // Handle stdin input - converts lines to matrix
+    // Supports both plain text (becomes {{ input }}) and JSON lines (each key becomes a variable)
     if has_stdin {
         if has_frontmatter_foreach {
             eprintln!("Warning: stdin input overrides prompt frontmatter 'foreach'");
@@ -333,7 +335,26 @@ fn determine_foreach_matrix(
             .into_iter()
             .map(|line| {
                 let mut map = BTreeMap::new();
-                map.insert(STDIN_INPUT_VAR.to_string(), line);
+
+                // Always set {{ input }} to the raw line
+                map.insert(STDIN_INPUT_VAR.to_string(), line.clone());
+
+                // Try to parse as JSON if it looks like an object
+                if line.starts_with('{')
+                    && let Ok(Value::Object(obj)) = serde_json::from_str(&line)
+                {
+                    for (k, v) in obj {
+                        // Convert JSON values to strings
+                        let val_str = match v {
+                            Value::String(s) => s,
+                            Value::Null => String::new(),
+                            other => other.to_string(),
+                        };
+                        // JSON keys can overwrite {{ input }} if explicitly provided
+                        map.insert(k, val_str);
+                    }
+                }
+
                 map
             })
             .collect();

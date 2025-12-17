@@ -245,3 +245,59 @@ Task for {{ input }}
 
         # Should create worktree with trimmed name: item-padded
         assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}item-padded")
+
+    def test_stdin_json_lines_expose_keys_as_variables(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies that JSON lines are parsed and keys become template variables."""
+        env = isolated_tmux_server
+
+        write_workmux_config(repo_path)
+
+        # Pipe JSON lines - each key should become a template variable
+        json_lines = '{"name":"workmux","id":"1"}\n{"name":"tmux-tools","id":"2"}'
+
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add analyze --branch-template '{{ base_name }}-{{ name }}'",
+            stdin_input=json_lines,
+        )
+
+        # Verify worktrees created with names from JSON 'name' key
+        for name in ["workmux", "tmux-tools"]:
+            expected_handle = slugify(f"analyze-{name}")
+            worktree_path = (
+                repo_path.parent / f"{repo_path.name}__worktrees" / expected_handle
+            )
+            assert worktree_path.is_dir(), f"Expected worktree at {worktree_path}"
+            assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}{expected_handle}")
+
+    def test_stdin_json_lines_preserve_input_variable(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies that {{ input }} contains the raw JSON line."""
+        env = isolated_tmux_server
+
+        write_workmux_config(repo_path)
+
+        # Use {{ input }} in template - should get the raw JSON string (slugified)
+        json_line = '{"name":"test"}'
+
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add task --branch-template '{{ base_name }}-{{ index }}'",
+            stdin_input=json_line,
+        )
+
+        # {{ index }} should be 1 for single item
+        assert_window_exists(env, f"{DEFAULT_WINDOW_PREFIX}task-1")

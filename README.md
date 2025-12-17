@@ -646,23 +646,34 @@ You can pipe input lines to `workmux add` to create multiple worktrees. Each
 line becomes available as the `{{ input }}` template variable in your prompt.
 This is useful for batch-processing tasks from external sources.
 
-**Example:** Process a list of modules from stdin
+**Plain text:** Each line becomes `{{ input }}`
 
 ```bash
-# Create a prompt file that uses the input variable
-# refactor-task.md:
-# Refactor the {{ input }} module to use the new API patterns.
-
-echo -e "api\nauth\ndatabase" | workmux add refactor -A -P refactor-task.md
-# Generates worktrees with LLM-generated branch names based on each rendered prompt
+echo -e "api\nauth\ndatabase" | workmux add refactor -P task.md
+# {{ input }} = "api", "auth", "database"
 ```
+
+**JSON lines:** Each key becomes a template variable
+
+```bash
+gh repo list --json url,name --jq -c '.[]' | workmux add analyze \
+  --branch-template '{{ base_name }}-{{ name }}' \
+  -P prompt.md
+# Line: {"url":"https://github.com/raine/workmux","name":"workmux"}
+# Variables: {{ url }}, {{ name }}, {{ input }} (raw JSON line)
+```
+
+This lets you structure data upstream with `jq` and use meaningful branch names
+while keeping the full URL available in your prompt.
 
 **Behavior:**
 
 - Empty lines and whitespace-only lines are filtered out
 - Stdin input cannot be combined with `--foreach` (mutually exclusive)
-- The `{{ input }}` variable is available in both prompt and branch name
-  templates
+- JSON objects (lines starting with `{`) are parsed and each key becomes a
+  variable
+- `{{ input }}` always contains the raw line
+- If JSON contains an `input` key, it overwrites the raw line value
 
 ##### Examples
 
