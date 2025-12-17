@@ -2,7 +2,7 @@ use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
 use crate::template::{
     TemplateEnv, WorktreeSpec, create_template_env, generate_worktree_specs, parse_foreach_matrix,
-    render_prompt_body,
+    render_prompt_body, validate_template_variables,
 };
 use crate::workflow::SetupOptions;
 use crate::workflow::pr::detect_remote_branch;
@@ -254,6 +254,15 @@ pub fn run(
 
     if specs.is_empty() {
         return Err(anyhow!("No worktree specifications were generated"));
+    }
+
+    // Validate prompt template variables before proceeding to create worktrees.
+    // We use the context from the first spec (variable schema is consistent across specs).
+    if let Some(doc) = &prompt_doc
+        && let Some(first_spec) = specs.first()
+    {
+        validate_template_variables(&env, &doc.body, &first_spec.template_context)
+            .context("Prompt template uses undefined variables")?;
     }
 
     // Create worktrees from specs

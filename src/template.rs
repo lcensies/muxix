@@ -31,6 +31,47 @@ pub fn render_prompt_body(body: &str, env: &TemplateEnv, context: &JsonValue) ->
         .context("Failed to render prompt template")
 }
 
+/// Validate that all variables used in the template exist in the provided context.
+/// Returns an error listing missing variables and available ones if validation fails.
+pub fn validate_template_variables(
+    env: &TemplateEnv,
+    template_str: &str,
+    context: &JsonValue,
+) -> Result<()> {
+    let tmpl = env
+        .template_from_str(template_str)
+        .context("Failed to parse template syntax")?;
+
+    let required_vars = tmpl.undeclared_variables(true);
+
+    let available_vars: HashSet<&str> = match context {
+        JsonValue::Object(map) => map.keys().map(|k| k.as_str()).collect(),
+        _ => HashSet::new(),
+    };
+
+    let missing_vars: Vec<&str> = required_vars
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|req| !available_vars.contains(req))
+        .collect();
+
+    if !missing_vars.is_empty() {
+        let mut missing_sorted = missing_vars.clone();
+        missing_sorted.sort();
+
+        let mut available_sorted: Vec<&str> = available_vars.into_iter().collect();
+        available_sorted.sort();
+
+        return Err(anyhow!(
+            "Template uses undefined variables: {}\nAvailable variables: {}",
+            missing_sorted.join(", "),
+            available_sorted.join(", ")
+        ));
+    }
+
+    Ok(())
+}
+
 pub fn generate_worktree_specs(
     base_name: &str,
     agents: &[String],
@@ -137,6 +178,11 @@ fn build_spec(
     let effective_agent = agent.or_else(|| foreach_vars.get("agent").cloned());
 
     let context = build_template_context(base_name, &effective_agent, &num, index, &foreach_vars);
+
+    // Validate branch template before rendering
+    validate_template_variables(env, branch_template, &context)
+        .context("Invalid branch name template")?;
+
     let branch_name = env
         .render_str(branch_template, &context)
         .context("Failed to render branch template")?;
@@ -625,6 +671,134 @@ mod tests {
 
         // agent should be from foreach (bad7/bad8), not overwritten by reserved key collision
         assert_eq!(context0["agent"].as_str().unwrap(), "bad7");
+    }
+
+    #[test]
+    fn validate_template_variables_detects_missing_vars() {
+        let env = create_test_env();
+        let mut map = JsonMap::new();
+        map.insert("exists".to_string(), JsonValue::String("foo".to_string()));
+        let context = JsonValue::Object(map);
+
+        let valid = validate_template_variables(&env, "Hello {{ exists }}", &context);
+        assert!(valid.is_ok());
+
+        let invalid = validate_template_variables(&env, "Hello {{ missing }}", &context);
+        assert!(invalid.is_err());
+        let err_msg = invalid.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("undefined variables: missing"),
+            "Error message should list 'missing': {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("Available variables: exists"),
+            "Error message should list 'exists' as available: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn validate_template_variables_handles_filters() {
+        let env = create_test_env();
+        let mut map = JsonMap::new();
+        map.insert("text".to_string(), JsonValue::String("foo".to_string()));
+        let context = JsonValue::Object(map);
+
+        // Filters like | slugify shouldn't trigger false positives
+        let valid = validate_template_variables(&env, "{{ text | slugify }}", &context);
+        assert!(valid.is_ok());
+    }
+
+    #[test]
+    fn validate_template_variables_handles_conditionals() {
+        let env = create_test_env();
+        let mut map = JsonMap::new();
+        map.insert("agent".to_string(), JsonValue::Null);
+        map.insert(
+            "base_name".to_string(),
+            JsonValue::String("feature".to_string()),
+        );
+        let context = JsonValue::Object(map);
+
+        // Conditionals should validate variables inside them
+        let valid = validate_template_variables(
+            &env,
+            "{{ base_name }}{% if agent %}-{{ agent }}{% endif %}",
+            &context,
+        );
+        assert!(valid.is_ok());
+
+        // Missing variable in conditional should error
+        let invalid = validate_template_variables(
+            &env,
+            "{{ base_name }}{% if typo %}-{{ typo }}{% endif %}",
+            &context,
+        );
+        assert!(invalid.is_err());
+        assert!(invalid.unwrap_err().to_string().contains("typo"));
+    }
+
+    #[test]
+    fn validate_template_variables_handles_loops() {
+        let env = create_test_env();
+        let mut map = JsonMap::new();
+        let mut foreach_vars = JsonMap::new();
+        foreach_vars.insert("platform".to_string(), JsonValue::String("ios".to_string()));
+        map.insert("foreach_vars".to_string(), JsonValue::Object(foreach_vars));
+        let context = JsonValue::Object(map);
+
+        // Loop variable access should work
+        let valid = validate_template_variables(
+            &env,
+            "{% for key in foreach_vars %}-{{ foreach_vars[key] }}{% endfor %}",
+            &context,
+        );
+        assert!(valid.is_ok());
+    }
+
+    #[test]
+    fn generate_specs_validates_branch_template() {
+        let env = create_test_env();
+        // This should fail because {{ bad_var }} doesn't exist in the standard context
+        let result = generate_worktree_specs(
+            "base",
+            &["claude".to_string(), "gemini".to_string()],
+            None,
+            None,
+            &env,
+            "{{ base_name }}-{{ bad_var }}",
+        );
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Check the error chain with Debug format which shows the full chain
+        let err_chain = format!("{:?}", err);
+        assert!(
+            err_chain.contains("Invalid branch name template"),
+            "Error should mention 'Invalid branch name template': {}",
+            err_chain
+        );
+        assert!(
+            err_chain.contains("bad_var"),
+            "Error chain should mention bad_var: {}",
+            err_chain
+        );
+    }
+
+    #[test]
+    fn validate_template_variables_multiple_missing() {
+        let env = create_test_env();
+        let mut map = JsonMap::new();
+        map.insert("exists".to_string(), JsonValue::String("foo".to_string()));
+        let context = JsonValue::Object(map);
+
+        let invalid =
+            validate_template_variables(&env, "{{ missing1 }} and {{ missing2 }}", &context);
+        assert!(invalid.is_err());
+        let err_msg = invalid.unwrap_err().to_string();
+        assert!(err_msg.contains("missing1"));
+        assert!(err_msg.contains("missing2"));
     }
 
     // Helper function for tests

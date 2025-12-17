@@ -650,3 +650,106 @@ class TestAgentErrors:
             expect_fail=True,
         )
         assert "pane commands are disabled" in result.stderr
+
+
+class TestTemplateVariableValidation:
+    """Tests for template variable validation."""
+
+    def test_add_fails_with_undefined_prompt_variable(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies prompt with undefined template variable fails with helpful error."""
+        env = isolated_tmux_server
+        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add my-feature --prompt 'Build for {{ undefined_var }}'",
+            expect_fail=True,
+        )
+        assert "undefined variables" in result.stderr
+        assert "undefined_var" in result.stderr
+        assert "Available variables" in result.stderr
+
+    def test_add_fails_with_undefined_branch_template_variable(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies branch template with undefined variable fails with helpful error."""
+        env = isolated_tmux_server
+        write_workmux_config(repo_path, panes=[])
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add my-feature -n 2 --branch-template '{{ base_name }}-{{ typo }}'",
+            expect_fail=True,
+        )
+        assert "Invalid branch name template" in result.stderr
+        assert "typo" in result.stderr
+
+    def test_add_succeeds_with_valid_foreach_variables(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """Verifies foreach variables are available in prompts."""
+        env = isolated_tmux_server
+        base_name = "feature-valid-vars"
+
+        claude_path = fake_agent_installer.install(
+            "claude",
+            "#!/bin/sh\nprintf '%s' \"$2\" > out.txt",
+        )
+        write_workmux_config(
+            repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
+        )
+
+        # This should succeed because platform and lang are defined by foreach
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            (
+                f"add {base_name} --foreach "
+                "'platform:ios;lang:swift' "
+                "--prompt 'Build {{ platform }} with {{ lang }}'"
+            ),
+        )
+
+        # Verify worktree was created
+        worktree = get_worktree_path(repo_path, f"{base_name}-swift-ios")
+        assert worktree.is_dir()
+
+    def test_add_fails_with_typo_in_foreach_variable_name(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies typo in foreach variable name fails with helpful error."""
+        env = isolated_tmux_server
+        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            (
+                "add my-feature --foreach "
+                "'platform:ios,android' "
+                "--prompt 'Build {{ plattform }}'"  # typo: plattform instead of platform
+            ),
+            expect_fail=True,
+        )
+        assert "undefined variables" in result.stderr
+        assert "plattform" in result.stderr
+        # Should suggest the correct variable
+        assert "platform" in result.stderr
