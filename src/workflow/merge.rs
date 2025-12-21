@@ -140,8 +140,9 @@ pub fn merge(
         "merge:target branch resolved"
     );
 
-    // Safety check: Abort if the target worktree has uncommitted changes
-    if git::has_uncommitted_changes(&target_worktree_path)? {
+    // Safety check: Abort if the target worktree has uncommitted tracked changes.
+    // Untracked files are allowed; git will fail safely if they collide with merged files.
+    if git::has_tracked_changes(&target_worktree_path)? {
         return Err(anyhow!(
             "Target worktree ({}) has uncommitted changes. Please commit or stash them before merging.",
             target_worktree_path.display()

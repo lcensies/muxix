@@ -258,10 +258,10 @@ def test_merge_commits_staged_changes_before_merge(
     assert "staged content" in show_result.stdout, "Staged file should be in main"
 
 
-def test_merge_fails_if_main_worktree_has_uncommitted_changes(
+def test_merge_fails_if_main_worktree_has_uncommitted_tracked_changes(
     isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
-    """Verifies merge fails if main worktree has uncommitted changes."""
+    """Verifies merge fails if main worktree has uncommitted tracked changes."""
     env = isolated_tmux_server
     branch_name = "feature-clean"
     write_workmux_config(repo_path, env=env)
@@ -270,11 +270,38 @@ def test_merge_fails_if_main_worktree_has_uncommitted_changes(
     worktree_path = get_worktree_path(repo_path, branch_name)
     create_commit(env, worktree_path, "feat: work done")
 
-    create_dirty_file(repo_path, "dirty_in_main.txt")
+    # Modify a tracked file to create uncommitted tracked changes
+    # The .workmux.yaml is committed by write_workmux_config
+    workmux_config = repo_path / ".workmux.yaml"
+    workmux_config.write_text(workmux_config.read_text() + "\n# dirty")
 
     run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, expect_fail=True)
 
     assert worktree_path.exists(), "Worktree should remain when merge fails"
+
+
+def test_merge_succeeds_with_untracked_files_in_main_worktree(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge succeeds when main worktree has untracked files."""
+    env = isolated_tmux_server
+    branch_name = "feature-with-untracked-main"
+    write_workmux_config(repo_path, env=env)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: work done")
+
+    # Create an untracked file in the main worktree - this should NOT block merge
+    untracked_file = repo_path / "untracked_in_main.txt"
+    create_dirty_file(repo_path, "untracked_in_main.txt")
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    assert not worktree_path.exists(), (
+        "Worktree should be removed after successful merge"
+    )
+    assert untracked_file.exists(), "Untracked file in main should be preserved"
 
 
 def test_merge_with_keep_flag_skips_cleanup(
