@@ -4,6 +4,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.55 (2025-12-21)
+
+- The `merge` command now allows untracked files in the target worktree, only
+  blocking when there are uncommitted changes to tracked files
+
 ## v0.1.54 (2025-12-17)
 
 - The `remove` command now accepts multiple worktree names, allowing you to
