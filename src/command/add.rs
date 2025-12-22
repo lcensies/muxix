@@ -67,6 +67,38 @@ fn read_stdin_lines() -> Result<Vec<String>> {
     Ok(lines)
 }
 
+/// Check preconditions for the add command (git repo and tmux session).
+/// Returns Ok(()) if all preconditions are met, or an error listing all failures.
+fn check_preconditions() -> Result<()> {
+    let is_git = git::is_git_repo()?;
+    let is_tmux = tmux::is_running()?;
+
+    if is_git && is_tmux {
+        return Ok(());
+    }
+
+    let mut errors = Vec::new();
+
+    if !is_tmux {
+        errors.push("tmux is not running.");
+    }
+    if !is_git {
+        errors.push("Current directory is not a git repository.");
+    }
+
+    // Add blank line before suggestions
+    errors.push("");
+
+    if !is_tmux {
+        errors.push("Please start a tmux session first.");
+    }
+    if !is_git {
+        errors.push("Please run this command from within a git repository.");
+    }
+
+    Err(anyhow!(errors.join("\n")))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     branch_name: Option<&str>,
@@ -80,13 +112,8 @@ pub fn run(
     multi: MultiArgs,
     wait: bool,
 ) -> Result<()> {
-    // Ensure we are in a git repository before proceeding
-    if !git::is_git_repo()? {
-        return Err(anyhow!(
-            "Current directory is not a git repository.\n\
-             Please run this command from within a git repository."
-        ));
-    }
+    // Ensure preconditions are met (git repo and tmux session)
+    check_preconditions()?;
 
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
