@@ -7,7 +7,7 @@ use crate::template::{
 use crate::workflow::SetupOptions;
 use crate::workflow::pr::detect_remote_branch;
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt, parse_prompt_with_frontmatter};
-use crate::{config, tmux, workflow};
+use crate::{config, git, tmux, workflow};
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -80,6 +80,14 @@ pub fn run(
     multi: MultiArgs,
     wait: bool,
 ) -> Result<()> {
+    // Ensure we are in a git repository before proceeding
+    if !git::is_git_repo()? {
+        return Err(anyhow!(
+            "Current directory is not a git repository.\n\
+             Please run this command from within a git repository."
+        ));
+    }
+
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
