@@ -5,6 +5,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.57 (2025-12-23)
+
+- Fixed terminal input not being displayed after creating a worktree with
+  `workmux add` on bash ([#17](https://github.com/raine/workmux/pull/17))
+
 ## v0.1.55 (2025-12-21)
 
 - The `merge` command now allows untracked files in the target worktree, only
