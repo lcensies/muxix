@@ -1360,6 +1360,21 @@ However, it's recommended to use `workmux merge` or `workmux remove` for cleanup
 instead, as these commands clean up both the tmux window and the git worktree
 together. Use `workmux list` to see which worktrees have detached tmux windows.
 
+### Using direnv
+
+If your project uses [direnv](https://direnv.net/) for environment management,
+you can configure workmux to automatically set it up in new worktrees:
+
+```yaml
+# .workmux.yaml
+post_create:
+  - direnv allow
+
+files:
+  symlink:
+    - .envrc
+```
+
 ## Shell completions
 
 To enable tab completions for commands and branch names, add the following to
