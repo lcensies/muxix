@@ -32,6 +32,13 @@ pub fn is_git_repo() -> Result<bool> {
         .run_as_check()
 }
 
+/// Check if the repository has any commits (HEAD is valid)
+pub fn has_commits() -> Result<bool> {
+    Cmd::new("git")
+        .args(&["rev-parse", "--verify", "--quiet", "HEAD"])
+        .run_as_check()
+}
+
 /// Get the root directory of the git repository
 pub fn get_repo_root() -> Result<PathBuf> {
     let path = Cmd::new("git")
@@ -79,6 +86,14 @@ pub fn get_default_branch() -> Result<String> {
     if branch_exists("master")? {
         debug!("git:default branch 'master' (local fallback)");
         return Ok("master".to_string());
+    }
+
+    // Check if repo has any commits at all
+    if !has_commits()? {
+        return Err(anyhow!(
+            "The repository has no commits yet. Please make an initial commit before using workmux, \
+            or specify the main branch in .workmux.yaml using the 'main_branch' key."
+        ));
     }
 
     // No default branch could be determined - require explicit configuration

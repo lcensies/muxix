@@ -32,8 +32,7 @@ impl WorkflowContext {
         let main_branch = if let Some(ref branch) = config.main_branch {
             branch.clone()
         } else {
-            git::get_default_branch()
-                .context("Failed to determine the main branch. Specify it in .workmux.yaml")?
+            git::get_default_branch().context("Failed to determine the main branch")?
         };
 
         let prefix = config.window_prefix().to_string();
