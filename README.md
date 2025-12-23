@@ -243,6 +243,41 @@ For a real-world example, see
   - Both configurations include a second pane split horizontally
 - `post_create` commands are optional and only run if you configure them
 
+### Automatic setup with panes
+
+Use the `panes` configuration to automate environment setup. Unlike
+`post_create` hooks which must finish before the tmux window opens, pane
+commands execute immediately _within_ the new window.
+
+This can be used for:
+
+- **Installing dependencies**: Run `npm install` or `cargo build` in a focused
+  pane to monitor progress.
+- **Starting services**: Launch dev servers, database containers, or file
+  watchers automatically.
+- **Running agents**: Initialize AI agents with specific context.
+
+Since these run in standard tmux panes, you can interact with them (check logs,
+restart servers) just like a normal terminal session.
+
+Running dependency installation (like `pnpm install`) in a pane command rather
+than `post_create` has a key advantage: you get immediate access to the tmux
+window while installation runs in the background. With `post_create`, you'd have
+to wait for the install to complete before the window even opens. This also
+means AI agents can start working immediately in their pane while dependencies
+install in parallel.
+
+```yaml
+panes:
+  # Pane 1: Install dependencies, then start dev server
+  - command: pnpm install && pnpm run dev
+
+  # Pane 2: AI agent
+  - command: <agent>
+    split: horizontal
+    focus: true
+```
+
 ### Directory structure
 
 Here's how workmux organizes your worktrees by default:
