@@ -1043,6 +1043,9 @@ workmux close
 
 To reopen the window later, use [`workmux open`](#workmux-open-name).
 
+**Tip**: You can also use tmux's native kill-window command (default: `prefix + &`)
+to close a worktree's window with the same effect.
+
 ---
 
 ### `workmux path <name>`
