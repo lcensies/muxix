@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::git;
+use crate::{cmd, git};
 use tracing::{debug, info};
 
 use super::cleanup;
@@ -153,6 +153,36 @@ pub fn merge(
     // This ensures that if we are reusing the main worktree for a feature branch merge,
     // it is checked out to the correct branch.
     git::switch_branch_in_worktree(&target_worktree_path, target_branch)?;
+
+    // Run pre-merge hooks after all validations pass but before any merge operations begin.
+    if let Some(hooks) = &context.config.pre_merge
+        && !hooks.is_empty()
+    {
+        info!(count = hooks.len(), "merge:running pre-merge hooks");
+
+        let abs_worktree_path = worktree_path
+            .canonicalize()
+            .unwrap_or_else(|_| worktree_path.clone());
+        let abs_project_root = context
+            .main_worktree_root
+            .canonicalize()
+            .unwrap_or_else(|_| context.main_worktree_root.clone());
+        let worktree_path_str = abs_worktree_path.to_string_lossy();
+        let project_root_str = abs_project_root.to_string_lossy();
+
+        let hook_env = [
+            ("WM_BRANCH_NAME", branch_to_merge.as_str()),
+            ("WM_TARGET_BRANCH", target_branch),
+            ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
+            ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+            ("WM_HANDLE", handle),
+        ];
+
+        for command in hooks {
+            cmd::shell_command_with_env(command, &worktree_path, &hook_env)
+                .with_context(|| format!("Pre-merge hook failed: '{}'", command))?;
+        }
+    }
 
     // Helper closure to generate the error message for merge conflicts
     let conflict_err = |branch: &str| -> anyhow::Error {

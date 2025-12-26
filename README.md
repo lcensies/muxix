@@ -217,6 +217,14 @@ For a real-world example, see
   - `WM_HANDLE`: The worktree handle (directory name)
   - `WM_WORKTREE_PATH`: Absolute path of the new worktree
   - `WM_PROJECT_ROOT`: Absolute path of the main project directory
+- `pre_merge`: Commands to run before merging (during `workmux merge`). Useful
+  as a local CI gate to run linters or tests before merging. If any command
+  fails, the merge is aborted. Commands receive these environment variables:
+  - `WM_BRANCH_NAME`: The name of the branch being merged
+  - `WM_TARGET_BRANCH`: The name of the target branch (e.g., main)
+  - `WM_WORKTREE_PATH`: Absolute path to the worktree
+  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
+  - `WM_HANDLE`: The worktree handle (directory name)
 - `pre_remove`: Commands to run before worktree removal (during `merge` or
   `remove`). Useful for backing up gitignored files like test artifacts, logs,
   or build outputs before removal. If any command fails, the removal is

@@ -85,6 +85,10 @@ pub struct Config {
     #[serde(default)]
     pub post_create: Option<Vec<String>>,
 
+    /// Commands to run before merging (e.g., linting, tests)
+    #[serde(default)]
+    pub pre_merge: Option<Vec<String>>,
+
     /// Commands to run before removing the worktree (e.g., for backups)
     #[serde(default)]
     pub pre_remove: Option<Vec<String>>,
@@ -430,6 +434,7 @@ impl Config {
 
         // List values with "<global>" placeholder support
         merged.post_create = merge_vec_with_placeholder(self.post_create, project.post_create);
+        merged.pre_merge = merge_vec_with_placeholder(self.pre_merge, project.pre_merge);
         merged.pre_remove = merge_vec_with_placeholder(self.pre_remove, project.pre_remove);
 
         // File config with placeholder support
@@ -594,6 +599,20 @@ impl Config {
 # post_create:
 #   - "<global>"
 #   - mise use
+
+# Commands to run before merging (e.g., linting, tests).
+# Aborts the merge if any command fails.
+# Use "<global>" to inherit from global config.
+# Environment variables available:
+#   - WM_BRANCH_NAME: The name of the branch being merged
+#   - WM_TARGET_BRANCH: The name of the target branch (e.g., main)
+#   - WM_WORKTREE_PATH: Absolute path to the worktree
+#   - WM_PROJECT_ROOT: Absolute path of the main project directory
+#   - WM_HANDLE: The worktree handle/window name
+# pre_merge:
+#   - "<global>"
+#   - cargo test
+#   - cargo clippy -- -D warnings
 
 # Commands to run before worktree removal (during merge or remove).
 # Useful for backing up gitignored files before cleanup.

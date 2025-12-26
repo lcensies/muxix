@@ -534,6 +534,7 @@ def write_workmux_config(
     repo_path: Path,
     panes: Optional[List[Dict[str, Any]]] = None,
     post_create: Optional[List[str]] = None,
+    pre_merge: Optional[List[str]] = None,
     pre_remove: Optional[List[str]] = None,
     files: Optional[Dict[str, List[str]]] = None,
     env: Optional[TmuxEnvironment] = None,
@@ -549,6 +550,8 @@ def write_workmux_config(
         config["panes"] = panes
     if post_create:
         config["post_create"] = post_create
+    if pre_merge:
+        config["pre_merge"] = pre_merge
     if pre_remove:
         config["pre_remove"] = pre_remove
     if files:

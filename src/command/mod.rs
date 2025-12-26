@@ -14,6 +14,7 @@ use crate::{config::Config, workflow::SetupOptions};
 /// Represents the different phases where hooks can be executed
 pub enum HookPhase {
     PostCreate,
+    PreMerge,
     PreRemove,
 }
 
@@ -27,6 +28,14 @@ pub fn announce_hooks(config: &Config, options: Option<&SetupOptions>, phase: Ho
 
             if should_run {
                 println!("Running setup commands...");
+            }
+            should_run
+        }
+        HookPhase::PreMerge => {
+            let should_run = config.pre_merge.as_ref().is_some_and(|v| !v.is_empty());
+
+            if should_run {
+                println!("Running pre-merge commands...");
             }
             should_run
         }
