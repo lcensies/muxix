@@ -57,7 +57,21 @@ pub fn setup_environment(
         && !post_create.is_empty()
     {
         hooks_run = post_create.len();
-        let hook_env = [("WM_HANDLE", handle)];
+        // Resolve absolute paths for environment variables.
+        // canonicalize() ensures symlinks are resolved and paths are absolute.
+        let abs_worktree_path = worktree_path
+            .canonicalize()
+            .unwrap_or_else(|_| worktree_path.to_path_buf());
+        let abs_project_root = repo_root
+            .canonicalize()
+            .unwrap_or_else(|_| repo_root.clone());
+        let worktree_path_str = abs_worktree_path.to_string_lossy();
+        let project_root_str = abs_project_root.to_string_lossy();
+        let hook_env = [
+            ("WM_HANDLE", handle),
+            ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
+            ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+        ];
         for (idx, command) in post_create.iter().enumerate() {
             info!(branch = branch_name, step = idx + 1, total = hooks_run, command = %command, "setup_environment:hook start");
             info!(command = %command, "Running post-create hook {}/{}", idx + 1, hooks_run);

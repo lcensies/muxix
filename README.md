@@ -213,7 +213,10 @@ For a real-world example, see
     Mutually exclusive with `size`. If neither is specified, tmux splits 50/50.
 - `post_create`: Commands to run after worktree creation but before the tmux
   window opens. These block window creation, so keep them short (e.g., copying
-  config files).
+  config files). Commands receive these environment variables:
+  - `WM_HANDLE`: The worktree handle (directory name)
+  - `WM_WORKTREE_PATH`: Absolute path of the new worktree
+  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
 - `pre_remove`: Commands to run before worktree removal (during `merge` or
   `remove`). Useful for backing up gitignored files like test artifacts, logs,
   or build outputs before removal. If any command fails, the removal is
