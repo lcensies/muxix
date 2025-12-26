@@ -31,9 +31,9 @@ pub fn run(
 
     let context = WorkflowContext::new(config)?;
 
-    // Only announce pre-delete hooks if we're actually going to run cleanup
+    // Only announce pre-remove hooks if we're actually going to run cleanup
     if !keep {
-        super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
+        super::announce_hooks(&context.config, None, super::HookPhase::PreRemove);
     }
 
     let result = workflow::merge(

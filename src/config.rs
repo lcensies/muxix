@@ -85,9 +85,9 @@ pub struct Config {
     #[serde(default)]
     pub post_create: Option<Vec<String>>,
 
-    /// Commands to run before deleting the worktree (e.g., for fast cleanup)
+    /// Commands to run before removing the worktree (e.g., for backups)
     #[serde(default)]
-    pub pre_delete: Option<Vec<String>>,
+    pub pre_remove: Option<Vec<String>>,
 
     /// The agent command to use (e.g., "claude", "gemini")
     #[serde(default)]
@@ -283,9 +283,9 @@ impl Config {
                 }
             }
 
-            // Default pre_delete hook for Node.js projects
-            if config.pre_delete.is_none() && has_node_modules {
-                config.pre_delete = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
+            // Default pre_remove hook for Node.js projects
+            if config.pre_remove.is_none() && has_node_modules {
+                config.pre_remove = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
             }
         } else {
             // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
@@ -430,7 +430,7 @@ impl Config {
 
         // List values with "<global>" placeholder support
         merged.post_create = merge_vec_with_placeholder(self.post_create, project.post_create);
-        merged.pre_delete = merge_vec_with_placeholder(self.pre_delete, project.pre_delete);
+        merged.pre_remove = merge_vec_with_placeholder(self.pre_remove, project.pre_remove);
 
         // File config with placeholder support
         merged.files = FileConfig {
@@ -595,11 +595,17 @@ impl Config {
 #   - "<global>"
 #   - mise use
 
-# Commands to run before worktree deletion.
+# Commands to run before worktree removal (during merge or remove).
+# Useful for backing up gitignored files before cleanup.
 # Default: Auto-detects Node.js projects and fast-deletes node_modules.
-# Set to empty list to disable: `pre_delete: []`
-# pre_delete:
-#   - echo "Custom cleanup"
+# Set to empty list to disable: `pre_remove: []`
+# Environment variables available:
+#   - WM_HANDLE: The worktree handle (directory name)
+#   - WM_WORKTREE_PATH: Absolute path of the worktree being deleted
+#   - WM_PROJECT_ROOT: Absolute path of the main project directory
+# pre_remove:
+#   - mkdir -p "$WM_PROJECT_ROOT/artifacts/$WM_HANDLE"
+#   - cp -r test-results/ "$WM_PROJECT_ROOT/artifacts/$WM_HANDLE/"
 
 #-------------------------------------------------------------------------------
 # Files

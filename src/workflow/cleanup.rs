@@ -78,28 +78,43 @@ pub fn cleanup(
     // Helper closure to perform the actual filesystem and git cleanup.
     // This avoids code duplication while enforcing the correct operational order.
     let perform_fs_git_cleanup = |result: &mut CleanupResult| -> Result<()> {
-        // Run pre-delete hooks before removing the worktree directory.
+        // Run pre-remove hooks before removing the worktree directory.
         // Skip if the worktree directory doesn't exist (e.g., user manually deleted it).
         if worktree_path.exists() {
-            if let Some(pre_delete_hooks) = &context.config.pre_delete {
+            if let Some(pre_remove_hooks) = &context.config.pre_remove {
                 info!(
                     branch = branch_name,
-                    count = pre_delete_hooks.len(),
-                    "cleanup:running pre-delete hooks"
+                    count = pre_remove_hooks.len(),
+                    "cleanup:running pre-remove hooks"
                 );
-                let hook_env = [("WORKMUX_HANDLE", handle)];
-                for command in pre_delete_hooks {
+                // Resolve absolute paths for environment variables.
+                // canonicalize() ensures symlinks are resolved and paths are absolute.
+                let abs_worktree_path = worktree_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| worktree_path.to_path_buf());
+                let abs_project_root = context
+                    .main_worktree_root
+                    .canonicalize()
+                    .unwrap_or_else(|_| context.main_worktree_root.clone());
+                let worktree_path_str = abs_worktree_path.to_string_lossy();
+                let project_root_str = abs_project_root.to_string_lossy();
+                let hook_env = [
+                    ("WM_HANDLE", handle),
+                    ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
+                    ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+                ];
+                for command in pre_remove_hooks {
                     // Run the hook with the worktree path as the working directory.
                     // This allows for relative paths like `node_modules` in the command.
                     cmd::shell_command_with_env(command, worktree_path, &hook_env).with_context(
-                        || format!("Failed to run pre-delete command: '{}'", command),
+                        || format!("Failed to run pre-remove command: '{}'", command),
                     )?;
                 }
             }
         } else {
             debug!(
                 path = %worktree_path.display(),
-                "cleanup:skipping pre-delete hooks, worktree directory does not exist"
+                "cleanup:skipping pre-remove hooks, worktree directory does not exist"
             );
         }
 

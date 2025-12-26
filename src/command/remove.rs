@@ -451,7 +451,7 @@ fn remove_worktree(handle: &str, force: bool, keep_branch: bool) -> Result<()> {
     let config = config::Config::load(None)?;
     let context = WorkflowContext::new(config)?;
 
-    super::announce_hooks(&context.config, None, super::HookPhase::PreDelete);
+    super::announce_hooks(&context.config, None, super::HookPhase::PreRemove);
 
     let result = workflow::remove(handle, force, keep_branch, &context)
         .context("Failed to remove worktree")?;

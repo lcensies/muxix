@@ -57,7 +57,7 @@ pub fn setup_environment(
         && !post_create.is_empty()
     {
         hooks_run = post_create.len();
-        let hook_env = [("WORKMUX_HANDLE", handle)];
+        let hook_env = [("WM_HANDLE", handle)];
         for (idx, command) in post_create.iter().enumerate() {
             info!(branch = branch_name, step = idx + 1, total = hooks_run, command = %command, "setup_environment:hook start");
             info!(command = %command, "Running post-create hook {}/{}", idx + 1, hooks_run);

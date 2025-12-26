@@ -214,6 +214,13 @@ For a real-world example, see
 - `post_create`: Commands to run after worktree creation but before the tmux
   window opens. These block window creation, so keep them short (e.g., copying
   config files).
+- `pre_remove`: Commands to run before worktree removal (during `merge` or
+  `remove`). Useful for backing up gitignored files like test artifacts, logs,
+  or build outputs before removal. If any command fails, the removal is
+  aborted. Commands receive these environment variables:
+  - `WM_HANDLE`: The worktree handle (directory name)
+  - `WM_WORKTREE_PATH`: Absolute path of the worktree being removed
+  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
 - `files`: File operations to perform on worktree creation
   - `copy`: List of glob patterns for files/directories to copy
   - `symlink`: List of glob patterns for files/directories to symlink
