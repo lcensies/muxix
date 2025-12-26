@@ -6,6 +6,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.60 (2025-12-26)
+
+- Added `close` command to close a worktree's tmux window while keeping the
+  worktree on disk. It's basically an alias for tmux's `kill-window`
+
 ## v0.1.59 (2025-12-26)
 
 - Added `pre_merge` hook to run commands (like tests or linters) before merging,
