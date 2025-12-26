@@ -6,6 +6,16 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.59 (2025-12-26)
+
+- Added `pre_merge` hook to run commands (like tests or linters) before merging,
+  allowing you to catch issues before they land in your main branch
+- Added `pre_remove` hook that runs before worktree removal, with environment
+  variables (`WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`) for backup or
+  cleanup workflows
+- The `post_create` hook now receives `WM_WORKTREE_PATH` and `WM_PROJECT_ROOT`
+  environment variables, matching the other hooks
+
 ## v0.1.57 (2025-12-23)
 
 - Fixed terminal input not being displayed after creating a worktree with
