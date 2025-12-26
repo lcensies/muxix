@@ -338,9 +338,10 @@ alias wm='workmux'
 - [`merge`](#workmux-merge-branch-name) - Merge a branch and clean up everything
 - [`remove`](#workmux-remove-name-alias-rm) - Remove worktrees without merging
 - [`list`](#workmux-list) - List all worktrees with status
-- [`init`](#workmux-init) - Generate configuration file
 - [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
+- [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
+- [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
 
@@ -1014,6 +1015,36 @@ workmux open user-auth --force-files
 
 ---
 
+### `workmux close [name]`
+
+Closes the tmux window for a worktree without removing the worktree or branch.
+This is useful when you want to temporarily close a window to reduce clutter or
+free resources, but plan to return to the work later.
+
+- `[name]`: Optional worktree name (the directory name). Defaults to current
+  directory if omitted.
+
+#### What happens
+
+1. Verifies the worktree exists
+2. Checks that a tmux window is open for the worktree
+3. Closes (kills) the tmux window
+4. The worktree directory and git branch remain intact
+
+#### Examples
+
+```bash
+# Close the window for a specific worktree
+workmux close user-auth
+
+# Close the current worktree's window (run from within the worktree)
+workmux close
+```
+
+To reopen the window later, use [`workmux open`](#workmux-open-name).
+
+---
+
 ### `workmux path <name>`
 
 Prints the filesystem path of an existing worktree. Useful for scripting or
@@ -1397,21 +1428,6 @@ window_prefix: "\uf418 "
 ```
 
 ![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
-
-### Closing tmux windows
-
-You can close workmux-managed tmux windows using tmux's standard `kill-window`
-command (e.g., `<prefix> &` or `tmux kill-window -t <window-name>`). This will
-properly terminate all processes running in the window's panes. The git worktree
-will remain on disk, and you can reopen a window for it anytime with:
-
-```bash
-workmux open <branch-name>
-```
-
-However, it's recommended to use `workmux merge` or `workmux remove` for cleanup
-instead, as these commands clean up both the tmux window and the git worktree
-together. Use `workmux list` to see which worktrees have detached tmux windows.
 
 ### Using direnv
 

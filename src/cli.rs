@@ -229,6 +229,13 @@ enum Commands {
         force_files: bool,
     },
 
+    /// Close a worktree's tmux window (keeps the worktree and branch)
+    Close {
+        /// Worktree name (defaults to current directory if omitted)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: Option<String>,
+    },
+
     /// Merge a branch, then clean up the worktree and tmux window
     Merge {
         /// Worktree name or branch (defaults to current directory)
@@ -370,6 +377,7 @@ pub fn run() -> Result<()> {
             run_hooks,
             force_files,
         } => command::open::run(&name, run_hooks, force_files),
+        Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Merge {
             name,
             into,
