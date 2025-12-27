@@ -6,6 +6,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.61 (2025-12-27)
+
+- Log files are now stored in the XDG state directory
+  (`~/.local/state/workmux/`)
+
 ## v0.1.60 (2025-12-26)
 
 - Added `close` command to close a worktree's tmux window while keeping the
