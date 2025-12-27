@@ -201,9 +201,7 @@ def test_close_from_inside_worktree_window(
 
     # Poll until window is gone
     def window_is_gone():
-        windows = env.tmux(
-            ["list-windows", "-F", "#{window_name}"]
-        ).stdout.splitlines()
+        windows = env.tmux(["list-windows", "-F", "#{window_name}"]).stdout.splitlines()
         return window_name not in windows
 
     assert poll_until(window_is_gone, timeout=5.0), "Window did not close itself"

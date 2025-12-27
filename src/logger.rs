@@ -50,10 +50,24 @@ fn init_inner() -> Result<()> {
 }
 
 fn determine_log_path() -> Result<PathBuf> {
+    // Check XDG_STATE_HOME environment variable first
+    if let Ok(state_home) = std::env::var("XDG_STATE_HOME")
+        && !state_home.is_empty() {
+            return Ok(PathBuf::from(state_home)
+                .join("workmux")
+                .join("workmux.log"));
+        }
+
+    // Fall back to XDG default: ~/.local/state/workmux/workmux.log
     if let Some(home_dir) = home::home_dir() {
-        return Ok(home_dir.join(".workmux").join("workmux.log"));
+        return Ok(home_dir
+            .join(".local")
+            .join("state")
+            .join("workmux")
+            .join("workmux.log"));
     }
 
+    // Fallback to current directory if home cannot be determined
     Ok(std::env::current_dir()?.join("workmux.log"))
 }
 
