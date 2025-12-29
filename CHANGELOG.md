@@ -6,6 +6,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.62 (2025-12-29)
+
+- The `merge` command with `--keep` no longer requires a clean worktree, since
+  the worktree won't be deleted anyway
+
 ## v0.1.61 (2025-12-27)
 
 - Log files are now stored in the XDG state directory
