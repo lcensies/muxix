@@ -102,9 +102,10 @@ pub fn merge(
     };
 
     // Handle changes in the source worktree
-    // Check for both unstaged changes and untracked files to prevent data loss during cleanup
-    let has_unstaged = git::has_unstaged_changes(&worktree_path)?;
-    let has_untracked = git::has_untracked_files(&worktree_path)?;
+    // Only check for unstaged/untracked when worktree will be deleted (!keep)
+    // With --keep, the worktree persists so no data loss risk
+    let has_unstaged = !keep && git::has_unstaged_changes(&worktree_path)?;
+    let has_untracked = !keep && git::has_untracked_files(&worktree_path)?;
 
     if (has_unstaged || has_untracked) && !ignore_uncommitted {
         let mut issues = Vec::new();
