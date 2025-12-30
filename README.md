@@ -24,7 +24,9 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
-📖 **New to workmux?** Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
+📖 **New to workmux?** Read the
+[introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
+quick overview.
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
 
@@ -186,71 +188,103 @@ For a real-world example, see
 
 ### Configuration options
 
-- `main_branch`: Branch to merge into (optional, auto-detected from remote or
-  checks for `main`/`master`)
-- `worktree_dir`: Custom directory for worktrees (absolute or relative to repo
-  root)
-- `window_prefix`: Prefix for tmux window names (default: `wm-`). See
-  [Nerdfont window prefix](#nerdfont-window-prefix) for a nicer look.
-- `worktree_naming`: Strategy for deriving worktree/window names from branch
-  names
-  - `full` (default): Use the full branch name (slashes become dashes)
-  - `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
-    `feature`)
-- `worktree_prefix`: Prefix prepended to worktree directory and window names.
-  Note: This stacks with `window_prefix`, so a worktree with
-  `worktree_prefix: web-` and `window_prefix: wm-` creates windows like
-  `wm-web-feature`.
-- `panes`: Array of pane configurations
-  - `command`: Optional command to run when the pane is created. Use this for
-    long-running setup like dependency installs so output is visible in tmux. If
-    omitted, the pane starts with your default shell. Use `<agent>` to use the
-    configured agent.
-  - `focus`: Whether this pane should receive focus (default: false)
-  - `split`: How to split from previous pane (`horizontal` or `vertical`)
-  - `size`: Optional absolute size in lines (for vertical splits) or cells (for
-    horizontal splits). Mutually exclusive with `percentage`. If neither is
-    specified, tmux splits 50/50.
-  - `percentage`: Optional size as a percentage (1-100) of the available space.
-    Mutually exclusive with `size`. If neither is specified, tmux splits 50/50.
-- `post_create`: Commands to run after worktree creation but before the tmux
-  window opens. These block window creation, so keep them short (e.g., copying
-  config files). Commands receive these environment variables:
-  - `WM_HANDLE`: The worktree handle (directory name)
-  - `WM_WORKTREE_PATH`: Absolute path of the new worktree
-  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
-- `pre_merge`: Commands to run before merging (during `workmux merge`). Useful
-  as a local CI gate to run linters or tests before merging. If any command
-  fails, the merge is aborted. Commands receive these environment variables:
-  - `WM_HANDLE`: The worktree handle (directory name)
-  - `WM_WORKTREE_PATH`: Absolute path to the worktree
-  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
-  - `WM_BRANCH_NAME`: The name of the branch being merged
-  - `WM_TARGET_BRANCH`: The name of the target branch (e.g., main)
-- `pre_remove`: Commands to run before worktree removal (during `merge` or
-  `remove`). Useful for backing up gitignored files like test artifacts, logs,
-  or build outputs before removal. If any command fails, the removal is
-  aborted. Commands receive these environment variables:
-  - `WM_HANDLE`: The worktree handle (directory name)
-  - `WM_WORKTREE_PATH`: Absolute path of the worktree being removed
-  - `WM_PROJECT_ROOT`: Absolute path of the main project directory
-- `files`: File operations to perform on worktree creation
-  - `copy`: List of glob patterns for files/directories to copy
-  - `symlink`: List of glob patterns for files/directories to symlink
-- `agent`: The default agent command to use for `<agent>` in pane commands
-  (e.g., `claude`, `codex`, `opencode`, `gemini`). This can be overridden by the
-  `--agent` flag. Default: `claude`.
-- `merge_strategy`: Default strategy for `workmux merge` (`merge`, `rebase`, or
-  `squash`). CLI flags (`--rebase`, `--squash`) always override this setting.
-  Default: `merge`.
-- `status_format`: Whether to automatically configure tmux to display agent
-  status icons in the window list. Default: `true`.
-- `status_icons`: Custom icons for agent status display.
-  - `working`: Icon shown when agent is processing (default: `🤖`)
-  - `waiting`: Icon shown when agent needs user input (default: `💬`) -
-    auto-clears on window focus
-  - `done`: Icon shown when agent finished (default: `✅`) - auto-clears on
-    window focus
+Most options have sensible defaults. You only need to configure what you want to
+customize.
+
+#### Basic options
+
+| Option           | Description                                          | Default                 |
+| ---------------- | ---------------------------------------------------- | ----------------------- |
+| `main_branch`    | Branch to merge into                                 | Auto-detected           |
+| `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
+| `window_prefix`  | Prefix for tmux window names                         | `wm-`                   |
+| `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
+| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
+
+#### Naming options
+
+| Option            | Description                                 | Default |
+| ----------------- | ------------------------------------------- | ------- |
+| `worktree_naming` | How to derive names from branches           | `full`  |
+| `worktree_prefix` | Prefix for worktree directories and windows | none    |
+
+`worktree_naming` strategies:
+
+- `full`: Use the full branch name (slashes become dashes)
+- `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
+  `feature`)
+
+#### Panes
+
+Define your tmux pane layout with the `panes` array:
+
+```yaml
+panes:
+  - command: <agent>
+    focus: true
+  - command: npm run dev
+    split: horizontal
+    size: 15
+```
+
+Each pane supports:
+
+| Option       | Description                                         | Default |
+| ------------ | --------------------------------------------------- | ------- |
+| `command`    | Command to run (use `<agent>` for configured agent) | Shell   |
+| `focus`      | Whether this pane receives focus                    | `false` |
+| `split`      | Split direction (`horizontal` or `vertical`)        | —       |
+| `size`       | Absolute size in lines/cells                        | 50%     |
+| `percentage` | Size as percentage (1-100)                          | 50%     |
+
+#### File operations
+
+Copy or symlink files into new worktrees:
+
+```yaml
+files:
+  copy:
+    - .env
+  symlink:
+    - node_modules
+    - .pnpm-store
+```
+
+Both `copy` and `symlink` accept glob patterns.
+
+#### Lifecycle hooks
+
+Run commands at specific points in the worktree lifecycle. All hooks receive
+environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`.
+
+| Hook          | When it runs                                      | Additional env vars                  |
+| ------------- | ------------------------------------------------- | ------------------------------------ |
+| `post_create` | After worktree creation, before tmux window opens | —                                    |
+| `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
+| `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
+
+Example:
+
+```yaml
+post_create:
+  - direnv allow
+
+pre_merge:
+  - just check
+```
+
+#### Agent status icons
+
+Customize the icons shown in tmux window names:
+
+```yaml
+status_icons:
+  working: '🤖' # Agent is processing
+  waiting: '💬' # Agent needs input (auto-clears on focus)
+  done: '✅' # Agent finished (auto-clears on focus)
+```
+
+Set `status_format: false` to disable automatic tmux format modification
 
 #### Default behavior
 
@@ -341,7 +375,8 @@ alias wm='workmux'
 - [`remove`](#workmux-remove-name-alias-rm) - Remove worktrees without merging
 - [`list`](#workmux-list) - List all worktrees with status
 - [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
-- [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps worktree)
+- [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
+  worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
@@ -1045,8 +1080,8 @@ workmux close
 
 To reopen the window later, use [`workmux open`](#workmux-open-name).
 
-**Tip**: You can also use tmux's native kill-window command (default: `prefix + &`)
-to close a worktree's window with the same effect.
+**Tip**: You can also use tmux's native kill-window command (default:
+`prefix + &`) to close a worktree's window with the same effect.
 
 ---
 
