@@ -52,20 +52,18 @@ agents, is as simple as managing tmux windows.
 ## Features
 
 - Create git worktrees with matching tmux windows in a single command (`add`)
-- Automatically set up your preferred pane layout (editor, shell, watchers,
+- Merge branches and clean up everything (worktree, tmux window, branches) in
+  one command (`merge`)
+- Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new
   worktrees
-- Merge branches and clean up everything (worktree, tmux window, branches) in
-  one command (`merge`)
-- List all worktrees with their tmux and merge status
-- [Automatic branch name generation](#automatic-branch-name-generation) from
-  prompts using LLM
-- Display Claude agent status in tmux window names
-  ([setup](#agent-status-tracking))
 - [Delegate tasks to worktree agents](#delegating-tasks-with-a-custom-command)
   with a `/worktree` slash command
+- [Automatic branch name generation](#automatic-branch-name-generation) from
+  prompts using LLM
+- [Display Claude agent status in tmux window names](#agent-status-tracking)
 - Shell completions
 
 ## Hype
@@ -148,22 +146,14 @@ replaced entirely when defined in the project config.
 `~/.config/workmux/config.yaml`:
 
 ```yaml
-window_prefix: wm-
+window_prefix: "\uf418 " # Use nerdtree branch icon as prefix
+merge_strategy: rebase # Make workmux merge do rebase by default
+agent: claude
 
 panes:
-  - command: nvim .
+  - command: <agent> # Start the configured agent (e.g., claude)
     focus: true
-  # Just a default shell (command omitted)
-  - split: horizontal
-
-post_create:
-  - mise install
-
-files:
-  symlink:
-    - node_modules
-
-agent: claude
+  - split: horizontal # Second pane with default shell
 ```
 
 ### Project configuration example
@@ -868,6 +858,14 @@ exclusive flags:
 - `--squash`: Squash all commits from the feature branch into a single commit on
   the target. You'll be prompted to provide a commit message in your editor.
 
+If you don't want to have merge commits in your main branch, use the `rebase`
+merge strategy, which does `--rebase` by default.
+
+```yaml
+# ~/.config/workmux/config.yaml
+merge_strategy: rebase
+```
+
 #### What happens
 
 1. Determines which branch to merge (specified branch or current branch if
@@ -1066,13 +1064,6 @@ free resources, but plan to return to the work later.
 
 - `[name]`: Optional worktree name (the directory name). Defaults to current
   directory if omitted.
-
-#### What happens
-
-1. Verifies the worktree exists
-2. Checks that a tmux window is open for the worktree
-3. Closes (kills) the tmux window
-4. The worktree directory and git branch remain intact
 
 #### Examples
 
@@ -1492,6 +1483,9 @@ files:
 
 ### Delegating tasks with a custom command
 
+📝 **See [this blog post][delegating-post]** for a detailed walkthrough of the
+workflow.
+
 A Claude Code [custom slash command][custom slash commands] can streamline task
 delegation to worktree agents. Save this as `~/.claude/commands/worktree.md`:
 
@@ -1536,8 +1530,6 @@ Usage:
 > /worktree Fix the race condition in handler.go
 > /worktree Add dark mode, Implement caching  # multiple tasks
 ```
-
-See [this blog post][delegating-post] for the full workflow.
 
 [custom slash commands]:
   https://docs.anthropic.com/en/docs/claude-code/tutorials/custom-slash-commands
