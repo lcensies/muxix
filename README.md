@@ -84,6 +84,26 @@ agents, is as simple as managing tmux windows.
 brew install raine/workmux/workmux
 ```
 
+### Pre-built binaries
+
+Download the
+[latest release](https://github.com/raine/workmux/releases/latest) for your
+platform:
+
+| Platform              | Download                                                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Linux (x64)           | [x86_64-unknown-linux-musl.tar.gz](https://github.com/raine/workmux/releases/latest/download/x86_64-unknown-linux-musl.tar.gz)   |
+| Linux (ARM64)         | [aarch64-unknown-linux-musl.tar.gz](https://github.com/raine/workmux/releases/latest/download/aarch64-unknown-linux-musl.tar.gz) |
+| macOS (Intel)         | [x86_64-apple-darwin.tar.gz](https://github.com/raine/workmux/releases/latest/download/x86_64-apple-darwin.tar.gz)               |
+| macOS (Apple Silicon) | [aarch64-apple-darwin.tar.gz](https://github.com/raine/workmux/releases/latest/download/aarch64-apple-darwin.tar.gz)             |
+
+Extract and install:
+
+```bash
+tar xzf workmux-*.tar.gz
+sudo mv workmux /usr/local/bin/
+```
+
 ### Cargo
 
 Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
