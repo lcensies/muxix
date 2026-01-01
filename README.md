@@ -1482,6 +1482,28 @@ files:
     - .envrc
 ```
 
+### Sharing Claude Code permissions across worktrees
+
+When running Claude Code without `--dangerously-skip-permissions`, each worktree
+needs its own permissions in `.claude/settings.local.json`. To share permissions
+from your main worktree to all new worktrees, you can set up symlinks
+automatically with configuration:
+
+```yaml
+files:
+  symlink:
+    - .claude/settings.local.json
+```
+
+Add this to your global config (`~/.config/workmux/config.yaml`) to apply to all
+projects, or to a project's `.workmux.yaml` for project-specific setup.
+
+It's also recommended to add `.claude/settings.local.json` to `.gitignore`:
+
+```
+.claude/settings.local.json
+```
+
 ### Delegating tasks with a custom command
 
 📝 **See [this blog post][delegating-post]** for a detailed walkthrough of the
