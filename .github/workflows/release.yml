@@ -16,41 +16,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS builds (use cargo directly)
           - os: macos-15
             target: aarch64-apple-darwin
+            use_cross: false
           - os: macos-15
             target: x86_64-apple-darwin
+            use_cross: false
+          # Linux builds (use cross with musl for static linking)
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
+            use_cross: true
           - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-musl
+            use_cross: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@cross
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - name: Install cross-compilation linker for Linux ARM64
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.use_cross }}" == "true" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
       - name: Package
         run: |
           bin="target/${{ matrix.target }}/release/${BIN_NAME}"
-          # Only strip on Linux to avoid corrupting macOS code signatures
-          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
-            aarch64-linux-gnu-strip "$bin" || true
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            strip "$bin" || true
-          fi
+          # Binary is already stripped via Cargo.toml profile.release.strip
           tar -C "$(dirname "$bin")" -czf ${{ matrix.target }}.tar.gz ${BIN_NAME}
           shasum -a 256 ${{ matrix.target }}.tar.gz > ${{ matrix.target }}.sha256
       - uses: actions/upload-artifact@v4
@@ -96,8 +98,8 @@ jobs:
           VERSION="${VERSION#v}"
           SHA_MAC_ARM=$(awk '{print $1}' aarch64-apple-darwin.sha256)
           SHA_MAC_INTEL=$(awk '{print $1}' x86_64-apple-darwin.sha256)
-          SHA_LINUX_INTEL=$(awk '{print $1}' x86_64-unknown-linux-gnu.sha256)
-          SHA_LINUX_ARM=$(awk '{print $1}' aarch64-unknown-linux-gnu.sha256)
+          SHA_LINUX_INTEL=$(awk '{print $1}' x86_64-unknown-linux-musl.sha256)
+          SHA_LINUX_ARM=$(awk '{print $1}' aarch64-unknown-linux-musl.sha256)
 
           cat > tap/Formula/workmux.rb << EOF
           class Workmux < Formula
@@ -118,10 +120,10 @@ jobs:
 
             on_linux do
               if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-unknown-linux-musl.tar.gz"
                 sha256 "${SHA_LINUX_ARM}"
               else
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-unknown-linux-gnu.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-unknown-linux-musl.tar.gz"
                 sha256 "${SHA_LINUX_INTEL}"
               end
             end

@@ -34,3 +34,8 @@ indicatif = "0.18"
 
 [dev-dependencies]
 tempfile = "3.14"
+
+[profile.release]
+strip = true       # Strip debug symbols
+lto = true         # Link Time Optimization for smaller binaries
+codegen-units = 1  # Maximize optimization
