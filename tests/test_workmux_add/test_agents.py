@@ -249,6 +249,184 @@ printf '%s' "$2" > "{output_filename}"
         assert agent_output.read_text() == prompt_text
 
 
+class TestAgentWithArguments:
+    """Tests for agent commands that include arguments."""
+
+    def test_agent_with_dangerously_skip_permissions_flag(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """Agent config with --dangerously-skip-permissions should pass flag and prompt correctly."""
+        env = isolated_tmux_server
+        branch_name = "feature-yolo-mode"
+        window_name = get_window_name(branch_name)
+        prompt_text = "Implement yolo feature"
+        output_filename = "agent_output.txt"
+        flag_marker = "flag_found.txt"
+
+        # Fake claude that verifies both the flag and prompt are received
+        fake_claude_path = fake_agent_installer.install(
+            "claude",
+            f"""#!/bin/sh
+set -e
+# Log all args for debugging
+echo "ARGS: $@" > debug_args.txt
+
+# Check for --dangerously-skip-permissions flag
+flag_found=0
+for arg in "$@"; do
+    if [ "$arg" = "--dangerously-skip-permissions" ]; then
+        flag_found=1
+        echo "yes" > "{flag_marker}"
+        break
+    fi
+done
+
+if [ "$flag_found" = "0" ]; then
+    echo "no" > "{flag_marker}"
+fi
+
+# The command is: claude --dangerously-skip-permissions -- "prompt"
+# So after the flag, we expect -- and then the prompt
+# Find the prompt (argument after --)
+prompt=""
+found_separator=0
+for arg in "$@"; do
+    if [ "$found_separator" = "1" ]; then
+        prompt="$arg"
+        break
+    fi
+    if [ "$arg" = "--" ]; then
+        found_separator=1
+    fi
+done
+
+printf '%s' "$prompt" > "{output_filename}"
+""",
+        )
+
+        # Configure agent with the flag included
+        write_workmux_config(
+            repo_path,
+            agent=f"{fake_claude_path} --dangerously-skip-permissions",
+            panes=[{"command": "<agent>"}],
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
+        )
+
+        agent_output = worktree_path / output_filename
+        flag_file = worktree_path / flag_marker
+        debug_file = worktree_path / "debug_args.txt"
+
+        wait_for_file(
+            env,
+            agent_output,
+            timeout=2.0,
+            window_name=window_name,
+            worktree_path=worktree_path,
+            debug_log_path=debug_file,
+        )
+
+        # Verify the flag was received
+        assert flag_file.exists(), "Flag marker file not created"
+        assert flag_file.read_text().strip() == "yes", (
+            f"--dangerously-skip-permissions flag not found. Debug: {debug_file.read_text() if debug_file.exists() else 'no debug'}"
+        )
+
+        # Verify the prompt was received
+        assert agent_output.read_text() == prompt_text
+
+    def test_agent_with_multiple_arguments(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """Agent config with multiple arguments should pass all args and prompt correctly."""
+        env = isolated_tmux_server
+        branch_name = "feature-multi-args"
+        window_name = get_window_name(branch_name)
+        prompt_text = "Multi-arg task"
+        output_filename = "agent_output.txt"
+
+        # Fake claude that captures all args before --
+        fake_claude_path = fake_agent_installer.install(
+            "claude",
+            f"""#!/bin/sh
+set -e
+echo "ARGS: $@" > debug_args.txt
+
+# Collect args before -- separator
+args_before=""
+prompt=""
+found_separator=0
+for arg in "$@"; do
+    if [ "$found_separator" = "1" ]; then
+        prompt="$arg"
+        break
+    fi
+    if [ "$arg" = "--" ]; then
+        found_separator=1
+    else
+        if [ -n "$args_before" ]; then
+            args_before="$args_before $arg"
+        else
+            args_before="$arg"
+        fi
+    fi
+done
+
+echo "$args_before" > args_received.txt
+printf '%s' "$prompt" > "{output_filename}"
+""",
+        )
+
+        # Configure agent with multiple flags
+        write_workmux_config(
+            repo_path,
+            agent=f"{fake_claude_path} --verbose --model opus",
+            panes=[{"command": "<agent>"}],
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
+        )
+
+        agent_output = worktree_path / output_filename
+        args_file = worktree_path / "args_received.txt"
+
+        wait_for_file(
+            env,
+            agent_output,
+            timeout=2.0,
+            window_name=window_name,
+            worktree_path=worktree_path,
+        )
+
+        # Verify all args were received
+        args_received = args_file.read_text().strip()
+        assert "--verbose" in args_received, f"--verbose not found in: {args_received}"
+        assert "--model" in args_received, f"--model not found in: {args_received}"
+        assert "opus" in args_received, f"opus not found in: {args_received}"
+
+        # Verify the prompt was received
+        assert agent_output.read_text() == prompt_text
+
+
 class TestMultiAgent:
     """Tests for multi-agent scenarios."""
 
