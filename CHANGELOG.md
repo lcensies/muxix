@@ -6,6 +6,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.63 (2026-01-02)
+
+- Linux binaries now use musl for better compatibility across different Linux
+  distributions
+
 ## v0.1.62 (2025-12-29)
 
 - The `merge` command with `--keep` no longer requires a clean worktree, since
