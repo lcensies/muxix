@@ -250,8 +250,9 @@ Both `copy` and `symlink` accept glob patterns.
 
 #### Lifecycle hooks
 
-Run commands at specific points in the worktree lifecycle. All hooks receive
-environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`.
+Run commands at specific points in the worktree lifecycle. All hooks run with
+the **worktree directory** as the working directory and receive environment
+variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`.
 
 | Hook          | When it runs                                      | Additional env vars                  |
 | ------------- | ------------------------------------------------- | ------------------------------------ |
