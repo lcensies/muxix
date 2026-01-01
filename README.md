@@ -233,6 +233,11 @@ Each pane supports:
 | `size`       | Absolute size in lines/cells                        | 50%     |
 | `percentage` | Size as percentage (1-100)                          | 50%     |
 
+**Note**: The `<agent>` placeholder must be the entire command value to be
+substituted. To add extra flags, either include them in the `agent` config
+(e.g., `agent: "claude --verbose"`) or use the literal command name (e.g.,
+`command: "claude --verbose"`).
+
 #### File operations
 
 Copy or symlink files into new worktrees:
@@ -1482,12 +1487,14 @@ files:
     - .envrc
 ```
 
-### Sharing Claude Code permissions across worktrees
+### Claude Code permissions
 
-When running Claude Code without `--dangerously-skip-permissions`, each worktree
-needs its own permissions in `.claude/settings.local.json`. To share permissions
-from your main worktree to all new worktrees, you can set up symlinks
-automatically with configuration:
+By default, Claude Code prompts for permission before running commands. There
+are several ways to handle this in worktrees:
+
+**Share permissions across worktrees**
+
+To keep permission prompts but share granted permissions across worktrees:
 
 ```yaml
 files:
@@ -1495,13 +1502,27 @@ files:
     - .claude/settings.local.json
 ```
 
-Add this to your global config (`~/.config/workmux/config.yaml`) to apply to all
-projects, or to a project's `.workmux.yaml` for project-specific setup.
-
-It's also recommended to add `.claude/settings.local.json` to `.gitignore`:
+Add this to your global config (`~/.config/workmux/config.yaml`) or project's
+`.workmux.yaml`. Since this file contains user-specific permissions, also add it
+to `.gitignore`:
 
 ```
 .claude/settings.local.json
+```
+
+**Skip permission prompts (yolo mode)**
+
+To skip prompts entirely, either configure the agent with the flag:
+
+```yaml
+agent: "claude --dangerously-skip-permissions"
+```
+
+This only affects workmux-created worktrees. Alternatively, use a global shell
+alias:
+
+```bash
+alias claude="claude --dangerously-skip-permissions"
 ```
 
 ### Delegating tasks with a custom command
