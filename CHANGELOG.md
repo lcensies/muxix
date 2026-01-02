@@ -7,6 +7,15 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.65 (2026-01-02)
+
+- The `open` command now switches to an existing window by default instead of
+  erroring when a window already exists
+- Added `--new` (`-n`) flag to `open` command to force opening a duplicate
+  window (creates suffix like `-2`, `-3`)
+- The `open` command now supports prompts via `-p`, `-P`, and `-e` flags,
+  matching the `add` command
+
 ## v0.1.63 (2026-01-02)
 
 - Linux binaries now use musl for better compatibility across different Linux
