@@ -31,6 +31,7 @@ tabled = { version = "0.20", features = ["ansi"] }
 git-url-parse = "0.6.0"
 slug = "0.1"
 indicatif = "0.18"
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3.14"

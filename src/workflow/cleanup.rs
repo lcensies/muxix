@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use std::path::Path;
 use std::time::SystemTime;
 use std::{thread, time::Duration};
@@ -34,6 +35,39 @@ fn remove_dir_contents(path: &Path) {
     }
 }
 
+/// Find all tmux windows matching the base handle pattern (including duplicates).
+/// Matches: {prefix}{handle} and {prefix}{handle}-{N}
+fn find_matching_windows(prefix: &str, handle: &str) -> Result<Vec<String>> {
+    let all_windows = tmux::get_all_window_names()?;
+    let base_name = tmux::prefixed(prefix, handle);
+    let escaped_base = regex::escape(&base_name);
+    let pattern = format!(r"^{}(-\d+)?$", escaped_base);
+    let re = Regex::new(&pattern).expect("Invalid regex pattern");
+
+    let matching: Vec<String> = all_windows.into_iter().filter(|w| re.is_match(w)).collect();
+
+    Ok(matching)
+}
+
+/// Check if the current window matches the base handle pattern (including duplicates).
+fn is_inside_matching_window(prefix: &str, handle: &str) -> Result<Option<String>> {
+    let current_window = match tmux::current_window_name()? {
+        Some(name) => name,
+        None => return Ok(None),
+    };
+
+    let base_name = tmux::prefixed(prefix, handle);
+    let escaped_base = regex::escape(&base_name);
+    let pattern = format!(r"^{}(-\d+)?$", escaped_base);
+    let re = Regex::new(&pattern).expect("Invalid regex pattern");
+
+    if re.is_match(&current_window) {
+        Ok(Some(current_window))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Centralized function to clean up tmux and git resources.
 /// `branch_name` is used for git operations (branch deletion).
 /// `handle` is used for tmux operations (window lookup/kill).
@@ -59,20 +93,20 @@ pub fn cleanup(
     context.chdir_to_main_worktree()?;
 
     let tmux_running = tmux::is_running().unwrap_or(false);
-    let running_inside_target_window = if tmux_running {
-        match tmux::current_window_name() {
-            Ok(Some(current_name)) => current_name == tmux::prefixed(&context.prefix, handle),
-            _ => false,
-        }
+
+    // Check if we're running inside ANY matching window (original or duplicate)
+    let current_matching_window = if tmux_running {
+        is_inside_matching_window(&context.prefix, handle)?
     } else {
-        false
+        None
     };
+    let running_inside_target_window = current_matching_window.is_some();
 
     let mut result = CleanupResult {
         tmux_window_killed: false,
         worktree_removed: false,
         local_branch_deleted: false,
-        ran_inside_target_window: running_inside_target_window,
+        window_to_close_later: None,
     };
 
     // Helper closure to perform the actual filesystem and git cleanup.
@@ -163,14 +197,23 @@ pub fn cleanup(
             info!(branch = branch_name, path = %worktree_path.display(), "cleanup:worktree directory removed");
         }
 
-        // Clean up the prompt file if it exists
-        let prompt_filename = format!("workmux-prompt-{}.md", branch_name);
-        let prompt_file = std::env::temp_dir().join(prompt_filename);
-        if prompt_file.exists() {
-            if let Err(e) = std::fs::remove_file(&prompt_file) {
-                warn!(path = %prompt_file.display(), error = %e, "cleanup:failed to remove prompt file");
-            } else {
-                debug!(path = %prompt_file.display(), "cleanup:prompt file removed");
+        // Clean up prompt files (handles both legacy fixed names and timestamped names)
+        // Matches: workmux-prompt-{name}.md and workmux-prompt-{name}-{timestamp}.md
+        let temp_dir = std::env::temp_dir();
+        let prefix = format!("workmux-prompt-{}", branch_name);
+        if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                    && filename.starts_with(&prefix)
+                    && filename.ends_with(".md")
+                {
+                    if let Err(e) = std::fs::remove_file(&path) {
+                        warn!(path = %path.display(), error = %e, "cleanup:failed to remove prompt file");
+                    } else {
+                        debug!(path = %path.display(), "cleanup:prompt file removed");
+                    }
+                }
             }
         }
 
@@ -210,48 +253,71 @@ pub fn cleanup(
     };
 
     if running_inside_target_window {
+        let current_window = current_matching_window.unwrap();
         info!(
             branch = branch_name,
-            "cleanup:deferring tmux window kill because command is running inside the window"
+            current_window = current_window,
+            "cleanup:running inside matching window, will close all others first"
         );
-        // Perform all filesystem and git cleanup *before* returning. The caller
-        // will then schedule the asynchronous window close.
-        perform_fs_git_cleanup(&mut result)?;
-    } else {
-        // Not running inside the target window, so we kill the window first
-        // to release any shell locks on the directory.
-        if tmux_running && tmux::window_exists(&context.prefix, handle).unwrap_or(false) {
-            tmux::kill_window(&context.prefix, handle).context("Failed to kill tmux window")?;
-            result.tmux_window_killed = true;
-            info!(handle = handle, "cleanup:tmux window killed");
 
-            // Poll to confirm the window is gone before proceeding. This prevents a race
-            // condition where we try to delete the directory before the shell inside
-            // the tmux window has terminated.
-            const MAX_RETRIES: u32 = 20;
-            const RETRY_DELAY: Duration = Duration::from_millis(50);
-            let mut window_is_gone = false;
-            for _ in 0..MAX_RETRIES {
-                if !tmux::window_exists(&context.prefix, handle)? {
-                    window_is_gone = true;
-                    break;
+        // Find and kill all OTHER matching windows (not the current one)
+        if tmux_running {
+            let matching_windows = find_matching_windows(&context.prefix, handle)?;
+            let mut killed_count = 0;
+            for window in &matching_windows {
+                if window != &current_window {
+                    if let Err(e) = tmux::kill_window_by_full_name(window) {
+                        warn!(window = window, error = %e, "cleanup:failed to kill duplicate window");
+                    } else {
+                        killed_count += 1;
+                        debug!(window = window, "cleanup:killed duplicate window");
+                    }
                 }
-                thread::sleep(RETRY_DELAY);
             }
-
-            if !window_is_gone {
-                warn!(
-                    handle = handle,
-                    "cleanup:tmux window did not close within retry budget"
-                );
-                eprintln!(
-                    "Warning: tmux window for '{}' did not close in the allotted time. \
-                    Filesystem cleanup may fail.",
-                    handle
-                );
+            if killed_count > 0 {
+                info!(count = killed_count, "cleanup:killed duplicate windows");
             }
         }
-        // Now that the window is gone, it's safe to clean up the filesystem and git state.
+
+        // Store the current window name for deferred close
+        result.window_to_close_later = Some(current_window);
+
+        // Perform filesystem and git cleanup
+        perform_fs_git_cleanup(&mut result)?;
+    } else {
+        // Not running inside any matching window, so kill ALL matching windows first
+        if tmux_running {
+            let matching_windows = find_matching_windows(&context.prefix, handle)?;
+            let mut killed_count = 0;
+            for window in &matching_windows {
+                if let Err(e) = tmux::kill_window_by_full_name(window) {
+                    warn!(window = window, error = %e, "cleanup:failed to kill window");
+                } else {
+                    killed_count += 1;
+                    debug!(window = window, "cleanup:killed window");
+                }
+            }
+            if killed_count > 0 {
+                result.tmux_window_killed = true;
+                info!(
+                    count = killed_count,
+                    handle = handle,
+                    "cleanup:killed all matching windows"
+                );
+
+                // Poll to confirm windows are gone before proceeding
+                const MAX_RETRIES: u32 = 20;
+                const RETRY_DELAY: Duration = Duration::from_millis(50);
+                for _ in 0..MAX_RETRIES {
+                    let remaining = find_matching_windows(&context.prefix, handle)?;
+                    if remaining.is_empty() {
+                        break;
+                    }
+                    thread::sleep(RETRY_DELAY);
+                }
+            }
+        }
+        // Now that windows are gone, clean up filesystem and git state.
         perform_fs_git_cleanup(&mut result)?;
     }
 
@@ -276,30 +342,34 @@ pub fn navigate_to_target_and_close(
     // Check if target window exists
     if !tmux::is_running()? || !tmux::window_exists(prefix, target_window_name)? {
         // If target window doesn't exist, still need to close source window if running inside it
-        if cleanup_result.ran_inside_target_window {
+        if let Some(ref window_to_close) = cleanup_result.window_to_close_later {
             let delay = Duration::from_millis(WINDOW_CLOSE_DELAY_MS);
-            match tmux::schedule_window_close(prefix, source_handle, delay) {
-                Ok(_) => info!(
-                    handle = source_handle,
-                    "cleanup:tmux window close scheduled"
-                ),
+            let delay_secs = format!("{:.3}", delay.as_secs_f64());
+            let source_spec = format!("={}", window_to_close);
+            let source_escaped = shell_escape(&source_spec);
+            let script = format!(
+                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1",
+                delay = delay_secs,
+                source = source_escaped,
+            );
+            match tmux::run_shell(&script) {
+                Ok(_) => info!(window = window_to_close, "cleanup:scheduled window close"),
                 Err(e) => warn!(
-                    handle = source_handle,
+                    window = window_to_close,
                     error = %e,
-                    "cleanup:failed to schedule tmux window close",
+                    "cleanup:failed to schedule window close",
                 ),
             }
         }
         return Ok(());
     }
 
-    if cleanup_result.ran_inside_target_window {
-        // Running inside source window: schedule both navigation and kill together
+    if let Some(ref window_to_close) = cleanup_result.window_to_close_later {
+        // Running inside a matching window: schedule both navigation and kill together
         let delay = Duration::from_millis(WINDOW_CLOSE_DELAY_MS);
         let delay_secs = format!("{:.3}", delay.as_secs_f64());
-        // Put = inside quotes to handle spaces in window names
         let target_spec = format!("={}", tmux::prefixed(prefix, target_window_name));
-        let source_spec = format!("={}", tmux::prefixed(prefix, source_handle));
+        let source_spec = format!("={}", window_to_close);
         let target_escaped = shell_escape(&target_spec);
         let source_escaped = shell_escape(&source_spec);
         let script = format!(
@@ -311,37 +381,25 @@ pub fn navigate_to_target_and_close(
 
         match tmux::run_shell(&script) {
             Ok(_) => info!(
-                handle = source_handle,
+                window = window_to_close,
                 target = target_window_name,
                 "cleanup:scheduled navigation to target and window close"
             ),
             Err(e) => warn!(
-                handle = source_handle,
+                window = window_to_close,
                 error = %e,
                 "cleanup:failed to schedule navigation and window close",
             ),
         }
-    } else {
-        // Running outside source window: synchronously navigate to target and close source
+    } else if !cleanup_result.tmux_window_killed {
+        // Running outside and windows weren't killed yet (shouldn't happen normally)
+        // but handle it for completeness
         tmux::select_window(prefix, target_window_name)?;
         info!(
             handle = source_handle,
             target = target_window_name,
             "cleanup:navigated to target branch window"
         );
-
-        // Close the source window now that we've navigated away
-        match tmux::kill_window(prefix, source_handle) {
-            Ok(_) => info!(
-                handle = source_handle,
-                "cleanup:closed source branch window"
-            ),
-            Err(e) => warn!(
-                handle = source_handle,
-                error = %e,
-                "cleanup:failed to close source branch window",
-            ),
-        }
     }
 
     Ok(())

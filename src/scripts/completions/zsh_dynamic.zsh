@@ -23,23 +23,40 @@ _workmux_dynamic() {
     # Get the subcommand (second word)
     local cmd="${words[2]}"
 
-    # List of flags that take arguments (values).
+    # List of flags that take arguments (values), by command.
     # We must defer to _workmux for these so it can offer files/custom hints.
     # Boolean flags are excluded so we can offer positional completions after them.
     local -a arg_flags
-    arg_flags=(
-        # add flags
-        -p --prompt
-        -P --prompt-file
-        --name
-        -a --agent
-        -n --count
-        --foreach
-        --branch-template
-        --pr
-        # Note: --base and --into are excluded because they need dynamic completion
-        # (--base takes git branches, --into takes worktree handles)
-    )
+    case "$cmd" in
+        add)
+            arg_flags=(
+                -p --prompt
+                -P --prompt-file
+                --name
+                -a --agent
+                -n --count
+                --foreach
+                --branch-template
+                --pr
+                # Note: --base is excluded because it needs dynamic completion
+            )
+            ;;
+        open)
+            arg_flags=(
+                -p --prompt
+                -P --prompt-file
+                # Note: -n/--new is a boolean flag, not included here
+            )
+            ;;
+        merge)
+            arg_flags=(
+                # Note: --into is excluded because it needs dynamic completion
+            )
+            ;;
+        *)
+            arg_flags=()
+            ;;
+    esac
 
     # Check if we are currently completing a flag (starts with -)
     # OR if the previous word is a flag that requires an argument.

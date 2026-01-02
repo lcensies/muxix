@@ -150,6 +150,7 @@ pub fn setup_environment(
         branch_name: branch_name.to_string(),
         post_create_hooks_run: hooks_run,
         base_branch: None,
+        did_switch: false,
     })
 }
 

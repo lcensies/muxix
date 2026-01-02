@@ -17,6 +17,7 @@ pub use list::list;
 pub use merge::merge;
 pub use open::open;
 pub use remove::remove;
+pub use setup::write_prompt_file;
 
 // Re-export commonly used types for convenience
 pub use context::WorkflowContext;

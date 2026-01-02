@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use regex::Regex;
 
 use crate::{git, tmux};
 use tracing::info;
@@ -8,11 +9,17 @@ use super::setup;
 use super::types::{CreateResult, SetupOptions};
 
 /// Open a tmux window for an existing worktree
-pub fn open(name: &str, context: &WorkflowContext, options: SetupOptions) -> Result<CreateResult> {
+pub fn open(
+    name: &str,
+    context: &WorkflowContext,
+    options: SetupOptions,
+    new_window: bool,
+) -> Result<CreateResult> {
     info!(
         name = name,
         run_hooks = options.run_hooks,
         run_file_ops = options.run_file_ops,
+        new_window = new_window,
         "open:start"
     );
 
@@ -33,22 +40,40 @@ pub fn open(name: &str, context: &WorkflowContext, options: SetupOptions) -> Res
         )
     })?;
 
-    // Derive handle from the worktree path (in case user provided branch name)
-    let handle = worktree_path
+    // Derive base handle from the worktree path (in case user provided branch name)
+    let base_handle = worktree_path
         .file_name()
         .ok_or_else(|| anyhow!("Invalid worktree path: no directory name"))?
         .to_string_lossy()
         .to_string();
 
-    // Check if tmux window exists using handle (the directory name)
-    if tmux::window_exists(&context.prefix, &handle)? {
-        return Err(anyhow!(
-            "A tmux window named '{}{}' already exists. To switch to it, run: tmux select-window -t '{}'",
-            context.prefix,
-            handle,
-            tmux::prefixed(&context.prefix, &handle)
-        ));
+    // Determine final handle (with or without suffix)
+    let window_exists = tmux::window_exists(&context.prefix, &base_handle)?;
+
+    // If window exists and we're not forcing new, switch to it
+    if window_exists && !new_window {
+        tmux::select_window(&context.prefix, &base_handle)?;
+        info!(
+            handle = base_handle,
+            branch = branch_name,
+            path = %worktree_path.display(),
+            "open:switched to existing window"
+        );
+        return Ok(CreateResult {
+            worktree_path,
+            branch_name,
+            post_create_hooks_run: 0,
+            base_branch: None,
+            did_switch: true,
+        });
     }
+
+    // Determine handle: use suffix if forcing new window and one exists
+    let handle = if new_window && window_exists {
+        resolve_unique_handle(context, &base_handle)?
+    } else {
+        base_handle
+    };
 
     // Setup the environment
     let result = setup::setup_environment(
@@ -67,4 +92,49 @@ pub fn open(name: &str, context: &WorkflowContext, options: SetupOptions) -> Res
         "open:completed"
     );
     Ok(result)
+}
+
+/// Find a unique handle by appending a suffix if necessary.
+///
+/// If `base_handle` is "my-feature" and windows exist for:
+/// - wm:my-feature
+/// - wm:my-feature-2
+///
+/// This returns "my-feature-3".
+fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result<String> {
+    let all_windows = tmux::get_all_window_names()?;
+    let prefix = &context.prefix;
+    let full_base = tmux::prefixed(prefix, base_handle);
+
+    // If base name doesn't exist, use it directly
+    if !all_windows.contains(&full_base) {
+        return Ok(base_handle.to_string());
+    }
+
+    // Find the highest existing suffix
+    // Pattern matches: {prefix}{handle}-{number}
+    let escaped_base = regex::escape(&full_base);
+    let pattern = format!(r"^{}-(\d+)$", escaped_base);
+    let re = Regex::new(&pattern).expect("Invalid regex pattern");
+
+    let mut max_suffix: u32 = 1; // Start at 1 so first duplicate is -2
+
+    for window_name in &all_windows {
+        if let Some(caps) = re.captures(window_name)
+            && let Some(num_match) = caps.get(1)
+            && let Ok(num) = num_match.as_str().parse::<u32>()
+        {
+            max_suffix = max_suffix.max(num);
+        }
+    }
+
+    let new_handle = format!("{}-{}", base_handle, max_suffix + 1);
+
+    info!(
+        base_handle = base_handle,
+        new_handle = new_handle,
+        "open:generated unique handle for duplicate"
+    );
+
+    Ok(new_handle)
 }

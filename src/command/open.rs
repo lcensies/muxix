@@ -1,32 +1,75 @@
+use crate::command::args::PromptArgs;
+use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
 use anyhow::{Context, Result};
 
-pub fn run(name: &str, run_hooks: bool, force_files: bool) -> Result<()> {
+pub fn run(
+    name: &str,
+    run_hooks: bool,
+    force_files: bool,
+    new_window: bool,
+    prompt_args: PromptArgs,
+) -> Result<()> {
     let config = config::Config::load(None)?;
     let context = WorkflowContext::new(config)?;
 
+    // Load prompt if any prompt argument is provided
+    let prompt = load_prompt(&PromptLoadArgs {
+        prompt_editor: prompt_args.prompt_editor,
+        prompt_inline: prompt_args.prompt.as_deref(),
+        prompt_file: prompt_args.prompt_file.as_ref(),
+    })?;
+
+    // Write prompt to temp file if provided
+    // Use unique filename with timestamp to prevent race condition when opening multiple duplicates
+    let prompt_file_path = if let Some(ref p) = prompt {
+        let unique_name = format!(
+            "{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
+        Some(crate::workflow::write_prompt_file(&unique_name, p)?)
+    } else {
+        None
+    };
+
     // Construct setup options (pane commands always run on open)
-    let options = SetupOptions::new(run_hooks, force_files, true);
+    let mut options = SetupOptions::new(run_hooks, force_files, true);
+    options.prompt_file_path = prompt_file_path;
 
-    super::announce_hooks(
-        &context.config,
-        Some(&options),
-        super::HookPhase::PostCreate,
-    );
-
-    let result =
-        workflow::open(name, &context, options).context("Failed to open worktree environment")?;
-
-    if result.post_create_hooks_run > 0 {
-        println!("✓ Setup complete");
+    // Only announce hooks if we're forcing a new window (otherwise we might just switch)
+    if new_window {
+        super::announce_hooks(
+            &context.config,
+            Some(&options),
+            super::HookPhase::PostCreate,
+        );
     }
 
-    println!(
-        "✓ Successfully opened tmux window for '{}'\n  Worktree: {}",
-        name,
-        result.worktree_path.display()
-    );
+    let result = workflow::open(name, &context, options, new_window)
+        .context("Failed to open worktree environment")?;
+
+    if result.did_switch {
+        println!(
+            "✓ Switched to existing tmux window for '{}'\n  Worktree: {}",
+            name,
+            result.worktree_path.display()
+        );
+    } else {
+        if result.post_create_hooks_run > 0 {
+            println!("✓ Setup complete");
+        }
+
+        println!(
+            "✓ Opened tmux window for '{}'\n  Worktree: {}",
+            name,
+            result.worktree_path.display()
+        );
+    }
 
     Ok(())
 }

@@ -763,6 +763,9 @@ def run_workmux_open(
     *,
     run_hooks: bool = False,
     force_files: bool = False,
+    new_window: bool = False,
+    prompt: Optional[str] = None,
+    prompt_file: Optional[Path] = None,
     pre_run_tmux_cmds: Optional[List[List[str]]] = None,
     expect_fail: bool = False,
 ) -> WorkmuxCommandResult:
@@ -770,12 +773,23 @@ def run_workmux_open(
     Helper to run `workmux open` command inside the isolated tmux session.
 
     Returns the command result so tests can assert on stdout/stderr.
+
+    Args:
+        new_window: If True, pass --new to force opening a new window (creates suffix like -2, -3)
+        prompt: Inline prompt text to pass via -p
+        prompt_file: Path to a prompt file to pass via -P
     """
     flags: List[str] = []
     if run_hooks:
         flags.append("--run-hooks")
     if force_files:
         flags.append("--force-files")
+    if new_window:
+        flags.append("--new")
+    if prompt:
+        flags.append(f"-p {shlex.quote(prompt)}")
+    if prompt_file:
+        flags.append(f"-P {shlex.quote(str(prompt_file))}")
 
     flag_str = f" {' '.join(flags)}" if flags else ""
     return run_workmux_command(

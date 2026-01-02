@@ -227,6 +227,13 @@ enum Commands {
         /// Re-apply file operations (copy/symlink)
         #[arg(long)]
         force_files: bool,
+
+        /// Force opening in a new window (creates suffix like -2, -3) instead of switching to existing
+        #[arg(long, short = 'n')]
+        new: bool,
+
+        #[command(flatten)]
+        prompt: PromptArgs,
     },
 
     /// Close a worktree's tmux window (keeps the worktree and branch)
@@ -376,7 +383,9 @@ pub fn run() -> Result<()> {
             name,
             run_hooks,
             force_files,
-        } => command::open::run(&name, run_hooks, force_files),
+            new,
+            prompt,
+        } => command::open::run(&name, run_hooks, force_files, new, prompt),
         Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Merge {
             name,

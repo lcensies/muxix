@@ -20,6 +20,8 @@ pub struct CreateResult {
     pub branch_name: String,
     pub post_create_hooks_run: usize,
     pub base_branch: Option<String>,
+    /// True if we switched to an existing window instead of creating a new one
+    pub did_switch: bool,
 }
 
 /// Result of merging a worktree
@@ -39,7 +41,8 @@ pub struct CleanupResult {
     pub tmux_window_killed: bool,
     pub worktree_removed: bool,
     pub local_branch_deleted: bool,
-    pub ran_inside_target_window: bool,
+    /// The actual window name to close later (when running inside a duplicate window)
+    pub window_to_close_later: Option<String>,
 }
 
 /// Options for setting up a worktree environment

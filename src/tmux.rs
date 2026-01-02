@@ -69,12 +69,17 @@ pub fn find_last_window_with_prefix(prefix: &str) -> Result<Option<String>> {
 /// Check if a tmux window with the given name exists
 pub fn window_exists(prefix: &str, window_name: &str) -> Result<bool> {
     let prefixed_name = prefixed(prefix, window_name);
+    window_exists_by_full_name(&prefixed_name)
+}
+
+/// Check if a window exists by its full name (including prefix)
+pub fn window_exists_by_full_name(full_name: &str) -> Result<bool> {
     let windows = Cmd::new("tmux")
         .args(&["list-windows", "-F", "#{window_name}"])
         .run_and_capture_stdout();
 
     match windows {
-        Ok(output) => Ok(output.lines().any(|line| line == prefixed_name)),
+        Ok(output) => Ok(output.lines().any(|line| line == full_name)),
         Err(_) => Ok(false), // If command fails, window doesn't exist
     }
 }
@@ -158,10 +163,9 @@ pub fn select_window(prefix: &str, window_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Kill a tmux window
-pub fn kill_window(prefix: &str, window_name: &str) -> Result<()> {
-    let prefixed_name = prefixed(prefix, window_name);
-    let target = format!("={}", prefixed_name);
+/// Kill a tmux window by its full name (including prefix)
+pub fn kill_window_by_full_name(full_name: &str) -> Result<()> {
+    let target = format!("={}", full_name);
 
     Cmd::new("tmux")
         .args(&["kill-window", "-t", &target])
@@ -182,10 +186,10 @@ pub fn run_shell(script: &str) -> Result<()> {
 
 /// Schedule a tmux window to be killed after a short delay. This is useful when
 /// the current command is running inside the window that needs to close.
-pub fn schedule_window_close(prefix: &str, window_name: &str, delay: Duration) -> Result<()> {
+pub fn schedule_window_close_by_full_name(full_name: &str, delay: Duration) -> Result<()> {
     let delay_secs = format!("{:.3}", delay.as_secs_f64());
     // Shell-escape the target with = inside quotes to handle spaces in window names
-    let target = format!("={}", prefixed(prefix, window_name));
+    let target = format!("={}", full_name);
     let escaped_target = format!("'{}'", target.replace('\'', r#"'\''"#));
     let script = format!(
         "sleep {delay}; tmux kill-window -t {target} >/dev/null 2>&1",
