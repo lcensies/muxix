@@ -90,12 +90,12 @@ Download the
 [latest release](https://github.com/raine/workmux/releases/latest) for your
 platform:
 
-| Platform              | Download                                                                                                                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Linux (x64)           | [x86_64-unknown-linux-musl.tar.gz](https://github.com/raine/workmux/releases/latest/download/x86_64-unknown-linux-musl.tar.gz)   |
-| Linux (ARM64)         | [aarch64-unknown-linux-musl.tar.gz](https://github.com/raine/workmux/releases/latest/download/aarch64-unknown-linux-musl.tar.gz) |
-| macOS (Intel)         | [x86_64-apple-darwin.tar.gz](https://github.com/raine/workmux/releases/latest/download/x86_64-apple-darwin.tar.gz)               |
-| macOS (Apple Silicon) | [aarch64-apple-darwin.tar.gz](https://github.com/raine/workmux/releases/latest/download/aarch64-apple-darwin.tar.gz)             |
+| Platform              | Download                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Linux (x64)           | [workmux-linux-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-amd64.tar.gz) |
+| Linux (ARM64)         | [workmux-linux-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-arm64.tar.gz) |
+| macOS (Intel)         | [workmux-darwin-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-amd64.tar.gz) |
+| macOS (Apple Silicon) | [workmux-darwin-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-arm64.tar.gz) |
 
 Extract and install:
 

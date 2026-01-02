@@ -19,16 +19,20 @@ jobs:
           # macOS builds (use cargo directly)
           - os: macos-15
             target: aarch64-apple-darwin
+            artifact: workmux-darwin-arm64
             use_cross: false
           - os: macos-15
             target: x86_64-apple-darwin
+            artifact: workmux-darwin-amd64
             use_cross: false
           # Linux builds (use cross with musl for static linking)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            artifact: workmux-linux-amd64
             use_cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
+            artifact: workmux-linux-arm64
             use_cross: true
     runs-on: ${{ matrix.os }}
     steps:
@@ -53,14 +57,14 @@ jobs:
         run: |
           bin="target/${{ matrix.target }}/release/${BIN_NAME}"
           # Binary is already stripped via Cargo.toml profile.release.strip
-          tar -C "$(dirname "$bin")" -czf ${{ matrix.target }}.tar.gz ${BIN_NAME}
-          shasum -a 256 ${{ matrix.target }}.tar.gz > ${{ matrix.target }}.sha256
+          tar -C "$(dirname "$bin")" -czf ${{ matrix.artifact }}.tar.gz ${BIN_NAME}
+          shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.artifact }}
           path: |
-            ${{ matrix.target }}.tar.gz
-            ${{ matrix.target }}.sha256
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.sha256
 
   release:
     needs: build
@@ -96,10 +100,10 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           VERSION="${VERSION#v}"
-          SHA_MAC_ARM=$(awk '{print $1}' aarch64-apple-darwin.sha256)
-          SHA_MAC_INTEL=$(awk '{print $1}' x86_64-apple-darwin.sha256)
-          SHA_LINUX_INTEL=$(awk '{print $1}' x86_64-unknown-linux-musl.sha256)
-          SHA_LINUX_ARM=$(awk '{print $1}' aarch64-unknown-linux-musl.sha256)
+          SHA_MAC_ARM=$(awk '{print $1}' workmux-darwin-arm64.sha256)
+          SHA_MAC_INTEL=$(awk '{print $1}' workmux-darwin-amd64.sha256)
+          SHA_LINUX_INTEL=$(awk '{print $1}' workmux-linux-amd64.sha256)
+          SHA_LINUX_ARM=$(awk '{print $1}' workmux-linux-arm64.sha256)
 
           cat > tap/Formula/workmux.rb << EOF
           class Workmux < Formula
@@ -110,20 +114,20 @@ jobs:
 
             on_macos do
               if Hardware::CPU.arm?
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-apple-darwin.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-darwin-arm64.tar.gz"
                 sha256 "${SHA_MAC_ARM}"
               else
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-apple-darwin.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-darwin-amd64.tar.gz"
                 sha256 "${SHA_MAC_INTEL}"
               end
             end
 
             on_linux do
               if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/aarch64-unknown-linux-musl.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-linux-arm64.tar.gz"
                 sha256 "${SHA_LINUX_ARM}"
               else
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/x86_64-unknown-linux-musl.tar.gz"
+                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-linux-amd64.tar.gz"
                 sha256 "${SHA_LINUX_INTEL}"
               end
             end
