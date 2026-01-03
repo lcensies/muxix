@@ -62,7 +62,7 @@ test *ARGS: build
     fi
 
 # Release a new patch version
-release-patch:
+release:
     @just _release patch
 
 # Internal release helper
