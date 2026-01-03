@@ -133,6 +133,7 @@ pub fn cleanup(
                 let worktree_path_str = abs_worktree_path.to_string_lossy();
                 let project_root_str = abs_project_root.to_string_lossy();
                 let hook_env = [
+                    ("WORKMUX_HANDLE", handle),
                     ("WM_HANDLE", handle),
                     ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
                     ("WM_PROJECT_ROOT", project_root_str.as_ref()),

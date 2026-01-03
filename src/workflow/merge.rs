@@ -172,6 +172,7 @@ pub fn merge(
         let project_root_str = abs_project_root.to_string_lossy();
 
         let hook_env = [
+            ("WORKMUX_HANDLE", handle),
             ("WM_BRANCH_NAME", branch_to_merge.as_str()),
             ("WM_TARGET_BRANCH", target_branch),
             ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
