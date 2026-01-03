@@ -7,6 +7,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.66 (2026-01-03)
+
+- Added `--no-verify` (`-n`) flag to `merge` command to skip pre-merge hooks
+- The `merge` command now works when run from subdirectories within a worktree
+
 ## v0.1.65 (2026-01-02)
 
 - The `open` command now switches to an existing window by default instead of
