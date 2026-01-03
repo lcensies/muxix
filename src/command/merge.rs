@@ -10,6 +10,7 @@ pub fn run(
     mut rebase: bool,
     mut squash: bool,
     keep: bool,
+    no_verify: bool,
 ) -> Result<()> {
     let config = config::Config::load(None)?;
 
@@ -31,8 +32,10 @@ pub fn run(
 
     let context = WorkflowContext::new(config)?;
 
-    // Announce pre-merge hooks if any
-    super::announce_hooks(&context.config, None, super::HookPhase::PreMerge);
+    // Announce pre-merge hooks if any (unless --no-verify is passed)
+    if !no_verify {
+        super::announce_hooks(&context.config, None, super::HookPhase::PreMerge);
+    }
 
     // Only announce pre-remove hooks if we're actually going to run cleanup
     if !keep {
@@ -46,6 +49,7 @@ pub fn run(
         rebase,
         squash,
         keep,
+        no_verify,
         &context,
     )
     .context("Failed to merge worktree")?;

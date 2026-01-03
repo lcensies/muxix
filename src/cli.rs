@@ -268,6 +268,10 @@ enum Commands {
         /// Keep the worktree, window, and branch after merging (skip cleanup)
         #[arg(short = 'k', long)]
         keep: bool,
+
+        /// Skip running pre-merge hooks
+        #[arg(short = 'n', long)]
+        no_verify: bool,
     },
 
     /// Remove a worktree, tmux window, and branch without merging
@@ -394,6 +398,7 @@ pub fn run() -> Result<()> {
             rebase,
             squash,
             keep,
+            no_verify,
         } => command::merge::run(
             name.as_deref(),
             into.as_deref(),
@@ -401,6 +406,7 @@ pub fn run() -> Result<()> {
             rebase,
             squash,
             keep,
+            no_verify,
         ),
         Commands::Remove {
             names,

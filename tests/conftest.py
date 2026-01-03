@@ -917,6 +917,7 @@ def run_workmux_merge(
     squash: bool = False,
     keep: bool = False,
     into: Optional[str] = None,
+    no_verify: bool = False,
     expect_fail: bool = False,
     from_window: Optional[str] = None,
 ) -> None:
@@ -936,6 +937,7 @@ def run_workmux_merge(
         squash: Whether to use --squash flag
         keep: Whether to use --keep flag
         into: Optional target branch to merge into (instead of main)
+        no_verify: Whether to use --no-verify flag (skip pre-merge hooks)
         expect_fail: If True, asserts the command fails (non-zero exit code)
         from_window: Optional tmux window name to run the command from
     """
@@ -958,6 +960,8 @@ def run_workmux_merge(
         flags.append("--keep")
     if into:
         flags.append(f"--into {into}")
+    if no_verify:
+        flags.append("--no-verify")
 
     branch_arg = branch_name if branch_name else ""
     flags_str = " ".join(flags)

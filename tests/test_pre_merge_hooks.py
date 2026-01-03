@@ -103,3 +103,59 @@ class TestPreMergeHooks:
         )
 
         assert worktree_path.exists(), "Worktree should NOT be removed when hook fails"
+
+    def test_pre_merge_hook_skipped_with_no_verify(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies that pre_merge hooks are skipped when --no-verify is passed."""
+        env = isolated_tmux_server
+        branch_name = "feature-no-verify"
+        marker_file = env.tmp_path / "should_not_exist.txt"
+
+        # Configure a hook that creates a file
+        write_workmux_config(
+            repo_path,
+            pre_merge=[f"touch {marker_file}"],
+            env=env,
+        )
+
+        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        worktree_path = get_worktree_path(repo_path, branch_name)
+        create_commit(env, worktree_path, "feat: test commit")
+
+        # Run merge with --no-verify
+        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, no_verify=True)
+
+        assert not marker_file.exists(), "Hook should NOT have run with --no-verify"
+        assert not worktree_path.exists(), "Merge should still complete successfully"
+
+    def test_no_verify_bypasses_failing_hook(
+        self,
+        isolated_tmux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies that --no-verify allows merge to succeed even with a failing hook configured."""
+        env = isolated_tmux_server
+        branch_name = "feature-bypass-fail"
+
+        # Configure a hook that would fail
+        write_workmux_config(
+            repo_path,
+            pre_merge=["exit 1"],
+            env=env,
+        )
+
+        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        worktree_path = get_worktree_path(repo_path, branch_name)
+        create_commit(env, worktree_path, "feat: test commit")
+
+        # Merge should succeed with --no-verify despite the failing hook
+        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, no_verify=True)
+
+        assert not worktree_path.exists(), (
+            "Merge should complete successfully with --no-verify"
+        )
