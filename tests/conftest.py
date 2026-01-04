@@ -690,9 +690,13 @@ def run_workmux_command(
 
     env.tmux(["send-keys", "-t", "test:", workmux_cmd, "C-m"])
 
-    assert poll_until(exit_code_file.exists, timeout=5.0), (
-        "workmux command did not complete in time"
-    )
+    if not poll_until(exit_code_file.exists, timeout=5.0):
+        # Capture pane content for debugging
+        pane_result = env.tmux(["capture-pane", "-t", "test:", "-p"])
+        pane_content = pane_result.stdout if pane_result.stdout else "(empty)"
+        raise AssertionError(
+            f"workmux command did not complete in time\nPane content:\n{pane_content}"
+        )
 
     result = WorkmuxCommandResult(
         exit_code=int(exit_code_file.read_text().strip()),
