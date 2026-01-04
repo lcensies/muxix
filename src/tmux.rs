@@ -259,18 +259,24 @@ impl PaneHandshake {
     /// The wrapper briefly disables echo while signaling the channel, restores it,
     /// then exec's into the shell so the TTY starts in a normal state.
     ///
-    /// We wrap in `sh -c` to ensure POSIX syntax works regardless of tmux's
-    /// default-shell setting (e.g., nushell uses different syntax).
+    /// We wrap in `sh -c "..."` with double quotes to ensure the command works when
+    /// tmux's default-shell is a non-POSIX shell like nushell. Single-quote escaping
+    /// (`'\''`) doesn't work reliably when nushell parses the command before passing
+    /// it to sh.
     fn wrapper_command(&self, shell: &str) -> String {
-        // Quote shell path in case it contains spaces
-        // Silence stty errors in case it's not available in minimal environments
-        // Use -l to start as login shell, ensuring ~/.zprofile etc. are sourced
-        // Wrap in sh -c to ensure POSIX shell syntax works with any tmux default-shell
-        let inner = format!(
-            "stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l",
-            self.channel, shell
-        );
-        format!("sh -c '{}'", inner.replace('\'', "'\\''"))
+        // Two-step escaping for the shell path:
+        // 1. Escape for inner single-quoted context (exec '...')
+        let inner_shell = shell.replace('\'', "'\\''");
+        // 2. Escape for outer double-quoted context (sh -c "...")
+        let escaped_shell = inner_shell
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('$', "\\$")
+            .replace('`', "\\`");
+        format!(
+            "sh -c \"stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l\"",
+            self.channel, escaped_shell
+        )
     }
 
     /// Wait for the shell to signal it is ready, then clean up.
