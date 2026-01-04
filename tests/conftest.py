@@ -328,6 +328,10 @@ class TmuxEnvironment:
         self.home_path = self.tmp_path / "test_home"
         self.home_path.mkdir()
 
+        # Create an empty .zshrc to prevent zsh-newuser-install from running.
+        # Without this, zsh shows "Aborting... execute: touch ~/.zshrc" and hangs.
+        (self.home_path / ".zshrc").touch()
+
         # Use a short socket path in /tmp to avoid macOS socket path length limits
         # Create a temporary file and use its name for the socket
         tmp_file = tempfile.NamedTemporaryFile(
