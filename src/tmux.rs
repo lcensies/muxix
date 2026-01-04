@@ -601,7 +601,7 @@ fn adjust_command<'a>(
 ///
 /// When a prompt file is provided (via --prompt-file or --prompt-editor), this function
 /// modifies the agent command to automatically pass the prompt content. For example,
-/// "claude" becomes "claude \"$(cat PROMPT.md)\"".
+/// "claude" becomes "sh -c 'claude -- \"$(cat PROMPT.md)\"'".
 ///
 /// Only rewrites commands that match the configured agent. For instance, if the config
 /// specifies "gemini" as the agent, a "claude" command won't be rewritten.
@@ -609,6 +609,9 @@ fn adjust_command<'a>(
 /// Special handling:
 /// - gemini: Adds `-i` flag for interactive mode after the prompt
 /// - Other agents (claude, codex, etc.): Just passes the prompt as first argument
+///
+/// The entire command is wrapped in `sh -c '...'` to ensure the `$(cat ...)` command
+/// substitution works correctly when the user's shell is a non-POSIX shell like nushell.
 ///
 /// Returns None if the command shouldn't be rewritten (empty, doesn't match configured agent, etc.)
 fn rewrite_agent_command(
@@ -642,31 +645,34 @@ fn rewrite_agent_command(
     let prompt_path = relative.to_string_lossy();
     let rest = pane_rest.trim_start();
 
-    // Build the command step-by-step to ensure correct order:
+    // Build the inner command step-by-step to ensure correct order:
     // [agent_command] [agent_options] [user_args] [prompt_argument]
-    let mut cmd = pane_token.to_string();
+    let mut inner_cmd = pane_token.to_string();
 
     // Add user-provided arguments from config (must come before the prompt)
     if !rest.is_empty() {
-        cmd.push(' ');
-        cmd.push_str(rest);
+        inner_cmd.push(' ');
+        inner_cmd.push_str(rest);
     }
 
     // Add the prompt argument (agent-specific handling)
     let pane_stem_str = pane_stem.and_then(|s| s.to_str());
     if pane_stem_str == Some("gemini") {
         // gemini uses -i flag with the prompt as its argument
-        cmd.push_str(&format!(" -i \"$(cat {})\"", prompt_path));
+        inner_cmd.push_str(&format!(" -i \"$(cat {})\"", prompt_path));
     } else if pane_stem_str == Some("opencode") {
         // opencode uses -p flag for interactive TUI with initial prompt
         // (opencode run is non-interactive, similar to claude -p)
-        cmd.push_str(&format!(" -p \"$(cat {})\"", prompt_path));
+        inner_cmd.push_str(&format!(" -p \"$(cat {})\"", prompt_path));
     } else {
         // Other agents use -- separator
-        cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
+        inner_cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
     }
 
-    Some(cmd)
+    // Wrap in sh -c '...' to ensure $(cat ...) works with non-POSIX shells like nushell.
+    // Escape single quotes in the inner command using the '\'' technique.
+    let escaped_inner = inner_cmd.replace('\'', "'\\''");
+    Some(format!("sh -c '{}'", escaped_inner))
 }
 
 // --- Status Format Management ---
@@ -784,7 +790,10 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("claude"));
-        assert_eq!(result, Some("claude -- \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(
+            result,
+            Some("sh -c 'claude -- \"$(cat PROMPT.md)\"'".to_string())
+        );
     }
 
     #[test]
@@ -793,7 +802,10 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("codex", &prompt_file, &working_dir, Some("codex"));
-        assert_eq!(result, Some("codex -- \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(
+            result,
+            Some("sh -c 'codex -- \"$(cat PROMPT.md)\"'".to_string())
+        );
     }
 
     #[test]
@@ -802,7 +814,10 @@ mod tests {
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, Some("gemini"));
-        assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(
+            result,
+            Some("sh -c 'gemini -i \"$(cat PROMPT.md)\"'".to_string())
+        );
     }
 
     #[test]
@@ -818,7 +833,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("/usr/local/bin/claude -- \"$(cat PROMPT.md)\"".to_string())
+            Some("sh -c '/usr/local/bin/claude -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -835,7 +850,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
+            Some("sh -c 'claude --verbose -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -862,7 +877,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("unknown-agent -- \"$(cat PROMPT.md)\"".to_string())
+            Some("sh -c 'unknown-agent -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -882,7 +897,28 @@ mod tests {
 
         let result =
             rewrite_agent_command("opencode", &prompt_file, &working_dir, Some("opencode"));
-        assert_eq!(result, Some("opencode -p \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(
+            result,
+            Some("sh -c 'opencode -p \"$(cat PROMPT.md)\"'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_command_escapes_single_quotes() {
+        // Test that single quotes in agent paths are properly escaped
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "/path/with'quote/claude",
+            &prompt_file,
+            &working_dir,
+            Some("/path/with'quote/claude"),
+        );
+        assert_eq!(
+            result,
+            Some("sh -c '/path/with'\\''quote/claude -- \"$(cat PROMPT.md)\"'".to_string())
+        );
     }
 
     // --- inject_status_format tests ---
