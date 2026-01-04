@@ -258,14 +258,19 @@ impl PaneHandshake {
     ///
     /// The wrapper briefly disables echo while signaling the channel, restores it,
     /// then exec's into the shell so the TTY starts in a normal state.
+    ///
+    /// We wrap in `sh -c` to ensure POSIX syntax works regardless of tmux's
+    /// default-shell setting (e.g., nushell uses different syntax).
     fn wrapper_command(&self, shell: &str) -> String {
         // Quote shell path in case it contains spaces
         // Silence stty errors in case it's not available in minimal environments
         // Use -l to start as login shell, ensuring ~/.zprofile etc. are sourced
-        format!(
+        // Wrap in sh -c to ensure POSIX shell syntax works with any tmux default-shell
+        let inner = format!(
             "stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l",
             self.channel, shell
-        )
+        );
+        format!("sh -c '{}'", inner.replace('\'', "'\\''"))
     }
 
     /// Wait for the shell to signal it is ready, then clean up.
