@@ -213,6 +213,15 @@ fn get_default_shell() -> Result<String> {
     }
 }
 
+/// Check if a shell is POSIX-compatible (supports `$(...)` syntax)
+fn is_posix_shell(shell: &str) -> bool {
+    let shell_name = Path::new(shell)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("sh");
+    matches!(shell_name, "bash" | "zsh" | "sh" | "dash" | "ksh" | "ash")
+}
+
 /// Timeout for waiting for pane readiness (seconds)
 const HANDSHAKE_TIMEOUT_SECS: u64 = 5;
 
@@ -477,6 +486,7 @@ pub fn setup_panes(
     let mut focus_pane_id: Option<String> = None;
     let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
     let effective_agent = task_agent.or(config.agent.as_deref());
+    let shell = get_default_shell()?;
 
     // Handle the first pane (initial pane from window creation)
     if let Some(pane_config) = panes.first() {
@@ -493,6 +503,7 @@ pub fn setup_panes(
                     pane_options.prompt_file_path,
                     working_dir,
                     effective_agent,
+                    &shell,
                 )
             })
         } else {
@@ -502,7 +513,7 @@ pub fn setup_panes(
         if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
             // Use PaneHandshake to ensure shell is ready before sending keys
             let handshake = PaneHandshake::new()?;
-            let wrapper = handshake.wrapper_command(&get_default_shell()?);
+            let wrapper = handshake.wrapper_command(&shell);
 
             respawn_pane(initial_pane_id, working_dir, Some(&wrapper))?;
             handshake.wait()?;
@@ -535,6 +546,7 @@ pub fn setup_panes(
                         pane_options.prompt_file_path,
                         working_dir,
                         effective_agent,
+                        &shell,
                     )
                 })
             } else {
@@ -544,7 +556,7 @@ pub fn setup_panes(
             let new_pane_id = if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
                 // Use PaneHandshake to ensure shell is ready before sending keys
                 let handshake = PaneHandshake::new()?;
-                let wrapper = handshake.wrapper_command(&get_default_shell()?);
+                let wrapper = handshake.wrapper_command(&shell);
 
                 let pane_id = split_pane_with_command(
                     target_pane_id,
@@ -587,10 +599,11 @@ fn adjust_command<'a>(
     prompt_file_path: Option<&Path>,
     working_dir: &Path,
     effective_agent: Option<&str>,
+    shell: &str,
 ) -> Cow<'a, str> {
     if let Some(prompt_path) = prompt_file_path
         && let Some(rewritten) =
-            rewrite_agent_command(command, prompt_path, working_dir, effective_agent)
+            rewrite_agent_command(command, prompt_path, working_dir, effective_agent, shell)
     {
         return Cow::Owned(rewritten);
     }
@@ -601,7 +614,8 @@ fn adjust_command<'a>(
 ///
 /// When a prompt file is provided (via --prompt-file or --prompt-editor), this function
 /// modifies the agent command to automatically pass the prompt content. For example,
-/// "claude" becomes "sh -c 'claude -- \"$(cat PROMPT.md)\"'".
+/// "claude" becomes "claude -- \"$(cat PROMPT.md)\"" for POSIX shells, or wrapped in
+/// `sh -c '...'` for non-POSIX shells like nushell.
 ///
 /// Only rewrites commands that match the configured agent. For instance, if the config
 /// specifies "gemini" as the agent, a "claude" command won't be rewritten.
@@ -610,8 +624,11 @@ fn adjust_command<'a>(
 /// - gemini: Adds `-i` flag for interactive mode after the prompt
 /// - Other agents (claude, codex, etc.): Just passes the prompt as first argument
 ///
-/// The entire command is wrapped in `sh -c '...'` to ensure the `$(cat ...)` command
-/// substitution works correctly when the user's shell is a non-POSIX shell like nushell.
+/// For non-POSIX shells (nushell, fish, pwsh), the command is wrapped in `sh -c '...'`
+/// to ensure the `$(cat ...)` command substitution works correctly.
+///
+/// The returned command is prefixed with a space to prevent it from being saved to
+/// shell history (most shells ignore commands starting with a space).
 ///
 /// Returns None if the command shouldn't be rewritten (empty, doesn't match configured agent, etc.)
 fn rewrite_agent_command(
@@ -619,6 +636,7 @@ fn rewrite_agent_command(
     prompt_file: &Path,
     working_dir: &Path,
     effective_agent: Option<&str>,
+    shell: &str,
 ) -> Option<String> {
     let agent_command = effective_agent?;
     let trimmed_command = command.trim();
@@ -669,10 +687,15 @@ fn rewrite_agent_command(
         inner_cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
     }
 
-    // Wrap in sh -c '...' to ensure $(cat ...) works with non-POSIX shells like nushell.
-    // Escape single quotes in the inner command using the '\'' technique.
-    let escaped_inner = inner_cmd.replace('\'', "'\\''");
-    Some(format!("sh -c '{}'", escaped_inner))
+    // For POSIX shells (bash, zsh, sh, etc.), use the command directly.
+    // For non-POSIX shells (nushell, fish, pwsh), wrap in sh -c '...' to ensure
+    // $(cat ...) command substitution works.
+    if is_posix_shell(shell) {
+        Some(inner_cmd)
+    } else {
+        let escaped_inner = inner_cmd.replace('\'', "'\\''");
+        Some(format!("sh -c '{}'", escaped_inner))
+    }
 }
 
 // --- Status Format Management ---
@@ -784,61 +807,90 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    #[test]
-    fn test_rewrite_claude_command() {
-        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
-        let working_dir = PathBuf::from("/tmp/worktree");
+    // --- is_posix_shell tests ---
 
-        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("claude"));
-        assert_eq!(
-            result,
-            Some("sh -c 'claude -- \"$(cat PROMPT.md)\"'".to_string())
-        );
+    #[test]
+    fn test_is_posix_shell_bash() {
+        assert!(is_posix_shell("/bin/bash"));
+        assert!(is_posix_shell("/usr/bin/bash"));
     }
 
     #[test]
-    fn test_rewrite_codex_command() {
-        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
-        let working_dir = PathBuf::from("/tmp/worktree");
-
-        let result = rewrite_agent_command("codex", &prompt_file, &working_dir, Some("codex"));
-        assert_eq!(
-            result,
-            Some("sh -c 'codex -- \"$(cat PROMPT.md)\"'".to_string())
-        );
+    fn test_is_posix_shell_zsh() {
+        assert!(is_posix_shell("/bin/zsh"));
+        assert!(is_posix_shell("/usr/local/bin/zsh"));
     }
 
     #[test]
-    fn test_rewrite_gemini_command() {
-        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
-        let working_dir = PathBuf::from("/tmp/worktree");
-
-        let result = rewrite_agent_command("gemini", &prompt_file, &working_dir, Some("gemini"));
-        assert_eq!(
-            result,
-            Some("sh -c 'gemini -i \"$(cat PROMPT.md)\"'".to_string())
-        );
+    fn test_is_posix_shell_sh() {
+        assert!(is_posix_shell("/bin/sh"));
     }
 
     #[test]
-    fn test_rewrite_command_with_path() {
+    fn test_is_posix_shell_nushell() {
+        assert!(!is_posix_shell("/opt/homebrew/bin/nu"));
+        assert!(!is_posix_shell("/usr/bin/nu"));
+    }
+
+    #[test]
+    fn test_is_posix_shell_fish() {
+        assert!(!is_posix_shell("/usr/bin/fish"));
+        assert!(!is_posix_shell("/opt/homebrew/bin/fish"));
+    }
+
+    // --- rewrite_agent_command tests for POSIX shells ---
+
+    #[test]
+    fn test_rewrite_claude_command_posix() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command(
-            "/usr/local/bin/claude",
+            "claude",
             &prompt_file,
             &working_dir,
-            Some("/usr/local/bin/claude"),
+            Some("claude"),
+            "/bin/zsh",
+        );
+        // POSIX shell: no wrapper needed
+        assert_eq!(result, Some("claude -- \"$(cat PROMPT.md)\"".to_string()));
+    }
+
+    #[test]
+    fn test_rewrite_gemini_command_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "gemini",
+            &prompt_file,
+            &working_dir,
+            Some("gemini"),
+            "/bin/bash",
+        );
+        assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
+    }
+
+    #[test]
+    fn test_rewrite_opencode_command_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "opencode",
+            &prompt_file,
+            &working_dir,
+            Some("opencode"),
+            "/bin/zsh",
         );
         assert_eq!(
             result,
-            Some("sh -c '/usr/local/bin/claude -- \"$(cat PROMPT.md)\"'".to_string())
+            Some("opencode -p \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
     #[test]
-    fn test_rewrite_command_with_args() {
+    fn test_rewrite_command_with_args_posix() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
@@ -847,65 +899,56 @@ mod tests {
             &prompt_file,
             &working_dir,
             Some("claude"),
+            "/bin/bash",
         );
         assert_eq!(
             result,
-            Some("sh -c 'claude --verbose -- \"$(cat PROMPT.md)\"'".to_string())
+            Some("claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
-    #[test]
-    fn test_rewrite_mismatched_agent() {
-        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
-        let working_dir = PathBuf::from("/tmp/worktree");
-
-        // Command is for claude
-        let result = rewrite_agent_command("claude", &prompt_file, &working_dir, Some("gemini"));
-        assert_eq!(result, None);
-    }
+    // --- rewrite_agent_command tests for non-POSIX shells (nushell, fish) ---
 
     #[test]
-    fn test_rewrite_unknown_agent() {
+    fn test_rewrite_claude_command_nushell() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
         let result = rewrite_agent_command(
-            "unknown-agent",
+            "claude",
             &prompt_file,
             &working_dir,
-            Some("unknown-agent"),
+            Some("claude"),
+            "/opt/homebrew/bin/nu",
         );
+        // Non-POSIX shell: wrap in sh -c
         assert_eq!(
             result,
-            Some("sh -c 'unknown-agent -- \"$(cat PROMPT.md)\"'".to_string())
+            Some("sh -c 'claude -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
     #[test]
-    fn test_rewrite_empty_command() {
+    fn test_rewrite_gemini_command_fish() {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
-        let result = rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"));
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_rewrite_opencode_command_basic() {
-        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
-        let working_dir = PathBuf::from("/tmp/worktree");
-
-        let result =
-            rewrite_agent_command("opencode", &prompt_file, &working_dir, Some("opencode"));
+        let result = rewrite_agent_command(
+            "gemini",
+            &prompt_file,
+            &working_dir,
+            Some("gemini"),
+            "/usr/bin/fish",
+        );
         assert_eq!(
             result,
-            Some("sh -c 'opencode -p \"$(cat PROMPT.md)\"'".to_string())
+            Some("sh -c 'gemini -i \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
     #[test]
-    fn test_rewrite_command_escapes_single_quotes() {
-        // Test that single quotes in agent paths are properly escaped
+    fn test_rewrite_command_escapes_single_quotes_nushell() {
+        // Test that single quotes in agent paths are properly escaped for non-POSIX shells
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
@@ -914,10 +957,75 @@ mod tests {
             &prompt_file,
             &working_dir,
             Some("/path/with'quote/claude"),
+            "/opt/homebrew/bin/nu",
         );
         assert_eq!(
             result,
             Some("sh -c '/path/with'\\''quote/claude -- \"$(cat PROMPT.md)\"'".to_string())
+        );
+    }
+
+    // --- Other rewrite_agent_command tests ---
+
+    #[test]
+    fn test_rewrite_mismatched_agent() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        // Command is for claude but agent is gemini
+        let result = rewrite_agent_command(
+            "claude",
+            &prompt_file,
+            &working_dir,
+            Some("gemini"),
+            "/bin/zsh",
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_rewrite_empty_command() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result =
+            rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"), "/bin/zsh");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_rewrite_command_with_path_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "/usr/local/bin/claude",
+            &prompt_file,
+            &working_dir,
+            Some("/usr/local/bin/claude"),
+            "/bin/zsh",
+        );
+        assert_eq!(
+            result,
+            Some("/usr/local/bin/claude -- \"$(cat PROMPT.md)\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_unknown_agent_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "unknown-agent",
+            &prompt_file,
+            &working_dir,
+            Some("unknown-agent"),
+            "/bin/bash",
+        );
+        assert_eq!(
+            result,
+            Some("unknown-agent -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
