@@ -690,11 +690,12 @@ fn rewrite_agent_command(
     // For POSIX shells (bash, zsh, sh, etc.), use the command directly.
     // For non-POSIX shells (nushell, fish, pwsh), wrap in sh -c '...' to ensure
     // $(cat ...) command substitution works.
+    // Prefix with space to prevent shell history entry.
     if is_posix_shell(shell) {
-        Some(inner_cmd)
+        Some(format!(" {}", inner_cmd))
     } else {
         let escaped_inner = inner_cmd.replace('\'', "'\\''");
-        Some(format!("sh -c '{}'", escaped_inner))
+        Some(format!(" sh -c '{}'", escaped_inner))
     }
 }
 
@@ -852,8 +853,8 @@ mod tests {
             Some("claude"),
             "/bin/zsh",
         );
-        // POSIX shell: no wrapper needed
-        assert_eq!(result, Some("claude -- \"$(cat PROMPT.md)\"".to_string()));
+        // POSIX shell: no wrapper, prefixed with space to prevent history
+        assert_eq!(result, Some(" claude -- \"$(cat PROMPT.md)\"".to_string()));
     }
 
     #[test]
@@ -868,7 +869,7 @@ mod tests {
             Some("gemini"),
             "/bin/bash",
         );
-        assert_eq!(result, Some("gemini -i \"$(cat PROMPT.md)\"".to_string()));
+        assert_eq!(result, Some(" gemini -i \"$(cat PROMPT.md)\"".to_string()));
     }
 
     #[test]
@@ -885,7 +886,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("opencode -p \"$(cat PROMPT.md)\"".to_string())
+            Some(" opencode -p \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -903,7 +904,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
+            Some(" claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -921,10 +922,10 @@ mod tests {
             Some("claude"),
             "/opt/homebrew/bin/nu",
         );
-        // Non-POSIX shell: wrap in sh -c
+        // Non-POSIX shell: wrap in sh -c, prefixed with space
         assert_eq!(
             result,
-            Some("sh -c 'claude -- \"$(cat PROMPT.md)\"'".to_string())
+            Some(" sh -c 'claude -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -942,7 +943,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("sh -c 'gemini -i \"$(cat PROMPT.md)\"'".to_string())
+            Some(" sh -c 'gemini -i \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -961,7 +962,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("sh -c '/path/with'\\''quote/claude -- \"$(cat PROMPT.md)\"'".to_string())
+            Some(" sh -c '/path/with'\\''quote/claude -- \"$(cat PROMPT.md)\"'".to_string())
         );
     }
 
@@ -1007,7 +1008,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("/usr/local/bin/claude -- \"$(cat PROMPT.md)\"".to_string())
+            Some(" /usr/local/bin/claude -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -1025,7 +1026,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some("unknown-agent -- \"$(cat PROMPT.md)\"".to_string())
+            Some(" unknown-agent -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
