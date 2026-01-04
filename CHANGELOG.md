@@ -7,6 +7,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.67 (2026-01-04)
+
+- Improved compatibility with non-POSIX shells like nushell
+- Commands for starting agent with a prompt no longer pollute shell history
+
 ## v0.1.66 (2026-01-03)
 
 - Added `--no-verify` (`-n`) flag to `merge` command to skip pre-merge hooks
