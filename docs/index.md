@@ -74,25 +74,22 @@ onMounted(() => {
 <style>
 .why-section {
   max-width: 800px;
-  margin: 4rem auto;
+  margin: 5rem auto;
   text-align: center;
-  padding: 1.5rem 2.5rem;
-  background-color: var(--vp-c-bg-soft);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 12px;
+  padding: 0 1.5rem;
 }
 
 .why-section h2 {
   border: none;
-  margin: 0 0 1rem;
+  margin: 0 0 1.5rem;
   padding: 0;
-  font-weight: 600;
-  font-size: 1.5rem;
+  font-weight: 700;
+  font-size: 1.75rem;
 }
 
 .why-section p {
-  font-size: 1.1rem;
-  line-height: 1.7;
+  font-size: 1.2rem;
+  line-height: 1.8;
   color: var(--vp-c-text-2);
   margin: 0;
 }
