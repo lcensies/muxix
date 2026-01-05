@@ -7,11 +7,8 @@ export default defineConfig({
   lastUpdated: true,
   cleanUrls: true,
 
-  // GitHub Pages subdirectory
-  base: '/workmux/',
-
   head: [
-    ['link', { rel: 'icon', href: '/workmux/logo.svg' }]
+    ['link', { rel: 'icon', href: '/logo.svg' }]
   ],
 
   themeConfig: {
