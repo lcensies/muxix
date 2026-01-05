@@ -1220,6 +1220,29 @@ workmux docs
 workmux docs | llm "how do I configure panes?"
 ```
 
+#### Using with AI agents
+
+You can ask an agent to read the docs and configure workmux for you:
+
+```
+> run `workmux docs` and configure workmux so that on the left pane
+  there is claude as agent, and on the right side neovim and empty
+  shell on top of each other
+
+⏺ Bash(workmux docs)
+  ⎿  <p align="center">
+       <picture>
+     … +923 lines
+
+⏺ Write(.workmux.yaml)
+  ⎿  Wrote 9 lines to .workmux.yaml
+
+⏺ Created .workmux.yaml with the layout:
+  - Left: claude agent (focused)
+  - Right top: neovim
+  - Right bottom: empty shell
+```
+
 ## Agent status tracking
 
 Workmux can display the status of the agent in your tmux window list, giving you
