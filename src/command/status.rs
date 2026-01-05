@@ -318,7 +318,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["#", "Project", "Agent", "Title", "Status", "Duration"]
+    let header_cells = ["#", "Project", "Agent", "Status", "Time", "Title"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -382,9 +382,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                 Cell::from(project),
                 Cell::from(agent_name),
-                Cell::from(title),
                 Cell::from(status_text).style(Style::default().fg(status_color)),
                 Cell::from(duration),
+                Cell::from(title),
             ])
         })
         .collect();
@@ -395,9 +395,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(2),  // #: jump key
             Constraint::Max(20),    // Project: cap width
             Constraint::Max(24),    // Agent: cap width
-            Constraint::Fill(1),    // Title: takes remaining space
             Constraint::Length(8),  // Status: fixed (icons)
-            Constraint::Length(10), // Duration: fixed
+            Constraint::Length(10), // Time: HH:MM:SS + padding
+            Constraint::Fill(1),    // Title: takes remaining space
         ],
     )
     .header(header)
