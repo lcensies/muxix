@@ -2,11 +2,9 @@
 
 When running multiple AI agents in parallel, it's helpful to have a centralized view of what each agent is doing. The status popup provides a TUI for monitoring all active agents across all tmux sessions.
 
-<!-- TODO: Add screenshot
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
-  <img src="/status-dashboard.png" alt="workmux status dashboard" style="border-radius: 4px;">
+  <img src="/status-popup.webp" alt="workmux status popup" style="border-radius: 4px;">
 </div>
--->
 
 ## Usage
 
