@@ -33,7 +33,7 @@ features:
   <h2>Why workmux?</h2>
   <p>
     The core principle is that <strong>tmux is the interface</strong>.
-    If you already live in tmux, you shouldn't need a separate TUI app to manage your tasks.
+    If you already live in tmux, you shouldn't need yet another interface to manage your tasks.
     workmux turns multi-step git worktree operations into simple commands,
     making parallel workflows practical.
   </p>
