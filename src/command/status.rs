@@ -12,6 +12,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
+use std::collections::BTreeMap;
 use std::io;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -233,7 +234,6 @@ pub fn run(stale_threshold_mins: u64) -> Result<()> {
                 KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
                 KeyCode::Char('j') | KeyCode::Down => app.next(),
                 KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                KeyCode::Char('r') => app.refresh(),
                 KeyCode::Enter => app.jump_to_selected(),
                 _ => {}
             }
@@ -269,29 +269,15 @@ pub fn run(stale_threshold_mins: u64) -> Result<()> {
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Layout: header, table, footer
+    // Layout: table, footer
     let chunks = Layout::vertical([
-        Constraint::Length(3), // Header
         Constraint::Min(5),    // Table
         Constraint::Length(3), // Footer
     ])
     .split(area);
 
-    // Header
-    let header_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Workmux Agent Status ");
-    let header_text = Paragraph::new(Line::from(vec![
-        Span::styled("  [r]", Style::default().fg(Color::Cyan)),
-        Span::raw("efresh  "),
-        Span::styled("[q]", Style::default().fg(Color::Cyan)),
-        Span::raw("uit"),
-    ]))
-    .block(header_block);
-    f.render_widget(header_text, chunks[0]);
-
     // Table
-    render_table(f, app, chunks[1]);
+    render_table(f, app, chunks[0]);
 
     // Footer
     let footer_block = Block::default().borders(Borders::ALL);
@@ -299,41 +285,66 @@ fn ui(f: &mut Frame, app: &mut App) {
         Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" navigate  "),
         Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
-        Span::raw(" jump to window  "),
-        Span::styled("[r]", Style::default().fg(Color::Cyan)),
-        Span::raw(" refresh  "),
+        Span::raw(" jump  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
     ]))
     .block(footer_block);
-    f.render_widget(footer_text, chunks[2]);
+    f.render_widget(footer_text, chunks[1]);
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["Agent", "Status", "Duration", "Project", "Session/Window"]
+    let header_cells = ["Project", "Agent", "Status", "Duration"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
+
+    // Group agents by (session, window_name) to detect multi-pane windows
+    let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (idx, agent) in app.agents.iter().enumerate() {
+        let key = (agent.session.clone(), agent.window_name.clone());
+        window_groups.entry(key).or_default().push(idx);
+    }
+
+    // Build a set of windows with multiple panes
+    let multi_pane_windows: std::collections::HashSet<(String, String)> = window_groups
+        .iter()
+        .filter(|(_, indices)| indices.len() > 1)
+        .map(|(key, _)| key.clone())
+        .collect();
+
+    // Track position within each window group for pane numbering
+    let mut window_positions: BTreeMap<(String, String), usize> = BTreeMap::new();
 
     let rows: Vec<Row> = app
         .agents
         .iter()
         .map(|agent| {
-            let agent_name = app.extract_agent_name(agent);
+            let key = (agent.session.clone(), agent.window_name.clone());
+            let is_multi_pane = multi_pane_windows.contains(&key);
+
+            // Add pane number suffix for multi-pane windows
+            let pane_suffix = if is_multi_pane {
+                let pos = window_positions.entry(key.clone()).or_insert(0);
+                *pos += 1;
+                format!(" [{}]", pos)
+            } else {
+                String::new()
+            };
+
+            let project = app.extract_project_name(agent);
+            let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
             let (status_text, status_color) = app.get_status_display(agent);
             let duration = app
                 .get_elapsed(agent)
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
-            let project = app.extract_project_name(agent);
-            let session_window = format!("{}:{}", agent.session, agent.window_name);
 
             Row::new(vec![
+                Cell::from(project),
                 Cell::from(agent_name),
                 Cell::from(status_text).style(Style::default().fg(status_color)),
                 Cell::from(duration),
-                Cell::from(project),
-                Cell::from(session_window),
             ])
         })
         .collect();
@@ -341,15 +352,18 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Min(15),        // Agent
-            Constraint::Length(8),      // Status
-            Constraint::Length(10),     // Duration
-            Constraint::Min(15),        // Project
-            Constraint::Percentage(30), // Session/Window
+            Constraint::Min(20),    // Project
+            Constraint::Min(25),    // Agent
+            Constraint::Length(8),  // Status
+            Constraint::Length(10), // Duration
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Workmux Agent Status "),
+    )
     .row_highlight_style(
         Style::default()
             .bg(Color::DarkGray)
