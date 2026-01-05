@@ -70,6 +70,7 @@ export default defineConfig({
           text: "AI Agents",
           items: [
             { text: "Overview", link: "/guide/agents" },
+            { text: "Claude Code", link: "/guide/claude-code" },
             { text: "Status tracking", link: "/guide/status-tracking" },
             { text: "Status popup", link: "/guide/status-popup" },
             { text: "Delegating tasks", link: "/guide/delegating-tasks" },

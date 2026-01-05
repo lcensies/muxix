@@ -16,9 +16,9 @@ Workmux can display the status of the agent in your tmux window list, giving you
 Currently only Claude Code supports hooks that enable this functionality. Gemini's support is [on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex support can be tracked in [this issue](https://github.com/openai/codex/issues/2109).
 :::
 
-## Setup
+## Claude Code setup
 
-Install the workmux status plugin in Claude Code:
+Install the workmux status plugin:
 
 ```bash
 claude plugin marketplace add raine/workmux
