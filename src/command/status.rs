@@ -317,8 +317,29 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(footer_text, chunks[1]);
 }
 
+/// Vibrant dark-mode palette - high contrast, distinct colors for dark backgrounds
+const PROJECT_PALETTE: [Color; 8] = [
+    Color::Rgb(78, 205, 196),  // Teal
+    Color::Rgb(255, 200, 87),  // Yellow
+    Color::Rgb(114, 224, 106), // Green
+    Color::Rgb(95, 158, 255),  // Blue
+    Color::Rgb(187, 134, 252), // Purple
+    Color::Rgb(255, 121, 198), // Pink
+    Color::Rgb(255, 159, 67),  // Orange
+    Color::Rgb(165, 255, 214), // Mint
+];
+
+/// Hash a project name to a consistent color for the sidebar
+fn project_to_color(project: &str) -> Color {
+    // djb2 hash - better distribution than simple sum
+    let hash = project.bytes().fold(5381usize, |hash, b| {
+        hash.wrapping_mul(33).wrapping_add(b as usize)
+    });
+    PROJECT_PALETTE[hash % PROJECT_PALETTE.len()]
+}
+
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["#", "Project", "Agent", "Title", "Status", "Duration"]
+    let header_cells = [" ", "#", "Project", "Agent", "Title", "Status", "Duration"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -378,7 +399,11 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
 
+            // Color sidebar based on project
+            let sidebar_color = project_to_color(&project);
+
             Row::new(vec![
+                Cell::from("█").style(Style::default().fg(sidebar_color)),
                 Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                 Cell::from(project),
                 Cell::from(agent_name),
@@ -392,6 +417,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
+            Constraint::Length(1),  // Color sidebar
             Constraint::Length(2),  // #: jump key
             Constraint::Max(20),    // Project: cap width
             Constraint::Max(24),    // Agent: cap width
