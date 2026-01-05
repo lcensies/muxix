@@ -29,6 +29,16 @@ features:
     details: Define your tmux layout and setup steps in .workmux.yaml. Customize panes, file operations, and lifecycle hooks.
 ---
 
+<div style="max-width: 700px; margin: 4rem auto; text-align: center; padding: 0 20px;">
+  <h2 style="border: none; margin-bottom: 1rem; font-weight: 600; font-size: 1.5rem;">Why workmux?</h2>
+  <p style="font-size: 1.1rem; line-height: 1.6; color: var(--vp-c-text-2);">
+    The core principle is that <strong>tmux is the interface</strong>.
+    If you already live in tmux, you shouldn't need a separate TUI app to manage your tasks.
+    workmux turns multi-step git worktree operations into simple commands,
+    making parallel workflows practical.
+  </p>
+</div>
+
 <div style="display: flex; justify-content: center; margin-top: 2rem;">
   <div class="video-container">
     <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
