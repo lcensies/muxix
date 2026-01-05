@@ -340,7 +340,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Track position within each window group for pane numbering
     let mut window_positions: BTreeMap<(String, String), usize> = BTreeMap::new();
 
-    let rows: Vec<Row> = app
+    // Pre-compute row data to calculate max widths
+    let row_data: Vec<_> = app
         .agents
         .iter()
         .enumerate()
@@ -348,7 +349,6 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             let key = (agent.session.clone(), agent.window_name.clone());
             let is_multi_pane = multi_pane_windows.contains(&key);
 
-            // Add pane number suffix for multi-pane windows
             let pane_suffix = if is_multi_pane {
                 let pos = window_positions.entry(key.clone()).or_insert(0);
                 *pos += 1;
@@ -357,7 +357,6 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 String::new()
             };
 
-            // Quick jump key: 1-9 for first 9 rows
             let jump_key = if idx < 9 {
                 format!("{}", idx + 1)
             } else {
@@ -366,7 +365,6 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             let project = app.extract_project_name(agent);
             let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
-            // Extract pane title (Claude Code session summary), strip leading "✳ " if present
             let title = agent
                 .pane_title
                 .as_ref()
@@ -378,6 +376,22 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
 
+            (jump_key, project, agent_name, status_text, status_color, duration, title)
+        })
+        .collect();
+
+    // Calculate max agent name width (with padding, capped)
+    let max_agent_width = row_data
+        .iter()
+        .map(|(_, _, agent_name, _, _, _, _)| agent_name.len())
+        .max()
+        .unwrap_or(5)
+        .clamp(5, 24) // min 5, max 24
+        + 2; // padding
+
+    let rows: Vec<Row> = row_data
+        .into_iter()
+        .map(|(jump_key, project, agent_name, status_text, status_color, duration, title)| {
             Row::new(vec![
                 Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                 Cell::from(project),
@@ -392,12 +406,12 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(2),  // #: jump key
-            Constraint::Max(20),    // Project: cap width
-            Constraint::Max(24),    // Agent: cap width
-            Constraint::Length(8),  // Status: fixed (icons)
-            Constraint::Length(10), // Time: HH:MM:SS + padding
-            Constraint::Fill(1),    // Title: takes remaining space
+            Constraint::Length(2),                      // #: jump key
+            Constraint::Max(20),                        // Project: cap width
+            Constraint::Length(max_agent_width as u16), // Agent: auto-sized
+            Constraint::Length(8),                      // Status: fixed (icons)
+            Constraint::Length(10),                     // Time: HH:MM:SS + padding
+            Constraint::Fill(1),                        // Title: takes remaining space
         ],
     )
     .header(header)
