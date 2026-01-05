@@ -62,8 +62,8 @@ export default defineConfig({
         {
           text: "Guides",
           items: [
-            { text: "Visual customization", link: "/guide/nerdfont-icons" },
-            { text: "Shell integration", link: "/guide/direnv" },
+            { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
+            { text: "direnv integration", link: "/guide/direnv" },
           ],
         },
         {
