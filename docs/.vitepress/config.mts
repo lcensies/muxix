@@ -51,19 +51,19 @@ export default defineConfig({
     sidebar: {
       "/guide/": [
         {
-          text: "Introduction",
+          text: "Getting Started",
           items: [
             { text: "What is workmux?", link: "/guide/" },
             { text: "Installation", link: "/guide/installation" },
             { text: "Quick start", link: "/guide/quick-start" },
+            { text: "Configuration", link: "/guide/configuration" },
           ],
         },
         {
-          text: "Usage",
+          text: "Guides",
           items: [
-            { text: "Configuration", link: "/guide/configuration" },
-            { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
-            { text: "direnv integration", link: "/guide/direnv" },
+            { text: "Visual customization", link: "/guide/nerdfont-icons" },
+            { text: "Shell integration", link: "/guide/direnv" },
           ],
         },
         {
