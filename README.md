@@ -400,6 +400,7 @@ alias wm='workmux'
 - [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
   worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
+- [`status`](#workmux-status) - Show TUI dashboard of all active agents
 - [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
@@ -1142,6 +1143,48 @@ cd "$(workmux path user-auth)"
 # Copy a file to a worktree
 cp config.json "$(workmux path feature-branch)/"
 ```
+
+---
+
+### `workmux status`
+
+Opens a TUI dashboard showing all active AI agents across all tmux sessions.
+Useful for monitoring multiple parallel agents and quickly jumping between them.
+
+#### Options
+
+- `--stale-threshold <minutes>`: Minutes before marking an agent as stale
+  (default: 60)
+- `--no-border`: Disable borders (useful when running in a tmux popup)
+
+#### Keybindings
+
+| Key     | Action                              |
+| ------- | ----------------------------------- |
+| `1`-`9` | Quick jump to agent (closes popup)  |
+| `p`     | Peek at agent (popup stays open)    |
+| `Enter` | Go to selected agent (closes popup) |
+| `j`/`k` | Navigate up/down                    |
+| `q`     | Quit                                |
+
+#### Columns
+
+- **#**: Quick jump key (1-9)
+- **Project**: Project name (from `__worktrees` path or directory name)
+- **Agent**: Worktree/window name
+- **Title**: Claude Code session title (auto-generated summary)
+- **Status**: Agent status icon (🤖 working, 💬 waiting, ✅ done, or "stale")
+- **Duration**: Time since last status change
+
+#### Example tmux binding
+
+Add to your `~/.tmux.conf` for quick access:
+
+```bash
+bind C-s display-popup -E -w 80% -h 60% "workmux status --no-border"
+```
+
+Then press `prefix + Ctrl-s` to open the dashboard.
 
 ---
 
