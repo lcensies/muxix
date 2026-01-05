@@ -60,6 +60,7 @@ export default defineConfig({
           items: [
             { text: "Configuration", link: "/guide/configuration" },
             { text: "AI agents", link: "/guide/agents" },
+            { text: "Status popup", link: "/guide/status-popup" },
             { text: "Tips & tricks", link: "/guide/tips" },
             { text: "Caveats", link: "/guide/caveats" },
           ],
@@ -77,6 +78,7 @@ export default defineConfig({
             { text: "open", link: "/reference/commands/open" },
             { text: "close", link: "/reference/commands/close" },
             { text: "path", link: "/reference/commands/path" },
+            { text: "status", link: "/reference/commands/status" },
             { text: "init", link: "/reference/commands/init" },
             { text: "claude prune", link: "/reference/commands/claude" },
             { text: "completions", link: "/reference/commands/completions" },

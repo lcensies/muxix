@@ -1175,7 +1175,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 Add to your `~/.tmux.conf` for quick access:
 
 ```bash
-bind C-s display-popup -E -w 80% -h 60% "workmux status"
+bind C-s display-popup -h 15 -w 100 -E "workmux status"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard.
