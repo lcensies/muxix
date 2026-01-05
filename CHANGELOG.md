@@ -7,6 +7,10 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.68 (2026-01-05)
+
+- Added `docs` command to view the README
+
 ## v0.1.67 (2026-01-04)
 
 - Improved compatibility with non-POSIX shells like nushell
