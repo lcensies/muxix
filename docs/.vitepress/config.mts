@@ -9,6 +9,17 @@ export default defineConfig({
 
   head: [["link", { rel: "icon", href: "/branch-icon.svg" }]],
 
+  vite: {
+    resolve: {
+      preserveSymlinks: true,
+    },
+    server: {
+      fs: {
+        allow: [".."],
+      },
+    },
+  },
+
   themeConfig: {
     logo: { light: "/icon.svg", dark: "/icon-dark.svg" },
     siteTitle: "workmux",

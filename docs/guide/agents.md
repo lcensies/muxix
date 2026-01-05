@@ -183,4 +183,4 @@ workmux add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
 # Generates worktrees: my-feature-1, my-feature-2
 ```
 
-See the [add command reference](/reference/commands#add) for all parallel workflow options.
+See the [add command reference](/reference/commands/add) for all parallel workflow options.

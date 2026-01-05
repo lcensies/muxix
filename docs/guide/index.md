@@ -23,7 +23,7 @@ The core principle is that **tmux is the interface**. If you already live in tmu
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new worktrees
 - [Delegate tasks to worktree agents](/guide/agents#delegating-tasks) with a `/worktree` slash command
-- [Automatic branch name generation](/reference/commands#automatic-branch-name-generation) from prompts using LLM
+- [Automatic branch name generation](/reference/commands/add#automatic-branch-name-generation) from prompts using LLM
 - [Display Claude agent status in tmux window names](/guide/agents#status-tracking)
 - Shell completions
 
