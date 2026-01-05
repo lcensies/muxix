@@ -403,6 +403,7 @@ alias wm='workmux'
 - [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
+- [`docs`](#workmux-docs) - Show detailed documentation
 
 ### `workmux add <branch-name>`
 
@@ -1198,6 +1199,26 @@ workmux completions zsh
 
 See the [Shell Completions](#shell-completions) section for installation
 instructions.
+
+---
+
+### `workmux docs`
+
+Displays this README with terminal formatting. Useful for quick reference
+without leaving the terminal.
+
+When run interactively, renders markdown with colors and uses a pager (`less`).
+When piped (e.g., to an LLM), outputs raw markdown for clean context.
+
+#### Examples
+
+```bash
+# View docs in terminal
+workmux docs
+
+# Pipe to LLM for questions
+workmux docs | llm "how do I configure panes?"
+```
 
 ## Agent status tracking
 
