@@ -12,7 +12,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: { light: '/logo.svg', dark: '/logo-dark.svg' },
+    logo: { light: '/icon.svg', dark: '/icon-dark.svg' },
     siteTitle: 'workmux',
 
     search: {
