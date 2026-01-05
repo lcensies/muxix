@@ -1,0 +1,13 @@
+/* Custom styles for workmux docs */
+
+:root {
+  --vp-c-brand-1: #646cff;
+  --vp-c-brand-2: #747bff;
+  --vp-c-brand-3: #8b92ff;
+}
+
+.dark {
+  --vp-c-brand-1: #747bff;
+  --vp-c-brand-2: #8b92ff;
+  --vp-c-brand-3: #a3a8ff;
+}

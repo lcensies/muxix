@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://raine.github.io/workmux/"><strong>📖 Documentation</strong></a> ·
   <a href="#why-git-worktrees">Why?</a> ·
   <a href="#installation">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
