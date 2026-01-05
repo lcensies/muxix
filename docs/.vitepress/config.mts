@@ -6,6 +6,9 @@ export default defineConfig({
   lang: "en-US",
   lastUpdated: true,
   cleanUrls: true,
+  sitemap: {
+    hostname: "https://workmux.raine.dev",
+  },
 
   head: [
     ["link", { rel: "icon", href: "/branch-icon.svg" }],
