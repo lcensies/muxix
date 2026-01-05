@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  text: Parallel development in tmux
+  text: Parallel development in tmux with git worktrees
   tagline: Giga opinionated zero-friction workflow tool for managing git worktrees and tmux windows as isolated development environments.
   image:
     light: /logo.svg
