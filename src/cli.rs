@@ -325,6 +325,10 @@ enum Commands {
         /// Threshold in minutes to mark an agent as stale (default: 60)
         #[arg(long, default_value = "60")]
         stale_threshold: u64,
+
+        /// Disable borders (useful when running in tmux popup)
+        #[arg(long)]
+        no_border: bool,
     },
 
     /// Claude Code integration commands
@@ -430,7 +434,10 @@ pub fn run() -> Result<()> {
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
-        Commands::Status { stale_threshold } => command::status::run(stale_threshold),
+        Commands::Status {
+            stale_threshold,
+            no_border,
+        } => command::status::run(stale_threshold, no_border),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },

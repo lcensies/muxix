@@ -27,10 +27,11 @@ struct App {
     config: Config,
     should_quit: bool,
     should_jump: bool,
+    no_border: bool,
 }
 
 impl App {
-    fn new(stale_threshold_mins: u64) -> Result<Self> {
+    fn new(stale_threshold_mins: u64, no_border: bool) -> Result<Self> {
         let config = Config::load(None)?;
         let mut app = Self {
             agents: Vec::new(),
@@ -39,6 +40,7 @@ impl App {
             config,
             should_quit: false,
             should_jump: false,
+            no_border,
         };
         app.refresh();
         // Select first item if available
@@ -199,7 +201,7 @@ impl App {
     }
 }
 
-pub fn run(stale_threshold_mins: u64) -> Result<()> {
+pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
     // Check if tmux is running
     if !tmux::is_running().unwrap_or(false) {
         println!("No tmux server running.");
@@ -214,7 +216,7 @@ pub fn run(stale_threshold_mins: u64) -> Result<()> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new(stale_threshold_mins)?;
+    let mut app = App::new(stale_threshold_mins, no_border)?;
 
     // Main loop
     let tick_rate = Duration::from_millis(250);
@@ -280,7 +282,11 @@ fn ui(f: &mut Frame, app: &mut App) {
     render_table(f, app, chunks[0]);
 
     // Footer
-    let footer_block = Block::default().borders(Borders::ALL);
+    let footer_block = if app.no_border {
+        Block::default()
+    } else {
+        Block::default().borders(Borders::ALL)
+    };
     let footer_text = Paragraph::new(Line::from(vec![
         Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" navigate  "),
@@ -359,7 +365,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         ],
     )
     .header(header)
-    .block(
+    .block(if app.no_border {
+        Block::default()
+    } else {
         Block::default()
             .borders(Borders::ALL)
             .title(" Workmux Agent Status "),
