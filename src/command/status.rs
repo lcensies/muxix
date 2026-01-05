@@ -376,7 +376,15 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
 
-            (jump_key, project, agent_name, status_text, status_color, duration, title)
+            (
+                jump_key,
+                project,
+                agent_name,
+                status_text,
+                status_color,
+                duration,
+                title,
+            )
         })
         .collect();
 
@@ -400,16 +408,18 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let rows: Vec<Row> = row_data
         .into_iter()
-        .map(|(jump_key, project, agent_name, status_text, status_color, duration, title)| {
-            Row::new(vec![
-                Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
-                Cell::from(project),
-                Cell::from(agent_name),
-                Cell::from(status_text).style(Style::default().fg(status_color)),
-                Cell::from(duration),
-                Cell::from(title),
-            ])
-        })
+        .map(
+            |(jump_key, project, agent_name, status_text, status_color, duration, title)| {
+                Row::new(vec![
+                    Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
+                    Cell::from(project),
+                    Cell::from(agent_name),
+                    Cell::from(status_text).style(Style::default().fg(status_color)),
+                    Cell::from(duration),
+                    Cell::from(title),
+                ])
+            },
+        )
         .collect();
 
     let table = Table::new(
@@ -418,9 +428,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(2),                        // #: jump key
             Constraint::Length(max_project_width as u16), // Project: auto-sized
             Constraint::Length(max_agent_width as u16),   // Agent: auto-sized
-            Constraint::Length(8),                      // Status: fixed (icons)
-            Constraint::Length(10),                     // Time: HH:MM:SS + padding
-            Constraint::Fill(1),                        // Title: takes remaining space
+            Constraint::Length(8),                        // Status: fixed (icons)
+            Constraint::Length(10),                       // Time: HH:MM:SS + padding
+            Constraint::Fill(1),                          // Title: takes remaining space
         ],
     )
     .header(header)
