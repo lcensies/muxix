@@ -167,6 +167,7 @@ impl clap::builder::TypedValueParser for GitBranchParser {
 #[command(author, version, about, long_about = None)]
 #[command(name = "workmux")]
 #[command(about = "An opinionated workflow tool that orchestrates git worktrees and tmux")]
+#[command(after_help = "Run 'workmux docs' for detailed documentation.")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -316,6 +317,9 @@ enum Commands {
     /// Generate example .workmux.yaml configuration file
     Init,
 
+    /// Show detailed documentation (renders README.md)
+    Docs,
+
     /// Claude Code integration commands
     Claude {
         #[command(subcommand)]
@@ -418,6 +422,7 @@ pub fn run() -> Result<()> {
         Commands::List { pr } => command::list::run(pr),
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
+        Commands::Docs => command::docs::run(),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },

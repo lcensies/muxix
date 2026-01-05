@@ -1,6 +1,7 @@
 pub mod add;
 pub mod args;
 pub mod close;
+pub mod docs;
 pub mod list;
 pub mod merge;
 pub mod open;
