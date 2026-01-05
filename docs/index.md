@@ -109,12 +109,74 @@ onMounted(() => {
 .video-container.playing .video-play-button {
   display: none;
 }
+
+.testimonials-section {
+  max-width: 900px;
+  margin: 3rem auto 0;
+  padding: 0 24px;
+}
+
+.testimonials-section h2 {
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--vp-c-text-1);
+}
+
+.testimonials {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.testimonial {
+  background: var(--vp-c-bg-soft);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid var(--vp-c-divider);
+}
+
+.testimonial-quote {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+  margin: 0 0 1rem 0;
+  font-style: italic;
+}
+
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--vp-c-text-2);
+}
+
+.testimonial-author a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.testimonial-author a:hover {
+  text-decoration: underline;
+}
 </style>
 
-## What people are saying
-
-> "I've been using (and loving) workmux which brings together tmux, git worktrees, and CLI agents into an opinionated workflow."
-> — @Coolin96 [via Hacker News](https://news.ycombinator.com/item?id=46029809)
-
-> "Thank you so much for your work with workmux! It's a tool I've been wanting to exist for a long time."
-> — @rstacruz [via GitHub](https://github.com/raine/workmux/issues/2)
+<div class="testimonials-section">
+  <h2>What people are saying</h2>
+  <div class="testimonials">
+    <div class="testimonial">
+      <p class="testimonial-quote">"I've been using (and loving) workmux which brings together tmux, git worktrees, and CLI agents into an opinionated workflow."</p>
+      <div class="testimonial-author">
+        — @Coolin96 <a href="https://news.ycombinator.com/item?id=46029809">via Hacker News</a>
+      </div>
+    </div>
+    <div class="testimonial">
+      <p class="testimonial-quote">"Thank you so much for your work with workmux! It's a tool I've been wanting to exist for a long time."</p>
+      <div class="testimonial-author">
+        — @rstacruz <a href="https://github.com/raine/workmux/issues/2">via GitHub</a>
+      </div>
+    </div>
+  </div>
+</div>
