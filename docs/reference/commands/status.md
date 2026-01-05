@@ -8,12 +8,12 @@ workmux status
 
 ## Keybindings
 
-| Key       | Action                              |
-| --------- | ----------------------------------- |
-| `1`-`9`   | Quick jump to agent (closes popup)  |
-| `p`       | Peek at agent (popup stays open)    |
-| `Enter`   | Go to selected agent (closes popup) |
-| `j`/`k`   | Navigate up/down                    |
-| `q`       | Quit                                |
+| Key     | Action                              |
+| ------- | ----------------------------------- |
+| `1`-`9` | Quick jump to agent (closes popup)  |
+| `p`     | Peek at agent (popup stays open)    |
+| `Enter` | Go to selected agent (closes popup) |
+| `j`/`k` | Navigate up/down                    |
+| `q`     | Quit                                |
 
 See the [Status popup guide](/guide/status-popup) for more details.
