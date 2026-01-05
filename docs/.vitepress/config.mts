@@ -7,7 +7,10 @@ export default defineConfig({
   lastUpdated: true,
   cleanUrls: true,
 
-  head: [["link", { rel: "icon", href: "/branch-icon.svg" }]],
+  head: [
+    ["link", { rel: "icon", href: "/branch-icon.svg" }],
+    ["meta", { name: "algolia-site-verification", content: "3CFC51B41FBBDD13" }],
+  ],
 
   vite: {
     resolve: {
