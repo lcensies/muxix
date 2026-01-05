@@ -21,12 +21,12 @@ hero:
 features:
   - title: Zero friction
     details: Create worktrees and tmux windows in a single command. Merge and clean up everything just as easily.
+  - title: Native tmux integration
+    details: Works with your existing tmux setup. Your shortcuts, themes, and workflow stay intact.
   - title: AI agent native
     details: Perfect for running multiple AI agents in parallel. Isolated environments with status tracking in your tmux window list.
   - title: Config as code
     details: Define your tmux layout and setup steps in .workmux.yaml. Customize panes, file operations, and lifecycle hooks.
-  - title: Native tmux integration
-    details: Works with your existing tmux setup. Your shortcuts, themes, and workflow stay intact.
 ---
 
 <div style="display: flex; justify-content: center; margin-top: 2rem;">
