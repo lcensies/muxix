@@ -8,7 +8,7 @@ export default defineConfig({
   cleanUrls: true,
 
   head: [
-    ['link', { rel: 'icon', href: '/logo.svg' }]
+    ['link', { rel: 'icon', href: '/icon.svg' }]
   ],
 
   themeConfig: {
