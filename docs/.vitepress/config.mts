@@ -62,11 +62,22 @@ export default defineConfig({
           text: "Usage",
           items: [
             { text: "Configuration", link: "/guide/configuration" },
-            { text: "AI agents", link: "/guide/agents" },
-            { text: "Status popup", link: "/guide/status-popup" },
-            { text: "Tips & tricks", link: "/guide/tips" },
-            { text: "Caveats", link: "/guide/caveats" },
+            { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
+            { text: "direnv integration", link: "/guide/direnv" },
           ],
+        },
+        {
+          text: "AI Agents",
+          items: [
+            { text: "Overview", link: "/guide/agents" },
+            { text: "Status tracking", link: "/guide/status-tracking" },
+            { text: "Status popup", link: "/guide/status-popup" },
+            { text: "Delegating tasks", link: "/guide/delegating-tasks" },
+          ],
+        },
+        {
+          text: "Caveats",
+          link: "/guide/caveats",
         },
       ],
       "/reference/": [
