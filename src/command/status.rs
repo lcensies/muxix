@@ -380,6 +380,15 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
+    // Calculate max project name width (with padding, capped)
+    let max_project_width = row_data
+        .iter()
+        .map(|(_, project, _, _, _, _, _)| project.len())
+        .max()
+        .unwrap_or(5)
+        .clamp(5, 20) // min 5, max 20
+        + 2; // padding
+
     // Calculate max agent name width (with padding, capped)
     let max_agent_width = row_data
         .iter()
@@ -406,9 +415,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(2),                      // #: jump key
-            Constraint::Max(20),                        // Project: cap width
-            Constraint::Length(max_agent_width as u16), // Agent: auto-sized
+            Constraint::Length(2),                        // #: jump key
+            Constraint::Length(max_project_width as u16), // Project: auto-sized
+            Constraint::Length(max_agent_width as u16),   // Agent: auto-sized
             Constraint::Length(8),                      // Status: fixed (icons)
             Constraint::Length(10),                     // Time: HH:MM:SS + padding
             Constraint::Fill(1),                        // Title: takes remaining space
