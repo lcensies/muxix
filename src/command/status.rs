@@ -352,8 +352,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Min(20),    // Project
-            Constraint::Min(25),    // Agent
+            Constraint::Length(22), // Project
+            Constraint::Length(28), // Agent
             Constraint::Length(8),  // Status
             Constraint::Length(10), // Duration
         ],
