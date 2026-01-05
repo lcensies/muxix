@@ -3,7 +3,7 @@ layout: home
 
 hero:
   text: Parallel development in tmux with git worktrees
-  tagline: Giga opinionated zero-friction workflow tool for managing git worktrees and tmux windows as isolated development environments.
+  tagline: The zero-friction workflow for git worktrees and tmux. Isolate contexts, run parallel AI agents, and merge with a single command.
   image:
     light: /logo.svg
     dark: /logo-dark.svg
