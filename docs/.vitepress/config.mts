@@ -25,7 +25,12 @@ export default defineConfig({
     siteTitle: "workmux",
 
     search: {
-      provider: "local",
+      provider: "algolia",
+      options: {
+        appId: "LE5BQE6V5G",
+        apiKey: "5155e711e5233eab82a26f248b60b61b",
+        indexName: "workmux",
+      },
     },
 
     nav: [
