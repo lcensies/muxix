@@ -1,4 +1,4 @@
-# Git Worktree Caveats
+# Git worktree caveats
 
 While powerful, git worktrees have nuances that are important to understand. workmux is designed to automate solutions to these, but awareness of the underlying mechanics helps.
 

@@ -1,4 +1,4 @@
-# Tips & Tricks
+# Tips & tricks
 
 ## Nerdfont window prefix
 

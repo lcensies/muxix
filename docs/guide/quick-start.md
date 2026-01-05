@@ -1,4 +1,4 @@
-# Quick Start
+# Quick start
 
 ## 1. Initialize configuration (optional)
 

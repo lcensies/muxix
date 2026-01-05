@@ -35,22 +35,22 @@ export default defineConfig({
           items: [
             { text: 'What is workmux?', link: '/guide/' },
             { text: 'Installation', link: '/guide/installation' },
-            { text: 'Quick Start', link: '/guide/quick-start' },
+            { text: 'Quick start', link: '/guide/quick-start' },
           ]
         },
         {
           text: 'Usage',
           items: [
             { text: 'Configuration', link: '/guide/configuration' },
-            { text: 'AI Agents', link: '/guide/agents' },
-            { text: 'Tips & Tricks', link: '/guide/tips' },
+            { text: 'AI agents', link: '/guide/agents' },
+            { text: 'Tips & tricks', link: '/guide/tips' },
             { text: 'Caveats', link: '/guide/caveats' },
           ]
         }
       ],
       '/reference/': [
         {
-          text: 'CLI Reference',
+          text: 'CLI reference',
           items: [
             { text: 'Commands', link: '/reference/commands' },
           ]
