@@ -176,7 +176,7 @@ impl App {
 
     fn extract_project_name(&self, agent: &AgentPane) -> String {
         // Extract project name from the path
-        // Look for __worktrees pattern or use parent directory name
+        // Look for __worktrees pattern or use directory name
         let path = &agent.path;
 
         // Walk up the path to find __worktrees
@@ -193,9 +193,8 @@ impl App {
             }
         }
 
-        // Fallback: use the parent directory name or path basename
-        path.parent()
-            .and_then(|p| p.file_name())
+        // Fallback: use the directory name (for non-worktree projects)
+        path.file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.to_string_lossy().to_string())
     }
@@ -368,8 +367,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         rows,
         [
             Constraint::Length(20), // Project
-            Constraint::Length(18), // Agent
-            Constraint::Length(22), // Title
+            Constraint::Length(24), // Agent
+            Constraint::Length(30), // Title
             Constraint::Length(8),  // Status
             Constraint::Length(10), // Duration
         ],
