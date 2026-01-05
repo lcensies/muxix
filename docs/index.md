@@ -2,7 +2,6 @@
 layout: home
 
 hero:
-  name: workmux
   text: Parallel development in tmux
   tagline: Giga opinionated zero-friction workflow tool for managing git worktrees and tmux windows as isolated development environments.
   image:
