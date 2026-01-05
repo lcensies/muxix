@@ -30,7 +30,7 @@ features:
 ---
 
 <div style="display: flex; justify-content: center; margin-top: 2rem;">
-  <img src="/demo.gif" alt="workmux demo" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 100%;">
+  <video src="/demo.mp4" controls muted playsinline style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-width: 100%;"></video>
 </div>
 
 ## What people are saying
