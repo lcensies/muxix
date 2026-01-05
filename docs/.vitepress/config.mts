@@ -22,7 +22,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/' },
       { text: 'Reference', link: '/reference/commands' },
-      { text: 'Changelog', link: 'https://github.com/raine/workmux/blob/main/CHANGELOG.md' }
+      { text: 'Changelog', link: '/changelog' }
     ],
 
     sidebar: {
