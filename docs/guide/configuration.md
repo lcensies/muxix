@@ -28,12 +28,12 @@ panes:
 
 ```yaml
 post_create:
-  - '<global>'
+  - "<global>"
   - mise use
 
 files:
   symlink:
-    - '<global>' # Include global symlinks (node_modules)
+    - "<global>" # Include global symlinks (node_modules)
     - .pnpm-store # Add project-specific symlink
 
 panes:
@@ -141,9 +141,9 @@ Customize the icons shown in tmux window names:
 
 ```yaml
 status_icons:
-  working: '🤖' # Agent is processing
-  waiting: '💬' # Agent needs input (auto-clears on focus)
-  done: '✅' # Agent finished (auto-clears on focus)
+  working: "🤖" # Agent is processing
+  waiting: "💬" # Agent needs input (auto-clears on focus)
+  done: "✅" # Agent finished (auto-clears on focus)
 ```
 
 Set `status_format: false` to disable automatic tmux format modification.

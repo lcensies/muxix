@@ -1,71 +1,78 @@
-import { defineConfig } from 'vitepress'
+import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: 'workmux',
-  description: 'Parallel development in tmux with git worktrees',
-  lang: 'en-US',
+  title: "workmux",
+  description: "Parallel development in tmux with git worktrees",
+  lang: "en-US",
   lastUpdated: true,
   cleanUrls: true,
 
-  head: [
-    ['link', { rel: 'icon', href: '/icon.svg' }]
-  ],
+  head: [["link", { rel: "icon", href: "/branch-icon.svg" }]],
 
   themeConfig: {
-    logo: { light: '/icon.svg', dark: '/icon-dark.svg' },
-    siteTitle: 'workmux',
+    logo: { light: "/icon.svg", dark: "/icon-dark.svg" },
+    siteTitle: "workmux",
 
     search: {
-      provider: 'local'
+      provider: "local",
     },
 
     nav: [
-      { text: 'Guide', link: '/guide/' },
-      { text: 'Reference', link: '/reference/commands' },
-      { text: 'Changelog', link: '/changelog' }
+      { text: "Guide", link: "/guide/" },
+      { text: "Reference", link: "/reference/commands/" },
+      { text: "Changelog", link: "/changelog" },
     ],
 
     sidebar: {
-      '/guide/': [
+      "/guide/": [
         {
-          text: 'Introduction',
+          text: "Introduction",
           items: [
-            { text: 'What is workmux?', link: '/guide/' },
-            { text: 'Installation', link: '/guide/installation' },
-            { text: 'Quick start', link: '/guide/quick-start' },
-          ]
+            { text: "What is workmux?", link: "/guide/" },
+            { text: "Installation", link: "/guide/installation" },
+            { text: "Quick start", link: "/guide/quick-start" },
+          ],
         },
         {
-          text: 'Usage',
+          text: "Usage",
           items: [
-            { text: 'Configuration', link: '/guide/configuration' },
-            { text: 'AI agents', link: '/guide/agents' },
-            { text: 'Tips & tricks', link: '/guide/tips' },
-            { text: 'Caveats', link: '/guide/caveats' },
-          ]
-        }
+            { text: "Configuration", link: "/guide/configuration" },
+            { text: "AI agents", link: "/guide/agents" },
+            { text: "Tips & tricks", link: "/guide/tips" },
+            { text: "Caveats", link: "/guide/caveats" },
+          ],
+        },
       ],
-      '/reference/': [
+      "/reference/": [
         {
-          text: 'CLI reference',
+          text: "CLI reference",
           items: [
-            { text: 'Commands', link: '/reference/commands' },
-          ]
-        }
-      ]
+            { text: "Overview", link: "/reference/commands/" },
+            { text: "add", link: "/reference/commands/add" },
+            { text: "merge", link: "/reference/commands/merge" },
+            { text: "remove", link: "/reference/commands/remove" },
+            { text: "list", link: "/reference/commands/list" },
+            { text: "open", link: "/reference/commands/open" },
+            { text: "close", link: "/reference/commands/close" },
+            { text: "path", link: "/reference/commands/path" },
+            { text: "init", link: "/reference/commands/init" },
+            { text: "claude prune", link: "/reference/commands/claude" },
+            { text: "completions", link: "/reference/commands/completions" },
+            { text: "docs", link: "/reference/commands/docs" },
+          ],
+        },
+      ],
     },
 
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/raine/workmux' }
-    ],
+    socialLinks: [{ icon: "github", link: "https://github.com/raine/workmux" }],
 
     footer: {
-      message: 'Released under the MIT License.'
+      message: "Released under the MIT License.",
     },
 
     editLink: {
-      pattern: 'https://github.com/raine/workmux/edit/main/docs/:path',
-      text: 'Edit this page on GitHub'
-    }
-  }
-})
+      pattern: "https://github.com/raine/workmux/edit/main/docs/:path",
+      text: "Edit this page on GitHub",
+    },
+  },
+});

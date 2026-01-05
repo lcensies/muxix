@@ -65,9 +65,9 @@ You can customize the icons in your config:
 ```yaml
 # ~/.config/workmux/config.yaml
 status_icons:
-  working: '🔄'
-  waiting: '⏸️'
-  done: '✔️'
+  working: "🔄"
+  waiting: "⏸️"
+  done: "✔️"
 ```
 
 If you prefer to manage the tmux format yourself, disable auto-modification and add the status variable to your `~/.tmux.conf`:
@@ -158,7 +158,7 @@ Add this to your global config (`~/.config/workmux/config.yaml`) or project's `.
 To skip prompts entirely, either configure the agent with the flag:
 
 ```yaml
-agent: 'claude --dangerously-skip-permissions'
+agent: "claude --dangerously-skip-permissions"
 ```
 
 This only affects workmux-created worktrees. Alternatively, use a global shell alias:
