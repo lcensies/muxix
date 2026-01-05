@@ -86,14 +86,13 @@ brew install raine/workmux/workmux
 
 ### Pre-built binaries
 
-Download the
-[latest release](https://github.com/raine/workmux/releases/latest) for your
-platform:
+Download the [latest release](https://github.com/raine/workmux/releases/latest)
+for your platform:
 
-| Platform              | Download                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Linux (x64)           | [workmux-linux-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-amd64.tar.gz) |
-| Linux (ARM64)         | [workmux-linux-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-arm64.tar.gz) |
+| Platform              | Download                                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Linux (x64)           | [workmux-linux-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-amd64.tar.gz)   |
+| Linux (ARM64)         | [workmux-linux-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-arm64.tar.gz)   |
 | macOS (Intel)         | [workmux-darwin-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-amd64.tar.gz) |
 | macOS (Apple Silicon) | [workmux-darwin-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-arm64.tar.gz) |
 
@@ -1055,9 +1054,9 @@ configured pane layout and environment.
 
 #### Options
 
-- `-n, --new`: Force opening in a new window even if one already exists.
-  Creates a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for
-  having multiple terminal views into the same worktree.
+- `-n, --new`: Force opening in a new window even if one already exists. Creates
+  a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having
+  multiple terminal views into the same worktree.
 - `--run-hooks`: Re-runs the `post_create` commands (these block window
   creation).
 - `--force-files`: Re-applies file copy/symlink operations. Useful for restoring
@@ -1209,16 +1208,6 @@ without leaving the terminal.
 
 When run interactively, renders markdown with colors and uses a pager (`less`).
 When piped (e.g., to an LLM), outputs raw markdown for clean context.
-
-#### Examples
-
-```bash
-# View docs in terminal
-workmux docs
-
-# Pipe to LLM for questions
-workmux docs | llm "how do I configure panes?"
-```
 
 #### Using with AI agents
 
@@ -1592,7 +1581,7 @@ to `.gitignore`:
 To skip prompts entirely, either configure the agent with the flag:
 
 ```yaml
-agent: "claude --dangerously-skip-permissions"
+agent: 'claude --dangerously-skip-permissions'
 ```
 
 This only affects workmux-created worktrees. Alternatively, use a global shell
