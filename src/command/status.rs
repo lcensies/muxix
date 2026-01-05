@@ -271,10 +271,12 @@ pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
+    let footer_height = if app.no_border { 1 } else { 3 };
+
     // Layout: table, footer
     let chunks = Layout::vertical([
-        Constraint::Min(5),    // Table
-        Constraint::Length(3), // Footer
+        Constraint::Min(5),                // Table
+        Constraint::Length(footer_height), // Footer
     ])
     .split(area);
 
@@ -300,7 +302,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["Project", "Agent", "Status", "Duration"]
+    let header_cells = ["Project", "Agent", "Title", "Status", "Duration"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -340,6 +342,12 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             let project = app.extract_project_name(agent);
             let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
+            // Extract pane title (Claude Code session summary), strip leading "✳ " if present
+            let title = agent
+                .pane_title
+                .as_ref()
+                .map(|t| t.strip_prefix("✳ ").unwrap_or(t).to_string())
+                .unwrap_or_default();
             let (status_text, status_color) = app.get_status_display(agent);
             let duration = app
                 .get_elapsed(agent)
@@ -349,6 +357,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             Row::new(vec![
                 Cell::from(project),
                 Cell::from(agent_name),
+                Cell::from(title),
                 Cell::from(status_text).style(Style::default().fg(status_color)),
                 Cell::from(duration),
             ])
@@ -358,8 +367,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(22), // Project
-            Constraint::Length(28), // Agent
+            Constraint::Length(20), // Project
+            Constraint::Length(18), // Agent
+            Constraint::Length(22), // Title
             Constraint::Length(8),  // Status
             Constraint::Length(10), // Duration
         ],
@@ -370,8 +380,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         Block::default()
             .borders(Borders::ALL)
-            .title(" Workmux Agent Status "),
-    )
+            .title(" Workmux Agent Status ")
+    })
     .row_highlight_style(
         Style::default()
             .bg(Color::DarkGray)

@@ -106,6 +106,8 @@ pub struct AgentPane {
     pub pane_id: String,
     /// Working directory path of the pane
     pub path: PathBuf,
+    /// Pane title (set by Claude Code to show session summary)
+    pub pane_title: Option<String>,
     /// Current status icon (if set)
     pub status: Option<String>,
     /// Unix timestamp when status was last set
@@ -118,7 +120,7 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     // Format string to extract all needed info in one call
     // Using tab as delimiter since it's less likely to appear in paths/names
     // Note: Uses @workmux_pane_status (pane-level) not @workmux_status (window-level)
-    let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}";
+    let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_title}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}";
 
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
@@ -128,15 +130,15 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     let mut agents = Vec::new();
     for line in output.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 6 {
+        if parts.len() < 7 {
             continue;
         }
 
         // Check PANE status specifically
-        let status = if parts[4].is_empty() {
+        let status = if parts[5].is_empty() {
             None
         } else {
-            Some(parts[4].to_string())
+            Some(parts[5].to_string())
         };
 
         // Only include panes with a status set (active agents)
@@ -144,10 +146,17 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
             continue;
         }
 
-        let status_ts = if parts[5].is_empty() {
+        let status_ts = if parts[6].is_empty() {
             None
         } else {
-            parts[5].parse().ok()
+            parts[6].parse().ok()
+        };
+
+        // Pane title - Claude Code sets this to session summary (e.g., "✳ Feature Implementation")
+        let pane_title = if parts[4].is_empty() {
+            None
+        } else {
+            Some(parts[4].to_string())
         };
 
         agents.push(AgentPane {
@@ -155,6 +164,7 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
             window_name: parts[1].to_string(),
             pane_id: parts[2].to_string(),
             path: PathBuf::from(parts[3]),
+            pane_title,
             status,
             status_ts,
         });
