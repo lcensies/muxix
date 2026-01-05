@@ -51,19 +51,8 @@ impl App {
     }
 
     fn refresh(&mut self) {
+        // Natural tmux order (by pane_id) for stable positions
         self.agents = tmux::get_all_agent_panes().unwrap_or_default();
-        // Sort by project for visual grouping
-        // Extract project names first to avoid borrow issues
-        let mut agents_with_projects: Vec<_> = self
-            .agents
-            .drain(..)
-            .map(|a| {
-                let project = Self::extract_project_name_static(&a);
-                (project, a)
-            })
-            .collect();
-        agents_with_projects.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
-        self.agents = agents_with_projects.into_iter().map(|(_, a)| a).collect();
 
         // Adjust selection if it's now out of bounds
         if let Some(selected) = self.table_state.selected()
@@ -125,6 +114,16 @@ impl App {
         if index < self.agents.len() {
             self.table_state.select(Some(index));
             self.jump_to_selected();
+        }
+    }
+
+    fn peek_selected(&mut self) {
+        // Switch to pane but keep popup open
+        if let Some(selected) = self.table_state.selected()
+            && let Some(agent) = self.agents.get(selected)
+        {
+            let _ = tmux::switch_to_pane(&agent.pane_id);
+            // Don't set should_jump - popup stays open
         }
     }
 
@@ -196,10 +195,6 @@ impl App {
     }
 
     fn extract_project_name(&self, agent: &AgentPane) -> String {
-        Self::extract_project_name_static(agent)
-    }
-
-    fn extract_project_name_static(agent: &AgentPane) -> String {
         // Extract project name from the path
         // Look for __worktrees pattern or use directory name
         let path = &agent.path;
@@ -261,6 +256,7 @@ pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
                 KeyCode::Char('j') | KeyCode::Down => app.next(),
                 KeyCode::Char('k') | KeyCode::Up => app.previous(),
                 KeyCode::Enter => app.jump_to_selected(),
+                KeyCode::Char('p') => app.peek_selected(),
                 // Quick jump: 1-9 for rows 0-8
                 KeyCode::Char(c @ '1'..='9') => {
                     app.jump_to_index((c as u8 - b'1') as usize);
@@ -320,8 +316,8 @@ fn ui(f: &mut Frame, app: &mut App) {
     let footer_text = Paragraph::new(Line::from(vec![
         Span::styled("  [1-9]", Style::default().fg(Color::Yellow)),
         Span::raw(" jump  "),
-        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
-        Span::raw(" nav  "),
+        Span::styled("[p]", Style::default().fg(Color::Cyan)),
+        Span::raw(" peek  "),
         Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
         Span::raw(" go  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
@@ -353,8 +349,6 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Track position within each window group for pane numbering
     let mut window_positions: BTreeMap<(String, String), usize> = BTreeMap::new();
-    // Track last project for visual grouping
-    let mut last_project = String::new();
 
     let rows: Vec<Row> = app
         .agents
@@ -380,14 +374,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 String::new()
             };
 
-            let current_project = app.extract_project_name(agent);
-            // Visual grouping: only show project if it changed
-            let project_cell = if current_project == last_project {
-                String::new()
-            } else {
-                last_project = current_project.clone();
-                current_project
-            };
+            let project = app.extract_project_name(agent);
             let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
             // Extract pane title (Claude Code session summary), strip leading "✳ " if present
             let title = agent
@@ -403,7 +390,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             Row::new(vec![
                 Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
-                Cell::from(project_cell),
+                Cell::from(project),
                 Cell::from(agent_name),
                 Cell::from(title),
                 Cell::from(status_text).style(Style::default().fg(status_color)),
