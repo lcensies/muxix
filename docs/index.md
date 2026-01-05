@@ -39,6 +39,18 @@ features:
   </p>
 </div>
 
+<div class="code-snippet">
+
+```bash
+# Start working on a feature
+workmux add my-feature
+
+# Done? Merge and clean up everything
+workmux merge
+```
+
+</div>
+
 <div style="display: flex; justify-content: center; margin-top: 2rem;">
   <div class="video-container">
     <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
@@ -92,6 +104,11 @@ onMounted(() => {
   line-height: 1.8;
   color: var(--vp-c-text-2);
   margin: 0;
+}
+
+.code-snippet {
+  max-width: 500px;
+  margin: 0 auto 3rem;
 }
 
 .video-container {
