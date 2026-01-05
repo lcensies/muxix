@@ -1,9 +1,16 @@
 use anyhow::Result;
 use clap::ValueEnum;
+use serde::Deserialize;
+use std::io::{self, Read};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
 use crate::tmux;
+
+#[derive(Deserialize)]
+struct HookInput {
+    notification_type: Option<String>,
+}
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum SetWindowStatusCommand {
@@ -23,6 +30,21 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         return Ok(());
     };
 
+    // Parse hook input from stdin (Claude Code passes JSON via stdin)
+    let hook_input = read_hook_input();
+
+    // Skip "waiting" status for idle_prompt notifications.
+    // Claude sends idle_prompt if session is idle for some time. This is bad because it changes
+    // the green checkmark to the speech bubble. Checkmark is much better at communicating "this
+    // session is done for now", than the speech bubble. Speech bubble should stil come if user is
+    // prompted for access or something
+    if matches!(cmd, SetWindowStatusCommand::Waiting)
+        && let Some(ref input) = hook_input
+        && input.notification_type.as_deref() == Some("idle_prompt")
+    {
+        return Ok(());
+    }
+
     let config = Config::load(None)?;
 
     // Ensure the status format is applied so the icon actually shows up
@@ -41,6 +63,12 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         }
         SetWindowStatusCommand::Clear => clear_status(&pane),
     }
+}
+
+fn read_hook_input() -> Option<HookInput> {
+    let mut buffer = String::new();
+    io::stdin().read_to_string(&mut buffer).ok()?;
+    serde_json::from_str(&buffer).ok()
 }
 
 fn set_status(pane: &str, icon: &str) -> Result<()> {
