@@ -73,6 +73,7 @@ onMounted(() => {
 .video-container video {
   display: block;
   max-width: 100%;
+  cursor: pointer;
 }
 
 .video-play-button {
