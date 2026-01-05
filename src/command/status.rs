@@ -159,7 +159,7 @@ impl App {
         let is_stale = self.is_stale(agent);
 
         if is_stale {
-            return ("stale".to_string(), Color::DarkGray);
+            return ("stale".to_string(), Color::Gray);
         }
 
         // Match against configured icons
