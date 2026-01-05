@@ -8,13 +8,13 @@ use textwrap::{Options as WrapOptions, wrap};
 const README: &str = include_str!("../../README.md");
 
 pub fn run() -> Result<()> {
-    let rendered = render_markdown(README);
-
+    // When piped (e.g., to an LLM), output raw markdown for cleaner context
     if !std::io::stdout().is_terminal() {
-        print!("{rendered}");
+        print!("{README}");
         return Ok(());
     }
 
+    let rendered = render_markdown(README);
     let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
     let mut parts = pager.split_whitespace();
     let cmd = parts.next().unwrap_or("less");
