@@ -31,7 +31,10 @@ tabled = { version = "0.20", features = ["ansi"] }
 git-url-parse = "0.6.0"
 slug = "0.1"
 indicatif = "0.18"
+console = "0.16"
 regex = "1"
+pulldown-cmark = { version = "0.13", default-features = false }
+textwrap = "0.16"
 
 [dev-dependencies]
 tempfile = "3.14"
