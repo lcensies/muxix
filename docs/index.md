@@ -19,12 +19,12 @@ hero:
       link: https://github.com/raine/workmux
 
 features:
-  - title: Zero friction
-    details: Create worktrees and tmux windows in a single command. Merge and clean up everything just as easily.
-  - title: Native tmux integration
-    details: Works with your existing tmux setup. Your shortcuts, themes, and workflow stay intact.
-  - title: AI agent native
-    details: Perfect for running multiple AI agents in parallel. Isolated environments with status tracking in your tmux window list.
+  - title: Worktrees made simple
+    details: Create a git worktree, tmux window, and environment setup in one command. Context switching is instant.
+  - title: Parallel AI agents
+    details: The missing link for AI coding. Delegate tasks to multiple agents simultaneously in isolated environments.
+  - title: Native tmux
+    details: Tmux is the interface. No new TUI to learn. Just tmux windows you already know how to use.
   - title: Config as code
     details: Define your tmux layout and setup steps in .workmux.yaml. Customize panes, file operations, and lifecycle hooks.
 ---
