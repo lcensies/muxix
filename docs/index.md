@@ -19,17 +19,13 @@ hero:
       link: https://github.com/raine/workmux
 
 features:
-  - icon: ⚡️
-    title: Zero Friction
+  - title: Zero friction
     details: Create worktrees and tmux windows in a single command. Merge and clean up everything just as easily.
-  - icon: 🤖
-    title: AI Agent Native
+  - title: AI agent native
     details: Perfect for running multiple AI agents in parallel. Isolated environments with status tracking in your tmux window list.
-  - icon: ⚙️
-    title: Config as Code
+  - title: Config as code
     details: Define your tmux layout and setup steps in .workmux.yaml. Customize panes, file operations, and lifecycle hooks.
-  - icon: 🔧
-    title: Native tmux Integration
+  - title: Native tmux integration
     details: Works with your existing tmux setup. Your shortcuts, themes, and workflow stay intact.
 ---
 
