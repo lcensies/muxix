@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
+    widgets::{Block, Cell, Paragraph, Row, Table, TableState},
 };
 use std::collections::BTreeMap;
 use std::io;
@@ -27,20 +27,18 @@ struct App {
     config: Config,
     should_quit: bool,
     should_jump: bool,
-    no_border: bool,
 }
 
 impl App {
-    fn new(stale_threshold_mins: u64, no_border: bool) -> Result<Self> {
+    fn new() -> Result<Self> {
         let config = Config::load(None)?;
         let mut app = Self {
             agents: Vec::new(),
             table_state: TableState::default(),
-            stale_threshold_secs: stale_threshold_mins * 60,
+            stale_threshold_secs: 60 * 60, // 60 minutes
             config,
             should_quit: false,
             should_jump: false,
-            no_border,
         };
         app.refresh();
         // Select first item if available
@@ -220,7 +218,7 @@ impl App {
     }
 }
 
-pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
+pub fn run() -> Result<()> {
     // Check if tmux is running
     if !tmux::is_running().unwrap_or(false) {
         println!("No tmux server running.");
@@ -235,7 +233,7 @@ pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new(stale_threshold_mins, no_border)?;
+    let mut app = App::new()?;
 
     // Main loop
     let tick_rate = Duration::from_millis(250);
@@ -295,12 +293,10 @@ pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    let footer_height = if app.no_border { 1 } else { 3 };
-
     // Layout: table, footer
     let chunks = Layout::vertical([
-        Constraint::Min(5),                // Table
-        Constraint::Length(footer_height), // Footer
+        Constraint::Min(5),    // Table
+        Constraint::Length(1), // Footer
     ])
     .split(area);
 
@@ -308,11 +304,6 @@ fn ui(f: &mut Frame, app: &mut App) {
     render_table(f, app, chunks[0]);
 
     // Footer
-    let footer_block = if app.no_border {
-        Block::default()
-    } else {
-        Block::default().borders(Borders::ALL)
-    };
     let footer_text = Paragraph::new(Line::from(vec![
         Span::styled("  [1-9]", Style::default().fg(Color::Yellow)),
         Span::raw(" jump  "),
@@ -322,8 +313,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         Span::raw(" go  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
-    ]))
-    .block(footer_block);
+    ]));
     f.render_widget(footer_text, chunks[1]);
 }
 
@@ -411,13 +401,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         ],
     )
     .header(header)
-    .block(if app.no_border {
-        Block::default()
-    } else {
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Workmux Agent Status ")
-    })
+    .block(Block::default())
     .row_highlight_style(
         Style::default()
             .bg(Color::DarkGray)

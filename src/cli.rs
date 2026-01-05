@@ -321,15 +321,7 @@ enum Commands {
     Docs,
 
     /// Show a TUI dashboard of all active workmux agents across all sessions
-    Status {
-        /// Threshold in minutes to mark an agent as stale (default: 60)
-        #[arg(long, default_value = "60")]
-        stale_threshold: u64,
-
-        /// Disable borders (useful when running in tmux popup)
-        #[arg(long)]
-        no_border: bool,
-    },
+    Status,
 
     /// Claude Code integration commands
     Claude {
@@ -434,10 +426,7 @@ pub fn run() -> Result<()> {
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
-        Commands::Status {
-            stale_threshold,
-            no_border,
-        } => command::status::run(stale_threshold, no_border),
+        Commands::Status => command::status::run(),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },
