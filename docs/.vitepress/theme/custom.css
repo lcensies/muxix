@@ -20,3 +20,14 @@
   --vp-c-tip-2: var(--vp-c-brand-2);
   --vp-c-tip-3: var(--vp-c-brand-3);
 }
+
+/* Larger hero image */
+.VPHero .image-container .image-bg {
+  max-width: 420px;
+  max-height: 420px;
+}
+
+.VPHero .image-container img {
+  max-width: 420px;
+  max-height: 420px;
+}
