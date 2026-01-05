@@ -1,13 +1,22 @@
 /* Custom styles for workmux docs */
+/* Colors from logo: teal #16b9a6 (light) / #30e1c8 (dark), dark blue #1e3245 */
 
 :root {
-  --vp-c-brand-1: #646cff;
-  --vp-c-brand-2: #747bff;
-  --vp-c-brand-3: #8b92ff;
+  --vp-c-brand-1: #16b9a6;
+  --vp-c-brand-2: #14a795;
+  --vp-c-brand-3: #129584;
+
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-2: var(--vp-c-brand-2);
+  --vp-c-tip-3: var(--vp-c-brand-3);
 }
 
 .dark {
-  --vp-c-brand-1: #747bff;
-  --vp-c-brand-2: #8b92ff;
-  --vp-c-brand-3: #a3a8ff;
+  --vp-c-brand-1: #30e1c8;
+  --vp-c-brand-2: #28c9b2;
+  --vp-c-brand-3: #20b19c;
+
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-2: var(--vp-c-brand-2);
+  --vp-c-tip-3: var(--vp-c-brand-3);
 }
