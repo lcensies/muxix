@@ -7,6 +7,14 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.69 (2026-01-05)
+
+- Added `status` command: a TUI dashboard for monitoring all active agents
+  across tmux sessions, with quick-jump keys (1-9), peek mode, and keyboard
+  navigation
+- The "done" (✅) status no longer gets replaced by "waiting" (💬) when Claude
+  sends idle prompts, so completed sessions stay marked as done
+
 ## v0.1.68 (2026-01-05)
 
 - Added `docs` command to view the README
