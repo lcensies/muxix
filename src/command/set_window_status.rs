@@ -73,48 +73,65 @@ fn set_status(pane: &str, icon: &str) -> Result<()> {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    let now_str = now.to_string();
 
+    // 1. Set Window Option (for tmux status bar display)
+    // "Last write wins" behavior for the window icon
     if let Err(e) = Cmd::new("tmux")
         .args(&["set-option", "-w", "-t", pane, "@workmux_status", icon])
         .run()
     {
         eprintln!("workmux: failed to set window status: {}", e);
-        return Ok(());
     }
-
-    // Also set timestamp for status tracking
-    if let Err(e) = Cmd::new("tmux")
+    let _ = Cmd::new("tmux")
         .args(&[
             "set-option",
             "-w",
             "-t",
             pane,
             "@workmux_status_ts",
-            &now.to_string(),
+            &now_str,
         ])
+        .run();
+
+    // 2. Set Pane Option (for dashboard tracking)
+    // Use a DISTINCT key to avoid inheritance issues in list-panes
+    if let Err(e) = Cmd::new("tmux")
+        .args(&["set-option", "-p", "-t", pane, "@workmux_pane_status", icon])
         .run()
     {
-        eprintln!("workmux: failed to set status timestamp: {}", e);
+        eprintln!("workmux: failed to set pane status: {}", e);
     }
+    let _ = Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-p",
+            "-t",
+            pane,
+            "@workmux_pane_status_ts",
+            &now_str,
+        ])
+        .run();
 
     Ok(())
 }
 
 fn clear_status(pane: &str) -> Result<()> {
-    if let Err(e) = Cmd::new("tmux")
+    // Clear Window Options
+    let _ = Cmd::new("tmux")
         .args(&["set-option", "-uw", "-t", pane, "@workmux_status"])
-        .run()
-    {
-        eprintln!("workmux: failed to clear window status: {}", e);
-    }
-
-    // Also clear timestamp
-    if let Err(e) = Cmd::new("tmux")
+        .run();
+    let _ = Cmd::new("tmux")
         .args(&["set-option", "-uw", "-t", pane, "@workmux_status_ts"])
-        .run()
-    {
-        eprintln!("workmux: failed to clear status timestamp: {}", e);
-    }
+        .run();
+
+    // Clear Pane Options
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status_ts"])
+        .run();
 
     Ok(())
 }

@@ -8,7 +8,7 @@ use ratatui::{
     Frame,
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState},
 };
@@ -16,11 +16,11 @@ use std::io;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
-use crate::tmux::{self, AgentWindow};
+use crate::tmux::{self, AgentPane};
 
 /// App state for the TUI
 struct App {
-    agents: Vec<AgentWindow>,
+    agents: Vec<AgentPane>,
     table_state: TableState,
     stale_threshold_secs: u64,
     config: Config,
@@ -48,7 +48,7 @@ impl App {
     }
 
     fn refresh(&mut self) {
-        self.agents = tmux::get_all_agent_windows().unwrap_or_default();
+        self.agents = tmux::get_all_agent_panes().unwrap_or_default();
         // Adjust selection if it's now out of bounds
         if let Some(selected) = self.table_state.selected()
             && selected >= self.agents.len()
@@ -100,8 +100,8 @@ impl App {
             && let Some(agent) = self.agents.get(selected)
         {
             self.should_jump = true;
-            // Store the window_id to jump to after cleanup
-            let _ = tmux::switch_to_window(&agent.window_id);
+            // Jump to the specific pane
+            let _ = tmux::switch_to_pane(&agent.pane_id);
         }
     }
 
@@ -112,7 +112,7 @@ impl App {
         format!("{:02}:{:02}:{:02}", hours, mins, secs)
     }
 
-    fn is_stale(&self, agent: &AgentWindow) -> bool {
+    fn is_stale(&self, agent: &AgentPane) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -125,7 +125,7 @@ impl App {
         }
     }
 
-    fn get_elapsed(&self, agent: &AgentWindow) -> Option<u64> {
+    fn get_elapsed(&self, agent: &AgentPane) -> Option<u64> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -134,7 +134,7 @@ impl App {
         agent.status_ts.map(|ts| now.saturating_sub(ts))
     }
 
-    fn get_status_display(&self, agent: &AgentWindow) -> (String, Color) {
+    fn get_status_display(&self, agent: &AgentPane) -> (String, Color) {
         let status = agent.status.as_deref().unwrap_or("");
         let is_stale = self.is_stale(agent);
 
@@ -158,7 +158,7 @@ impl App {
         }
     }
 
-    fn extract_agent_name(&self, agent: &AgentWindow) -> String {
+    fn extract_agent_name(&self, agent: &AgentPane) -> String {
         // Try to extract a meaningful name from the window name
         // Remove common prefixes like "wm-"
         let name = &agent.window_name;
@@ -171,7 +171,7 @@ impl App {
         }
     }
 
-    fn extract_project_name(&self, agent: &AgentWindow) -> String {
+    fn extract_project_name(&self, agent: &AgentPane) -> String {
         // Extract project name from the path
         // Look for __worktrees pattern or use parent directory name
         let path = &agent.path;

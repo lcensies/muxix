@@ -95,15 +95,15 @@ pub fn current_window_name() -> Result<Option<String>> {
     }
 }
 
-/// Information about a tmux window running a workmux agent
+/// Information about a specific pane running a workmux agent
 #[derive(Debug, Clone)]
-pub struct AgentWindow {
+pub struct AgentPane {
     /// Tmux session name
     pub session: String,
-    /// Tmux window ID (e.g., @1)
-    pub window_id: String,
     /// Window name (e.g., wm-feature-auth)
     pub window_name: String,
+    /// Pane ID (e.g., %0)
+    pub pane_id: String,
     /// Working directory path of the pane
     pub path: PathBuf,
     /// Current status icon (if set)
@@ -112,15 +112,16 @@ pub struct AgentWindow {
     pub status_ts: Option<u64>,
 }
 
-/// Fetch all tmux windows across all sessions that have workmux status set.
+/// Fetch all panes across all sessions that have workmux pane status set.
 /// This is used by the status dashboard to show all active agents.
-pub fn get_all_agent_windows() -> Result<Vec<AgentWindow>> {
+pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     // Format string to extract all needed info in one call
     // Using tab as delimiter since it's less likely to appear in paths/names
-    let format = "#{session_name}\t#{window_id}\t#{window_name}\t#{pane_current_path}\t#{@workmux_status}\t#{@workmux_status_ts}";
+    // Note: Uses @workmux_pane_status (pane-level) not @workmux_status (window-level)
+    let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}";
 
     let output = Cmd::new("tmux")
-        .args(&["list-windows", "-a", "-F", format])
+        .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
         .unwrap_or_default();
 
@@ -131,13 +132,14 @@ pub fn get_all_agent_windows() -> Result<Vec<AgentWindow>> {
             continue;
         }
 
+        // Check PANE status specifically
         let status = if parts[4].is_empty() {
             None
         } else {
             Some(parts[4].to_string())
         };
 
-        // Only include windows with a status set (active agents)
+        // Only include panes with a status set (active agents)
         if status.is_none() {
             continue;
         }
@@ -148,10 +150,10 @@ pub fn get_all_agent_windows() -> Result<Vec<AgentWindow>> {
             parts[5].parse().ok()
         };
 
-        agents.push(AgentWindow {
+        agents.push(AgentPane {
             session: parts[0].to_string(),
-            window_id: parts[1].to_string(),
-            window_name: parts[2].to_string(),
+            window_name: parts[1].to_string(),
+            pane_id: parts[2].to_string(),
             path: PathBuf::from(parts[3]),
             status,
             status_ts,
@@ -161,12 +163,12 @@ pub fn get_all_agent_windows() -> Result<Vec<AgentWindow>> {
     Ok(agents)
 }
 
-/// Switch the tmux client to a specific window
-pub fn switch_to_window(window_id: &str) -> Result<()> {
+/// Switch the tmux client to a specific pane
+pub fn switch_to_pane(pane_id: &str) -> Result<()> {
     Cmd::new("tmux")
-        .args(&["switch-client", "-t", window_id])
+        .args(&["switch-client", "-t", pane_id])
         .run()
-        .context("Failed to switch to window")?;
+        .context("Failed to switch to pane")?;
     Ok(())
 }
 
