@@ -52,6 +52,19 @@ impl App {
 
     fn refresh(&mut self) {
         self.agents = tmux::get_all_agent_panes().unwrap_or_default();
+        // Sort by project for visual grouping
+        // Extract project names first to avoid borrow issues
+        let mut agents_with_projects: Vec<_> = self
+            .agents
+            .drain(..)
+            .map(|a| {
+                let project = Self::extract_project_name_static(&a);
+                (project, a)
+            })
+            .collect();
+        agents_with_projects.sort_by(|(p1, _), (p2, _)| p1.cmp(p2));
+        self.agents = agents_with_projects.into_iter().map(|(_, a)| a).collect();
+
         // Adjust selection if it's now out of bounds
         if let Some(selected) = self.table_state.selected()
             && selected >= self.agents.len()
@@ -170,11 +183,16 @@ impl App {
         if let Some(stripped) = name.strip_prefix(prefix) {
             stripped.to_string()
         } else {
+            // For non-workmux windows, show actual window name
             name.clone()
         }
     }
 
     fn extract_project_name(&self, agent: &AgentPane) -> String {
+        Self::extract_project_name_static(agent)
+    }
+
+    fn extract_project_name_static(agent: &AgentPane) -> String {
         // Extract project name from the path
         // Look for __worktrees pattern or use directory name
         let path = &agent.path;
@@ -322,6 +340,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Track position within each window group for pane numbering
     let mut window_positions: BTreeMap<(String, String), usize> = BTreeMap::new();
+    // Track last project for visual grouping
+    let mut last_project = String::new();
 
     let rows: Vec<Row> = app
         .agents
@@ -339,7 +359,14 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 String::new()
             };
 
-            let project = app.extract_project_name(agent);
+            let current_project = app.extract_project_name(agent);
+            // Visual grouping: only show project if it changed
+            let project_cell = if current_project == last_project {
+                String::new()
+            } else {
+                last_project = current_project.clone();
+                current_project
+            };
             let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
             // Extract pane title (Claude Code session summary), strip leading "✳ " if present
             let title = agent
@@ -354,7 +381,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .unwrap_or_else(|| "-".to_string());
 
             Row::new(vec![
-                Cell::from(project),
+                Cell::from(project_cell),
                 Cell::from(agent_name),
                 Cell::from(title),
                 Cell::from(status_text).style(Style::default().fg(status_color)),
@@ -366,11 +393,11 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(20), // Project
-            Constraint::Length(24), // Agent
-            Constraint::Length(30), // Title
-            Constraint::Length(8),  // Status
-            Constraint::Length(10), // Duration
+            Constraint::Max(20),    // Project: cap width
+            Constraint::Max(24),    // Agent: cap width
+            Constraint::Fill(1),    // Title: takes remaining space
+            Constraint::Length(8),  // Status: fixed (icons)
+            Constraint::Length(10), // Duration: fixed
         ],
     )
     .header(header)
