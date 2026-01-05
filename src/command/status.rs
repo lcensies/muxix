@@ -121,6 +121,13 @@ impl App {
         }
     }
 
+    fn jump_to_index(&mut self, index: usize) {
+        if index < self.agents.len() {
+            self.table_state.select(Some(index));
+            self.jump_to_selected();
+        }
+    }
+
     fn format_duration(&self, secs: u64) -> String {
         let hours = secs / 3600;
         let mins = (secs % 3600) / 60;
@@ -254,6 +261,10 @@ pub fn run(stale_threshold_mins: u64, no_border: bool) -> Result<()> {
                 KeyCode::Char('j') | KeyCode::Down => app.next(),
                 KeyCode::Char('k') | KeyCode::Up => app.previous(),
                 KeyCode::Enter => app.jump_to_selected(),
+                // Quick jump: 1-9 for rows 0-8
+                KeyCode::Char(c @ '1'..='9') => {
+                    app.jump_to_index((c as u8 - b'1') as usize);
+                }
                 _ => {}
             }
         }
@@ -307,10 +318,12 @@ fn ui(f: &mut Frame, app: &mut App) {
         Block::default().borders(Borders::ALL)
     };
     let footer_text = Paragraph::new(Line::from(vec![
-        Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
-        Span::raw(" navigate  "),
-        Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
+        Span::styled("  [1-9]", Style::default().fg(Color::Yellow)),
         Span::raw(" jump  "),
+        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+        Span::raw(" nav  "),
+        Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
+        Span::raw(" go  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
     ]))
@@ -319,7 +332,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["Project", "Agent", "Title", "Status", "Duration"]
+    let header_cells = ["#", "Project", "Agent", "Title", "Status", "Duration"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -346,7 +359,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let rows: Vec<Row> = app
         .agents
         .iter()
-        .map(|agent| {
+        .enumerate()
+        .map(|(idx, agent)| {
             let key = (agent.session.clone(), agent.window_name.clone());
             let is_multi_pane = multi_pane_windows.contains(&key);
 
@@ -355,6 +369,13 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 let pos = window_positions.entry(key.clone()).or_insert(0);
                 *pos += 1;
                 format!(" [{}]", pos)
+            } else {
+                String::new()
+            };
+
+            // Quick jump key: 1-9 for first 9 rows
+            let jump_key = if idx < 9 {
+                format!("{}", idx + 1)
             } else {
                 String::new()
             };
@@ -381,6 +402,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .unwrap_or_else(|| "-".to_string());
 
             Row::new(vec![
+                Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                 Cell::from(project_cell),
                 Cell::from(agent_name),
                 Cell::from(title),
@@ -393,6 +415,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
+            Constraint::Length(2),  // #: jump key
             Constraint::Max(20),    // Project: cap width
             Constraint::Max(24),    // Agent: cap width
             Constraint::Fill(1),    // Title: takes remaining space
