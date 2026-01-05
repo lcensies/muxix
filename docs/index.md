@@ -9,7 +9,7 @@ hero:
     dark: /logo-dark.svg
   actions:
     - theme: brand
-      text: Quick Start
+      text: Quick start
       link: /guide/quick-start
     - theme: alt
       text: Installation
