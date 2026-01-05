@@ -60,8 +60,21 @@ workmux merge
 
 <script setup>
 import { onMounted } from 'vue'
+import { data as stars } from './stars.data'
 
 onMounted(() => {
+  // Add star count to GitHub hero button
+  if (stars) {
+    const btn = document.querySelector('.VPHero .actions a[href="https://github.com/raine/workmux"]')
+    if (btn && !btn.querySelector('.star-count')) {
+      const formatted = stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : stars
+      const span = document.createElement('span')
+      span.className = 'star-count'
+      span.textContent = `★ ${formatted}`
+      btn.appendChild(span)
+    }
+  }
+
   const container = document.querySelector('.video-container')
   const video = container?.querySelector('video')
   const playBtn = container?.querySelector('.video-play-button')
@@ -109,6 +122,13 @@ onMounted(() => {
 .code-snippet {
   max-width: 500px;
   margin: 0 auto 3rem;
+}
+
+.star-count {
+  padding-left: 8px;
+  border-left: 1px solid var(--vp-c-divider);
+  font-size: 0.9em;
+  opacity: 0.8;
 }
 
 .video-container {
