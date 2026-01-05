@@ -80,6 +80,12 @@ In a standard Git setup, switching branches disrupts your flow by requiring a cl
 - Git 2.5+ (for worktree support)
 - tmux
 
+## Inspiration and related tools
+
+workmux is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git worktree management tool. While wtp streamlines worktree creation and setup, workmux takes this further by tightly coupling worktrees with tmux window management.
+
+For managing multiple AI agents in parallel, tools like [claude-squad](https://github.com/smtg-ai/claude-squad) and [vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated interfaces, like a TUI or kanban board. In contrast, workmux adheres to its philosophy that **tmux is the interface**, providing a native tmux experience for managing parallel workflows without requiring a separate interface to learn.
+
 ## Related projects
 
 - [tmux-tools](https://github.com/raine/tmux-tools) — Collection of tmux utilities including file picker, smart sessions, and more
