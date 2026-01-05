@@ -8,6 +8,7 @@ pub mod open;
 pub mod path;
 pub mod remove;
 pub mod set_window_status;
+pub mod status;
 
 use anyhow::{Context, Result, anyhow};
 

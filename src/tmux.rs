@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, trace, warn};
@@ -93,6 +93,81 @@ pub fn current_window_name() -> Result<Option<String>> {
         Ok(name) => Ok(Some(name.trim().to_string())),
         Err(_) => Ok(None),
     }
+}
+
+/// Information about a tmux window running a workmux agent
+#[derive(Debug, Clone)]
+pub struct AgentWindow {
+    /// Tmux session name
+    pub session: String,
+    /// Tmux window ID (e.g., @1)
+    pub window_id: String,
+    /// Window name (e.g., wm-feature-auth)
+    pub window_name: String,
+    /// Working directory path of the pane
+    pub path: PathBuf,
+    /// Current status icon (if set)
+    pub status: Option<String>,
+    /// Unix timestamp when status was last set
+    pub status_ts: Option<u64>,
+}
+
+/// Fetch all tmux windows across all sessions that have workmux status set.
+/// This is used by the status dashboard to show all active agents.
+pub fn get_all_agent_windows() -> Result<Vec<AgentWindow>> {
+    // Format string to extract all needed info in one call
+    // Using tab as delimiter since it's less likely to appear in paths/names
+    let format = "#{session_name}\t#{window_id}\t#{window_name}\t#{pane_current_path}\t#{@workmux_status}\t#{@workmux_status_ts}";
+
+    let output = Cmd::new("tmux")
+        .args(&["list-windows", "-a", "-F", format])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let mut agents = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 6 {
+            continue;
+        }
+
+        let status = if parts[4].is_empty() {
+            None
+        } else {
+            Some(parts[4].to_string())
+        };
+
+        // Only include windows with a status set (active agents)
+        if status.is_none() {
+            continue;
+        }
+
+        let status_ts = if parts[5].is_empty() {
+            None
+        } else {
+            parts[5].parse().ok()
+        };
+
+        agents.push(AgentWindow {
+            session: parts[0].to_string(),
+            window_id: parts[1].to_string(),
+            window_name: parts[2].to_string(),
+            path: PathBuf::from(parts[3]),
+            status,
+            status_ts,
+        });
+    }
+
+    Ok(agents)
+}
+
+/// Switch the tmux client to a specific window
+pub fn switch_to_window(window_id: &str) -> Result<()> {
+    Cmd::new("tmux")
+        .args(&["switch-client", "-t", window_id])
+        .run()
+        .context("Failed to switch to window")?;
+    Ok(())
 }
 
 /// Create a new tmux window with the given name and working directory.

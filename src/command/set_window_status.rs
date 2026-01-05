@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::ValueEnum;
 use serde::Deserialize;
 use std::io::{self, Read};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
@@ -55,12 +56,8 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
     match cmd {
         SetWindowStatusCommand::Working => set_status(&pane, config.status_icons.working()),
-        SetWindowStatusCommand::Waiting => {
-            set_status_with_auto_clear(&pane, config.status_icons.waiting())
-        }
-        SetWindowStatusCommand::Done => {
-            set_status_with_auto_clear(&pane, config.status_icons.done())
-        }
+        SetWindowStatusCommand::Waiting => set_status(&pane, config.status_icons.waiting()),
+        SetWindowStatusCommand::Done => set_status(&pane, config.status_icons.done()),
         SetWindowStatusCommand::Clear => clear_status(&pane),
     }
 }
@@ -72,17 +69,11 @@ fn read_hook_input() -> Option<HookInput> {
 }
 
 fn set_status(pane: &str, icon: &str) -> Result<()> {
-    if let Err(e) = Cmd::new("tmux")
-        .args(&["set-option", "-w", "-t", pane, "@workmux_status", icon])
-        .run()
-    {
-        eprintln!("workmux: failed to set window status: {}", e);
-    }
-    Ok(())
-}
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
-fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
-    // Set the status icon
     if let Err(e) = Cmd::new("tmux")
         .args(&["set-option", "-w", "-t", pane, "@workmux_status", icon])
         .run()
@@ -91,18 +82,19 @@ fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Attach hook to clear on focus (only if status still matches the icon)
-    // Uses tmux conditional: if @workmux_status equals the icon, unset it
-    let hook_cmd = format!(
-        "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \"set-option -uw @workmux_status\"",
-        icon
-    );
-
+    // Also set timestamp for status tracking
     if let Err(e) = Cmd::new("tmux")
-        .args(&["set-hook", "-w", "-t", pane, "pane-focus-in", &hook_cmd])
+        .args(&[
+            "set-option",
+            "-w",
+            "-t",
+            pane,
+            "@workmux_status_ts",
+            &now.to_string(),
+        ])
         .run()
     {
-        eprintln!("workmux: failed to set auto-clear hook: {}", e);
+        eprintln!("workmux: failed to set status timestamp: {}", e);
     }
 
     Ok(())
@@ -115,5 +107,14 @@ fn clear_status(pane: &str) -> Result<()> {
     {
         eprintln!("workmux: failed to clear window status: {}", e);
     }
+
+    // Also clear timestamp
+    if let Err(e) = Cmd::new("tmux")
+        .args(&["set-option", "-uw", "-t", pane, "@workmux_status_ts"])
+        .run()
+    {
+        eprintln!("workmux: failed to clear status timestamp: {}", e);
+    }
+
     Ok(())
 }
