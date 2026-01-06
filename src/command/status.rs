@@ -178,17 +178,25 @@ impl App {
         };
 
         // Use sort_by_cached_key for better performance (calls key fn O(N) times vs O(N log N))
+        // Include pane_id as final tiebreaker for stable ordering within groups
         match self.sort_mode {
             SortMode::Priority => {
-                self.agents.sort_by_cached_key(&get_priority);
+                self.agents
+                    .sort_by_cached_key(|a| (get_priority(a), a.pane_id.clone()));
             }
             SortMode::Project => {
                 // Sort by project name first, then by status priority within each project
-                self.agents
-                    .sort_by_cached_key(|a| (Self::extract_project_name(a), get_priority(a)));
+                self.agents.sort_by_cached_key(|a| {
+                    (
+                        Self::extract_project_name(a),
+                        get_priority(a),
+                        a.pane_id.clone(),
+                    )
+                });
             }
             SortMode::Recency => {
-                self.agents.sort_by_cached_key(get_elapsed);
+                self.agents
+                    .sort_by_cached_key(|a| (get_elapsed(a), a.pane_id.clone()));
             }
         }
     }
