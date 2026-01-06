@@ -1155,25 +1155,25 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 > This feature requires [agent status tracking](#agent-status-tracking) to be
 > configured. Without it, no agents will appear in the dashboard.
 
-![workmux status popup](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/status-popup.webp)
+![workmux dashboard](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/dashboard.webp)
 
 #### Keybindings
 
 | Key       | Action                              |
 | --------- | ----------------------------------- |
-| `1`-`9`   | Quick jump to agent (closes popup)  |
-| `p`       | Peek at agent (popup stays open)    |
-| `s`       | Cycle sort mode                     |
-| `i`       | Enter input mode (type to agent)    |
-| `Ctrl+u`  | Scroll preview up                   |
-| `Ctrl+d`  | Scroll preview down                 |
-| `Enter`   | Go to selected agent (closes popup) |
+| `1`-`9`   | Quick jump to agent (closes dashboard) |
+| `p`       | Peek at agent (dashboard stays open)   |
+| `s`       | Cycle sort mode                        |
+| `i`       | Enter input mode (type to agent)       |
+| `Ctrl+u`  | Scroll preview up                      |
+| `Ctrl+d`  | Scroll preview down                    |
+| `Enter`   | Go to selected agent (closes dashboard)|
 | `j`/`k`   | Navigate up/down                    |
 | `q`/`Esc` | Quit                                |
 
 The bottom half shows a live preview of the selected agent's terminal output.
 Press `i` to enter input mode and type directly to the agent without leaving the
-popup.
+dashboard.
 
 #### Sort modes
 
@@ -1203,7 +1203,7 @@ Add to your `~/.tmux.conf` for quick access:
 bind C-s display-popup -h 15 -w 100 -E "workmux status"
 ```
 
-Then press `prefix + Ctrl-s` to open the dashboard.
+Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 ---
 

@@ -71,7 +71,7 @@ export default defineConfig({
           { text: "Overview", link: "/guide/agents" },
           { text: "Claude Code", link: "/guide/claude-code" },
           { text: "Status tracking", link: "/guide/status-tracking" },
-          { text: "Status popup", link: "/guide/status-popup" },
+          { text: "Dashboard", link: "/guide/dashboard" },
           { text: "Delegating tasks", link: "/guide/delegating-tasks" },
         ],
       },

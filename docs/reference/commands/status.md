@@ -8,17 +8,17 @@ workmux status
 
 ## Keybindings
 
-| Key       | Action                              |
-| --------- | ----------------------------------- |
-| `1`-`9`   | Quick jump to agent (closes popup)  |
-| `p`       | Peek at agent (popup stays open)    |
-| `s`       | Cycle sort mode                     |
-| `i`       | Enter input mode (type to agent)    |
-| `Ctrl+u`  | Scroll preview up                   |
-| `Ctrl+d`  | Scroll preview down                 |
-| `Enter`   | Go to selected agent (closes popup) |
-| `j`/`k`   | Navigate up/down                    |
-| `q`/`Esc` | Quit                                |
+| Key       | Action                                  |
+| --------- | --------------------------------------- |
+| `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `p`       | Peek at agent (dashboard stays open)    |
+| `s`       | Cycle sort mode                         |
+| `i`       | Enter input mode (type to agent)        |
+| `Ctrl+u`  | Scroll preview up                       |
+| `Ctrl+d`  | Scroll preview down                     |
+| `Enter`   | Go to selected agent (closes dashboard) |
+| `j`/`k`   | Navigate up/down                        |
+| `q`/`Esc` | Quit                                    |
 
 ## Sort modes
 
@@ -31,4 +31,4 @@ Press `s` to cycle through sort modes:
 
 Your sort preference persists in the tmux session.
 
-See the [Status popup guide](/guide/status-popup) for more details.
+See the [Dashboard guide](/guide/dashboard) for more details.
