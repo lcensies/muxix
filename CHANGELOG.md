@@ -7,6 +7,13 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.70 (2026-01-06)
+
+- Added smart sorting to the status dashboard with four modes: Priority (by
+  status importance), Project (grouped by project), Recency (newest first), and
+  Natural (tmux order). Press `s` to cycle through modes; it is saved across
+  sessions.
+
 ## v0.1.69 (2026-01-05)
 
 - Added `status` command: a TUI dashboard for monitoring all active agents
