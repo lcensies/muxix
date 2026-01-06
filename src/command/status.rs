@@ -198,8 +198,9 @@ impl App {
         // Include pane_id as final tiebreaker for stable ordering within groups
         match self.sort_mode {
             SortMode::Priority => {
+                // Sort by priority, then by elapsed time (most recent first), then by pane_id
                 self.agents
-                    .sort_by_cached_key(|a| (get_priority(a), pane_num(a)));
+                    .sort_by_cached_key(|a| (get_priority(a), get_elapsed(a), pane_num(a)));
             }
             SortMode::Project => {
                 // Sort by project name first, then by status priority within each project
