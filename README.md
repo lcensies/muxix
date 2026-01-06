@@ -1151,6 +1151,10 @@ cp config.json "$(workmux path feature-branch)/"
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 Useful for monitoring multiple parallel agents and quickly jumping between them.
 
+> [!IMPORTANT]
+> This feature requires [agent status tracking](#agent-status-tracking) to be
+> configured. Without it, no agents will appear in the dashboard.
+
 ![workmux status popup](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/status-popup.webp)
 
 #### Keybindings
