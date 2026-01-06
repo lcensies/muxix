@@ -113,6 +113,8 @@ struct App {
     preview: Option<String>,
     /// Track which pane_id the preview was captured from (to detect selection changes)
     preview_pane_id: Option<String>,
+    /// Input mode: keystrokes are sent directly to the selected agent's pane
+    input_mode: bool,
 }
 
 impl App {
@@ -128,6 +130,7 @@ impl App {
             sort_mode: SortMode::load_from_tmux(),
             preview: None,
             preview_pane_id: None,
+            input_mode: false,
         };
         app.refresh();
         // Select first item if available
@@ -329,6 +332,15 @@ impl App {
         }
     }
 
+    /// Send a key to the selected agent's pane
+    fn send_key_to_selected(&self, key: &str) {
+        if let Some(selected) = self.table_state.selected()
+            && let Some(agent) = self.agents.get(selected)
+        {
+            let _ = tmux::send_key(&agent.pane_id, key);
+        }
+    }
+
     fn format_duration(&self, secs: u64) -> String {
         let hours = secs / 3600;
         let mins = (secs % 3600) / 60;
@@ -456,18 +468,62 @@ pub fn run() -> Result<()> {
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                KeyCode::Char('j') | KeyCode::Down => app.next(),
-                KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                KeyCode::Enter => app.jump_to_selected(),
-                KeyCode::Char('p') => app.peek_selected(),
-                KeyCode::Char('s') => app.cycle_sort_mode(),
-                // Quick jump: 1-9 for rows 0-8
-                KeyCode::Char(c @ '1'..='9') => {
-                    app.jump_to_index((c as u8 - b'1') as usize);
+            if app.input_mode {
+                // In input mode: forward keys to the selected pane
+                match key.code {
+                    KeyCode::Esc => {
+                        app.input_mode = false;
+                    }
+                    KeyCode::Enter => {
+                        app.send_key_to_selected("Enter");
+                    }
+                    KeyCode::Backspace => {
+                        app.send_key_to_selected("BSpace");
+                    }
+                    KeyCode::Tab => {
+                        app.send_key_to_selected("Tab");
+                    }
+                    KeyCode::Up => {
+                        app.send_key_to_selected("Up");
+                    }
+                    KeyCode::Down => {
+                        app.send_key_to_selected("Down");
+                    }
+                    KeyCode::Left => {
+                        app.send_key_to_selected("Left");
+                    }
+                    KeyCode::Right => {
+                        app.send_key_to_selected("Right");
+                    }
+                    KeyCode::Char(c) => {
+                        // Send the character to the pane
+                        app.send_key_to_selected(&c.to_string());
+                    }
+                    _ => {}
                 }
-                _ => {}
+                // Refresh preview immediately after sending input
+                app.refresh_preview();
+            } else {
+                // Normal mode: handle navigation and commands
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                    KeyCode::Char('j') | KeyCode::Down => app.next(),
+                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                    KeyCode::Enter => app.jump_to_selected(),
+                    KeyCode::Char('p') => app.peek_selected(),
+                    KeyCode::Char('s') => app.cycle_sort_mode(),
+                    KeyCode::Char('i') => {
+                        // Enter input mode if an agent is selected
+                        if app.table_state.selected().is_some() && !app.agents.is_empty() {
+                            app.input_mode = true;
+                        }
+                    }
+                    // Quick jump: 1-9 for rows 0-8
+                    KeyCode::Char(c @ '1'..='9') => {
+                        app.jump_to_index((c as u8 - b'1') as usize);
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -521,21 +577,37 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Preview
     render_preview(f, app, chunks[1]);
 
-    // Footer
-    let footer_text = Paragraph::new(Line::from(vec![
-        Span::styled("  [1-9]", Style::default().fg(Color::Yellow)),
-        Span::raw(" jump  "),
-        Span::styled("[p]", Style::default().fg(Color::Cyan)),
-        Span::raw(" peek  "),
-        Span::styled("[s]", Style::default().fg(Color::Cyan)),
-        Span::raw(" sort: "),
-        Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
-        Span::raw("  "),
-        Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
-        Span::raw(" go  "),
-        Span::styled("[q]", Style::default().fg(Color::Cyan)),
-        Span::raw(" quit"),
-    ]));
+    // Footer - show different help based on mode
+    let footer_text = if app.input_mode {
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                "  INPUT MODE",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" - Type to send keys to agent  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
+            Span::raw(" exit"),
+        ]))
+    } else {
+        Paragraph::new(Line::from(vec![
+            Span::styled("  [i]", Style::default().fg(Color::Green)),
+            Span::raw(" input  "),
+            Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
+            Span::raw(" jump  "),
+            Span::styled("[p]", Style::default().fg(Color::Cyan)),
+            Span::raw(" peek  "),
+            Span::styled("[s]", Style::default().fg(Color::Cyan)),
+            Span::raw(" sort: "),
+            Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
+            Span::raw("  "),
+            Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
+            Span::raw(" go  "),
+            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]))
+    };
     f.render_widget(footer_text, chunks[1 + 1]);
 }
 
@@ -674,17 +746,36 @@ fn render_preview(f: &mut Frame, app: &App, area: Rect) {
         .selected()
         .and_then(|idx| app.agents.get(idx));
 
-    let title = if let Some(agent) = selected_agent {
+    let (title, title_style, border_style) = if app.input_mode {
+        let agent_name = selected_agent
+            .map(|a| app.extract_agent_name(a))
+            .unwrap_or_default();
+        (
+            format!(" INPUT: {} ", agent_name),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Green),
+        )
+    } else if let Some(agent) = selected_agent {
         let agent_name = app.extract_agent_name(agent);
-        format!(" Preview: {} ", agent_name)
+        (
+            format!(" Preview: {} ", agent_name),
+            Style::default().fg(Color::Cyan),
+            Style::default().fg(Color::DarkGray),
+        )
     } else {
-        " Preview ".to_string()
+        (
+            " Preview ".to_string(),
+            Style::default().fg(Color::Cyan),
+            Style::default().fg(Color::DarkGray),
+        )
     };
 
     let block = Block::bordered()
         .title(title)
-        .title_style(Style::default().fg(Color::Cyan))
-        .border_style(Style::default().fg(Color::DarkGray));
+        .title_style(title_style)
+        .border_style(border_style);
 
     // Calculate the inner area to determine scroll offset
     let inner_area = block.inner(area);

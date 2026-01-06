@@ -570,6 +570,16 @@ pub fn send_keys(pane_id: &str, command: &str) -> Result<()> {
     Ok(())
 }
 
+/// Send a single key to a pane without pressing Enter.
+/// Used for interactive input mode where each keystroke is forwarded.
+pub fn send_key(pane_id: &str, key: &str) -> Result<()> {
+    Cmd::new("tmux")
+        .args(&["send-keys", "-t", pane_id, key])
+        .run()
+        .context("Failed to send key to pane")?;
+    Ok(())
+}
+
 /// Result of setting up panes
 pub struct PaneSetupResult {
     /// The ID of the pane that should receive focus.
