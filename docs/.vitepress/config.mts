@@ -61,8 +61,8 @@ export default defineConfig({
         text: "Guides",
         items: [
           { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
-          { text: "direnv integration", link: "/guide/direnv" },
-          { text: "Caveats", link: "/guide/caveats" },
+          { text: "direnv", link: "/guide/direnv" },
+          { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
         ],
       },
       {
