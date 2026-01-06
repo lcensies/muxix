@@ -11,7 +11,7 @@ When running multiple AI agents in parallel, it's helpful to have a centralized 
 Add this binding to your `~/.tmux.conf`:
 
 ```bash
-bind C-s display-popup -h 15 -w 100 -E "workmux status"
+bind C-s display-popup -h 15 -w 100 -E "workmux dashboard"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup. Feel free to adjust the keybinding and popup dimensions (`-h` and `-w`) as needed.

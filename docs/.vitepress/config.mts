@@ -85,7 +85,7 @@ export default defineConfig({
           { text: "open", link: "/reference/commands/open" },
           { text: "close", link: "/reference/commands/close" },
           { text: "path", link: "/reference/commands/path" },
-          { text: "status", link: "/reference/commands/status" },
+          { text: "dashboard", link: "/reference/commands/dashboard" },
           { text: "init", link: "/reference/commands/init" },
           { text: "claude prune", link: "/reference/commands/claude" },
           { text: "completions", link: "/reference/commands/completions" },

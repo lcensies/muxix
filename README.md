@@ -1146,7 +1146,7 @@ cp config.json "$(workmux path feature-branch)/"
 
 ---
 
-### `workmux status`
+### `workmux dashboard`
 
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 Useful for monitoring multiple parallel agents and quickly jumping between them.
@@ -1200,7 +1200,7 @@ Your sort preference persists in the tmux session.
 Add to your `~/.tmux.conf` for quick access:
 
 ```bash
-bind C-s display-popup -h 15 -w 100 -E "workmux status"
+bind C-s display-popup -h 15 -w 100 -E "workmux dashboard"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.

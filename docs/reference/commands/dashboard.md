@@ -1,9 +1,9 @@
-# status
+# dashboard
 
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 
 ```bash
-workmux status
+workmux dashboard
 ```
 
 ## Keybindings
