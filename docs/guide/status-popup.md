@@ -16,7 +16,9 @@ bind C-s display-popup -h 15 -w 100 -E "workmux status"
 
 Then press `prefix + Ctrl-s` to open the dashboard as an overlay. Feel free to adjust the keybinding and popup dimensions (`-h` and `-w`) as needed.
 
-The popup shows all tmux panes that have agent status set (via the [status tracking](/guide/agents#status-tracking) hooks).
+::: warning Prerequisites
+This feature requires [status tracking hooks](/guide/status-tracking) to be configured. Without them, no agents will appear in the popup.
+:::
 
 ## Keybindings
 

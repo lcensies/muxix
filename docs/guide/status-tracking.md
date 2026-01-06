@@ -6,15 +6,19 @@ Workmux can display the status of the agent in your tmux window list, giving you
   <img src="/status.webp" alt="tmux status showing agent icons" style="border-radius: 4px;">
 </div>
 
+## Agent support
+
+| Agent | Status |
+| ----- | ------ |
+| Claude Code | ✅ Supported |
+| Gemini CLI | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
+| Codex | [Tracking issue](https://github.com/openai/codex/issues/2109) |
+
 ## Status icons
 
 - 🤖 = agent is working
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
-
-::: info
-Currently only Claude Code supports hooks that enable this functionality. Gemini's support is [on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex support can be tracked in [this issue](https://github.com/openai/codex/issues/2109).
-:::
 
 ## Claude Code setup
 
