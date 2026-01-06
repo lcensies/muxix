@@ -22,14 +22,25 @@ This feature requires [status tracking hooks](/guide/status-tracking) to be conf
 
 ## Keybindings
 
-| Key     | Action                              |
-| ------- | ----------------------------------- |
-| `1`-`9` | Quick jump to agent (closes popup)  |
-| `p`     | Peek at agent (popup stays open)    |
-| `s`     | Cycle sort mode                     |
-| `Enter` | Go to selected agent (closes popup) |
-| `j`/`k` | Navigate up/down                    |
-| `q`     | Quit                                |
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `1`-`9`   | Quick jump to agent (closes popup)  |
+| `p`       | Peek at agent (popup stays open)    |
+| `s`       | Cycle sort mode                     |
+| `i`       | Enter input mode (type to agent)    |
+| `Ctrl+u`  | Scroll preview up                   |
+| `Ctrl+d`  | Scroll preview down                 |
+| `Enter`   | Go to selected agent (closes popup) |
+| `j`/`k`   | Navigate up/down                    |
+| `q`/`Esc` | Quit                                |
+
+## Live preview
+
+The bottom half of the popup shows a live preview of the selected agent's terminal output. The preview auto-scrolls to show the latest output, but you can scroll through history with `Ctrl+u`/`Ctrl+d`.
+
+## Input mode
+
+Press `i` to enter input mode, which forwards your keystrokes directly to the selected agent's pane. This lets you respond to agent prompts without leaving the status popup. Press `Esc` to exit input mode and return to normal navigation.
 
 ## Sort modes
 

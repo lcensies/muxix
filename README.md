@@ -1159,14 +1159,21 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 
 #### Keybindings
 
-| Key     | Action                              |
-| ------- | ----------------------------------- |
-| `1`-`9` | Quick jump to agent (closes popup)  |
-| `p`     | Peek at agent (popup stays open)    |
-| `s`     | Cycle sort mode                     |
-| `Enter` | Go to selected agent (closes popup) |
-| `j`/`k` | Navigate up/down                    |
-| `q`     | Quit                                |
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `1`-`9`   | Quick jump to agent (closes popup)  |
+| `p`       | Peek at agent (popup stays open)    |
+| `s`       | Cycle sort mode                     |
+| `i`       | Enter input mode (type to agent)    |
+| `Ctrl+u`  | Scroll preview up                   |
+| `Ctrl+d`  | Scroll preview down                 |
+| `Enter`   | Go to selected agent (closes popup) |
+| `j`/`k`   | Navigate up/down                    |
+| `q`/`Esc` | Quit                                |
+
+The bottom half shows a live preview of the selected agent's terminal output.
+Press `i` to enter input mode and type directly to the agent without leaving the
+popup.
 
 #### Sort modes
 
