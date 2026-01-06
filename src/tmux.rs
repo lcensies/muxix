@@ -95,6 +95,21 @@ pub fn current_window_name() -> Result<Option<String>> {
     }
 }
 
+/// Get the current foreground command for a pane
+pub fn get_pane_current_command(pane_id: &str) -> Result<String> {
+    let output = Cmd::new("tmux")
+        .args(&[
+            "display-message",
+            "-p",
+            "-t",
+            pane_id,
+            "#{pane_current_command}",
+        ])
+        .run_and_capture_stdout()
+        .context("Failed to get pane current command")?;
+    Ok(output.trim().to_string())
+}
+
 /// Information about a specific pane running a workmux agent
 #[derive(Debug, Clone)]
 pub struct AgentPane {
@@ -116,11 +131,16 @@ pub struct AgentPane {
 
 /// Fetch all panes across all sessions that have workmux pane status set.
 /// This is used by the status dashboard to show all active agents.
+///
+/// Automatically removes panes from the list when the agent has exited.
+/// This is detected by comparing the stored command (from when status was set)
+/// with the current foreground command. If they differ, the agent has exited.
 pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     // Format string to extract all needed info in one call
     // Using tab as delimiter since it's less likely to appear in paths/names
     // Note: Uses @workmux_pane_status (pane-level) not @workmux_status (window-level)
-    let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_title}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}";
+    // Also includes @workmux_pane_command (stored) and pane_current_command (live) for exit detection
+    let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_title}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}\t#{@workmux_pane_command}\t#{pane_current_command}";
 
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
@@ -130,7 +150,7 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     let mut agents = Vec::new();
     for line in output.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 7 {
+        if parts.len() < 9 {
             continue;
         }
 
@@ -143,6 +163,16 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
 
         // Only include panes with a status set (active agents)
         if status.is_none() {
+            continue;
+        }
+
+        let pane_id = parts[2];
+        let original_cmd = parts[7]; // @workmux_pane_command (stored when status set)
+        let current_cmd = parts[8]; // pane_current_command (live)
+
+        // If command changed, agent has exited - clear status and skip
+        if !original_cmd.is_empty() && current_cmd != original_cmd {
+            clear_pane_status(pane_id);
             continue;
         }
 
@@ -162,7 +192,7 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
         agents.push(AgentPane {
             session: parts[0].to_string(),
             window_name: parts[1].to_string(),
-            pane_id: parts[2].to_string(),
+            pane_id: pane_id.to_string(),
             path: PathBuf::from(parts[3]),
             pane_title,
             status,
@@ -171,6 +201,28 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
     }
 
     Ok(agents)
+}
+
+/// Clear all workmux pane status options from a pane.
+/// Only clears pane-level options, not window-level, because:
+/// 1. Multiple panes in a window may have different agents
+/// 2. Window status uses "last write wins" - an active agent will re-set it
+fn clear_pane_status(pane_id: &str) {
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-up",
+            "-t",
+            pane_id,
+            "@workmux_pane_status_ts",
+        ])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_command"])
+        .run();
 }
 
 /// Switch the tmux client to a specific pane

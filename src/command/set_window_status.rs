@@ -113,6 +113,22 @@ fn set_status(pane: &str, icon: &str) -> Result<()> {
         ])
         .run();
 
+    // 3. Store the current foreground command for agent exit detection
+    // When the command changes (e.g., from "node" to "zsh"), we know the agent exited
+    let current_cmd = tmux::get_pane_current_command(pane).unwrap_or_default();
+    if !current_cmd.is_empty() {
+        let _ = Cmd::new("tmux")
+            .args(&[
+                "set-option",
+                "-p",
+                "-t",
+                pane,
+                "@workmux_pane_command",
+                &current_cmd,
+            ])
+            .run();
+    }
+
     Ok(())
 }
 
@@ -131,6 +147,9 @@ fn clear_status(pane: &str) -> Result<()> {
         .run();
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status_ts"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_command"])
         .run();
 
     Ok(())
