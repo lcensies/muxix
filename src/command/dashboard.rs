@@ -409,16 +409,13 @@ impl App {
         let status = agent.status.as_deref().unwrap_or("");
         let is_stale = self.is_stale(agent);
 
-        if is_stale {
-            return ("stale".to_string(), Color::Gray);
-        }
-
         // Match against configured icons
         let working = self.config.status_icons.working();
         let waiting = self.config.status_icons.waiting();
         let done = self.config.status_icons.done();
 
-        if status == working {
+        // Get the base status text and color
+        let (status_text, base_color) = if status == working {
             (status.to_string(), Color::Cyan)
         } else if status == waiting {
             (status.to_string(), Color::Magenta)
@@ -426,6 +423,14 @@ impl App {
             (status.to_string(), Color::Green)
         } else {
             (status.to_string(), Color::White)
+        };
+
+        // If stale, dim the color and add timer-off indicator
+        if is_stale {
+            let display_text = format!("{} \u{f051b}", status_text);
+            (display_text, Color::DarkGray)
+        } else {
+            (status_text, base_color)
         }
     }
 
