@@ -8,11 +8,11 @@ Workmux can display the status of the agent in your tmux window list, giving you
 
 ## Agent support
 
-| Agent | Status |
-| ----- | ------ |
-| Claude Code | ✅ Supported |
-| Gemini CLI | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
-| Codex | [Tracking issue](https://github.com/openai/codex/issues/2109) |
+| Agent       | Status                                                                 |
+| ----------- | ---------------------------------------------------------------------- |
+| Claude Code | ✅ Supported                                                           |
+| Gemini CLI  | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
+| Codex       | [Tracking issue](https://github.com/openai/codex/issues/2109)          |
 
 ## Status icons
 
