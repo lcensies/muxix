@@ -1,3 +1,4 @@
+use ansi_to_tui::IntoText;
 use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -9,7 +10,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Cell, Paragraph, Row, Table, TableState},
 };
 use std::collections::BTreeMap;
@@ -96,6 +97,9 @@ impl SortMode {
     }
 }
 
+/// Number of lines to capture from the agent's terminal for preview
+const PREVIEW_LINES: u16 = 15;
+
 /// App state for the TUI
 struct App {
     agents: Vec<AgentPane>,
@@ -105,6 +109,10 @@ struct App {
     should_quit: bool,
     should_jump: bool,
     sort_mode: SortMode,
+    /// Cached preview of the currently selected agent's terminal output
+    preview: Option<String>,
+    /// Track which pane_id the preview was captured from (to detect selection changes)
+    preview_pane_id: Option<String>,
 }
 
 impl App {
@@ -118,12 +126,16 @@ impl App {
             should_quit: false,
             should_jump: false,
             sort_mode: SortMode::load_from_tmux(),
+            preview: None,
+            preview_pane_id: None,
         };
         app.refresh();
         // Select first item if available
         if !app.agents.is_empty() {
             app.table_state.select(Some(0));
         }
+        // Initial preview fetch
+        app.update_preview();
         Ok(app)
     }
 
@@ -141,6 +153,35 @@ impl App {
                 Some(self.agents.len() - 1)
             });
         }
+
+        // Update preview for current selection
+        self.update_preview();
+    }
+
+    /// Update the preview for the currently selected agent.
+    /// Only fetches if the selection has changed or preview is stale.
+    fn update_preview(&mut self) {
+        let current_pane_id = self
+            .table_state
+            .selected()
+            .and_then(|idx| self.agents.get(idx))
+            .map(|agent| agent.pane_id.clone());
+
+        // Only fetch if selection changed
+        if current_pane_id != self.preview_pane_id {
+            self.preview_pane_id = current_pane_id.clone();
+            self.preview = current_pane_id
+                .as_ref()
+                .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+        }
+    }
+
+    /// Force refresh the preview (used on periodic refresh)
+    fn refresh_preview(&mut self) {
+        self.preview = self
+            .preview_pane_id
+            .as_ref()
+            .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
     }
 
     /// Parse pane_id (e.g., "%0", "%10") to a number for proper ordering
@@ -240,6 +281,7 @@ impl App {
             None => 0,
         };
         self.table_state.select(Some(i));
+        self.update_preview();
     }
 
     fn previous(&mut self) {
@@ -257,6 +299,7 @@ impl App {
             None => 0,
         };
         self.table_state.select(Some(i));
+        self.update_preview();
     }
 
     fn jump_to_selected(&mut self) {
@@ -401,6 +444,9 @@ pub fn run() -> Result<()> {
     let mut last_tick = std::time::Instant::now();
     let refresh_interval = Duration::from_secs(2);
     let mut last_refresh = std::time::Instant::now();
+    // Preview refreshes more frequently than the agent list
+    let preview_refresh_interval = Duration::from_millis(500);
+    let mut last_preview_refresh = std::time::Instant::now();
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
@@ -429,10 +475,16 @@ pub fn run() -> Result<()> {
             last_tick = std::time::Instant::now();
         }
 
-        // Auto-refresh every 2 seconds
+        // Auto-refresh agent list every 2 seconds
         if last_refresh.elapsed() >= refresh_interval {
             app.refresh();
             last_refresh = std::time::Instant::now();
+        }
+
+        // Auto-refresh preview more frequently for live updates
+        if last_preview_refresh.elapsed() >= preview_refresh_interval {
+            app.refresh_preview();
+            last_preview_refresh = std::time::Instant::now();
         }
 
         if app.should_quit || app.should_jump {
@@ -455,15 +507,19 @@ pub fn run() -> Result<()> {
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Layout: table, footer
+    // Layout: table (top), preview (bottom), footer
     let chunks = Layout::vertical([
-        Constraint::Min(5),    // Table
-        Constraint::Length(1), // Footer
+        Constraint::Percentage(45), // Table (top half)
+        Constraint::Min(5),         // Preview (bottom half, at least 5 lines)
+        Constraint::Length(1),      // Footer
     ])
     .split(area);
 
     // Table
     render_table(f, app, chunks[0]);
+
+    // Preview
+    render_preview(f, app, chunks[1]);
 
     // Footer
     let footer_text = Paragraph::new(Line::from(vec![
@@ -480,7 +536,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
     ]));
-    f.render_widget(footer_text, chunks[1]);
+    f.render_widget(footer_text, chunks[1 + 1]);
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
@@ -609,4 +665,59 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     .highlight_symbol("> ");
 
     f.render_stateful_widget(table, area, &mut app.table_state);
+}
+
+fn render_preview(f: &mut Frame, app: &App, area: Rect) {
+    // Get info about the selected agent for the title
+    let selected_agent = app
+        .table_state
+        .selected()
+        .and_then(|idx| app.agents.get(idx));
+
+    let title = if let Some(agent) = selected_agent {
+        let agent_name = app.extract_agent_name(agent);
+        format!(" Preview: {} ", agent_name)
+    } else {
+        " Preview ".to_string()
+    };
+
+    let block = Block::bordered()
+        .title(title)
+        .title_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    // Calculate the inner area to determine scroll offset
+    let inner_area = block.inner(area);
+
+    // Get preview content or show placeholder
+    let (text, line_count) = match (&app.preview, selected_agent) {
+        (Some(preview), Some(_)) => {
+            let trimmed = preview.trim_end();
+            if trimmed.is_empty() {
+                (Text::raw("(empty output)"), 1u16)
+            } else {
+                // Parse ANSI escape sequences to get colored text
+                match trimmed.into_text() {
+                    Ok(text) => {
+                        let count = text.lines.len() as u16;
+                        (text, count)
+                    }
+                    Err(_) => {
+                        // Fallback to plain text if ANSI parsing fails
+                        let count = trimmed.lines().count() as u16;
+                        (Text::raw(trimmed), count)
+                    }
+                }
+            }
+        }
+        (None, Some(_)) => (Text::raw("(pane not available)"), 1),
+        (_, None) => (Text::raw("(no agent selected)"), 1),
+    };
+
+    // Calculate scroll to show the bottom (latest) lines
+    let scroll_offset = line_count.saturating_sub(inner_area.height);
+
+    let paragraph = Paragraph::new(text).block(block).scroll((scroll_offset, 0));
+
+    f.render_widget(paragraph, area);
 }

@@ -182,6 +182,32 @@ pub fn switch_to_pane(pane_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Capture the last N lines of a pane's terminal output with ANSI colors.
+/// Returns the captured text, or None if the pane doesn't exist.
+pub fn capture_pane(pane_id: &str, lines: u16) -> Option<String> {
+    // Capture from history (-S -100) to ensure we get enough content
+    // even if the visible pane is small. This gets the last 100 lines
+    // of history + visible content.
+    // -e flag preserves ANSI escape sequences (colors)
+    let output = Cmd::new("tmux")
+        .args(&[
+            "capture-pane",
+            "-p", // Print to stdout
+            "-e", // Preserve ANSI escape sequences (colors)
+            "-S",
+            "-100", // Start 100 lines back in history
+            "-t",
+            pane_id, // Target pane
+        ])
+        .run_and_capture_stdout()
+        .ok()?;
+
+    // Take the last N lines from the captured content
+    let all_lines: Vec<&str> = output.lines().collect();
+    let start = all_lines.len().saturating_sub(lines as usize);
+    Some(all_lines[start..].join("\n"))
+}
+
 /// Create a new tmux window with the given name and working directory.
 /// Returns the pane ID of the initial pane in the window.
 ///
