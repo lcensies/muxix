@@ -7,6 +7,10 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.72 (2026-01-06)
+
+- Renamed "status popup" to "dashboard"
+
 ## v0.1.71 (2026-01-06)
 
 - Added pane preview to the status dashboard, showing live terminal output from
