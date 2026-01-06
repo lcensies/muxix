@@ -11,7 +11,7 @@
 | [`open`](./open)               | Open a tmux window for an existing worktree     |
 | [`close`](./close)             | Close a worktree's tmux window (keeps worktree) |
 | [`path`](./path)               | Get the filesystem path of a worktree           |
-| [`status`](./status)           | TUI dashboard for monitoring agents             |
+| [`dashboard`](./dashboard)     | TUI dashboard for monitoring agents             |
 | [`init`](./init)               | Generate configuration file                     |
 | [`claude prune`](./claude)     | Clean up stale Claude Code entries              |
 | [`completions`](./completions) | Generate shell completions                      |
