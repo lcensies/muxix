@@ -400,7 +400,7 @@ alias wm='workmux'
 - [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
   worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
-- [`status`](#workmux-status) - Show TUI dashboard of all active agents
+- [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
 - [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
