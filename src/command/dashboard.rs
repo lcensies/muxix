@@ -492,13 +492,25 @@ pub fn run() -> Result<()> {
     let refresh_interval = Duration::from_secs(2);
     let mut last_refresh = std::time::Instant::now();
     // Preview refreshes more frequently than the agent list
-    let preview_refresh_interval = Duration::from_millis(500);
+    // Use a faster refresh rate when in input mode for responsive typing feedback
+    let preview_refresh_interval_normal = Duration::from_millis(500);
+    let preview_refresh_interval_input = Duration::from_millis(100);
     let mut last_preview_refresh = std::time::Instant::now();
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        // Calculate timeout to respect the next scheduled preview refresh
+        let current_preview_interval = if app.input_mode {
+            preview_refresh_interval_input
+        } else {
+            preview_refresh_interval_normal
+        };
+        let time_until_preview =
+            current_preview_interval.saturating_sub(last_preview_refresh.elapsed());
+        let time_until_tick = tick_rate.saturating_sub(last_tick.elapsed());
+        let timeout = time_until_tick.min(time_until_preview);
+
         if event::poll(timeout)?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
@@ -538,6 +550,7 @@ pub fn run() -> Result<()> {
                 }
                 // Refresh preview immediately after sending input
                 app.refresh_preview();
+                last_preview_refresh = std::time::Instant::now();
             } else {
                 // Normal mode: handle navigation and commands
                 match key.code {
@@ -580,7 +593,8 @@ pub fn run() -> Result<()> {
         }
 
         // Auto-refresh preview more frequently for live updates
-        if last_preview_refresh.elapsed() >= preview_refresh_interval {
+        // Uses faster refresh rate in input mode (set at top of loop)
+        if last_preview_refresh.elapsed() >= current_preview_interval {
             app.refresh_preview();
             last_preview_refresh = std::time::Instant::now();
         }
