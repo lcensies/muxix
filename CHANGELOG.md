@@ -8,6 +8,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.75 (2026-01-06)
+
+- Added OpenCode support for agent status tracking in tmux window names
+- Fixed passing prompt to OpenCode
+
 ## v0.1.74 (2026-01-06)
 
 - Dashboard: Stale agents (inactive for over an hour) now show a timer icon
