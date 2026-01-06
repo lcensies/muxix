@@ -16,8 +16,79 @@ use std::collections::BTreeMap;
 use std::io;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::cmd::Cmd;
 use crate::config::Config;
 use crate::tmux::{self, AgentPane};
+
+/// Available sort modes for the agent list
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SortMode {
+    /// Sort by agent status importance (Waiting > Done > Working > Stale)
+    #[default]
+    Priority,
+    /// Group agents by project name, then by status within each project
+    Project,
+    /// Sort by duration since last status change (newest first)
+    Recency,
+}
+
+const TMUX_SORT_MODE_VAR: &str = "@workmux_sort_mode";
+
+impl SortMode {
+    /// Cycle to the next sort mode
+    fn next(self) -> Self {
+        match self {
+            SortMode::Priority => SortMode::Project,
+            SortMode::Project => SortMode::Recency,
+            SortMode::Recency => SortMode::Priority,
+        }
+    }
+
+    /// Get the display name for the sort mode
+    fn label(&self) -> &'static str {
+        match self {
+            SortMode::Priority => "Priority",
+            SortMode::Project => "Project",
+            SortMode::Recency => "Recency",
+        }
+    }
+
+    /// Convert to string for tmux storage
+    fn as_str(&self) -> &'static str {
+        match self {
+            SortMode::Priority => "priority",
+            SortMode::Project => "project",
+            SortMode::Recency => "recency",
+        }
+    }
+
+    /// Parse from tmux storage string
+    fn from_str(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "project" => SortMode::Project,
+            "recency" => SortMode::Recency,
+            _ => SortMode::Priority, // Default fallback
+        }
+    }
+
+    /// Load sort mode from tmux global variable
+    fn load_from_tmux() -> Self {
+        Cmd::new("tmux")
+            .args(&["show-option", "-gqv", TMUX_SORT_MODE_VAR])
+            .run_and_capture_stdout()
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| Self::from_str(&s))
+            .unwrap_or_default()
+    }
+
+    /// Save sort mode to tmux global variable
+    fn save_to_tmux(&self) {
+        let _ = Cmd::new("tmux")
+            .args(&["set-option", "-g", TMUX_SORT_MODE_VAR, self.as_str()])
+            .run();
+    }
+}
 
 /// App state for the TUI
 struct App {
@@ -27,6 +98,7 @@ struct App {
     config: Config,
     should_quit: bool,
     should_jump: bool,
+    sort_mode: SortMode,
 }
 
 impl App {
@@ -39,6 +111,7 @@ impl App {
             config,
             should_quit: false,
             should_jump: false,
+            sort_mode: SortMode::load_from_tmux(),
         };
         app.refresh();
         // Select first item if available
@@ -49,8 +122,8 @@ impl App {
     }
 
     fn refresh(&mut self) {
-        // Natural tmux order (by pane_id) for stable positions
         self.agents = tmux::get_all_agent_panes().unwrap_or_default();
+        self.sort_agents();
 
         // Adjust selection if it's now out of bounds
         if let Some(selected) = self.table_state.selected()
@@ -62,6 +135,69 @@ impl App {
                 Some(self.agents.len() - 1)
             });
         }
+    }
+
+    /// Sort agents based on the current sort mode
+    fn sort_agents(&mut self) {
+        // Extract config values needed for sorting to avoid borrowing issues
+        let waiting = self.config.status_icons.waiting().to_string();
+        let working = self.config.status_icons.working().to_string();
+        let done = self.config.status_icons.done().to_string();
+        let stale_threshold = self.stale_threshold_secs;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Helper closure to get status priority (lower = higher priority)
+        let get_priority = |agent: &AgentPane| -> u8 {
+            let is_stale = agent
+                .status_ts
+                .map(|ts| now.saturating_sub(ts) > stale_threshold)
+                .unwrap_or(false);
+
+            if is_stale {
+                return 3; // Stale: lowest priority
+            }
+
+            match agent.status.as_deref().unwrap_or("") {
+                s if s == waiting => 0, // Waiting: needs input
+                s if s == done => 1,    // Done: needs review
+                s if s == working => 2, // Working: no action needed
+                _ => 3,                 // Unknown/other: lowest priority
+            }
+        };
+
+        // Helper closure to get elapsed time (lower = more recent)
+        let get_elapsed = |agent: &AgentPane| -> u64 {
+            agent
+                .status_ts
+                .map(|ts| now.saturating_sub(ts))
+                .unwrap_or(u64::MAX)
+        };
+
+        // Use sort_by_cached_key for better performance (calls key fn O(N) times vs O(N log N))
+        match self.sort_mode {
+            SortMode::Priority => {
+                self.agents.sort_by_cached_key(&get_priority);
+            }
+            SortMode::Project => {
+                // Sort by project name first, then by status priority within each project
+                self.agents
+                    .sort_by_cached_key(|a| (Self::extract_project_name(a), get_priority(a)));
+            }
+            SortMode::Recency => {
+                self.agents.sort_by_cached_key(get_elapsed);
+            }
+        }
+    }
+
+    /// Cycle to the next sort mode, re-sort, and persist to tmux
+    fn cycle_sort_mode(&mut self) {
+        self.sort_mode = self.sort_mode.next();
+        self.sort_mode.save_to_tmux();
+        self.sort_agents();
     }
 
     fn next(&mut self) {
@@ -192,7 +328,7 @@ impl App {
         }
     }
 
-    fn extract_project_name(&self, agent: &AgentPane) -> String {
+    fn extract_project_name(agent: &AgentPane) -> String {
         // Extract project name from the path
         // Look for __worktrees pattern or use directory name
         let path = &agent.path;
@@ -255,6 +391,7 @@ pub fn run() -> Result<()> {
                 KeyCode::Char('k') | KeyCode::Up => app.previous(),
                 KeyCode::Enter => app.jump_to_selected(),
                 KeyCode::Char('p') => app.peek_selected(),
+                KeyCode::Char('s') => app.cycle_sort_mode(),
                 // Quick jump: 1-9 for rows 0-8
                 KeyCode::Char(c @ '1'..='9') => {
                     app.jump_to_index((c as u8 - b'1') as usize);
@@ -309,6 +446,10 @@ fn ui(f: &mut Frame, app: &mut App) {
         Span::raw(" jump  "),
         Span::styled("[p]", Style::default().fg(Color::Cyan)),
         Span::raw(" peek  "),
+        Span::styled("[s]", Style::default().fg(Color::Cyan)),
+        Span::raw(" sort: "),
+        Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
+        Span::raw("  "),
         Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
         Span::raw(" go  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
@@ -363,7 +504,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 String::new()
             };
 
-            let project = app.extract_project_name(agent);
+            let project = App::extract_project_name(agent);
             let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
             let title = agent
                 .pane_title
