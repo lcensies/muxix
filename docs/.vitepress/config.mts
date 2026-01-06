@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "workmux",
+  title: "workmux - Parallel development in tmux with git worktrees",
   description: "Parallel development in tmux with git worktrees",
   lang: "en-US",
   lastUpdated: true,
