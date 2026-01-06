@@ -1,7 +1,9 @@
 use ansi_to_tui::IntoText;
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -97,8 +99,8 @@ impl SortMode {
     }
 }
 
-/// Number of lines to capture from the agent's terminal for preview
-const PREVIEW_LINES: u16 = 15;
+/// Number of lines to capture from the agent's terminal for preview (scrollable history)
+const PREVIEW_LINES: u16 = 200;
 
 /// App state for the TUI
 struct App {
@@ -115,6 +117,12 @@ struct App {
     preview_pane_id: Option<String>,
     /// Input mode: keystrokes are sent directly to the selected agent's pane
     input_mode: bool,
+    /// Manual scroll offset for the preview (None = auto-scroll to bottom)
+    preview_scroll: Option<u16>,
+    /// Number of lines in the current preview content
+    preview_line_count: u16,
+    /// Height of the preview area (updated during rendering)
+    preview_height: u16,
 }
 
 impl App {
@@ -131,6 +139,9 @@ impl App {
             preview: None,
             preview_pane_id: None,
             input_mode: false,
+            preview_scroll: None,
+            preview_line_count: 0,
+            preview_height: 0,
         };
         app.refresh();
         // Select first item if available
@@ -176,6 +187,8 @@ impl App {
             self.preview = current_pane_id
                 .as_ref()
                 .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+            // Reset scroll position when selection changes
+            self.preview_scroll = None;
         }
     }
 
@@ -338,6 +351,28 @@ impl App {
             && let Some(agent) = self.agents.get(selected)
         {
             let _ = tmux::send_key(&agent.pane_id, key);
+        }
+    }
+
+    /// Scroll preview up (toward older content). Returns the amount to scroll by.
+    fn scroll_preview_up(&mut self, visible_height: u16, total_lines: u16) {
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        let current = self.preview_scroll.unwrap_or(max_scroll);
+        let half_page = visible_height / 2;
+        self.preview_scroll = Some(current.saturating_sub(half_page));
+    }
+
+    /// Scroll preview down (toward newer content).
+    fn scroll_preview_down(&mut self, visible_height: u16, total_lines: u16) {
+        let max_scroll = total_lines.saturating_sub(visible_height);
+        let current = self.preview_scroll.unwrap_or(max_scroll);
+        let half_page = visible_height / 2;
+        let new_scroll = (current + half_page).min(max_scroll);
+        // If at or past max, return to auto-scroll mode
+        if new_scroll >= max_scroll {
+            self.preview_scroll = None;
+        } else {
+            self.preview_scroll = Some(new_scroll);
         }
     }
 
@@ -517,6 +552,13 @@ pub fn run() -> Result<()> {
                         if app.table_state.selected().is_some() && !app.agents.is_empty() {
                             app.input_mode = true;
                         }
+                    }
+                    // Preview scrolling with Ctrl+U/D
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.scroll_preview_up(app.preview_height, app.preview_line_count);
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.scroll_preview_down(app.preview_height, app.preview_line_count);
                     }
                     // Quick jump: 1-9 for rows 0-8
                     KeyCode::Char(c @ '1'..='9') => {
@@ -739,7 +781,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(table, area, &mut app.table_state);
 }
 
-fn render_preview(f: &mut Frame, app: &App, area: Rect) {
+fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     // Get info about the selected agent for the title
     let selected_agent = app
         .table_state
@@ -780,6 +822,9 @@ fn render_preview(f: &mut Frame, app: &App, area: Rect) {
     // Calculate the inner area to determine scroll offset
     let inner_area = block.inner(area);
 
+    // Update preview height for scroll calculations
+    app.preview_height = inner_area.height;
+
     // Get preview content or show placeholder
     let (text, line_count) = match (&app.preview, selected_agent) {
         (Some(preview), Some(_)) => {
@@ -805,8 +850,12 @@ fn render_preview(f: &mut Frame, app: &App, area: Rect) {
         (_, None) => (Text::raw("(no agent selected)"), 1),
     };
 
-    // Calculate scroll to show the bottom (latest) lines
-    let scroll_offset = line_count.saturating_sub(inner_area.height);
+    // Update line count for scroll calculations
+    app.preview_line_count = line_count;
+
+    // Calculate scroll offset: use manual scroll if set, otherwise auto-scroll to bottom
+    let max_scroll = line_count.saturating_sub(inner_area.height);
+    let scroll_offset = app.preview_scroll.unwrap_or(max_scroll);
 
     let paragraph = Paragraph::new(text).block(block).scroll((scroll_offset, 0));
 
