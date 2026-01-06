@@ -8,6 +8,12 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.74 (2026-01-06)
+
+- Dashboard: Stale agents (inactive for over an hour) now show a timer icon
+  instead of "stale"
+- Dashboard: Preview updates are now faster in input mode
+
 ## v0.1.72 (2026-01-06)
 
 - Renamed "status popup" to "dashboard"
