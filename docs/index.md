@@ -168,6 +168,12 @@ onMounted(() => {
   padding: 0 1.5rem;
 }
 
+@media (max-width: 640px) {
+  .showcase-container {
+    padding: 0;
+  }
+}
+
 .window-glow {
   position: absolute;
   top: 50%;
@@ -295,6 +301,12 @@ onMounted(() => {
 
 .dashboard-section .showcase-container {
   margin-top: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .dashboard-section {
+    padding: 0;
+  }
 }
 
 .dashboard-img {
