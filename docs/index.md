@@ -51,10 +51,39 @@ workmux merge
 
 </div>
 
-<div style="display: flex; justify-content: center; margin-top: 2rem;">
-  <div class="video-container">
-    <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
-    <button type="button" class="video-play-button" aria-label="Play video"></button>
+<div class="showcase-container">
+  <div class="window-glow"></div>
+  <div class="terminal-window">
+    <div class="terminal-header">
+      <div class="window-controls">
+        <span class="control red"></span>
+        <span class="control yellow"></span>
+        <span class="control green"></span>
+      </div>
+      <div class="window-title">workmux demo</div>
+    </div>
+    <div class="video-container">
+      <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
+      <button type="button" class="video-play-button" aria-label="Play video"></button>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard-section">
+  <h2>Monitor your agents</h2>
+  <p>Track progress across all parallel agents in a single view.</p>
+  <div class="showcase-container">
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="window-controls">
+          <span class="control red"></span>
+          <span class="control yellow"></span>
+          <span class="control green"></span>
+        </div>
+        <div class="window-title">workmux dashboard</div>
+      </div>
+      <img src="/dashboard.webp" alt="workmux dashboard" class="dashboard-img">
+    </div>
   </div>
 </div>
 
@@ -131,17 +160,79 @@ onMounted(() => {
   opacity: 0.8;
 }
 
+/* Terminal window showcase */
+.showcase-container {
+  position: relative;
+  max-width: 740px;
+  margin: 3rem auto;
+  padding: 0 1.5rem;
+}
+
+.window-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  height: 90%;
+  background: var(--vp-c-brand-1);
+  filter: blur(70px);
+  opacity: 0.2;
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.terminal-window {
+  position: relative;
+  z-index: 1;
+  background: #1e1e1e;
+  border-radius: 10px;
+  box-shadow:
+    0 20px 50px -10px rgba(0,0,0,0.3),
+    0 0 0 1px rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  background: #2d2d2d;
+  position: relative;
+}
+
+.window-controls {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+.control {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.control.red { background-color: #ff5f56; }
+.control.yellow { background-color: #ffbd2e; }
+.control.green { background-color: #27c93f; }
+
+.window-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .video-container {
   position: relative;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  overflow: hidden;
-  max-width: 100%;
 }
 
 .video-container video {
   display: block;
-  max-width: 100%;
+  width: 100%;
   cursor: pointer;
 }
 
@@ -154,7 +245,8 @@ onMounted(() => {
   height: 80px;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(4px);
   cursor: pointer;
   transition: background 0.2s, transform 0.2s;
 }
@@ -171,12 +263,43 @@ onMounted(() => {
 }
 
 .video-play-button:hover {
-  background: rgba(0, 0, 0, 0.85);
-  transform: translate(-50%, -50%) scale(1.1);
+  background: var(--vp-c-brand-1);
+  transform: translate(-50%, -50%) scale(1.05);
 }
 
 .video-container.playing .video-play-button {
   display: none;
+}
+
+.dashboard-section {
+  max-width: 800px;
+  margin: 4rem auto 0;
+  text-align: center;
+  padding: 0 1.5rem;
+}
+
+.dashboard-section h2 {
+  border: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-weight: 700;
+  font-size: 1.5rem;
+}
+
+.dashboard-section p {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin: 0;
+}
+
+.dashboard-section .showcase-container {
+  margin-top: 1.5rem;
+}
+
+.dashboard-img {
+  display: block;
+  width: 100%;
 }
 
 .testimonials-section {
