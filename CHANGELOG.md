@@ -7,6 +7,16 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.71 (2026-01-06)
+
+- Added pane preview to the status dashboard, showing live terminal output from
+  the selected agent
+- Added input mode: press `i` to send keystrokes directly to the selected
+  agent's pane without switching windows, press Escape to exit
+- Added preview scrolling with Ctrl+U/D
+- Agents are now automatically removed from the status list when they exit
+- Priority sorting now uses elapsed time as a tiebreaker
+
 ## v0.1.70 (2026-01-06)
 
 - Added smart sorting to the status dashboard with four modes: Priority (by
