@@ -1151,6 +1151,7 @@ cp config.json "$(workmux path feature-branch)/"
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 Useful for monitoring multiple parallel agents and quickly jumping between them.
 
+<!-- prettier-ignore -->
 > [!IMPORTANT]
 > This feature requires [agent status tracking](#agent-status-tracking) to be
 > configured. Without it, no agents will appear in the dashboard.
@@ -1159,17 +1160,17 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 
 #### Keybindings
 
-| Key       | Action                              |
-| --------- | ----------------------------------- |
-| `1`-`9`   | Quick jump to agent (closes dashboard) |
-| `p`       | Peek at agent (dashboard stays open)   |
-| `s`       | Cycle sort mode                        |
-| `i`       | Enter input mode (type to agent)       |
-| `Ctrl+u`  | Scroll preview up                      |
-| `Ctrl+d`  | Scroll preview down                    |
-| `Enter`   | Go to selected agent (closes dashboard)|
-| `j`/`k`   | Navigate up/down                    |
-| `q`/`Esc` | Quit                                |
+| Key       | Action                                  |
+| --------- | --------------------------------------- |
+| `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `p`       | Peek at agent (dashboard stays open)    |
+| `s`       | Cycle sort mode                         |
+| `i`       | Enter input mode (type to agent)        |
+| `Ctrl+u`  | Scroll preview up                       |
+| `Ctrl+d`  | Scroll preview down                     |
+| `Enter`   | Go to selected agent (closes dashboard) |
+| `j`/`k`   | Navigate up/down                        |
+| `q`/`Esc` | Quit                                    |
 
 The bottom half shows a live preview of the selected agent's terminal output.
 Press `i` to enter input mode and type directly to the agent without leaving the
@@ -1200,7 +1201,7 @@ Your sort preference persists in the tmux session.
 Add to your `~/.tmux.conf` for quick access:
 
 ```bash
-bind C-s display-popup -h 15 -w 100 -E "workmux dashboard"
+bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
