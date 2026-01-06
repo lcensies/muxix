@@ -621,7 +621,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Layout: table (top), preview (bottom), footer
     let chunks = Layout::vertical([
-        Constraint::Percentage(45), // Table (top half)
+        Constraint::Percentage(40), // Table (top half)
         Constraint::Min(5),         // Preview (bottom half, at least 5 lines)
         Constraint::Length(1),      // Footer
     ])
