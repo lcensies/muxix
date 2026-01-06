@@ -65,6 +65,7 @@ agents, is as simple as managing tmux windows.
 - [Automatic branch name generation](#automatic-branch-name-generation) from
   prompts using LLM
 - [Display Claude agent status in tmux window names](#agent-status-tracking)
+- [Dashboard](#workmux-dashboard) for monitoring all active agents
 - Shell completions
 
 ## Hype
