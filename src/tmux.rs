@@ -850,9 +850,8 @@ fn rewrite_agent_command(
         // gemini uses -i flag with the prompt as its argument
         inner_cmd.push_str(&format!(" -i \"$(cat {})\"", prompt_path));
     } else if pane_stem_str == Some("opencode") {
-        // opencode uses -p flag for interactive TUI with initial prompt
-        // (opencode run is non-interactive, similar to claude -p)
-        inner_cmd.push_str(&format!(" -p \"$(cat {})\"", prompt_path));
+        // opencode uses --prompt flag for interactive TUI with initial prompt
+        inner_cmd.push_str(&format!(" --prompt \"$(cat {})\"", prompt_path));
     } else {
         // Other agents use -- separator
         inner_cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
@@ -1057,7 +1056,7 @@ mod tests {
         );
         assert_eq!(
             result,
-            Some(" opencode -p \"$(cat PROMPT.md)\"".to_string())
+            Some(" opencode --prompt \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
