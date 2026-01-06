@@ -135,6 +135,7 @@ cargo install workmux
    - Create a git worktree at
      `<project_root>/../<project_name>__worktrees/new-feature`
    - Create a tmux window named `wm-new-feature` (the prefix is configurable)
+   - Set up your configured or the default tmux pane layout
    - Automatically switch your tmux client to the new window
 
 3. **Do your thing**
