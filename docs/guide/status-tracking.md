@@ -11,6 +11,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Agent       | Status                                                                 |
 | ----------- | ---------------------------------------------------------------------- |
 | Claude Code | ✅ Supported                                                           |
+| OpenCode    | ✅ Supported                                                           |
 | Gemini CLI  | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
 | Codex       | [Tracking issue](https://github.com/openai/codex/issues/2109)          |
 
@@ -32,6 +33,18 @@ claude plugin install workmux-status
 Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See [.claude-plugin/plugin.json](https://github.com/raine/workmux/blob/main/.claude-plugin/plugin.json) for the hook configuration.
 
 Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
+
+## OpenCode setup
+
+Download the workmux status plugin to your global OpenCode plugin directory:
+
+```bash
+mkdir -p ~/.config/opencode/plugin
+curl -o ~/.config/opencode/plugin/workmux-status.ts \
+  https://raw.githubusercontent.com/raine/workmux/main/.opencode/plugin/workmux-status.ts
+```
+
+Restart OpenCode for the plugin to take effect.
 
 ## Customization
 

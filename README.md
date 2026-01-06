@@ -1310,13 +1310,15 @@ at-a-glance visibility into what the agent in each window doing.
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
 
-**Note**: Currently only Claude Code seems to support hooks that enable this
-kind of functionality. Gemini's support is
+**Note**: Currently Claude Code and [OpenCode](https://opencode.ai/) support
+hooks that enable this functionality. Gemini's support is
 [on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex
-support can tracked in
+support can be tracked in
 [this issue](https://github.com/openai/codex/issues/2109).
 
 ### Setup
+
+#### Claude Code
 
 Install the workmux status plugin in Claude Code:
 
@@ -1328,6 +1330,20 @@ claude plugin install workmux-status
 Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
 configuration.
+
+#### OpenCode
+
+Download the workmux status plugin to your global OpenCode plugin directory:
+
+```bash
+mkdir -p ~/.config/opencode/plugin
+curl -o ~/.config/opencode/plugin/workmux-status.ts \
+  https://raw.githubusercontent.com/raine/workmux/main/.opencode/plugin/workmux-status.ts
+```
+
+Restart OpenCode for the plugin to take effect.
+
+---
 
 Workmux automatically modifies your tmux `window-status-format` to display the
 status icons. This happens once per session and only affects the current tmux
