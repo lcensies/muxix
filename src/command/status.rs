@@ -30,6 +30,8 @@ enum SortMode {
     Project,
     /// Sort by duration since last status change (newest first)
     Recency,
+    /// Natural tmux order (by pane_id)
+    Natural,
 }
 
 const TMUX_SORT_MODE_VAR: &str = "@workmux_sort_mode";
@@ -40,7 +42,8 @@ impl SortMode {
         match self {
             SortMode::Priority => SortMode::Project,
             SortMode::Project => SortMode::Recency,
-            SortMode::Recency => SortMode::Priority,
+            SortMode::Recency => SortMode::Natural,
+            SortMode::Natural => SortMode::Priority,
         }
     }
 
@@ -50,6 +53,7 @@ impl SortMode {
             SortMode::Priority => "Priority",
             SortMode::Project => "Project",
             SortMode::Recency => "Recency",
+            SortMode::Natural => "Natural",
         }
     }
 
@@ -59,6 +63,7 @@ impl SortMode {
             SortMode::Priority => "priority",
             SortMode::Project => "project",
             SortMode::Recency => "recency",
+            SortMode::Natural => "natural",
         }
     }
 
@@ -67,6 +72,7 @@ impl SortMode {
         match s.trim().to_lowercase().as_str() {
             "project" => SortMode::Project,
             "recency" => SortMode::Recency,
+            "natural" => SortMode::Natural,
             _ => SortMode::Priority, // Default fallback
         }
     }
@@ -137,6 +143,14 @@ impl App {
         }
     }
 
+    /// Parse pane_id (e.g., "%0", "%10") to a number for proper ordering
+    fn parse_pane_id(pane_id: &str) -> u32 {
+        pane_id
+            .strip_prefix('%')
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(u32::MAX)
+    }
+
     /// Sort agents based on the current sort mode
     fn sort_agents(&mut self) {
         // Extract config values needed for sorting to avoid borrowing issues
@@ -177,26 +191,28 @@ impl App {
                 .unwrap_or(u64::MAX)
         };
 
+        // Helper closure to get numeric pane_id for stable ordering
+        let pane_num = |agent: &AgentPane| Self::parse_pane_id(&agent.pane_id);
+
         // Use sort_by_cached_key for better performance (calls key fn O(N) times vs O(N log N))
         // Include pane_id as final tiebreaker for stable ordering within groups
         match self.sort_mode {
             SortMode::Priority => {
                 self.agents
-                    .sort_by_cached_key(|a| (get_priority(a), a.pane_id.clone()));
+                    .sort_by_cached_key(|a| (get_priority(a), pane_num(a)));
             }
             SortMode::Project => {
                 // Sort by project name first, then by status priority within each project
                 self.agents.sort_by_cached_key(|a| {
-                    (
-                        Self::extract_project_name(a),
-                        get_priority(a),
-                        a.pane_id.clone(),
-                    )
+                    (Self::extract_project_name(a), get_priority(a), pane_num(a))
                 });
             }
             SortMode::Recency => {
                 self.agents
-                    .sort_by_cached_key(|a| (get_elapsed(a), a.pane_id.clone()));
+                    .sort_by_cached_key(|a| (get_elapsed(a), pane_num(a)));
+            }
+            SortMode::Natural => {
+                self.agents.sort_by_cached_key(pane_num);
             }
         }
     }
