@@ -115,10 +115,18 @@ pub fn get_main_worktree_root() -> Result<PathBuf> {
 
 /// Get the default branch (main or master)
 pub fn get_default_branch() -> Result<String> {
+    get_default_branch_in(None)
+}
+
+/// Get the default branch for a repository at a specific path
+pub fn get_default_branch_in(workdir: Option<&Path>) -> Result<String> {
     // Try to get the default branch from the remote
-    if let Ok(ref_name) = Cmd::new("git")
-        .args(&["symbolic-ref", "refs/remotes/origin/HEAD"])
-        .run_and_capture_stdout()
+    let cmd = Cmd::new("git").args(&["symbolic-ref", "refs/remotes/origin/HEAD"]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    if let Ok(ref_name) = cmd.run_and_capture_stdout()
         && let Some(branch) = ref_name.strip_prefix("refs/remotes/origin/")
     {
         debug!(branch = branch, "git:default branch from remote HEAD");
@@ -126,12 +134,12 @@ pub fn get_default_branch() -> Result<String> {
     }
 
     // Fallback: check if main or master exists locally
-    if branch_exists("main")? {
+    if branch_exists_in("main", workdir)? {
         debug!("git:default branch 'main' (local fallback)");
         return Ok("main".to_string());
     }
 
-    if branch_exists("master")? {
+    if branch_exists_in("master", workdir)? {
         debug!("git:default branch 'master' (local fallback)");
         return Ok("master".to_string());
     }
@@ -153,9 +161,17 @@ pub fn get_default_branch() -> Result<String> {
 
 /// Check if a branch exists (can be local or remote tracking branch)
 pub fn branch_exists(branch_name: &str) -> Result<bool> {
-    Cmd::new("git")
-        .args(&["rev-parse", "--verify", "--quiet", branch_name])
-        .run_as_check()
+    branch_exists_in(branch_name, None)
+}
+
+/// Check if a branch exists in a specific workdir
+pub fn branch_exists_in(branch_name: &str, workdir: Option<&Path>) -> Result<bool> {
+    let cmd = Cmd::new("git").args(&["rev-parse", "--verify", "--quiet", branch_name]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run_as_check()
 }
 
 /// Parse a remote branch specification in the form "<remote>/<branch>"
@@ -852,12 +868,18 @@ pub fn set_branch_base(branch: &str, base: &str) -> Result<()> {
 
 /// Retrieve the base branch/commit that a branch was created from
 pub fn get_branch_base(branch: &str) -> Result<String> {
-    let output = Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            &format!("branch.{}.workmux-base", branch),
-        ])
+    get_branch_base_in(branch, None)
+}
+
+/// Get the base branch for a given branch in a specific workdir
+pub fn get_branch_base_in(branch: &str, workdir: Option<&Path>) -> Result<String> {
+    let config_key = format!("branch.{}.workmux-base", branch);
+    let cmd = Cmd::new("git").args(&["config", "--local", &config_key]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let output = cmd
         .run_and_capture_stdout()
         .context("Failed to get workmux-base config")?;
 
@@ -974,9 +996,9 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
 
     // Determine base branch for conflict check and diff stats
     // First try workmux-base config, then fall back to default branch
-    let base_branch = get_branch_base(&branch)
+    let base_branch = get_branch_base_in(&branch, Some(worktree_path))
         .ok()
-        .or_else(|| get_default_branch().ok())
+        .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
         .unwrap_or_else(|| "main".to_string());
 
     // If on the base branch itself, no conflicts or diff stats needed
