@@ -31,6 +31,10 @@ clippy-fix:
 build:
     cargo build --all
 
+# Install debug binary globally via symlink
+install-dev:
+    cargo build && ln -sf $(pwd)/target/debug/workmux ~/.cargo/bin/workmux
+
 # Run unit tests
 unit-tests:
     cargo test --bin workmux
