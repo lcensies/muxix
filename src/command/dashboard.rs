@@ -927,7 +927,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     .block(Block::default())
     .row_highlight_style(
         Style::default()
-            .bg(Color::DarkGray),
+            .bg(Color::Rgb(50, 50, 55)),
     )
     .highlight_symbol("> ");
 
