@@ -875,6 +875,8 @@ up all associated resources (worktree, tmux window, and local branch).
   opening an editor
 - `--keep`, `-k`: Keep the worktree, window, and branch after merging (skip
   cleanup). Useful when you want to verify the merge before cleaning up.
+- `--notification`: Show a system notification on successful merge. Useful when
+  delegating merge to an AI agent and you want to be notified when it completes.
 
 #### Merge strategies
 
