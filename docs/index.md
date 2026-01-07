@@ -71,7 +71,7 @@ workmux merge
 
 <div class="dashboard-section">
   <h2>Monitor your agents</h2>
-  <p>Track progress across all parallel agents in a single view.</p>
+  <p>A tmux popup dashboard to track progress across all parallel agents.</p>
   <div class="showcase-container">
     <div class="terminal-window">
       <div class="terminal-header">
