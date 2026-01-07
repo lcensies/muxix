@@ -749,9 +749,9 @@ fn format_git_status(status: &GitStatus) -> (String, Style) {
 
     let mut parts = Vec::new();
 
-    // Dirty indicator (uncommitted changes)
+    // Dirty indicator (uncommitted changes) - nf-md-pencil (U+F03EB)
     if status.is_dirty {
-        parts.push("*".to_string());
+        parts.push("\u{f03eb}".to_string());
     }
 
     // Ahead/behind upstream
@@ -768,7 +768,7 @@ fn format_git_status(status: &GitStatus) -> (String, Style) {
     } else {
         // Has some status to show
         let color = if status.is_dirty {
-            Color::Yellow
+            Color::Magenta
         } else {
             Color::Blue
         };
