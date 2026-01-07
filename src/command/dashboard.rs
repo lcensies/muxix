@@ -137,6 +137,8 @@ struct App {
     last_git_fetch: std::time::Instant,
     /// Flag to track if a git fetch is in progress (prevents thread pile-up)
     is_git_fetching: Arc<AtomicBool>,
+    /// Frame counter for spinner animation (increments each tick)
+    spinner_frame: u8,
 }
 
 impl App {
@@ -163,6 +165,7 @@ impl App {
             // Set to past to trigger immediate fetch on first refresh
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
+            spinner_frame: 0,
         };
         app.refresh();
         // Select first item if available
@@ -655,6 +658,8 @@ pub fn run() -> Result<()> {
 
         if last_tick.elapsed() >= tick_rate {
             last_tick = std::time::Instant::now();
+            // Advance spinner animation frame (wrap at frame count to avoid skip artifact)
+            app.spinner_frame = (app.spinner_frame + 1) % SPINNER_FRAMES.len() as u8;
         }
 
         // Auto-refresh agent list every 2 seconds
@@ -738,41 +743,52 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(footer_text, chunks[1 + 1]);
 }
 
+/// Braille spinner frames for subtle loading animation
+const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 /// Format git status for display in the dashboard table
-fn format_git_status(status: &GitStatus) -> (String, Style) {
-    // Conflict takes priority - show prominently in red
-    // Uses nf-md-alert_outline (U+F002A)
-    if status.has_conflict {
-        // nf-md-alert_outline (U+F002A) - BOLD breaks Nerd Font icon rendering
-        return ("\u{f002a}".to_string(), Style::default().fg(Color::Red));
-    }
+/// Shows a spinner when status hasn't been fetched yet
+fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> (String, Style) {
+    // If we have cached status, show it
+    if let Some(status) = status {
+        // Conflict takes priority - show prominently in red
+        // Uses nf-md-alert_outline (U+F002A)
+        if status.has_conflict {
+            // nf-md-alert_outline (U+F002A) - BOLD breaks Nerd Font icon rendering
+            return ("\u{f002a}".to_string(), Style::default().fg(Color::Red));
+        }
 
-    let mut parts = Vec::new();
+        let mut parts = Vec::new();
 
-    // Dirty indicator (uncommitted changes) - nf-md-pencil (U+F03EB)
-    if status.is_dirty {
-        parts.push("\u{f03eb}".to_string());
-    }
+        // Dirty indicator (uncommitted changes) - nf-md-pencil (U+F03EB)
+        if status.is_dirty {
+            parts.push("\u{f03eb}".to_string());
+        }
 
-    // Ahead/behind upstream
-    if status.ahead > 0 {
-        parts.push(format!("↑{}", status.ahead));
-    }
-    if status.behind > 0 {
-        parts.push(format!("↓{}", status.behind));
-    }
+        // Ahead/behind upstream
+        if status.ahead > 0 {
+            parts.push(format!("↑{}", status.ahead));
+        }
+        if status.behind > 0 {
+            parts.push(format!("↓{}", status.behind));
+        }
 
-    if parts.is_empty() {
-        // Clean state - show dim dash
-        ("-".to_string(), Style::default().fg(Color::DarkGray))
-    } else {
-        // Has some status to show
-        let color = if status.is_dirty {
-            Color::Magenta
+        if parts.is_empty() {
+            // Clean state - show dim dash
+            ("-".to_string(), Style::default().fg(Color::DarkGray))
         } else {
-            Color::Blue
-        };
-        (parts.join(" "), Style::default().fg(color))
+            // Has some status to show
+            let color = if status.is_dirty {
+                Color::Magenta
+            } else {
+                Color::Blue
+            };
+            (parts.join(" "), Style::default().fg(color))
+        }
+    } else {
+        // No status yet - show spinner until we get data
+        let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
+        (frame.to_string(), Style::default().fg(Color::DarkGray))
     }
 }
 
@@ -836,13 +852,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
 
-            // Get git status for this worktree
-            let git_status = app
-                .git_statuses
-                .get(&agent.path)
-                .copied()
-                .unwrap_or_default();
-            let (git_text, git_style) = format_git_status(&git_status);
+            // Get git status for this worktree (may be None if not yet fetched)
+            let git_status = app.git_statuses.get(&agent.path);
+            let (git_text, git_style) = format_git_status(git_status, app.spinner_frame);
 
             (
                 jump_key,
@@ -925,10 +937,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     )
     .header(header)
     .block(Block::default())
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::Rgb(50, 50, 55)),
-    )
+    .row_highlight_style(Style::default().bg(Color::Rgb(50, 50, 55)))
     .highlight_symbol("> ");
 
     f.render_stateful_widget(table, area, &mut app.table_state);
