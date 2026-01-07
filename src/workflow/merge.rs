@@ -302,6 +302,15 @@ pub fn merge(
         info!(branch = %branch_to_merge, "merge:standard merge complete");
     }
 
+    // Show notification before cleanup or early return (--keep),
+    // since cleanup may kill the window and terminate this process
+    if notification {
+        show_notification(&format!(
+            "Merged '{}' into '{}'",
+            branch_to_merge, target_branch
+        ));
+    }
+
     // Skip cleanup if --keep flag is used
     if keep {
         info!(branch = %branch_to_merge, "merge:skipping cleanup (--keep)");
@@ -310,15 +319,6 @@ pub fn merge(
             main_branch: target_branch.to_string(),
             had_staged_changes,
         });
-    }
-
-    // Show notification BEFORE cleanup, since cleanup may kill the window
-    // and terminate this process before notification code runs
-    if notification {
-        show_notification(&format!(
-            "Merged '{}' into '{}'",
-            branch_to_merge, target_branch
-        ));
     }
 
     // Always force cleanup after a successful merge
