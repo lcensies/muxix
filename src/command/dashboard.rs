@@ -756,12 +756,13 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         + 2; // padding
 
     // Calculate max worktree name width (with padding, capped)
+    // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
         .map(|(_, _, worktree_display, _, _, _, _, _)| worktree_display.len())
         .max()
-        .unwrap_or(5)
-        .clamp(5, 24) // min 5, max 24
+        .unwrap_or(8)
+        .clamp(8, 24) // min 8 (header width), max 24
         + 2; // padding
 
     let rows: Vec<Row> = row_data
