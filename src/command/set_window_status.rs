@@ -34,13 +34,42 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
     match cmd {
         SetWindowStatusCommand::Working => set_status(&pane, config.status_icons.working()),
-        SetWindowStatusCommand::Waiting => set_status(&pane, config.status_icons.waiting()),
-        SetWindowStatusCommand::Done => set_status(&pane, config.status_icons.done()),
+        SetWindowStatusCommand::Waiting => {
+            set_status_with_auto_clear(&pane, config.status_icons.waiting())
+        }
+        SetWindowStatusCommand::Done => {
+            set_status_with_auto_clear(&pane, config.status_icons.done())
+        }
         SetWindowStatusCommand::Clear => clear_status(&pane),
     }
 }
 
 fn set_status(pane: &str, icon: &str) -> Result<()> {
+    set_status_options(pane, icon);
+    Ok(())
+}
+
+fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
+    set_status_options(pane, icon);
+
+    // Attach hook to clear window status on focus (only if status still matches the icon)
+    // Uses tmux conditional: if @workmux_status equals the icon, clear window options
+    // Note: Pane options are NOT cleared - they persist for status popup/dashboard tracking
+    let hook_cmd = format!(
+        "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \
+         \"set-option -uw @workmux_status ; \
+           set-option -uw @workmux_status_ts\"",
+        icon
+    );
+
+    let _ = Cmd::new("tmux")
+        .args(&["set-hook", "-w", "-t", pane, "pane-focus-in", &hook_cmd])
+        .run();
+
+    Ok(())
+}
+
+fn set_status_options(pane: &str, icon: &str) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -100,8 +129,6 @@ fn set_status(pane: &str, icon: &str) -> Result<()> {
             ])
             .run();
     }
-
-    Ok(())
 }
 
 fn clear_status(pane: &str) -> Result<()> {
