@@ -163,7 +163,7 @@ onMounted(() => {
 /* Terminal window showcase */
 .showcase-container {
   position: relative;
-  max-width: 740px;
+  max-width: 880px;
   margin: 3rem auto;
   padding: 0 1.5rem;
 }
@@ -278,7 +278,7 @@ onMounted(() => {
 }
 
 .dashboard-section {
-  max-width: 800px;
+  max-width: 940px;
   margin: 4rem auto 0;
   text-align: center;
   padding: 0 1.5rem;
