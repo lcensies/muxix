@@ -750,14 +750,9 @@ fn ui(f: &mut Frame, app: &mut App) {
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /// Format git status for the Git column: diff stats first, then indicators
-/// Format: "+N -M 󰏫 ↑X ↓Y" with diff stats left-aligned for alignment
+/// Format: "+N -M 󰀪 󰏫 ↑X ↓Y" with diff stats left-aligned for alignment
 fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(String, Style)> {
     if let Some(status) = status {
-        // Conflict takes priority - show prominently in red
-        if status.has_conflict {
-            return vec![("\u{f002a}".to_string(), Style::default().fg(Color::Red))];
-        }
-
         let mut spans: Vec<(String, Style)> = Vec::new();
 
         // Diff stats first (for alignment)
@@ -775,6 +770,14 @@ fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(Stri
                 format!("-{}", status.lines_removed),
                 Style::default().fg(Color::Red),
             ));
+        }
+
+        // Conflict indicator
+        if status.has_conflict {
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
+            spans.push(("\u{f002a}".to_string(), Style::default().fg(Color::Red)));
         }
 
         // Dirty indicator
