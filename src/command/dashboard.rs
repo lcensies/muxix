@@ -914,16 +914,20 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         .max(8) // min 8 (header width)
         + 1; // padding
 
-    // Calculate max git status width (sum of all span lengths)
-    // Use at least 3 to fit the "Git" header
+    // Calculate max git status width (sum of all span character counts)
+    // Use chars().count() instead of len() because Nerd Font icons are multi-byte
     let max_git_width = row_data
         .iter()
         .map(|(_, _, _, _, git_spans, _, _, _, _)| {
-            git_spans.iter().map(|(text, _)| text.len()).sum::<usize>()
+            git_spans
+                .iter()
+                .map(|(text, _)| text.chars().count())
+                .sum::<usize>()
         })
         .max()
         .unwrap_or(4)
-        .clamp(4, 18); // min 4, max 18
+        .clamp(4, 18) // min 4, max 18
+        + 1; // padding
 
     let rows: Vec<Row> = row_data
         .into_iter()
