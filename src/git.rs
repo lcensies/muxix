@@ -25,6 +25,19 @@ pub struct ForkBranchSpec {
 #[error("Worktree not found: {0}")]
 pub struct WorktreeNotFound(pub String);
 
+/// Git status information for a worktree
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GitStatus {
+    /// Commits ahead of upstream
+    pub ahead: usize,
+    /// Commits behind upstream
+    pub behind: usize,
+    /// Branch has conflicts when merging with base
+    pub has_conflict: bool,
+    /// Has uncommitted changes (staged or unstaged)
+    pub is_dirty: bool,
+}
+
 /// Check if we're in a git repository
 pub fn is_git_repo() -> Result<bool> {
     Cmd::new("git")
@@ -818,6 +831,83 @@ pub fn get_branch_base(branch: &str) -> Result<String> {
     }
 
     Ok(output)
+}
+
+/// Get git status for a worktree (ahead/behind, conflicts, dirty state).
+/// This is designed for dashboard display and prioritizes speed over completeness.
+pub fn get_git_status(worktree_path: &Path) -> GitStatus {
+    // 1. Check dirty status (uncommitted changes)
+    let is_dirty = has_uncommitted_changes(worktree_path).unwrap_or(false);
+
+    // 2. Get current branch
+    let branch = match Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["branch", "--show-current"])
+        .run_and_capture_stdout()
+    {
+        Ok(b) if !b.is_empty() => b,
+        _ => {
+            return GitStatus {
+                is_dirty,
+                ..Default::default()
+            };
+        }
+    };
+
+    // 3. Get ahead/behind counts relative to upstream (HEAD...@{u})
+    let (ahead, behind) = Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| {
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.len() >= 2 {
+                Some((parts[0].parse().unwrap_or(0), parts[1].parse().unwrap_or(0)))
+            } else {
+                None
+            }
+        })
+        .unwrap_or((0, 0));
+
+    // 4. Check for merge conflicts with base branch
+    // First try workmux-base config, then fall back to default branch
+    let base_branch = get_branch_base(&branch)
+        .ok()
+        .or_else(|| get_default_branch().ok())
+        .unwrap_or_else(|| "main".to_string());
+
+    // Skip conflict check if on the base branch itself
+    let has_conflict = if branch == base_branch {
+        false
+    } else {
+        // Prefer remote tracking branch for conflict detection
+        let base_ref = if branch_exists(&format!("origin/{}", base_branch)).unwrap_or(false) {
+            format!("origin/{}", base_branch)
+        } else {
+            base_branch
+        };
+
+        // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
+        // Exit code 129 means unknown option (older Git) - treat as no conflict
+        // Use Command directly to check the specific exit code
+        let status = Command::new("git")
+            .current_dir(worktree_path)
+            .args(["merge-tree", "--write-tree", &base_ref, "HEAD"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        // Only exit code 1 means merge conflict; other codes (0, 129, etc.) mean no conflict
+        matches!(status, Ok(s) if s.code() == Some(1))
+    };
+
+    GitStatus {
+        ahead,
+        behind,
+        has_conflict,
+        is_dirty,
+    }
 }
 
 #[cfg(test)]

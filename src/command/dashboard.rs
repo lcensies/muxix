@@ -15,12 +15,16 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Cell, Paragraph, Row, Table, TableState},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
+use crate::git::{self, GitStatus};
 use crate::tmux::{self, AgentPane};
 
 /// Available sort modes for the agent list
@@ -123,11 +127,22 @@ struct App {
     preview_line_count: u16,
     /// Height of the preview area (updated during rendering)
     preview_height: u16,
+    /// Git status for each worktree path
+    git_statuses: HashMap<PathBuf, GitStatus>,
+    /// Channel receiver for git status updates from background thread
+    git_rx: mpsc::Receiver<(PathBuf, GitStatus)>,
+    /// Channel sender for git status updates (cloned for background threads)
+    git_tx: mpsc::Sender<(PathBuf, GitStatus)>,
+    /// Last time git status was fetched (to throttle background fetches)
+    last_git_fetch: std::time::Instant,
+    /// Flag to track if a git fetch is in progress (prevents thread pile-up)
+    is_git_fetching: Arc<AtomicBool>,
 }
 
 impl App {
     fn new() -> Result<Self> {
         let config = Config::load(None)?;
+        let (git_tx, git_rx) = mpsc::channel();
         let mut app = Self {
             agents: Vec::new(),
             table_state: TableState::default(),
@@ -142,6 +157,12 @@ impl App {
             preview_scroll: None,
             preview_line_count: 0,
             preview_height: 0,
+            git_statuses: HashMap::new(),
+            git_rx,
+            git_tx,
+            // Set to past to trigger immediate fetch on first refresh
+            last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
+            is_git_fetching: Arc::new(AtomicBool::new(false)),
         };
         app.refresh();
         // Select first item if available
@@ -157,6 +178,17 @@ impl App {
         self.agents = tmux::get_all_agent_panes().unwrap_or_default();
         self.sort_agents();
 
+        // Consume any pending git status updates from background thread
+        while let Ok((path, status)) = self.git_rx.try_recv() {
+            self.git_statuses.insert(path, status);
+        }
+
+        // Trigger background git status fetch every 5 seconds
+        if self.last_git_fetch.elapsed() >= Duration::from_secs(5) {
+            self.last_git_fetch = std::time::Instant::now();
+            self.spawn_git_status_fetch();
+        }
+
         // Adjust selection if it's now out of bounds
         if let Some(selected) = self.table_state.selected()
             && selected >= self.agents.len()
@@ -170,6 +202,39 @@ impl App {
 
         // Update preview for current selection
         self.update_preview();
+    }
+
+    /// Spawn a background thread to fetch git status for all agent worktrees
+    fn spawn_git_status_fetch(&self) {
+        // Skip if a fetch is already in progress (prevents thread pile-up)
+        if self
+            .is_git_fetching
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
+        let tx = self.git_tx.clone();
+        let is_fetching = self.is_git_fetching.clone();
+        let agent_paths: Vec<PathBuf> = self.agents.iter().map(|a| a.path.clone()).collect();
+
+        std::thread::spawn(move || {
+            // Reset flag when thread completes (even on panic)
+            struct ResetFlag(Arc<AtomicBool>);
+            impl Drop for ResetFlag {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
+                }
+            }
+            let _reset = ResetFlag(is_fetching);
+
+            for path in agent_paths {
+                let status = git::get_git_status(&path);
+                // Ignore send errors (receiver dropped means app is shutting down)
+                let _ = tx.send((path, status));
+            }
+        });
     }
 
     /// Update the preview for the currently selected agent.
@@ -673,8 +738,46 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(footer_text, chunks[1 + 1]);
 }
 
+/// Format git status for display in the dashboard table
+fn format_git_status(status: &GitStatus) -> (String, Style) {
+    // Conflict takes priority - show prominently in red
+    // Uses nf-md-alert_outline (U+F002A)
+    if status.has_conflict {
+        // nf-md-alert_outline (U+F002A) - BOLD breaks Nerd Font icon rendering
+        return ("\u{f002a}".to_string(), Style::default().fg(Color::Red));
+    }
+
+    let mut parts = Vec::new();
+
+    // Dirty indicator (uncommitted changes)
+    if status.is_dirty {
+        parts.push("*".to_string());
+    }
+
+    // Ahead/behind upstream
+    if status.ahead > 0 {
+        parts.push(format!("↑{}", status.ahead));
+    }
+    if status.behind > 0 {
+        parts.push(format!("↓{}", status.behind));
+    }
+
+    if parts.is_empty() {
+        // Clean state - show dim dash
+        ("-".to_string(), Style::default().fg(Color::DarkGray))
+    } else {
+        // Has some status to show
+        let color = if status.is_dirty {
+            Color::Yellow
+        } else {
+            Color::Blue
+        };
+        (parts.join(" "), Style::default().fg(color))
+    }
+}
+
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["#", "Project", "Worktree", "Status", "Time", "Title"]
+    let header_cells = ["#", "Project", "Worktree", "Git", "Status", "Time", "Title"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -733,11 +836,21 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .map(|d| app.format_duration(d))
                 .unwrap_or_else(|| "-".to_string());
 
+            // Get git status for this worktree
+            let git_status = app
+                .git_statuses
+                .get(&agent.path)
+                .copied()
+                .unwrap_or_default();
+            let (git_text, git_style) = format_git_status(&git_status);
+
             (
                 jump_key,
                 project,
                 worktree_display,
                 is_main,
+                git_text,
+                git_style,
                 status_text,
                 status_color,
                 duration,
@@ -749,7 +862,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
@@ -759,7 +872,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, worktree_display, _, _, _, _, _)| worktree_display.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
         .clamp(8, 24) // min 8 (header width), max 24
@@ -773,6 +886,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 is_main,
+                git_text,
+                git_style,
                 status_text,
                 status_color,
                 duration,
@@ -787,6 +902,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                     Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
+                    Cell::from(git_text).style(git_style),
                     Cell::from(status_text).style(Style::default().fg(status_color)),
                     Cell::from(duration),
                     Cell::from(title),
@@ -801,6 +917,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(2),                         // #: jump key
             Constraint::Length(max_project_width as u16),  // Project: auto-sized
             Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
+            Constraint::Length(11),                        // Git: fixed (e.g., "* ↑10 ↓10")
             Constraint::Length(8),                         // Status: fixed (icons)
             Constraint::Length(10),                        // Time: HH:MM:SS + padding
             Constraint::Fill(1),                           // Title: takes remaining space
@@ -810,8 +927,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     .block(Block::default())
     .row_highlight_style(
         Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
+            .bg(Color::DarkGray),
     )
     .highlight_symbol("> ");
 
