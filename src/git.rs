@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use git_url_parse::GitUrl;
 use git_url_parse::types::provider::GenericProvider;
 use std::collections::{HashMap, HashSet};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
@@ -932,32 +933,123 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
     (branch_name, ahead, behind, is_dirty)
 }
 
-/// Get lines added/removed in the branch compared to base using `git diff --numstat`.
-/// Uses triple-dot syntax to compare against merge base for accurate branch diff.
+/// Count lines in a file, treating it like git (text files only).
+/// Returns 0 for binary files or errors.
+fn count_lines(path: &Path) -> std::io::Result<usize> {
+    use std::fs::File;
+
+    let mut file = File::open(path)?;
+
+    // Check for binary content (heuristic: null byte in first 8KB)
+    let mut buffer = [0; 8192];
+    let n = file.read(&mut buffer)?;
+    if buffer[..n].contains(&0) {
+        return Ok(0);
+    }
+
+    // Reset file position to start
+    file.seek(SeekFrom::Start(0))?;
+
+    let mut count = 0;
+    let mut buf = [0; 32 * 1024];
+    let mut last_byte = None;
+
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        count += buf[..n].iter().filter(|&&b| b == b'\n').count();
+        last_byte = Some(buf[n - 1]);
+    }
+
+    // If file ends with non-newline character, count that as a line (like git)
+    if let Some(b) = last_byte
+        && b != b'\n'
+    {
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+/// Get lines added/removed in the branch compared to base.
+/// Includes:
+/// 1. Committed changes vs base (git diff base...HEAD)
+/// 2. Uncommitted changes to tracked files (git diff HEAD)
+/// 3. Untracked files (counted manually)
 fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
-    let output = match Cmd::new("git")
+    let mut total_added = 0;
+    let mut total_removed = 0;
+
+    // Helper to parse numstat output
+    let parse_numstat = |output: &str| -> (usize, usize) {
+        let mut a = 0;
+        let mut r = 0;
+        for line in output.lines() {
+            let mut parts = line.split_whitespace();
+            // Format: <added> <removed> <filename>
+            // Binary files use "-" instead of numbers (parse will fail, which is fine)
+            if let (Some(added), Some(removed)) = (parts.next(), parts.next()) {
+                a += added.parse::<usize>().unwrap_or(0);
+                r += removed.parse::<usize>().unwrap_or(0);
+            }
+        }
+        (a, r)
+    };
+
+    // 1. Committed changes (base...HEAD)
+    if let Ok(output) = Cmd::new("git")
         .workdir(worktree_path)
         .args(&["diff", "--numstat", &format!("{}...HEAD", base_ref)])
         .run_and_capture_stdout()
     {
-        Ok(o) => o,
-        Err(_) => return (0, 0),
-    };
+        let (a, r) = parse_numstat(&output);
+        total_added += a;
+        total_removed += r;
+    }
 
-    let mut added = 0;
-    let mut removed = 0;
+    // 2. Uncommitted changes (HEAD vs working tree)
+    // This covers both staged and unstaged changes to tracked files
+    if let Ok(output) = Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["diff", "--numstat", "HEAD"])
+        .run_and_capture_stdout()
+    {
+        let (a, r) = parse_numstat(&output);
+        total_added += a;
+        total_removed += r;
+    }
 
-    for line in output.lines() {
-        let mut parts = line.split_whitespace();
-        // Format: <added> <removed> <filename>
-        // Binary files use "-" instead of numbers (parse will fail, which is fine)
-        if let (Some(a), Some(r)) = (parts.next(), parts.next()) {
-            added += a.parse::<usize>().unwrap_or(0);
-            removed += r.parse::<usize>().unwrap_or(0);
+    // 3. Untracked files (all lines count as added)
+    // Use -z to separate paths with null bytes, handling spaces/special chars correctly
+    if let Ok(output) = Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["ls-files", "--others", "--exclude-standard", "-z"])
+        .run_and_capture_stdout()
+    {
+        for file_path in output.split('\0') {
+            if file_path.is_empty() {
+                continue;
+            }
+
+            let full_path = worktree_path.join(file_path);
+
+            // Check for symlinks - treat as 1 line (the path) like git does
+            if let Ok(metadata) = std::fs::symlink_metadata(&full_path)
+                && metadata.file_type().is_symlink()
+            {
+                total_added += 1;
+                continue;
+            }
+
+            if let Ok(lines) = count_lines(&full_path) {
+                total_added += lines;
+            }
         }
     }
 
-    (added, removed)
+    (total_added, total_removed)
 }
 
 /// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
