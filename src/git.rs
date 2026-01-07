@@ -849,12 +849,13 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
             }
         } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
             // Format: "+<ahead> -<behind>"
-            let parts: Vec<&str> = rest.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Some(a) = parts[0].strip_prefix('+') {
+            // Use iterator directly to avoid Vec allocation
+            let mut parts = rest.split_whitespace();
+            if let (Some(part_a), Some(part_b)) = (parts.next(), parts.next()) {
+                if let Some(a) = part_a.strip_prefix('+') {
                     ahead = a.parse().unwrap_or(0);
                 }
-                if let Some(b) = parts[1].strip_prefix('-') {
+                if let Some(b) = part_b.strip_prefix('-') {
                     behind = b.parse().unwrap_or(0);
                 }
             }
@@ -1141,6 +1142,26 @@ mod tests {
         let output = "# branch.oid abc123\n# branch.head main\n2 R. N... 100644 100644 100644 abc123 def456 R100 old.rs\tnew.rs\n";
         let (branch, _ahead, _behind, is_dirty) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("main".to_string()));
+        assert!(is_dirty);
+    }
+
+    #[test]
+    fn test_parse_porcelain_v2_initial_commit() {
+        // Repo created but no commits made yet
+        let output = "# branch.oid (initial)\n# branch.head master\n";
+        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        assert_eq!(branch, Some("master".to_string()));
+        assert_eq!(ahead, 0);
+        assert_eq!(behind, 0);
+        assert!(!is_dirty);
+    }
+
+    #[test]
+    fn test_parse_porcelain_v2_unmerged_conflict() {
+        // Merge conflict (unmerged entry starting with 'u')
+        let output = "# branch.oid abc123\n# branch.head feature\n# branch.upstream origin/feature\n# branch.ab +0 -0\nu UU N... 100644 100644 100644 100644 abc def ghi jkl src/conflict.rs\n";
+        let (branch, _ahead, _behind, is_dirty) = parse_porcelain_v2_status(output);
+        assert_eq!(branch, Some("feature".to_string()));
         assert!(is_dirty);
     }
 }
