@@ -57,7 +57,47 @@ pub fn merge(
         "merge:worktree resolved"
     );
 
-    let target_branch = into_branch.unwrap_or(&context.main_branch);
+    // Determine the target branch:
+    // 1. Use explicit --into if provided
+    // 2. Otherwise, check if branch has a stored base (from workmux add)
+    // 3. Fall back to main_branch
+    let detected_base: Option<String> = if into_branch.is_some() {
+        None // User explicitly specified target, no auto-detection needed
+    } else {
+        match git::get_branch_base(&branch_to_merge) {
+            Ok(base) => {
+                // Verify the base branch still exists
+                if git::branch_exists(&base)? {
+                    info!(
+                        branch = %branch_to_merge,
+                        base = %base,
+                        "merge:auto-detected base branch"
+                    );
+                    Some(base)
+                } else {
+                    info!(
+                        branch = %branch_to_merge,
+                        base = %base,
+                        "merge:base branch not found, defaulting to main"
+                    );
+                    None
+                }
+            }
+            Err(_) => {
+                debug!(
+                    branch = %branch_to_merge,
+                    "merge:no base config found, defaulting to main"
+                );
+                None
+            }
+        }
+    };
+
+    let target_branch = into_branch
+        .map(|s| s.to_string())
+        .or(detected_base)
+        .unwrap_or_else(|| context.main_branch.clone());
+    let target_branch = target_branch.as_str();
 
     // Resolve the worktree path and window handle for the TARGET branch.
     // If the target branch is the configured main branch, we use the main worktree root

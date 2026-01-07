@@ -395,3 +395,113 @@ def test_merge_into_different_branch(
 
     # Verify parent worktree still exists
     assert parent_worktree_path.exists(), "Parent worktree should still exist"
+
+
+def test_merge_auto_detects_base_branch(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge auto-detects base branch when --into is not specified.
+
+    When a branch is created from a non-main branch using `workmux add --base`,
+    the merge command should automatically merge back into that base branch
+    without requiring --into to be specified.
+    """
+    env = isolated_tmux_server
+    parent_branch = "feature/parent-auto"
+    child_branch = "feature/child-auto"
+    child_window_name = get_window_name(child_branch)
+    write_workmux_config(repo_path, env=env)
+
+    # Create parent feature branch with a worktree
+    run_workmux_add(env, workmux_exe_path, repo_path, parent_branch)
+    parent_worktree_path = get_worktree_path(repo_path, parent_branch)
+    create_commit(env, parent_worktree_path, "feat: parent feature base")
+
+    # Create child branch based on parent (this stores the base branch in git config)
+    run_workmux_add(env, workmux_exe_path, repo_path, child_branch, base=parent_branch)
+    child_worktree_path = get_worktree_path(repo_path, child_branch)
+
+    # Create a commit on the child branch
+    child_commit_msg = "feat: child auto-merge work"
+    create_commit(env, child_worktree_path, child_commit_msg)
+    child_commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=child_worktree_path
+    ).stdout.strip()
+
+    # Merge child WITHOUT specifying --into - should auto-detect parent as target
+    run_workmux_merge(env, workmux_exe_path, repo_path, child_branch)
+
+    # Verify child worktree was cleaned up
+    assert not child_worktree_path.exists(), "Child worktree should be removed"
+    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
+    assert child_window_name not in list_windows_result.stdout, (
+        "Child tmux window should be closed"
+    )
+    branch_list_result = env.run_command(["git", "branch", "--list", child_branch])
+    assert child_branch not in branch_list_result.stdout, (
+        "Child branch should be deleted"
+    )
+
+    # Verify the commit is on parent branch (auto-detected), NOT on main
+    parent_log_result = env.run_command(
+        ["git", "log", "--oneline", parent_branch], cwd=repo_path
+    )
+    assert child_commit_hash in parent_log_result.stdout, (
+        "Child commit should be on parent branch (auto-detected)"
+    )
+
+    main_log_result = env.run_command(
+        ["git", "log", "--oneline", "main"], cwd=repo_path
+    )
+    assert child_commit_hash not in main_log_result.stdout, (
+        "Child commit should NOT be on main branch"
+    )
+
+    # Verify parent worktree still exists
+    assert parent_worktree_path.exists(), "Parent worktree should still exist"
+
+
+def test_merge_falls_back_to_main_when_base_branch_deleted(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge falls back to main when the stored base branch no longer exists."""
+    env = isolated_tmux_server
+    parent_branch = "feature/temp-parent"
+    child_branch = "feature/orphan-child"
+    write_workmux_config(repo_path, env=env)
+
+    # Create parent feature branch with a worktree
+    run_workmux_add(env, workmux_exe_path, repo_path, parent_branch)
+    parent_worktree_path = get_worktree_path(repo_path, parent_branch)
+    create_commit(env, parent_worktree_path, "feat: temp parent base")
+
+    # Create child branch based on parent
+    run_workmux_add(env, workmux_exe_path, repo_path, child_branch, base=parent_branch)
+    child_worktree_path = get_worktree_path(repo_path, child_branch)
+
+    # Create a commit on the child branch
+    child_commit_msg = "feat: orphan child work"
+    create_commit(env, child_worktree_path, child_commit_msg)
+    child_commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=child_worktree_path
+    ).stdout.strip()
+
+    # Delete the parent branch (simulating it was merged and deleted elsewhere)
+    # First remove the worktree, then delete the branch
+    env.run_command(
+        [str(workmux_exe_path), "remove", "--force", parent_branch], cwd=repo_path
+    )
+
+    # Merge child WITHOUT specifying --into - should fall back to main since parent is gone
+    run_workmux_merge(env, workmux_exe_path, repo_path, child_branch)
+
+    # Verify child worktree was cleaned up
+    assert not child_worktree_path.exists(), "Child worktree should be removed"
+
+    # Verify the commit ended up on main (fallback behavior)
+    main_log_result = env.run_command(
+        ["git", "log", "--oneline", "main"], cwd=repo_path
+    )
+    assert child_commit_hash in main_log_result.stdout, (
+        "Child commit should be on main branch (fallback when base deleted)"
+    )
