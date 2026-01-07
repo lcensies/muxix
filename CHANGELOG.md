@@ -8,6 +8,15 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.77 (2026-01-07)
+
+- Dashboard: Added git status column showing diff stats (+/- lines), conflict
+  indicator, dirty state, and ahead/behind counts for each worktree
+- Dashboard: Non-default base branches (not main/master) are now displayed in
+  the git column
+- Added `--notification` flag to `merge` command to show a system notification
+  on successful merge
+
 ## v0.1.76 (2026-01-07)
 
 - Dashboard: Renamed "Agent" column to "Worktree" for clarity; non-workmux
