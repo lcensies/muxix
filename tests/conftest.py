@@ -926,6 +926,7 @@ def run_workmux_merge(
     keep: bool = False,
     into: Optional[str] = None,
     no_verify: bool = False,
+    notification: bool = False,
     expect_fail: bool = False,
     from_window: Optional[str] = None,
 ) -> None:
@@ -946,6 +947,7 @@ def run_workmux_merge(
         keep: Whether to use --keep flag
         into: Optional target branch to merge into (instead of main)
         no_verify: Whether to use --no-verify flag (skip pre-merge hooks)
+        notification: Whether to use --notification flag (show system notification)
         expect_fail: If True, asserts the command fails (non-zero exit code)
         from_window: Optional tmux window name to run the command from
     """
@@ -970,6 +972,8 @@ def run_workmux_merge(
         flags.append(f"--into {into}")
     if no_verify:
         flags.append("--no-verify")
+    if notification:
+        flags.append("--notification")
 
     branch_arg = branch_name if branch_name else ""
     flags_str = " ".join(flags)

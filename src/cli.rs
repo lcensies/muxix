@@ -273,6 +273,10 @@ enum Commands {
         /// Skip running pre-merge hooks
         #[arg(short = 'n', long)]
         no_verify: bool,
+
+        /// Show a system notification on successful merge
+        #[arg(long)]
+        notification: bool,
     },
 
     /// Remove a worktree, tmux window, and branch without merging
@@ -406,6 +410,7 @@ pub fn run() -> Result<()> {
             squash,
             keep,
             no_verify,
+            notification,
         } => command::merge::run(
             name.as_deref(),
             into.as_deref(),
@@ -414,6 +419,7 @@ pub fn run() -> Result<()> {
             squash,
             keep,
             no_verify,
+            notification,
         ),
         Commands::Remove {
             names,

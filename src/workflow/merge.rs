@@ -17,6 +17,7 @@ pub fn merge(
     squash: bool,
     keep: bool,
     no_verify: bool,
+    notification: bool,
     context: &WorkflowContext,
 ) -> Result<MergeResult> {
     info!(
@@ -311,6 +312,15 @@ pub fn merge(
         });
     }
 
+    // Show notification BEFORE cleanup, since cleanup may kill the window
+    // and terminate this process before notification code runs
+    if notification {
+        show_notification(&format!(
+            "Merged '{}' into '{}'",
+            branch_to_merge, target_branch
+        ));
+    }
+
     // Always force cleanup after a successful merge
     info!(branch = %branch_to_merge, "merge:cleanup start");
     let cleanup_result = cleanup::cleanup(
@@ -335,4 +345,34 @@ pub fn merge(
         main_branch: target_branch.to_string(),
         had_staged_changes,
     })
+}
+
+/// Shows a system notification on macOS or Linux
+fn show_notification(message: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use mac_notification_sys::{Notification, set_application};
+        // Set application to Terminal to use its icon
+        if let Err(e) = set_application("com.apple.Terminal") {
+            tracing::debug!("Failed to set notification application: {:?}", e);
+        }
+        if let Err(e) = Notification::default()
+            .title("workmux")
+            .message(message)
+            .send()
+        {
+            tracing::debug!("Failed to send notification: {:?}", e);
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Err(e) = notify_rust::Notification::new()
+            .summary("workmux")
+            .body(message)
+            .show()
+        {
+            tracing::debug!("Failed to send notification: {:?}", e);
+        }
+    }
 }

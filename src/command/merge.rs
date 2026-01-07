@@ -3,6 +3,7 @@ use crate::workflow::WorkflowContext;
 use crate::{config, workflow};
 use anyhow::{Context, Result};
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     name: Option<&str>,
     into_branch: Option<&str>,
@@ -11,6 +12,7 @@ pub fn run(
     mut squash: bool,
     keep: bool,
     no_verify: bool,
+    notification: bool,
 ) -> Result<()> {
     let config = config::Config::load(None)?;
 
@@ -50,6 +52,7 @@ pub fn run(
         squash,
         keep,
         no_verify,
+        notification,
         &context,
     )
     .context("Failed to merge worktree")?;
