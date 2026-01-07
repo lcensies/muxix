@@ -749,14 +749,28 @@ fn ui(f: &mut Frame, app: &mut App) {
 /// Braille spinner frames for subtle loading animation
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-/// Format git status for the Git column: diff stats first, then indicators
-/// Format: "+N -M 󰀪 󰏫 ↑X ↓Y" with diff stats left-aligned for alignment
+/// Format git status for the Git column: base branch, diff stats, then indicators
+/// Format: "main +N -M 󰀪 󰏫 ↑X ↓Y" with base branch dimmed
 fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(String, Style)> {
     if let Some(status) = status {
         let mut spans: Vec<(String, Style)> = Vec::new();
 
-        // Diff stats first (for alignment)
+        // Base branch (dimmed) - only show if not default (main/master)
+        if !status.base_branch.is_empty()
+            && status.base_branch != "main"
+            && status.base_branch != "master"
+        {
+            spans.push((
+                format!("→{}", status.base_branch),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        // Diff stats
         if status.lines_added > 0 {
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
             spans.push((
                 format!("+{}", status.lines_added),
                 Style::default().fg(Color::Green),
@@ -929,7 +943,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .max()
         .unwrap_or(4)
-        .clamp(4, 18) // min 4, max 18
+        .clamp(4, 30) // min 4, max 30 (increased for base branch)
         + 1; // padding
 
     let rows: Vec<Row> = row_data

@@ -26,7 +26,7 @@ pub struct ForkBranchSpec {
 pub struct WorktreeNotFound(pub String);
 
 /// Git status information for a worktree
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GitStatus {
     /// Commits ahead of upstream
     pub ahead: usize,
@@ -43,6 +43,9 @@ pub struct GitStatus {
     /// Timestamp when this status was cached (UNIX seconds)
     #[serde(default)]
     pub cached_at: Option<u64>,
+    /// The base branch used for comparison (e.g., "main")
+    #[serde(default)]
+    pub base_branch: String,
 }
 
 /// Get the path to the git status cache file
@@ -1008,12 +1011,13 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
             behind,
             is_dirty,
             cached_at: now,
+            base_branch,
             ..Default::default()
         };
     }
 
-    // Use local base branch for comparisons
-    let base_ref = base_branch;
+    // Use local base branch for comparisons (clone since we need it in the return)
+    let base_ref = base_branch.clone();
 
     // Check for merge conflicts with base branch
     // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
@@ -1039,6 +1043,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         lines_added,
         lines_removed,
         cached_at: now,
+        base_branch,
     }
 }
 
