@@ -434,17 +434,18 @@ impl App {
         }
     }
 
-    fn extract_agent_name(&self, agent: &AgentPane) -> String {
-        // Try to extract a meaningful name from the window name
-        // Remove common prefixes like "wm-"
+    /// Extract the worktree name from an agent.
+    /// Returns (worktree_name, is_main) where is_main indicates if this is the main worktree.
+    fn extract_worktree_name(&self, agent: &AgentPane) -> (String, bool) {
         let name = &agent.window_name;
         let prefix = self.config.window_prefix();
 
         if let Some(stripped) = name.strip_prefix(prefix) {
-            stripped.to_string()
+            // Workmux-created worktree agent
+            (stripped.to_string(), false)
         } else {
-            // For non-workmux windows, show actual window name
-            name.clone()
+            // Non-workmux agent - running in main worktree
+            ("main".to_string(), true)
         }
     }
 
@@ -673,7 +674,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["#", "Project", "Agent", "Status", "Time", "Title"]
+    let header_cells = ["#", "Project", "Worktree", "Status", "Time", "Title"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
     let header = Row::new(header_cells).height(1);
@@ -719,7 +720,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let project = App::extract_project_name(agent);
-            let agent_name = format!("{}{}", app.extract_agent_name(agent), pane_suffix);
+            let (worktree_name, is_main) = app.extract_worktree_name(agent);
+            let worktree_display = format!("{}{}", worktree_name, pane_suffix);
             let title = agent
                 .pane_title
                 .as_ref()
@@ -734,7 +736,8 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             (
                 jump_key,
                 project,
-                agent_name,
+                worktree_display,
+                is_main,
                 status_text,
                 status_color,
                 duration,
@@ -746,16 +749,16 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
         + 2; // padding
 
-    // Calculate max agent name width (with padding, capped)
-    let max_agent_width = row_data
+    // Calculate max worktree name width (with padding, capped)
+    let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, agent_name, _, _, _, _)| agent_name.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 24) // min 5, max 24
@@ -764,11 +767,25 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let rows: Vec<Row> = row_data
         .into_iter()
         .map(
-            |(jump_key, project, agent_name, status_text, status_color, duration, title)| {
+            |(
+                jump_key,
+                project,
+                worktree_display,
+                is_main,
+                status_text,
+                status_color,
+                duration,
+                title,
+            )| {
+                let worktree_style = if is_main {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
                 Row::new(vec![
                     Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                     Cell::from(project),
-                    Cell::from(agent_name),
+                    Cell::from(worktree_display).style(worktree_style),
                     Cell::from(status_text).style(Style::default().fg(status_color)),
                     Cell::from(duration),
                     Cell::from(title),
@@ -780,12 +797,12 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(2),                        // #: jump key
-            Constraint::Length(max_project_width as u16), // Project: auto-sized
-            Constraint::Length(max_agent_width as u16),   // Agent: auto-sized
-            Constraint::Length(8),                        // Status: fixed (icons)
-            Constraint::Length(10),                       // Time: HH:MM:SS + padding
-            Constraint::Fill(1),                          // Title: takes remaining space
+            Constraint::Length(2),                         // #: jump key
+            Constraint::Length(max_project_width as u16),  // Project: auto-sized
+            Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
+            Constraint::Length(8),                         // Status: fixed (icons)
+            Constraint::Length(10),                        // Time: HH:MM:SS + padding
+            Constraint::Fill(1),                           // Title: takes remaining space
         ],
     )
     .header(header)
@@ -808,20 +825,20 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
         .and_then(|idx| app.agents.get(idx));
 
     let (title, title_style, border_style) = if app.input_mode {
-        let agent_name = selected_agent
-            .map(|a| app.extract_agent_name(a))
+        let worktree_name = selected_agent
+            .map(|a| app.extract_worktree_name(a).0)
             .unwrap_or_default();
         (
-            format!(" INPUT: {} ", agent_name),
+            format!(" INPUT: {} ", worktree_name),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
             Style::default().fg(Color::Green),
         )
     } else if let Some(agent) = selected_agent {
-        let agent_name = app.extract_agent_name(agent);
+        let worktree_name = app.extract_worktree_name(agent).0;
         (
-            format!(" Preview: {} ", agent_name),
+            format!(" Preview: {} ", worktree_name),
             Style::default().fg(Color::Cyan),
             Style::default().fg(Color::DarkGray),
         )
