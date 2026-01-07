@@ -990,12 +990,8 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         };
     }
 
-    // Prefer remote tracking branch for comparisons
-    let base_ref = if branch_exists(&format!("origin/{}", base_branch)).unwrap_or(false) {
-        format!("origin/{}", base_branch)
-    } else {
-        base_branch
-    };
+    // Use local base branch for comparisons
+    let base_ref = base_branch;
 
     // Check for merge conflicts with base branch
     // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
