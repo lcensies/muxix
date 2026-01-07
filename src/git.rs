@@ -36,6 +36,10 @@ pub struct GitStatus {
     pub has_conflict: bool,
     /// Has uncommitted changes (staged or unstaged)
     pub is_dirty: bool,
+    /// Lines added in this branch vs base
+    pub lines_added: usize,
+    /// Lines removed in this branch vs base
+    pub lines_removed: usize,
 }
 
 /// Check if we're in a git repository
@@ -872,7 +876,35 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
     (branch_name, ahead, behind, is_dirty)
 }
 
-/// Get git status for a worktree (ahead/behind, conflicts, dirty state).
+/// Get lines added/removed in the branch compared to base using `git diff --numstat`.
+/// Uses triple-dot syntax to compare against merge base for accurate branch diff.
+fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
+    let output = match Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["diff", "--numstat", &format!("{}...HEAD", base_ref)])
+        .run_and_capture_stdout()
+    {
+        Ok(o) => o,
+        Err(_) => return (0, 0),
+    };
+
+    let mut added = 0;
+    let mut removed = 0;
+
+    for line in output.lines() {
+        let mut parts = line.split_whitespace();
+        // Format: <added> <removed> <filename>
+        // Binary files use "-" instead of numbers (parse will fail, which is fine)
+        if let (Some(a), Some(r)) = (parts.next(), parts.next()) {
+            added += a.parse::<usize>().unwrap_or(0);
+            removed += r.parse::<usize>().unwrap_or(0);
+        }
+    }
+
+    (added, removed)
+}
+
+/// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
 /// This is designed for dashboard display and prioritizes speed over completeness.
 /// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
 pub fn get_git_status(worktree_path: &Path) -> GitStatus {
@@ -899,43 +931,53 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         }
     };
 
-    // Check for merge conflicts with base branch (cannot be consolidated into porcelain v2)
+    // Determine base branch for conflict check and diff stats
     // First try workmux-base config, then fall back to default branch
     let base_branch = get_branch_base(&branch)
         .ok()
         .or_else(|| get_default_branch().ok())
         .unwrap_or_else(|| "main".to_string());
 
-    // Skip conflict check if on the base branch itself
-    let has_conflict = if branch == base_branch {
-        false
-    } else {
-        // Prefer remote tracking branch for conflict detection
-        let base_ref = if branch_exists(&format!("origin/{}", base_branch)).unwrap_or(false) {
-            format!("origin/{}", base_branch)
-        } else {
-            base_branch
+    // If on the base branch itself, no conflicts or diff stats needed
+    if branch == base_branch {
+        return GitStatus {
+            ahead,
+            behind,
+            is_dirty,
+            ..Default::default()
         };
+    }
 
-        // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
-        // Exit code 129 means unknown option (older Git) - treat as no conflict
-        // Use Command directly to check the specific exit code
+    // Prefer remote tracking branch for comparisons
+    let base_ref = if branch_exists(&format!("origin/{}", base_branch)).unwrap_or(false) {
+        format!("origin/{}", base_branch)
+    } else {
+        base_branch
+    };
+
+    // Check for merge conflicts with base branch
+    // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
+    // Exit code 129 means unknown option (older Git) - treat as no conflict
+    let has_conflict = {
         let status = Command::new("git")
             .current_dir(worktree_path)
             .args(["merge-tree", "--write-tree", &base_ref, "HEAD"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
-
-        // Only exit code 1 means merge conflict; other codes (0, 129, etc.) mean no conflict
         matches!(status, Ok(s) if s.code() == Some(1))
     };
+
+    // Get diff stats (lines added/removed vs base)
+    let (lines_added, lines_removed) = get_diff_stats(worktree_path, &base_ref);
 
     GitStatus {
         ahead,
         behind,
         has_conflict,
         is_dirty,
+        lines_added,
+        lines_removed,
     }
 }
 

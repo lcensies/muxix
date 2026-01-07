@@ -746,49 +746,71 @@ fn ui(f: &mut Frame, app: &mut App) {
 /// Braille spinner frames for subtle loading animation
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-/// Format git status for display in the dashboard table
-/// Shows a spinner when status hasn't been fetched yet
-fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> (String, Style) {
-    // If we have cached status, show it
+/// Format git status for the Git column: diff stats first, then indicators
+/// Format: "+N -M 󰏫 ↑X ↓Y" with diff stats left-aligned for alignment
+fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(String, Style)> {
     if let Some(status) = status {
         // Conflict takes priority - show prominently in red
-        // Uses nf-md-alert_outline (U+F002A)
         if status.has_conflict {
-            // nf-md-alert_outline (U+F002A) - BOLD breaks Nerd Font icon rendering
-            return ("\u{f002a}".to_string(), Style::default().fg(Color::Red));
+            return vec![("\u{f002a}".to_string(), Style::default().fg(Color::Red))];
         }
 
-        let mut parts = Vec::new();
+        let mut spans: Vec<(String, Style)> = Vec::new();
 
-        // Dirty indicator (uncommitted changes) - nf-md-pencil (U+F03EB)
+        // Diff stats first (for alignment)
+        if status.lines_added > 0 {
+            spans.push((
+                format!("+{}", status.lines_added),
+                Style::default().fg(Color::Green),
+            ));
+        }
+        if status.lines_removed > 0 {
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
+            spans.push((
+                format!("-{}", status.lines_removed),
+                Style::default().fg(Color::Red),
+            ));
+        }
+
+        // Dirty indicator
         if status.is_dirty {
-            parts.push("\u{f03eb}".to_string());
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
+            spans.push(("\u{f03eb}".to_string(), Style::default().fg(Color::Magenta)));
         }
 
         // Ahead/behind upstream
         if status.ahead > 0 {
-            parts.push(format!("↑{}", status.ahead));
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
+            spans.push((
+                format!("↑{}", status.ahead),
+                Style::default().fg(Color::Blue),
+            ));
         }
         if status.behind > 0 {
-            parts.push(format!("↓{}", status.behind));
+            if !spans.is_empty() {
+                spans.push((" ".to_string(), Style::default()));
+            }
+            spans.push((
+                format!("↓{}", status.behind),
+                Style::default().fg(Color::Yellow),
+            ));
         }
 
-        if parts.is_empty() {
-            // Clean state - show dim dash
-            ("-".to_string(), Style::default().fg(Color::DarkGray))
+        if spans.is_empty() {
+            vec![("-".to_string(), Style::default().fg(Color::DarkGray))]
         } else {
-            // Has some status to show
-            let color = if status.is_dirty {
-                Color::Magenta
-            } else {
-                Color::Blue
-            };
-            (parts.join(" "), Style::default().fg(color))
+            spans
         }
     } else {
-        // No status yet - show spinner until we get data
+        // No status yet - show spinner
         let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
-        (frame.to_string(), Style::default().fg(Color::DarkGray))
+        vec![(frame.to_string(), Style::default().fg(Color::DarkGray))]
     }
 }
 
@@ -854,15 +876,14 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             // Get git status for this worktree (may be None if not yet fetched)
             let git_status = app.git_statuses.get(&agent.path);
-            let (git_text, git_style) = format_git_status(git_status, app.spinner_frame);
+            let git_spans = format_git_status(git_status, app.spinner_frame);
 
             (
                 jump_key,
                 project,
                 worktree_display,
                 is_main,
-                git_text,
-                git_style,
+                git_spans,
                 status_text,
                 status_color,
                 duration,
@@ -874,7 +895,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
@@ -884,11 +905,22 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
         .clamp(8, 24) // min 8 (header width), max 24
         + 2; // padding
+
+    // Calculate max git status width (sum of all span lengths)
+    // Use at least 3 to fit the "Git" header
+    let max_git_width = row_data
+        .iter()
+        .map(|(_, _, _, _, git_spans, _, _, _, _)| {
+            git_spans.iter().map(|(text, _)| text.len()).sum::<usize>()
+        })
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 18); // min 4, max 18
 
     let rows: Vec<Row> = row_data
         .into_iter()
@@ -898,8 +930,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 is_main,
-                git_text,
-                git_style,
+                git_spans,
                 status_text,
                 status_color,
                 duration,
@@ -910,11 +941,18 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     Style::default()
                 };
+                // Convert git spans to a Line
+                let git_line = Line::from(
+                    git_spans
+                        .into_iter()
+                        .map(|(text, style)| Span::styled(text, style))
+                        .collect::<Vec<_>>(),
+                );
                 Row::new(vec![
                     Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
-                    Cell::from(git_text).style(git_style),
+                    Cell::from(git_line),
                     Cell::from(status_text).style(Style::default().fg(status_color)),
                     Cell::from(duration),
                     Cell::from(title),
@@ -929,7 +967,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(2),                         // #: jump key
             Constraint::Length(max_project_width as u16),  // Project: auto-sized
             Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
-            Constraint::Length(11),                        // Git: fixed (e.g., "* ↑10 ↓10")
+            Constraint::Length(max_git_width as u16),      // Git: auto-sized
             Constraint::Length(8),                         // Status: fixed (icons)
             Constraint::Length(10),                        // Time: HH:MM:SS + padding
             Constraint::Fill(1),                           // Title: takes remaining space
