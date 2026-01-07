@@ -8,6 +8,15 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.76 (2026-01-07)
+
+- Dashboard: Renamed "Agent" column to "Worktree" for clarity; non-workmux
+  agents now display "main" instead of their window name
+- The `merge` command now auto-detects the base branch from when the worktree
+  was created, instead of always defaulting to main
+- Window status icons for "waiting" and "done" again auto-clear when returning
+  to the pane
+
 ## v0.1.75 (2026-01-06)
 
 - Added OpenCode support for agent status tracking in tmux window names
