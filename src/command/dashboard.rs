@@ -904,15 +904,15 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         .clamp(5, 20) // min 5, max 20
         + 2; // padding
 
-    // Calculate max worktree name width (with padding, capped)
+    // Calculate max worktree name width (with padding)
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
         .map(|(_, _, worktree_display, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
-        .clamp(8, 24) // min 8 (header width), max 24
-        + 2; // padding
+        .max(8) // min 8 (header width)
+        + 1; // padding
 
     // Calculate max git status width (sum of all span lengths)
     // Use at least 3 to fit the "Git" header
