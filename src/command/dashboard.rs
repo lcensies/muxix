@@ -159,7 +159,7 @@ impl App {
             preview_scroll: None,
             preview_line_count: 0,
             preview_height: 0,
-            git_statuses: HashMap::new(),
+            git_statuses: git::load_status_cache(),
             git_rx,
             git_tx,
             // Set to past to trigger immediate fetch on first refresh
@@ -679,6 +679,9 @@ pub fn run() -> Result<()> {
             break;
         }
     }
+
+    // Save git status cache before exiting
+    git::save_status_cache(&app.git_statuses);
 
     // Restore terminal
     disable_raw_mode()?;

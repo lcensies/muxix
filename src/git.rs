@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use git_url_parse::GitUrl;
 use git_url_parse::types::provider::GenericProvider;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{debug, info};
@@ -26,7 +26,7 @@ pub struct ForkBranchSpec {
 pub struct WorktreeNotFound(pub String);
 
 /// Git status information for a worktree
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GitStatus {
     /// Commits ahead of upstream
     pub ahead: usize,
@@ -40,6 +40,37 @@ pub struct GitStatus {
     pub lines_added: usize,
     /// Lines removed in this branch vs base
     pub lines_removed: usize,
+    /// Timestamp when this status was cached (UNIX seconds)
+    #[serde(default)]
+    pub cached_at: Option<u64>,
+}
+
+/// Get the path to the git status cache file
+pub fn get_cache_path() -> Result<PathBuf> {
+    let home = home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+    let cache_dir = home.join(".cache").join("workmux");
+    std::fs::create_dir_all(&cache_dir)?;
+    Ok(cache_dir.join("git_status_cache.json"))
+}
+
+/// Load the git status cache from disk
+pub fn load_status_cache() -> HashMap<PathBuf, GitStatus> {
+    if let Ok(path) = get_cache_path()
+        && path.exists()
+        && let Ok(content) = std::fs::read_to_string(&path)
+    {
+        return serde_json::from_str(&content).unwrap_or_default();
+    }
+    HashMap::new()
+}
+
+/// Save the git status cache to disk
+pub fn save_status_cache(statuses: &HashMap<PathBuf, GitStatus>) {
+    if let Ok(path) = get_cache_path()
+        && let Ok(content) = serde_json::to_string(statuses)
+    {
+        let _ = std::fs::write(path, content);
+    }
 }
 
 /// Check if we're in a git repository
@@ -908,6 +939,12 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
 /// This is designed for dashboard display and prioritizes speed over completeness.
 /// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
 pub fn get_git_status(worktree_path: &Path) -> GitStatus {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .ok();
+
     // Get branch info, ahead/behind, and dirty state in one command
     let (branch, ahead, behind, is_dirty) = match Cmd::new("git")
         .workdir(worktree_path)
@@ -916,7 +953,10 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
     {
         Ok(output) => parse_porcelain_v2_status(&output),
         Err(_) => {
-            return GitStatus::default();
+            return GitStatus {
+                cached_at: now,
+                ..Default::default()
+            };
         }
     };
 
@@ -926,6 +966,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         None => {
             return GitStatus {
                 is_dirty,
+                cached_at: now,
                 ..Default::default()
             };
         }
@@ -944,6 +985,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
             ahead,
             behind,
             is_dirty,
+            cached_at: now,
             ..Default::default()
         };
     }
@@ -978,6 +1020,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         is_dirty,
         lines_added,
         lines_removed,
+        cached_at: now,
     }
 }
 
