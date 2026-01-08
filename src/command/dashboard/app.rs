@@ -574,30 +574,54 @@ impl App {
     }
 
     /// Render diff content through delta for syntax highlighting
+    /// Falls back to basic ANSI coloring if delta is not available
     fn render_through_delta(content: &str) -> String {
-        if !Self::has_delta() || content.is_empty() {
+        if content.is_empty() {
             return content.to_string();
         }
 
-        let mut delta = match std::process::Command::new("delta")
-            .arg("--paging=never")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-        {
-            Ok(p) => p,
-            Err(_) => return content.to_string(),
-        };
+        if Self::has_delta() {
+            let mut delta = match std::process::Command::new("delta")
+                .arg("--paging=never")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+            {
+                Ok(p) => p,
+                Err(_) => return Self::apply_basic_diff_colors(content),
+            };
 
-        if let Some(mut stdin) = delta.stdin.take() {
-            use std::io::Write;
-            let _ = stdin.write_all(content.as_bytes());
-        }
+            if let Some(mut stdin) = delta.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(content.as_bytes());
+            }
 
-        match delta.wait_with_output() {
-            Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
-            Err(_) => content.to_string(),
+            match delta.wait_with_output() {
+                Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
+                Err(_) => Self::apply_basic_diff_colors(content),
+            }
+        } else {
+            Self::apply_basic_diff_colors(content)
         }
+    }
+
+    /// Apply basic ANSI colors to diff content (fallback when delta unavailable)
+    fn apply_basic_diff_colors(content: &str) -> String {
+        content
+            .lines()
+            .map(|line| {
+                if line.starts_with('+') && !line.starts_with("+++") {
+                    format!("\x1b[32m{}\x1b[0m", line) // Green
+                } else if line.starts_with('-') && !line.starts_with("---") {
+                    format!("\x1b[31m{}\x1b[0m", line) // Red
+                } else if line.starts_with("@@") {
+                    format!("\x1b[36m{}\x1b[0m", line) // Cyan
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Parse raw diff output into individual hunks for patch mode
