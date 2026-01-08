@@ -100,36 +100,40 @@ impl DiffHunk {
         }
 
         // Find split points: gaps where context lines separate change groups
-        let mut split_indices = Vec::new();
+        // Each split point stores (end_of_first_hunk, start_of_second_hunk) with overlap
+        let mut split_ranges = Vec::new();
         for window in change_indices.windows(2) {
-            let prev_idx = window[0];
-            let next_idx = window[1];
-            // If there's at least one context line between changes
-            if next_idx > prev_idx + 1 {
-                // Split point is the index of the first context line after the previous change
-                split_indices.push(prev_idx + 1);
+            let prev_change = window[0];
+            let next_change = window[1];
+            // Need at least one context line between changes to split
+            if next_change > prev_change + 1 {
+                // First hunk ends at next_change (exclusive) - includes trailing context
+                // Second hunk starts at prev_change + 1 - includes leading context
+                split_ranges.push((next_change, prev_change + 1));
             }
         }
 
-        if split_indices.is_empty() {
+        if split_ranges.is_empty() {
             return None;
         }
 
-        // Create sub-hunks
+        // Create sub-hunks with overlapping context
         let mut hunks = Vec::new();
         let mut start_idx = 0;
 
-        for split_idx in split_indices {
-            let sub_lines = &content_lines[start_idx..split_idx];
+        for (end_idx, next_start) in &split_ranges {
+            // First hunk: from start_idx to end_idx (includes trailing context)
+            let sub_lines = &content_lines[start_idx..*end_idx];
             if let Some(h) =
                 self.create_sub_hunk(sub_lines, old_start, new_start, start_idx, content_lines)
             {
                 hunks.push(h);
             }
-            start_idx = split_idx;
+            // Next hunk starts at the context after the previous change
+            start_idx = *next_start;
         }
 
-        // Final hunk
+        // Final hunk: from last start to end
         let sub_lines = &content_lines[start_idx..];
         if let Some(h) =
             self.create_sub_hunk(sub_lines, old_start, new_start, start_idx, content_lines)
