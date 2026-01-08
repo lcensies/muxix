@@ -91,6 +91,11 @@ pub fn run() -> Result<()> {
             // Handle patch mode actions that need &mut self
             if in_diff && in_patch_mode {
                 match key.code {
+                    // Ctrl+C quits the entire dashboard
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.should_quit = true;
+                        continue;
+                    }
                     KeyCode::Char('y') => {
                         app.stage_and_next();
                         continue;
@@ -181,6 +186,10 @@ pub fn run() -> Result<()> {
                         // Normal dashboard mode: handle navigation and commands
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                            // Ctrl+C also quits
+                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.should_quit = true;
+                            }
                             KeyCode::Char('j') | KeyCode::Down => app.next(),
                             KeyCode::Char('k') | KeyCode::Up => app.previous(),
                             KeyCode::Enter => app.jump_to_selected(),
@@ -215,6 +224,10 @@ pub fn run() -> Result<()> {
                     // Diff view mode: handle scrolling and actions (non-patch mode)
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
+                        // Ctrl+C quits the entire dashboard
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.should_quit = true;
+                        }
                         KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
                         KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
                         KeyCode::PageDown => diff_view.scroll_page_down(),
