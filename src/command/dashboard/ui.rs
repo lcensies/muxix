@@ -432,14 +432,27 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     // Update viewport height for scroll calculations (subtract 2 for borders)
     diff.viewport_height = chunks[0].height.saturating_sub(2);
 
-    // Create block with title
-    let block = Block::bordered()
-        .title(format!(" {} ", diff.title))
-        .title_style(
+    // Create block with title including diff stats
+    let title = Line::from(vec![
+        Span::styled(
+            format!(" {} ", diff.title),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
-        )
+        ),
+        Span::styled(
+            format!("+{}", diff.lines_added),
+            Style::default().fg(Color::Green),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            format!("-{}", diff.lines_removed),
+            Style::default().fg(Color::Red),
+        ),
+        Span::raw(" "),
+    ]);
+    let block = Block::bordered()
+        .title(title)
         .border_style(Style::default().fg(Color::DarkGray));
 
     // Parse ANSI colors from diff content

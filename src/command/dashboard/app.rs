@@ -15,6 +15,30 @@ use crate::tmux::{self, AgentPane};
 
 use super::sort::SortMode;
 
+/// Strip ANSI escape sequences from a string
+fn strip_ansi_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip escape sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // Skip until we hit a letter (the terminator)
+                while let Some(&next) = chars.peek() {
+                    chars.next();
+                    if next.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
 
@@ -45,6 +69,10 @@ pub struct DiffView {
     pub pane_id: String,
     /// Whether this is a branch diff (true) or uncommitted diff (false)
     pub is_branch_diff: bool,
+    /// Number of lines added in the diff
+    pub lines_added: usize,
+    /// Number of lines removed in the diff
+    pub lines_removed: usize,
 }
 
 impl DiffView {
@@ -522,12 +550,30 @@ impl App {
             .is_ok_and(|o| o.status.success())
     }
 
+    /// Count added and removed lines from raw diff content
+    fn count_diff_stats(content: &[u8]) -> (usize, usize) {
+        let text = String::from_utf8_lossy(content);
+        let mut added = 0;
+        let mut removed = 0;
+        for line in text.lines() {
+            // Strip ANSI escape sequences for reliable matching
+            let stripped = strip_ansi_escapes(line);
+            if stripped.starts_with('+') && !stripped.starts_with("+++") {
+                added += 1;
+            } else if stripped.starts_with('-') && !stripped.starts_with("---") {
+                removed += 1;
+            }
+        }
+        (added, removed)
+    }
+
     /// Get diff content, optionally piped through delta for syntax highlighting
+    /// Returns (content, lines_added, lines_removed)
     fn get_diff_content(
         path: &PathBuf,
         diff_arg: &str,
         include_untracked: bool,
-    ) -> Result<String, String> {
+    ) -> Result<(String, usize, usize), String> {
         // Run git diff
         let git_output = std::process::Command::new("git")
             .arg("-C")
@@ -549,9 +595,16 @@ impl App {
             }
         }
 
+        // Count stats before any transformation
+        let (lines_added, lines_removed) = Self::count_diff_stats(&diff_content);
+
         // If empty or delta not available, return as-is
         if diff_content.is_empty() || !Self::has_delta() {
-            return Ok(String::from_utf8_lossy(&diff_content).to_string());
+            return Ok((
+                String::from_utf8_lossy(&diff_content).to_string(),
+                lines_added,
+                lines_removed,
+            ));
         }
 
         // Pipe through delta for syntax highlighting
@@ -572,7 +625,11 @@ impl App {
             .wait_with_output()
             .map_err(|e| format!("Error reading delta output: {}", e))?;
 
-        Ok(String::from_utf8_lossy(&delta_output.stdout).to_string())
+        Ok((
+            String::from_utf8_lossy(&delta_output.stdout).to_string(),
+            lines_added,
+            lines_removed,
+        ))
     }
 
     /// Generate diff output for untracked files (new files not yet staged)
@@ -658,7 +715,7 @@ impl App {
         // Include untracked files only for uncommitted changes view
         let include_untracked = !branch_diff;
         match Self::get_diff_content(path, &diff_arg, include_untracked) {
-            Ok(content) => {
+            Ok((content, lines_added, lines_removed)) => {
                 let (content, line_count) = if content.trim().is_empty() {
                     ("No changes".to_string(), 1)
                 } else {
@@ -675,6 +732,8 @@ impl App {
                     worktree_path: path.clone(),
                     pane_id,
                     is_branch_diff: branch_diff,
+                    lines_added,
+                    lines_removed,
                 });
             }
             Err(e) => {
@@ -688,6 +747,8 @@ impl App {
                     worktree_path: path.clone(),
                     pane_id,
                     is_branch_diff: branch_diff,
+                    lines_added: 0,
+                    lines_removed: 0,
                 });
             }
         }
