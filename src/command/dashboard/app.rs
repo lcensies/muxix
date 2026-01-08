@@ -1260,9 +1260,8 @@ impl App {
             hunk.filename, line_num, hunk.hunk_body, comment
         );
 
-        // Send to agent via tmux (escape special characters for tmux)
+        // Send to agent via tmux (send_keys already sends Enter at the end)
         let _ = tmux::send_keys(&diff.pane_id, &message);
-        let _ = tmux::send_key(&diff.pane_id, "Enter");
     }
 
     /// Split the current hunk into smaller hunks if possible
