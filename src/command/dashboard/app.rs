@@ -512,6 +512,55 @@ impl App {
             .unwrap_or_else(|| path.to_string_lossy().to_string())
     }
 
+    /// Check if delta pager is available
+    fn has_delta() -> bool {
+        std::process::Command::new("which")
+            .arg("delta")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    /// Get diff content, optionally piped through delta for syntax highlighting
+    fn get_diff_content(path: &PathBuf, diff_arg: &str) -> Result<String, String> {
+        // Run git diff
+        let git_output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .arg("--no-pager")
+            .arg("diff")
+            .arg("--color=always")
+            .arg(diff_arg)
+            .output()
+            .map_err(|e| format!("Error running git diff: {}", e))?;
+
+        let diff_content = String::from_utf8_lossy(&git_output.stdout).to_string();
+
+        // If empty or delta not available, return as-is
+        if diff_content.trim().is_empty() || !Self::has_delta() {
+            return Ok(diff_content);
+        }
+
+        // Pipe through delta for syntax highlighting
+        let mut delta = std::process::Command::new("delta")
+            .arg("--paging=never")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Error running delta: {}", e))?;
+
+        // Write git diff output to delta's stdin
+        if let Some(mut stdin) = delta.stdin.take() {
+            use std::io::Write;
+            let _ = stdin.write_all(git_output.stdout.as_slice());
+        }
+
+        let delta_output = delta
+            .wait_with_output()
+            .map_err(|e| format!("Error reading delta output: {}", e))?;
+
+        Ok(String::from_utf8_lossy(&delta_output.stdout).to_string())
+    }
+
     /// Load diff for the selected worktree
     /// - `branch_diff`: if true, diff against main branch; if false, diff HEAD (uncommitted)
     pub fn load_diff(&mut self, branch_diff: bool) {
@@ -526,15 +575,7 @@ impl App {
         let pane_id = agent.pane_id.clone();
         let worktree_name = self.extract_worktree_name(agent).0;
 
-        // Build git diff command
-        let mut cmd = std::process::Command::new("git");
-        cmd.arg("-C")
-            .arg(path)
-            .arg("--no-pager")
-            .arg("diff")
-            .arg("--color=always");
-
-        let title = if branch_diff {
+        let (diff_arg, title) = if branch_diff {
             // Get the base branch from git status if available, fallback to "main"
             let base = self
                 .git_statuses
@@ -542,18 +583,20 @@ impl App {
                 .map(|s| s.base_branch.as_str())
                 .filter(|b| !b.is_empty())
                 .unwrap_or("main");
-            cmd.arg(format!("{}...HEAD", base));
-            format!("Branch Changes: {}", worktree_name)
+            (
+                format!("{}...HEAD", base),
+                format!("Branch Changes: {}", worktree_name),
+            )
         } else {
-            cmd.arg("HEAD");
-            format!("Uncommitted Changes: {}", worktree_name)
+            (
+                "HEAD".to_string(),
+                format!("Uncommitted Changes: {}", worktree_name),
+            )
         };
 
-        match cmd.output() {
-            Ok(output) => {
-                let content = String::from_utf8_lossy(&output.stdout).to_string();
-
-                // Handle empty diff - don't open modal
+        match Self::get_diff_content(path, &diff_arg) {
+            Ok(content) => {
+                // Handle empty diff - don't open view
                 if content.trim().is_empty() {
                     // TODO: Show temporary status message "No changes"
                     return;
@@ -572,9 +615,9 @@ impl App {
                 });
             }
             Err(e) => {
-                // Show error in diff modal
+                // Show error in diff view
                 self.view_mode = ViewMode::Diff(DiffView {
-                    content: format!("Error running git diff: {}", e),
+                    content: e,
                     scroll: 0,
                     line_count: 1,
                     viewport_height: 0,
