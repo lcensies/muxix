@@ -511,7 +511,7 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
 
     let mut footer_spans = vec![
         Span::raw("  "),
-        Span::styled("[d]", Style::default().fg(Color::Yellow)),
+        Span::styled("[Tab]", Style::default().fg(Color::Yellow)),
         Span::raw(" "),
         Span::styled("WIP", wip_style),
         Span::styled(" | ", Style::default().fg(Color::DarkGray)),

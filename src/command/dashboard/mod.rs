@@ -175,12 +175,8 @@ pub fn run() -> Result<()> {
                 }
             }
 
-            // Handle diff toggle (d key in diff view, not patch mode)
-            if in_diff
-                && !in_patch_mode
-                && key.code == KeyCode::Char('d')
-                && !key.modifiers.contains(KeyModifiers::CONTROL)
-            {
+            // Handle diff toggle (Tab key in diff view, not patch mode)
+            if in_diff && !in_patch_mode && key.code == KeyCode::Tab {
                 app.load_diff(!is_branch_diff);
                 continue;
             }
