@@ -459,7 +459,7 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     let footer = Paragraph::new(Line::from(vec![
         Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" scroll  "),
-        Span::styled("[Ctrl+d/u]", Style::default().fg(Color::Cyan)),
+        Span::styled("[d/u]", Style::default().fg(Color::Cyan)),
         Span::raw(" page  "),
         Span::styled("[c]", Style::default().fg(Color::Green)),
         Span::raw(" commit  "),

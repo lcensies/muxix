@@ -22,19 +22,17 @@ workmux dashboard
 | `j`/`k`   | Navigate up/down                        |
 | `q`/`Esc` | Quit                                    |
 
-### Diff modal keybindings
+### Diff view keybindings
 
 When viewing a diff (`d` or `D`):
 
-| Key          | Action                              |
-| ------------ | ----------------------------------- |
-| `j`/`k`      | Scroll down/up                      |
-| `Ctrl+d`/`u` | Page down/up                        |
-| `PageDown`   | Page down                           |
-| `PageUp`     | Page up                             |
-| `c`          | Send commit command to agent        |
-| `m`          | Trigger merge and exit dashboard    |
-| `q`/`Esc`    | Close diff modal                    |
+| Key        | Action                           |
+| ---------- | -------------------------------- |
+| `j`/`k`    | Scroll down/up                   |
+| `d`/`u`    | Page down/up                     |
+| `c`        | Send commit command to agent     |
+| `m`        | Trigger merge and exit dashboard |
+| `q`/`Esc`  | Close diff view                  |
 
 ## Sort modes
 

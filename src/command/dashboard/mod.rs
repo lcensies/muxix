@@ -156,19 +156,13 @@ pub fn run() -> Result<()> {
                     }
                 }
                 ViewMode::Diff(diff_view) => {
-                    // Diff modal mode: handle scrolling and actions
+                    // Diff view mode: handle scrolling and actions
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
                         KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
                         KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
-                        KeyCode::PageDown => diff_view.scroll_page_down(),
-                        KeyCode::PageUp => diff_view.scroll_page_up(),
-                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            diff_view.scroll_page_down();
-                        }
-                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            diff_view.scroll_page_up();
-                        }
+                        KeyCode::PageDown | KeyCode::Char('d') => diff_view.scroll_page_down(),
+                        KeyCode::PageUp | KeyCode::Char('u') => diff_view.scroll_page_up(),
                         KeyCode::Char('c') => app.send_commit_to_agent(),
                         KeyCode::Char('m') => app.trigger_merge(),
                         _ => {}
