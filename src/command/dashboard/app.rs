@@ -1,7 +1,9 @@
 //! Application state and business logic for the dashboard TUI.
 
+use ansi_to_tui::IntoText;
 use anyhow::Result;
 use ratatui::style::Color;
+use ratatui::text::Line;
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -65,6 +67,18 @@ fn strip_ansi_escapes(s: &str) -> String {
     result
 }
 
+/// Parse ANSI-escaped content into a vector of Lines for efficient rendering.
+/// This is cached to avoid re-parsing on every frame.
+fn parse_ansi_to_lines(content: &str) -> Vec<Line<'static>> {
+    content
+        .into_text()
+        .map(|text| text.lines)
+        .unwrap_or_else(|_| {
+            // Fallback: split by newlines and create raw lines
+            content.lines().map(|s| Line::raw(s.to_string())).collect()
+        })
+}
+
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
 
@@ -91,6 +105,8 @@ pub struct DiffHunk {
     pub lines_removed: usize,
     /// Delta-rendered content for display (file_header + hunk_body piped through delta)
     pub rendered_content: String,
+    /// Cached parsed lines for efficient rendering (avoids re-parsing ANSI on every frame)
+    pub parsed_lines: Vec<Line<'static>>,
 }
 
 impl DiffHunk {
@@ -233,6 +249,7 @@ impl DiffHunk {
 
         let full_diff = format!("{}\n{}", self.file_header, hunk_body);
         let rendered_content = App::render_through_delta(&full_diff);
+        let parsed_lines = parse_ansi_to_lines(&rendered_content);
 
         Some(DiffHunk {
             file_header: self.file_header.clone(),
@@ -241,6 +258,7 @@ impl DiffHunk {
             lines_added: added,
             lines_removed: removed,
             rendered_content,
+            parsed_lines,
         })
     }
 }
@@ -278,6 +296,8 @@ fn parse_hunk_header(header: &str) -> Option<(usize, usize)> {
 pub struct DiffView {
     /// The diff content (with ANSI colors)
     pub content: String,
+    /// Cached parsed lines for efficient rendering (avoids re-parsing ANSI on every frame)
+    pub parsed_lines: Vec<Line<'static>>,
     /// Current scroll offset (use usize to handle large diffs)
     pub scroll: usize,
     /// Total line count for scroll bounds
@@ -830,9 +850,14 @@ impl App {
                 Err(_) => return Self::apply_basic_diff_colors(content),
             };
 
+            // Spawn thread to write stdin to avoid pipe deadlock on large diffs
+            // (if we write synchronously, both processes can block waiting for each other)
             if let Some(mut stdin) = delta.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(content.as_bytes());
+                let content = content.to_string();
+                std::thread::spawn(move || {
+                    use std::io::Write;
+                    let _ = stdin.write_all(content.as_bytes());
+                });
             }
 
             match delta.wait_with_output() {
@@ -881,6 +906,7 @@ impl App {
                     let (added, removed) = Self::count_hunk_stats(&hunk_body);
                     let full_diff = format!("{}\n{}", current_file_header, hunk_body);
                     let rendered_content = Self::render_through_delta(&full_diff);
+                    let parsed_lines = parse_ansi_to_lines(&rendered_content);
                     hunks.push(DiffHunk {
                         file_header: current_file_header.clone(),
                         hunk_body,
@@ -888,6 +914,7 @@ impl App {
                         lines_added: added,
                         lines_removed: removed,
                         rendered_content,
+                        parsed_lines,
                     });
                     current_hunk_lines.clear();
                 }
@@ -912,6 +939,7 @@ impl App {
                     let (added, removed) = Self::count_hunk_stats(&hunk_body);
                     let full_diff = format!("{}\n{}", current_file_header, hunk_body);
                     let rendered_content = Self::render_through_delta(&full_diff);
+                    let parsed_lines = parse_ansi_to_lines(&rendered_content);
                     hunks.push(DiffHunk {
                         file_header: current_file_header.clone(),
                         hunk_body,
@@ -919,6 +947,7 @@ impl App {
                         lines_added: added,
                         lines_removed: removed,
                         rendered_content,
+                        parsed_lines,
                     });
                     current_hunk_lines.clear();
                 }
@@ -942,6 +971,7 @@ impl App {
             let (added, removed) = Self::count_hunk_stats(&hunk_body);
             let full_diff = format!("{}\n{}", current_file_header, hunk_body);
             let rendered_content = Self::render_through_delta(&full_diff);
+            let parsed_lines = parse_ansi_to_lines(&rendered_content);
             hunks.push(DiffHunk {
                 file_header: current_file_header,
                 hunk_body,
@@ -949,6 +979,7 @@ impl App {
                 lines_added: added,
                 lines_removed: removed,
                 rendered_content,
+                parsed_lines,
             });
         }
 
@@ -1124,8 +1155,8 @@ impl App {
         };
 
         // Use empty diff_arg for unstaged changes only (git diff without args)
-        // Include untracked files
-        match Self::get_diff_content(&path, "", true) {
+        // Include untracked files, parse hunks for patch mode
+        match Self::get_diff_content(&path, "", true, true) {
             Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {
                     ("No uncommitted changes".to_string(), 1)
@@ -1133,9 +1164,11 @@ impl App {
                     let count = content.lines().count();
                     (content, count)
                 };
+                let parsed_lines = parse_ansi_to_lines(&content);
 
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
+                    parsed_lines,
                     scroll: 0,
                     line_count,
                     viewport_height: 0,
@@ -1155,8 +1188,10 @@ impl App {
                 }));
             }
             Err(e) => {
+                let parsed_lines = parse_ansi_to_lines(&e);
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content: e,
+                    parsed_lines,
                     scroll: 0,
                     line_count: 1,
                     viewport_height: 0,
@@ -1318,10 +1353,12 @@ impl App {
     /// Get diff content, optionally piped through delta for syntax highlighting
     /// Returns (content, lines_added, lines_removed, hunks)
     /// If diff_arg is empty, runs `git diff` (unstaged only); otherwise `git diff <arg>`
+    /// Set parse_hunks to false for review mode (skips expensive per-hunk delta rendering)
     fn get_diff_content(
         path: &PathBuf,
         diff_arg: &str,
         include_untracked: bool,
+        parse_hunks: bool,
     ) -> Result<(String, usize, usize, Vec<DiffHunk>), String> {
         // Run git diff without color - delta will add syntax highlighting
         // Using --no-color ensures clean hunks for git apply
@@ -1351,8 +1388,13 @@ impl App {
         let (lines_added, lines_removed) = Self::count_diff_stats(&diff_content);
 
         // Parse hunks from raw diff (before delta processing)
+        // Skip for review mode since patch mode is WIP-only (saves spawning delta per hunk)
         let raw_diff = String::from_utf8_lossy(&diff_content).to_string();
-        let hunks = Self::parse_diff_into_hunks(&raw_diff);
+        let hunks = if parse_hunks {
+            Self::parse_diff_into_hunks(&raw_diff)
+        } else {
+            Vec::new()
+        };
 
         // If empty or delta not available, return as-is
         if diff_content.is_empty() || !Self::has_delta() {
@@ -1367,10 +1409,13 @@ impl App {
             .spawn()
             .map_err(|e| format!("Error running delta: {}", e))?;
 
-        // Write git diff output to delta's stdin
+        // Spawn thread to write stdin to avoid pipe deadlock on large diffs
+        // (if we write synchronously, both processes can block waiting for each other)
         if let Some(mut stdin) = delta.stdin.take() {
-            use std::io::Write;
-            let _ = stdin.write_all(&diff_content);
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let _ = stdin.write_all(&diff_content);
+            });
         }
 
         let delta_output = delta
@@ -1465,8 +1510,10 @@ impl App {
         };
 
         // Include untracked files only for uncommitted changes view
+        // Parse hunks only for WIP mode (patch mode is WIP-only)
         let include_untracked = !branch_diff;
-        match Self::get_diff_content(path, &diff_arg, include_untracked) {
+        let parse_hunks = !branch_diff;
+        match Self::get_diff_content(path, &diff_arg, include_untracked, parse_hunks) {
             Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {
                     let msg = if branch_diff {
@@ -1479,9 +1526,11 @@ impl App {
                     let count = content.lines().count();
                     (content, count)
                 };
+                let parsed_lines = parse_ansi_to_lines(&content);
 
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
+                    parsed_lines,
                     scroll: 0,
                     line_count,
                     viewport_height: 0, // Will be set by UI
@@ -1502,8 +1551,10 @@ impl App {
             }
             Err(e) => {
                 // Show error in diff view
+                let parsed_lines = parse_ansi_to_lines(&e);
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content: e,
+                    parsed_lines,
                     scroll: 0,
                     line_count: 1,
                     viewport_height: 0,

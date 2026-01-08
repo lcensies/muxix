@@ -534,16 +534,17 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
         .title(title)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    // Parse ANSI colors from diff content
-    let text = diff
-        .content
-        .as_str()
-        .into_text()
-        .unwrap_or_else(|_| Text::raw(&diff.content));
+    // Calculate inner area (content area minus borders)
+    let inner_height = content_area.height.saturating_sub(2) as usize;
 
-    // Render scrollable paragraph (cast scroll to u16, clamping for safety)
-    let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
-    let paragraph = Paragraph::new(text).block(block).scroll((scroll_u16, 0));
+    // Virtualize: slice only the visible lines from cached parsed_lines
+    let start = diff.scroll;
+    let end = (diff.scroll + inner_height).min(diff.parsed_lines.len());
+    let visible_lines: Vec<Line> = diff.parsed_lines[start..end].to_vec();
+    let text = Text::from(visible_lines);
+
+    // Render without scroll offset (already sliced to visible portion)
+    let paragraph = Paragraph::new(text).block(block);
 
     f.render_widget(paragraph, content_area);
 
@@ -637,16 +638,17 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         .title(title)
         .border_style(Style::default().fg(Color::Magenta));
 
-    // Use delta-rendered content with ANSI colors parsed
-    let text = hunk
-        .rendered_content
-        .as_str()
-        .into_text()
-        .unwrap_or_else(|_| Text::raw(&hunk.rendered_content));
+    // Calculate inner area (content area minus borders)
+    let inner_height = content_area.height.saturating_sub(2) as usize;
 
-    // Render scrollable paragraph
-    let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
-    let paragraph = Paragraph::new(text).block(block).scroll((scroll_u16, 0));
+    // Virtualize: slice only the visible lines from cached parsed_lines
+    let start = diff.scroll;
+    let end = (diff.scroll + inner_height).min(hunk.parsed_lines.len());
+    let visible_lines: Vec<Line> = hunk.parsed_lines[start..end].to_vec();
+    let text = Text::from(visible_lines);
+
+    // Render without scroll offset (already sliced to visible portion)
+    let paragraph = Paragraph::new(text).block(block);
 
     f.render_widget(paragraph, content_area);
 
