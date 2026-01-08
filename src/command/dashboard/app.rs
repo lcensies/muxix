@@ -601,9 +601,14 @@ impl App {
                 current_file_header = line.to_string();
                 in_hunk = false;
 
-                // Extract filename from "diff --git a/path b/path"
-                if let Some(b_path) = stripped.split(" b/").nth(1) {
-                    current_filename = b_path.to_string();
+                // Extract filename from "diff --git <prefix>/path <prefix>/path"
+                // Prefix can be a/, b/, c/, w/, i/, etc. depending on git config
+                // Take the last space-separated part and strip the prefix (e.g., "w/path" -> "path")
+                if let Some(last_part) = stripped.split_whitespace().last() {
+                    // Strip single-char prefix + "/" (e.g., "b/file.rs" -> "file.rs")
+                    if last_part.len() > 2 && last_part.chars().nth(1) == Some('/') {
+                        current_filename = last_part[2..].to_string();
+                    }
                 }
             } else if stripped.starts_with("@@") {
                 // Save previous hunk if any

@@ -565,9 +565,12 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         .title(title)
         .border_style(Style::default().fg(Color::Magenta));
 
-    // Color diff lines: green for +, red for -, cyan for @@
-    let lines: Vec<Line> = hunk
-        .hunk_body
+    // Include file header lines for context, then the hunk body
+    // This matches git add -p behavior where you see diff --git, ---, +++ before each hunk
+    let all_lines = format!("{}\n{}", hunk.file_header, hunk.hunk_body);
+
+    // Color diff lines: green for +, red for -, cyan for @@, dim for header
+    let lines: Vec<Line> = all_lines
         .lines()
         .map(|line| {
             let style = if line.starts_with('+') && !line.starts_with("+++") {
