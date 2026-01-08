@@ -585,10 +585,12 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         Span::raw(" stage  "),
         Span::styled("[n]", Style::default().fg(Color::Red)),
         Span::raw(" skip  "),
+        Span::styled("[s]", Style::default().fg(Color::Yellow)),
+        Span::raw(" split  "),
         Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
-        Span::raw(" navigate  "),
+        Span::raw(" nav  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
-        Span::raw(" quit patch mode"),
+        Span::raw(" quit"),
     ]));
     f.render_widget(footer, footer_area);
 }

@@ -67,6 +67,182 @@ pub struct DiffHunk {
     pub rendered_content: String,
 }
 
+impl DiffHunk {
+    /// Attempt to split this hunk into smaller hunks if there are context lines between changes.
+    /// Returns None if the hunk cannot be split.
+    pub fn split(&self) -> Option<Vec<DiffHunk>> {
+        let lines: Vec<&str> = self.hunk_body.lines().collect();
+        if lines.is_empty() {
+            return None;
+        }
+
+        // First line should be the @@ header
+        let header_line = lines.first()?;
+        let (old_start, new_start) = parse_hunk_header(header_line)?;
+
+        // Content lines (skip the @@ header)
+        let content_lines = &lines[1..];
+
+        // Find indices of change lines (+ or -)
+        let change_indices: Vec<usize> = content_lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| {
+                let s = strip_ansi_escapes(line);
+                (s.starts_with('+') && !s.starts_with("+++"))
+                    || (s.starts_with('-') && !s.starts_with("---"))
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if change_indices.is_empty() {
+            return None;
+        }
+
+        // Find split points: gaps where context lines separate change groups
+        let mut split_indices = Vec::new();
+        for window in change_indices.windows(2) {
+            let prev_idx = window[0];
+            let next_idx = window[1];
+            // If there's at least one context line between changes
+            if next_idx > prev_idx + 1 {
+                // Split point is the index of the first context line after the previous change
+                split_indices.push(prev_idx + 1);
+            }
+        }
+
+        if split_indices.is_empty() {
+            return None;
+        }
+
+        // Create sub-hunks
+        let mut hunks = Vec::new();
+        let mut start_idx = 0;
+
+        for split_idx in split_indices {
+            let sub_lines = &content_lines[start_idx..split_idx];
+            if let Some(h) =
+                self.create_sub_hunk(sub_lines, old_start, new_start, start_idx, content_lines)
+            {
+                hunks.push(h);
+            }
+            start_idx = split_idx;
+        }
+
+        // Final hunk
+        let sub_lines = &content_lines[start_idx..];
+        if let Some(h) =
+            self.create_sub_hunk(sub_lines, old_start, new_start, start_idx, content_lines)
+        {
+            hunks.push(h);
+        }
+
+        if hunks.len() > 1 { Some(hunks) } else { None }
+    }
+
+    /// Create a sub-hunk from a slice of content lines
+    fn create_sub_hunk(
+        &self,
+        lines: &[&str],
+        base_old_start: usize,
+        base_new_start: usize,
+        offset: usize,
+        all_lines: &[&str],
+    ) -> Option<DiffHunk> {
+        if lines.is_empty() {
+            return None;
+        }
+
+        // Calculate starting line numbers by simulating progression from base
+        let mut current_old = base_old_start;
+        let mut current_new = base_new_start;
+
+        for line in &all_lines[0..offset] {
+            let s = strip_ansi_escapes(line);
+            if s.starts_with('-') && !s.starts_with("---") {
+                current_old += 1;
+            } else if s.starts_with('+') && !s.starts_with("+++") {
+                current_new += 1;
+            } else {
+                // Context line
+                current_old += 1;
+                current_new += 1;
+            }
+        }
+
+        // Count lines in this sub-hunk
+        let mut count_old = 0;
+        let mut count_new = 0;
+        let mut added = 0;
+        let mut removed = 0;
+
+        for line in lines {
+            let s = strip_ansi_escapes(line);
+            if s.starts_with('-') && !s.starts_with("---") {
+                count_old += 1;
+                removed += 1;
+            } else if s.starts_with('+') && !s.starts_with("+++") {
+                count_new += 1;
+                added += 1;
+            } else {
+                count_old += 1;
+                count_new += 1;
+            }
+        }
+
+        // Build new @@ header
+        let new_header = format!(
+            "@@ -{},{} +{},{} @@",
+            current_old, count_old, current_new, count_new
+        );
+
+        let hunk_body = std::iter::once(new_header.as_str())
+            .chain(lines.iter().copied())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let full_diff = format!("{}\n{}", self.file_header, hunk_body);
+        let rendered_content = App::render_through_delta(&full_diff);
+
+        Some(DiffHunk {
+            file_header: self.file_header.clone(),
+            hunk_body,
+            filename: self.filename.clone(),
+            lines_added: added,
+            lines_removed: removed,
+            rendered_content,
+        })
+    }
+}
+
+/// Parse "@@ -10,5 +12,7 @@" -> Some((10, 12))
+fn parse_hunk_header(header: &str) -> Option<(usize, usize)> {
+    let stripped = strip_ansi_escapes(header);
+    if !stripped.starts_with("@@") {
+        return None;
+    }
+
+    // Find content between @@ markers
+    let start = stripped.find("@@")? + 2;
+    let rest = &stripped[start..];
+    let end = rest.find("@@")?;
+    let meta = &rest[..end];
+
+    // Parse -old,count and +new,count
+    let mut old_start = None;
+    let mut new_start = None;
+
+    for part in meta.split_whitespace() {
+        if let Some(stripped) = part.strip_prefix('-') {
+            old_start = stripped.split(',').next()?.parse().ok();
+        } else if let Some(stripped) = part.strip_prefix('+') {
+            new_start = stripped.split(',').next()?.parse().ok();
+        }
+    }
+
+    Some((old_start?, new_start?))
+}
+
 /// State for the diff view
 #[derive(Debug, PartialEq)]
 pub struct DiffView {
@@ -915,6 +1091,32 @@ impl App {
             // No more hunks, exit patch mode
             self.exit_patch_mode();
         }
+    }
+
+    /// Split the current hunk into smaller hunks if possible
+    /// Returns true if the split was successful
+    pub fn split_current_hunk(&mut self) -> bool {
+        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+            if !diff.patch_mode || diff.hunks.is_empty() {
+                return false;
+            }
+
+            let current_idx = diff.current_hunk;
+            let current = &diff.hunks[current_idx];
+
+            if let Some(sub_hunks) = current.split() {
+                let num_new_hunks = sub_hunks.len();
+                // Remove the original hunk and insert the split hunks
+                diff.hunks.remove(current_idx);
+                for (i, h) in sub_hunks.into_iter().enumerate() {
+                    diff.hunks.insert(current_idx + i, h);
+                }
+                // Stay at the first split hunk, reset scroll
+                diff.scroll = 0;
+                return num_new_hunks > 1;
+            }
+        }
+        false
     }
 
     /// Count added and removed lines from raw diff content
