@@ -8,6 +8,21 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.78 (2026-01-08)
+
+- Dashboard: Added patch mode for interactive hunk-by-hunk staging with `p` key
+- Dashboard: Added hunk splitting to stage partial changes within a hunk
+- Dashboard: Added ability to undo staged changes in patch mode
+- Dashboard: Added hunk commenting for review workflows
+- Dashboard: Added diff browsing with `d` to view uncommitted changes and `D`
+  for committed changes (toggle between WIP/review views with Tab)
+- Dashboard: Diffs now use delta for syntax highlighting when available, with
+  fallback coloring
+- Dashboard: Added filter to hide stale agents with `f` key (persists across
+  sessions)
+- Dashboard: Added `c` to commit and `m` to merge directly from the main view
+- Dashboard: Working agents now show an animated spinner
+
 ## v0.1.77 (2026-01-07)
 
 - Dashboard: Added git status column showing diff stats (+/- lines), conflict
