@@ -1167,8 +1167,10 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
+| `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |
@@ -1176,9 +1178,23 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `j`/`k`   | Navigate up/down                        |
 | `q`/`Esc` | Quit                                    |
 
+#### Live preview
+
 The bottom half shows a live preview of the selected agent's terminal output.
-Press `i` to enter input mode and type directly to the agent without leaving the
-dashboard.
+The preview auto-scrolls to show the latest output, but you can scroll through
+history with `Ctrl+u`/`Ctrl+d`. Press `i` to enter input mode and type directly
+to the agent without leaving the dashboard.
+
+#### Columns
+
+- **#**: Quick jump key (1-9)
+- **Project**: Project name (from `__worktrees` path or directory name)
+- **Agent**: Worktree/window name
+- **Git**: Diff stats showing branch changes (dim) and uncommitted changes
+  (bright)
+- **Status**: Agent status icon (🤖 working, 💬 waiting, ✅ done, or "stale")
+- **Time**: Time since last status change
+- **Title**: Claude Code session title (auto-generated summary)
 
 #### Sort modes
 
@@ -1191,14 +1207,60 @@ Press `s` to cycle through sort modes:
 
 Your sort preference persists in the tmux session.
 
-#### Columns
+#### Stale filter
 
-- **#**: Quick jump key (1-9)
-- **Project**: Project name (from `__worktrees` path or directory name)
-- **Agent**: Worktree/window name
-- **Title**: Claude Code session title (auto-generated summary)
-- **Status**: Agent status icon (🤖 working, 💬 waiting, ✅ done, or "stale")
-- **Duration**: Time since last status change
+Press `f` to toggle between showing all agents or hiding stale ones. The filter
+state persists across dashboard sessions within the same tmux server.
+
+#### Diff view
+
+Press `d` to view the diff for the selected agent. The diff view has two modes:
+
+- **WIP** - Shows uncommitted changes (`git diff HEAD`)
+- **review** - Shows all changes on the branch vs main (`git diff main...HEAD`)
+
+Press `Tab` to toggle between modes. The footer displays which mode is active
+along with diff statistics showing lines added (+) and removed (-).
+
+| Key       | Action                           |
+| --------- | -------------------------------- |
+| `Tab`     | Toggle WIP / review              |
+| `a`       | Enter patch mode (WIP only)      |
+| `j`/`k`   | Scroll down/up                   |
+| `Ctrl+d`  | Page down                        |
+| `Ctrl+u`  | Page up                          |
+| `c`       | Send commit command to agent     |
+| `m`       | Trigger merge and exit dashboard |
+| `q`/`Esc` | Close diff view                  |
+
+#### Patch mode
+
+Patch mode (`a` from WIP diff) allows staging individual hunks like
+`git add -p`. This is useful for selectively staging parts of an agent's work.
+
+When [delta](https://github.com/dandavison/delta) is installed, hunks are
+rendered with syntax highlighting for better readability.
+
+| Key       | Action                           |
+| --------- | -------------------------------- |
+| `y`       | Stage current hunk               |
+| `n`       | Skip current hunk                |
+| `u`       | Undo last staged hunk            |
+| `s`       | Split hunk (if splittable)       |
+| `c`       | Comment on hunk (sends to agent) |
+| `j`/`k`   | Navigate to next/previous hunk   |
+| `q`/`Esc` | Exit patch mode                  |
+
+Press `y` to stage the current hunk and advance to the next. Press `n` to skip
+without staging. The counter in the header shows your progress (e.g., `[3/10]`).
+
+Press `s` to split the current hunk into smaller pieces when there are context
+lines between separate changes. Press `u` to undo the last staged hunk.
+
+Press `c` to comment on the current hunk. This sends a message to the agent
+including the file path, line number, the diff hunk as context, and your
+comment. Useful for giving feedback like "This function should handle the error
+case".
 
 #### Example tmux binding
 
