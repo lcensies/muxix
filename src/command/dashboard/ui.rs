@@ -565,27 +565,12 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         .title(title)
         .border_style(Style::default().fg(Color::Magenta));
 
-    // Include file header lines for context, then the hunk body
-    // This matches git add -p behavior where you see diff --git, ---, +++ before each hunk
-    let all_lines = format!("{}\n{}", hunk.file_header, hunk.hunk_body);
-
-    // Color diff lines: green for +, red for -, cyan for @@, dim for header
-    let lines: Vec<Line> = all_lines
-        .lines()
-        .map(|line| {
-            let style = if line.starts_with('+') && !line.starts_with("+++") {
-                Style::default().fg(Color::Green)
-            } else if line.starts_with('-') && !line.starts_with("---") {
-                Style::default().fg(Color::Red)
-            } else if line.starts_with("@@") {
-                Style::default().fg(Color::Cyan)
-            } else {
-                Style::default()
-            };
-            Line::styled(line, style)
-        })
-        .collect();
-    let text = Text::from(lines);
+    // Use delta-rendered content with ANSI colors parsed
+    let text = hunk
+        .rendered_content
+        .as_str()
+        .into_text()
+        .unwrap_or_else(|_| Text::raw(&hunk.rendered_content));
 
     // Render scrollable paragraph
     let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
