@@ -37,22 +37,23 @@ Press `d` to view the diff for the selected agent. The diff view has two modes:
 Press `Tab` while in diff view to toggle between modes. The footer displays which mode is active along with diff statistics showing lines added (+) and removed (-).
 
 If there are no changes to show, a message is displayed instead:
+
 - WIP mode: "No uncommitted changes"
 - Review mode: "No commits on this branch yet"
 
 ### Diff view keybindings
 
-| Key       | Action                            |
-| --------- | --------------------------------- |
-| `Tab`     | Toggle WIP / review               |
-| `a`       | Enter patch mode (WIP only)       |
-| `j`/`k`   | Scroll down/up                    |
-| `Ctrl+d`  | Page down                         |
-| `Ctrl+u`  | Page up                           |
-| `c`       | Send commit command to agent      |
-| `m`       | Trigger merge and exit dashboard  |
-| `q`/`Esc` | Close diff view                   |
-| `Ctrl+c`  | Quit dashboard                    |
+| Key       | Action                           |
+| --------- | -------------------------------- |
+| `Tab`     | Toggle WIP / review              |
+| `a`       | Enter patch mode (WIP only)      |
+| `j`/`k`   | Scroll down/up                   |
+| `Ctrl+d`  | Page down                        |
+| `Ctrl+u`  | Page up                          |
+| `c`       | Send commit command to agent     |
+| `m`       | Trigger merge and exit dashboard |
+| `q`/`Esc` | Close diff view                  |
+| `Ctrl+c`  | Quit dashboard                   |
 
 ## Patch mode
 
@@ -62,16 +63,16 @@ When [delta](https://github.com/dandavison/delta) is installed, hunks are render
 
 ### Patch mode keybindings
 
-| Key       | Action                            |
-| --------- | --------------------------------- |
-| `y`       | Stage current hunk                |
-| `n`       | Skip current hunk                 |
-| `u`       | Undo last staged hunk             |
-| `s`       | Split hunk (if splittable)        |
-| `c`       | Comment on hunk (sends to agent)  |
-| `j`/`k`   | Navigate to next/previous hunk    |
-| `q`/`Esc` | Exit patch mode                   |
-| `Ctrl+c`  | Quit dashboard                    |
+| Key       | Action                           |
+| --------- | -------------------------------- |
+| `y`       | Stage current hunk               |
+| `n`       | Skip current hunk                |
+| `u`       | Undo last staged hunk            |
+| `s`       | Split hunk (if splittable)       |
+| `c`       | Comment on hunk (sends to agent) |
+| `j`/`k`   | Navigate to next/previous hunk   |
+| `q`/`Esc` | Exit patch mode                  |
+| `Ctrl+c`  | Quit dashboard                   |
 
 ### Staging hunks
 
@@ -90,6 +91,7 @@ Press `u` to undo the last staged hunk. This uses `git apply --cached --reverse`
 ### Commenting on hunks
 
 Press `c` to enter comment mode. Type your message and press `Enter` to send it to the agent. The comment includes:
+
 - File path and line number
 - The diff hunk as context (in a code block)
 - Your comment text

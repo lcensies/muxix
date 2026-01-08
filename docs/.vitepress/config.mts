@@ -2,7 +2,8 @@ import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "workmux",
-  description: "A CLI tool for parallel development with AI coding agents using git worktrees and tmux",
+  description:
+    "A CLI tool for parallel development with AI coding agents using git worktrees and tmux",
   lang: "en-US",
   lastUpdated: true,
   cleanUrls: true,
