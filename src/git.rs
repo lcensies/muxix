@@ -37,9 +37,9 @@ pub struct GitStatus {
     pub has_conflict: bool,
     /// Has uncommitted changes (staged or unstaged)
     pub is_dirty: bool,
-    /// Lines added in this branch vs base (total: committed + uncommitted)
+    /// Lines added in committed changes only (base...HEAD)
     pub lines_added: usize,
-    /// Lines removed in this branch vs base (total: committed + uncommitted)
+    /// Lines removed in committed changes only (base...HEAD)
     pub lines_removed: usize,
     /// Lines added in uncommitted changes only (working tree + untracked)
     #[serde(default)]
@@ -981,18 +981,17 @@ fn count_lines(path: &Path) -> std::io::Result<usize> {
 
 /// Diff statistics returned by get_diff_stats.
 ///
-/// Includes:
-/// 1. Committed changes vs base (git diff base...HEAD)
-/// 2. Uncommitted changes to tracked files (git diff HEAD)
-/// 3. Untracked files (counted manually)
+/// Separates committed and uncommitted changes:
+/// - Committed: changes in base...HEAD (what's been committed on the branch)
+/// - Uncommitted: working tree changes + untracked files
 struct DiffStats {
-    /// Total lines added (committed + uncommitted)
-    total_added: usize,
-    /// Total lines removed (committed + uncommitted)
-    total_removed: usize,
-    /// Lines added in uncommitted changes only
+    /// Lines added in committed changes only (base...HEAD)
+    committed_added: usize,
+    /// Lines removed in committed changes only (base...HEAD)
+    committed_removed: usize,
+    /// Lines added in uncommitted changes (working tree + untracked)
     uncommitted_added: usize,
-    /// Lines removed in uncommitted changes only
+    /// Lines removed in uncommitted changes (working tree)
     uncommitted_removed: usize,
 }
 
@@ -1070,8 +1069,8 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
     }
 
     DiffStats {
-        total_added: committed_added + uncommitted_added,
-        total_removed: committed_removed + uncommitted_removed,
+        committed_added,
+        committed_removed,
         uncommitted_added,
         uncommitted_removed,
     }
@@ -1157,8 +1156,8 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         behind,
         has_conflict,
         is_dirty,
-        lines_added: diff_stats.total_added,
-        lines_removed: diff_stats.total_removed,
+        lines_added: diff_stats.committed_added,
+        lines_removed: diff_stats.committed_removed,
         uncommitted_added: diff_stats.uncommitted_added,
         uncommitted_removed: diff_stats.uncommitted_removed,
         cached_at: now,
