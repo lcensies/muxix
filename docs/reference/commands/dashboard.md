@@ -11,6 +11,8 @@ workmux dashboard
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `d`       | View uncommitted changes (diff modal)   |
+| `D`       | View branch changes vs main             |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
 | `i`       | Enter input mode (type to agent)        |
@@ -19,6 +21,20 @@ workmux dashboard
 | `Enter`   | Go to selected agent (closes dashboard) |
 | `j`/`k`   | Navigate up/down                        |
 | `q`/`Esc` | Quit                                    |
+
+### Diff modal keybindings
+
+When viewing a diff (`d` or `D`):
+
+| Key          | Action                              |
+| ------------ | ----------------------------------- |
+| `j`/`k`      | Scroll down/up                      |
+| `Ctrl+d`/`u` | Page down/up                        |
+| `PageDown`   | Page down                           |
+| `PageUp`     | Page up                             |
+| `c`          | Send commit command to agent        |
+| `m`          | Trigger merge and exit dashboard    |
+| `q`/`Esc`    | Close diff modal                    |
 
 ## Sort modes
 

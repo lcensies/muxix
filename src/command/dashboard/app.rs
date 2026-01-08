@@ -18,6 +18,61 @@ use super::sort::SortMode;
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
 
+/// Current view mode of the dashboard
+#[derive(Debug, Default, PartialEq)]
+pub enum ViewMode {
+    #[default]
+    Dashboard,
+    Diff(DiffView),
+}
+
+/// State for the diff modal view
+#[derive(Debug, PartialEq)]
+pub struct DiffView {
+    /// The diff content (with ANSI colors)
+    pub content: String,
+    /// Current scroll offset (use usize to handle large diffs)
+    pub scroll: usize,
+    /// Total line count for scroll bounds
+    pub line_count: usize,
+    /// Viewport height (updated by UI during render for page scroll)
+    pub viewport_height: u16,
+    /// Title for the modal (e.g., "Uncommitted Changes: fix-bug")
+    pub title: String,
+    /// Path to the worktree (for commit/merge actions)
+    pub worktree_path: PathBuf,
+    /// Pane ID for sending commands to agent
+    pub pane_id: String,
+}
+
+impl DiffView {
+    pub fn scroll_up(&mut self) {
+        self.scroll = self.scroll.saturating_sub(1);
+    }
+
+    pub fn scroll_down(&mut self) {
+        let max_scroll = self
+            .line_count
+            .saturating_sub(self.viewport_height as usize);
+        if self.scroll < max_scroll {
+            self.scroll += 1;
+        }
+    }
+
+    pub fn scroll_page_up(&mut self) {
+        let page = self.viewport_height as usize;
+        self.scroll = self.scroll.saturating_sub(page);
+    }
+
+    pub fn scroll_page_down(&mut self) {
+        let page = self.viewport_height as usize;
+        let max_scroll = self
+            .line_count
+            .saturating_sub(self.viewport_height as usize);
+        self.scroll = (self.scroll + page).min(max_scroll);
+    }
+}
+
 /// App state for the TUI
 pub struct App {
     pub agents: Vec<AgentPane>,
@@ -27,6 +82,8 @@ pub struct App {
     pub should_quit: bool,
     pub should_jump: bool,
     pub sort_mode: SortMode,
+    /// Current view mode (Dashboard or Diff modal)
+    pub view_mode: ViewMode,
     /// Cached preview of the currently selected agent's terminal output
     pub preview: Option<String>,
     /// Track which pane_id the preview was captured from (to detect selection changes)
@@ -65,6 +122,7 @@ impl App {
             should_quit: false,
             should_jump: false,
             sort_mode: SortMode::load_from_tmux(),
+            view_mode: ViewMode::default(),
             preview: None,
             preview_pane_id: None,
             input_mode: false,
@@ -452,5 +510,107 @@ impl App {
         path.file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.to_string_lossy().to_string())
+    }
+
+    /// Load diff for the selected worktree
+    /// - `branch_diff`: if true, diff against main branch; if false, diff HEAD (uncommitted)
+    pub fn load_diff(&mut self, branch_diff: bool) {
+        let Some(selected) = self.table_state.selected() else {
+            return;
+        };
+        let Some(agent) = self.agents.get(selected) else {
+            return;
+        };
+
+        let path = &agent.path;
+        let pane_id = agent.pane_id.clone();
+        let worktree_name = self.extract_worktree_name(agent).0;
+
+        // Build git diff command
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("-C")
+            .arg(path)
+            .arg("--no-pager")
+            .arg("diff")
+            .arg("--color=always");
+
+        let title = if branch_diff {
+            // Get the base branch from git status if available, fallback to "main"
+            let base = self
+                .git_statuses
+                .get(path)
+                .map(|s| s.base_branch.as_str())
+                .filter(|b| !b.is_empty())
+                .unwrap_or("main");
+            cmd.arg(format!("{}...HEAD", base));
+            format!("Branch Changes: {}", worktree_name)
+        } else {
+            cmd.arg("HEAD");
+            format!("Uncommitted Changes: {}", worktree_name)
+        };
+
+        match cmd.output() {
+            Ok(output) => {
+                let content = String::from_utf8_lossy(&output.stdout).to_string();
+
+                // Handle empty diff - don't open modal
+                if content.trim().is_empty() {
+                    // TODO: Show temporary status message "No changes"
+                    return;
+                }
+
+                let line_count = content.lines().count();
+
+                self.view_mode = ViewMode::Diff(DiffView {
+                    content,
+                    scroll: 0,
+                    line_count,
+                    viewport_height: 0, // Will be set by UI
+                    title,
+                    worktree_path: path.clone(),
+                    pane_id,
+                });
+            }
+            Err(e) => {
+                // Show error in diff modal
+                self.view_mode = ViewMode::Diff(DiffView {
+                    content: format!("Error running git diff: {}", e),
+                    scroll: 0,
+                    line_count: 1,
+                    viewport_height: 0,
+                    title: "Error".to_string(),
+                    worktree_path: path.clone(),
+                    pane_id,
+                });
+            }
+        }
+    }
+
+    /// Close the diff modal and return to dashboard view
+    pub fn close_diff(&mut self) {
+        self.view_mode = ViewMode::Dashboard;
+    }
+
+    /// Send commit command to the agent pane and close diff modal
+    pub fn send_commit_to_agent(&mut self) {
+        if let ViewMode::Diff(diff) = &self.view_mode {
+            // Send /commit command to the agent's pane
+            // Note: This assumes the agent is ready to receive input
+            let _ = tmux::send_keys(&diff.pane_id, "/commit\n");
+        }
+        self.close_diff();
+    }
+
+    /// Trigger merge workflow and close diff modal
+    pub fn trigger_merge(&mut self) {
+        if let ViewMode::Diff(diff) = &self.view_mode {
+            // Run workmux merge in the worktree directory
+            let _ = std::process::Command::new("workmux")
+                .arg("merge")
+                .current_dir(&diff.worktree_path)
+                .spawn();
+        }
+        self.close_diff();
+        self.should_quit = true; // Exit dashboard after merge
     }
 }

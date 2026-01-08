@@ -31,7 +31,7 @@ use std::time::Duration;
 use crate::git;
 use crate::tmux;
 
-use self::app::App;
+use self::app::{App, ViewMode};
 use self::ui::{SPINNER_FRAME_COUNT, ui};
 
 pub fn run() -> Result<()> {
@@ -80,69 +80,99 @@ pub fn run() -> Result<()> {
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
-            if app.input_mode {
-                // In input mode: forward keys to the selected pane
-                match key.code {
-                    KeyCode::Esc => {
-                        app.input_mode = false;
-                    }
-                    KeyCode::Enter => {
-                        app.send_key_to_selected("Enter");
-                    }
-                    KeyCode::Backspace => {
-                        app.send_key_to_selected("BSpace");
-                    }
-                    KeyCode::Tab => {
-                        app.send_key_to_selected("Tab");
-                    }
-                    KeyCode::Up => {
-                        app.send_key_to_selected("Up");
-                    }
-                    KeyCode::Down => {
-                        app.send_key_to_selected("Down");
-                    }
-                    KeyCode::Left => {
-                        app.send_key_to_selected("Left");
-                    }
-                    KeyCode::Right => {
-                        app.send_key_to_selected("Right");
-                    }
-                    KeyCode::Char(c) => {
-                        // Send the character to the pane
-                        app.send_key_to_selected(&c.to_string());
-                    }
-                    _ => {}
-                }
-                // Refresh preview immediately after sending input
-                app.refresh_preview();
-                last_preview_refresh = std::time::Instant::now();
-            } else {
-                // Normal mode: handle navigation and commands
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                    KeyCode::Char('j') | KeyCode::Down => app.next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                    KeyCode::Enter => app.jump_to_selected(),
-                    KeyCode::Char('p') => app.peek_selected(),
-                    KeyCode::Char('s') => app.cycle_sort_mode(),
-                    KeyCode::Char('i') => {
-                        // Enter input mode if an agent is selected
-                        if app.table_state.selected().is_some() && !app.agents.is_empty() {
-                            app.input_mode = true;
+            match &mut app.view_mode {
+                ViewMode::Dashboard => {
+                    if app.input_mode {
+                        // In input mode: forward keys to the selected pane
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.input_mode = false;
+                            }
+                            KeyCode::Enter => {
+                                app.send_key_to_selected("Enter");
+                            }
+                            KeyCode::Backspace => {
+                                app.send_key_to_selected("BSpace");
+                            }
+                            KeyCode::Tab => {
+                                app.send_key_to_selected("Tab");
+                            }
+                            KeyCode::Up => {
+                                app.send_key_to_selected("Up");
+                            }
+                            KeyCode::Down => {
+                                app.send_key_to_selected("Down");
+                            }
+                            KeyCode::Left => {
+                                app.send_key_to_selected("Left");
+                            }
+                            KeyCode::Right => {
+                                app.send_key_to_selected("Right");
+                            }
+                            KeyCode::Char(c) => {
+                                // Send the character to the pane
+                                app.send_key_to_selected(&c.to_string());
+                            }
+                            _ => {}
+                        }
+                        // Refresh preview immediately after sending input
+                        app.refresh_preview();
+                        last_preview_refresh = std::time::Instant::now();
+                    } else {
+                        // Normal dashboard mode: handle navigation and commands
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                            KeyCode::Char('j') | KeyCode::Down => app.next(),
+                            KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                            KeyCode::Enter => app.jump_to_selected(),
+                            KeyCode::Char('p') => app.peek_selected(),
+                            KeyCode::Char('s') => app.cycle_sort_mode(),
+                            KeyCode::Char('i') => {
+                                // Enter input mode if an agent is selected
+                                if app.table_state.selected().is_some() && !app.agents.is_empty() {
+                                    app.input_mode = true;
+                                }
+                            }
+                            // Preview scrolling with Ctrl+U/D
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.scroll_preview_up(app.preview_height, app.preview_line_count);
+                            }
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.scroll_preview_down(app.preview_height, app.preview_line_count);
+                            }
+                            // Open diff modal: d for uncommitted, D for branch diff
+                            KeyCode::Char('d') => {
+                                app.load_diff(false); // Uncommitted changes
+                            }
+                            KeyCode::Char('D') => {
+                                app.load_diff(true); // Branch changes vs main
+                            }
+                            // Quick jump: 1-9 for rows 0-8
+                            KeyCode::Char(c @ '1'..='9') => {
+                                app.jump_to_index((c as u8 - b'1') as usize);
+                            }
+                            _ => {}
                         }
                     }
-                    // Preview scrolling with Ctrl+U/D
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.scroll_preview_up(app.preview_height, app.preview_line_count);
+                }
+                ViewMode::Diff(diff_view) => {
+                    // Diff modal mode: handle scrolling and actions
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
+                        KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
+                        KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
+                        KeyCode::PageDown => diff_view.scroll_page_down(),
+                        KeyCode::PageUp => diff_view.scroll_page_up(),
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_down();
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_up();
+                        }
+                        KeyCode::Char('c') => app.send_commit_to_agent(),
+                        KeyCode::Char('m') => app.trigger_merge(),
+                        _ => {}
                     }
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.scroll_preview_down(app.preview_height, app.preview_line_count);
-                    }
-                    // Quick jump: 1-9 for rows 0-8
-                    KeyCode::Char(c @ '1'..='9') => {
-                        app.jump_to_index((c as u8 - b'1') as usize);
-                    }
-                    _ => {}
                 }
             }
         }

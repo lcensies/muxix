@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::git::GitStatus;
 
-use super::app::App;
+use super::app::{App, DiffView, ViewMode};
 
 /// Braille spinner frames for subtle loading animation
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -21,6 +21,14 @@ const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦
 pub const SPINNER_FRAME_COUNT: u8 = SPINNER_FRAMES.len() as u8;
 
 pub fn ui(f: &mut Frame, app: &mut App) {
+    // Render either dashboard or diff view based on view mode
+    match &mut app.view_mode {
+        ViewMode::Dashboard => render_dashboard(f, app),
+        ViewMode::Diff(diff_view) => render_diff_view(f, diff_view),
+    }
+}
+
+fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     // Layout: table (top), preview (bottom), footer
@@ -54,6 +62,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         Paragraph::new(Line::from(vec![
             Span::styled("  [i]", Style::default().fg(Color::Green)),
             Span::raw(" input  "),
+            Span::styled("[d/D]", Style::default().fg(Color::Yellow)),
+            Span::raw(" diff  "),
             Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
             Span::raw(" jump  "),
             Span::styled("[p]", Style::default().fg(Color::Cyan)),
@@ -406,4 +416,57 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let paragraph = Paragraph::new(text).block(block).scroll((scroll_offset, 0));
 
     f.render_widget(paragraph, area);
+}
+
+/// Render the diff view (replaces the entire dashboard)
+fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
+    let area = f.area();
+
+    // Layout: content area + footer
+    let chunks = Layout::vertical([
+        Constraint::Min(1),    // Content area
+        Constraint::Length(1), // Footer
+    ])
+    .split(area);
+
+    // Update viewport height for scroll calculations (subtract 2 for borders)
+    diff.viewport_height = chunks[0].height.saturating_sub(2);
+
+    // Create block with title
+    let block = Block::bordered()
+        .title(format!(" {} ", diff.title))
+        .title_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    // Parse ANSI colors from diff content
+    let text = diff
+        .content
+        .as_str()
+        .into_text()
+        .unwrap_or_else(|_| Text::raw(&diff.content));
+
+    // Render scrollable paragraph (cast scroll to u16, clamping for safety)
+    let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
+    let paragraph = Paragraph::new(text).block(block).scroll((scroll_u16, 0));
+
+    f.render_widget(paragraph, chunks[0]);
+
+    // Footer with keybindings
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
+        Span::raw(" scroll  "),
+        Span::styled("[Ctrl+d/u]", Style::default().fg(Color::Cyan)),
+        Span::raw(" page  "),
+        Span::styled("[c]", Style::default().fg(Color::Green)),
+        Span::raw(" commit  "),
+        Span::styled("[m]", Style::default().fg(Color::Yellow)),
+        Span::raw(" merge  "),
+        Span::styled("[q]", Style::default().fg(Color::Cyan)),
+        Span::raw(" close"),
+    ]));
+    f.render_widget(footer, chunks[1]);
 }
