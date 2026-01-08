@@ -256,6 +256,14 @@ pub fn run() -> Result<()> {
                             KeyCode::Char('d') => {
                                 app.load_diff(false); // Start with WIP view
                             }
+                            // Commit changes in selected worktree
+                            KeyCode::Char('c') => {
+                                app.send_commit_to_selected();
+                            }
+                            // Merge selected worktree
+                            KeyCode::Char('m') => {
+                                app.trigger_merge_for_selected();
+                            }
                             // Quick jump: 1-9 for rows 0-8
                             KeyCode::Char(c @ '1'..='9') => {
                                 app.jump_to_index((c as u8 - b'1') as usize);

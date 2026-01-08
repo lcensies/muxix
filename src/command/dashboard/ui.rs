@@ -87,6 +87,10 @@ fn render_dashboard(f: &mut Frame, app: &mut App) {
 
         spans.extend(vec![
             Span::raw("  "),
+            Span::styled("[c]", Style::default().fg(Color::Green)),
+            Span::raw(" commit  "),
+            Span::styled("[m]", Style::default().fg(Color::Yellow)),
+            Span::raw(" merge  "),
             Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
             Span::raw(" go  "),
             Span::styled("[q]", Style::default().fg(Color::Cyan)),

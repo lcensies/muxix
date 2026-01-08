@@ -1603,4 +1603,22 @@ impl App {
         self.close_diff();
         self.should_quit = true; // Exit dashboard after merge
     }
+
+    /// Send commit command to the currently selected agent's pane (from dashboard view)
+    pub fn send_commit_to_selected(&mut self) {
+        if let Some(selected) = self.table_state.selected()
+            && let Some(agent) = self.agents.get(selected)
+        {
+            let _ = tmux::send_keys(&agent.pane_id, "/commit\n");
+        }
+    }
+
+    /// Send merge command to the currently selected agent's pane (from dashboard view)
+    pub fn trigger_merge_for_selected(&mut self) {
+        if let Some(selected) = self.table_state.selected()
+            && let Some(agent) = self.agents.get(selected)
+        {
+            let _ = tmux::send_keys(&agent.pane_id, "/merge\n");
+        }
+    }
 }

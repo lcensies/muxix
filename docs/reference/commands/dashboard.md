@@ -12,6 +12,8 @@ workmux dashboard
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
 | `d`       | View diff (opens WIP view)              |
+| `c`       | Send commit command to agent            |
+| `m`       | Send merge command to agent             |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
 | `f`       | Toggle stale filter (show/hide stale)   |
