@@ -47,7 +47,7 @@ pub const PREVIEW_LINES: u16 = 200;
 pub enum ViewMode {
     #[default]
     Dashboard,
-    Diff(DiffView),
+    Diff(Box<DiffView>),
 }
 
 /// A single hunk from a diff, suitable for staging with git apply
@@ -276,6 +276,12 @@ pub struct DiffView {
     pub hunks: Vec<DiffHunk>,
     /// Current hunk index in patch mode
     pub current_hunk: usize,
+    /// Original total hunk count when patch mode started (for progress display)
+    pub hunks_total: usize,
+    /// Number of hunks processed (staged/skipped) for progress display
+    pub hunks_processed: usize,
+    /// Stack of staged hunks for undo functionality
+    pub staged_hunks: Vec<DiffHunk>,
 }
 
 impl DiffView {
@@ -991,6 +997,10 @@ impl App {
             diff.patch_mode = true;
             diff.current_hunk = 0;
             diff.scroll = 0;
+            // Initialize progress tracking
+            diff.hunks_total = diff.hunks.len();
+            diff.hunks_processed = 0;
+            diff.staged_hunks.clear();
         }
     }
 
@@ -1014,7 +1024,10 @@ impl App {
         // Don't reload from git immediately - this preserves split hunks
         let should_reload = if let ViewMode::Diff(ref mut diff) = self.view_mode {
             if !diff.hunks.is_empty() {
-                diff.hunks.remove(diff.current_hunk);
+                // Save the staged hunk for undo functionality
+                let staged_hunk = diff.hunks.remove(diff.current_hunk);
+                diff.staged_hunks.push(staged_hunk);
+                diff.hunks_processed += 1;
                 // Adjust index if we were at the end
                 if diff.current_hunk >= diff.hunks.len() && !diff.hunks.is_empty() {
                     diff.current_hunk = diff.hunks.len() - 1;
@@ -1062,13 +1075,13 @@ impl App {
         match Self::get_diff_content(&path, "", true) {
             Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {
-                    ("No changes".to_string(), 1)
+                    ("No uncommitted changes".to_string(), 1)
                 } else {
                     let count = content.lines().count();
                     (content, count)
                 };
 
-                self.view_mode = ViewMode::Diff(DiffView {
+                self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
                     scroll: 0,
                     line_count,
@@ -1082,10 +1095,13 @@ impl App {
                     patch_mode: false,
                     hunks,
                     current_hunk: 0,
-                });
+                    hunks_total: 0,
+                    hunks_processed: 0,
+                    staged_hunks: Vec::new(),
+                }));
             }
             Err(e) => {
-                self.view_mode = ViewMode::Diff(DiffView {
+                self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content: e,
                     scroll: 0,
                     line_count: 1,
@@ -1099,16 +1115,65 @@ impl App {
                     patch_mode: false,
                     hunks: Vec::new(),
                     current_hunk: 0,
-                });
+                    hunks_total: 0,
+                    hunks_processed: 0,
+                    staged_hunks: Vec::new(),
+                }));
             }
         }
     }
 
     /// Skip current hunk and move to next
     pub fn skip_hunk(&mut self) {
+        // Increment processed count
+        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+            diff.hunks_processed += 1;
+        }
         if !self.next_hunk() {
             // No more hunks, exit patch mode
             self.exit_patch_mode();
+        }
+    }
+
+    /// Undo the last staged hunk (unstage it and restore to the list)
+    pub fn undo_staged_hunk(&mut self) {
+        let ViewMode::Diff(ref mut diff) = self.view_mode else {
+            return;
+        };
+
+        if !diff.patch_mode || diff.staged_hunks.is_empty() {
+            return;
+        }
+
+        // Pop the last staged hunk
+        let hunk = diff.staged_hunks.pop().unwrap();
+
+        // Unstage it using git apply --cached --reverse
+        let patch_content = format!("{}\n{}\n", hunk.file_header, hunk.hunk_body);
+
+        let result = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&diff.worktree_path)
+            .args(["apply", "--cached", "--reverse", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(patch_content.as_bytes());
+                }
+                child.wait_with_output()
+            });
+
+        if let Ok(output) = result
+            && output.status.success()
+        {
+            // Insert the hunk back at the current position
+            diff.hunks.insert(diff.current_hunk, hunk);
+            diff.hunks_processed = diff.hunks_processed.saturating_sub(1);
+            diff.scroll = 0;
         }
     }
 
@@ -1130,6 +1195,8 @@ impl App {
                 for (i, h) in sub_hunks.into_iter().enumerate() {
                     diff.hunks.insert(current_idx + i, h);
                 }
+                // Adjust total to account for the split (one hunk became num_new_hunks)
+                diff.hunks_total += num_new_hunks - 1;
                 // Stay at the first split hunk, reset scroll
                 diff.scroll = 0;
                 return num_new_hunks > 1;
@@ -1309,13 +1376,18 @@ impl App {
         match Self::get_diff_content(path, &diff_arg, include_untracked) {
             Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {
-                    ("No changes".to_string(), 1)
+                    let msg = if branch_diff {
+                        "No commits on this branch yet"
+                    } else {
+                        "No uncommitted changes"
+                    };
+                    (msg.to_string(), 1)
                 } else {
                     let count = content.lines().count();
                     (content, count)
                 };
 
-                self.view_mode = ViewMode::Diff(DiffView {
+                self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
                     scroll: 0,
                     line_count,
@@ -1329,11 +1401,14 @@ impl App {
                     patch_mode: false,
                     hunks,
                     current_hunk: 0,
-                });
+                    hunks_total: 0,
+                    hunks_processed: 0,
+                    staged_hunks: Vec::new(),
+                }));
             }
             Err(e) => {
                 // Show error in diff view
-                self.view_mode = ViewMode::Diff(DiffView {
+                self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content: e,
                     scroll: 0,
                     line_count: 1,
@@ -1347,7 +1422,10 @@ impl App {
                     patch_mode: false,
                     hunks: Vec::new(),
                     current_hunk: 0,
-                });
+                    hunks_total: 0,
+                    hunks_processed: 0,
+                    staged_hunks: Vec::new(),
+                }));
             }
         }
     }

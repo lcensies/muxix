@@ -545,7 +545,7 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         ),
         Span::raw(" "),
         Span::styled(
-            format!("[{}/{}]", diff.current_hunk + 1, diff.hunks.len()),
+            format!("[{}/{}]", diff.hunks_processed + 1, diff.hunks_total),
             Style::default().fg(Color::Yellow),
         ),
         Span::raw(" "),
@@ -579,18 +579,29 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
     f.render_widget(paragraph, content_area);
 
     // Footer with patch mode keybindings
-    let footer = Paragraph::new(Line::from(vec![
+    let mut footer_spans = vec![
         Span::raw("  "),
         Span::styled("[y]", Style::default().fg(Color::Green)),
         Span::raw(" stage  "),
         Span::styled("[n]", Style::default().fg(Color::Red)),
         Span::raw(" skip  "),
+    ];
+
+    // Show undo option if there are staged hunks
+    if !diff.staged_hunks.is_empty() {
+        footer_spans.push(Span::styled("[u]", Style::default().fg(Color::Magenta)));
+        footer_spans.push(Span::raw(" undo  "));
+    }
+
+    footer_spans.extend(vec![
         Span::styled("[s]", Style::default().fg(Color::Yellow)),
         Span::raw(" split  "),
         Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" nav  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
-    ]));
+    ]);
+
+    let footer = Paragraph::new(Line::from(footer_spans));
     f.render_widget(footer, footer_area);
 }

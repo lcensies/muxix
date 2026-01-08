@@ -99,6 +99,10 @@ pub fn run() -> Result<()> {
                         app.skip_hunk();
                         continue;
                     }
+                    KeyCode::Char('u') => {
+                        app.undo_staged_hunk();
+                        continue;
+                    }
                     KeyCode::Char('s') => {
                         app.split_current_hunk();
                         continue;
