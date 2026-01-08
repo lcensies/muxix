@@ -14,6 +14,7 @@ workmux dashboard
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
+| `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |

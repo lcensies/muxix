@@ -349,6 +349,8 @@ pub struct App {
     is_git_fetching: Arc<AtomicBool>,
     /// Frame counter for spinner animation (increments each tick)
     pub spinner_frame: u8,
+    /// Whether to hide stale agents from the list
+    pub hide_stale: bool,
 }
 
 impl App {
@@ -377,6 +379,7 @@ impl App {
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
+            hide_stale: false,
         };
         app.refresh();
         // Select first item if available
@@ -391,6 +394,21 @@ impl App {
     pub fn refresh(&mut self) {
         self.agents = tmux::get_all_agent_panes().unwrap_or_default();
         self.sort_agents();
+
+        // Filter out stale agents if hide_stale is enabled
+        if self.hide_stale {
+            let threshold = self.stale_threshold_secs;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            self.agents.retain(|agent| {
+                agent
+                    .status_ts
+                    .map(|ts| now.saturating_sub(ts) <= threshold)
+                    .unwrap_or(true) // Keep agents without timestamp
+            });
+        }
 
         // Consume any pending git status updates from background thread
         while let Ok((path, status)) = self.git_rx.try_recv() {
@@ -559,6 +577,12 @@ impl App {
         self.sort_mode = self.sort_mode.next();
         self.sort_mode.save_to_tmux();
         self.sort_agents();
+    }
+
+    /// Toggle hiding stale agents
+    pub fn toggle_stale_filter(&mut self) {
+        self.hide_stale = !self.hide_stale;
+        self.refresh();
     }
 
     pub fn next(&mut self) {

@@ -59,7 +59,7 @@ fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" exit"),
         ]))
     } else {
-        Paragraph::new(Line::from(vec![
+        let mut spans = vec![
             Span::styled("  [i]", Style::default().fg(Color::Green)),
             Span::raw(" input  "),
             Span::styled("[d]", Style::default().fg(Color::Yellow)),
@@ -72,11 +72,28 @@ fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" sort: "),
             Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
             Span::raw("  "),
+            Span::styled("[f]", Style::default().fg(Color::Cyan)),
+            Span::raw(" filter: "),
+        ];
+
+        if app.hide_stale {
+            spans.push(Span::styled(
+                "hiding stale",
+                Style::default().fg(Color::Yellow),
+            ));
+        } else {
+            spans.push(Span::styled("all", Style::default().fg(Color::DarkGray)));
+        }
+
+        spans.extend(vec![
+            Span::raw("  "),
             Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
             Span::raw(" go  "),
             Span::styled("[q]", Style::default().fg(Color::Cyan)),
             Span::raw(" quit"),
-        ]))
+        ]);
+
+        Paragraph::new(Line::from(spans))
     };
     f.render_widget(footer_text, chunks[2]);
 }

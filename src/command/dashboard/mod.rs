@@ -242,6 +242,7 @@ pub fn run() -> Result<()> {
                             KeyCode::Enter => app.jump_to_selected(),
                             KeyCode::Char('p') => app.peek_selected(),
                             KeyCode::Char('s') => app.cycle_sort_mode(),
+                            KeyCode::Char('f') => app.toggle_stale_filter(),
                             KeyCode::Char('i') => {
                                 // Enter input mode if an agent is selected
                                 if app.table_state.selected().is_some() && !app.agents.is_empty() {
