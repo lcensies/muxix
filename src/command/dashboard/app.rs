@@ -9,11 +9,37 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::cmd::Cmd;
 use crate::config::Config;
 use crate::git::{self, GitStatus};
 use crate::tmux::{self, AgentPane};
 
 use super::sort::SortMode;
+
+const TMUX_HIDE_STALE_VAR: &str = "@workmux_hide_stale";
+
+/// Load hide_stale filter state from tmux global variable
+fn load_hide_stale_from_tmux() -> bool {
+    Cmd::new("tmux")
+        .args(&["show-option", "-gqv", TMUX_HIDE_STALE_VAR])
+        .run_and_capture_stdout()
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim() == "true")
+        .unwrap_or(false)
+}
+
+/// Save hide_stale filter state to tmux global variable
+fn save_hide_stale_to_tmux(hide_stale: bool) {
+    let _ = Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-g",
+            TMUX_HIDE_STALE_VAR,
+            if hide_stale { "true" } else { "false" },
+        ])
+        .run();
+}
 
 /// Strip ANSI escape sequences from a string
 fn strip_ansi_escapes(s: &str) -> String {
@@ -379,7 +405,7 @@ impl App {
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
-            hide_stale: false,
+            hide_stale: load_hide_stale_from_tmux(),
         };
         app.refresh();
         // Select first item if available
@@ -582,6 +608,7 @@ impl App {
     /// Toggle hiding stale agents
     pub fn toggle_stale_filter(&mut self) {
         self.hide_stale = !self.hide_stale;
+        save_hide_stale_to_tmux(self.hide_stale);
         self.refresh();
     }
 
