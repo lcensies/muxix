@@ -545,7 +545,11 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         ),
         Span::raw(" "),
         Span::styled(
-            format!("[{}/{}]", diff.hunks_processed + 1, diff.hunks_total),
+            format!(
+                "[{}/{}]",
+                diff.hunks_processed + diff.current_hunk + 1,
+                diff.hunks_total
+            ),
             Style::default().fg(Color::Yellow),
         ),
         Span::raw(" "),
