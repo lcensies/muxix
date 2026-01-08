@@ -28,6 +28,7 @@ When viewing a diff (`d`):
 | Key       | Action                            |
 | --------- | --------------------------------- |
 | `d`       | Toggle WIP / review               |
+| `a`       | Enter patch mode (WIP only)       |
 | `j`/`k`   | Scroll down/up                    |
 | `Ctrl+d`  | Page down                         |
 | `Ctrl+u`  | Page up                           |
@@ -36,6 +37,19 @@ When viewing a diff (`d`):
 | `q`/`Esc` | Close diff view                   |
 
 The footer shows which diff type is active: **WIP** (uncommitted changes) or **review** (branch vs main). Press `d` to toggle between them.
+
+### Patch mode keybindings
+
+Patch mode (`a` from WIP diff) allows staging individual hunks like `git add -p`:
+
+| Key       | Action                            |
+| --------- | --------------------------------- |
+| `y`       | Stage current hunk                |
+| `n`       | Skip current hunk                 |
+| `j`/`k`   | Navigate to next/previous hunk    |
+| `q`/`Esc` | Exit patch mode                   |
+
+Staging a hunk adds it to the git index. After staging, the diff refreshes to show remaining unstaged changes.
 
 ## Sort modes
 

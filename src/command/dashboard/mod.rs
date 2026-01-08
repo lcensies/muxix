@@ -80,125 +80,146 @@ pub fn run() -> Result<()> {
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
-            // Check if we're in diff mode and need to toggle (read before mutable borrow)
-            let diff_toggle = if let ViewMode::Diff(diff_view) = &app.view_mode {
-                if key.code == KeyCode::Char('d') && !key.modifiers.contains(KeyModifiers::CONTROL)
-                {
-                    Some(!diff_view.is_branch_diff)
+            // Extract state before mutable borrow to avoid borrow checker issues
+            let (in_diff, in_patch_mode, is_branch_diff) =
+                if let ViewMode::Diff(diff_view) = &app.view_mode {
+                    (true, diff_view.patch_mode, diff_view.is_branch_diff)
                 } else {
-                    None
-                }
-            } else {
-                None
-            };
+                    (false, false, false)
+                };
 
-            // Handle diff toggle separately to avoid borrow issues
-            if let Some(toggle_to_branch) = diff_toggle {
-                app.load_diff(toggle_to_branch);
-            } else {
-                match &mut app.view_mode {
-                    ViewMode::Dashboard => {
-                        if app.input_mode {
-                            // In input mode: forward keys to the selected pane
-                            match key.code {
-                                KeyCode::Esc => {
-                                    app.input_mode = false;
-                                }
-                                KeyCode::Enter => {
-                                    app.send_key_to_selected("Enter");
-                                }
-                                KeyCode::Backspace => {
-                                    app.send_key_to_selected("BSpace");
-                                }
-                                KeyCode::Tab => {
-                                    app.send_key_to_selected("Tab");
-                                }
-                                KeyCode::Up => {
-                                    app.send_key_to_selected("Up");
-                                }
-                                KeyCode::Down => {
-                                    app.send_key_to_selected("Down");
-                                }
-                                KeyCode::Left => {
-                                    app.send_key_to_selected("Left");
-                                }
-                                KeyCode::Right => {
-                                    app.send_key_to_selected("Right");
-                                }
-                                KeyCode::Char(c) => {
-                                    // Send the character to the pane
-                                    app.send_key_to_selected(&c.to_string());
-                                }
-                                _ => {}
-                            }
-                            // Refresh preview immediately after sending input
-                            app.refresh_preview();
-                            last_preview_refresh = std::time::Instant::now();
-                        } else {
-                            // Normal dashboard mode: handle navigation and commands
-                            match key.code {
-                                KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-                                KeyCode::Char('j') | KeyCode::Down => app.next(),
-                                KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                                KeyCode::Enter => app.jump_to_selected(),
-                                KeyCode::Char('p') => app.peek_selected(),
-                                KeyCode::Char('s') => app.cycle_sort_mode(),
-                                KeyCode::Char('i') => {
-                                    // Enter input mode if an agent is selected
-                                    if app.table_state.selected().is_some()
-                                        && !app.agents.is_empty()
-                                    {
-                                        app.input_mode = true;
-                                    }
-                                }
-                                // Preview scrolling with Ctrl+U/D
-                                KeyCode::Char('u')
-                                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                                {
-                                    app.scroll_preview_up(
-                                        app.preview_height,
-                                        app.preview_line_count,
-                                    );
-                                }
-                                KeyCode::Char('d')
-                                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                                {
-                                    app.scroll_preview_down(
-                                        app.preview_height,
-                                        app.preview_line_count,
-                                    );
-                                }
-                                // Open diff view (starts with WIP, toggle with d)
-                                KeyCode::Char('d') => {
-                                    app.load_diff(false); // Start with WIP view
-                                }
-                                // Quick jump: 1-9 for rows 0-8
-                                KeyCode::Char(c @ '1'..='9') => {
-                                    app.jump_to_index((c as u8 - b'1') as usize);
-                                }
-                                _ => {}
-                            }
-                        }
+            // Handle patch mode actions that need &mut self
+            if in_diff && in_patch_mode {
+                match key.code {
+                    KeyCode::Char('y') => {
+                        app.stage_and_next();
+                        continue;
                     }
-                    ViewMode::Diff(diff_view) => {
-                        // Diff view mode: handle scrolling and actions
+                    KeyCode::Char('n') => {
+                        app.skip_hunk();
+                        continue;
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.exit_patch_mode();
+                        continue;
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        app.prev_hunk();
+                        continue;
+                    }
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        let _ = app.next_hunk();
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Handle diff toggle (d key in diff view, not patch mode)
+            if in_diff
+                && !in_patch_mode
+                && key.code == KeyCode::Char('d')
+                && !key.modifiers.contains(KeyModifiers::CONTROL)
+            {
+                app.load_diff(!is_branch_diff);
+                continue;
+            }
+
+            // Handle entering patch mode with 'a' key
+            if in_diff && !in_patch_mode && key.code == KeyCode::Char('a') && !is_branch_diff {
+                app.enter_patch_mode();
+                continue;
+            }
+
+            match &mut app.view_mode {
+                ViewMode::Dashboard => {
+                    if app.input_mode {
+                        // In input mode: forward keys to the selected pane
                         match key.code {
-                            KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
-                            KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
-                            KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
-                            KeyCode::PageDown => diff_view.scroll_page_down(),
-                            KeyCode::PageUp => diff_view.scroll_page_up(),
-                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                diff_view.scroll_page_down();
+                            KeyCode::Esc => {
+                                app.input_mode = false;
                             }
-                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                diff_view.scroll_page_up();
+                            KeyCode::Enter => {
+                                app.send_key_to_selected("Enter");
                             }
-                            // Toggle is handled above
-                            KeyCode::Char('c') => app.send_commit_to_agent(),
-                            KeyCode::Char('m') => app.trigger_merge(),
+                            KeyCode::Backspace => {
+                                app.send_key_to_selected("BSpace");
+                            }
+                            KeyCode::Tab => {
+                                app.send_key_to_selected("Tab");
+                            }
+                            KeyCode::Up => {
+                                app.send_key_to_selected("Up");
+                            }
+                            KeyCode::Down => {
+                                app.send_key_to_selected("Down");
+                            }
+                            KeyCode::Left => {
+                                app.send_key_to_selected("Left");
+                            }
+                            KeyCode::Right => {
+                                app.send_key_to_selected("Right");
+                            }
+                            KeyCode::Char(c) => {
+                                // Send the character to the pane
+                                app.send_key_to_selected(&c.to_string());
+                            }
                             _ => {}
                         }
+                        // Refresh preview immediately after sending input
+                        app.refresh_preview();
+                        last_preview_refresh = std::time::Instant::now();
+                    } else {
+                        // Normal dashboard mode: handle navigation and commands
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+                            KeyCode::Char('j') | KeyCode::Down => app.next(),
+                            KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                            KeyCode::Enter => app.jump_to_selected(),
+                            KeyCode::Char('p') => app.peek_selected(),
+                            KeyCode::Char('s') => app.cycle_sort_mode(),
+                            KeyCode::Char('i') => {
+                                // Enter input mode if an agent is selected
+                                if app.table_state.selected().is_some() && !app.agents.is_empty() {
+                                    app.input_mode = true;
+                                }
+                            }
+                            // Preview scrolling with Ctrl+U/D
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.scroll_preview_up(app.preview_height, app.preview_line_count);
+                            }
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.scroll_preview_down(app.preview_height, app.preview_line_count);
+                            }
+                            // Open diff view (starts with WIP, toggle with d)
+                            KeyCode::Char('d') => {
+                                app.load_diff(false); // Start with WIP view
+                            }
+                            // Quick jump: 1-9 for rows 0-8
+                            KeyCode::Char(c @ '1'..='9') => {
+                                app.jump_to_index((c as u8 - b'1') as usize);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                ViewMode::Diff(diff_view) => {
+                    // Diff view mode: handle scrolling and actions (non-patch mode)
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
+                        KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
+                        KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
+                        KeyCode::PageDown => diff_view.scroll_page_down(),
+                        KeyCode::PageUp => diff_view.scroll_page_up(),
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_down();
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_up();
+                        }
+                        KeyCode::Char('c') => app.send_commit_to_agent(),
+                        KeyCode::Char('m') => app.trigger_merge(),
+                        _ => {}
                     }
                 }
             }

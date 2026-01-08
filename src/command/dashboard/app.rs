@@ -50,6 +50,21 @@ pub enum ViewMode {
     Diff(DiffView),
 }
 
+/// A single hunk from a diff, suitable for staging with git apply
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiffHunk {
+    /// The file header (diff --git... up to but not including @@)
+    pub file_header: String,
+    /// The hunk content (starting from @@)
+    pub hunk_body: String,
+    /// The filename being modified
+    pub filename: String,
+    /// Lines added in this hunk
+    pub lines_added: usize,
+    /// Lines removed in this hunk
+    pub lines_removed: usize,
+}
+
 /// State for the diff view
 #[derive(Debug, PartialEq)]
 pub struct DiffView {
@@ -73,6 +88,12 @@ pub struct DiffView {
     pub lines_added: usize,
     /// Number of lines removed in the diff
     pub lines_removed: usize,
+    /// Whether patch mode is active (hunk-by-hunk staging)
+    pub patch_mode: bool,
+    /// Parsed hunks for patch mode
+    pub hunks: Vec<DiffHunk>,
+    /// Current hunk index in patch mode
+    pub current_hunk: usize,
 }
 
 impl DiffView {
@@ -550,6 +571,223 @@ impl App {
             .is_ok_and(|o| o.status.success())
     }
 
+    /// Parse raw diff output into individual hunks for patch mode
+    fn parse_diff_into_hunks(raw_diff: &str) -> Vec<DiffHunk> {
+        let mut hunks = Vec::new();
+        let mut current_file_header = String::new();
+        let mut current_filename = String::new();
+        let mut current_hunk_lines: Vec<&str> = Vec::new();
+        let mut in_hunk = false;
+
+        for line in raw_diff.lines() {
+            let stripped = strip_ansi_escapes(line);
+
+            if stripped.starts_with("diff --git") {
+                // Save previous hunk if any
+                if in_hunk && !current_hunk_lines.is_empty() {
+                    let hunk_body = current_hunk_lines.join("\n");
+                    let (added, removed) = Self::count_hunk_stats(&hunk_body);
+                    hunks.push(DiffHunk {
+                        file_header: current_file_header.clone(),
+                        hunk_body,
+                        filename: current_filename.clone(),
+                        lines_added: added,
+                        lines_removed: removed,
+                    });
+                    current_hunk_lines.clear();
+                }
+
+                // Start new file
+                current_file_header = line.to_string();
+                in_hunk = false;
+
+                // Extract filename from "diff --git a/path b/path"
+                if let Some(b_path) = stripped.split(" b/").nth(1) {
+                    current_filename = b_path.to_string();
+                }
+            } else if stripped.starts_with("@@") {
+                // Save previous hunk if any
+                if in_hunk && !current_hunk_lines.is_empty() {
+                    let hunk_body = current_hunk_lines.join("\n");
+                    let (added, removed) = Self::count_hunk_stats(&hunk_body);
+                    hunks.push(DiffHunk {
+                        file_header: current_file_header.clone(),
+                        hunk_body,
+                        filename: current_filename.clone(),
+                        lines_added: added,
+                        lines_removed: removed,
+                    });
+                    current_hunk_lines.clear();
+                }
+
+                // Start new hunk
+                in_hunk = true;
+                current_hunk_lines.push(line);
+            } else if in_hunk {
+                // Continue current hunk
+                current_hunk_lines.push(line);
+            } else {
+                // Part of file header (---, +++, index, etc.)
+                current_file_header.push('\n');
+                current_file_header.push_str(line);
+            }
+        }
+
+        // Don't forget the last hunk
+        if in_hunk && !current_hunk_lines.is_empty() {
+            let hunk_body = current_hunk_lines.join("\n");
+            let (added, removed) = Self::count_hunk_stats(&hunk_body);
+            hunks.push(DiffHunk {
+                file_header: current_file_header,
+                hunk_body,
+                filename: current_filename,
+                lines_added: added,
+                lines_removed: removed,
+            });
+        }
+
+        hunks
+    }
+
+    /// Count added/removed lines in a single hunk
+    fn count_hunk_stats(hunk_body: &str) -> (usize, usize) {
+        let mut added = 0;
+        let mut removed = 0;
+        for line in hunk_body.lines() {
+            let stripped = strip_ansi_escapes(line);
+            if stripped.starts_with('+') && !stripped.starts_with("+++") {
+                added += 1;
+            } else if stripped.starts_with('-') && !stripped.starts_with("---") {
+                removed += 1;
+            }
+        }
+        (added, removed)
+    }
+
+    /// Stage a single hunk using git apply --cached
+    pub fn stage_hunk(&mut self) -> Result<(), String> {
+        let ViewMode::Diff(ref diff) = self.view_mode else {
+            return Err("Not in diff view".to_string());
+        };
+
+        if !diff.patch_mode || diff.hunks.is_empty() {
+            return Err("Not in patch mode or no hunks".to_string());
+        }
+
+        let hunk = &diff.hunks[diff.current_hunk];
+        let patch_content = format!("{}\n{}\n", hunk.file_header, hunk.hunk_body);
+
+        let mut child = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&diff.worktree_path)
+            .args(["apply", "--cached", "--recount", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn git: {}", e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(patch_content.as_bytes())
+                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("Failed to wait on git: {}", e))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git apply failed: {}", err));
+        }
+
+        Ok(())
+    }
+
+    /// Move to next hunk in patch mode, returns true if there are more hunks
+    pub fn next_hunk(&mut self) -> bool {
+        if let ViewMode::Diff(ref mut diff) = self.view_mode
+            && diff.patch_mode && diff.current_hunk + 1 < diff.hunks.len() {
+                diff.current_hunk += 1;
+                diff.scroll = 0;
+                return true;
+            }
+        false
+    }
+
+    /// Move to previous hunk in patch mode
+    pub fn prev_hunk(&mut self) {
+        if let ViewMode::Diff(ref mut diff) = self.view_mode
+            && diff.patch_mode && diff.current_hunk > 0 {
+                diff.current_hunk -= 1;
+                diff.scroll = 0;
+            }
+    }
+
+    /// Enter patch mode for the current diff view
+    pub fn enter_patch_mode(&mut self) {
+        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+            if diff.is_branch_diff {
+                // Patch mode only makes sense for WIP (uncommitted) changes
+                return;
+            }
+            if diff.hunks.is_empty() {
+                return;
+            }
+            diff.patch_mode = true;
+            diff.current_hunk = 0;
+            diff.scroll = 0;
+        }
+    }
+
+    /// Exit patch mode back to normal diff view
+    pub fn exit_patch_mode(&mut self) {
+        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+            diff.patch_mode = false;
+            diff.scroll = 0;
+        }
+    }
+
+    /// Stage current hunk and advance to next, refreshing if needed
+    pub fn stage_and_next(&mut self) {
+        if let Err(e) = self.stage_hunk() {
+            // TODO: Show error to user
+            eprintln!("Failed to stage hunk: {}", e);
+            return;
+        }
+
+        // Refresh the diff to get updated state
+        let is_branch_diff = if let ViewMode::Diff(ref diff) = self.view_mode {
+            diff.is_branch_diff
+        } else {
+            return;
+        };
+
+        self.load_diff(is_branch_diff);
+
+        // Re-enter patch mode if there are still hunks
+        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+            if !diff.hunks.is_empty() {
+                diff.patch_mode = true;
+                // Stay at same index or go to last if we were at end
+                diff.current_hunk = diff.current_hunk.min(diff.hunks.len().saturating_sub(1));
+            } else {
+                // No more hunks, exit patch mode
+                diff.patch_mode = false;
+            }
+        }
+    }
+
+    /// Skip current hunk and move to next
+    pub fn skip_hunk(&mut self) {
+        if !self.next_hunk() {
+            // No more hunks, exit patch mode
+            self.exit_patch_mode();
+        }
+    }
+
     /// Count added and removed lines from raw diff content
     fn count_diff_stats(content: &[u8]) -> (usize, usize) {
         let text = String::from_utf8_lossy(content);
@@ -568,12 +806,12 @@ impl App {
     }
 
     /// Get diff content, optionally piped through delta for syntax highlighting
-    /// Returns (content, lines_added, lines_removed)
+    /// Returns (content, lines_added, lines_removed, hunks)
     fn get_diff_content(
         path: &PathBuf,
         diff_arg: &str,
         include_untracked: bool,
-    ) -> Result<(String, usize, usize), String> {
+    ) -> Result<(String, usize, usize, Vec<DiffHunk>), String> {
         // Run git diff
         let git_output = std::process::Command::new("git")
             .arg("-C")
@@ -598,13 +836,13 @@ impl App {
         // Count stats before any transformation
         let (lines_added, lines_removed) = Self::count_diff_stats(&diff_content);
 
+        // Parse hunks from raw diff (before delta processing)
+        let raw_diff = String::from_utf8_lossy(&diff_content).to_string();
+        let hunks = Self::parse_diff_into_hunks(&raw_diff);
+
         // If empty or delta not available, return as-is
         if diff_content.is_empty() || !Self::has_delta() {
-            return Ok((
-                String::from_utf8_lossy(&diff_content).to_string(),
-                lines_added,
-                lines_removed,
-            ));
+            return Ok((raw_diff, lines_added, lines_removed, hunks));
         }
 
         // Pipe through delta for syntax highlighting
@@ -629,6 +867,7 @@ impl App {
             String::from_utf8_lossy(&delta_output.stdout).to_string(),
             lines_added,
             lines_removed,
+            hunks,
         ))
     }
 
@@ -715,7 +954,7 @@ impl App {
         // Include untracked files only for uncommitted changes view
         let include_untracked = !branch_diff;
         match Self::get_diff_content(path, &diff_arg, include_untracked) {
-            Ok((content, lines_added, lines_removed)) => {
+            Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {
                     ("No changes".to_string(), 1)
                 } else {
@@ -734,6 +973,9 @@ impl App {
                     is_branch_diff: branch_diff,
                     lines_added,
                     lines_removed,
+                    patch_mode: false,
+                    hunks,
+                    current_hunk: 0,
                 });
             }
             Err(e) => {
@@ -749,6 +991,9 @@ impl App {
                     is_branch_diff: branch_diff,
                     lines_added: 0,
                     lines_removed: 0,
+                    patch_mode: false,
+                    hunks: Vec::new(),
+                    current_hunk: 0,
                 });
             }
         }

@@ -432,6 +432,17 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     // Update viewport height for scroll calculations (subtract 2 for borders)
     diff.viewport_height = chunks[0].height.saturating_sub(2);
 
+    if diff.patch_mode {
+        // Patch mode: show current hunk
+        render_patch_mode(f, diff, chunks[0], chunks[1]);
+    } else {
+        // Normal diff mode
+        render_normal_diff(f, diff, chunks[0], chunks[1]);
+    }
+}
+
+/// Render normal diff view (full diff with scroll)
+fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_area: Rect) {
     // Create block with title including diff stats
     let title = Line::from(vec![
         Span::styled(
@@ -466,7 +477,7 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
     let paragraph = Paragraph::new(text).block(block).scroll((scroll_u16, 0));
 
-    f.render_widget(paragraph, chunks[0]);
+    f.render_widget(paragraph, content_area);
 
     // Footer with keybindings - show which diff type is active (toggle with d)
     let (wip_style, review_style) = if diff.is_branch_diff {
@@ -481,7 +492,7 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
         )
     };
 
-    let footer = Paragraph::new(Line::from(vec![
+    let mut footer_spans = vec![
         Span::raw("  "),
         Span::styled("[d]", Style::default().fg(Color::Yellow)),
         Span::raw(" "),
@@ -489,6 +500,15 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
         Span::styled(" | ", Style::default().fg(Color::DarkGray)),
         Span::styled("review", review_style),
         Span::raw("  "),
+    ];
+
+    // Show [a] patch option only for WIP mode with hunks
+    if !diff.is_branch_diff && !diff.hunks.is_empty() {
+        footer_spans.push(Span::styled("[a]", Style::default().fg(Color::Magenta)));
+        footer_spans.push(Span::raw(" patch  "));
+    }
+
+    footer_spans.extend(vec![
         Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" scroll  "),
         Span::styled("[c]", Style::default().fg(Color::Green)),
@@ -497,6 +517,78 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
         Span::raw(" merge  "),
         Span::styled("[q]", Style::default().fg(Color::Cyan)),
         Span::raw(" close"),
+    ]);
+
+    let footer = Paragraph::new(Line::from(footer_spans));
+    f.render_widget(footer, footer_area);
+}
+
+/// Render patch mode (hunk-by-hunk staging like git add -p)
+fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_area: Rect) {
+    let hunk = &diff.hunks[diff.current_hunk];
+
+    // Title shows filename and hunk progress
+    let title = Line::from(vec![
+        Span::styled(
+            " PATCH ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            &hunk.filename,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            format!("[{}/{}]", diff.current_hunk + 1, diff.hunks.len()),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            format!("+{}", hunk.lines_added),
+            Style::default().fg(Color::Green),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            format!("-{}", hunk.lines_removed),
+            Style::default().fg(Color::Red),
+        ),
+        Span::raw(" "),
+    ]);
+
+    let block = Block::bordered()
+        .title(title)
+        .border_style(Style::default().fg(Color::Magenta));
+
+    // Parse ANSI colors from hunk content
+    let text = hunk
+        .hunk_body
+        .as_str()
+        .into_text()
+        .unwrap_or_else(|_| Text::raw(&hunk.hunk_body));
+
+    // Render scrollable paragraph
+    let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
+    let paragraph = Paragraph::new(text).block(block).scroll((scroll_u16, 0));
+
+    f.render_widget(paragraph, content_area);
+
+    // Footer with patch mode keybindings
+    let footer = Paragraph::new(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("[y]", Style::default().fg(Color::Green)),
+        Span::raw(" stage  "),
+        Span::styled("[n]", Style::default().fg(Color::Red)),
+        Span::raw(" skip  "),
+        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+        Span::raw(" navigate  "),
+        Span::styled("[q]", Style::default().fg(Color::Cyan)),
+        Span::raw(" quit patch mode"),
     ]));
-    f.render_widget(footer, chunks[1]);
+    f.render_widget(footer, footer_area);
 }
