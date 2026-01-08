@@ -37,10 +37,16 @@ pub struct GitStatus {
     pub has_conflict: bool,
     /// Has uncommitted changes (staged or unstaged)
     pub is_dirty: bool,
-    /// Lines added in this branch vs base
+    /// Lines added in this branch vs base (total: committed + uncommitted)
     pub lines_added: usize,
-    /// Lines removed in this branch vs base
+    /// Lines removed in this branch vs base (total: committed + uncommitted)
     pub lines_removed: usize,
+    /// Lines added in uncommitted changes only (working tree + untracked)
+    #[serde(default)]
+    pub uncommitted_added: usize,
+    /// Lines removed in uncommitted changes only (working tree)
+    #[serde(default)]
+    pub uncommitted_removed: usize,
     /// Timestamp when this status was cached (UNIX seconds)
     #[serde(default)]
     pub cached_at: Option<u64>,
@@ -973,14 +979,28 @@ fn count_lines(path: &Path) -> std::io::Result<usize> {
     Ok(count)
 }
 
-/// Get lines added/removed in the branch compared to base.
+/// Diff statistics returned by get_diff_stats.
+///
 /// Includes:
 /// 1. Committed changes vs base (git diff base...HEAD)
 /// 2. Uncommitted changes to tracked files (git diff HEAD)
 /// 3. Untracked files (counted manually)
-fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
-    let mut total_added = 0;
-    let mut total_removed = 0;
+struct DiffStats {
+    /// Total lines added (committed + uncommitted)
+    total_added: usize,
+    /// Total lines removed (committed + uncommitted)
+    total_removed: usize,
+    /// Lines added in uncommitted changes only
+    uncommitted_added: usize,
+    /// Lines removed in uncommitted changes only
+    uncommitted_removed: usize,
+}
+
+fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
+    let mut committed_added = 0;
+    let mut committed_removed = 0;
+    let mut uncommitted_added = 0;
+    let mut uncommitted_removed = 0;
 
     // Helper to parse numstat output
     let parse_numstat = |output: &str| -> (usize, usize) {
@@ -1005,8 +1025,8 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
         .run_and_capture_stdout()
     {
         let (a, r) = parse_numstat(&output);
-        total_added += a;
-        total_removed += r;
+        committed_added += a;
+        committed_removed += r;
     }
 
     // 2. Uncommitted changes (HEAD vs working tree)
@@ -1017,11 +1037,11 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
         .run_and_capture_stdout()
     {
         let (a, r) = parse_numstat(&output);
-        total_added += a;
-        total_removed += r;
+        uncommitted_added += a;
+        uncommitted_removed += r;
     }
 
-    // 3. Untracked files (all lines count as added)
+    // 3. Untracked files (all lines count as added to uncommitted)
     // Use -z to separate paths with null bytes, handling spaces/special chars correctly
     if let Ok(output) = Cmd::new("git")
         .workdir(worktree_path)
@@ -1039,17 +1059,22 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
             if let Ok(metadata) = std::fs::symlink_metadata(&full_path)
                 && metadata.file_type().is_symlink()
             {
-                total_added += 1;
+                uncommitted_added += 1;
                 continue;
             }
 
             if let Ok(lines) = count_lines(&full_path) {
-                total_added += lines;
+                uncommitted_added += lines;
             }
         }
     }
 
-    (total_added, total_removed)
+    DiffStats {
+        total_added: committed_added + uncommitted_added,
+        total_removed: committed_removed + uncommitted_removed,
+        uncommitted_added,
+        uncommitted_removed,
+    }
 }
 
 /// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
@@ -1125,15 +1150,17 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
     };
 
     // Get diff stats (lines added/removed vs base)
-    let (lines_added, lines_removed) = get_diff_stats(worktree_path, &base_ref);
+    let diff_stats = get_diff_stats(worktree_path, &base_ref);
 
     GitStatus {
         ahead,
         behind,
         has_conflict,
         is_dirty,
-        lines_added,
-        lines_removed,
+        lines_added: diff_stats.total_added,
+        lines_removed: diff_stats.total_removed,
+        uncommitted_added: diff_stats.uncommitted_added,
+        uncommitted_removed: diff_stats.uncommitted_removed,
         cached_at: now,
         base_branch,
     }
