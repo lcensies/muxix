@@ -48,10 +48,11 @@ Patch mode (`a` from WIP diff) allows staging individual hunks like `git add -p`
 | `n`       | Skip current hunk                 |
 | `u`       | Undo last staged hunk             |
 | `s`       | Split hunk (if splittable)        |
+| `c`       | Comment on hunk (sends to agent)  |
 | `j`/`k`   | Navigate to next/previous hunk    |
 | `q`/`Esc` | Exit patch mode                   |
 
-Staging a hunk adds it to the git index. After staging, the diff refreshes to show remaining unstaged changes. Pressing `s` splits a hunk into smaller hunks if there are context lines between changes. Use `u` to undo the last staged hunk if you made a mistake.
+Staging a hunk adds it to the git index. After staging, the diff refreshes to show remaining unstaged changes. Pressing `s` splits a hunk into smaller hunks if there are context lines between changes. Use `u` to undo the last staged hunk if you made a mistake. Press `c` to add a comment about the current hunk - type your message and press Enter to send it to the agent with the file path, line number, and diff context.
 
 ## Sort modes
 

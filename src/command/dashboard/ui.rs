@@ -582,30 +582,59 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
 
     f.render_widget(paragraph, content_area);
 
-    // Footer with patch mode keybindings
-    let mut footer_spans = vec![
-        Span::raw("  "),
-        Span::styled("[y]", Style::default().fg(Color::Green)),
-        Span::raw(" stage  "),
-        Span::styled("[n]", Style::default().fg(Color::Red)),
-        Span::raw(" skip  "),
-    ];
+    // Footer: show comment input if in comment mode, otherwise show keybindings
+    if let Some(ref input) = diff.comment_input {
+        // Comment input mode - hints on left stay fixed, input on right
+        let mut spans = vec![
+            Span::styled("  [Enter]", Style::default().fg(Color::Green)),
+            Span::raw(" send  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Red)),
+            Span::raw(" cancel  "),
+            Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+        ];
 
-    // Show undo option if there are staged hunks
-    if !diff.staged_hunks.is_empty() {
-        footer_spans.push(Span::styled("[u]", Style::default().fg(Color::Magenta)));
-        footer_spans.push(Span::raw(" undo  "));
+        if input.is_empty() {
+            // Show cursor then placeholder when empty
+            spans.push(Span::styled("▌", Style::default().fg(Color::White)));
+            spans.push(Span::styled(
+                "Type your comment...",
+                Style::default().fg(Color::DarkGray),
+            ));
+        } else {
+            spans.push(Span::raw(input));
+            spans.push(Span::styled("▌", Style::default().fg(Color::White)));
+        }
+
+        let footer = Paragraph::new(Line::from(spans));
+        f.render_widget(footer, footer_area);
+    } else {
+        // Normal patch mode keybindings
+        let mut footer_spans = vec![
+            Span::raw("  "),
+            Span::styled("[y]", Style::default().fg(Color::Green)),
+            Span::raw(" stage  "),
+            Span::styled("[n]", Style::default().fg(Color::Red)),
+            Span::raw(" skip  "),
+        ];
+
+        // Show undo option if there are staged hunks
+        if !diff.staged_hunks.is_empty() {
+            footer_spans.push(Span::styled("[u]", Style::default().fg(Color::Magenta)));
+            footer_spans.push(Span::raw(" undo  "));
+        }
+
+        footer_spans.extend(vec![
+            Span::styled("[s]", Style::default().fg(Color::Yellow)),
+            Span::raw(" split  "),
+            Span::styled("[c]", Style::default().fg(Color::Cyan)),
+            Span::raw(" comment  "),
+            Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+            Span::raw(" nav  "),
+            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]);
+
+        let footer = Paragraph::new(Line::from(footer_spans));
+        f.render_widget(footer, footer_area);
     }
-
-    footer_spans.extend(vec![
-        Span::styled("[s]", Style::default().fg(Color::Yellow)),
-        Span::raw(" split  "),
-        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
-        Span::raw(" nav  "),
-        Span::styled("[q]", Style::default().fg(Color::Cyan)),
-        Span::raw(" quit"),
-    ]);
-
-    let footer = Paragraph::new(Line::from(footer_spans));
-    f.render_widget(footer, footer_area);
 }

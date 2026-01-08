@@ -81,12 +81,52 @@ pub fn run() -> Result<()> {
             && key.kind == KeyEventKind::Press
         {
             // Extract state before mutable borrow to avoid borrow checker issues
-            let (in_diff, in_patch_mode, is_branch_diff) =
+            let (in_diff, in_patch_mode, is_branch_diff, in_comment_mode) =
                 if let ViewMode::Diff(diff_view) = &app.view_mode {
-                    (true, diff_view.patch_mode, diff_view.is_branch_diff)
+                    (
+                        true,
+                        diff_view.patch_mode,
+                        diff_view.is_branch_diff,
+                        diff_view.comment_input.is_some(),
+                    )
                 } else {
-                    (false, false, false)
+                    (false, false, false, false)
                 };
+
+            // Handle comment input mode in patch view
+            if in_diff && in_patch_mode && in_comment_mode {
+                let should_send = match key.code {
+                    KeyCode::Esc => {
+                        // Cancel comment
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode {
+                            diff.comment_input = None;
+                        }
+                        false
+                    }
+                    KeyCode::Enter => true,
+                    KeyCode::Backspace => {
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode
+                            && let Some(ref mut input) = diff.comment_input
+                        {
+                            input.pop();
+                        }
+                        false
+                    }
+                    KeyCode::Char(c) => {
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode
+                            && let Some(ref mut input) = diff.comment_input
+                        {
+                            input.push(c);
+                        }
+                        false
+                    }
+                    _ => false,
+                };
+                if should_send {
+                    app.send_hunk_comment();
+                }
+                continue;
+            }
 
             // Handle patch mode actions that need &mut self
             if in_diff && in_patch_mode {
@@ -110,6 +150,13 @@ pub fn run() -> Result<()> {
                     }
                     KeyCode::Char('s') => {
                         app.split_current_hunk();
+                        continue;
+                    }
+                    // Enter comment mode
+                    KeyCode::Char('c') => {
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode {
+                            diff.comment_input = Some(String::new());
+                        }
                         continue;
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {

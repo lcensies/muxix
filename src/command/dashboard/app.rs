@@ -282,6 +282,8 @@ pub struct DiffView {
     pub hunks_processed: usize,
     /// Stack of staged hunks for undo functionality
     pub staged_hunks: Vec<DiffHunk>,
+    /// Comment input buffer (Some = comment mode active)
+    pub comment_input: Option<String>,
 }
 
 impl DiffView {
@@ -1098,6 +1100,7 @@ impl App {
                     hunks_total: 0,
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
+                    comment_input: None,
                 }));
             }
             Err(e) => {
@@ -1118,6 +1121,7 @@ impl App {
                     hunks_total: 0,
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
+                    comment_input: None,
                 }));
             }
         }
@@ -1175,6 +1179,39 @@ impl App {
             diff.hunks_processed = diff.hunks_processed.saturating_sub(1);
             diff.scroll = 0;
         }
+    }
+
+    /// Send a comment about the current hunk to the agent
+    pub fn send_hunk_comment(&mut self) {
+        let ViewMode::Diff(ref mut diff) = self.view_mode else {
+            return;
+        };
+
+        if !diff.patch_mode || diff.hunks.is_empty() {
+            return;
+        }
+
+        let comment = match diff.comment_input.take() {
+            Some(c) if !c.trim().is_empty() => c,
+            _ => return,
+        };
+
+        let hunk = &diff.hunks[diff.current_hunk];
+
+        // Extract line number from hunk header (e.g., "@@ -10,5 +12,7 @@" -> 12)
+        let line_num = parse_hunk_header(&hunk.hunk_body)
+            .map(|(_, new_start)| new_start)
+            .unwrap_or(1);
+
+        // Format the message with file path, line number, hunk content, and comment
+        let message = format!(
+            "{}:{}\n\n```diff\n{}\n```\n\n{}",
+            hunk.filename, line_num, hunk.hunk_body, comment
+        );
+
+        // Send to agent via tmux (escape special characters for tmux)
+        let _ = tmux::send_keys(&diff.pane_id, &message);
+        let _ = tmux::send_key(&diff.pane_id, "Enter");
     }
 
     /// Split the current hunk into smaller hunks if possible
@@ -1404,6 +1441,7 @@ impl App {
                     hunks_total: 0,
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
+                    comment_input: None,
                 }));
             }
             Err(e) => {
@@ -1425,6 +1463,7 @@ impl App {
                     hunks_total: 0,
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
+                    comment_input: None,
                 }));
             }
         }
