@@ -763,24 +763,81 @@ impl App {
             return;
         }
 
-        // Refresh the diff to get updated state
-        let is_branch_diff = if let ViewMode::Diff(ref diff) = self.view_mode {
-            diff.is_branch_diff
-        } else {
-            return;
-        };
-
-        self.load_diff(is_branch_diff);
+        // Reload with unstaged diff only (git diff without HEAD)
+        // This shows only unstaged changes, so the just-staged hunk disappears
+        self.reload_unstaged_diff();
 
         // Re-enter patch mode if there are still hunks
         if let ViewMode::Diff(ref mut diff) = self.view_mode {
             if !diff.hunks.is_empty() {
                 diff.patch_mode = true;
-                // Stay at same index or go to last if we were at end
-                diff.current_hunk = diff.current_hunk.min(diff.hunks.len().saturating_sub(1));
+                // Stay at index 0 since hunks shift after staging
+                diff.current_hunk = 0;
             } else {
                 // No more hunks, exit patch mode
                 diff.patch_mode = false;
+            }
+        }
+    }
+
+    /// Reload diff showing only unstaged changes (for patch mode)
+    fn reload_unstaged_diff(&mut self) {
+        let (path, pane_id, worktree_name) = if let ViewMode::Diff(ref diff) = self.view_mode {
+            (
+                diff.worktree_path.clone(),
+                diff.pane_id.clone(),
+                diff.title
+                    .strip_prefix("WIP: ")
+                    .unwrap_or(&diff.title)
+                    .to_string(),
+            )
+        } else {
+            return;
+        };
+
+        // Use empty diff_arg for unstaged changes only (git diff without args)
+        // Include untracked files
+        match Self::get_diff_content(&path, "", true) {
+            Ok((content, lines_added, lines_removed, hunks)) => {
+                let (content, line_count) = if content.trim().is_empty() {
+                    ("No changes".to_string(), 1)
+                } else {
+                    let count = content.lines().count();
+                    (content, count)
+                };
+
+                self.view_mode = ViewMode::Diff(DiffView {
+                    content,
+                    scroll: 0,
+                    line_count,
+                    viewport_height: 0,
+                    title: format!("WIP: {}", worktree_name),
+                    worktree_path: path,
+                    pane_id,
+                    is_branch_diff: false,
+                    lines_added,
+                    lines_removed,
+                    patch_mode: false,
+                    hunks,
+                    current_hunk: 0,
+                });
+            }
+            Err(e) => {
+                self.view_mode = ViewMode::Diff(DiffView {
+                    content: e,
+                    scroll: 0,
+                    line_count: 1,
+                    viewport_height: 0,
+                    title: "Error".to_string(),
+                    worktree_path: path,
+                    pane_id,
+                    is_branch_diff: false,
+                    lines_added: 0,
+                    lines_removed: 0,
+                    patch_mode: false,
+                    hunks: Vec::new(),
+                    current_hunk: 0,
+                });
             }
         }
     }
@@ -812,6 +869,7 @@ impl App {
 
     /// Get diff content, optionally piped through delta for syntax highlighting
     /// Returns (content, lines_added, lines_removed, hunks)
+    /// If diff_arg is empty, runs `git diff` (unstaged only); otherwise `git diff <arg>`
     fn get_diff_content(
         path: &PathBuf,
         diff_arg: &str,
@@ -819,12 +877,15 @@ impl App {
     ) -> Result<(String, usize, usize, Vec<DiffHunk>), String> {
         // Run git diff without color - delta will add syntax highlighting
         // Using --no-color ensures clean hunks for git apply
-        let git_output = std::process::Command::new("git")
-            .arg("-C")
-            .arg(path)
-            .arg("--no-pager")
-            .arg("diff")
-            .arg(diff_arg)
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("-C").arg(path).arg("--no-pager").arg("diff");
+
+        // Only add diff_arg if non-empty (empty = unstaged changes only)
+        if !diff_arg.is_empty() {
+            cmd.arg(diff_arg);
+        }
+
+        let git_output = cmd
             .output()
             .map_err(|e| format!("Error running git diff: {}", e))?;
 
