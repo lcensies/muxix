@@ -11,8 +11,7 @@ workmux dashboard
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
-| `d`       | View uncommitted changes (diff modal)   |
-| `D`       | View branch changes vs main             |
+| `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
 | `i`       | Enter input mode (type to agent)        |
@@ -24,12 +23,11 @@ workmux dashboard
 
 ### Diff view keybindings
 
-When viewing a diff (`d` or `D`):
+When viewing a diff (`d`):
 
 | Key       | Action                            |
 | --------- | --------------------------------- |
-| `d`       | Show uncommitted changes          |
-| `D`       | Show branch changes (vs main)     |
+| `d`       | Toggle WIP / review               |
 | `j`/`k`   | Scroll down/up                    |
 | `Ctrl+d`  | Page down                         |
 | `Ctrl+u`  | Page up                           |
@@ -37,7 +35,7 @@ When viewing a diff (`d` or `D`):
 | `m`       | Trigger merge and exit dashboard  |
 | `q`/`Esc` | Close diff view                   |
 
-The footer shows which diff type is active (highlighted in green).
+The footer shows which diff type is active: **WIP** (uncommitted changes) or **review** (branch vs main). Press `d` to toggle between them.
 
 ## Sort modes
 

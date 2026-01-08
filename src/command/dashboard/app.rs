@@ -37,7 +37,7 @@ pub struct DiffView {
     pub line_count: usize,
     /// Viewport height (updated by UI during render for page scroll)
     pub viewport_height: u16,
-    /// Title for the view (e.g., "Uncommitted Changes: fix-bug")
+    /// Title for the view (e.g., "WIP: fix-bug")
     pub title: String,
     /// Path to the worktree (for commit/merge actions)
     pub worktree_path: PathBuf,
@@ -649,13 +649,10 @@ impl App {
                 .unwrap_or("main");
             (
                 format!("{}...HEAD", base),
-                format!("Branch Changes: {}", worktree_name),
+                format!("Review: {} → {}", worktree_name, base),
             )
         } else {
-            (
-                "HEAD".to_string(),
-                format!("Uncommitted Changes: {}", worktree_name),
-            )
+            ("HEAD".to_string(), format!("WIP: {}", worktree_name))
         };
 
         // Include untracked files only for uncommitted changes view

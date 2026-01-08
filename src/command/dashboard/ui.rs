@@ -62,7 +62,7 @@ fn render_dashboard(f: &mut Frame, app: &mut App) {
         Paragraph::new(Line::from(vec![
             Span::styled("  [i]", Style::default().fg(Color::Green)),
             Span::raw(" input  "),
-            Span::styled("[d/D]", Style::default().fg(Color::Yellow)),
+            Span::styled("[d]", Style::default().fg(Color::Yellow)),
             Span::raw(" diff  "),
             Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
             Span::raw(" jump  "),
@@ -455,37 +455,26 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
 
     f.render_widget(paragraph, chunks[0]);
 
-    // Footer with keybindings - show which diff type is active and how to switch
-    let (d_style, d_key_style) = if diff.is_branch_diff {
+    // Footer with keybindings - show which diff type is active (toggle with d)
+    let (wip_style, review_style) = if diff.is_branch_diff {
         (
             Style::default().fg(Color::DarkGray),
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(Color::Green),
         )
     } else {
         (
             Style::default().fg(Color::Green),
             Style::default().fg(Color::DarkGray),
-        )
-    };
-    let (branch_style, branch_key_style) = if diff.is_branch_diff {
-        (
-            Style::default().fg(Color::Green),
-            Style::default().fg(Color::DarkGray),
-        )
-    } else {
-        (
-            Style::default().fg(Color::DarkGray),
-            Style::default().fg(Color::Cyan),
         )
     };
 
     let footer = Paragraph::new(Line::from(vec![
         Span::raw("  "),
-        Span::styled("[d]", d_key_style),
-        Span::styled(" uncommitted", d_style),
-        Span::raw("  "),
-        Span::styled("[D]", branch_key_style),
-        Span::styled(" branch", branch_style),
+        Span::styled("[d]", Style::default().fg(Color::Yellow)),
+        Span::raw(" "),
+        Span::styled("WIP", wip_style),
+        Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+        Span::styled("review", review_style),
         Span::raw("  "),
         Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" scroll  "),
