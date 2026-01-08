@@ -1010,19 +1010,34 @@ impl App {
             return;
         }
 
-        // Reload with unstaged diff only (git diff without HEAD)
-        // This shows only unstaged changes, so the just-staged hunk disappears
-        self.reload_unstaged_diff();
-
-        // Re-enter patch mode if there are still hunks
-        if let ViewMode::Diff(ref mut diff) = self.view_mode {
+        // Remove the staged hunk from the in-memory list and advance
+        // Don't reload from git immediately - this preserves split hunks
+        let should_reload = if let ViewMode::Diff(ref mut diff) = self.view_mode {
             if !diff.hunks.is_empty() {
-                diff.patch_mode = true;
-                // Stay at index 0 since hunks shift after staging
-                diff.current_hunk = 0;
-            } else {
-                // No more hunks, exit patch mode
-                diff.patch_mode = false;
+                diff.hunks.remove(diff.current_hunk);
+                // Adjust index if we were at the end
+                if diff.current_hunk >= diff.hunks.len() && !diff.hunks.is_empty() {
+                    diff.current_hunk = diff.hunks.len() - 1;
+                }
+                diff.scroll = 0;
+            }
+            diff.hunks.is_empty()
+        } else {
+            false
+        };
+
+        if should_reload {
+            // No more hunks in memory - reload to check for any remaining unstaged changes
+            self.reload_unstaged_diff();
+
+            // Re-enter patch mode if git found more hunks
+            if let ViewMode::Diff(ref mut diff) = self.view_mode {
+                if !diff.hunks.is_empty() {
+                    diff.patch_mode = true;
+                    diff.current_hunk = 0;
+                } else {
+                    diff.patch_mode = false;
+                }
             }
         }
     }
