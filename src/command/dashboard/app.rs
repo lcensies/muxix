@@ -523,7 +523,11 @@ impl App {
     }
 
     /// Get diff content, optionally piped through delta for syntax highlighting
-    fn get_diff_content(path: &PathBuf, diff_arg: &str) -> Result<String, String> {
+    fn get_diff_content(
+        path: &PathBuf,
+        diff_arg: &str,
+        include_untracked: bool,
+    ) -> Result<String, String> {
         // Run git diff
         let git_output = std::process::Command::new("git")
             .arg("-C")
@@ -535,11 +539,19 @@ impl App {
             .output()
             .map_err(|e| format!("Error running git diff: {}", e))?;
 
-        let diff_content = String::from_utf8_lossy(&git_output.stdout).to_string();
+        let mut diff_content = git_output.stdout;
+
+        // For uncommitted changes, also include untracked files
+        if include_untracked {
+            let untracked_diff = Self::get_untracked_files_diff(path)?;
+            if !untracked_diff.is_empty() {
+                diff_content.extend_from_slice(untracked_diff.as_bytes());
+            }
+        }
 
         // If empty or delta not available, return as-is
-        if diff_content.trim().is_empty() || !Self::has_delta() {
-            return Ok(diff_content);
+        if diff_content.is_empty() || !Self::has_delta() {
+            return Ok(String::from_utf8_lossy(&diff_content).to_string());
         }
 
         // Pipe through delta for syntax highlighting
@@ -553,7 +565,7 @@ impl App {
         // Write git diff output to delta's stdin
         if let Some(mut stdin) = delta.stdin.take() {
             use std::io::Write;
-            let _ = stdin.write_all(git_output.stdout.as_slice());
+            let _ = stdin.write_all(&diff_content);
         }
 
         let delta_output = delta
@@ -561,6 +573,56 @@ impl App {
             .map_err(|e| format!("Error reading delta output: {}", e))?;
 
         Ok(String::from_utf8_lossy(&delta_output.stdout).to_string())
+    }
+
+    /// Generate diff output for untracked files (new files not yet staged)
+    fn get_untracked_files_diff(path: &PathBuf) -> Result<String, String> {
+        // Get list of untracked files
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .arg("ls-files")
+            .arg("--others")
+            .arg("--exclude-standard")
+            .output()
+            .map_err(|e| format!("Error listing untracked files: {}", e))?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout).to_string();
+        let untracked_files: Vec<&str> = output_str.lines().filter(|l| !l.is_empty()).collect();
+
+        if untracked_files.is_empty() {
+            return Ok(String::new());
+        }
+
+        // Generate diff for each untracked file using git diff --no-index
+        let mut result = String::new();
+        for file in untracked_files {
+            let file_path = path.join(file);
+            if !file_path.is_file() {
+                continue;
+            }
+
+            // Use git diff --no-index to generate proper diff format for new files
+            let diff_output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .arg("diff")
+                .arg("--no-index")
+                .arg("--color=always")
+                .arg("/dev/null")
+                .arg(file)
+                .output();
+
+            if let Ok(output) = diff_output {
+                // git diff --no-index returns exit code 1 when files differ, which is expected
+                let diff_text = String::from_utf8_lossy(&output.stdout);
+                if !diff_text.is_empty() {
+                    result.push_str(&diff_text);
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     /// Load diff for the selected worktree
@@ -596,7 +658,9 @@ impl App {
             )
         };
 
-        match Self::get_diff_content(path, &diff_arg) {
+        // Include untracked files only for uncommitted changes view
+        let include_untracked = !branch_diff;
+        match Self::get_diff_content(path, &diff_arg, include_untracked) {
             Ok(content) => {
                 let (content, line_count) = if content.trim().is_empty() {
                     ("No changes".to_string(), 1)
