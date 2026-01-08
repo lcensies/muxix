@@ -765,20 +765,25 @@ impl App {
         let done = self.config.status_icons.done();
 
         // Get the base status text and color
-        let (status_text, base_color) = if status == working {
-            (status.to_string(), Color::Cyan)
+        let (status_text, base_color, is_working) = if status == working {
+            (status.to_string(), Color::Cyan, true)
         } else if status == waiting {
-            (status.to_string(), Color::Magenta)
+            (status.to_string(), Color::Magenta, false)
         } else if status == done {
-            (status.to_string(), Color::Green)
+            (status.to_string(), Color::Green, false)
         } else {
-            (status.to_string(), Color::White)
+            (status.to_string(), Color::White, false)
         };
 
         // If stale, dim the color and add timer-off indicator
         if is_stale {
             let display_text = format!("{} \u{f051b}", status_text);
             (display_text, Color::DarkGray)
+        } else if is_working {
+            // Add animated spinner when agent is working
+            let spinner = super::ui::SPINNER_FRAMES[self.spinner_frame as usize];
+            let display_text = format!("{} {}", status_text, spinner);
+            (display_text, base_color)
         } else {
             (status_text, base_color)
         }
