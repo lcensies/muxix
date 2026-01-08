@@ -455,12 +455,40 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
 
     f.render_widget(paragraph, chunks[0]);
 
-    // Footer with keybindings
+    // Footer with keybindings - show which diff type is active and how to switch
+    let (d_style, d_key_style) = if diff.is_branch_diff {
+        (
+            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::Cyan),
+        )
+    } else {
+        (
+            Style::default().fg(Color::Green),
+            Style::default().fg(Color::DarkGray),
+        )
+    };
+    let (branch_style, branch_key_style) = if diff.is_branch_diff {
+        (
+            Style::default().fg(Color::Green),
+            Style::default().fg(Color::DarkGray),
+        )
+    } else {
+        (
+            Style::default().fg(Color::DarkGray),
+            Style::default().fg(Color::Cyan),
+        )
+    };
+
     let footer = Paragraph::new(Line::from(vec![
-        Span::styled("  [j/k]", Style::default().fg(Color::Cyan)),
+        Span::raw("  "),
+        Span::styled("[d]", d_key_style),
+        Span::styled(" uncommitted", d_style),
+        Span::raw("  "),
+        Span::styled("[D]", branch_key_style),
+        Span::styled(" branch", branch_style),
+        Span::raw("  "),
+        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
         Span::raw(" scroll  "),
-        Span::styled("[d/u]", Style::default().fg(Color::Cyan)),
-        Span::raw(" page  "),
         Span::styled("[c]", Style::default().fg(Color::Green)),
         Span::raw(" commit  "),
         Span::styled("[m]", Style::default().fg(Color::Yellow)),

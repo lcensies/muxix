@@ -161,8 +161,29 @@ pub fn run() -> Result<()> {
                         KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
                         KeyCode::Char('j') | KeyCode::Down => diff_view.scroll_down(),
                         KeyCode::Char('k') | KeyCode::Up => diff_view.scroll_up(),
-                        KeyCode::PageDown | KeyCode::Char('d') => diff_view.scroll_page_down(),
-                        KeyCode::PageUp | KeyCode::Char('u') => diff_view.scroll_page_up(),
+                        KeyCode::PageDown => diff_view.scroll_page_down(),
+                        KeyCode::PageUp => diff_view.scroll_page_up(),
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_down();
+                        }
+                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            diff_view.scroll_page_up();
+                        }
+                        // Switch diff type: d = uncommitted, D = branch
+                        KeyCode::Char('d') if !diff_view.is_branch_diff => {
+                            // Already showing uncommitted, do nothing or could page
+                        }
+                        KeyCode::Char('d') => {
+                            // Switch to uncommitted diff
+                            app.load_diff(false);
+                        }
+                        KeyCode::Char('D') if diff_view.is_branch_diff => {
+                            // Already showing branch diff, do nothing
+                        }
+                        KeyCode::Char('D') => {
+                            // Switch to branch diff
+                            app.load_diff(true);
+                        }
                         KeyCode::Char('c') => app.send_commit_to_agent(),
                         KeyCode::Char('m') => app.trigger_merge(),
                         _ => {}

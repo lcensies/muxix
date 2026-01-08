@@ -26,7 +26,7 @@ pub enum ViewMode {
     Diff(DiffView),
 }
 
-/// State for the diff modal view
+/// State for the diff view
 #[derive(Debug, PartialEq)]
 pub struct DiffView {
     /// The diff content (with ANSI colors)
@@ -37,12 +37,14 @@ pub struct DiffView {
     pub line_count: usize,
     /// Viewport height (updated by UI during render for page scroll)
     pub viewport_height: u16,
-    /// Title for the modal (e.g., "Uncommitted Changes: fix-bug")
+    /// Title for the view (e.g., "Uncommitted Changes: fix-bug")
     pub title: String,
     /// Path to the worktree (for commit/merge actions)
     pub worktree_path: PathBuf,
     /// Pane ID for sending commands to agent
     pub pane_id: String,
+    /// Whether this is a branch diff (true) or uncommitted diff (false)
+    pub is_branch_diff: bool,
 }
 
 impl DiffView {
@@ -596,13 +598,12 @@ impl App {
 
         match Self::get_diff_content(path, &diff_arg) {
             Ok(content) => {
-                // Handle empty diff - don't open view
-                if content.trim().is_empty() {
-                    // TODO: Show temporary status message "No changes"
-                    return;
-                }
-
-                let line_count = content.lines().count();
+                let (content, line_count) = if content.trim().is_empty() {
+                    ("No changes".to_string(), 1)
+                } else {
+                    let count = content.lines().count();
+                    (content, count)
+                };
 
                 self.view_mode = ViewMode::Diff(DiffView {
                     content,
@@ -612,6 +613,7 @@ impl App {
                     title,
                     worktree_path: path.clone(),
                     pane_id,
+                    is_branch_diff: branch_diff,
                 });
             }
             Err(e) => {
@@ -624,6 +626,7 @@ impl App {
                     title: "Error".to_string(),
                     worktree_path: path.clone(),
                     pane_id,
+                    is_branch_diff: branch_diff,
                 });
             }
         }

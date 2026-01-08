@@ -26,13 +26,18 @@ workmux dashboard
 
 When viewing a diff (`d` or `D`):
 
-| Key        | Action                           |
-| ---------- | -------------------------------- |
-| `j`/`k`    | Scroll down/up                   |
-| `d`/`u`    | Page down/up                     |
-| `c`        | Send commit command to agent     |
-| `m`        | Trigger merge and exit dashboard |
-| `q`/`Esc`  | Close diff view                  |
+| Key       | Action                            |
+| --------- | --------------------------------- |
+| `d`       | Show uncommitted changes          |
+| `D`       | Show branch changes (vs main)     |
+| `j`/`k`   | Scroll down/up                    |
+| `Ctrl+d`  | Page down                         |
+| `Ctrl+u`  | Page up                           |
+| `c`       | Send commit command to agent      |
+| `m`       | Trigger merge and exit dashboard  |
+| `q`/`Esc` | Close diff view                   |
+
+The footer shows which diff type is active (highlighted in green).
 
 ## Sort modes
 
