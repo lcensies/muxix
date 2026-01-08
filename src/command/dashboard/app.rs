@@ -1254,14 +1254,20 @@ impl App {
             .map(|(_, new_start)| new_start)
             .unwrap_or(1);
 
+        // Determine safe code fence (use more backticks if content contains ```)
+        let mut fence = "```".to_string();
+        while hunk.hunk_body.contains(&fence) {
+            fence.push('`');
+        }
+
         // Format the message with file path, line number, hunk content, and comment
         let message = format!(
-            "{}:{}\n\n```diff\n{}\n```\n\n{}",
-            hunk.filename, line_num, hunk.hunk_body, comment
+            "{}:{}\n\n{}diff\n{}\n{}\n\n{}",
+            hunk.filename, line_num, fence, hunk.hunk_body, fence, comment
         );
 
-        // Send to agent via tmux (send_keys already sends Enter at the end)
-        let _ = tmux::send_keys(&diff.pane_id, &message);
+        // Use paste_multiline to properly handle newlines in the message
+        let _ = tmux::paste_multiline(&diff.pane_id, &message);
     }
 
     /// Split the current hunk into smaller hunks if possible

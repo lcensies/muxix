@@ -628,6 +628,47 @@ pub fn send_key(pane_id: &str, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// Paste multiline content into a pane using tmux buffer and bracketed paste.
+/// This ensures newlines are treated as content, not as Enter keypresses.
+/// After pasting, sends Enter to submit the content.
+pub fn paste_multiline(pane_id: &str, content: &str) -> Result<()> {
+    use std::io::Write;
+
+    // Load content into a temporary tmux buffer via stdin
+    let mut child = std::process::Command::new("tmux")
+        .args(["load-buffer", "-"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to spawn tmux load-buffer")?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(content.as_bytes())
+            .context("Failed to write to tmux buffer")?;
+    }
+
+    let status = child
+        .wait()
+        .context("Failed to wait for tmux load-buffer")?;
+    if !status.success() {
+        return Err(anyhow::anyhow!("tmux load-buffer failed"));
+    }
+
+    // Paste the buffer with bracketed paste (-p) and delete after (-d)
+    Cmd::new("tmux")
+        .args(&["paste-buffer", "-t", pane_id, "-p", "-d"])
+        .run()
+        .context("Failed to paste buffer to pane")?;
+
+    // Send Enter to submit the pasted content
+    Cmd::new("tmux")
+        .args(&["send-keys", "-t", pane_id, "Enter"])
+        .run()
+        .context("Failed to send Enter after paste")?;
+
+    Ok(())
+}
+
 /// Result of setting up panes
 pub struct PaneSetupResult {
     /// The ID of the pane that should receive focus.
