@@ -565,12 +565,24 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         .title(title)
         .border_style(Style::default().fg(Color::Magenta));
 
-    // Parse ANSI colors from hunk content
-    let text = hunk
+    // Color diff lines: green for +, red for -, cyan for @@
+    let lines: Vec<Line> = hunk
         .hunk_body
-        .as_str()
-        .into_text()
-        .unwrap_or_else(|_| Text::raw(&hunk.hunk_body));
+        .lines()
+        .map(|line| {
+            let style = if line.starts_with('+') && !line.starts_with("+++") {
+                Style::default().fg(Color::Green)
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                Style::default().fg(Color::Red)
+            } else if line.starts_with("@@") {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            Line::styled(line, style)
+        })
+        .collect();
+    let text = Text::from(lines);
 
     // Render scrollable paragraph
     let scroll_u16 = diff.scroll.min(u16::MAX as usize) as u16;
