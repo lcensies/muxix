@@ -675,12 +675,13 @@ impl App {
         }
 
         let hunk = &diff.hunks[diff.current_hunk];
+        // Hunks are clean (no ANSI codes) since we use --no-color for diff
         let patch_content = format!("{}\n{}\n", hunk.file_header, hunk.hunk_body);
 
         let mut child = std::process::Command::new("git")
             .arg("-C")
             .arg(&diff.worktree_path)
-            .args(["apply", "--cached", "--recount", "-"])
+            .args(["apply", "--cached", "--recount", "--3way", "-"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -709,21 +710,25 @@ impl App {
     /// Move to next hunk in patch mode, returns true if there are more hunks
     pub fn next_hunk(&mut self) -> bool {
         if let ViewMode::Diff(ref mut diff) = self.view_mode
-            && diff.patch_mode && diff.current_hunk + 1 < diff.hunks.len() {
-                diff.current_hunk += 1;
-                diff.scroll = 0;
-                return true;
-            }
+            && diff.patch_mode
+            && diff.current_hunk + 1 < diff.hunks.len()
+        {
+            diff.current_hunk += 1;
+            diff.scroll = 0;
+            return true;
+        }
         false
     }
 
     /// Move to previous hunk in patch mode
     pub fn prev_hunk(&mut self) {
         if let ViewMode::Diff(ref mut diff) = self.view_mode
-            && diff.patch_mode && diff.current_hunk > 0 {
-                diff.current_hunk -= 1;
-                diff.scroll = 0;
-            }
+            && diff.patch_mode
+            && diff.current_hunk > 0
+        {
+            diff.current_hunk -= 1;
+            diff.scroll = 0;
+        }
     }
 
     /// Enter patch mode for the current diff view
@@ -812,13 +817,13 @@ impl App {
         diff_arg: &str,
         include_untracked: bool,
     ) -> Result<(String, usize, usize, Vec<DiffHunk>), String> {
-        // Run git diff
+        // Run git diff without color - delta will add syntax highlighting
+        // Using --no-color ensures clean hunks for git apply
         let git_output = std::process::Command::new("git")
             .arg("-C")
             .arg(path)
             .arg("--no-pager")
             .arg("diff")
-            .arg("--color=always")
             .arg(diff_arg)
             .output()
             .map_err(|e| format!("Error running git diff: {}", e))?;
@@ -904,7 +909,6 @@ impl App {
                 .arg(path)
                 .arg("diff")
                 .arg("--no-index")
-                .arg("--color=always")
                 .arg("/dev/null")
                 .arg(file)
                 .output();
