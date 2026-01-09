@@ -1613,14 +1613,10 @@ impl App {
     /// Trigger merge workflow and close diff modal
     pub fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            // Run workmux merge in the worktree directory
-            let _ = std::process::Command::new("workmux")
-                .arg("merge")
-                .current_dir(&diff.worktree_path)
-                .spawn();
+            // Send /merge command to the agent's pane
+            let _ = tmux::send_keys(&diff.pane_id, "/merge\n");
         }
         self.close_diff();
-        self.should_quit = true; // Exit dashboard after merge
     }
 
     /// Send commit command to the currently selected agent's pane (from dashboard view)
