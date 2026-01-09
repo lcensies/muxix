@@ -8,6 +8,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.80 (2026-01-09)
+
+- Dashboard: Commit and merge actions are now configurable via
+  `dashboard.commit` and `dashboard.merge` in your config file
+
 ## v0.1.79 (2026-01-09)
 
 - Dashboard: Fixed patch mode showing already-staged hunks
