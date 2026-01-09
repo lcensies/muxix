@@ -1,6 +1,6 @@
 # Dashboard
 
-When running multiple AI agents in parallel, it's helpful to have a centralized view of what each agent is doing. The dashboard provides a TUI for monitoring agents, reviewing their changes, staging hunks, and sending commands.
+When running agents in multiple worktrees across many projects, it's helpful to have a centralized view of what each agent is doing. The dashboard provides a TUI for monitoring agents, reviewing their changes, staging hunks, and sending commands.
 
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
   <img src="/dashboard.webp" alt="workmux dashboard" style="border-radius: 4px;">
