@@ -343,6 +343,14 @@ enum Commands {
         command: command::set_window_status::SetWindowStatusCommand,
     },
 
+    /// Set the base branch for the current worktree (used after rebasing)
+    #[command(hide = true, name = "set-base")]
+    SetBase {
+        /// The new base branch
+        #[arg(value_parser = GitBranchParser::new())]
+        base: String,
+    },
+
     /// Generate shell completions
     Completions {
         /// The shell to generate completions for
@@ -441,6 +449,7 @@ pub fn run() -> Result<()> {
             ClaudeCommands::Prune => prune_claude_config(),
         },
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
+        Commands::SetBase { base } => command::set_base::run(&base),
         Commands::Completions { shell } => {
             generate_completions(shell);
             Ok(())

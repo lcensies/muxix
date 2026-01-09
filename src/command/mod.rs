@@ -9,6 +9,7 @@ pub mod merge;
 pub mod open;
 pub mod path;
 pub mod remove;
+pub mod set_base;
 pub mod set_window_status;
 
 use anyhow::{Context, Result, anyhow};
