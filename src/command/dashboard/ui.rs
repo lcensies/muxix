@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Cell, Paragraph, Row, Table},
+    widgets::{Block, Cell, Clear, Paragraph, Row, Table},
 };
 use std::collections::{BTreeMap, HashSet};
 
@@ -25,6 +25,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     match &mut app.view_mode {
         ViewMode::Dashboard => render_dashboard(f, app),
         ViewMode::Diff(diff_view) => render_diff_view(f, diff_view),
+    }
+
+    // Render help overlay on top if active
+    if app.show_help {
+        render_help(f, app);
     }
 }
 
@@ -617,6 +622,146 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
 
     let footer = Paragraph::new(Line::from(footer_spans));
     f.render_widget(footer, footer_area);
+}
+
+/// Render the help overlay
+fn render_help(f: &mut Frame, app: &App) {
+    // Define keybindings based on current view
+    let (title, keybindings): (&str, Vec<(&str, &str)>) = match &app.view_mode {
+        ViewMode::Dashboard => {
+            if app.input_mode {
+                (
+                    "Input Mode",
+                    vec![
+                        ("Esc", "Exit input mode"),
+                        ("Enter", "Send Enter key"),
+                        ("Tab", "Send Tab key"),
+                        ("↑↓←→", "Send arrow keys"),
+                        ("char", "Send character to agent"),
+                    ],
+                )
+            } else {
+                (
+                    "Dashboard",
+                    vec![
+                        ("1-9", "Quick jump to agent"),
+                        ("Enter", "Go to selected agent"),
+                        ("d", "View diff"),
+                        ("p", "Peek at agent"),
+                        ("s", "Cycle sort mode"),
+                        ("f", "Toggle stale filter"),
+                        ("i", "Enter input mode"),
+                        ("j/k", "Navigate up/down"),
+                        ("^u/^d", "Scroll preview"),
+                        ("c", "Commit changes"),
+                        ("m", "Merge branch"),
+                        ("q", "Quit"),
+                    ],
+                )
+            }
+        }
+        ViewMode::Diff(diff) => {
+            if diff.patch_mode {
+                if diff.comment_input.is_some() {
+                    (
+                        "Comment",
+                        vec![
+                            ("Enter", "Send comment"),
+                            ("Esc", "Cancel"),
+                            ("⌫", "Delete character"),
+                        ],
+                    )
+                } else {
+                    (
+                        "Patch Mode",
+                        vec![
+                            ("y", "Stage hunk"),
+                            ("n", "Skip hunk"),
+                            ("u", "Undo last staged"),
+                            ("s", "Split hunk"),
+                            ("o", "Comment on hunk"),
+                            ("j/k", "Navigate hunks"),
+                            ("q", "Exit patch mode"),
+                        ],
+                    )
+                }
+            } else {
+                (
+                    "Diff View",
+                    vec![
+                        ("Tab", "Toggle WIP / Review"),
+                        ("a", "Enter patch mode"),
+                        ("j/k", "Scroll"),
+                        ("^d/^u", "Page down/up"),
+                        ("c", "Commit changes"),
+                        ("m", "Merge branch"),
+                        ("q", "Close"),
+                    ],
+                )
+            }
+        }
+    };
+
+    // Calculate dimensions based on content
+    let row_count = keybindings.len() as u16;
+    let height = row_count + 5; // +5 for borders, padding, and empty line at top
+    let width = 44;
+
+    // Center the popup
+    let area = f.area();
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    // Create styled block with rounded corners
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Rgb(100, 100, 120)))
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                title,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]))
+        .title_bottom(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("any key", Style::default().fg(Color::DarkGray)),
+            Span::styled(" to close ", Style::default().fg(Color::Rgb(70, 70, 80))),
+        ]));
+
+    // Build styled rows with empty line at top for padding
+    let mut rows: Vec<Row> = vec![Row::new(vec![Cell::from(""), Cell::from("")])];
+    rows.extend(keybindings.into_iter().map(|(key, desc)| {
+        Row::new(vec![
+            Cell::from(Line::from(vec![
+                Span::styled(" ", Style::default()),
+                Span::styled(
+                    format!("{:>8}", key),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ])),
+            Cell::from(Line::from(vec![
+                Span::styled(" · ", Style::default().fg(Color::Rgb(70, 70, 80))),
+                Span::styled(desc, Style::default().fg(Color::White)),
+            ])),
+        ])
+    }));
+
+    let table = Table::new(rows, [Constraint::Length(10), Constraint::Min(25)])
+        .block(block)
+        .column_spacing(0);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(table, popup_area);
 }
 
 /// Render patch mode (hunk-by-hunk staging like git add -p)

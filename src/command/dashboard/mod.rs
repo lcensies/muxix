@@ -80,6 +80,12 @@ pub fn run() -> Result<()> {
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
+            // Help overlay handling - close on any key if open
+            if app.show_help {
+                app.show_help = false;
+                continue;
+            }
+
             // Extract state before mutable borrow to avoid borrow checker issues
             let (in_diff, in_patch_mode, is_branch_diff, in_comment_mode) =
                 if let ViewMode::Diff(diff_view) = &app.view_mode {
@@ -131,6 +137,10 @@ pub fn run() -> Result<()> {
             // Handle patch mode actions that need &mut self
             if in_diff && in_patch_mode {
                 match key.code {
+                    KeyCode::Char('?') => {
+                        app.show_help = true;
+                        continue;
+                    }
                     // Ctrl+C quits the entire dashboard
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.should_quit = true;
@@ -228,6 +238,7 @@ pub fn run() -> Result<()> {
                     } else {
                         // Normal dashboard mode: handle navigation and commands
                         match key.code {
+                            KeyCode::Char('?') => app.show_help = true,
                             KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
                             // Ctrl+C also quits
                             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -275,6 +286,7 @@ pub fn run() -> Result<()> {
                 ViewMode::Diff(diff_view) => {
                     // Diff view mode: handle scrolling and actions (non-patch mode)
                     match key.code {
+                        KeyCode::Char('?') => app.show_help = true,
                         KeyCode::Esc | KeyCode::Char('q') => app.close_diff(),
                         // Ctrl+C quits the entire dashboard
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {

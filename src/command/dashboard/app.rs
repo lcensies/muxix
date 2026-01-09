@@ -399,6 +399,8 @@ pub struct App {
     pub spinner_frame: u8,
     /// Whether to hide stale agents from the list
     pub hide_stale: bool,
+    /// Whether to show the help overlay
+    pub show_help: bool,
 }
 
 impl App {
@@ -434,6 +436,7 @@ impl App {
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
             hide_stale: load_hide_stale_from_tmux(),
+            show_help: false,
         };
         app.refresh();
         // Select first item if available
