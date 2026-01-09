@@ -92,7 +92,7 @@ Instead of just running `workmux merge`, this command:
 
 ## Example: /rebase command
 
-A flexible rebase command that handles different targets. Save as `~/.claude/commands/rebase.md`:
+A rebase command that resolves conflicts by first understanding changes in the target branch. Save as `~/.claude/commands/rebase.md`:
 
 ```markdown
 Rebase the current branch.
@@ -133,3 +133,5 @@ Handling conflicts:
 ```
 
 Usage: `/rebase`, `/rebase origin`, `/rebase origin/develop`, `/rebase feature-branch`
+
+See [Resolve merge conflicts with Claude Code](https://raine.dev/blog/resolve-conflicts-with-claude/) for more on this approach.
