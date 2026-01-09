@@ -1,15 +1,33 @@
-# Example: /merge command
+# Slash commands
 
-This is the `/merge` command the author uses. It provides an intelligent merge workflow that handles commits, rebasing, and conflict resolution. Save it as `~/.claude/commands/merge.md`.
+[Claude slash commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) are markdown files in `~/.claude/commands/` that define reusable workflows. When you type `/command-name` in Claude, it expands to the full prompt.
 
-Then configure your dashboard to use it:
+Slash commands are more powerful than simple prompts because they can encode detailed, multi-step instructions that the agent follows intelligently.
+
+## Using with workmux
+
+Slash commands pair well with workmux workflows:
+
+- **`/merge`** - Commit, rebase, and merge the current branch
+- **`/commit`** - Commit staged changes with your preferred style
+
+You can trigger these from the [dashboard](/guide/dashboard#configuration) using the `c` and `m` keybindings:
 
 ```yaml
 dashboard:
+  commit: "/commit"
   merge: "/merge"
 ```
 
-## Command
+## Example: /merge command
+
+This is the `/merge` command the author uses. It handles the complete merge workflow:
+
+1. Commit staged changes using a specific commit style
+2. Rebase onto the base branch with smart conflict resolution
+3. Run `workmux merge` to merge and clean up
+
+Save this as `~/.claude/commands/merge.md`:
 
 ````markdown
 Commit, rebase, and merge the current branch.
@@ -22,24 +40,7 @@ This command finishes work on the current branch by:
 
 ## Step 1: Commit
 
-If there are staged changes, commit them using my commit style:
-
-- lowercase
-- imperative mood
-- concise, no fluff
-- no conventional commit prefixes (no "feat:", "fix:", etc.)
-- optionally use a context prefix when it adds clarity (e.g. "readme:", "docs:",
-  "cli:")
-
-Examples:
-
-- "add support for custom themes"
-- "fix crash when config file missing"
-- "improve error messages for invalid input"
-- "readme: move nerdfont section to tips"
-- "cli: add --verbose flag"
-
-If there are no staged changes, skip the commit step.
+If there are staged changes, commit them. Use lowercase, imperative mood, no conventional commit prefixes. Skip if nothing is staged.
 
 ## Step 2: Rebase
 
@@ -78,3 +79,12 @@ Run: `workmux merge --rebase --notification`
 This will merge the branch into the base branch and clean up the worktree and
 tmux window.
 ````
+
+### Why this works well
+
+Instead of just running `workmux merge`, this command:
+
+- Commits staged changes first
+- Reviews base branch changes before resolving conflicts
+- Follows your commit style
+- Asks for guidance on complex conflicts

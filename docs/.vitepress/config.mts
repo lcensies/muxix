@@ -73,6 +73,7 @@ export default defineConfig({
           { text: "Claude Code", link: "/guide/claude-code" },
           { text: "Status tracking", link: "/guide/status-tracking" },
           { text: "Dashboard", link: "/guide/dashboard" },
+          { text: "Slash commands", link: "/guide/slash-commands" },
           { text: "Delegating tasks", link: "/guide/delegating-tasks" },
         ],
       },

@@ -180,44 +180,14 @@ dashboard:
   merge: "Rebase onto main and run workmux merge"
 ```
 
-### Using Claude slash commands
+### Using slash commands
 
-For complex workflows, [Claude slash commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) are more powerful than simple prompts or shell commands. A slash command can encode detailed instructions that the agent follows intelligently.
-
-For example, a `/merge` command in `~/.claude/commands/merge.md` might:
-
-1. Commit staged changes using your preferred commit style
-2. Rebase onto the base branch with smart conflict resolution
-3. Run `workmux merge` to clean up
-
-```markdown
-Commit, rebase, and merge the current branch.
-
-## Step 1: Commit
-
-If there are staged changes, commit them using my commit style:
-- lowercase, imperative mood, concise
-- no conventional commit prefixes
-
-## Step 2: Rebase
-
-Rebase onto the base branch. If conflicts occur:
-- Review recent changes to conflicting files with `git log -p`
-- Preserve changes from both branches
-- Ask for guidance if a conflict is unclear
-
-## Step 3: Merge
-
-Run: `workmux merge --rebase --notification`
-```
-
-See the [full example](/examples/merge-command) for a complete version you can copy to `~/.claude/commands/merge.md`.
-
-Then configure the dashboard to use it:
+For complex workflows, [slash commands](/guide/slash-commands) are more powerful than simple prompts or shell commands. A slash command can encode detailed, multi-step instructions that the agent follows intelligently.
 
 ```yaml
 dashboard:
+  commit: "/commit"
   merge: "/merge"
 ```
 
-This gives you an intelligent workflow that handles edge cases (staged changes, conflicts) rather than just running a shell command.
+See the [slash commands guide](/guide/slash-commands) for a complete `/merge` example you can copy.
