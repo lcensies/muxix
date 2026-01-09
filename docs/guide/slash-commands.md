@@ -26,7 +26,7 @@ This is the `/merge` command the author uses. It handles the complete merge work
 
 1. Commit staged changes using a specific commit style
 2. Rebase onto the base branch with smart conflict resolution
-3. Run `workmux merge` to merge and clean up
+3. Run `workmux merge` to merge, clean up, and send a notification when complete
 
 Save this as `~/.claude/commands/merge.md`:
 
