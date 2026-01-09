@@ -1120,12 +1120,16 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
         .unwrap_or_else(|| "main".to_string());
 
-    // If on the base branch itself, no conflicts or diff stats needed
+    // On the base branch: no branch-level diff, but still show uncommitted changes
     if branch == base_branch {
+        let stats = get_diff_stats(worktree_path, &branch);
+
         return GitStatus {
             ahead,
             behind,
             is_dirty,
+            uncommitted_added: stats.uncommitted_added,
+            uncommitted_removed: stats.uncommitted_removed,
             cached_at: now,
             base_branch,
             ..Default::default()
