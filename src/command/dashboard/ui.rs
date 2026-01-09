@@ -379,7 +379,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 duration,
                 title,
             )| {
-                let worktree_style = if is_main {
+                let worktree_style = if is_current {
+                    Style::default().fg(Color::White)
+                } else if is_main {
                     Style::default().fg(Color::DarkGray)
                 } else {
                     Style::default()
