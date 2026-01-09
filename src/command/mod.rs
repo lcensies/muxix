@@ -1,5 +1,6 @@
 pub mod add;
 pub mod args;
+pub mod changelog;
 pub mod close;
 pub mod dashboard;
 pub mod docs;

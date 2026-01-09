@@ -324,6 +324,9 @@ enum Commands {
     /// Show detailed documentation (renders README.md)
     Docs,
 
+    /// Show the changelog (what's new in each version)
+    Changelog,
+
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard,
 
@@ -432,6 +435,7 @@ pub fn run() -> Result<()> {
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
+        Commands::Changelog => command::changelog::run(),
         Commands::Dashboard => command::dashboard::run(),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),

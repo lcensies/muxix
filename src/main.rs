@@ -7,6 +7,7 @@ mod git;
 mod github;
 mod llm;
 mod logger;
+mod markdown;
 mod naming;
 mod prompt;
 mod spinner;
