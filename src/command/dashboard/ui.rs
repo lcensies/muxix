@@ -286,6 +286,19 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             let project = App::extract_project_name(agent);
             let (worktree_name, is_main) = app.extract_worktree_name(agent);
+            // Check if this agent corresponds to the current working directory.
+            // Try canonicalized comparison first (handles symlinks), fall back to direct comparison.
+            let is_current = app.current_worktree.as_ref().is_some_and(|cwd| {
+                // Try canonical comparison first (resolves symlinks like /var -> /private/var on macOS)
+                if let (Ok(cwd_canonical), Ok(agent_canonical)) =
+                    (cwd.canonicalize(), agent.path.canonicalize())
+                {
+                    cwd_canonical == agent_canonical
+                } else {
+                    // Fall back to direct comparison
+                    agent.path == *cwd
+                }
+            });
             let worktree_display = format!("{}{}", worktree_name, pane_suffix);
             let title = agent
                 .pane_title
@@ -307,6 +320,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 is_main,
+                is_current,
                 git_spans,
                 status_text,
                 status_color,
@@ -319,7 +333,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
@@ -329,7 +343,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, worktree_display, _, _, _, _, _, _)| worktree_display.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
         .max(8) // min 8 (header width)
@@ -339,7 +353,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use chars().count() instead of len() because Nerd Font icons are multi-byte
     let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, _, git_spans, _, _, _, _)| {
+        .map(|(_, _, _, _, _, git_spans, _, _, _, _)| {
             git_spans
                 .iter()
                 .map(|(text, _)| text.chars().count())
@@ -358,6 +372,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 is_main,
+                is_current,
                 git_spans,
                 status_text,
                 status_color,
@@ -376,7 +391,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                         .map(|(text, style)| Span::styled(text, style))
                         .collect::<Vec<_>>(),
                 );
-                Row::new(vec![
+                let row = Row::new(vec![
                     Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
@@ -384,7 +399,13 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                     Cell::from(status_text).style(Style::default().fg(status_color)),
                     Cell::from(duration),
                     Cell::from(title),
-                ])
+                ]);
+                // Subtle background for the active worktree row
+                if is_current {
+                    row.style(Style::default().bg(Color::Rgb(35, 40, 35)))
+                } else {
+                    row
+                }
             },
         )
         .collect();

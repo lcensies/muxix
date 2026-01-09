@@ -364,6 +364,8 @@ impl DiffView {
 pub struct App {
     pub agents: Vec<AgentPane>,
     pub table_state: TableState,
+    /// The directory from which the dashboard was launched (used to indicate the active worktree).
+    pub current_worktree: Option<PathBuf>,
     pub stale_threshold_secs: u64,
     pub config: Config,
     pub should_quit: bool,
@@ -403,9 +405,15 @@ impl App {
     pub fn new() -> Result<Self> {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
+        // Get the active pane's directory to indicate the active worktree.
+        // Try tmux first (handles popup case), fall back to current_dir.
+        let current_worktree = crate::tmux::get_client_active_pane_path()
+            .or_else(|_| std::env::current_dir())
+            .ok();
         let mut app = Self {
             agents: Vec::new(),
             table_state: TableState::default(),
+            current_worktree,
             stale_threshold_secs: 60 * 60, // 60 minutes
             config,
             should_quit: false,

@@ -110,6 +110,27 @@ pub fn get_pane_current_command(pane_id: &str) -> Result<String> {
     Ok(output.trim().to_string())
 }
 
+/// Get the working directory of the active pane in the current client's session.
+/// This is useful when running inside a tmux popup, where `std::env::current_dir()`
+/// returns the popup's directory rather than the underlying pane's directory.
+pub fn get_client_active_pane_path() -> Result<PathBuf> {
+    // Single shell command to get the active pane's path from the client's session
+    let output = Cmd::new("sh")
+        .args(&[
+            "-c",
+            "tmux display-message -p -t \"$(tmux display-message -p '#{client_session}')\" '#{pane_current_path}'",
+        ])
+        .run_and_capture_stdout()
+        .context("Failed to get client active pane path")?;
+
+    let path = output.trim();
+    if path.is_empty() {
+        return Err(anyhow!("Empty path returned from tmux"));
+    }
+
+    Ok(PathBuf::from(path))
+}
+
 /// Information about a specific pane running a workmux agent
 #[derive(Debug, Clone)]
 pub struct AgentPane {
