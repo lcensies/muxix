@@ -55,17 +55,18 @@ agents, is as simple as managing tmux windows.
 - Create git worktrees with matching tmux windows in a single command (`add`)
 - Merge branches and clean up everything (worktree, tmux window, branches) in
   one command (`merge`)
+- [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
+  sending commands
+- [Delegate tasks to worktree agents](#delegating-tasks-with-a-custom-command)
+  with a `/worktree` slash command
+- [Display Claude agent status in tmux window names](#agent-status-tracking)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new
   worktrees
-- [Delegate tasks to worktree agents](#delegating-tasks-with-a-custom-command)
-  with a `/worktree` slash command
 - [Automatic branch name generation](#automatic-branch-name-generation) from
   prompts using LLM
-- [Display Claude agent status in tmux window names](#agent-status-tracking)
-- [Dashboard](#workmux-dashboard) for monitoring all active agents
 - Shell completions
 
 ## Hype
