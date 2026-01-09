@@ -11,7 +11,7 @@ Slash commands pair well with workmux workflows:
 - **`/merge`** - Commit, rebase, and merge the current branch
 - **`/commit`** - Commit staged changes with your preferred style
 
-You can trigger these from the [dashboard](/guide/dashboard#configuration) using the `c` and `m` keybindings:
+You can trigger these from the [dashboard](/guide/dashboard/configuration) using the `c` and `m` keybindings:
 
 ```yaml
 dashboard:

@@ -59,22 +59,30 @@ export default defineConfig({
         ],
       },
       {
-        text: "Guides",
-        items: [
-          { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
-          { text: "direnv", link: "/guide/direnv" },
-          { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
-        ],
-      },
-      {
         text: "AI Agents",
         items: [
           { text: "Overview", link: "/guide/agents" },
           { text: "Claude Code", link: "/guide/claude-code" },
           { text: "Status tracking", link: "/guide/status-tracking" },
-          { text: "Dashboard", link: "/guide/dashboard" },
           { text: "Slash commands", link: "/guide/slash-commands" },
           { text: "Delegating tasks", link: "/guide/delegating-tasks" },
+        ],
+      },
+      {
+        text: "Dashboard",
+        items: [
+          { text: "Overview", link: "/guide/dashboard/" },
+          { text: "Diff view", link: "/guide/dashboard/diff-view" },
+          { text: "Patch mode", link: "/guide/dashboard/patch-mode" },
+          { text: "Configuration", link: "/guide/dashboard/configuration" },
+        ],
+      },
+      {
+        text: "Guides",
+        items: [
+          { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
+          { text: "direnv", link: "/guide/direnv" },
+          { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
         ],
       },
       {
