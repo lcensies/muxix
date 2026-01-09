@@ -112,7 +112,7 @@ When [delta](https://github.com/dandavison/delta) is installed, hunks are render
 | `n`       | Skip current hunk                |
 | `u`       | Undo last staged hunk            |
 | `s`       | Split hunk (if splittable)       |
-| `c`       | Comment on hunk (sends to agent) |
+| `o`       | Comment on hunk (sends to agent) |
 | `j`/`k`   | Navigate to next/previous hunk   |
 | `q`/`Esc` | Exit patch mode                  |
 | `Ctrl+c`  | Quit dashboard                   |
@@ -133,7 +133,7 @@ Press `u` to undo the last staged hunk. This uses `git apply --cached --reverse`
 
 ### Commenting on hunks
 
-Press `c` to enter comment mode. Type your message and press `Enter` to send it to the agent. The comment includes:
+Press `o` to enter comment mode. Type your message and press `Enter` to send it to the agent. The comment includes:
 
 - File path and line number
 - The diff hunk as context (in a code block)

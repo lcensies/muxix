@@ -153,7 +153,7 @@ pub fn run() -> Result<()> {
                         continue;
                     }
                     // Enter comment mode
-                    KeyCode::Char('c') => {
+                    KeyCode::Char('o') => {
                         if let ViewMode::Diff(ref mut diff) = app.view_mode {
                             diff.comment_input = Some(String::new());
                         }

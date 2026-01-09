@@ -1247,7 +1247,7 @@ rendered with syntax highlighting for better readability.
 | `n`       | Skip current hunk                |
 | `u`       | Undo last staged hunk            |
 | `s`       | Split hunk (if splittable)       |
-| `c`       | Comment on hunk (sends to agent) |
+| `o`       | Comment on hunk (sends to agent) |
 | `j`/`k`   | Navigate to next/previous hunk   |
 | `q`/`Esc` | Exit patch mode                  |
 
@@ -1257,7 +1257,7 @@ without staging. The counter in the header shows your progress (e.g., `[3/10]`).
 Press `s` to split the current hunk into smaller pieces when there are context
 lines between separate changes. Press `u` to undo the last staged hunk.
 
-Press `c` to comment on the current hunk. This sends a message to the agent
+Press `o` to comment on the current hunk. This sends a message to the agent
 including the file path, line number, the diff hunk as context, and your
 comment. Useful for giving feedback like "This function should handle the error
 case".

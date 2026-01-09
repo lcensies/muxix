@@ -700,7 +700,7 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
         footer_spans.extend(vec![
             Span::styled("[s]", Style::default().fg(Color::Yellow)),
             Span::raw(" split  "),
-            Span::styled("[c]", Style::default().fg(Color::Cyan)),
+            Span::styled("[o]", Style::default().fg(Color::Cyan)),
             Span::raw(" comment  "),
             Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
             Span::raw(" nav  "),
