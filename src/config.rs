@@ -61,6 +61,30 @@ pub struct AutoNameConfig {
     pub system_prompt: Option<String>,
 }
 
+/// Configuration for dashboard actions (commit, merge keybindings)
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct DashboardConfig {
+    /// Text to send to agent for commit action (c key).
+    /// Default: "Commit staged changes with a descriptive message"
+    pub commit: Option<String>,
+
+    /// Text to send to agent for merge action (m key).
+    /// Default: "!workmux merge"
+    pub merge: Option<String>,
+}
+
+impl DashboardConfig {
+    pub fn commit(&self) -> &str {
+        self.commit
+            .as_deref()
+            .unwrap_or("Commit staged changes with a descriptive message")
+    }
+
+    pub fn merge(&self) -> &str {
+        self.merge.as_deref().unwrap_or("!workmux merge")
+    }
+}
+
 /// Configuration for the workmux tool, read from .workmux.yaml
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Config {
@@ -125,6 +149,10 @@ pub struct Config {
     /// Configuration for LLM-based branch name generation
     #[serde(default)]
     pub auto_name: Option<AutoNameConfig>,
+
+    /// Dashboard actions configuration
+    #[serde(default)]
+    pub dashboard: DashboardConfig,
 }
 
 /// Configuration for a single tmux pane
@@ -450,6 +478,12 @@ impl Config {
             done: project.status_icons.done.or(self.status_icons.done),
         };
 
+        // Dashboard actions: per-field override
+        merged.dashboard = DashboardConfig {
+            commit: project.dashboard.commit.or(self.dashboard.commit),
+            merge: project.dashboard.merge.or(self.dashboard.merge),
+        };
+
         merged
     }
 
@@ -642,6 +676,16 @@ impl Config {
 #   symlink:
 #     - "<global>"
 #     - node_modules
+
+#-------------------------------------------------------------------------------
+# Dashboard
+#-------------------------------------------------------------------------------
+
+# Actions for dashboard keybindings (c = commit, m = merge).
+# Values are sent to the agent's pane. Use ! prefix for shell commands.
+# dashboard:
+#   commit: "Commit staged changes with a descriptive message"
+#   merge: "!workmux merge"
 "#;
 
         fs::write(&config_path, example_config)?;

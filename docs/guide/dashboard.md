@@ -86,17 +86,17 @@ If there are no changes to show, a message is displayed instead:
 
 ### Diff view keybindings
 
-| Key       | Action                           |
-| --------- | -------------------------------- |
-| `Tab`     | Toggle WIP / review              |
-| `a`       | Enter patch mode (WIP only)      |
-| `j`/`k`   | Scroll down/up                   |
-| `Ctrl+d`  | Page down                        |
-| `Ctrl+u`  | Page up                          |
-| `c`       | Send commit command to agent     |
-| `m`       | Trigger merge and exit dashboard |
-| `q`/`Esc` | Close diff view                  |
-| `Ctrl+c`  | Quit dashboard                   |
+| Key       | Action                      |
+| --------- | --------------------------- |
+| `Tab`     | Toggle WIP / review         |
+| `a`       | Enter patch mode (WIP only) |
+| `j`/`k`   | Scroll down/up              |
+| `Ctrl+d`  | Page down                   |
+| `Ctrl+u`  | Page up                     |
+| `c`       | Send commit action to agent |
+| `m`       | Send merge action to agent  |
+| `q`/`Esc` | Close diff view             |
+| `Ctrl+c`  | Quit dashboard              |
 
 ## Patch mode
 
@@ -142,3 +142,82 @@ Press `o` to enter comment mode. Type your message and press `Enter` to send it 
 Press `Esc` to cancel without sending.
 
 This is useful for giving the agent feedback about specific changes, like "This function should handle the error case" or "Can you add a test for this?"
+
+## Configuration
+
+The commit (`c`) and merge (`m`) actions can be customized in your `.workmux.yaml`:
+
+```yaml
+dashboard:
+  commit: "Commit staged changes with a descriptive message"
+  merge: "!workmux merge"
+```
+
+Both values are text sent to the agent's pane. Use the `!` prefix to run shell commands (supported by Claude, Gemini, and other agents).
+
+### Defaults
+
+| Action   | Default value                                      | Description             |
+| -------- | -------------------------------------------------- | ----------------------- |
+| `commit` | `Commit staged changes with a descriptive message` | Natural language prompt |
+| `merge`  | `!workmux merge`                                   | Shell command via agent |
+
+### Examples
+
+```yaml
+# Use Claude slash commands (requires ~/.claude/commands/ setup)
+dashboard:
+  commit: "/commit"
+  merge: "/merge"
+
+# Custom shell commands
+dashboard:
+  merge: "!workmux merge --rebase --notification"
+
+# Natural language prompts
+dashboard:
+  commit: "Create a commit with a conventional commit message"
+  merge: "Rebase onto main and run workmux merge"
+```
+
+### Using Claude slash commands
+
+For complex workflows, [Claude slash commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) are more powerful than simple prompts or shell commands. A slash command can encode detailed instructions that the agent follows intelligently.
+
+For example, a `/merge` command in `~/.claude/commands/merge.md` might:
+
+1. Commit staged changes using your preferred commit style
+2. Rebase onto the base branch with smart conflict resolution
+3. Run `workmux merge` to clean up
+
+```markdown
+Commit, rebase, and merge the current branch.
+
+## Step 1: Commit
+
+If there are staged changes, commit them using my commit style:
+- lowercase, imperative mood, concise
+- no conventional commit prefixes
+
+## Step 2: Rebase
+
+Rebase onto the base branch. If conflicts occur:
+- Review recent changes to conflicting files with `git log -p`
+- Preserve changes from both branches
+- Ask for guidance if a conflict is unclear
+
+## Step 3: Merge
+
+Run: `workmux merge --rebase --notification`
+```
+
+See the [full example](/examples/merge-command) for a complete version you can copy to `~/.claude/commands/merge.md`.
+
+Then configure the dashboard to use it:
+
+```yaml
+dashboard:
+  merge: "/merge"
+```
+
+This gives you an intelligent workflow that handles edge cases (staged changes, conflicts) rather than just running a shell command.

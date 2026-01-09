@@ -1600,40 +1600,41 @@ impl App {
         self.view_mode = ViewMode::Dashboard;
     }
 
-    /// Send commit command to the agent pane and close diff modal
+    /// Send commit action to the agent pane and close diff modal
     pub fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            // Send /commit command to the agent's pane
-            // Note: This assumes the agent is ready to receive input
-            let _ = tmux::send_keys(&diff.pane_id, "/commit\n");
+            let action = format!("{}\n", self.config.dashboard.commit());
+            let _ = tmux::send_keys(&diff.pane_id, &action);
         }
         self.close_diff();
     }
 
-    /// Trigger merge workflow and close diff modal
+    /// Send merge action to the agent pane and close diff modal
     pub fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            // Send /merge command to the agent's pane
-            let _ = tmux::send_keys(&diff.pane_id, "/merge\n");
+            let action = format!("{}\n", self.config.dashboard.merge());
+            let _ = tmux::send_keys(&diff.pane_id, &action);
         }
         self.close_diff();
     }
 
-    /// Send commit command to the currently selected agent's pane (from dashboard view)
+    /// Send commit action to the currently selected agent's pane (from dashboard view)
     pub fn send_commit_to_selected(&mut self) {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys(&agent.pane_id, "/commit\n");
+            let action = format!("{}\n", self.config.dashboard.commit());
+            let _ = tmux::send_keys(&agent.pane_id, &action);
         }
     }
 
-    /// Send merge command to the currently selected agent's pane (from dashboard view)
+    /// Send merge action to the currently selected agent's pane (from dashboard view)
     pub fn trigger_merge_for_selected(&mut self) {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys(&agent.pane_id, "/merge\n");
+            let action = format!("{}\n", self.config.dashboard.merge());
+            let _ = tmux::send_keys(&agent.pane_id, &action);
         }
     }
 }
