@@ -1075,11 +1075,25 @@ impl App {
 
     /// Enter patch mode for the current diff view
     pub fn enter_patch_mode(&mut self) {
+        // Check if we are in WIP diff view (patch mode not supported for branch diffs)
+        let is_wip_diff = if let ViewMode::Diff(ref diff) = self.view_mode {
+            !diff.is_branch_diff
+        } else {
+            false
+        };
+
+        if !is_wip_diff {
+            return;
+        }
+
+        // Reload the diff to show only unstaged changes.
+        // This ensures we only patch hunks that aren't already staged.
+        // The WIP view uses `git diff HEAD` which shows all uncommitted changes,
+        // but patch mode should only show unstaged changes (like `git add -p`).
+        self.reload_unstaged_diff();
+
+        // Enable patch mode if there are unstaged hunks
         if let ViewMode::Diff(ref mut diff) = self.view_mode {
-            if diff.is_branch_diff {
-                // Patch mode only makes sense for WIP (uncommitted) changes
-                return;
-            }
             if diff.hunks.is_empty() {
                 return;
             }
