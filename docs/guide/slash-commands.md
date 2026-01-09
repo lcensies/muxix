@@ -135,3 +135,18 @@ Handling conflicts:
 Usage: `/rebase`, `/rebase origin`, `/rebase origin/develop`, `/rebase feature-branch`
 
 See [Resolve merge conflicts with Claude Code](https://raine.dev/blog/resolve-conflicts-with-claude/) for more on this approach.
+
+## Example: /commit command
+
+A commit command that follows a consistent style. Save as `~/.claude/commands/commit.md`:
+
+```markdown
+Commit the changes using this style:
+
+- lowercase
+- imperative mood
+- concise, no conventional commit prefixes
+- optionally use a context prefix when it adds clarity (e.g., "docs:", "cli:")
+
+If nothing is staged, stage all changes first.
+```
