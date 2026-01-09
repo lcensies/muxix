@@ -8,6 +8,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.79 (2026-01-09)
+
+- Dashboard: Fixed patch mode showing already-staged hunks
+- Dashboard: Uncommitted changes are now shown for the main worktree
+
 ## v0.1.78 (2026-01-08)
 
 - Dashboard: Added patch mode for interactive hunk-by-hunk staging with `p` key
