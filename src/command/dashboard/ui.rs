@@ -244,10 +244,33 @@ fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(Stri
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
-    let header_cells = ["#", "Project", "Worktree", "Git", "Status", "Time", "Title"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).bold()));
-    let header = Row::new(header_cells).height(1);
+    // Check if git data is being refreshed
+    let is_git_fetching = app
+        .is_git_fetching
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    // Build header with spinner in Git column when fetching
+    let git_header = if is_git_fetching {
+        let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
+        Line::from(vec![
+            Span::styled("Git ", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(spinner.to_string(), Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(Span::styled("Git", Style::default().fg(Color::Cyan).bold()))
+    };
+
+    let header_style = Style::default().fg(Color::Cyan).bold();
+    let header = Row::new(vec![
+        Cell::from("#").style(header_style),
+        Cell::from("Project").style(header_style),
+        Cell::from("Worktree").style(header_style),
+        Cell::from(git_header),
+        Cell::from("Status").style(header_style),
+        Cell::from("Time").style(header_style),
+        Cell::from("Title").style(header_style),
+    ])
+    .height(1);
 
     // Group agents by (session, window_name) to detect multi-pane windows
     let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();

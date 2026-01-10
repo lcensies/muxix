@@ -394,7 +394,7 @@ pub struct App {
     /// Last time git status was fetched (to throttle background fetches)
     last_git_fetch: std::time::Instant,
     /// Flag to track if a git fetch is in progress (prevents thread pile-up)
-    is_git_fetching: Arc<AtomicBool>,
+    pub is_git_fetching: Arc<AtomicBool>,
     /// Frame counter for spinner animation (increments each tick)
     pub spinner_frame: u8,
     /// Whether to hide stale agents from the list
