@@ -1540,9 +1540,10 @@ impl App {
         };
 
         // Include untracked files only for uncommitted changes view
-        // Parse hunks only for WIP mode (patch mode is WIP-only)
+        // Don't parse hunks eagerly - they're only needed for patch mode,
+        // which reloads and parses them on demand via reload_unstaged_diff()
         let include_untracked = !branch_diff;
-        let parse_hunks = !branch_diff;
+        let parse_hunks = false;
         match Self::get_diff_content(path, &diff_arg, include_untracked, parse_hunks) {
             Ok((content, lines_added, lines_removed, hunks)) => {
                 let (content, line_count) = if content.trim().is_empty() {

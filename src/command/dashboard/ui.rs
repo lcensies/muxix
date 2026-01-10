@@ -626,8 +626,8 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
         Span::raw("  "),
     ];
 
-    // Show [a] patch option only for WIP mode with hunks
-    if !diff.is_branch_diff && !diff.hunks.is_empty() {
+    // Show [a] patch option only for WIP mode with changes
+    if !diff.is_branch_diff && (diff.lines_added > 0 || diff.lines_removed > 0) {
         footer_spans.push(Span::styled("[a]", Style::default().fg(Color::Magenta)));
         footer_spans.push(Span::raw(" patch  "));
     }
