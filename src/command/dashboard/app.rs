@@ -90,6 +90,19 @@ pub enum ViewMode {
     Diff(Box<DiffView>),
 }
 
+/// A file entry in the diff, used for the sidebar file list
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileEntry {
+    /// The filename (relative path)
+    pub filename: String,
+    /// Lines added in this file
+    pub lines_added: usize,
+    /// Lines removed in this file
+    pub lines_removed: usize,
+    /// Line index in parsed_lines where this file's diff starts
+    pub start_line: usize,
+}
+
 /// A single hunk from a diff, suitable for staging with git apply
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiffHunk {
@@ -266,25 +279,22 @@ impl DiffHunk {
 /// Parse "@@ -10,5 +12,7 @@" -> Some((10, 12))
 fn parse_hunk_header(header: &str) -> Option<(usize, usize)> {
     let stripped = strip_ansi_escapes(header);
-    if !stripped.starts_with("@@") {
-        return None;
-    }
 
-    // Find content between @@ markers
-    let start = stripped.find("@@")? + 2;
-    let rest = &stripped[start..];
-    let end = rest.find("@@")?;
-    let meta = &rest[..end];
+    // Find content between @@ markers using split
+    // Format: "@@ -old,count +new,count @@" or "@@ -old,count +new,count @@ context"
+    let mut parts = stripped.split("@@");
+    parts.next()?; // Skip before first @@
+    let meta = parts.next()?; // Content between @@ markers
 
     // Parse -old,count and +new,count
     let mut old_start = None;
     let mut new_start = None;
 
     for part in meta.split_whitespace() {
-        if let Some(stripped) = part.strip_prefix('-') {
-            old_start = stripped.split(',').next()?.parse().ok();
-        } else if let Some(stripped) = part.strip_prefix('+') {
-            new_start = stripped.split(',').next()?.parse().ok();
+        if let Some(rest) = part.strip_prefix('-') {
+            old_start = rest.split(',').next()?.parse().ok();
+        } else if let Some(rest) = part.strip_prefix('+') {
+            new_start = rest.split(',').next()?.parse().ok();
         }
     }
 
@@ -330,6 +340,8 @@ pub struct DiffView {
     pub staged_hunks: Vec<DiffHunk>,
     /// Comment input buffer (Some = comment mode active)
     pub comment_input: Option<String>,
+    /// List of files in the diff for the sidebar
+    pub file_list: Vec<FileEntry>,
 }
 
 impl DiffView {
@@ -353,9 +365,13 @@ impl DiffView {
 
     pub fn scroll_page_down(&mut self) {
         let page = self.viewport_height as usize;
-        let max_scroll = self
-            .line_count
-            .saturating_sub(self.viewport_height as usize);
+        // In patch mode, use current hunk's line count; otherwise use full diff
+        let effective_line_count = if self.patch_mode && !self.hunks.is_empty() {
+            self.hunks[self.current_hunk].parsed_lines.len()
+        } else {
+            self.line_count
+        };
+        let max_scroll = effective_line_count.saturating_sub(self.viewport_height as usize);
         self.scroll = (self.scroll + page).min(max_scroll);
     }
 }
@@ -944,8 +960,11 @@ impl App {
                 // Take the last space-separated part and strip the prefix (e.g., "w/path" -> "path")
                 if let Some(last_part) = stripped.split_whitespace().last() {
                     // Strip single-char prefix + "/" (e.g., "b/file.rs" -> "file.rs")
-                    if last_part.len() > 2 && last_part.chars().nth(1) == Some('/') {
-                        current_filename = last_part[2..].to_string();
+                    // Use split_once to safely handle the prefix
+                    if let Some((prefix, path)) = last_part.split_once('/')
+                        && prefix.len() == 1
+                    {
+                        current_filename = path.to_string();
                     }
                 }
             } else if stripped.starts_with("@@") {
@@ -1015,6 +1034,130 @@ impl App {
             }
         }
         (added, removed)
+    }
+
+    /// Extract file entries from hunks, aggregating stats per file
+    fn extract_file_list(hunks: &[DiffHunk]) -> Vec<FileEntry> {
+        use std::collections::BTreeMap;
+
+        // Aggregate stats by filename (BTreeMap for stable ordering)
+        let mut file_stats: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+        for hunk in hunks {
+            let entry = file_stats.entry(&hunk.filename).or_insert((0, 0));
+            entry.0 += hunk.lines_added;
+            entry.1 += hunk.lines_removed;
+        }
+
+        file_stats
+            .into_iter()
+            .map(|(filename, (lines_added, lines_removed))| FileEntry {
+                filename: filename.to_string(),
+                lines_added,
+                lines_removed,
+                start_line: 0, // Will be mapped later
+            })
+            .collect()
+    }
+
+    /// Get file list using git diff --numstat (for review mode where hunks aren't parsed)
+    fn get_file_list_numstat(
+        path: &PathBuf,
+        diff_arg: &str,
+        include_untracked: bool,
+    ) -> Vec<FileEntry> {
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("-C").arg(path).arg("diff").arg("--numstat");
+        if !diff_arg.is_empty() {
+            cmd.arg(diff_arg);
+        }
+
+        let output = match cmd.output() {
+            Ok(o) => o,
+            Err(_) => return Vec::new(),
+        };
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let mut entries: Vec<FileEntry> = output_str
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let added = parts[0].parse().unwrap_or(0);
+                    let removed = parts[1].parse().unwrap_or(0);
+                    let filename = parts[2].to_string();
+                    Some(FileEntry {
+                        filename,
+                        lines_added: added,
+                        lines_removed: removed,
+                        start_line: 0,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Include untracked files if requested
+        if include_untracked
+            && let Ok(out) = std::process::Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(["ls-files", "--others", "--exclude-standard"])
+                .output()
+        {
+            for file in String::from_utf8_lossy(&out.stdout).lines() {
+                if !file.trim().is_empty() {
+                    // Get line count for untracked file
+                    let file_path = path.join(file);
+                    let lines_added = std::fs::read_to_string(&file_path)
+                        .map(|c| c.lines().count())
+                        .unwrap_or(0);
+                    entries.push(FileEntry {
+                        filename: file.to_string(),
+                        lines_added,
+                        lines_removed: 0,
+                        start_line: 0,
+                    });
+                }
+            }
+        }
+
+        entries
+    }
+
+    /// Map file start_line offsets by scanning parsed_lines for file headers
+    fn map_file_offsets(file_list: &mut [FileEntry], parsed_lines: &[Line]) {
+        if file_list.is_empty() {
+            return;
+        }
+
+        // For each file, scan all lines to find where it first appears
+        // Files may not appear in the same order as numstat output
+        for file in file_list.iter_mut() {
+            let target = &file.filename;
+
+            for (line_idx, line) in parsed_lines.iter().enumerate() {
+                let text = line.to_string();
+
+                // Match filename in various diff formats:
+                // - Raw git: "diff --git a/src/file.rs b/src/file.rs"
+                // - Delta plain: "src/file.rs"
+                // - Delta decorated: "added: 2/src/file.rs───────"
+                let is_match = text.ends_with(target)
+                    || text.ends_with(&format!("/{}", target))
+                    || text.contains(&format!("/{} ", target))
+                    || text.contains(&format!(" {} ", target))
+                    || (text.starts_with("diff --git") && text.contains(target));
+
+                if is_match {
+                    file.start_line = line_idx;
+                    break;
+                }
+            }
+        }
+
+        // Sort file_list by start_line to match diff order
+        file_list.sort_by_key(|f| f.start_line);
     }
 
     /// Stage a single hunk using git apply --cached
@@ -1195,6 +1338,8 @@ impl App {
                     (content, count)
                 };
                 let parsed_lines = parse_ansi_to_lines(&content);
+                let mut file_list = Self::extract_file_list(&hunks);
+                Self::map_file_offsets(&mut file_list, &parsed_lines);
 
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
@@ -1215,6 +1360,7 @@ impl App {
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
                     comment_input: None,
+                    file_list,
                 }));
             }
             Err(e) => {
@@ -1238,6 +1384,7 @@ impl App {
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
                     comment_input: None,
+                    file_list: Vec::new(),
                 }));
             }
         }
@@ -1565,6 +1712,14 @@ impl App {
                 };
                 let parsed_lines = parse_ansi_to_lines(&content);
 
+                // Get file list: from hunks for WIP, or via numstat for review mode
+                let mut file_list = if !hunks.is_empty() {
+                    Self::extract_file_list(&hunks)
+                } else {
+                    Self::get_file_list_numstat(path, &diff_arg, include_untracked)
+                };
+                Self::map_file_offsets(&mut file_list, &parsed_lines);
+
                 self.view_mode = ViewMode::Diff(Box::new(DiffView {
                     content,
                     parsed_lines,
@@ -1584,6 +1739,7 @@ impl App {
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
                     comment_input: None,
+                    file_list,
                 }));
             }
             Err(e) => {
@@ -1608,6 +1764,7 @@ impl App {
                     hunks_processed: 0,
                     staged_hunks: Vec::new(),
                     comment_input: None,
+                    file_list: Vec::new(),
                 }));
             }
         }

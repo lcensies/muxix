@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, Cell, Clear, List, ListItem, Paragraph, Row, Table},
 };
 use std::collections::{BTreeMap, HashSet};
 
@@ -552,16 +552,139 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     ])
     .split(area);
 
+    // Split content: File List (Right) + Diff (Left)
+    // Only show file list if there are files to display
+    let has_files = !diff.file_list.is_empty();
+    let content_chunks = if has_files {
+        Layout::horizontal([
+            Constraint::Min(40),    // Diff content (takes remaining space)
+            Constraint::Percentage(25), // File list sidebar
+        ])
+        .split(chunks[0])
+    } else {
+        // No files - use full width for diff
+        Layout::horizontal([Constraint::Percentage(100)]).split(chunks[0])
+    };
+
+    let diff_area = content_chunks[0];
+    let file_list_area = if has_files {
+        Some(content_chunks[1])
+    } else {
+        None
+    };
+
     // Update viewport height for scroll calculations (subtract 2 for borders)
-    diff.viewport_height = chunks[0].height.saturating_sub(2);
+    diff.viewport_height = diff_area.height.saturating_sub(2);
 
     if diff.patch_mode {
-        // Patch mode: show current hunk
+        // Patch mode: show current hunk (no file list in patch mode)
         render_patch_mode(f, diff, chunks[0], chunks[1]);
     } else {
-        // Normal diff mode
-        render_normal_diff(f, diff, chunks[0], chunks[1]);
+        // Normal diff mode with optional file list
+        render_normal_diff(f, diff, diff_area, chunks[1]);
+        if let Some(file_area) = file_list_area {
+            render_file_list(f, diff, file_area);
+        }
     }
+}
+
+/// Determine which file is currently visible based on scroll position
+fn get_current_file_index(diff: &DiffView) -> Option<usize> {
+    if diff.file_list.is_empty() {
+        return None;
+    }
+
+    // Find the last file whose start_line is <= current scroll position
+    let mut current_idx = 0;
+    for (idx, file) in diff.file_list.iter().enumerate() {
+        if file.start_line <= diff.scroll {
+            current_idx = idx;
+        } else {
+            break;
+        }
+    }
+    Some(current_idx)
+}
+
+/// Render the file list sidebar (diffview style with directory grouping)
+fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
+    let current_file_idx = get_current_file_index(diff);
+
+    let block = Block::bordered()
+        .title(format!(" Files ({}) ", diff.file_list.len()))
+        .title_style(Style::default().fg(Color::Cyan))
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    // Group files by directory
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut current_dir: Option<&str> = None;
+
+    for (idx, file) in diff.file_list.iter().enumerate() {
+        let is_current = current_file_idx == Some(idx);
+
+        // Split into directory and basename
+        let (dir, basename) = match file.filename.rsplit_once('/') {
+            Some((d, b)) => (Some(d), b),
+            None => (None, file.filename.as_str()),
+        };
+
+        // Add directory header if changed
+        let dir_str = dir.unwrap_or(".");
+        if current_dir != Some(dir_str) {
+            current_dir = Some(dir_str);
+            // Directory line (dimmed, with indent)
+            items.push(ListItem::new(Line::from(Span::styled(
+                format!("  {}", dir_str),
+                Style::default().fg(Color::DarkGray),
+            ))));
+        }
+
+        // Determine status indicator
+        let (status_char, status_color) = if file.lines_removed == 0 && file.lines_added > 0 {
+            ("A", Color::Green) // Added
+        } else if file.lines_added == 0 && file.lines_removed > 0 {
+            ("D", Color::Red) // Deleted
+        } else {
+            ("M", Color::Yellow) // Modified
+        };
+
+        // Build file line: "M   filename  +added, -removed"
+        let style = if is_current {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let mut spans = vec![
+            Span::styled(
+                format!("{} ", status_char),
+                Style::default().fg(status_color),
+            ),
+            Span::styled(format!("  {} ", basename), style),
+        ];
+
+        // Stats in +N -M format
+        if file.lines_added > 0 {
+            spans.push(Span::styled(
+                format!("+{}", file.lines_added),
+                Style::default().fg(Color::Green),
+            ));
+        }
+        if file.lines_removed > 0 {
+            spans.push(Span::styled(
+                format!(" -{}", file.lines_removed),
+                Style::default().fg(Color::Red),
+            ));
+        }
+
+        items.push(ListItem::new(Line::from(spans)));
+    }
+
+    let list = List::new(items).block(block);
+
+    f.render_widget(list, area);
 }
 
 /// Render normal diff view (full diff with scroll)
@@ -593,8 +716,9 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
     let inner_height = content_area.height.saturating_sub(2) as usize;
 
     // Virtualize: slice only the visible lines from cached parsed_lines
-    let start = diff.scroll;
-    let end = (diff.scroll + inner_height).min(diff.parsed_lines.len());
+    let max_start = diff.parsed_lines.len().saturating_sub(1);
+    let start = diff.scroll.min(max_start);
+    let end = (start + inner_height).min(diff.parsed_lines.len());
     let visible_lines: Vec<Line> = diff.parsed_lines[start..end].to_vec();
     let text = Text::from(visible_lines);
 
@@ -837,8 +961,9 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
     let inner_height = content_area.height.saturating_sub(2) as usize;
 
     // Virtualize: slice only the visible lines from cached parsed_lines
-    let start = diff.scroll;
-    let end = (diff.scroll + inner_height).min(hunk.parsed_lines.len());
+    let max_start = hunk.parsed_lines.len().saturating_sub(1);
+    let start = diff.scroll.min(max_start);
+    let end = (start + inner_height).min(hunk.parsed_lines.len());
     let visible_lines: Vec<Line> = hunk.parsed_lines[start..end].to_vec();
     let text = Text::from(visible_lines);
 
