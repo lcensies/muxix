@@ -73,10 +73,9 @@ pub fn window_exists(prefix: &str, window_name: &str) -> Result<bool> {
 }
 
 /// Check if a window exists by its full name (including prefix)
-/// Searches all sessions to handle multi-session setups correctly.
 pub fn window_exists_by_full_name(full_name: &str) -> Result<bool> {
     let windows = Cmd::new("tmux")
-        .args(&["list-windows", "-a", "-F", "#{window_name}"])
+        .args(&["list-windows", "-F", "#{window_name}"])
         .run_and_capture_stdout();
 
     match windows {
