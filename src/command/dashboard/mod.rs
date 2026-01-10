@@ -20,6 +20,7 @@ use anyhow::Result;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -76,10 +77,42 @@ pub fn run() -> Result<()> {
         let time_until_tick = tick_rate.saturating_sub(last_tick.elapsed());
         let timeout = time_until_tick.min(time_until_preview);
 
-        if event::poll(timeout)?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
+        if event::poll(timeout)? {
+            let event = event::read()?;
+
+            // Handle mouse scroll events in diff view
+            if let Event::Mouse(mouse) = &event {
+                if let ViewMode::Diff(ref mut diff_view) = app.view_mode {
+                    let total_lines = if diff_view.patch_mode {
+                        diff_view
+                            .hunks
+                            .get(diff_view.current_hunk)
+                            .map(|h| h.parsed_lines.len())
+                            .unwrap_or(0)
+                    } else {
+                        diff_view.line_count
+                    };
+
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            diff_view.scroll = diff_view.scroll.saturating_sub(3);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            let max_scroll =
+                                total_lines.saturating_sub(diff_view.viewport_height as usize);
+                            diff_view.scroll = (diff_view.scroll + 3).min(max_scroll);
+                        }
+                        _ => {}
+                    }
+                }
+                continue;
+            }
+
+            // Handle key events
+            let Event::Key(key) = event else { continue };
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
             // Help overlay handling - close on any key if open
             if app.show_help {
                 app.show_help = false;
