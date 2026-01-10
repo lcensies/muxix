@@ -974,14 +974,10 @@ fn agent_needs_auto_status(effective_agent: Option<&str>) -> bool {
 /// Sets the "working" status on a pane. Used when launching an agent with a prompt
 /// to work around Claude Code's broken UserPromptSubmit hook.
 ///
-/// This sets both window-level and pane-level status options, matching the behavior
-/// of `workmux set-window-status working`.
-///
-/// Note: This intentionally does NOT set `@workmux_pane_command` for exit detection.
-/// When called right after `send_keys()`, the shell hasn't started the agent yet,
-/// so capturing the command would get `zsh`/`bash` instead of `node`/`claude`.
-/// The agent's own hooks will set proper exit detection when they fire.
-pub fn set_pane_working_status(pane_id: &str, config: &crate::config::Config) -> Result<()> {
+/// Note: This intentionally does NOT enable exit detection. When called right after
+/// `send_keys()`, the shell hasn't started the agent yet, so capturing the command
+/// would get `zsh`/`bash` instead of `node`/`claude`.
+fn set_pane_working_status(pane_id: &str, config: &crate::config::Config) -> Result<()> {
     let icon = config.status_icons.working();
 
     // Ensure the status format is applied so the icon shows up
@@ -989,57 +985,82 @@ pub fn set_pane_working_status(pane_id: &str, config: &crate::config::Config) ->
         let _ = ensure_status_format(pane_id);
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    set_status_options(pane_id, icon, false);
+    Ok(())
+}
+
+/// Sets status options on a pane (both window-level and pane-level).
+///
+/// This is the shared implementation used by both `workmux set-window-status` and
+/// the auto-status workaround when launching agents with prompts.
+///
+/// # Arguments
+/// * `pane` - The tmux pane ID to set status on
+/// * `icon` - The status icon to display
+/// * `enable_exit_detection` - If true, captures current command for exit detection.
+///   Set to false when the agent hasn't started yet (e.g., right after send_keys).
+pub fn set_status_options(pane: &str, icon: &str, enable_exit_detection: bool) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let now_str = now.to_string();
 
-    // Set window-level status (for tmux status bar)
-    Cmd::new("tmux")
-        .args(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
+    // 1. Set Window Option (for tmux status bar display)
+    // "Last write wins" behavior for the window icon
+    if let Err(e) = Cmd::new("tmux")
+        .args(&["set-option", "-w", "-t", pane, "@workmux_status", icon])
         .run()
-        .context("Failed to set window status")?;
-
-    Cmd::new("tmux")
+    {
+        eprintln!("workmux: failed to set window status: {}", e);
+    }
+    let _ = Cmd::new("tmux")
         .args(&[
             "set-option",
             "-w",
             "-t",
-            pane_id,
+            pane,
             "@workmux_status_ts",
             &now_str,
         ])
-        .run()?;
+        .run();
 
-    // Set pane-level status (for dashboard tracking)
-    Cmd::new("tmux")
+    // 2. Set Pane Option (for dashboard tracking)
+    // Use a DISTINCT key to avoid inheritance issues in list-panes
+    if let Err(e) = Cmd::new("tmux")
+        .args(&["set-option", "-p", "-t", pane, "@workmux_pane_status", icon])
+        .run()
+    {
+        eprintln!("workmux: failed to set pane status: {}", e);
+    }
+    let _ = Cmd::new("tmux")
         .args(&[
             "set-option",
             "-p",
             "-t",
-            pane_id,
-            "@workmux_pane_status",
-            icon,
-        ])
-        .run()?;
-
-    Cmd::new("tmux")
-        .args(&[
-            "set-option",
-            "-p",
-            "-t",
-            pane_id,
+            pane,
             "@workmux_pane_status_ts",
             &now_str,
         ])
-        .run()?;
+        .run();
 
-    // Note: We intentionally skip setting @workmux_pane_command here.
-    // The agent hasn't started yet, so we'd capture the wrong command.
-    // The agent's hooks will set this when they fire (e.g., UserPromptSubmit).
-
-    Ok(())
+    // 3. Store the current foreground command for agent exit detection
+    // When the command changes (e.g., from "node" to "zsh"), we know the agent exited
+    if enable_exit_detection {
+        let current_cmd = get_pane_current_command(pane).unwrap_or_default();
+        if !current_cmd.is_empty() {
+            let _ = Cmd::new("tmux")
+                .args(&[
+                    "set-option",
+                    "-p",
+                    "-t",
+                    pane,
+                    "@workmux_pane_command",
+                    &current_cmd,
+                ])
+                .run();
+        }
+    }
 }
 
 // --- Status Format Management ---
