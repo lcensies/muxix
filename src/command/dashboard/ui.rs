@@ -640,8 +640,8 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
         }
 
         // Determine status indicator
-        let (status_char, status_color) = if file.lines_removed == 0 && file.lines_added > 0 {
-            ("A", Color::Green) // Added
+        let (status_char, status_color) = if file.is_new {
+            ("A", Color::Green) // Added (untracked file)
         } else if file.lines_added == 0 && file.lines_removed > 0 {
             ("D", Color::Red) // Deleted
         } else {

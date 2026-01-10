@@ -101,6 +101,8 @@ pub struct FileEntry {
     pub lines_removed: usize,
     /// Line index in parsed_lines where this file's diff starts
     pub start_line: usize,
+    /// Whether this is an untracked (new) file
+    pub is_new: bool,
 }
 
 /// A single hunk from a diff, suitable for staging with git apply
@@ -1055,6 +1057,7 @@ impl App {
                 lines_added,
                 lines_removed,
                 start_line: 0, // Will be mapped later
+                is_new: false, // Can't determine from hunks alone
             })
             .collect()
     }
@@ -1090,6 +1093,7 @@ impl App {
                         lines_added: added,
                         lines_removed: removed,
                         start_line: 0,
+                        is_new: false,
                     })
                 } else {
                     None
@@ -1117,6 +1121,7 @@ impl App {
                         lines_added,
                         lines_removed: 0,
                         start_line: 0,
+                        is_new: true,
                     });
                 }
             }
