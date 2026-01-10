@@ -751,6 +751,14 @@ pub fn setup_panes(
             respawn_pane(initial_pane_id, working_dir, Some(&wrapper))?;
             handshake.wait()?;
             send_keys(initial_pane_id, cmd_str)?;
+
+            // Set "working" status if prompt was injected into a hook-supporting agent.
+            // See: agent_needs_auto_status()
+            if let Some(Cow::Owned(_)) = &adjusted_command
+                && agent_needs_auto_status(effective_agent)
+            {
+                let _ = set_pane_working_status(initial_pane_id, config);
+            }
         }
         if pane_config.focus {
             focus_pane_id = Some(initial_pane_id.to_string());
@@ -802,6 +810,15 @@ pub fn setup_panes(
 
                 handshake.wait()?;
                 send_keys(&pane_id, cmd_str)?;
+
+                // Set "working" status if prompt was injected into a hook-supporting agent.
+                // See: agent_needs_auto_status()
+                if let Some(Cow::Owned(_)) = &adjusted_command
+                    && agent_needs_auto_status(effective_agent)
+                {
+                    let _ = set_pane_working_status(&pane_id, config);
+                }
+
                 pane_id
             } else {
                 split_pane_with_command(
@@ -929,6 +946,100 @@ fn rewrite_agent_command(
         let escaped_inner = inner_cmd.replace('\'', "'\\''");
         Some(format!(" sh -c '{}'", escaped_inner))
     }
+}
+
+// --- Status Management ---
+
+/// Checks if an agent supports hooks and needs auto-status when launched with a prompt.
+/// Currently only Claude and opencode support hooks that would normally set the status.
+///
+/// This is a workaround for Claude Code's broken UserPromptSubmit hook:
+/// https://github.com/anthropics/claude-code/issues/17284
+fn agent_needs_auto_status(effective_agent: Option<&str>) -> bool {
+    let Some(agent) = effective_agent else {
+        return false;
+    };
+
+    let (token, _) = crate::config::split_first_token(agent).unwrap_or((agent, ""));
+    let resolved =
+        crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
+    let stem = Path::new(&resolved)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    matches!(stem, "claude" | "opencode")
+}
+
+/// Sets the "working" status on a pane. Used when launching an agent with a prompt
+/// to work around Claude Code's broken UserPromptSubmit hook.
+///
+/// This sets both window-level and pane-level status options, matching the behavior
+/// of `workmux set-window-status working`.
+///
+/// Note: This intentionally does NOT set `@workmux_pane_command` for exit detection.
+/// When called right after `send_keys()`, the shell hasn't started the agent yet,
+/// so capturing the command would get `zsh`/`bash` instead of `node`/`claude`.
+/// The agent's own hooks will set proper exit detection when they fire.
+pub fn set_pane_working_status(pane_id: &str, config: &crate::config::Config) -> Result<()> {
+    let icon = config.status_icons.working();
+
+    // Ensure the status format is applied so the icon shows up
+    if config.status_format.unwrap_or(true) {
+        let _ = ensure_status_format(pane_id);
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let now_str = now.to_string();
+
+    // Set window-level status (for tmux status bar)
+    Cmd::new("tmux")
+        .args(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
+        .run()
+        .context("Failed to set window status")?;
+
+    Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-w",
+            "-t",
+            pane_id,
+            "@workmux_status_ts",
+            &now_str,
+        ])
+        .run()?;
+
+    // Set pane-level status (for dashboard tracking)
+    Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-p",
+            "-t",
+            pane_id,
+            "@workmux_pane_status",
+            icon,
+        ])
+        .run()?;
+
+    Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-p",
+            "-t",
+            pane_id,
+            "@workmux_pane_status_ts",
+            &now_str,
+        ])
+        .run()?;
+
+    // Note: We intentionally skip setting @workmux_pane_command here.
+    // The agent hasn't started yet, so we'd capture the wrong command.
+    // The agent's hooks will set this when they fire (e.g., UserPromptSubmit).
+
+    Ok(())
 }
 
 // --- Status Format Management ---
