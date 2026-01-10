@@ -1426,9 +1426,15 @@ impl App {
             Vec::new()
         };
 
-        // If empty or delta not available, return as-is
-        if diff_content.is_empty() || !Self::has_delta() {
+        // If empty, return as-is
+        if diff_content.is_empty() {
             return Ok((raw_diff, lines_added, lines_removed, hunks));
+        }
+
+        // If delta not available, apply basic colors
+        if !Self::has_delta() {
+            let colored = Self::apply_basic_diff_colors(&raw_diff);
+            return Ok((colored, lines_added, lines_removed, hunks));
         }
 
         // Pipe through delta for syntax highlighting
