@@ -341,7 +341,21 @@ pub fn navigate_to_target_and_close(
     }
 
     // Check if target window exists
-    if !tmux::is_running()? || !tmux::window_exists(prefix, target_window_name)? {
+    let tmux_running = tmux::is_running()?;
+    let target_exists = if tmux_running {
+        tmux::window_exists(prefix, target_window_name)?
+    } else {
+        false
+    };
+    debug!(
+        prefix = prefix,
+        target_window_name = target_window_name,
+        tmux_running = tmux_running,
+        target_exists = target_exists,
+        window_to_close = ?cleanup_result.window_to_close_later,
+        "navigate_to_target_and_close:entry"
+    );
+    if !tmux_running || !target_exists {
         // If target window doesn't exist, still need to close source window if running inside it
         if let Some(ref window_to_close) = cleanup_result.window_to_close_later {
             let delay = Duration::from_millis(WINDOW_CLOSE_DELAY_MS);
@@ -353,11 +367,19 @@ pub fn navigate_to_target_and_close(
                 delay = delay_secs,
                 source = source_escaped,
             );
+            debug!(
+                script = script,
+                "navigate_to_target_and_close:kill_only_script"
+            );
             match tmux::run_shell(&script) {
-                Ok(_) => info!(window = window_to_close, "cleanup:scheduled window close"),
+                Ok(_) => info!(
+                    window = window_to_close,
+                    script = script,
+                    "cleanup:scheduled window close"
+                ),
                 Err(e) => warn!(
                     window = window_to_close,
-                    error = %e,
+                    error = ?e,
                     "cleanup:failed to schedule window close",
                 ),
             }
@@ -379,6 +401,10 @@ pub fn navigate_to_target_and_close(
             target = target_escaped,
             source = source_escaped,
         );
+        debug!(
+            script = script,
+            "navigate_to_target_and_close:nav_and_kill_script"
+        );
 
         match tmux::run_shell(&script) {
             Ok(_) => info!(
@@ -388,7 +414,7 @@ pub fn navigate_to_target_and_close(
             ),
             Err(e) => warn!(
                 window = window_to_close,
-                error = %e,
+                error = ?e,
                 "cleanup:failed to schedule navigation and window close",
             ),
         }
