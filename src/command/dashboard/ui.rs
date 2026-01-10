@@ -618,7 +618,7 @@ fn get_current_file_index(diff: &DiffView) -> Option<usize> {
     Some(current_idx)
 }
 
-/// Render the file list sidebar (diffview style with directory grouping)
+/// Render the file list sidebar (full paths, directory dimmed, left-truncate if needed)
 fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
     let current_file_idx = get_current_file_index(diff);
 
@@ -627,12 +627,34 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
         .title_style(Style::default().fg(Color::Cyan))
         .border_style(Style::default().fg(Color::DarkGray));
 
-    // Group files by directory
+    // Calculate available width (subtract borders)
+    let inner_width = area.width.saturating_sub(2) as usize;
+
     let mut items: Vec<ListItem> = Vec::new();
-    let mut current_dir: Option<&str> = None;
 
     for (idx, file) in diff.file_list.iter().enumerate() {
         let is_current = current_file_idx == Some(idx);
+
+        // Determine status indicator
+        let (status_char, status_color) = if file.is_new {
+            ("A", Color::Green)
+        } else if file.lines_added == 0 && file.lines_removed > 0 {
+            ("D", Color::Red)
+        } else {
+            ("M", Color::Yellow)
+        };
+
+        // Format stats
+        let stats = match (file.lines_added, file.lines_removed) {
+            (0, 0) => String::new(),
+            (a, 0) => format!("+{}", a),
+            (0, r) => format!("-{}", r),
+            (a, r) => format!("+{} -{}", a, r),
+        };
+
+        // Calculate space for path: inner_width - status(2) - stats - min_padding(1)
+        let stats_width = if stats.is_empty() { 0 } else { stats.len() + 1 };
+        let path_max_width = inner_width.saturating_sub(2 + stats_width);
 
         // Split into directory and basename
         let (dir, basename) = match file.filename.rsplit_once('/') {
@@ -640,28 +662,58 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
             None => (None, file.filename.as_str()),
         };
 
-        // Add directory header if changed
-        let dir_str = dir.unwrap_or(".");
-        if current_dir != Some(dir_str) {
-            current_dir = Some(dir_str);
-            // Directory line (dimmed, with indent)
-            items.push(ListItem::new(Line::from(Span::styled(
-                format!("  {}", dir_str),
-                Style::default().fg(Color::DarkGray),
-            ))));
-        }
-
-        // Determine status indicator
-        let (status_char, status_color) = if file.is_new {
-            ("A", Color::Green) // Added (untracked file)
-        } else if file.lines_added == 0 && file.lines_removed > 0 {
-            ("D", Color::Red) // Deleted
+        // Truncate path from left if needed
+        let full_path_len = file.filename.len();
+        let (display_dir, display_basename) = if full_path_len > path_max_width {
+            // Need to truncate - prioritize showing basename
+            if basename.len() >= path_max_width {
+                // Even basename doesn't fit, truncate it
+                let trunc_len = path_max_width.saturating_sub(1); // -1 for "…"
+                (
+                    None,
+                    format!("…{}", &basename[basename.len().saturating_sub(trunc_len)..]),
+                )
+            } else {
+                // Truncate directory, keep full basename
+                // path_max_width = "…" + dir_chars + "/" + basename
+                // dir_chars = path_max_width - 1 (…) - 1 (/) - basename.len()
+                let dir_chars = path_max_width.saturating_sub(2 + basename.len());
+                match dir {
+                    Some(d) if dir_chars > 0 => {
+                        let start = d.len().saturating_sub(dir_chars);
+                        let truncated = format!("…{}", &d[start..]);
+                        (Some(truncated), basename.to_string())
+                    }
+                    Some(_) => (Some("…".to_string()), basename.to_string()),
+                    None => (None, basename.to_string()),
+                }
+            }
         } else {
-            ("M", Color::Yellow) // Modified
+            (dir.map(|d| d.to_string()), basename.to_string())
         };
 
-        // Build file line: "M   filename  +added, -removed"
-        let style = if is_current {
+        // Calculate displayed path length
+        let path_len = match &display_dir {
+            Some(d) => d.len() + 1 + display_basename.len(), // dir/ + basename
+            None => display_basename.len(),
+        };
+
+        // Calculate padding to right-align stats (minimum 1 space)
+        // Total used: status(2) + path_len + padding + stats
+        let padding = inner_width
+            .saturating_sub(2) // status char + space
+            .saturating_sub(path_len)
+            .saturating_sub(stats.len())
+            .max(1);
+
+        // Build spans
+        let mut spans = vec![Span::styled(
+            format!("{} ", status_char),
+            Style::default().fg(status_color),
+        )];
+
+        // Path with directory dimmed
+        let basename_style = if is_current {
             Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD)
@@ -669,26 +721,32 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
             Style::default()
         };
 
-        let mut spans = vec![
-            Span::styled(
-                format!("{} ", status_char),
-                Style::default().fg(status_color),
-            ),
-            Span::styled(format!("  {} ", basename), style),
-        ];
-
-        // Stats in +N -M format
-        if file.lines_added > 0 {
+        if let Some(d) = display_dir {
             spans.push(Span::styled(
-                format!("+{}", file.lines_added),
-                Style::default().fg(Color::Green),
+                format!("{}/", d),
+                Style::default().fg(Color::DarkGray),
             ));
         }
-        if file.lines_removed > 0 {
-            spans.push(Span::styled(
-                format!(" -{}", file.lines_removed),
-                Style::default().fg(Color::Red),
-            ));
+        spans.push(Span::styled(display_basename, basename_style));
+
+        // Padding + stats (right-aligned)
+        if !stats.is_empty() {
+            spans.push(Span::raw(" ".repeat(padding)));
+            // Color the stats
+            if file.lines_added > 0 && file.lines_removed > 0 {
+                spans.push(Span::styled(
+                    format!("+{}", file.lines_added),
+                    Style::default().fg(Color::Green),
+                ));
+                spans.push(Span::styled(
+                    format!(" -{}", file.lines_removed),
+                    Style::default().fg(Color::Red),
+                ));
+            } else if file.lines_added > 0 {
+                spans.push(Span::styled(stats, Style::default().fg(Color::Green)));
+            } else {
+                spans.push(Span::styled(stats, Style::default().fg(Color::Red)));
+            }
         }
 
         items.push(ListItem::new(Line::from(spans)));
