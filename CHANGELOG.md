@@ -9,6 +9,12 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.83 (2026-01-10)
+
+- Dashboard: Added file list sidebar to diff and patch views
+- Dashboard: Added Ctrl+D/U scrolling in patch mode
+- Dashboard: Improved diff coloring fallback when delta is not available
+
 ## v0.1.81 (2026-01-10)
 
 - Dashboard: Added help screen accessible with `?` key, showing keybindings for
