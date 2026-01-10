@@ -179,6 +179,19 @@ pub fn run() -> Result<()> {
                         app.should_quit = true;
                         continue;
                     }
+                    // Ctrl+D/U for scrolling within current hunk
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode {
+                            diff.scroll_page_down();
+                        }
+                        continue;
+                    }
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        if let ViewMode::Diff(ref mut diff) = app.view_mode {
+                            diff.scroll_page_up();
+                        }
+                        continue;
+                    }
                     KeyCode::Char('y') => {
                         app.stage_and_next();
                         continue;
