@@ -557,7 +557,7 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     let has_files = !diff.file_list.is_empty();
     let content_chunks = if has_files {
         Layout::horizontal([
-            Constraint::Min(40),    // Diff content (takes remaining space)
+            Constraint::Min(40),        // Diff content (takes remaining space)
             Constraint::Percentage(25), // File list sidebar
         ])
         .split(chunks[0])
@@ -577,8 +577,11 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     diff.viewport_height = diff_area.height.saturating_sub(2);
 
     if diff.patch_mode {
-        // Patch mode: show current hunk (no file list in patch mode)
-        render_patch_mode(f, diff, chunks[0], chunks[1]);
+        // Patch mode with optional file list sidebar
+        render_patch_mode(f, diff, diff_area, chunks[1]);
+        if let Some(file_area) = file_list_area {
+            render_file_list(f, diff, file_area);
+        }
     } else {
         // Normal diff mode with optional file list
         render_normal_diff(f, diff, diff_area, chunks[1]);
@@ -588,10 +591,19 @@ fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
     }
 }
 
-/// Determine which file is currently visible based on scroll position
+/// Determine which file is currently visible based on scroll position or current hunk
 fn get_current_file_index(diff: &DiffView) -> Option<usize> {
     if diff.file_list.is_empty() {
         return None;
+    }
+
+    // In patch mode, use the current hunk's filename
+    if diff.patch_mode && !diff.hunks.is_empty() {
+        let current_filename = &diff.hunks[diff.current_hunk].filename;
+        return diff
+            .file_list
+            .iter()
+            .position(|f| &f.filename == current_filename);
     }
 
     // Find the last file whose start_line is <= current scroll position
