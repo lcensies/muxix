@@ -8,6 +8,18 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.81 (2026-01-10)
+
+- Dashboard: Added help screen accessible with `?` key, showing keybindings for
+  each view (dashboard, diff, patch mode)
+- Dashboard: Added mouse scroll support in diff views
+- Dashboard: The active worktree is now highlighted with a subtle background and
+  white text for easier identification
+- Dashboard: Git column header shows a spinner while refreshing
+- Fixed agent status not showing "working" when launching with a prompt (works
+  around
+  [Claude Code v2.0.77 regression](https://github.com/anthropics/claude-code/issues/17284))
+
 ## v0.1.80 (2026-01-09)
 
 - Dashboard: Commit and merge actions are now configurable via
