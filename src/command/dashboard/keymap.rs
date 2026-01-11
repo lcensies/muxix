@@ -106,6 +106,8 @@ fn patch_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('o') => Some(Action::StartComment),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::PrevHunk),
         KeyCode::Char('j') | KeyCode::Down => Some(Action::NextHunk),
+        KeyCode::Char('c') => Some(Action::SendCommitDiff),
+        KeyCode::Char('m') => Some(Action::TriggerMergeDiff),
         KeyCode::Esc | KeyCode::Char('q') => Some(Action::ExitPatchMode),
         _ => None,
     }
@@ -159,6 +161,8 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("o", "Add comment"),
             ("j/k", "Next/prev hunk"),
             ("Ctrl+d/u", "Scroll hunk"),
+            ("c", "Commit changes"),
+            ("m", "Merge branch"),
             ("q/Esc", "Exit patch mode"),
         ],
         Context::Comment => vec![
