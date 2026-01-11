@@ -9,6 +9,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.85 (2026-01-11)
+
+- Dashboard: Selection now stays on the same agent when the list reorders due to
+  status changes or sorting
+
 ## v0.1.84 (2026-01-11)
 
 - Dashboard: Improved file list layout with full paths and right-aligned stats
