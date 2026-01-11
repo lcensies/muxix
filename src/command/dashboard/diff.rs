@@ -502,46 +502,78 @@ pub fn extract_file_list(hunks: &[DiffHunk]) -> Vec<FileEntry> {
         .collect()
 }
 
-/// Get file list using git diff --numstat (for review mode where hunks aren't parsed)
+/// Get file list using git diff --numstat --summary (single command for stats and status)
 pub fn get_file_list_numstat(
     path: &PathBuf,
     diff_arg: &str,
     include_untracked: bool,
 ) -> Vec<FileEntry> {
+    use std::collections::HashMap;
+
+    let mut file_map: HashMap<String, FileEntry> = HashMap::new();
+
     let mut cmd = std::process::Command::new("git");
-    cmd.arg("-C").arg(path).arg("diff").arg("--numstat");
+    cmd.arg("-C")
+        .arg(path)
+        .arg("diff")
+        .arg("--numstat")
+        .arg("--summary");
     if !diff_arg.is_empty() {
         cmd.arg(diff_arg);
     }
 
-    let output = match cmd.output() {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    };
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let mut entries: Vec<FileEntry> = output_str
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let added = parts[0].parse().unwrap_or(0);
-                let removed = parts[1].parse().unwrap_or(0);
-                let filename = parts[2].to_string();
-                Some(FileEntry {
-                    filename,
-                    lines_added: added,
-                    lines_removed: removed,
-                    start_line: 0,
-                    is_new: false,
-                })
-            } else {
-                None
+    if let Ok(output) = cmd.output() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        for line in output_str.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
             }
-        })
-        .collect();
 
-    // Include untracked files if requested
+            if let Some(rest) = trimmed.strip_prefix("create mode ") {
+                // Summary line: "create mode 100644 filename"
+                // Skip the mode (e.g., "100644") to get the filename
+                if let Some(filename) = rest.split_once(' ').map(|(_, f)| f) {
+                    file_map
+                        .entry(filename.to_string())
+                        .or_insert_with(|| FileEntry {
+                            filename: filename.to_string(),
+                            lines_added: 0,
+                            lines_removed: 0,
+                            start_line: 0,
+                            is_new: true,
+                        })
+                        .is_new = true;
+                }
+            } else if !trimmed.starts_with("delete mode")
+                && !trimmed.starts_with("rename")
+                && !trimmed.starts_with("copy")
+                && !trimmed.starts_with("mode change")
+            {
+                // Numstat line: "added\tremoved\tfilename"
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let added = parts[0].parse().unwrap_or(0);
+                    let removed = parts[1].parse().unwrap_or(0);
+                    let filename = parts[2].to_string();
+
+                    let entry = file_map.entry(filename.clone()).or_insert(FileEntry {
+                        filename,
+                        lines_added: 0,
+                        lines_removed: 0,
+                        start_line: 0,
+                        is_new: false,
+                    });
+                    entry.lines_added = added;
+                    entry.lines_removed = removed;
+                }
+            }
+        }
+    }
+
+    let mut entries: Vec<FileEntry> = file_map.into_values().collect();
+
+    // Include untracked files if requested (separate command required)
     if include_untracked
         && let Ok(out) = std::process::Command::new("git")
             .arg("-C")
@@ -551,7 +583,6 @@ pub fn get_file_list_numstat(
     {
         for file in String::from_utf8_lossy(&out.stdout).lines() {
             if !file.trim().is_empty() {
-                // Get line count for untracked file
                 let file_path = path.join(file);
                 let lines_added = std::fs::read_to_string(&file_path)
                     .map(|c| c.lines().count())
