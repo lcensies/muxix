@@ -420,10 +420,10 @@ pub fn parse_diff_into_hunks(raw_diff: &str) -> Vec<DiffHunk> {
             // Extract filename from "diff --git <prefix>/path <prefix>/path"
             if let Some(last_part) = stripped.split_whitespace().last()
                 && let Some((prefix, path)) = last_part.split_once('/')
-                    && prefix.len() == 1
-                {
-                    current_filename = path.to_string();
-                }
+                && prefix.len() == 1
+            {
+                current_filename = path.to_string();
+            }
         } else if stripped.starts_with("@@") {
             // Save previous hunk if any
             if in_hunk && !current_hunk_lines.is_empty() {
