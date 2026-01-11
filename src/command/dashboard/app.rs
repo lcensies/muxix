@@ -1,6 +1,5 @@
 //! Application state and business logic for the dashboard TUI.
 
-use ansi_to_tui::IntoText;
 use anyhow::Result;
 use ratatui::style::Color;
 use ratatui::text::Line;
@@ -11,73 +10,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::cmd::Cmd;
 use crate::config::Config;
 use crate::git::{self, GitStatus};
 use crate::tmux::{self, AgentPane};
 
+use super::agent;
+use super::ansi::{parse_ansi_to_lines, strip_ansi_escapes};
+use super::settings::{load_hide_stale_from_tmux, save_hide_stale_to_tmux};
 use super::sort::SortMode;
-
-const TMUX_HIDE_STALE_VAR: &str = "@workmux_hide_stale";
-
-/// Load hide_stale filter state from tmux global variable
-fn load_hide_stale_from_tmux() -> bool {
-    Cmd::new("tmux")
-        .args(&["show-option", "-gqv", TMUX_HIDE_STALE_VAR])
-        .run_and_capture_stdout()
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim() == "true")
-        .unwrap_or(false)
-}
-
-/// Save hide_stale filter state to tmux global variable
-fn save_hide_stale_to_tmux(hide_stale: bool) {
-    let _ = Cmd::new("tmux")
-        .args(&[
-            "set-option",
-            "-g",
-            TMUX_HIDE_STALE_VAR,
-            if hide_stale { "true" } else { "false" },
-        ])
-        .run();
-}
-
-/// Strip ANSI escape sequences from a string
-fn strip_ansi_escapes(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            // Skip escape sequence
-            if chars.peek() == Some(&'[') {
-                chars.next(); // consume '['
-                // Skip until we hit a letter (the terminator)
-                while let Some(&next) = chars.peek() {
-                    chars.next();
-                    if next.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
-/// Parse ANSI-escaped content into a vector of Lines for efficient rendering.
-/// This is cached to avoid re-parsing on every frame.
-fn parse_ansi_to_lines(content: &str) -> Vec<Line<'static>> {
-    content
-        .into_text()
-        .map(|text| text.lines)
-        .unwrap_or_else(|_| {
-            // Fallback: split by newlines and create raw lines
-            content.lines().map(|s| Line::raw(s.to_string())).collect()
-        })
-}
+use super::spinner::SPINNER_FRAMES;
 
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
@@ -756,10 +697,7 @@ impl App {
     }
 
     pub fn format_duration(&self, secs: u64) -> String {
-        let hours = secs / 3600;
-        let mins = (secs % 3600) / 60;
-        let secs = secs % 60;
-        format!("{:02}:{:02}:{:02}", hours, mins, secs)
+        agent::format_duration(secs)
     }
 
     pub fn is_stale(&self, agent: &AgentPane) -> bool {
@@ -767,12 +705,7 @@ impl App {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-
-        if let Some(ts) = agent.status_ts {
-            now.saturating_sub(ts) > self.stale_threshold_secs
-        } else {
-            false
-        }
+        agent::is_stale(agent.status_ts, self.stale_threshold_secs, now)
     }
 
     pub fn get_elapsed(&self, agent: &AgentPane) -> Option<u64> {
@@ -780,8 +713,7 @@ impl App {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-
-        agent.status_ts.map(|ts| now.saturating_sub(ts))
+        agent::elapsed_secs(agent.status_ts, now)
     }
 
     pub fn get_status_display(&self, agent: &AgentPane) -> (String, Color) {
@@ -810,7 +742,7 @@ impl App {
             (display_text, Color::DarkGray)
         } else if is_working {
             // Add animated spinner when agent is working
-            let spinner = super::ui::SPINNER_FRAMES[self.spinner_frame as usize];
+            let spinner = SPINNER_FRAMES[self.spinner_frame as usize];
             let display_text = format!("{} {}", status_text, spinner);
             (display_text, base_color)
         } else {
@@ -820,42 +752,12 @@ impl App {
 
     /// Extract the worktree name from an agent.
     /// Returns (worktree_name, is_main) where is_main indicates if this is the main worktree.
-    pub fn extract_worktree_name(&self, agent: &AgentPane) -> (String, bool) {
-        let name = &agent.window_name;
-        let prefix = self.config.window_prefix();
-
-        if let Some(stripped) = name.strip_prefix(prefix) {
-            // Workmux-created worktree agent
-            (stripped.to_string(), false)
-        } else {
-            // Non-workmux agent - running in main worktree
-            ("main".to_string(), true)
-        }
+    pub fn extract_worktree_name(&self, agent_pane: &AgentPane) -> (String, bool) {
+        agent::extract_worktree_name(&agent_pane.window_name, self.config.window_prefix())
     }
 
-    pub fn extract_project_name(agent: &AgentPane) -> String {
-        // Extract project name from the path
-        // Look for __worktrees pattern or use directory name
-        let path = &agent.path;
-
-        // Walk up the path to find __worktrees
-        for ancestor in path.ancestors() {
-            if let Some(name) = ancestor.file_name() {
-                let name_str = name.to_string_lossy();
-                if name_str.ends_with("__worktrees") {
-                    // Return the project name (part before __worktrees)
-                    return name_str
-                        .strip_suffix("__worktrees")
-                        .unwrap_or(&name_str)
-                        .to_string();
-                }
-            }
-        }
-
-        // Fallback: use the directory name (for non-worktree projects)
-        path.file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.to_string_lossy().to_string())
+    pub fn extract_project_name(agent_pane: &AgentPane) -> String {
+        agent::extract_project_name(&agent_pane.path)
     }
 
     /// Check if delta pager is available

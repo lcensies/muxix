@@ -13,12 +13,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::git::GitStatus;
 
 use super::app::{App, DiffView, ViewMode};
-
-/// Braille spinner frames for subtle loading animation
-pub const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-/// Number of spinner frames (used by event loop to wrap frame counter)
-pub const SPINNER_FRAME_COUNT: u8 = SPINNER_FRAMES.len() as u8;
+use super::spinner::SPINNER_FRAMES;
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     // Render either dashboard or diff view based on view mode

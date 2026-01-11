@@ -12,8 +12,12 @@
 //! - `sort`: Sort mode enum and tmux persistence
 //! - `ui`: TUI rendering with ratatui
 
+mod agent;
+mod ansi;
 mod app;
+mod settings;
 mod sort;
+mod spinner;
 mod ui;
 
 use anyhow::Result;
@@ -33,7 +37,8 @@ use crate::git;
 use crate::tmux;
 
 use self::app::{App, ViewMode};
-use self::ui::{SPINNER_FRAME_COUNT, ui};
+use self::spinner::SPINNER_FRAME_COUNT;
+use self::ui::ui;
 
 pub fn run() -> Result<()> {
     // Check if tmux is running
