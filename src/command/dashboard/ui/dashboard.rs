@@ -1,0 +1,388 @@
+//! Dashboard view rendering (table, preview, footer).
+
+use ansi_to_tui::IntoText;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
+    widgets::{Block, Cell, Paragraph, Row, Table},
+};
+use std::collections::{BTreeMap, HashSet};
+
+use super::super::app::App;
+use super::super::spinner::SPINNER_FRAMES;
+use super::format::format_git_status;
+
+/// Render the dashboard view (table + preview + footer).
+pub fn render_dashboard(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+
+    // Layout: table (top), preview (bottom), footer
+    let chunks = Layout::vertical([
+        Constraint::Percentage(40), // Table (top half)
+        Constraint::Min(5),         // Preview (bottom half, at least 5 lines)
+        Constraint::Length(1),      // Footer
+    ])
+    .split(area);
+
+    // Table
+    render_table(f, app, chunks[0]);
+
+    // Preview
+    render_preview(f, app, chunks[1]);
+
+    // Footer - show different help based on mode
+    let footer_text = if app.input_mode {
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                "  INPUT MODE",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" - Type to send keys to agent  "),
+            Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
+            Span::raw(" exit"),
+        ]))
+    } else {
+        let mut spans = vec![
+            Span::styled("  [i]", Style::default().fg(Color::Green)),
+            Span::raw(" input  "),
+            Span::styled("[d]", Style::default().fg(Color::Yellow)),
+            Span::raw(" diff  "),
+            Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
+            Span::raw(" jump  "),
+            Span::styled("[p]", Style::default().fg(Color::Cyan)),
+            Span::raw(" peek  "),
+            Span::styled("[s]", Style::default().fg(Color::Cyan)),
+            Span::raw(" sort: "),
+            Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
+            Span::raw("  "),
+            Span::styled("[f]", Style::default().fg(Color::Cyan)),
+            Span::raw(" filter: "),
+        ];
+
+        if app.hide_stale {
+            spans.push(Span::styled(
+                "hiding stale",
+                Style::default().fg(Color::Yellow),
+            ));
+        } else {
+            spans.push(Span::styled("all", Style::default().fg(Color::DarkGray)));
+        }
+
+        spans.extend(vec![
+            Span::raw("  "),
+            Span::styled("[c]", Style::default().fg(Color::Green)),
+            Span::raw(" commit  "),
+            Span::styled("[m]", Style::default().fg(Color::Yellow)),
+            Span::raw(" merge  "),
+            Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
+            Span::raw(" go  "),
+            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]);
+
+        Paragraph::new(Line::from(spans))
+    };
+    f.render_widget(footer_text, chunks[2]);
+}
+
+fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
+    // Check if git data is being refreshed
+    let is_git_fetching = app
+        .is_git_fetching
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    // Build header with spinner in Git column when fetching
+    let git_header = if is_git_fetching {
+        let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
+        Line::from(vec![
+            Span::styled("Git ", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(spinner.to_string(), Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(Span::styled("Git", Style::default().fg(Color::Cyan).bold()))
+    };
+
+    let header_style = Style::default().fg(Color::Cyan).bold();
+    let header = Row::new(vec![
+        Cell::from("#").style(header_style),
+        Cell::from("Project").style(header_style),
+        Cell::from("Worktree").style(header_style),
+        Cell::from(git_header),
+        Cell::from("Status").style(header_style),
+        Cell::from("Time").style(header_style),
+        Cell::from("Title").style(header_style),
+    ])
+    .height(1);
+
+    // Group agents by (session, window_name) to detect multi-pane windows
+    let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (idx, agent) in app.agents.iter().enumerate() {
+        let key = (agent.session.clone(), agent.window_name.clone());
+        window_groups.entry(key).or_default().push(idx);
+    }
+
+    // Build a set of windows with multiple panes
+    let multi_pane_windows: HashSet<(String, String)> = window_groups
+        .iter()
+        .filter(|(_, indices)| indices.len() > 1)
+        .map(|(key, _)| key.clone())
+        .collect();
+
+    // Track position within each window group for pane numbering
+    let mut window_positions: BTreeMap<(String, String), usize> = BTreeMap::new();
+
+    // Pre-compute row data to calculate max widths
+    let row_data: Vec<_> = app
+        .agents
+        .iter()
+        .enumerate()
+        .map(|(idx, agent)| {
+            let key = (agent.session.clone(), agent.window_name.clone());
+            let is_multi_pane = multi_pane_windows.contains(&key);
+
+            let pane_suffix = if is_multi_pane {
+                let pos = window_positions.entry(key.clone()).or_insert(0);
+                *pos += 1;
+                format!(" [{}]", pos)
+            } else {
+                String::new()
+            };
+
+            let jump_key = if idx < 9 {
+                format!("{}", idx + 1)
+            } else {
+                String::new()
+            };
+
+            let project = App::extract_project_name(agent);
+            let (worktree_name, is_main) = app.extract_worktree_name(agent);
+            // Check if this agent corresponds to the current working directory.
+            // Try canonicalized comparison first (handles symlinks), fall back to direct comparison.
+            let is_current = app.current_worktree.as_ref().is_some_and(|cwd| {
+                // Try canonical comparison first (resolves symlinks like /var -> /private/var on macOS)
+                if let (Ok(cwd_canonical), Ok(agent_canonical)) =
+                    (cwd.canonicalize(), agent.path.canonicalize())
+                {
+                    cwd_canonical == agent_canonical
+                } else {
+                    // Fall back to direct comparison
+                    agent.path == *cwd
+                }
+            });
+            let worktree_display = format!("{}{}", worktree_name, pane_suffix);
+            let title = agent
+                .pane_title
+                .as_ref()
+                .map(|t| t.strip_prefix("... ").unwrap_or(t).to_string())
+                .unwrap_or_default();
+            let (status_text, status_color) = app.get_status_display(agent);
+            let duration = app
+                .get_elapsed(agent)
+                .map(|d| app.format_duration(d))
+                .unwrap_or_else(|| "-".to_string());
+
+            // Get git status for this worktree (may be None if not yet fetched)
+            let git_status = app.git_statuses.get(&agent.path);
+            let git_spans = format_git_status(git_status, app.spinner_frame);
+
+            (
+                jump_key,
+                project,
+                worktree_display,
+                is_main,
+                is_current,
+                git_spans,
+                status_text,
+                status_color,
+                duration,
+                title,
+            )
+        })
+        .collect();
+
+    // Calculate max project name width (with padding, capped)
+    let max_project_width = row_data
+        .iter()
+        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
+        .max()
+        .unwrap_or(5)
+        .clamp(5, 20) // min 5, max 20
+        + 2; // padding
+
+    // Calculate max worktree name width (with padding)
+    // Use at least 8 to fit the "Worktree" header
+    let max_worktree_width = row_data
+        .iter()
+        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
+        .max()
+        .unwrap_or(8)
+        .max(8) // min 8 (header width)
+        + 1; // padding
+
+    // Calculate max git status width (sum of all span character counts)
+    // Use chars().count() instead of len() because Nerd Font icons are multi-byte
+    let max_git_width = row_data
+        .iter()
+        .map(|(_, _, _, _, _, git_spans, _, _, _, _)| {
+            git_spans
+                .iter()
+                .map(|(text, _)| text.chars().count())
+                .sum::<usize>()
+        })
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 30) // min 4, max 30 (increased for base branch)
+        + 1; // padding
+
+    let rows: Vec<Row> = row_data
+        .into_iter()
+        .map(
+            |(
+                jump_key,
+                project,
+                worktree_display,
+                is_main,
+                is_current,
+                git_spans,
+                status_text,
+                status_color,
+                duration,
+                title,
+            )| {
+                let worktree_style = if is_current {
+                    Style::default().fg(Color::White)
+                } else if is_main {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+                // Convert git spans to a Line
+                let git_line = Line::from(
+                    git_spans
+                        .into_iter()
+                        .map(|(text, style)| Span::styled(text, style))
+                        .collect::<Vec<_>>(),
+                );
+                let row = Row::new(vec![
+                    Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
+                    Cell::from(project),
+                    Cell::from(worktree_display).style(worktree_style),
+                    Cell::from(git_line),
+                    Cell::from(status_text).style(Style::default().fg(status_color)),
+                    Cell::from(duration),
+                    Cell::from(title),
+                ]);
+                // Subtle background for the active worktree row
+                if is_current {
+                    row.style(Style::default().bg(Color::Rgb(35, 40, 35)))
+                } else {
+                    row
+                }
+            },
+        )
+        .collect();
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(2),                         // #: jump key
+            Constraint::Length(max_project_width as u16),  // Project: auto-sized
+            Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
+            Constraint::Length(max_git_width as u16),      // Git: auto-sized
+            Constraint::Length(8),                         // Status: fixed (icons)
+            Constraint::Length(10),                        // Time: HH:MM:SS + padding
+            Constraint::Fill(1),                           // Title: takes remaining space
+        ],
+    )
+    .header(header)
+    .block(Block::default())
+    .row_highlight_style(Style::default().bg(Color::Rgb(50, 50, 55)))
+    .highlight_symbol("> ");
+
+    f.render_stateful_widget(table, area, &mut app.table_state);
+}
+
+fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    // Get info about the selected agent for the title
+    let selected_agent = app
+        .table_state
+        .selected()
+        .and_then(|idx| app.agents.get(idx));
+
+    let (title, title_style, border_style) = if app.input_mode {
+        let worktree_name = selected_agent
+            .map(|a| app.extract_worktree_name(a).0)
+            .unwrap_or_default();
+        (
+            format!(" INPUT: {} ", worktree_name),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Green),
+        )
+    } else if let Some(agent) = selected_agent {
+        let worktree_name = app.extract_worktree_name(agent).0;
+        (
+            format!(" Preview: {} ", worktree_name),
+            Style::default().fg(Color::Cyan),
+            Style::default().fg(Color::DarkGray),
+        )
+    } else {
+        (
+            " Preview ".to_string(),
+            Style::default().fg(Color::Cyan),
+            Style::default().fg(Color::DarkGray),
+        )
+    };
+
+    let block = Block::bordered()
+        .title(title)
+        .title_style(title_style)
+        .border_style(border_style);
+
+    // Calculate the inner area to determine scroll offset
+    let inner_area = block.inner(area);
+
+    // Update preview height for scroll calculations
+    app.preview_height = inner_area.height;
+
+    // Get preview content or show placeholder
+    let (text, line_count) = match (&app.preview, selected_agent) {
+        (Some(preview), Some(_)) => {
+            let trimmed = preview.trim_end();
+            if trimmed.is_empty() {
+                (Text::raw("(empty output)"), 1u16)
+            } else {
+                // Parse ANSI escape sequences to get colored text
+                match trimmed.into_text() {
+                    Ok(text) => {
+                        let count = text.lines.len() as u16;
+                        (text, count)
+                    }
+                    Err(_) => {
+                        // Fallback to plain text if ANSI parsing fails
+                        let count = trimmed.lines().count() as u16;
+                        (Text::raw(trimmed), count)
+                    }
+                }
+            }
+        }
+        (None, Some(_)) => (Text::raw("(pane not available)"), 1),
+        (_, None) => (Text::raw("(no agent selected)"), 1),
+    };
+
+    // Update line count for scroll calculations
+    app.preview_line_count = line_count;
+
+    // Calculate scroll offset: use manual scroll if set, otherwise auto-scroll to bottom
+    let max_scroll = line_count.saturating_sub(inner_area.height);
+    let scroll_offset = app.preview_scroll.unwrap_or(max_scroll);
+
+    let paragraph = Paragraph::new(text).block(block).scroll((scroll_offset, 0));
+
+    f.render_widget(paragraph, area);
+}

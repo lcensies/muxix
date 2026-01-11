@@ -163,12 +163,13 @@ pub fn run() -> Result<()> {
             // Special case: EnterPatchMode only works in WIP diff view (not branch diff)
             if ctx == Context::DiffNormal
                 && let ViewMode::Diff(ref diff) = app.view_mode
-                    && diff.is_branch_diff {
-                        // Skip patch mode action for branch diffs
-                        if let Some(actions::Action::EnterPatchMode) = action_for_key(ctx, key) {
-                            continue;
-                        }
-                    }
+                && diff.is_branch_diff
+            {
+                // Skip patch mode action for branch diffs
+                if let Some(actions::Action::EnterPatchMode) = action_for_key(ctx, key) {
+                    continue;
+                }
+            }
 
             if let Some(action) = action_for_key(ctx, key) {
                 let refreshed_preview = apply_action(&mut app, action);

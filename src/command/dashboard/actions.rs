@@ -241,16 +241,18 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::DeleteChar => {
             if let ViewMode::Diff(ref mut diff) = app.view_mode
-                && let Some(ref mut input) = diff.comment_input {
-                    input.pop();
-                }
+                && let Some(ref mut input) = diff.comment_input
+            {
+                input.pop();
+            }
             false
         }
         Action::AppendChar(c) => {
             if let ViewMode::Diff(ref mut diff) = app.view_mode
-                && let Some(ref mut input) = diff.comment_input {
-                    input.push(c);
-                }
+                && let Some(ref mut input) = diff.comment_input
+            {
+                input.push(c);
+            }
             false
         }
     }
