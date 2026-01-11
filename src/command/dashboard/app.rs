@@ -38,6 +38,8 @@ pub enum ViewMode {
 pub struct App {
     pub agents: Vec<AgentPane>,
     pub table_state: TableState,
+    /// Track the selected item by pane_id to preserve selection across reorders
+    selected_pane_id: Option<String>,
     /// The directory from which the dashboard was launched (used to indicate the active worktree).
     pub current_worktree: Option<PathBuf>,
     pub stale_threshold_secs: u64,
@@ -89,6 +91,7 @@ impl App {
         let mut app = Self {
             agents: Vec::new(),
             table_state: TableState::default(),
+            selected_pane_id: None,
             current_worktree,
             stale_threshold_secs: 60 * 60, // 60 minutes
             config,
@@ -116,6 +119,7 @@ impl App {
         // Select first item if available
         if !app.agents.is_empty() {
             app.table_state.select(Some(0));
+            app.selected_pane_id = app.agents.first().map(|a| a.pane_id.clone());
         }
         // Initial preview fetch
         app.update_preview();
@@ -152,15 +156,39 @@ impl App {
             self.spawn_git_status_fetch();
         }
 
-        // Adjust selection if it's now out of bounds
-        if let Some(selected) = self.table_state.selected()
-            && selected >= self.agents.len()
-        {
-            self.table_state.select(if self.agents.is_empty() {
-                None
+        // Restore selection by pane_id to follow the item across reorders
+        if let Some(ref pane_id) = self.selected_pane_id {
+            // Find the new index of the previously selected item
+            if let Some(new_idx) = self.agents.iter().position(|a| &a.pane_id == pane_id) {
+                self.table_state.select(Some(new_idx));
             } else {
-                Some(self.agents.len() - 1)
-            });
+                // Item was removed (filtered out or closed), keep selection in bounds
+                self.selected_pane_id = None;
+                if self.agents.is_empty() {
+                    self.table_state.select(None);
+                } else if let Some(selected) = self.table_state.selected() {
+                    if selected >= self.agents.len() {
+                        self.table_state.select(Some(self.agents.len() - 1));
+                    }
+                    // Update selected_pane_id to the new selection
+                    if let Some(idx) = self.table_state.selected() {
+                        self.selected_pane_id = self.agents.get(idx).map(|a| a.pane_id.clone());
+                    }
+                }
+            }
+        } else if let Some(selected) = self.table_state.selected() {
+            // No tracked pane_id but we have a selection - adjust if out of bounds
+            if selected >= self.agents.len() {
+                self.table_state.select(if self.agents.is_empty() {
+                    None
+                } else {
+                    Some(self.agents.len() - 1)
+                });
+            }
+            // Sync selected_pane_id to ensure we start tracking the current selection
+            if let Some(idx) = self.table_state.selected() {
+                self.selected_pane_id = self.agents.get(idx).map(|a| a.pane_id.clone());
+            }
         }
 
         // Update preview for current selection
@@ -332,6 +360,7 @@ impl App {
             None => 0,
         };
         self.table_state.select(Some(i));
+        self.selected_pane_id = self.agents.get(i).map(|a| a.pane_id.clone());
         self.update_preview();
     }
 
@@ -350,6 +379,7 @@ impl App {
             None => 0,
         };
         self.table_state.select(Some(i));
+        self.selected_pane_id = self.agents.get(i).map(|a| a.pane_id.clone());
         self.update_preview();
     }
 
@@ -366,6 +396,7 @@ impl App {
     pub fn jump_to_index(&mut self, index: usize) {
         if index < self.agents.len() {
             self.table_state.select(Some(index));
+            self.selected_pane_id = self.agents.get(index).map(|a| a.pane_id.clone());
             self.jump_to_selected();
         }
     }
