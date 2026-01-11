@@ -49,3 +49,19 @@ After creating the worktrees, inform the user which branches were created.
 > /worktree Fix the race condition in handler.go
 > /worktree Add dark mode, Implement caching  # multiple tasks
 ```
+
+## Customization
+
+You can customize the slash command to add additional instructions for worktree agents. For example, to have agents review their changes with a subagent before finishing:
+
+```markdown
+The prompt file should:
+
+- Include the full task description
+- Use RELATIVE paths only (never absolute paths, since each worktree has its own
+  root directory)
+- Be specific about what the agent should accomplish
+- Instruct the agent to review the changes with a subagent when done
+```
+
+Or if you're feeling YOLO, instruct agents to run `workmux merge` after completing their task to automatically merge changes back to the main branch.
