@@ -850,6 +850,8 @@ impl App {
 
         // Use paste_multiline to properly handle newlines in the message
         let _ = tmux::paste_multiline(&diff.pane_id, &message);
+        // Send an additional Enter to submit the comment to the agent
+        let _ = tmux::send_key(&diff.pane_id, "Enter");
     }
 
     /// Split the current hunk into smaller hunks if possible
