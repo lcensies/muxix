@@ -9,10 +9,19 @@
 //! # Module Structure
 //!
 //! - `app`: Application state and business logic
-//! - `actions`: Action enum and dispatcher
-//! - `keymap`: Key-to-action mapping per context
+//! - `actions`: Action enum and dispatcher for all dashboard actions
+//! - `agent`: Pure helper functions for agent data extraction
+//! - `ansi`: ANSI escape sequence parsing and stripping
+//! - `diff`: Diff domain types and helper functions
+//! - `keymap`: Key-to-action mapping per context with help text
+//! - `settings`: Tmux-persisted dashboard settings
 //! - `sort`: Sort mode enum and tmux persistence
-//! - `ui`: TUI rendering with ratatui
+//! - `spinner`: Spinner animation constants
+//! - `ui/`: TUI rendering modules
+//!   - `dashboard`: Table, preview, and footer
+//!   - `diff`: Normal diff, patch mode, file list
+//!   - `format`: Git status formatting
+//!   - `help`: Help overlay
 
 mod actions;
 mod agent;

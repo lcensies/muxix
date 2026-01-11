@@ -808,4 +808,72 @@ mod tests {
         assert_eq!(files[1].filename, "file2.rs");
         assert_eq!(files[1].lines_added, 10);
     }
+
+    #[test]
+    fn test_diff_hunk_split_no_context_gap() {
+        // Hunk with continuous changes - cannot split
+        let hunk = DiffHunk {
+            file_header: "diff --git a/test.rs b/test.rs".to_string(),
+            hunk_body: "@@ -1,3 +1,4 @@\n+line1\n+line2\n+line3".to_string(),
+            filename: "test.rs".to_string(),
+            lines_added: 3,
+            lines_removed: 0,
+            rendered_content: String::new(),
+            parsed_lines: vec![],
+        };
+        assert!(hunk.split().is_none());
+    }
+
+    #[test]
+    fn test_diff_hunk_split_with_context_gap() {
+        // Hunk with context line between changes - can split
+        let hunk = DiffHunk {
+            file_header: "diff --git a/test.rs b/test.rs".to_string(),
+            hunk_body: "@@ -1,5 +1,6 @@\n+added1\n context\n+added2".to_string(),
+            filename: "test.rs".to_string(),
+            lines_added: 2,
+            lines_removed: 0,
+            rendered_content: String::new(),
+            parsed_lines: vec![],
+        };
+        let result = hunk.split();
+        assert!(result.is_some());
+        let hunks = result.unwrap();
+        assert_eq!(hunks.len(), 2);
+    }
+
+    #[test]
+    fn test_map_file_offsets() {
+        use ratatui::text::Line;
+
+        let mut files = vec![
+            FileEntry {
+                filename: "src/main.rs".to_string(),
+                lines_added: 5,
+                lines_removed: 2,
+                is_new: false,
+                start_line: 0,
+            },
+            FileEntry {
+                filename: "src/lib.rs".to_string(),
+                lines_added: 3,
+                lines_removed: 1,
+                is_new: false,
+                start_line: 0,
+            },
+        ];
+
+        let parsed_lines = vec![
+            Line::raw("diff --git a/src/main.rs b/src/main.rs"),
+            Line::raw("+added line"),
+            Line::raw("-removed line"),
+            Line::raw("diff --git a/src/lib.rs b/src/lib.rs"),
+            Line::raw("+another add"),
+        ];
+
+        map_file_offsets(&mut files, &parsed_lines);
+
+        assert_eq!(files[0].start_line, 0);
+        assert_eq!(files[1].start_line, 3);
+    }
 }
