@@ -107,6 +107,7 @@ pub fn cleanup(
         worktree_removed: false,
         local_branch_deleted: false,
         window_to_close_later: None,
+        trash_path_to_delete: None,
     };
 
     // Helper closure to perform the actual filesystem and git cleanup.
@@ -234,19 +235,27 @@ pub fn cleanup(
         // If the shell is inside this directory, remove_dir_all on the root might fail
         // immediately. Clearing children first ensures we reclaim the space.
         if let Some(tp) = trash_path {
-            // First, aggressively clear contents to reclaim disk space
-            remove_dir_contents(&tp);
-
-            // Then try to remove the (now empty) directory
-            if let Err(e) = std::fs::remove_dir(&tp) {
-                warn!(
-                    path = %tp.display(),
-                    error = %e,
-                    "cleanup:failed to remove trash directory (likely held by active shell). \
-                    The directory is empty and harmless."
-                );
+            // If we're deferring window close, also defer trash deletion.
+            // This prevents a race condition where processes in the window (e.g., Claude Code)
+            // fail to run their stop hooks because their CWD was deleted.
+            if result.window_to_close_later.is_some() {
+                debug!(path = %tp.display(), "cleanup:deferring trash deletion until window close");
+                result.trash_path_to_delete = Some(tp);
             } else {
-                debug!(path = %tp.display(), "cleanup:trash directory removed");
+                // First, aggressively clear contents to reclaim disk space
+                remove_dir_contents(&tp);
+
+                // Then try to remove the (now empty) directory
+                if let Err(e) = std::fs::remove_dir(&tp) {
+                    warn!(
+                        path = %tp.display(),
+                        error = %e,
+                        "cleanup:failed to remove trash directory (likely held by active shell). \
+                        The directory is empty and harmless."
+                    );
+                } else {
+                    debug!(path = %tp.display(), "cleanup:trash directory removed");
+                }
             }
         }
 
@@ -362,10 +371,19 @@ pub fn navigate_to_target_and_close(
             let delay_secs = format!("{:.3}", delay.as_secs_f64());
             let source_spec = format!("={}", window_to_close);
             let source_escaped = shell_escape(&source_spec);
+
+            // Append trash deletion if deferred
+            let trash_removal = cleanup_result
+                .trash_path_to_delete
+                .as_ref()
+                .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+                .unwrap_or_default();
+
             let script = format!(
-                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1",
+                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1{trash_removal}",
                 delay = delay_secs,
                 source = source_escaped,
+                trash_removal = trash_removal,
             );
             debug!(
                 script = script,
@@ -395,11 +413,20 @@ pub fn navigate_to_target_and_close(
         let source_spec = format!("={}", window_to_close);
         let target_escaped = shell_escape(&target_spec);
         let source_escaped = shell_escape(&source_spec);
+
+        // Append trash deletion if deferred
+        let trash_removal = cleanup_result
+            .trash_path_to_delete
+            .as_ref()
+            .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+            .unwrap_or_default();
+
         let script = format!(
-            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1",
+            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1{trash_removal}",
             delay = delay_secs,
             target = target_escaped,
             source = source_escaped,
+            trash_removal = trash_removal,
         );
         debug!(
             script = script,

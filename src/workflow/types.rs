@@ -43,6 +43,8 @@ pub struct CleanupResult {
     pub local_branch_deleted: bool,
     /// The actual window name to close later (when running inside a duplicate window)
     pub window_to_close_later: Option<String>,
+    /// Trash directory path to delete after window close (deferred to avoid race condition)
+    pub trash_path_to_delete: Option<PathBuf>,
 }
 
 /// Options for setting up a worktree environment
