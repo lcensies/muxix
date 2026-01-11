@@ -103,7 +103,7 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
     }
 }
 
-pub fn run() -> Result<()> {
+pub fn run(cli_preview_size: Option<u8>) -> Result<()> {
     // Check if tmux is running
     if !tmux::is_running().unwrap_or(false) {
         println!("No tmux server running.");
@@ -119,6 +119,11 @@ pub fn run() -> Result<()> {
 
     // Create app state
     let mut app = App::new()?;
+
+    // CLI preview size overrides config/tmux if provided
+    if let Some(size) = cli_preview_size {
+        app.preview_size = size;
+    }
 
     // Main loop
     let tick_rate = Duration::from_millis(250);

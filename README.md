@@ -1156,6 +1156,11 @@ cp config.json "$(workmux path feature-branch)/"
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 Useful for monitoring multiple parallel agents and quickly jumping between them.
 
+#### Options
+
+- `-P, --preview-size <10-90>`: Set preview pane size as percentage (larger =
+  more preview, less table). Default: 60.
+
 <!-- prettier-ignore -->
 > [!IMPORTANT]
 > This feature requires [agent status tracking](#agent-status-tracking) to be
@@ -1175,6 +1180,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |
+| `+`/`-`   | Resize preview pane                     |
 | `Enter`   | Go to selected agent (closes dashboard) |
 | `j`/`k`   | Navigate up/down                        |
 | `q`/`Esc` | Quit                                    |

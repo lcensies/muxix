@@ -23,6 +23,8 @@ pub enum Action {
     ExitInputMode,
     ScrollPreviewUp,
     ScrollPreviewDown,
+    IncreasePreviewSize,
+    DecreasePreviewSize,
     LoadWipDiff,
     SendCommitDashboard,
     TriggerMergeDashboard,
@@ -119,6 +121,14 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::ScrollPreviewDown => {
             app.scroll_preview_down(app.preview_height, app.preview_line_count);
+            false
+        }
+        Action::IncreasePreviewSize => {
+            app.increase_preview_size();
+            false
+        }
+        Action::DecreasePreviewSize => {
+            app.decrease_preview_size();
             false
         }
         Action::LoadWipDiff => {

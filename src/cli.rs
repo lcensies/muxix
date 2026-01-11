@@ -328,7 +328,11 @@ enum Commands {
     Changelog,
 
     /// Show a TUI dashboard of all active workmux agents across all sessions
-    Dashboard,
+    Dashboard {
+        /// Preview pane size as percentage (10-90). Larger = more preview, less table.
+        #[arg(long, short = 'P', value_parser = clap::value_parser!(u8).range(10..=90))]
+        preview_size: Option<u8>,
+    },
 
     /// Claude Code integration commands
     Claude {
@@ -444,7 +448,7 @@ pub fn run() -> Result<()> {
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
-        Commands::Dashboard => command::dashboard::run(),
+        Commands::Dashboard { preview_size } => command::dashboard::run(preview_size),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },

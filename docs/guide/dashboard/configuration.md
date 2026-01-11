@@ -1,21 +1,31 @@
 # Configuration
 
-The commit (`c`) and merge (`m`) actions can be customized in your `.workmux.yaml`:
+The dashboard can be customized in your `.workmux.yaml`:
 
 ```yaml
 dashboard:
   commit: "Commit staged changes with a descriptive message"
   merge: "!workmux merge"
+  preview_size: 60
 ```
 
-Both values are text sent to the agent's pane. Use the `!` prefix to run shell commands (supported by Claude, Gemini, and other agents).
+The `commit` and `merge` values are text sent to the agent's pane. Use the `!` prefix to run shell commands (supported by Claude, Gemini, and other agents).
 
 ## Defaults
 
-| Action   | Default value                                      | Description             |
-| -------- | -------------------------------------------------- | ----------------------- |
-| `commit` | `Commit staged changes with a descriptive message` | Natural language prompt |
-| `merge`  | `!workmux merge`                                   | Shell command via agent |
+| Option         | Default value                                      | Description                               |
+| -------------- | -------------------------------------------------- | ----------------------------------------- |
+| `commit`       | `Commit staged changes with a descriptive message` | Natural language prompt                   |
+| `merge`        | `!workmux merge`                                   | Shell command via agent                   |
+| `preview_size` | `60`                                               | Preview pane height as percentage (10-90) |
+
+## Preview size
+
+The `preview_size` option controls the height of the preview pane as a percentage of the terminal height. A higher value means more space for the preview and less for the table.
+
+You can also adjust the preview size interactively with `+`/`-` keys. These adjustments persist across dashboard sessions via tmux variables.
+
+The CLI flag `--preview-size` (`-P`) overrides both the config and saved preference for that session.
 
 ## Examples
 

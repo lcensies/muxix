@@ -32,6 +32,7 @@ This feature requires [status tracking hooks](/guide/status-tracking) to be conf
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |
+| `+`/`-`   | Resize preview pane                     |
 | `Enter`   | Go to selected agent (closes dashboard) |
 | `j`/`k`   | Navigate up/down                        |
 | `q`/`Esc` | Quit                                    |

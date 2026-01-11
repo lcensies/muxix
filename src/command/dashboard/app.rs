@@ -19,7 +19,10 @@ use super::diff::{
     DiffView, extract_file_list, get_diff_content, get_file_list_numstat, map_file_offsets,
     parse_hunk_header,
 };
-use super::settings::{load_hide_stale_from_tmux, save_hide_stale_to_tmux};
+use super::settings::{
+    load_hide_stale_from_tmux, load_preview_size_from_tmux, save_hide_stale_to_tmux,
+    save_preview_size_to_tmux,
+};
 use super::sort::SortMode;
 use super::spinner::SPINNER_FRAMES;
 
@@ -77,6 +80,8 @@ pub struct App {
     pub hide_stale: bool,
     /// Whether to show the help overlay
     pub show_help: bool,
+    /// Preview pane size as percentage (1-90). Higher = larger preview.
+    pub preview_size: u8,
 }
 
 impl App {
@@ -88,6 +93,12 @@ impl App {
         let current_worktree = crate::tmux::get_client_active_pane_path()
             .or_else(|_| std::env::current_dir())
             .ok();
+        // Preview size: CLI override > tmux saved > config default
+        // Clamp to 10-90 to handle manually corrupted tmux variables
+        let preview_size = load_preview_size_from_tmux()
+            .unwrap_or_else(|| config.dashboard.preview_size())
+            .clamp(10, 90);
+
         let mut app = Self {
             agents: Vec::new(),
             table_state: TableState::default(),
@@ -114,6 +125,7 @@ impl App {
             spinner_frame: 0,
             hide_stale: load_hide_stale_from_tmux(),
             show_help: false,
+            preview_size,
         };
         app.refresh();
         // Select first item if available
@@ -343,6 +355,18 @@ impl App {
         self.hide_stale = !self.hide_stale;
         save_hide_stale_to_tmux(self.hide_stale);
         self.refresh();
+    }
+
+    /// Increase preview size by 10% (max 90%)
+    pub fn increase_preview_size(&mut self) {
+        self.preview_size = (self.preview_size + 10).min(90);
+        save_preview_size_to_tmux(self.preview_size);
+    }
+
+    /// Decrease preview size by 10% (min 10%)
+    pub fn decrease_preview_size(&mut self) {
+        self.preview_size = self.preview_size.saturating_sub(10).max(10);
+        save_preview_size_to_tmux(self.preview_size);
     }
 
     pub fn next(&mut self) {

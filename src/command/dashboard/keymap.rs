@@ -43,6 +43,8 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             Some(Action::ScrollPreviewDown)
         }
+        KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::IncreasePreviewSize),
+        KeyCode::Char('-') | KeyCode::Char('_') => Some(Action::DecreasePreviewSize),
         KeyCode::Char('d') => Some(Action::LoadWipDiff),
         KeyCode::Char('c') => Some(Action::SendCommitDashboard),
         KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
@@ -136,6 +138,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("f", "Toggle stale filter"),
             ("i", "Enter input mode"),
             ("Ctrl+u/d", "Scroll preview"),
+            ("+/-", "Resize preview"),
             ("d", "View diff"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),

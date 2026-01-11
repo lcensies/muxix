@@ -71,6 +71,10 @@ pub struct DashboardConfig {
     /// Text to send to agent for merge action (m key).
     /// Default: "!workmux merge"
     pub merge: Option<String>,
+
+    /// Size of the preview pane as a percentage of terminal height (1-90).
+    /// Default: 60 (60% for preview, 40% for table)
+    pub preview_size: Option<u8>,
 }
 
 impl DashboardConfig {
@@ -82,6 +86,12 @@ impl DashboardConfig {
 
     pub fn merge(&self) -> &str {
         self.merge.as_deref().unwrap_or("!workmux merge")
+    }
+
+    /// Get the preview size percentage (clamped to 10-90).
+    /// Default: 60
+    pub fn preview_size(&self) -> u8 {
+        self.preview_size.unwrap_or(60).clamp(10, 90)
     }
 }
 
@@ -482,6 +492,10 @@ impl Config {
         merged.dashboard = DashboardConfig {
             commit: project.dashboard.commit.or(self.dashboard.commit),
             merge: project.dashboard.merge.or(self.dashboard.merge),
+            preview_size: project
+                .dashboard
+                .preview_size
+                .or(self.dashboard.preview_size),
         };
 
         merged
@@ -683,9 +697,11 @@ impl Config {
 
 # Actions for dashboard keybindings (c = commit, m = merge).
 # Values are sent to the agent's pane. Use ! prefix for shell commands.
+# Preview size (10-90): larger = more preview, less table. Use +/- keys to adjust.
 # dashboard:
 #   commit: "Commit staged changes with a descriptive message"
 #   merge: "!workmux merge"
+#   preview_size: 60
 "#;
 
         fs::write(&config_path, example_config)?;

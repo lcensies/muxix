@@ -19,10 +19,12 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     // Layout: table (top), preview (bottom), footer
+    // Table gets (100 - preview_size)%, preview gets preview_size%
+    let table_size = 100u16.saturating_sub(app.preview_size as u16);
     let chunks = Layout::vertical([
-        Constraint::Percentage(40), // Table (top half)
-        Constraint::Min(5),         // Preview (bottom half, at least 5 lines)
-        Constraint::Length(1),      // Footer
+        Constraint::Percentage(table_size), // Table (top)
+        Constraint::Min(5),                 // Preview (bottom, at least 5 lines)
+        Constraint::Length(1),              // Footer
     ])
     .split(area);
 
