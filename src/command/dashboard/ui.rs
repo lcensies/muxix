@@ -12,7 +12,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::git::GitStatus;
 
-use super::app::{App, DiffView, ViewMode};
+use super::app::{App, ViewMode};
+use super::diff::DiffView;
 use super::spinner::SPINNER_FRAMES;
 
 pub fn ui(f: &mut Frame, app: &mut App) {

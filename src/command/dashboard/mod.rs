@@ -15,6 +15,7 @@
 mod agent;
 mod ansi;
 mod app;
+mod diff;
 mod settings;
 mod sort;
 mod spinner;
