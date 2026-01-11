@@ -9,6 +9,11 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.86 (2026-01-11)
+
+- Dashboard: Preview pane size is now configurable via config file, CLI flag
+  (`--preview-size`/`-P`), or interactively with `+`/`-` keys
+
 ## v0.1.85 (2026-01-11)
 
 - Dashboard: Selection now stays on the same agent when the list reorders due to
