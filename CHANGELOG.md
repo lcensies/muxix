@@ -13,6 +13,11 @@ description: Release notes and version history for workmux
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.88 (2026-01-13)
+
+- The `merge` command now works when the target branch is checked out in a
+  linked worktree ([#29](https://github.com/raine/workmux/issues/29))
+
 ## v0.1.87 (2026-01-13)
 
 - Fixed `workmux add user/feature` incorrectly treating `user` as a remote name
