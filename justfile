@@ -10,9 +10,9 @@ default:
 # Run format, clippy-fix, build, and unit tests
 check: parallel-checks clippy
 
-# Run format, clippy-fix, build, unit tests, ruff, and pyright in parallel
+# Run format, clippy-fix, build, unit tests, ruff, pyright, and docs checks in parallel
 [parallel]
-parallel-checks: format clippy-fix build unit-tests ruff-check pyright
+parallel-checks: format clippy-fix build unit-tests ruff-check pyright docs-check
 
 # Format Rust and Python files
 format:
@@ -49,6 +49,23 @@ pyright:
     set -euo pipefail
     source tests/venv/bin/activate
     pyright tests
+
+# Check that all docs pages have meta descriptions
+docs-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=()
+    while IFS= read -r file; do
+        if ! head -20 "$file" | grep -q '^description:'; then
+            missing+=("$file")
+        fi
+    done < <(find docs -name "*.md" -not -path "*/node_modules/*")
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "Missing meta description in:"
+        printf '  %s\n' "${missing[@]}"
+        exit 1
+    fi
+    echo "All docs have descriptions"
 
 # Run the application
 run *ARGS:
