@@ -1072,3 +1072,11 @@ exit 1
     env.env["PATH"] = new_path
     # CRITICAL: Also set PATH in the tmux session so workmux can find the fake gh
     env.tmux(["set-environment", "-g", "PATH", new_path])
+
+
+def pytest_report_teststatus(report):
+    """Suppress progress dots when running in Claude Code."""
+    import os
+
+    if os.environ.get("CLAUDECODE") and report.when == "call" and report.passed:
+        return report.outcome, "", report.outcome.upper()
