@@ -8,7 +8,7 @@ Tips for using workmux with monorepos containing multiple services.
 
 ## Port isolation
 
-When running multiple services (API, web app, database) in a monorepo, each worktree needs unique ports to avoid conflicts.
+When running multiple services (API, web app, database) in a monorepo, each worktree needs unique ports to avoid conflicts. For example, if your `.env` has hardcoded ports like `API_PORT=3001` and `VITE_PORT=3000`, running two worktrees simultaneously would fail because both would try to bind to the same ports.
 
 One strategy is to generate a `.env.local` file with unique ports for each worktree. Many frameworks (Vite, Next.js, CRA) automatically load `.env.local` and merge it with `.env`, with `.env.local` taking precedence.
 

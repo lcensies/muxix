@@ -1668,8 +1668,11 @@ artifacts without any lock contention.
 ### Port conflicts in monorepos
 
 When running multiple services (API, web app, database) in a monorepo, each
-worktree needs unique ports to avoid conflicts. Simply copying `.env` files
-won't work since all worktrees would use the same ports.
+worktree needs unique ports to avoid conflicts. For example, if your `.env` has
+hardcoded ports like `API_PORT=3001` and `VITE_PORT=3000`, running two worktrees
+simultaneously would fail because both would try to bind to the same ports.
+Simply copying `.env` files won't work since all worktrees would use the same
+ports.
 
 **Solution**: Use a `post_create` hook to generate a `.env.local` file with
 unique ports. Many frameworks (Vite, Next.js, CRA) automatically load
