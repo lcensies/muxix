@@ -65,6 +65,10 @@ test *ARGS: build
         pytest "$@"
     fi
 
+# Run docs dev server
+docs:
+    cd docs && npm run dev -- --open
+
 # Release a new patch version
 release:
     @just _release patch
