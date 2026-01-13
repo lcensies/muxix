@@ -151,6 +151,12 @@ cargo install workmux
 Merges your branch into main and cleans up everything (tmux window, worktree,
 and local branch).
 
+<!-- prettier-ignore -->
+> [!TIP]
+> **Using pull requests?** If your workflow uses GitHub/GitLab PRs, the merge
+> happens on the remote. Use `workmux remove` to clean up after your PR is
+> merged.
+
 ## Configuration
 
 workmux uses a two-level configuration system:
@@ -862,6 +868,13 @@ find src/utils -name "*.ts" ! -name "*.test.ts" | \
 
 Merges a branch into a target branch (main by default) and automatically cleans
 up all associated resources (worktree, tmux window, and local branch).
+
+<!-- prettier-ignore -->
+> [!TIP]
+**`merge` vs `remove`**: Use `merge` when you want to merge directly
+> without a pull request. If your workflow uses GitHub/GitLab PRs, use
+> [`remove`](#workmux-remove-name-alias-rm) to clean up after your PR is merged
+> on the remote.
 
 - `[branch-name]`: Optional name of the branch to merge. If omitted,
   automatically detects the current branch from the worktree you're in.
@@ -1706,10 +1719,10 @@ Configure workmux to copy `.env` and generate `.env.local`:
 # .workmux.yaml
 files:
   copy:
-    - .env  # Copy secrets (DATABASE_URL, API keys, etc.)
+    - .env # Copy secrets (DATABASE_URL, API keys, etc.)
 
 post_create:
-  - ./scripts/worktree-env  # Generate .env.local with unique ports
+  - ./scripts/worktree-env # Generate .env.local with unique ports
 ```
 
 For plain Node.js (without framework support), load both files with later
