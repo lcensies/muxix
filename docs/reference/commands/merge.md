@@ -13,7 +13,7 @@ workmux merge [branch-name] [flags]
 ::: tip When to use `merge` vs `remove`
 `workmux merge` performs the git merge locally. Use it when you want to merge directly without a pull request.
 
-If your workflow uses GitHub/GitLab pull requests, the merge happens on the remote after review. In that case, use [`workmux remove`](remove.md) to clean up the worktree after your PR is merged.
+If your workflow uses pull requests, the merge happens on the remote after review. In that case, use [`workmux remove`](remove.md) to clean up the worktree after your PR is merged.
 :::
 
 ## Arguments

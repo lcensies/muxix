@@ -153,7 +153,7 @@ and local branch).
 
 <!-- prettier-ignore -->
 > [!TIP]
-> **Using pull requests?** If your workflow uses GitHub/GitLab PRs, the merge
+> **Using pull requests?** If your workflow uses pull requests, the merge
 > happens on the remote. Use `workmux remove` to clean up after your PR is
 > merged.
 
@@ -871,8 +871,8 @@ up all associated resources (worktree, tmux window, and local branch).
 
 <!-- prettier-ignore -->
 > [!TIP]
-**`merge` vs `remove`**: Use `merge` when you want to merge directly
-> without a pull request. If your workflow uses GitHub/GitLab PRs, use
+> **`merge` vs `remove`**: Use `merge` when you want to merge directly
+> without a pull request. If your workflow uses pull requests, use
 > [`remove`](#workmux-remove-name-alias-rm) to clean up after your PR is merged
 > on the remote.
 
