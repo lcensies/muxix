@@ -621,16 +621,13 @@ pub fn commit_with_editor(worktree_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Get the base branch for merge checks, preferring remote tracking branch
+/// Get the base branch for merge checks, preferring local branch over remote
 pub fn get_merge_base(main_branch: &str) -> Result<String> {
-    // Try to get the configured upstream tracking branch
-    let upstream_arg = format!("{}@{{upstream}}", main_branch);
-    if let Ok(upstream) = Cmd::new("git")
-        .args(&["rev-parse", "--abbrev-ref", &upstream_arg])
-        .run_and_capture_stdout()
-        && !upstream.is_empty()
-    {
-        return Ok(upstream);
+    // Check if the local branch exists first.
+    // This ensures we compare against the local state (which might be ahead of remote)
+    // avoiding false positives when local main has merged changes but hasn't been pushed.
+    if branch_exists(main_branch)? {
+        return Ok(main_branch.to_string());
     }
 
     // Fallback: check if origin/<main_branch> exists

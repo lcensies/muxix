@@ -831,3 +831,66 @@ def test_remove_multiple_with_keep_branch(
     for branch in [branch1, branch2]:
         result = env.run_command(["git", "branch", "--list", branch], cwd=repo_path)
         assert branch in result.stdout, f"Branch {branch} should still exist"
+
+
+def test_remove_branch_merged_into_local_main_not_remote(
+    isolated_tmux_server: TmuxEnvironment,
+    workmux_exe_path: Path,
+    repo_path: Path,
+    remote_repo_path: Path,
+):
+    """
+    Verifies that removing a branch merged into local main (but not pushed to remote)
+    succeeds without prompting for confirmation.
+
+    This is a regression test for issue #30:
+    https://github.com/raine/workmux/issues/30
+
+    The bug was that get_merge_base() prioritized origin/main over local main,
+    causing false "unmerged commits" warnings when the local main was ahead of remote.
+    """
+    env = isolated_tmux_server
+    write_workmux_config(repo_path)
+
+    # Setup remote and push main to it
+    env.run_command(
+        ["git", "remote", "add", "origin", str(remote_repo_path)], cwd=repo_path
+    )
+    env.run_command(["git", "push", "-u", "origin", "main"], cwd=repo_path)
+
+    # Create feature branch and commit
+    branch_name = "feature-local-merge"
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: my feature")
+
+    # Merge feature into local main (but don't push to remote)
+    env.run_command(["git", "merge", branch_name], cwd=repo_path)
+
+    # Verify local main is ahead of origin/main
+    status_result = env.run_command(["git", "status"], cwd=repo_path)
+    assert "ahead" in status_result.stdout, "Local main should be ahead of origin/main"
+
+    # Remove the feature worktree - should succeed WITHOUT prompting
+    # because the branch IS merged into local main.
+    # If the bug exists, this would require user_input="y" to confirm.
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        force=False,
+        # No user_input - if the fix works, no prompt should appear
+    )
+
+    # Verify the worktree was removed
+    assert not worktree_path.exists(), (
+        "Worktree should be removed without prompting because "
+        "the branch is merged into local main"
+    )
+
+    # Verify the branch was deleted
+    branch_list_result = env.run_command(
+        ["git", "branch", "--list", branch_name], cwd=repo_path
+    )
+    assert branch_name not in branch_list_result.stdout, "Branch should be deleted"
