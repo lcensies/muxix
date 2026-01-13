@@ -1564,6 +1564,7 @@ underlying mechanics helps.
 - [Conflicts](#conflicts)
 - [Package manager considerations (pnpm, yarn)](#package-manager-considerations-pnpm-yarn)
 - [Rust projects](#rust-projects)
+- [Port conflicts in monorepos](#port-conflicts-in-monorepos)
 - [Symlinks and `.gitignore` trailing slashes](#symlinks-and-gitignore-trailing-slashes)
 - [Local git ignores (`.git/info/exclude`) are not shared](#local-git-ignores-gitinfoexclude-are-not-shared)
 
@@ -1650,6 +1651,85 @@ rustc-wrapper = "sccache"
 
 This caches compiled dependencies globally, so new worktrees benefit from cached
 artifacts without any lock contention.
+
+### Port conflicts in monorepos
+
+When running multiple services (API, web app, database) in a monorepo, each
+worktree needs unique ports to avoid conflicts. Simply copying `.env` files
+won't work since all worktrees would use the same ports.
+
+**Solution**: Use a `post_create` hook to generate a `.env.local` file with
+unique ports. Many frameworks (Vite, Next.js, CRA) automatically load
+`.env.local` and merge it with `.env`, with `.env.local` taking precedence. For
+plain Node.js, use multiple `--env-file` flags where later files override
+earlier ones.
+
+Create a script at `scripts/worktree-env`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+port_in_use() {
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN &>/dev/null
+}
+
+find_port() {
+  local port=$1
+  while port_in_use "$port"; do
+    ((port++))
+  done
+  echo "$port"
+}
+
+# Hash the handle to get a deterministic port offset (0-99)
+hash=$(echo -n "$WM_HANDLE" | md5 | cut -c1-4)
+offset=$((16#$hash % 100))
+
+# Find available ports starting from the hash-based offset
+api_port=$(find_port $((3001 + offset * 10)))
+vite_port=$(find_port $((3000 + offset * 10)))
+
+# Generate .env.local with port overrides
+cat >.env.local <<EOF
+API_PORT=$api_port
+VITE_PORT=$vite_port
+VITE_PUBLIC_API_URL=http://localhost:$api_port
+EOF
+
+echo "Created .env.local with ports: API=$api_port, VITE=$vite_port"
+```
+
+Configure workmux to copy `.env` and generate `.env.local`:
+
+```yaml
+# .workmux.yaml
+files:
+  copy:
+    - .env  # Copy secrets (DATABASE_URL, API keys, etc.)
+
+post_create:
+  - ./scripts/worktree-env  # Generate .env.local with unique ports
+```
+
+For plain Node.js (without framework support), load both files with later
+overriding earlier:
+
+```json
+{
+  "scripts": {
+    "api": "node --env-file=.env --env-file=.env.local api/server.js",
+    "web": "node --env-file=.env --env-file=.env.local web/server.js"
+  }
+}
+```
+
+Each worktree now gets unique ports derived from its name, allowing multiple
+instances to run simultaneously without conflicts. The `.env` file stays
+untouched, and `.env.local` is gitignored.
+
+See the [Monorepos guide](https://workmux.raine.dev/guide/monorepos) for
+alternative approaches using direnv.
 
 ### Symlinks and `.gitignore` trailing slashes
 

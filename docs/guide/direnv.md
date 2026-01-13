@@ -11,3 +11,5 @@ files:
   symlink:
     - .envrc
 ```
+
+See also [Using direnv for port isolation](/guide/monorepos#using-direnv) in monorepos.
