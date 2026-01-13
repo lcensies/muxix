@@ -1,3 +1,7 @@
+---
+description: Merge a branch and clean up the worktree, window, and local branch
+---
+
 # merge
 
 Merges a branch into a target branch (main by default) and automatically cleans up all associated resources (worktree, tmux window, and local branch).

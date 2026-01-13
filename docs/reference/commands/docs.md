@@ -1,3 +1,7 @@
+---
+description: Display the README with terminal formatting
+---
+
 # docs
 
 Displays the README with terminal formatting. Useful for quick reference without leaving the terminal.

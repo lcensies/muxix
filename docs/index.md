@@ -1,5 +1,6 @@
 ---
 layout: home
+description: The zero-friction workflow for git worktrees and tmux
 
 hero:
   text: Parallel development in tmux with git worktrees

@@ -1,3 +1,7 @@
+---
+description: Install workmux via Homebrew, pre-built binaries, or cargo
+---
+
 # Installation
 
 ## Homebrew (macOS/Linux)

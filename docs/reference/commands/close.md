@@ -1,3 +1,7 @@
+---
+description: Close a tmux window without removing the worktree or branch
+---
+
 # close
 
 Closes the tmux window for a worktree without removing the worktree or branch. This is useful when you want to temporarily close a window to reduce clutter or free resources, but plan to return to the work later.

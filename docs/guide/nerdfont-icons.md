@@ -1,3 +1,7 @@
+---
+description: Use Nerd Font icons for a cleaner tmux window prefix
+---
+
 # Nerdfont icons
 
 If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched with icons for developers), you can use the git branch icon as your window prefix for a cleaner look:

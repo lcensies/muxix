@@ -1,3 +1,7 @@
+---
+description: Get started with workmux in minutes
+---
+
 # Quick start
 
 ## 1. Initialize configuration (optional)

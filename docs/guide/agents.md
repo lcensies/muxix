@@ -1,3 +1,7 @@
+---
+description: Run multiple AI agents in parallel, each in their own isolated git worktree environment
+---
+
 # AI agents
 
 workmux is designed with AI agent workflows in mind. Run multiple agents in parallel, each in their own isolated environment.

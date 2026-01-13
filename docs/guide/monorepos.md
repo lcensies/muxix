@@ -1,3 +1,7 @@
+---
+description: Handle port conflicts when running multiple services across worktrees
+---
+
 # Monorepos
 
 Tips for using workmux with monorepos containing multiple services.

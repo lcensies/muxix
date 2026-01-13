@@ -1,3 +1,7 @@
+---
+description: Remove stale Claude Code entries pointing to deleted worktrees
+---
+
 # claude prune
 
 Removes stale entries from Claude config (`~/.claude.json`) that point to

@@ -1,3 +1,7 @@
+---
+description: A workflow tool for managing git worktrees and tmux windows as isolated development environments for AI agents
+---
+
 # What is workmux?
 
 workmux is a giga opinionated zero-friction workflow tool for managing [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated development environments. Perfect for running multiple AI agents in parallel without conflict.

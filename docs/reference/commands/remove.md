@@ -1,3 +1,7 @@
+---
+description: Remove worktrees, tmux windows, and branches without merging
+---
+
 # remove
 
 Removes worktrees, tmux windows, and branches without merging (unless you keep the branches). Useful for abandoning work or cleaning up experimental branches. Supports removing multiple worktrees in a single command. Alias: `rm`

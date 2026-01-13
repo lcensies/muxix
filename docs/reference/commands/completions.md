@@ -1,3 +1,7 @@
+---
+description: Generate shell completion scripts for bash, zsh, or fish
+---
+
 # completions
 
 Generates shell completion script for the specified shell. Completions provide tab-completion for commands and dynamic branch name suggestions.

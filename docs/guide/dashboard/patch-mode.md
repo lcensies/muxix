@@ -1,3 +1,7 @@
+---
+description: Selectively stage individual hunks like git add -p
+---
+
 # Patch mode
 
 Patch mode (`a` from WIP diff) allows staging individual hunks like `git add -p`. This is useful for selectively staging parts of an agent's work.

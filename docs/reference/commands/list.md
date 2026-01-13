@@ -1,3 +1,7 @@
+---
+description: List all git worktrees with their tmux window and merge status
+---
+
 # list
 
 Lists all git worktrees with their tmux window status and merge status. Alias: `ls`

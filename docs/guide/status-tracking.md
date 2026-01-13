@@ -1,3 +1,7 @@
+---
+description: Display agent status in your tmux window list for at-a-glance visibility
+---
+
 # Status tracking
 
 Workmux can display the status of the agent in your tmux window list, giving you at-a-glance visibility into what the agent in each window is doing.

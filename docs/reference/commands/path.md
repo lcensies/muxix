@@ -1,3 +1,7 @@
+---
+description: Print the filesystem path of a worktree
+---
+
 # path
 
 Prints the filesystem path of an existing worktree. Useful for scripting or quickly navigating to a worktree directory.

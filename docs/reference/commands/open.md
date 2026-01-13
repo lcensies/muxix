@@ -1,3 +1,7 @@
+---
+description: Open or switch to a tmux window for an existing worktree
+---
+
 # open
 
 Opens or switches to a tmux window for a pre-existing git worktree. If the window already exists, switches to it. If not, creates a new window with the configured pane layout and environment.

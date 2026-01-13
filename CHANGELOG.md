@@ -1,3 +1,7 @@
+---
+description: Release notes and version history for workmux
+---
+
 # Changelog
 
 <!-- skipped: v0.1.82 -->

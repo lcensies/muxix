@@ -1,3 +1,7 @@
+---
+description: Open a TUI dashboard showing all active AI agents
+---
+
 # dashboard
 
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.

@@ -1,3 +1,7 @@
+---
+description: Configure Claude Code permissions and settings for use with workmux worktrees
+---
+
 # Claude Code
 
 ## Permissions

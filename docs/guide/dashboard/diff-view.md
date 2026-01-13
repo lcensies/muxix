@@ -1,3 +1,7 @@
+---
+description: View uncommitted or branch changes for each agent
+---
+
 # Diff view
 
 Press `d` to view the diff for the selected agent. The diff view has two modes:

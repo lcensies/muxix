@@ -1,3 +1,7 @@
+---
+description: Use Claude slash commands to streamline workmux workflows
+---
+
 # Slash commands
 
 [Claude slash commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) are markdown files in `~/.claude/commands/` that define reusable workflows. When you type `/command-name` in Claude, it expands to the full prompt.

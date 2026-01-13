@@ -1,3 +1,7 @@
+---
+description: Create git worktrees and tmux windows, with support for AI prompts and parallel generation
+---
+
 # add
 
 Creates a new git worktree with a matching tmux window and switches you to it immediately. If the branch doesn't exist, it will be created automatically.

@@ -1,3 +1,7 @@
+---
+description: Customize dashboard commands and layout
+---
+
 # Configuration
 
 The dashboard can be customized in your `.workmux.yaml`:

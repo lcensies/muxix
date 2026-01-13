@@ -1,3 +1,7 @@
+---
+description: Use a main agent to coordinate and delegate tasks to worktree agents
+---
+
 # Delegating tasks
 
 See the [blog post on delegating tasks](https://raine.dev/blog/git-worktrees-parallel-agents/) for a detailed walkthrough.

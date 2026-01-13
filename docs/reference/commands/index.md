@@ -1,3 +1,7 @@
+---
+description: Complete reference for all workmux commands
+---
+
 # CLI reference
 
 ## Commands overview

@@ -1,3 +1,7 @@
+---
+description: Configure workmux with global defaults and project-specific settings
+---
+
 # Configuration
 
 workmux uses a two-level configuration system:
