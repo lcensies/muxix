@@ -9,6 +9,14 @@
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
 
+## v0.1.87 (2026-01-13)
+
+- Fixed `workmux add user/feature` incorrectly treating `user` as a remote name
+  instead of creating a local branch named `user/feature`
+  ([#28](https://github.com/raine/workmux/issues/28))
+- Fixed worktree cleanup failing to run process stop hooks by deferring
+  directory deletion
+
 ## v0.1.86 (2026-01-11)
 
 - Dashboard: Preview pane size is now configurable via config file, CLI flag
