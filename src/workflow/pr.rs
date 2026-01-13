@@ -191,24 +191,28 @@ fn detect_remote_branch_internal(
         let remote_ref = format!("refs/remotes/{}", branch_name);
         if !ctx.branch_exists(&remote_ref)? {
             // Remote branch not found locally - try fetching to see if it exists on the server
-            eprintln!(
-                "Remote branch '{}' not found locally, fetching from '{}'...",
-                branch_name, remote_name
-            );
-
-            // If fetch fails (network error, auth issue, etc.), fail hard.
-            // Don't create a potentially confusing local branch named "origin/feature".
-            ctx.fetch_remote(remote_name).with_context(|| {
-                format!(
-                    "Failed to fetch from remote '{}'. Please check your network connection and try again.",
+            spinner::with_spinner(
+                &format!(
+                    "Branch prefix matches remote '{}', verifying if it exists there...",
                     remote_name
-                )
-            })?;
+                ),
+                || {
+                    ctx.fetch_remote(remote_name).with_context(|| {
+                        format!(
+                            "Failed to fetch from remote '{}'. Please check your network connection and try again.",
+                            remote_name
+                        )
+                    })
+                },
+            )?;
 
             // Check again after fetch
             if !ctx.branch_exists(&remote_ref)? {
                 // Branch doesn't exist on the server either - user wants a local branch with this name
-                // (e.g. "ezh/some-feature" as a naming convention)
+                eprintln!(
+                    "Not found on '{}', creating local branch '{}'",
+                    remote_name, branch_name
+                );
                 return Ok((None, branch_name.to_string()));
             }
 
