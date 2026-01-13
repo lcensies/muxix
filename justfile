@@ -86,7 +86,7 @@ test *ARGS: build
 
 # Run docs dev server
 docs:
-    cd docs && npm run dev -- --open
+    cd docs && npm install && npm run dev -- --open
 
 # Release a new patch version
 release:
