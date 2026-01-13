@@ -4,6 +4,7 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+<!-- skipped: v0.1.89 -->
 <!-- skipped: v0.1.82 -->
 <!-- skipped: v0.1.73 -->
 <!-- skipped: v0.1.64 -->
