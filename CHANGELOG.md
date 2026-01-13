@@ -2,8 +2,6 @@
 description: Release notes and version history for workmux
 ---
 
-# Changelog
-
 <!-- skipped: v0.1.89 -->
 <!-- skipped: v0.1.82 -->
 <!-- skipped: v0.1.73 -->
@@ -13,6 +11,13 @@ description: Release notes and version history for workmux
 <!-- skipped: v0.1.27 -->
 <!-- skipped: v0.1.25 -->
 <!-- skipped: v0.1.8 -->
+
+# Changelog
+
+## v0.1.90 (2026-01-13)
+
+- Fixed false "unmerged commits" warning when local main branch is ahead of the
+  remote ([#30](https://github.com/raine/workmux/issues/30))
 
 ## v0.1.88 (2026-01-13)
 
