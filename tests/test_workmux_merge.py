@@ -505,3 +505,51 @@ def test_merge_falls_back_to_main_when_base_branch_deleted(
     assert child_commit_hash in main_log_result.stdout, (
         "Child commit should be on main branch (fallback when base deleted)"
     )
+
+
+def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge works when target branch is in a linked worktree.
+
+    When the target branch (e.g., main) is already checked out in a separate worktree,
+    workmux should perform the merge in that worktree instead of trying to switch
+    branches in the main worktree root.
+    """
+    env = isolated_tmux_server
+    feature_branch = "feature-issue-29"
+    write_workmux_config(repo_path, env=env)
+
+    # Create and switch to develop branch in main worktree
+    env.run_command(["git", "checkout", "-b", "develop"], cwd=repo_path)
+
+    # Create a separate worktree for main branch
+    main_worktree_path = repo_path.parent / "main-worktree"
+    env.run_command(
+        ["git", "worktree", "add", str(main_worktree_path), "main"], cwd=repo_path
+    )
+
+    # Create feature worktree using workmux, based on main
+    run_workmux_add(env, workmux_exe_path, repo_path, feature_branch, base="main")
+    feature_worktree_path = get_worktree_path(repo_path, feature_branch)
+
+    # Create a commit on the feature branch
+    feature_commit_msg = "feat: issue 29 test commit"
+    create_commit(env, feature_worktree_path, feature_commit_msg)
+    commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=feature_worktree_path
+    ).stdout.strip()
+
+    # Merge into main - should succeed by using the main-worktree
+    run_workmux_merge(env, workmux_exe_path, repo_path, feature_branch, into="main")
+
+    # Verify the feature worktree was cleaned up
+    assert not feature_worktree_path.exists(), "Feature worktree should be removed"
+
+    # Verify the commit is on main branch
+    main_log_result = env.run_command(
+        ["git", "log", "--oneline", "main"], cwd=repo_path
+    )
+    assert commit_hash in main_log_result.stdout, (
+        "Feature commit should be on main branch"
+    )

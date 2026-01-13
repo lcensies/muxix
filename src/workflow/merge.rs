@@ -101,46 +101,35 @@ pub fn merge(
     let target_branch = target_branch.as_str();
 
     // Resolve the worktree path and window handle for the TARGET branch.
-    // If the target branch is the configured main branch, we use the main worktree root
-    // and the main branch name as the window handle (standard workmux convention).
-    // Otherwise, we check if the target branch has a dedicated worktree.
-    // If it doesn't, we fallback to using the main worktree root but switch it to the target branch.
-    let (target_worktree_path, target_window_name) = if target_branch == context.main_branch {
-        (
-            context.main_worktree_root.clone(),
-            context.main_branch.clone(),
-        )
-    } else {
-        match git::get_worktree_path(target_branch) {
-            Ok(path) => {
-                // Check if the target is checked out in the main worktree.
-                // In that case, use the main branch name as the window handle
-                // (main worktree window is named after main_branch, not directory).
-                if path == context.main_worktree_root {
-                    (path, context.main_branch.clone())
-                } else {
-                    // Target has its own dedicated worktree. Use its directory name as the handle.
-                    let handle = path
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .ok_or_else(|| anyhow!("Invalid worktree path for target branch"))?
-                        .to_string();
-                    (path, handle)
-                }
+    // We prioritize finding an existing worktree for the target branch to support
+    // workflows where 'main' is checked out in a linked worktree (issue #29).
+    let (target_worktree_path, target_window_name) = match git::get_worktree_path(target_branch) {
+        Ok(path) => {
+            // Target is checked out in a worktree (could be main root or a linked worktree)
+            if path == context.main_worktree_root {
+                // It's in the main root. Use the main branch name as the window handle.
+                (path, context.main_branch.clone())
+            } else {
+                // It's in a linked worktree. Use the directory name as the handle.
+                let handle = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| anyhow!("Invalid worktree path for target branch"))?
+                    .to_string();
+                (path, handle)
             }
-            Err(_) => {
-                // Target branch exists but is not checked out in any worktree.
-                // We will use the main worktree to perform the merge.
-                // The target window remains the main window (since that's where we are merging).
-                debug!(
-                    target = target_branch,
-                    "merge:target branch has no worktree, using main worktree"
-                );
-                (
-                    context.main_worktree_root.clone(),
-                    context.main_branch.clone(),
-                )
-            }
+        }
+        Err(_) => {
+            // Target branch is NOT checked out anywhere.
+            // We fallback to using the main worktree root to perform the merge.
+            debug!(
+                target = target_branch,
+                "merge:target branch has no worktree, using main worktree"
+            );
+            (
+                context.main_worktree_root.clone(),
+                context.main_branch.clone(),
+            )
         }
     };
 
