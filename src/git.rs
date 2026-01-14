@@ -105,6 +105,40 @@ pub fn get_repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
+/// Get the common git directory (shared across all worktrees).
+///
+/// This returns the absolute path where git stores shared data like refs, objects, and config.
+/// - For regular repos: Returns the `.git` directory
+/// - For bare repos: Returns the bare repo path (e.g., `.bare`)
+///
+/// Git commands like `git worktree prune` and `git branch -D` work correctly
+/// when run from this directory, even for bare repo setups.
+pub fn get_git_common_dir() -> Result<PathBuf> {
+    let raw = Cmd::new("git")
+        .args(&["rev-parse", "--git-common-dir"])
+        .run_and_capture_stdout()
+        .context("Failed to get git common directory")?;
+
+    if raw.is_empty() {
+        return Err(anyhow!(
+            "git rev-parse --git-common-dir returned empty output"
+        ));
+    }
+
+    let path = PathBuf::from(raw);
+
+    // Normalize to absolute path since git may return relative paths like ".git"
+    let abs_path = if path.is_relative() {
+        std::env::current_dir()
+            .context("Failed to get current directory")?
+            .join(path)
+    } else {
+        path
+    };
+
+    Ok(abs_path)
+}
+
 /// Get the main worktree root directory (not a linked worktree)
 ///
 /// For bare repositories with linked worktrees, this returns the bare repo path.
@@ -482,12 +516,10 @@ fn branch_has_upstream(branch_name: &str) -> Result<bool> {
         .run_as_check()
 }
 
-/// Prune stale worktree metadata
-pub fn prune_worktrees() -> Result<()> {
-    // Ensure this command always runs from a valid git directory.
-    let main_worktree_root = get_main_worktree_root()?;
+/// Prune stale worktree metadata.
+pub fn prune_worktrees_in(git_common_dir: &Path) -> Result<()> {
     Cmd::new("git")
-        .workdir(&main_worktree_root)
+        .workdir(git_common_dir)
         .args(&["worktree", "prune"])
         .run()
         .context("Failed to prune worktrees")?;
@@ -815,13 +847,9 @@ pub fn list_checkout_branches() -> Result<Vec<String>> {
         .collect())
 }
 
-/// Delete a local branch
-pub fn delete_branch(branch_name: &str, force: bool) -> Result<()> {
-    // Run from main worktree root to avoid issues when deleting from within a worktree
-    // or after a worktree has been removed
-    let main_worktree_root = get_main_worktree_root()?;
-
-    let mut cmd = Cmd::new("git").workdir(&main_worktree_root).arg("branch");
+/// Delete a local branch.
+pub fn delete_branch_in(branch_name: &str, force: bool, git_common_dir: &Path) -> Result<()> {
+    let mut cmd = Cmd::new("git").workdir(git_common_dir).arg("branch");
 
     if force {
         cmd = cmd.arg("-D");

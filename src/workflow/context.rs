@@ -10,6 +10,7 @@ use tracing::debug;
 /// needed by workflow modules, reducing code duplication.
 pub struct WorkflowContext {
     pub main_worktree_root: PathBuf,
+    pub git_common_dir: PathBuf,
     pub main_branch: String,
     pub prefix: String,
     pub config: config::Config,
@@ -29,6 +30,9 @@ impl WorkflowContext {
         let main_worktree_root =
             git::get_main_worktree_root().context("Could not find the main git worktree")?;
 
+        let git_common_dir =
+            git::get_git_common_dir().context("Could not find the git common directory")?;
+
         let main_branch = if let Some(ref branch) = config.main_branch {
             branch.clone()
         } else {
@@ -39,6 +43,7 @@ impl WorkflowContext {
 
         debug!(
             main_worktree_root = %main_worktree_root.display(),
+            git_common_dir = %git_common_dir.display(),
             main_branch = %main_branch,
             prefix = %prefix,
             "workflow_context:created"
@@ -46,6 +51,7 @@ impl WorkflowContext {
 
         Ok(Self {
             main_worktree_root,
+            git_common_dir,
             main_branch,
             prefix,
             config,

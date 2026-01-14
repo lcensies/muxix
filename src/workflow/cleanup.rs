@@ -221,12 +221,13 @@ pub fn cleanup(
 
         // 2. Prune worktrees to clean up git's metadata.
         // Git will see the original path as missing since we renamed it.
-        git::prune_worktrees().context("Failed to prune worktrees")?;
+        git::prune_worktrees_in(&context.git_common_dir).context("Failed to prune worktrees")?;
         debug!("cleanup:git worktrees pruned");
 
         // 3. Delete the local branch (unless keeping it).
         if !keep_branch {
-            git::delete_branch(branch_name, force).context("Failed to delete local branch")?;
+            git::delete_branch_in(branch_name, force, &context.git_common_dir)
+                .context("Failed to delete local branch")?;
             result.local_branch_deleted = true;
             info!(branch = branch_name, "cleanup:local branch deleted");
         }
