@@ -7,12 +7,12 @@ description: Open or switch to a tmux window for an existing worktree
 Opens or switches to a tmux window for a pre-existing git worktree. If the window already exists, switches to it. If not, creates a new window with the configured pane layout and environment.
 
 ```bash
-workmux open <name> [flags]
+workmux open [name] [flags]
 ```
 
 ## Arguments
 
-- `<name>`: Worktree name (the directory name, which is also the tmux window name without the prefix). This is the name you see in your tmux window list.
+- `[name]`: Worktree name (the directory name, which is also the tmux window name without the prefix). Optional with `--new` when run from inside a worktree.
 
 ## Options
 
@@ -42,6 +42,9 @@ workmux open user-auth
 
 # Force open a second window for the same worktree (creates user-auth-2)
 workmux open user-auth --new
+
+# Open a new window for the current worktree (run from within the worktree)
+workmux open --new
 
 # Open with a prompt for AI agents
 workmux open user-auth -p "Continue implementing the login flow"
