@@ -14,6 +14,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.91 (2026-01-14)
+
+<!-- summary: Fix merge with bare repos -->
+
+- Fixed `merge` command failing with bare repo setups that use linked worktrees
+  ([#31](https://github.com/raine/workmux/issues/31))
+
 ## v0.1.90 (2026-01-13)
 
 - Fixed false "unmerged commits" warning when local main branch is ahead of the
