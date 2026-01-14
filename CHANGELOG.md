@@ -14,9 +14,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
-## v0.1.91 (2026-01-14)
+## v0.1.92 (2026-01-14)
 
-<!-- summary: Fix merge with bare repos -->
+- Duplicate windows created with `open --new` are now placed immediately after
+  the original window instead of at the end of the window list
+- `open --new` can now be run without a name argument when inside a worktree,
+  inferring the current worktree automatically
+
+## v0.1.91 (2026-01-14)
 
 - Fixed `merge` command failing with bare repo setups that use linked worktrees
   ([#31](https://github.com/raine/workmux/issues/31))
