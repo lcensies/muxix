@@ -106,16 +106,50 @@ pub fn get_repo_root() -> Result<PathBuf> {
 }
 
 /// Get the main worktree root directory (not a linked worktree)
+///
+/// For bare repositories with linked worktrees, this returns the bare repo path.
+/// For regular repositories, this returns the first worktree that exists on disk.
 pub fn get_main_worktree_root() -> Result<PathBuf> {
-    // Get all worktrees
     let list_str = Cmd::new("git")
         .args(&["worktree", "list", "--porcelain"])
         .run_and_capture_stdout()
         .context("Failed to list worktrees while locating main worktree")?;
 
+    // Check if this is a bare repo setup.
+    // The first entry in `git worktree list` is always the main worktree or bare repo.
+    // For bare repos, it looks like:
+    //   worktree /path/to/.bare
+    //   bare
+    if let Some(first_block) = list_str.trim().split("\n\n").next() {
+        let mut path: Option<PathBuf> = None;
+        let mut is_bare = false;
+
+        for line in first_block.lines() {
+            if let Some(p) = line.strip_prefix("worktree ") {
+                path = Some(PathBuf::from(p));
+            } else if line.trim() == "bare" {
+                is_bare = true;
+            }
+        }
+
+        // If this is a bare repo, return its path immediately.
+        // Git commands like `git worktree prune` work correctly from bare repo directories.
+        if is_bare && let Some(p) = path {
+            return Ok(p);
+        }
+    }
+
+    // Not a bare repo - find the first worktree that exists on disk.
+    // This handles edge cases where a worktree was deleted but not yet pruned.
     let worktrees = parse_worktree_list_porcelain(&list_str)?;
 
-    // The first worktree in the list is always the main worktree
+    for (path, _) in &worktrees {
+        if path.exists() {
+            return Ok(path.clone());
+        }
+    }
+
+    // Fallback: return the first worktree even if it doesn't exist
     if let Some((path, _)) = worktrees.first() {
         Ok(path.clone())
     } else {

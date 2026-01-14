@@ -553,3 +553,93 @@ def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
     assert commit_hash in main_log_result.stdout, (
         "Feature commit should be on main branch"
     )
+
+
+def test_merge_succeeds_with_bare_repo_and_linked_worktrees(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path
+):
+    """Verifies merge works correctly in a bare repo with linked worktrees setup.
+
+    This tests the scenario where:
+    1. The repository is a bare repo (e.g., .bare directory)
+    2. All branches including main are in linked worktrees
+    3. The worktree being merged has a name that sorts alphabetically before main
+
+    This is a regression test for a bug where `git worktree prune` would fail
+    with "No such file or directory" because get_main_worktree_root() returned
+    a non-existent worktree path.
+
+    The bug occurs because:
+    1. git worktree list returns worktrees sorted by path
+    2. When all worktrees are siblings (same directory level), they sort alphabetically
+    3. "add-feature" < "main", so the feature worktree is listed first
+    4. get_main_worktree_root() returns the first non-bare worktree
+    5. After the feature worktree is renamed to trash, that path no longer exists
+    6. prune_worktrees() tries to run git from that non-existent path and fails
+    """
+    env = isolated_tmux_server
+    base_dir = env.tmp_path / "bare-repo-test"
+    base_dir.mkdir()
+
+    # Create a bare repository
+    bare_repo = base_dir / ".bare"
+    env.run_command(["git", "init", "--bare", str(bare_repo)])
+
+    # Configure git user in the bare repo
+    env.run_command(["git", "config", "user.name", "Test User"], cwd=bare_repo)
+    env.run_command(["git", "config", "user.email", "test@example.com"], cwd=bare_repo)
+
+    # Create the main worktree from bare repo
+    main_worktree = base_dir / "main"
+    env.run_command(
+        ["git", "worktree", "add", str(main_worktree), "-b", "main"],
+        cwd=bare_repo,
+    )
+
+    # Create an initial commit in main
+    initial_file = main_worktree / "README.md"
+    initial_file.write_text("# Test Repo")
+    env.run_command(["git", "add", "README.md"], cwd=main_worktree)
+    env.run_command(["git", "commit", "-m", "Initial commit"], cwd=main_worktree)
+
+    # Create .workmux.yaml and commit it
+    write_workmux_config(main_worktree, env=env)
+
+    # Create a feature branch worktree MANUALLY as a sibling of main.
+    # This is critical: the worktree must be at the same directory level as main
+    # so that it sorts alphabetically BEFORE main in git worktree list.
+    # Using workmux add would create it in a __worktrees subdirectory, which
+    # would sort AFTER main and not trigger the bug.
+    branch_name = "add-feature"  # 'add' < 'main' alphabetically
+    feature_worktree = base_dir / branch_name  # Sibling of main, not in __worktrees
+    env.run_command(
+        ["git", "worktree", "add", str(feature_worktree), "-b", branch_name],
+        cwd=main_worktree,
+    )
+
+    # Verify the worktree order - add-feature should come before main
+    worktree_list = env.run_command(
+        ["git", "worktree", "list", "--porcelain"], cwd=main_worktree
+    )
+    # The order should be: .bare, add-feature, main
+    assert worktree_list.stdout.index("add-feature") < worktree_list.stdout.index(
+        "/main\n"
+    ), "add-feature worktree must be listed before main worktree to trigger the bug"
+
+    # Create a commit on the feature branch
+    create_commit(env, feature_worktree, "feat: new feature")
+
+    # Merge the feature branch - this should succeed without errors
+    # Before the fix, this would fail with:
+    # "Failed to prune worktrees" / "No such file or directory"
+    run_workmux_merge(env, workmux_exe_path, main_worktree, branch_name)
+
+    # Verify cleanup succeeded
+    assert not feature_worktree.exists(), "Feature worktree should be removed"
+
+    branch_list_result = env.run_command(
+        ["git", "branch", "--list", branch_name], cwd=main_worktree
+    )
+    assert branch_name not in branch_list_result.stdout, (
+        "Local branch should be deleted"
+    )
