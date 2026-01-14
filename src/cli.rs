@@ -217,9 +217,9 @@ enum Commands {
 
     /// Open a tmux window for an existing worktree
     Open {
-        /// Worktree name (directory name, visible in tmux window)
-        #[arg(value_parser = WorktreeHandleParser::new())]
-        name: String,
+        /// Worktree name (directory name, visible in tmux window). Optional with --new.
+        #[arg(value_parser = WorktreeHandleParser::new(), required_unless_present = "new")]
+        name: Option<String>,
 
         /// Re-run post-create hooks (e.g., pnpm install)
         #[arg(long)]
@@ -415,7 +415,7 @@ pub fn run() -> Result<()> {
             force_files,
             new,
             prompt,
-        } => command::open::run(&name, run_hooks, force_files, new, prompt),
+        } => command::open::run(name.as_deref(), run_hooks, force_files, new, prompt),
         Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Merge {
             name,

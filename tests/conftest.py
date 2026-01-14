@@ -767,7 +767,7 @@ def run_workmux_open(
     env: TmuxEnvironment,
     workmux_exe_path: Path,
     repo_path: Path,
-    branch_name: str,
+    branch_name: Optional[str] = None,
     *,
     run_hooks: bool = False,
     force_files: bool = False,
@@ -776,6 +776,7 @@ def run_workmux_open(
     prompt_file: Optional[Path] = None,
     pre_run_tmux_cmds: Optional[List[List[str]]] = None,
     expect_fail: bool = False,
+    working_dir: Optional[Path] = None,
 ) -> WorkmuxCommandResult:
     """
     Helper to run `workmux open` command inside the isolated tmux session.
@@ -783,9 +784,11 @@ def run_workmux_open(
     Returns the command result so tests can assert on stdout/stderr.
 
     Args:
+        branch_name: Worktree name to open (optional with --new, uses current directory)
         new_window: If True, pass --new to force opening a new window (creates suffix like -2, -3)
         prompt: Inline prompt text to pass via -p
         prompt_file: Path to a prompt file to pass via -P
+        working_dir: Optional directory to run the command from (defaults to repo_path)
     """
     flags: List[str] = []
     if run_hooks:
@@ -800,13 +803,15 @@ def run_workmux_open(
         flags.append(f"-P {shlex.quote(str(prompt_file))}")
 
     flag_str = f" {' '.join(flags)}" if flags else ""
+    name_part = f" {branch_name}" if branch_name else ""
     return run_workmux_command(
         env,
         workmux_exe_path,
         repo_path,
-        f"open {branch_name}{flag_str}",
+        f"open{name_part}{flag_str}",
         pre_run_tmux_cmds=pre_run_tmux_cmds,
         expect_fail=expect_fail,
+        working_dir=working_dir,
     )
 
 

@@ -2,15 +2,24 @@ use crate::command::args::PromptArgs;
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 pub fn run(
-    name: &str,
+    name: Option<&str>,
     run_hooks: bool,
     force_files: bool,
     new_window: bool,
     prompt_args: PromptArgs,
 ) -> Result<()> {
+    // Resolve the worktree name
+    let resolved_name = match (name, new_window) {
+        (Some(n), _) => n.to_string(),
+        (None, true) => super::resolve_name(None).context(
+            "Could not infer current worktree. Run inside a worktree or provide a name.",
+        )?,
+        (None, false) => bail!("Worktree name is required unless --new is provided"),
+    };
+
     let config = config::Config::load(None)?;
     let context = WorkflowContext::new(config)?;
 
@@ -26,7 +35,7 @@ pub fn run(
     let prompt_file_path = if let Some(ref p) = prompt {
         let unique_name = format!(
             "{}-{}",
-            name,
+            resolved_name,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -50,13 +59,13 @@ pub fn run(
         );
     }
 
-    let result = workflow::open(name, &context, options, new_window)
+    let result = workflow::open(&resolved_name, &context, options, new_window)
         .context("Failed to open worktree environment")?;
 
     if result.did_switch {
         println!(
             "✓ Switched to existing tmux window for '{}'\n  Worktree: {}",
-            name,
+            resolved_name,
             result.worktree_path.display()
         );
     } else {
@@ -66,7 +75,7 @@ pub fn run(
 
         println!(
             "✓ Opened tmux window for '{}'\n  Worktree: {}",
-            name,
+            resolved_name,
             result.worktree_path.display()
         );
     }

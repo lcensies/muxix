@@ -99,6 +99,38 @@ def test_open_with_new_flag_creates_duplicate_window(
     assert f"{base_window}-2" in list_windows
 
 
+def test_open_new_without_name_uses_current_worktree(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --new` without name uses current worktree from cwd."""
+    env = isolated_tmux_server
+    branch_name = "feature-open-current"
+    base_window = get_window_name(branch_name)
+
+    write_workmux_config(repo_path)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Get the worktree path to run the command from
+    worktree_path = get_worktree_path(repo_path, branch_name)
+
+    # Open with --new flag but no name, from inside the worktree directory
+    result = run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        None,
+        new_window=True,
+        working_dir=worktree_path,
+    )
+
+    assert "Opened tmux window" in result.stdout
+
+    # Should now have two windows: base and -2
+    list_windows = _get_all_windows(env)
+    assert base_window in list_windows
+    assert f"{base_window}-2" in list_windows
+
+
 def test_open_with_new_flag_creates_incrementing_suffixes(
     isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
