@@ -66,6 +66,40 @@ pub fn find_last_window_with_prefix(prefix: &str) -> Result<Option<String>> {
     Ok(last_match)
 }
 
+/// Find the last window (by index) that belongs to a specific base handle group.
+/// This matches either the exact base name or numeric suffixes (e.g., `my-feature`, `my-feature-2`).
+/// Used to insert duplicate windows immediately after their base window group.
+///
+/// Returns the window ID (e.g. @1) to be used as a target for inserting new windows.
+pub fn find_last_window_with_base_handle(
+    prefix: &str,
+    base_handle: &str,
+) -> Result<Option<String>> {
+    let output = Cmd::new("tmux")
+        .args(&["list-windows", "-F", "#{window_id} #{window_name}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let full_base = prefixed(prefix, base_handle);
+    let full_base_dash = format!("{}-", full_base);
+    let mut last_match: Option<String> = None;
+
+    for line in output.lines() {
+        if let Some((id, name)) = line.split_once(' ') {
+            let is_exact = name == full_base;
+            let is_numeric_suffix = name.strip_prefix(&full_base_dash).is_some_and(|suffix| {
+                !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+            });
+
+            if is_exact || is_numeric_suffix {
+                last_match = Some(id.to_string());
+            }
+        }
+    }
+
+    Ok(last_match)
+}
+
 /// Check if a tmux window with the given name exists
 pub fn window_exists(prefix: &str, window_name: &str) -> Result<bool> {
     let prefixed_name = prefixed(prefix, window_name);

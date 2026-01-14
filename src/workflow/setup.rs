@@ -20,6 +20,7 @@ use super::types::CreateResult;
 /// * `config` - Configuration settings
 /// * `options` - Setup options (hooks, file ops, etc.)
 /// * `agent` - Optional agent override
+/// * `after_window` - Optional window ID to insert after (for grouping duplicates)
 pub fn setup_environment(
     branch_name: &str,
     handle: &str,
@@ -27,6 +28,7 @@ pub fn setup_environment(
     config: &config::Config,
     options: &super::types::SetupOptions,
     agent: Option<&str>,
+    after_window: Option<String>,
 ) -> Result<CreateResult> {
     debug!(
         branch = branch_name,
@@ -88,9 +90,11 @@ pub fn setup_environment(
     }
 
     // Find the last workmux-managed window to insert the new one after.
-    // This keeps worktree windows grouped together instead of appending at the end.
+    // If after_window is provided (for duplicate windows), use that to group with base handle.
+    // Otherwise, use prefix-based lookup to group workmux windows together.
     // If not found (or error), falls back to default append behavior.
-    let last_wm_window = tmux::find_last_window_with_prefix(prefix).unwrap_or(None);
+    let last_wm_window =
+        after_window.or_else(|| tmux::find_last_window_with_prefix(prefix).unwrap_or(None));
 
     // Create tmux window and get the initial pane's ID
     // Use handle for the window name (not branch_name)

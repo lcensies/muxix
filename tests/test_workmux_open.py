@@ -154,6 +154,38 @@ def test_open_with_new_flag_creates_incrementing_suffixes(
     assert f"{base_window}-4" in list_windows
 
 
+def test_open_new_inserts_after_base_group(
+    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --new` inserts duplicate after base handle group, not at end."""
+    env = isolated_tmux_server
+
+    write_workmux_config(repo_path)
+
+    # Create three worktrees in order: feature-a, my-feature, feature-b
+    run_workmux_add(env, workmux_exe_path, repo_path, "feature-a")
+    run_workmux_add(env, workmux_exe_path, repo_path, "my-feature")
+    run_workmux_add(env, workmux_exe_path, repo_path, "feature-b")
+
+    # Create a duplicate of my-feature
+    run_workmux_open(env, workmux_exe_path, repo_path, "my-feature", new_window=True)
+
+    # Get window list (tmux list-windows outputs in index order)
+    windows = _get_all_windows(env)
+    base = get_window_name("my-feature")
+    dup = f"{base}-2"
+    feature_b = get_window_name("feature-b")
+
+    # Duplicate should be immediately after base, and before feature-b
+    assert dup in windows, f"Expected {dup} in {windows}"
+    assert windows.index(dup) == windows.index(base) + 1, (
+        f"Duplicate {dup} should be immediately after {base}. Windows: {windows}"
+    )
+    assert windows.index(feature_b) > windows.index(dup), (
+        f"{feature_b} should be after duplicate {dup}. Windows: {windows}"
+    )
+
+
 def test_open_new_flag_when_no_window_exists_uses_base_name(
     isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):

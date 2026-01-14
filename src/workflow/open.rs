@@ -69,10 +69,14 @@ pub fn open(
     }
 
     // Determine handle: use suffix if forcing new window and one exists
-    let handle = if new_window && window_exists {
-        resolve_unique_handle(context, &base_handle)?
+    let (handle, after_window) = if new_window && window_exists {
+        let unique_handle = resolve_unique_handle(context, &base_handle)?;
+        // Insert after the last window in the base handle group (base or -N suffixes)
+        let after =
+            tmux::find_last_window_with_base_handle(&context.prefix, &base_handle).unwrap_or(None);
+        (unique_handle, after)
     } else {
-        base_handle
+        (base_handle, None)
     };
 
     // Setup the environment
@@ -83,6 +87,7 @@ pub fn open(
         &context.config,
         &options,
         None,
+        after_window,
     )?;
     info!(
         handle = handle,

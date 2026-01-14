@@ -261,6 +261,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         &context.config,
         &options_with_prompt,
         agent,
+        None,
     )?;
     result.base_branch = base_branch_for_creation.clone();
     info!(
