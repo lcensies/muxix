@@ -70,7 +70,7 @@ _workmux_dynamic() {
     fi
 
     # Fall back to generated completions
-    _workmux
+    _workmux "$@"
 }
 
 complete -F _workmux_dynamic -o bashdefault -o default workmux
