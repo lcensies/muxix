@@ -20,3 +20,7 @@ tests/venv
 node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# Nix
+result
+result-*

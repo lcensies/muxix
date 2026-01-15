@@ -111,6 +111,14 @@ Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
 cargo install workmux
 ```
 
+### Nix
+
+```bash
+nix profile install github:raine/workmux
+# or try without installing
+nix shell github:raine/workmux
+```
+
 ## Quick start
 
 1. **Initialize configuration (optional)**:
