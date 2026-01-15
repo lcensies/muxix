@@ -450,6 +450,68 @@ onMounted(() => {
 .testimonial-author a:hover {
   text-decoration: underline;
 }
+
+.cta-section {
+  margin: 4rem 0 0;
+  padding: 0 1.5rem 4rem;
+  text-align: center;
+}
+
+.cta-section h2 {
+  border: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-weight: 700;
+  font-size: 1.75rem;
+}
+
+.cta-section p {
+  font-size: 1.1rem;
+  color: var(--vp-c-text-2);
+  margin: 0 0 1.5rem;
+}
+
+.cta-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.cta-buttons a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.cta-buttons a:hover {
+  opacity: 0.85;
+}
+
+.cta-buttons .primary {
+  background: var(--vp-c-brand-1);
+  color: var(--vp-c-white);
+}
+
+.cta-buttons .primary:hover {
+  color: var(--vp-c-white);
+}
+
+.cta-buttons .secondary {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.cta-buttons .secondary:hover {
+  color: var(--vp-c-text-1);
+}
 </style>
 
 <div class="testimonials-section">
@@ -467,5 +529,14 @@ onMounted(() => {
         — @rstacruz <a href="https://github.com/raine/workmux/issues/2">via GitHub</a>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="cta-section">
+  <h2>Start parallel development today</h2>
+  <p>Set up workmux in minutes and transform your workflow.</p>
+  <div class="cta-buttons">
+    <a href="/guide/quick-start" class="primary">Quick start</a>
+    <a href="https://github.com/raine/workmux" class="secondary">View on GitHub</a>
   </div>
 </div>
