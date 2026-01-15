@@ -11,7 +11,6 @@
 
 <p align="center">
   <a href="https://workmux.raine.dev/"><strong>📖 Documentation</strong></a> ·
-  <a href="#why-git-worktrees">Why?</a> ·
   <a href="#installation">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#commands">Commands</a> ·
@@ -35,20 +34,18 @@ from your conversation.
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
 
-## Philosophy
+## Why workmux?
 
-- **Native tmux integration**: Workmux creates windows in your current tmux
-  session. Your existing shortcuts, themes, and workflow stay intact.
-- **One worktree, one tmux window**: Each git worktree gets its own dedicated,
-  pre-configured tmux window.
-- **Frictionless**: Multi-step workflows are reduced to simple commands.
-- **Configuration as code**: Define your tmux layout and setup steps in
-  `.workmux.yaml`.
+**Parallel workflows.** Work on multiple features, hotfixes, or AI agents at the
+same time. No stashing, no branch switching, no conflicts.
 
-The core principle is that **tmux is the interface**. If you already live in
-tmux, you shouldn't need to learn a new TUI app or separate interface to manage
-your work. With workmux, managing parallel development tasks, or multiple AI
-agents, is as simple as managing tmux windows.
+**One window per task.** A natural mental model. Each has its own terminal
+state, editor session, and dev server. Context switching is switching tabs.
+
+**tmux is the interface.** For existing and new tmux users. If you already live
+in tmux, it fits your workflow. If you don't, it's worth picking up.
+
+New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
 ## Features
 
@@ -1485,17 +1482,10 @@ workmux add api-endpoint
 workmux list
 ```
 
-## Why workmux?
+## Before and after
 
-**Parallel development, simplified.** Each task gets its own git worktree mapped
-to a tmux window, creating fully isolated environments. Run features, hotfixes,
-or AI agents side-by-side without conflicts.
-
-**One window per task.** Each environment preserves its own terminal state,
-editor session, and dev server. Context switching is just switching windows.
-
-**tmux is the interface.** No new TUI to learn. If you already live in tmux, it
-fits your workflow. If you don't, it's worth picking up.
+workmux turns a multi-step manual workflow into simple commands, making parallel
+development workflows practical.
 
 ### Without workmux
 
@@ -1575,7 +1565,7 @@ setup:
 In a standard Git setup, switching branches disrupts your flow by requiring a
 clean working tree. Worktrees remove this friction. `workmux` automates the
 entire process and pairs each worktree with a dedicated tmux window, creating
-fully isolated development environments. See [Why workmux?](#why-workmux) for
+fully isolated development environments. See [Before and after](#before-and-after) for
 how workmux streamlines this workflow.
 
 ## Git worktree caveats

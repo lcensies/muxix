@@ -55,7 +55,7 @@ hero:
 
 <div class="demo-section">
   <h2>See it in action</h2>
-  <p>Create isolated environments, work in parallel, merge and clean up.</p>
+  <p>Spin up worktrees, develop in parallel, merge and clean up.</p>
   <div class="showcase-container main-demo">
     <div class="window-glow"></div>
     <div class="terminal-window">

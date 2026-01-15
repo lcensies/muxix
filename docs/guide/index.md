@@ -10,14 +10,16 @@ workmux is a giga opinionated zero-friction workflow tool for managing [git work
 Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
 :::
 
-## Philosophy
+## Why workmux?
 
-- **Native tmux integration**: Workmux creates windows in your current tmux session. Your existing shortcuts, themes, and workflow stay intact.
-- **One worktree, one tmux window**: Each git worktree gets its own dedicated, pre-configured tmux window.
-- **Frictionless**: Multi-step workflows are reduced to simple commands.
-- **Configuration as code**: Define your tmux layout and setup steps in `.workmux.yaml`.
+**Parallel workflows.** Work on multiple features, hotfixes, or AI agents at the
+same time. No stashing, no branch switching, no conflicts.
 
-The core principle is that **tmux is the interface**. If you already live in tmux, you shouldn't need to learn a new TUI app or separate interface to manage your work. With workmux, managing parallel development tasks, or multiple AI agents, is as simple as managing tmux windows.
+**One window per task.** A natural mental model. Each has its own terminal
+state, editor session, and dev server. Context switching is switching tabs.
+
+**tmux is the interface.** For existing and new tmux users. If you already live
+in tmux, it fits your workflow. If you don't, it's worth picking up.
 
 ## Features
 
@@ -32,9 +34,9 @@ The core principle is that **tmux is the interface**. If you already live in tmu
 - [Automatic branch name generation](/reference/commands/add#automatic-branch-name-generation) from prompts using LLM
 - Shell completions
 
-## Why workmux?
+## Before and after
 
-workmux turns a multi-step manual workflow into two simple commands, making parallel development workflows practical.
+workmux turns a multi-step manual workflow into simple commands, making parallel development workflows practical.
 
 ### Without workmux
 
