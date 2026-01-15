@@ -18,26 +18,61 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/raine/workmux
-
-features:
-  - title: Worktrees made simple
-    details: Create a git worktree, tmux window, and environment setup in one command. Context switching is instant.
-  - title: Parallel AI agents
-    details: The missing link for AI coding. Delegate tasks to multiple agents simultaneously in isolated environments.
-  - title: Native tmux
-    details: Tmux is the interface. No new TUI to learn. Just tmux windows you already know how to use.
-  - title: Config as code
-    details: Define your tmux layout and setup steps in .workmux.yaml. Customize panes, file operations, and lifecycle hooks.
 ---
 
 <div class="why-section">
   <h2>Why workmux?</h2>
-  <p>
-    The core principle is that <strong>tmux is the interface</strong>.
-    If you already live in tmux, you shouldn't need yet another interface to manage your tasks.
-    workmux turns multi-step git worktree operations into simple commands,
-    making parallel workflows practical.
-  </p>
+  <div class="why-grid">
+    <div class="why-item">
+      <div class="why-header">
+        <div class="why-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+        </div>
+        <h3>Parallel workflows</h3>
+      </div>
+      <p>Work on multiple features, hotfixes, or AI agents at the same time. No stashing, no branch switching, no conflicts.</p>
+    </div>
+    <div class="why-item">
+      <div class="why-header">
+        <div class="why-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+        </div>
+        <h3>One window per task</h3>
+      </div>
+      <p>A natural mental model. Each has its own terminal state, editor session, and dev server. Context switching is switching tabs.</p>
+    </div>
+    <div class="why-item">
+      <div class="why-header">
+        <div class="why-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+        </div>
+        <h3>tmux is the interface</h3>
+      </div>
+      <p>For existing and new tmux users. If you already live in tmux, it fits your workflow. If you don't, it's worth picking up.</p>
+    </div>
+  </div>
+</div>
+
+<div class="demo-section">
+  <h2>See it in action</h2>
+  <p>Create isolated environments, work in parallel, merge and clean up.</p>
+  <div class="showcase-container main-demo">
+    <div class="window-glow"></div>
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="window-controls">
+          <span class="control red"></span>
+          <span class="control yellow"></span>
+          <span class="control green"></span>
+        </div>
+        <div class="window-title">workmux demo</div>
+      </div>
+      <div class="video-container">
+        <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
+        <button type="button" class="video-play-button" aria-label="Play video"></button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="code-snippet">
@@ -50,24 +85,6 @@ workmux add my-feature
 workmux merge
 ```
 
-</div>
-
-<div class="showcase-container">
-  <div class="window-glow"></div>
-  <div class="terminal-window">
-    <div class="terminal-header">
-      <div class="window-controls">
-        <span class="control red"></span>
-        <span class="control yellow"></span>
-        <span class="control green"></span>
-      </div>
-      <div class="window-title">workmux demo</div>
-    </div>
-    <div class="video-container">
-      <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
-      <button type="button" class="video-play-button" aria-label="Play video"></button>
-    </div>
-  </div>
 </div>
 
 <div class="dashboard-section">
@@ -127,24 +144,91 @@ onMounted(() => {
 </script>
 
 <style>
-.why-section {
-  max-width: 800px;
-  margin: 5rem auto;
-  text-align: center;
+.demo-section {
+  max-width: 940px;
+  margin: 0 auto 4rem;
   padding: 0 1.5rem;
 }
 
-.why-section h2 {
+.demo-section h2 {
+  text-align: center;
   border: none;
-  margin: 0 0 1.5rem;
+  margin: 0 0 0.75rem;
   padding: 0;
   font-weight: 700;
   font-size: 1.75rem;
 }
 
-.why-section p {
-  font-size: 1.2rem;
-  line-height: 1.8;
+.demo-section > p {
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin: 0 0 2rem;
+}
+
+.demo-section .showcase-container.main-demo {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.why-section {
+  max-width: 1100px;
+  margin: 2rem auto 4rem;
+  padding: 0 1.5rem;
+}
+
+.why-section h2 {
+  text-align: center;
+  border: none;
+  margin: 0 0 2.5rem;
+  padding: 0;
+  font-weight: 700;
+  font-size: 1.75rem;
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.why-item {
+  background-color: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.why-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.why-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background-color: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.why-item h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--vp-c-text-1);
+}
+
+.why-item p {
+  font-size: 0.95rem;
+  line-height: 1.6;
   color: var(--vp-c-text-2);
   margin: 0;
 }

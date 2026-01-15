@@ -1487,8 +1487,15 @@ workmux list
 
 ## Why workmux?
 
-workmux turns a multi-step manual workflow into two simple commands, making
-parallel development workflows practical.
+**Parallel development, simplified.** Each task gets its own git worktree mapped
+to a tmux window, creating fully isolated environments. Run features, hotfixes,
+or AI agents side-by-side without conflicts.
+
+**One window per task.** Each environment preserves its own terminal state,
+editor session, and dev server. Context switching is just switching windows.
+
+**tmux is the interface.** No new TUI to learn. If you already live in tmux, it
+fits your workflow. If you don't, it's worth picking up.
 
 ### Without workmux
 
