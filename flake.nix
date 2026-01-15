@@ -15,14 +15,6 @@
           version = self.shortRev or self.dirtyShortRev or "dev";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ pkgs.installShellFiles ];
-          postInstall = ''
-            export HOME=$TMPDIR
-            installShellFiles --cmd workmux \
-              --bash <($out/bin/workmux completions bash) \
-              --fish <($out/bin/workmux completions fish) \
-              --zsh <($out/bin/workmux completions zsh)
-          '';
         };
       });
     };
