@@ -116,8 +116,10 @@ cargo install workmux
 ```bash
 nix profile install github:raine/workmux
 # or try without installing
-nix shell github:raine/workmux
+nix run github:raine/workmux -- --help
 ```
+
+See [Nix guide](https://workmux.raine.dev/guide/nix) for flake and home-manager setup.
 
 ## Quick start
 

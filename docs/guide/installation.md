@@ -1,5 +1,5 @@
 ---
-description: Install workmux via Homebrew, pre-built binaries, or cargo
+description: Install workmux via Homebrew, pre-built binaries, Cargo, or Nix
 ---
 
 # Installation
@@ -35,6 +35,22 @@ Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
 ```bash
 cargo install workmux
 ```
+
+## Nix
+
+Requires [Nix with flakes enabled](https://nixos.wiki/wiki/Flakes).
+
+```bash
+nix profile install github:raine/workmux
+```
+
+Or try without installing:
+
+```bash
+nix run github:raine/workmux -- --help
+```
+
+See [Nix guide](/guide/nix) for flake integration and home-manager setup.
 
 ## Shell alias (recommended)
 

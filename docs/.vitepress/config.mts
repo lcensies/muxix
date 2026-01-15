@@ -85,6 +85,7 @@ export default defineConfig({
           { text: "direnv", link: "/guide/direnv" },
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
+          { text: "Nix", link: "/guide/nix" },
         ],
       },
       {
