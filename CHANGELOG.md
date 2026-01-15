@@ -14,6 +14,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.93 (2026-01-15)
+
+- Added Nix flake (https://workmux.raine.dev/guide/nix)
+- Fixed bash completion not passing arguments to the fallback completion
+  function
+
 ## v0.1.92 (2026-01-14)
 
 - Duplicate windows created with `open --new` are now placed immediately after
