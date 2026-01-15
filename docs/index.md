@@ -10,10 +10,7 @@ hero:
     dark: /logo-dark.svg
   actions:
     - theme: brand
-      text: Quick start
-      link: /guide/quick-start
-    - theme: alt
-      text: Installation
+      text: Get started
       link: /guide/installation
     - theme: alt
       text: GitHub
