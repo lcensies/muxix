@@ -1555,8 +1555,8 @@ workmux merge add-search-endpoint
 
 <!-- prettier-ignore -->
 > [!TIP]
-> Use `-A` to generate branch names automatically from your prompt, so you don't
-> have to think of one. See
+> Use `-A` (`--auto-name`) to generate branch names automatically from your
+> prompt, so you don't have to think of one. See
 > [Automatic branch name generation](#automatic-branch-name-generation).
 
 ## Why git worktrees?

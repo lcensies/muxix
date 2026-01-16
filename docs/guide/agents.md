@@ -38,7 +38,7 @@ workmux add -A
 ```
 
 ::: tip
-The `-A` flag uses an LLM to [generate a branch name](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
+The `-A` (`--auto-name`) flag uses an LLM to [generate a branch name](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
 :::
 
 ## Parallel workflows

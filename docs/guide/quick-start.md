@@ -102,7 +102,7 @@ workmux merge add-search-endpoint
 ```
 
 ::: tip
-Use `-A` to [generate branch names automatically](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
+Use `-A` (`--auto-name`) to [generate branch names automatically](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
 :::
 
 See [AI Agents](/guide/agents) for details on prompts, multi-agent generation, and agent status tracking.
