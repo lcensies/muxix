@@ -119,7 +119,8 @@ nix profile install github:raine/workmux
 nix run github:raine/workmux -- --help
 ```
 
-See [Nix guide](https://workmux.raine.dev/guide/nix) for flake and home-manager setup.
+See [Nix guide](https://workmux.raine.dev/guide/nix) for flake and home-manager
+setup.
 
 ## Quick start
 
@@ -1535,24 +1536,29 @@ workmux add user-auth
 workmux merge
 ```
 
-### The parallel AI workflow (with workmux)
+### The parallel AI workflow
 
-Delegate multiple complex tasks to AI agents and let them work at the same time.
-This workflow is cumbersome to manage manually.
+Run multiple AI agents simultaneously, each in its own worktree. No conflicts,
+no branch switching, no stashing.
 
 ```bash
-# Task 1: Refactor the user model (for Agent 1)
-workmux add refactor/user-model
+# Spin up two agents working on different tasks
+workmux add refactor-user-model -p "Refactor the User model to use composition"
+workmux add add-search-endpoint -p "Add a /search endpoint with pagination"
 
-# Task 2: Build a new API endpoint (for Agent 2, in parallel)
-workmux add feature/new-api
+# Each agent works in isolation — check progress via tmux windows or the dashboard
+workmux dashboard
 
-# ... Command agents work simultaneously in their isolated environments ...
-
-# Merge each task as it's completed
-workmux merge refactor/user-model
-workmux merge feature/new-api
+# Merge completed work back to main
+workmux merge refactor-user-model
+workmux merge add-search-endpoint
 ```
+
+<!-- prettier-ignore -->
+> [!TIP]
+> Use `-A` to generate branch names automatically from your prompt, so you don't
+> have to think of one. See
+> [Automatic branch name generation](#automatic-branch-name-generation).
 
 ## Why git worktrees?
 
@@ -1575,8 +1581,8 @@ setup:
 In a standard Git setup, switching branches disrupts your flow by requiring a
 clean working tree. Worktrees remove this friction. `workmux` automates the
 entire process and pairs each worktree with a dedicated tmux window, creating
-fully isolated development environments. See [Before and after](#before-and-after) for
-how workmux streamlines this workflow.
+fully isolated development environments. See
+[Before and after](#before-and-after) for how workmux streamlines this workflow.
 
 ## Git worktree caveats
 
