@@ -1538,8 +1538,7 @@ workmux merge
 
 ### The parallel AI workflow
 
-Run multiple AI agents simultaneously, each in its own worktree. No conflicts,
-no branch switching, no stashing.
+Run multiple AI agents simultaneously, each in its own worktree.
 
 ```bash
 # Spin up two agents working on different tasks

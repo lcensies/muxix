@@ -18,18 +18,28 @@ This means you can launch AI agents with task-specific prompts without modifying
 ### Examples
 
 ```bash
-# Create a worktree with an inline prompt for AI agents
-workmux add feature/ai --prompt "Implement user authentication with OAuth"
-
-# Override the default agent for a specific worktree
-workmux add feature/testing -a gemini
+# Create a worktree with an inline prompt
+workmux add feature/auth -p "Implement user authentication with OAuth"
 
 # Create a worktree with a prompt from a file
 workmux add feature/refactor --prompt-file task-description.md
 
 # Open your editor to write a prompt interactively
 workmux add feature/new-api --prompt-editor
+
+# Override the default agent for a specific worktree
+workmux add feature/caching -a gemini -p "Add caching layer for API responses"
+
+# Use -A to generate branch name from the prompt automatically
+workmux add -A -p "Fix race condition in payment handler"
+
+# Use -A alone to open editor for prompt, then generate branch name from it
+workmux add -A
 ```
+
+::: tip
+The `-A` flag uses an LLM to [generate a branch name](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
+:::
 
 ## Parallel workflows
 
