@@ -1,6 +1,18 @@
 import { defineConfig } from "vitepress";
+import fs from "fs";
+import path from "path";
 
 export default defineConfig({
+  transformPageData(pageData) {
+    const filePath = path.join(__dirname, "..", pageData.relativePath);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      (pageData as any).rawMarkdownBase64 = Buffer.from(content).toString(
+        "base64"
+      );
+    }
+  },
+
   title: "workmux",
   description:
     "A CLI tool for parallel development with AI coding agents using git worktrees and tmux",

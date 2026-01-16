@@ -31,3 +31,33 @@
   max-width: 420px;
   max-height: 420px;
 }
+
+/* Copy page button */
+.copy-markdown-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -32px;
+  position: relative;
+  z-index: 10;
+}
+
+.copy-markdown-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vp-c-text-2);
+  background-color: transparent;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    color 0.25s,
+    border-color 0.25s;
+}
+
+.copy-markdown-btn:hover {
+  color: var(--vp-c-text-1);
+  border-color: var(--vp-c-text-2);
+}
