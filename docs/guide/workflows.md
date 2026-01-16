@@ -20,6 +20,12 @@ This opens your `$EDITOR` where you describe the task. After saving, workmux gen
 
 It's essentially a streamlined version of `workmux add <branch-name>`, then waiting for the agent to start, then typing the prompt. But you write the prompt first and skip thinking of a branch name.
 
+::: tip
+The `-A` flag requires the [`llm`](https://llm.datasette.io/) CLI tool to be installed and configured. See [Automatic branch name generation](/reference/commands/add#automatic-branch-name-generation) for setup.
+
+Combine with `-b` (`--background`) to launch the worktree without switching to it.
+:::
+
 You can also pass the prompt inline or from a file:
 
 ```bash
