@@ -93,7 +93,7 @@ Run multiple AI agents simultaneously, each in its own worktree. No conflicts, n
 workmux add refactor-user-model -p "Refactor the User model to use composition"
 workmux add add-search-endpoint -p "Add a /search endpoint with pagination"
 
-# Each agent works in isolation — check progress via tmux windows or the dashboard
+# Each agent works in isolation. Check progress via tmux windows or the dashboard
 workmux dashboard
 
 # Merge completed work back to main
