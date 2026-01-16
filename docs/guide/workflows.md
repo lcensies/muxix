@@ -56,4 +56,10 @@ When an agent completes its task, use `/merge` to commit, rebase, and merge in o
 
 This slash command handles the full workflow: committing staged changes, rebasing onto main, resolving conflicts if needed, and running `workmux merge` to clean up.
 
-See [Slash commands](/guide/slash-commands) for the `/merge` command setup.
+If you need to sync with main before you're ready to merge (e.g., to pick up changes from other merged branches), use `/rebase`:
+
+```
+> /rebase
+```
+
+See [Slash commands](/guide/slash-commands) for the command setup.
