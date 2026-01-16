@@ -19,7 +19,7 @@ same time. No stashing, no branch switching, no conflicts.
 state, editor session, and dev server. Context switching is switching tabs.
 
 **tmux is the interface.** For existing and new tmux users. If you already live
-in tmux, it fits your workflow. If you don't, it's worth picking up.
+in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/).
 
 ## Features
 
