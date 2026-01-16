@@ -7,9 +7,8 @@ export default defineConfig({
     const filePath = path.join(__dirname, "..", pageData.relativePath);
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, "utf-8");
-      (pageData as any).rawMarkdownBase64 = Buffer.from(content).toString(
-        "base64"
-      );
+      (pageData as any).rawMarkdownBase64 =
+        Buffer.from(content).toString("base64");
     }
   },
 

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { useData } from "vitepress";
+import { useData } from "vitepress/client";
 import { ref } from "vue";
 
 const { page } = useData();
 const copied = ref(false);
 
 async function copyMarkdown() {
-  const base64 = (page.value as any).rawMarkdownBase64;
+  const base64 = page.value.rawMarkdownBase64;
   if (base64) {
     const markdown = atob(base64);
     await navigator.clipboard.writeText(markdown);
