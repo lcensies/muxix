@@ -673,6 +673,57 @@ pub fn send_keys(pane_id: &str, command: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check if the given agent command is Claude (needs special handling for ! prefix)
+fn is_claude_agent(agent: Option<&str>) -> bool {
+    let Some(agent) = agent else {
+        return false;
+    };
+
+    let (token, _) = crate::config::split_first_token(agent).unwrap_or((agent, ""));
+    let resolved =
+        crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
+    let stem = Path::new(&resolved)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    stem == "claude"
+}
+
+/// Send keys to a pane, with special handling for Claude's ! prefix.
+///
+/// Claude Code requires a small delay after the `!` prefix for it to register
+/// as a bash command. When sending commands starting with `!` to Claude,
+/// this function sends the `!` separately, waits briefly, then sends the rest.
+pub fn send_keys_to_agent(pane_id: &str, command: &str, agent: Option<&str>) -> Result<()> {
+    if is_claude_agent(agent) && command.starts_with('!') {
+        // Send ! first
+        Cmd::new("tmux")
+            .args(&["send-keys", "-t", pane_id, "-l", "!"])
+            .run()
+            .context("Failed to send ! to pane")?;
+
+        // Small delay to let Claude register the !
+        thread::sleep(Duration::from_millis(50));
+
+        // Send the rest of the command
+        Cmd::new("tmux")
+            .args(&["send-keys", "-t", pane_id, "-l", &command[1..]])
+            .run()
+            .context("Failed to send keys to pane")?;
+
+        // Send Enter
+        Cmd::new("tmux")
+            .args(&["send-keys", "-t", pane_id, "Enter"])
+            .run()
+            .context("Failed to send Enter key to pane")?;
+
+        Ok(())
+    } else {
+        send_keys(pane_id, command)
+    }
+}
+
 /// Send a single key to a pane without pressing Enter.
 /// Used for interactive input mode where each keystroke is forwarded.
 pub fn send_key(pane_id: &str, key: &str) -> Result<()> {
