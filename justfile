@@ -88,6 +88,10 @@ test *ARGS: build
 docs:
     cd docs && npm install && npm run dev -- --open
 
+# Format documentation files
+format-docs:
+    cd docs && npm install && npm run format
+
 # Release a new patch version
 release *ARGS:
     @just _release patch {{ARGS}}
