@@ -30,7 +30,10 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
     </div>
     <div class="window-title">Terminal</div>
   </div>
-  <img src="/tmux-screenshot.webp" alt="tmux with multiple worktrees" style="display: block; width: 100%;">
+  <div class="screenshot-container">
+    <img src="/tmux-screenshot.webp" alt="tmux with multiple worktrees">
+    <span class="callout callout-worktrees">Worktrees</span>
+  </div>
 </div>
 
 <style>
@@ -67,6 +70,48 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
   font-family: var(--vp-font-family-mono);
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.4);
+}
+.screenshot-container {
+  position: relative;
+}
+.screenshot-container img {
+  display: block;
+  width: 100%;
+}
+.callout {
+  position: absolute;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0.125rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.callout-worktrees {
+  bottom: 8%;
+  left: calc(50% - 3px);
+  transform: translateX(-50%);
+}
+.callout-worktrees::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+.callout-worktrees::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.7);
 }
 </style>
 
