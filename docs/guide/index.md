@@ -28,7 +28,7 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
       <span class="control yellow"></span>
       <span class="control green"></span>
     </div>
-    <div class="window-title">tmux</div>
+    <div class="window-title">Terminal</div>
   </div>
   <img src="/tmux-screenshot.webp" alt="tmux with multiple worktrees" style="display: block; width: 100%;">
 </div>
