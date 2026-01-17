@@ -76,6 +76,10 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 > to exist for a long time."  
 > — @rstacruz [🔗](https://github.com/raine/workmux/issues/2)
 
+> "It's become my daily driver - the perfect level of abstraction over tmux +
+> git, without getting in the way or obscuring the underlying tooling."  
+> — @cisaacstern [🔗](https://github.com/raine/workmux/issues/33)
+
 ## Installation
 
 ### Homebrew (macOS/Linux)
