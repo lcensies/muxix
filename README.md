@@ -1183,6 +1183,9 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 
 #### Options
 
+- `-d, --diff`: Open the diff view directly for the current worktree. Useful
+  when you want to quickly review uncommitted changes without navigating through
+  the agent list.
 - `-P, --preview-size <10-90>`: Set preview pane size as percentage (larger =
   more preview, less table). Default: 60.
 

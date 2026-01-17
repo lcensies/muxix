@@ -332,6 +332,10 @@ enum Commands {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
         #[arg(long, short = 'P', value_parser = clap::value_parser!(u8).range(10..=90))]
         preview_size: Option<u8>,
+
+        /// Open diff view directly for the current worktree
+        #[arg(long, short = 'd')]
+        diff: bool,
     },
 
     /// Claude Code integration commands
@@ -448,7 +452,7 @@ pub fn run() -> Result<()> {
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
-        Commands::Dashboard { preview_size } => command::dashboard::run(preview_size),
+        Commands::Dashboard { preview_size, diff } => command::dashboard::run(preview_size, diff),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },

@@ -28,6 +28,8 @@ Consider binding the dashboard to a key you can press without the tmux prefix, s
 This feature requires [status tracking hooks](/guide/status-tracking) to be configured. Without them, no agents will appear in the dashboard.
 :::
 
+See [command reference](/reference/commands/dashboard) for CLI options.
+
 ## Keybindings
 
 | Key       | Action                                  |

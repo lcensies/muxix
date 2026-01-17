@@ -103,7 +103,7 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
     }
 }
 
-pub fn run(cli_preview_size: Option<u8>) -> Result<()> {
+pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
     // Check if tmux is running
     if !tmux::is_running().unwrap_or(false) {
         println!("No tmux server running.");
@@ -123,6 +123,15 @@ pub fn run(cli_preview_size: Option<u8>) -> Result<()> {
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {
         app.preview_size = size;
+    }
+
+    // Open diff view for current worktree if requested
+    if open_diff && let Some(ref current_path) = app.current_worktree {
+        // Find the agent matching the current worktree path
+        if let Some(idx) = app.agents.iter().position(|a| &a.path == current_path) {
+            app.table_state.select(Some(idx));
+            app.load_diff(false); // WIP diff (uncommitted changes)
+        }
     }
 
     // Main loop
