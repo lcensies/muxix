@@ -89,9 +89,9 @@ docs:
     cd docs && npm install && npm run dev -- --open
 
 # Release a new patch version
-release:
-    @just _release patch
+release *ARGS:
+    @just _release patch {{ARGS}}
 
 # Internal release helper
-_release bump:
-    @cargo-release {{bump}}
+_release bump *ARGS:
+    @cargo-release {{bump}} {{ARGS}}
