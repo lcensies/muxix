@@ -20,6 +20,10 @@ bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup. Feel free to adjust the keybinding and popup dimensions (`-h` and `-w`) as needed.
 
+::: tip Quick access
+Consider binding the dashboard to a key you can press without the tmux prefix, such as `Cmd+E` or `Ctrl+E` in your terminal emulator. This makes it easy to check on your agents at any time.
+:::
+
 ::: warning Prerequisites
 This feature requires [status tracking hooks](/guide/status-tracking) to be configured. Without them, no agents will appear in the dashboard.
 :::
