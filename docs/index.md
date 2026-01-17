@@ -397,7 +397,7 @@ onMounted(() => {
 }
 
 .testimonials-section {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 3rem auto 0;
   padding: 0 24px;
 }
@@ -412,11 +412,13 @@ onMounted(() => {
 
 .testimonials {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.25rem;
 }
 
 .testimonial {
+  display: flex;
+  flex-direction: column;
   background: var(--vp-c-bg-soft);
   border-radius: 12px;
   padding: 1.5rem;
@@ -437,6 +439,7 @@ onMounted(() => {
   gap: 0.5rem;
   font-size: 0.875rem;
   color: var(--vp-c-text-2);
+  margin-top: auto;
 }
 
 .testimonial-author a {
@@ -511,6 +514,12 @@ onMounted(() => {
       <p class="testimonial-quote">"Thank you so much for your work with workmux! It's a tool I've been wanting to exist for a long time."</p>
       <div class="testimonial-author">
         — @rstacruz <a href="https://github.com/raine/workmux/issues/2">via GitHub</a>
+      </div>
+    </div>
+    <div class="testimonial">
+      <p class="testimonial-quote">"It's become my daily driver - the perfect level of abstraction over tmux + git, without getting in the way or obscuring the underlying tooling."</p>
+      <div class="testimonial-author">
+        — @cisaacstern <a href="https://github.com/raine/workmux/issues/33">via GitHub</a>
       </div>
     </div>
   </div>
