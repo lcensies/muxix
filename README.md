@@ -36,11 +36,11 @@ from your conversation.
 
 ## Why workmux?
 
-**Parallel workflows.** Work on multiple features, hotfixes, or AI agents at the
-same time. No stashing, no branch switching, no conflicts.
+**Parallel workflows.** Work on multiple features or hotfixes at the same time,
+each with its own AI agent. No stashing, no branch switching, no conflicts.
 
 **One window per task.** A natural mental model. Each has its own terminal
-state, editor session, and dev server. Context switching is switching tabs.
+state, editor session, dev server, and AI agent. Context switching is switching tabs.
 
 **tmux is the interface.** For existing and new tmux users. If you already live
 in tmux, it fits your workflow. If you don't, it's worth picking up.
