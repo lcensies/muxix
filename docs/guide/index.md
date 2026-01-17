@@ -21,6 +21,55 @@ state, editor session, and dev server. Context switching is switching tabs.
 **tmux is the interface.** For existing and new tmux users. If you already live
 in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/).
 
+<div class="terminal-window">
+  <div class="terminal-header">
+    <div class="window-controls">
+      <span class="control red"></span>
+      <span class="control yellow"></span>
+      <span class="control green"></span>
+    </div>
+    <div class="window-title">tmux</div>
+  </div>
+  <img src="/tmux-screenshot.webp" alt="tmux with multiple worktrees" style="display: block; width: 100%;">
+</div>
+
+<style>
+.terminal-window {
+  background: #1e1e1e;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px -10px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1);
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  background: #2d2d2d;
+  position: relative;
+}
+.window-controls {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+}
+.control {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.control.red { background-color: #ff5f56; }
+.control.yellow { background-color: #ffbd2e; }
+.control.green { background-color: #27c93f; }
+.window-title {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+</style>
+
 ## Features
 
 - Create git worktrees with matching tmux windows in a single command (`add`)
