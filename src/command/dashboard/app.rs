@@ -998,8 +998,7 @@ impl App {
     /// Send commit action to the agent pane and close diff modal
     pub fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let action = format!("{}\n", self.config.dashboard.commit());
-            let _ = tmux::send_keys(&diff.pane_id, &action);
+            let _ = tmux::send_keys(&diff.pane_id, self.config.dashboard.commit());
         }
         self.close_diff();
     }
@@ -1007,8 +1006,7 @@ impl App {
     /// Send merge action to the agent pane and close diff modal
     pub fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let action = format!("{}\n", self.config.dashboard.merge());
-            let _ = tmux::send_keys(&diff.pane_id, &action);
+            let _ = tmux::send_keys(&diff.pane_id, self.config.dashboard.merge());
         }
         self.close_diff();
     }
@@ -1018,8 +1016,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let action = format!("{}\n", self.config.dashboard.commit());
-            let _ = tmux::send_keys(&agent.pane_id, &action);
+            let _ = tmux::send_keys(&agent.pane_id, self.config.dashboard.commit());
         }
     }
 
@@ -1028,8 +1025,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let action = format!("{}\n", self.config.dashboard.merge());
-            let _ = tmux::send_keys(&agent.pane_id, &action);
+            let _ = tmux::send_keys(&agent.pane_id, self.config.dashboard.merge());
         }
     }
 }
