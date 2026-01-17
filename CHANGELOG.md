@@ -14,6 +14,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.94 (2026-01-17)
+
+- Fixed dashboard commit and merge commands not working in Claude Code when
+  using bash command prefix (`!`)
+- Fixed dashboard commands including a literal newline that caused issues with
+  OpenCode ([#35](https://github.com/raine/workmux/issues/35))
+- Dashboard: Added `--diff` flag to open diff view directly for the current
+  worktree, skipping the agent list
+
 ## v0.1.93 (2026-01-15)
 
 - Added Nix flake (https://workmux.raine.dev/guide/nix)
