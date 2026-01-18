@@ -2,7 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{cmd, config, git, prompt::Prompt, tmux};
+use crate::multiplexer::{CreateWindowParams, Multiplexer, PaneSetupOptions};
+use crate::{cmd, config, git, prompt::Prompt};
 use tracing::{debug, info};
 
 use fs_extra::dir as fs_dir;
@@ -10,18 +11,21 @@ use fs_extra::file as fs_file;
 
 use super::types::CreateResult;
 
-/// Sets up the tmux window, files, and hooks for a worktree.
+/// Sets up the terminal window, files, and hooks for a worktree.
 /// This is the shared logic between `create` and `open`.
 ///
 /// # Arguments
+/// * `mux` - The terminal multiplexer backend
 /// * `branch_name` - The git branch name (for logging/reference)
-/// * `handle` - The display name used for tmux window naming
+/// * `handle` - The display name used for window naming
 /// * `worktree_path` - Path to the worktree directory
 /// * `config` - Configuration settings
 /// * `options` - Setup options (hooks, file ops, etc.)
 /// * `agent` - Optional agent override
 /// * `after_window` - Optional window ID to insert after (for grouping duplicates)
+#[allow(clippy::too_many_arguments)]
 pub fn setup_environment(
+    mux: &dyn Multiplexer,
     branch_name: &str,
     handle: &str,
     worktree_path: &Path,
@@ -94,23 +98,23 @@ pub fn setup_environment(
     // Otherwise, use prefix-based lookup to group workmux windows together.
     // If not found (or error), falls back to default append behavior.
     let last_wm_window =
-        after_window.or_else(|| tmux::find_last_window_with_prefix(prefix).unwrap_or(None));
+        after_window.or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
 
-    // Create tmux window and get the initial pane's ID
+    // Create window and get the initial pane's ID
     // Use handle for the window name (not branch_name)
-    let initial_pane_id = tmux::create_window(
-        prefix,
-        handle,
-        worktree_path,
-        /* detached: */ !options.focus_window,
-        last_wm_window.as_deref(),
-    )
-    .context("Failed to create tmux window")?;
+    let initial_pane_id = mux
+        .create_window(CreateWindowParams {
+            prefix,
+            name: handle,
+            cwd: worktree_path,
+            after_window: last_wm_window.as_deref(),
+        })
+        .context("Failed to create window")?;
     info!(
         branch = branch_name,
         handle = handle,
         pane_id = %initial_pane_id,
-        "setup_environment:tmux window created"
+        "setup_environment:window created"
     );
 
     // Setup panes
@@ -122,18 +126,19 @@ pub fn setup_environment(
         validate_prompt_consumption(&resolved_panes, agent, config, options)?;
     }
 
-    let pane_setup_result = tmux::setup_panes(
-        &initial_pane_id,
-        &resolved_panes,
-        worktree_path,
-        tmux::PaneSetupOptions {
-            run_commands: options.run_pane_commands,
-            prompt_file_path: options.prompt_file_path.as_deref(),
-        },
-        config,
-        agent,
-    )
-    .context("Failed to setup panes")?;
+    let pane_setup_result = mux
+        .setup_panes(
+            &initial_pane_id,
+            &resolved_panes,
+            worktree_path,
+            PaneSetupOptions {
+                run_commands: options.run_pane_commands,
+                prompt_file_path: options.prompt_file_path.as_deref(),
+            },
+            config,
+            agent,
+        )
+        .context("Failed to setup panes")?;
     debug!(
         branch = branch_name,
         focus_id = %pane_setup_result.focus_pane_id,
@@ -142,9 +147,9 @@ pub fn setup_environment(
 
     // Focus the configured pane and optionally switch to the window
     if options.focus_window {
-        tmux::select_pane(&pane_setup_result.focus_pane_id)?;
+        mux.select_pane(&pane_setup_result.focus_pane_id)?;
         // Use handle for window selection (not branch_name)
-        tmux::select_window(prefix, handle)?;
+        mux.select_window(prefix, handle)?;
     } else {
         // Background mode: do not steal focus from the current window.
         // We intentionally skip select_window to keep the user's current window.

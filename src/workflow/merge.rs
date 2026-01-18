@@ -323,6 +323,7 @@ pub fn merge(
 
     // Navigate to the target branch window and close the source window
     cleanup::navigate_to_target_and_close(
+        context.mux.as_ref(),
         &context.prefix,
         &target_window_name,
         handle,

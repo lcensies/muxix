@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::ValueEnum;
 
-use crate::cmd::Cmd;
 use crate::config::Config;
+use crate::multiplexer::{create_backend, detect_backend};
 use crate::tmux;
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -18,83 +18,38 @@ pub enum SetWindowStatusCommand {
 }
 
 pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
-    // Fail silently if not in tmux to avoid polluting non-tmux shells
-    let Ok(pane) = std::env::var("TMUX_PANE") else {
+    let config = Config::load(None)?;
+    let mux = create_backend(detect_backend(&config));
+
+    // Fail silently if not in a multiplexer session
+    let Some(pane) = mux.current_pane_id() else {
         return Ok(());
     };
-
-    let config = Config::load(None)?;
 
     // Ensure the status format is applied so the icon actually shows up
     // Skip for Clear since there's nothing to display
     if config.status_format.unwrap_or(true) && !matches!(cmd, SetWindowStatusCommand::Clear) {
-        let _ = tmux::ensure_status_format(&pane);
+        let _ = mux.ensure_status_format(&pane);
     }
 
     match cmd {
         SetWindowStatusCommand::Working => {
             tmux::pop_done_pane(&pane); // Remove from done stack
-            set_status(&pane, config.status_icons.working())
+            mux.set_status(&pane, config.status_icons.working(), true)?;
         }
         SetWindowStatusCommand::Waiting => {
             tmux::pop_done_pane(&pane); // Remove from done stack
-            set_status_with_auto_clear(&pane, config.status_icons.waiting())
+            mux.set_status(&pane, config.status_icons.waiting(), true)?;
         }
         SetWindowStatusCommand::Done => {
             tmux::push_done_pane(&pane); // Add to done stack (most recent)
-            set_status_with_auto_clear(&pane, config.status_icons.done())
+            mux.set_status(&pane, config.status_icons.done(), true)?;
         }
         SetWindowStatusCommand::Clear => {
             tmux::pop_done_pane(&pane); // Remove from done stack
-            clear_status(&pane)
+            mux.clear_status(&pane)?;
         }
     }
-}
-
-fn set_status(pane: &str, icon: &str) -> Result<()> {
-    tmux::set_status_options(pane, icon, true);
-    Ok(())
-}
-
-fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
-    tmux::set_status_options(pane, icon, true);
-
-    // Attach hook to clear window status on focus (only if status still matches the icon)
-    // Uses tmux conditional: if @workmux_status equals the icon, clear window options
-    // Note: Pane options are NOT cleared - they persist for status popup/dashboard tracking
-    let hook_cmd = format!(
-        "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \
-         \"set-option -uw @workmux_status ; \
-           set-option -uw @workmux_status_ts\"",
-        icon
-    );
-
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-w", "-t", pane, "pane-focus-in", &hook_cmd])
-        .run();
-
-    Ok(())
-}
-
-fn clear_status(pane: &str) -> Result<()> {
-    // Clear Window Options
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-uw", "-t", pane, "@workmux_status"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-uw", "-t", pane, "@workmux_status_ts"])
-        .run();
-
-    // Clear Pane Options
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status_ts"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_command"])
-        .run();
 
     Ok(())
 }

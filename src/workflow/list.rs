@@ -1,11 +1,17 @@
 use anyhow::{Result, anyhow};
+use std::collections::HashSet;
 
-use crate::{config, git, github, spinner, tmux};
+use crate::multiplexer::{Multiplexer, util};
+use crate::{config, git, github, spinner};
 
 use super::types::WorktreeInfo;
 
 /// List all worktrees with their status
-pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<WorktreeInfo>> {
+pub fn list(
+    config: &config::Config,
+    mux: &dyn Multiplexer,
+    fetch_pr_status: bool,
+) -> Result<Vec<WorktreeInfo>> {
     if !git::is_git_repo()? {
         return Err(anyhow!("Not in a git repository"));
     }
@@ -16,11 +22,11 @@ pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<Worktr
         return Ok(Vec::new());
     }
 
-    // Check tmux status and get all windows once to avoid repeated process calls
-    let tmux_windows: std::collections::HashSet<String> = if tmux::is_running().unwrap_or(false) {
-        tmux::get_all_window_names().unwrap_or_default()
+    // Check mux status and get all windows once to avoid repeated process calls
+    let mux_windows: HashSet<String> = if mux.is_running().unwrap_or(false) {
+        mux.get_all_window_names().unwrap_or_default()
     } else {
-        std::collections::HashSet::new()
+        HashSet::new()
     };
 
     // Get the main branch for unmerged checks
@@ -54,9 +60,9 @@ pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<Worktr
                 .unwrap_or(&branch)
                 .to_string();
 
-            // Use handle for tmux window check, not branch name
-            let prefixed_window_name = tmux::prefixed(prefix, &handle);
-            let has_tmux = tmux_windows.contains(&prefixed_window_name);
+            // Use handle for mux window check, not branch name
+            let prefixed_window_name = util::prefixed(prefix, &handle);
+            let has_mux_window = mux_windows.contains(&prefixed_window_name);
 
             // Check for unmerged commits, but only if this isn't the main branch
             let has_unmerged = if let Some(ref main) = main_branch {
@@ -75,7 +81,7 @@ pub fn list(config: &config::Config, fetch_pr_status: bool) -> Result<Vec<Worktr
             WorktreeInfo {
                 branch,
                 path,
-                has_tmux,
+                has_mux_window,
                 has_unmerged,
                 pr_info,
             }

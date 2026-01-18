@@ -77,6 +77,7 @@ pub fn remove(
 
     // Navigate to the main branch window and close the source window
     cleanup::navigate_to_target_and_close(
+        context.mux.as_ref(),
         &context.prefix,
         &context.main_branch,
         handle,

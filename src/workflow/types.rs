@@ -118,7 +118,7 @@ impl SetupOptions {
 pub struct WorktreeInfo {
     pub branch: String,
     pub path: PathBuf,
-    pub has_tmux: bool,
+    pub has_mux_window: bool,
     pub has_unmerged: bool,
     pub pr_info: Option<PrSummary>,
 }

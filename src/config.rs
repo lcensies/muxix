@@ -167,6 +167,11 @@ pub struct Config {
     /// Whether to use nerdfont icons (None = prompt user on first run)
     #[serde(default)]
     pub nerdfont: Option<bool>,
+
+    /// Terminal multiplexer backend to use ("tmux" or "wezterm")
+    /// Can be overridden by WORKMUX_BACKEND environment variable
+    #[serde(default)]
+    pub backend: Option<String>,
 }
 
 /// Configuration for a single tmux pane
@@ -466,6 +471,7 @@ impl Config {
             status_format,
             auto_name,
             nerdfont,
+            backend,
         );
 
         // Special case: worktree_naming (project wins if not default)
