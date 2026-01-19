@@ -3,5 +3,6 @@
 //! This module provides persistent state storage that works across all
 //! terminal multiplexer backends (tmux, WezTerm, Zellij).
 
+mod store;
 mod types;
 
