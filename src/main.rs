@@ -13,6 +13,7 @@ mod naming;
 mod nerdfont;
 mod prompt;
 mod spinner;
+mod state;
 mod template;
 mod workflow;
 
