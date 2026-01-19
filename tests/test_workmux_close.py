@@ -124,7 +124,7 @@ def test_close_fails_when_no_window_exists(
         expect_fail=True,
     )
 
-    assert "No active tmux window found" in result.stderr
+    assert "No active window found" in result.stderr
 
 
 def test_close_fails_when_worktree_missing(

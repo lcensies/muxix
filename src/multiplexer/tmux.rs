@@ -426,22 +426,6 @@ impl Multiplexer for TmuxBackend {
 
     // === Pane Management ===
 
-    fn split_pane(&self, params: SplitPaneParams) -> Result<String> {
-        let direction = match params.direction {
-            SplitDirection::Horizontal => ConfigSplitDirection::Horizontal,
-            SplitDirection::Vertical => ConfigSplitDirection::Vertical,
-        };
-
-        self.split_pane_internal(
-            params.target_pane_id,
-            &direction,
-            params.cwd,
-            params.size,
-            params.percentage,
-            params.command,
-        )
-    }
-
     fn select_pane(&self, pane_id: &str) -> Result<()> {
         Cmd::new("tmux")
             .args(&["select-pane", "-t", pane_id])
@@ -485,20 +469,6 @@ impl Multiplexer for TmuxBackend {
             .ok()?;
 
         Some(output)
-    }
-
-    fn get_pane_current_command(&self, pane_id: &str) -> Result<String> {
-        let output = Cmd::new("tmux")
-            .args(&[
-                "display-message",
-                "-p",
-                "-t",
-                pane_id,
-                "#{pane_current_command}",
-            ])
-            .run_and_capture_stdout()
-            .context("Failed to get pane current command")?;
-        Ok(output.trim().to_string())
     }
 
     // === Text I/O ===
@@ -639,27 +609,6 @@ impl Multiplexer for TmuxBackend {
     fn ensure_status_format(&self, pane_id: &str) -> Result<()> {
         self.update_format_option(pane_id, "window-status-format")?;
         self.update_format_option(pane_id, "window-status-current-format")?;
-        Ok(())
-    }
-
-    // === Settings ===
-
-    fn load_setting(&self, key: &str) -> Option<String> {
-        let option_name = format!("@workmux_{}", key);
-        Cmd::new("tmux")
-            .args(&["show-option", "-gqv", &option_name])
-            .run_and_capture_stdout()
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    }
-
-    fn save_setting(&self, key: &str, value: &str) -> Result<()> {
-        let option_name = format!("@workmux_{}", key);
-        Cmd::new("tmux")
-            .args(&["set-option", "-g", &option_name, value])
-            .run()
-            .context("Failed to save setting")?;
         Ok(())
     }
 

@@ -77,21 +77,21 @@ def test_list_output_format(
 
     # Verify header is present
     assert "BRANCH" in output
-    assert "TMUX" in output
+    assert "MUX" in output
     assert "UNMERGED" in output
     assert "PATH" in output
 
     # Verify main branch entry - should show "(here)" when run from repo_path
     main_entry = next((r for r in parsed_output if r["BRANCH"] == "main"), None)
     assert main_entry is not None
-    assert main_entry["TMUX"] == "-"
+    assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
     assert main_entry["PATH"] == "(here)"
 
     # Verify feature branch entry - shows as relative path
     feature_entry = next((r for r in parsed_output if r["BRANCH"] == branch_name), None)
     assert feature_entry is not None
-    assert feature_entry["TMUX"] == "✓"
+    assert feature_entry["MUX"] == "✓"
     assert feature_entry["UNMERGED"] == "-"
     # Convert relative path to absolute and compare
     expected_relative = os.path.relpath(worktree_path, repo_path)
@@ -110,7 +110,7 @@ def test_list_initial_state(
 
     main_entry = parsed_output[0]
     assert main_entry["BRANCH"] == "main"
-    assert main_entry["TMUX"] == "-"
+    assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
     # When run from repo_path, main branch shows as "(here)"
     assert main_entry["PATH"] == "(here)"
@@ -135,7 +135,7 @@ def test_list_with_active_worktree(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "✓"
+    assert worktree_entry["MUX"] == "✓"
     assert worktree_entry["UNMERGED"] == "-"
     # Path shows as relative when run from repo_path
     expected_path = get_worktree_path(repo_path, branch_name)
@@ -162,7 +162,7 @@ def test_list_with_unmerged_commits(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "✓"
+    assert worktree_entry["MUX"] == "✓"
     assert worktree_entry["UNMERGED"] == "●"
 
 
@@ -185,7 +185,7 @@ def test_list_with_detached_window(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "-"
+    assert worktree_entry["MUX"] == "-"
     assert worktree_entry["UNMERGED"] == "-"
 
 

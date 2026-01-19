@@ -98,9 +98,6 @@ pub trait Multiplexer: Send + Sync {
 
     // === Pane Management ===
 
-    /// Split an existing pane
-    fn split_pane(&self, params: SplitPaneParams) -> Result<String>;
-
     /// Select (focus) a pane by ID
     fn select_pane(&self, pane_id: &str) -> Result<()>;
 
@@ -112,9 +109,6 @@ pub trait Multiplexer: Send + Sync {
 
     /// Capture the content of a pane
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String>;
-
-    /// Get the current foreground command for a pane
-    fn get_pane_current_command(&self, pane_id: &str) -> Result<String>;
 
     // === Text I/O ===
 
@@ -148,14 +142,6 @@ pub trait Multiplexer: Send + Sync {
 
     /// Ensure the status format is configured (for backends that need it)
     fn ensure_status_format(&self, pane_id: &str) -> Result<()>;
-
-    // === Settings ===
-
-    /// Load a setting value (for dashboard preferences, etc.)
-    fn load_setting(&self, key: &str) -> Option<String>;
-
-    /// Save a setting value
-    fn save_setting(&self, key: &str, value: &str) -> Result<()>;
 
     // === Pane Setup ===
 

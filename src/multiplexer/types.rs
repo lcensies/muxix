@@ -36,41 +36,6 @@ pub struct CreateWindowParams<'a> {
     pub after_window: Option<&'a str>,
 }
 
-/// Direction for splitting panes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SplitDirection {
-    /// Split horizontally (new pane to the right)
-    Horizontal,
-    /// Split vertically (new pane below)
-    Vertical,
-}
-
-impl From<crate::config::SplitDirection> for SplitDirection {
-    fn from(dir: crate::config::SplitDirection) -> Self {
-        match dir {
-            crate::config::SplitDirection::Horizontal => SplitDirection::Horizontal,
-            crate::config::SplitDirection::Vertical => SplitDirection::Vertical,
-        }
-    }
-}
-
-/// Parameters for splitting a pane
-#[derive(Debug, Clone)]
-pub struct SplitPaneParams<'a> {
-    /// Target pane to split from
-    pub target_pane_id: &'a str,
-    /// Direction to split
-    pub direction: SplitDirection,
-    /// Working directory for the new pane
-    pub cwd: &'a std::path::Path,
-    /// Optional absolute size in cells
-    pub size: Option<u16>,
-    /// Optional percentage size (0-100)
-    pub percentage: Option<u8>,
-    /// Optional command to run in the new pane
-    pub command: Option<&'a str>,
-}
-
 /// Result of setting up panes in a window
 #[derive(Debug, Clone)]
 pub struct PaneSetupResult {
