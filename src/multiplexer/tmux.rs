@@ -158,6 +158,114 @@ impl TmuxBackend {
 
         Ok(new_pane_id.trim().to_string())
     }
+
+    /// Prepare and spawn a pane with command handling, handshake, and auto-status.
+    ///
+    /// This method consolidates the duplicated logic for both respawning the initial
+    /// pane and creating split panes.
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_and_spawn_pane(
+        &self,
+        spawn_target: SpawnTarget<'_>,
+        pane_config: &PaneConfig,
+        working_dir: &Path,
+        options: &PaneSetupOptions<'_>,
+        effective_agent: Option<&str>,
+        shell: &str,
+        config: &Config,
+    ) -> Result<String> {
+        // 1. Calculate command (handle <agent> placeholder)
+        let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
+            effective_agent.map(|agent_cmd| agent_cmd.to_string())
+        } else {
+            pane_config.command.clone()
+        };
+
+        // 2. Adjust for prompt injection
+        let adjusted_command = if options.run_commands {
+            command_to_run.as_ref().map(|cmd| {
+                util::adjust_command(
+                    cmd,
+                    options.prompt_file_path,
+                    working_dir,
+                    effective_agent,
+                    shell,
+                )
+            })
+        } else {
+            None
+        };
+
+        // 3-6. Spawn pane with optional handshake + send keys
+        let pane_id = if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
+            let handshake = self.create_handshake()?;
+            let wrapper = handshake.wrapper_command(shell);
+
+            let pane_id = match spawn_target {
+                SpawnTarget::Respawn { pane_id } => {
+                    self.respawn_pane(pane_id, working_dir, Some(&wrapper))?
+                }
+                SpawnTarget::Split {
+                    target_pane_id,
+                    direction,
+                    size,
+                    percentage,
+                } => self.split_pane_internal(
+                    target_pane_id,
+                    direction,
+                    working_dir,
+                    size,
+                    percentage,
+                    Some(&wrapper),
+                )?,
+            };
+
+            handshake.wait()?;
+            self.send_keys(&pane_id, cmd_str)?;
+
+            // 7. Auto-status for injected prompts
+            if let Some(Cow::Owned(_)) = &adjusted_command
+                && util::agent_needs_auto_status(effective_agent)
+            {
+                let _ = self.set_pane_working_status(&pane_id, config);
+            }
+
+            pane_id
+        } else {
+            // No command - just spawn without handshake
+            match spawn_target {
+                SpawnTarget::Respawn { pane_id } => pane_id.to_string(),
+                SpawnTarget::Split {
+                    target_pane_id,
+                    direction,
+                    size,
+                    percentage,
+                } => self.split_pane_internal(
+                    target_pane_id,
+                    direction,
+                    working_dir,
+                    size,
+                    percentage,
+                    None,
+                )?,
+            }
+        };
+
+        Ok(pane_id)
+    }
+}
+
+/// Specifies how a pane should be created: respawn existing or split from target.
+enum SpawnTarget<'a> {
+    /// Respawn the initial pane in place
+    Respawn { pane_id: &'a str },
+    /// Split from target pane with the given config
+    Split {
+        target_pane_id: &'a str,
+        direction: &'a ConfigSplitDirection,
+        size: Option<u16>,
+        percentage: Option<u8>,
+    },
 }
 
 impl Multiplexer for TmuxBackend {
@@ -561,40 +669,18 @@ impl Multiplexer for TmuxBackend {
 
         // Handle the first pane (initial pane from window creation)
         if let Some(pane_config) = panes.first() {
-            let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-                effective_agent.map(|agent_cmd| agent_cmd.to_string())
-            } else {
-                pane_config.command.clone()
-            };
+            self.prepare_and_spawn_pane(
+                SpawnTarget::Respawn {
+                    pane_id: initial_pane_id,
+                },
+                pane_config,
+                working_dir,
+                &options,
+                effective_agent,
+                &shell,
+                config,
+            )?;
 
-            let adjusted_command = if options.run_commands {
-                command_to_run.as_ref().map(|cmd| {
-                    util::adjust_command(
-                        cmd,
-                        options.prompt_file_path,
-                        working_dir,
-                        effective_agent,
-                        &shell,
-                    )
-                })
-            } else {
-                None
-            };
-
-            if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                let handshake = self.create_handshake()?;
-                let wrapper = handshake.wrapper_command(&shell);
-
-                self.respawn_pane(initial_pane_id, working_dir, Some(&wrapper))?;
-                handshake.wait()?;
-                self.send_keys(initial_pane_id, cmd_str)?;
-
-                if let Some(Cow::Owned(_)) = &adjusted_command
-                    && util::agent_needs_auto_status(effective_agent)
-                {
-                    let _ = self.set_pane_working_status(initial_pane_id, config);
-                }
-            }
             if pane_config.focus {
                 focus_pane_id = Some(initial_pane_id.to_string());
             }
@@ -608,60 +694,20 @@ impl Multiplexer for TmuxBackend {
                     .get(target_pane_idx)
                     .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_pane_idx))?;
 
-                let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-                    effective_agent.map(|agent_cmd| agent_cmd.to_string())
-                } else {
-                    pane_config.command.clone()
-                };
-
-                let adjusted_command = if options.run_commands {
-                    command_to_run.as_ref().map(|cmd| {
-                        util::adjust_command(
-                            cmd,
-                            options.prompt_file_path,
-                            working_dir,
-                            effective_agent,
-                            &shell,
-                        )
-                    })
-                } else {
-                    None
-                };
-
-                let new_pane_id =
-                    if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                        let handshake = self.create_handshake()?;
-                        let wrapper = handshake.wrapper_command(&shell);
-
-                        let pane_id = self.split_pane_internal(
-                            target_pane_id,
-                            direction,
-                            working_dir,
-                            pane_config.size,
-                            pane_config.percentage,
-                            Some(&wrapper),
-                        )?;
-
-                        handshake.wait()?;
-                        self.send_keys(&pane_id, cmd_str)?;
-
-                        if let Some(Cow::Owned(_)) = &adjusted_command
-                            && util::agent_needs_auto_status(effective_agent)
-                        {
-                            let _ = self.set_pane_working_status(&pane_id, config);
-                        }
-
-                        pane_id
-                    } else {
-                        self.split_pane_internal(
-                            target_pane_id,
-                            direction,
-                            working_dir,
-                            pane_config.size,
-                            pane_config.percentage,
-                            None,
-                        )?
-                    };
+                let new_pane_id = self.prepare_and_spawn_pane(
+                    SpawnTarget::Split {
+                        target_pane_id,
+                        direction,
+                        size: pane_config.size,
+                        percentage: pane_config.percentage,
+                    },
+                    pane_config,
+                    working_dir,
+                    &options,
+                    effective_agent,
+                    &shell,
+                    config,
+                )?;
 
                 if pane_config.focus {
                     focus_pane_id = Some(new_pane_id.clone());
