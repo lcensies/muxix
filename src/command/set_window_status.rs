@@ -30,26 +30,12 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         return Ok(());
     };
 
-    // Build pane key for state storage
-    let pane_key = PaneKey {
-        backend: mux.name().to_string(),
-        instance: mux.instance_id(),
-        pane_id: pane_id.clone(),
-    };
-
     match cmd {
         SetWindowStatusCommand::Clear => {
             // Remove from done stack (tmux-specific)
             tmux::pop_done_pane(&pane_id);
 
-            // Delete state file
-            if let Ok(store) = StateStore::new()
-                && let Err(e) = store.delete_agent(&pane_key)
-            {
-                warn!(error = %e, "failed to delete agent state");
-            }
-
-            // Clear backend UI
+            // Clear icon only - state file cleanup is handled by reconciliation
             mux.clear_status(&pane_id)?;
         }
         SetWindowStatusCommand::Working
@@ -76,6 +62,12 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                 }
                 SetWindowStatusCommand::Clear => unreachable!(),
             }
+
+            let pane_key = PaneKey {
+                backend: mux.name().to_string(),
+                instance: mux.instance_id(),
+                pane_id: pane_id.clone(),
+            };
 
             // Ensure the status format is applied so the icon actually shows up
             if config.status_format.unwrap_or(true) {
