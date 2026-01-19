@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use crate::cmd::Cmd;
 use crate::config::{Config, PaneConfig, SplitDirection as ConfigSplitDirection};
@@ -66,7 +66,6 @@ impl TmuxBackend {
     /// Clear the window status display (status bar icon).
     fn clear_window_status_internal(&self, pane_id: &str) {
         let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status"]);
-        let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status_ts"]);
     }
 
     /// Sets the "working" status on a pane.
@@ -608,12 +607,6 @@ impl Multiplexer for TmuxBackend {
     // === Status ===
 
     fn set_status(&self, pane_id: &str, icon: &str, _exit_detection: bool) -> Result<()> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let now_str = now.to_string();
-
         // Set Window Option for tmux status bar display.
         // Agent state is stored in filesystem (StateStore), these window options
         // are view-layer only for visual feedback in the status bar.
@@ -621,14 +614,6 @@ impl Multiplexer for TmuxBackend {
         {
             eprintln!("workmux: failed to set window status: {}", e);
         }
-        let _ = self.tmux_cmd(&[
-            "set-option",
-            "-w",
-            "-t",
-            pane_id,
-            "@workmux_status_ts",
-            &now_str,
-        ]);
 
         Ok(())
     }
