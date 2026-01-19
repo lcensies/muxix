@@ -165,14 +165,19 @@ impl StateStore {
                 None => {
                     // Pane no longer exists in multiplexer
                     self.delete_agent(&state.pane_key)?;
+                    // Note: Can't clear window status since pane is gone
                 }
                 Some(ref live) if live.pid != state.pane_pid => {
                     // PID mismatch - pane ID was recycled by a new process
                     self.delete_agent(&state.pane_key)?;
+                    // Clear stale window status icon from status bar
+                    let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
                 Some(ref live) if live.current_command != state.command => {
                     // Command changed - agent exited (e.g., "node" -> "zsh")
                     self.delete_agent(&state.pane_key)?;
+                    // Clear stale window status icon from status bar
+                    let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
                 Some(live) => {
                     // Valid - include in dashboard
