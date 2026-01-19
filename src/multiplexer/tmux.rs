@@ -53,22 +53,13 @@ impl TmuxBackend {
         Ok(())
     }
 
-    /// Clear all workmux pane status options from a pane.
-    fn clear_pane_status_internal(&self, pane_id: &str) {
+    /// Clear the window status display (status bar icon).
+    fn clear_window_status_internal(&self, pane_id: &str) {
         let _ = Cmd::new("tmux")
-            .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"])
+            .args(&["set-option", "-uw", "-t", pane_id, "@workmux_status"])
             .run();
         let _ = Cmd::new("tmux")
-            .args(&[
-                "set-option",
-                "-up",
-                "-t",
-                pane_id,
-                "@workmux_pane_status_ts",
-            ])
-            .run();
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_command"])
+            .args(&["set-option", "-uw", "-t", pane_id, "@workmux_status_ts"])
             .run();
     }
 
@@ -610,14 +601,16 @@ impl Multiplexer for TmuxBackend {
 
     // === Status ===
 
-    fn set_status(&self, pane_id: &str, icon: &str, exit_detection: bool) -> Result<()> {
+    fn set_status(&self, pane_id: &str, icon: &str, _exit_detection: bool) -> Result<()> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
         let now_str = now.to_string();
 
-        // 1. Set Window Option (for tmux status bar display)
+        // Set Window Option for tmux status bar display.
+        // Agent state is stored in filesystem (StateStore), these window options
+        // are view-layer only for visual feedback in the status bar.
         if let Err(e) = Cmd::new("tmux")
             .args(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
             .run()
@@ -635,115 +628,18 @@ impl Multiplexer for TmuxBackend {
             ])
             .run();
 
-        // 2. Set Pane Option (for dashboard tracking)
-        if let Err(e) = Cmd::new("tmux")
-            .args(&[
-                "set-option",
-                "-p",
-                "-t",
-                pane_id,
-                "@workmux_pane_status",
-                icon,
-            ])
-            .run()
-        {
-            eprintln!("workmux: failed to set pane status: {}", e);
-        }
-        let _ = Cmd::new("tmux")
-            .args(&[
-                "set-option",
-                "-p",
-                "-t",
-                pane_id,
-                "@workmux_pane_status_ts",
-                &now_str,
-            ])
-            .run();
-
-        // 3. Store the current foreground command for agent exit detection
-        if exit_detection {
-            let current_cmd = self.get_pane_current_command(pane_id).unwrap_or_default();
-            if !current_cmd.is_empty() {
-                let _ = Cmd::new("tmux")
-                    .args(&[
-                        "set-option",
-                        "-p",
-                        "-t",
-                        pane_id,
-                        "@workmux_pane_command",
-                        &current_cmd,
-                    ])
-                    .run();
-            }
-        }
-
         Ok(())
     }
 
     fn clear_status(&self, pane_id: &str) -> Result<()> {
-        self.clear_pane_status_internal(pane_id);
+        self.clear_window_status_internal(pane_id);
         Ok(())
     }
 
     fn get_all_agent_panes(&self) -> Result<Vec<AgentPane>> {
-        let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_title}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}\t#{@workmux_pane_command}\t#{pane_current_command}";
-
-        let output = Cmd::new("tmux")
-            .args(&["list-panes", "-a", "-F", format])
-            .run_and_capture_stdout()
-            .unwrap_or_default();
-
-        let mut agents = Vec::new();
-        for line in output.lines() {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() < 9 {
-                continue;
-            }
-
-            let status = if parts[5].is_empty() {
-                None
-            } else {
-                Some(parts[5].to_string())
-            };
-
-            if status.is_none() {
-                continue;
-            }
-
-            let pane_id = parts[2];
-            let original_cmd = parts[7];
-            let current_cmd = parts[8];
-
-            // If command changed, agent has exited - clear status and skip
-            if !original_cmd.is_empty() && current_cmd != original_cmd {
-                self.clear_pane_status_internal(pane_id);
-                continue;
-            }
-
-            let status_ts = if parts[6].is_empty() {
-                None
-            } else {
-                parts[6].parse().ok()
-            };
-
-            let pane_title = if parts[4].is_empty() {
-                None
-            } else {
-                Some(parts[4].to_string())
-            };
-
-            agents.push(AgentPane {
-                session: parts[0].to_string(),
-                window_name: parts[1].to_string(),
-                pane_id: pane_id.to_string(),
-                path: PathBuf::from(parts[3]),
-                pane_title,
-                status,
-                status_ts,
-            });
-        }
-
-        Ok(agents)
+        // Agent state is now loaded from StateStore via load_reconciled_agents().
+        // This method is kept for trait compatibility but is unused.
+        Ok(Vec::new())
     }
 
     fn ensure_status_format(&self, pane_id: &str) -> Result<()> {
