@@ -55,14 +55,16 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         SetWindowStatusCommand::Working
         | SetWindowStatusCommand::Waiting
         | SetWindowStatusCommand::Done => {
-            let (status, icon) = match cmd {
+            let (status, icon, auto_clear) = match cmd {
                 SetWindowStatusCommand::Working => {
-                    (AgentStatus::Working, config.status_icons.working())
+                    (AgentStatus::Working, config.status_icons.working(), false)
                 }
                 SetWindowStatusCommand::Waiting => {
-                    (AgentStatus::Waiting, config.status_icons.waiting())
+                    (AgentStatus::Waiting, config.status_icons.waiting(), true)
                 }
-                SetWindowStatusCommand::Done => (AgentStatus::Done, config.status_icons.done()),
+                SetWindowStatusCommand::Done => {
+                    (AgentStatus::Done, config.status_icons.done(), true)
+                }
                 SetWindowStatusCommand::Clear => unreachable!(),
             };
 
@@ -107,8 +109,7 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
             }
 
             // Update backend UI (status bar icon)
-            // exit_detection=false since exit detection now uses StateStore
-            mux.set_status(&pane_id, icon, false)?;
+            mux.set_status(&pane_id, icon, auto_clear)?;
         }
     }
 

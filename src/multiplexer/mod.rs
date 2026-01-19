@@ -135,8 +135,11 @@ pub trait Multiplexer: Send + Sync {
 
     // === Status ===
 
-    /// Set status icon for a pane, optionally enabling exit detection
-    fn set_status(&self, pane_id: &str, icon: &str, exit_detection: bool) -> Result<()>;
+    /// Set status icon for a pane.
+    ///
+    /// If `auto_clear_on_focus` is true, the status will be automatically cleared
+    /// when the window receives focus (used for "waiting" and "done" statuses).
+    fn set_status(&self, pane_id: &str, icon: &str, auto_clear_on_focus: bool) -> Result<()>;
 
     /// Clear status from a pane
     fn clear_status(&self, pane_id: &str) -> Result<()>;
