@@ -3,6 +3,7 @@
 //! This module provides a trait-based abstraction that allows workmux to work
 //! with different terminal multiplexers (tmux, WezTerm) interchangeably.
 
+pub mod agent;
 pub mod handshake;
 pub mod tmux;
 pub mod types;

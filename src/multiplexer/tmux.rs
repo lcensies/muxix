@@ -15,8 +15,7 @@ use crate::config::{Config, PaneConfig, SplitDirection as ConfigSplitDirection};
 
 use super::handshake::TmuxHandshake;
 use super::types::*;
-use super::util;
-use super::{Multiplexer, PaneHandshake};
+use super::{Multiplexer, PaneHandshake, agent, util};
 
 /// tmux backend implementation.
 ///
@@ -225,7 +224,7 @@ impl TmuxBackend {
 
             // 7. Auto-status for injected prompts
             if let Some(Cow::Owned(_)) = &adjusted_command
-                && util::agent_needs_auto_status(effective_agent)
+                && agent::resolve_profile(effective_agent).needs_auto_status()
             {
                 let _ = self.set_pane_working_status(&pane_id, config);
             }
@@ -549,7 +548,7 @@ impl Multiplexer for TmuxBackend {
     }
 
     fn send_keys_to_agent(&self, pane_id: &str, command: &str, agent: Option<&str>) -> Result<()> {
-        if util::is_claude_agent(agent) && command.starts_with('!') {
+        if agent::resolve_profile(agent).needs_bang_delay() && command.starts_with('!') {
             // Send ! first
             self.tmux_cmd(&["send-keys", "-t", pane_id, "-l", "!"])?;
 

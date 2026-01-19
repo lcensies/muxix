@@ -24,47 +24,6 @@ pub fn is_posix_shell(shell: &str) -> bool {
     matches!(shell_name, "bash" | "zsh" | "sh" | "dash" | "ksh" | "ash")
 }
 
-/// Check if the given agent command is Claude (needs special handling for ! prefix).
-///
-/// Claude Code requires a small delay after the `!` prefix for it to register
-/// as a bash command. This function identifies Claude to enable that special handling.
-pub fn is_claude_agent(agent: Option<&str>) -> bool {
-    let Some(agent) = agent else {
-        return false;
-    };
-
-    let (token, _) = crate::config::split_first_token(agent).unwrap_or((agent, ""));
-    let resolved =
-        crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
-    let stem = Path::new(&resolved)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    stem == "claude"
-}
-
-/// Checks if an agent supports hooks and needs auto-status when launched with a prompt.
-///
-/// Currently only Claude and opencode support hooks that would normally set the status.
-/// This is a workaround for Claude Code's broken UserPromptSubmit hook:
-/// https://github.com/anthropics/claude-code/issues/17284
-pub fn agent_needs_auto_status(effective_agent: Option<&str>) -> bool {
-    let Some(agent) = effective_agent else {
-        return false;
-    };
-
-    let (token, _) = crate::config::split_first_token(agent).unwrap_or((agent, ""));
-    let resolved =
-        crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
-    let stem = Path::new(&resolved)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    matches!(stem, "claude" | "opencode")
-}
-
 /// Rewrites an agent command to inject a prompt file's contents.
 ///
 /// When a prompt file is provided (via --prompt-file or --prompt-editor), this function
@@ -75,10 +34,7 @@ pub fn agent_needs_auto_status(effective_agent: Option<&str>) -> bool {
 /// Only rewrites commands that match the configured agent. For instance, if the config
 /// specifies "gemini" as the agent, a "claude" command won't be rewritten.
 ///
-/// Special handling:
-/// - gemini: Adds `-i` flag for interactive mode after the prompt
-/// - opencode: Adds `--prompt` flag for TUI with initial prompt
-/// - Other agents (claude, codex, etc.): Just passes the prompt as first argument
+/// Agent-specific prompt injection is handled via `AgentProfile::prompt_argument()`.
 ///
 /// For non-POSIX shells (nushell, fish, pwsh), the command is wrapped in `sh -c '...'`
 /// to ensure the `$(cat ...)` command substitution works correctly.
@@ -129,18 +85,10 @@ pub fn rewrite_agent_command(
         inner_cmd.push_str(rest);
     }
 
-    // Add the prompt argument (agent-specific handling)
-    let pane_stem_str = pane_stem.and_then(|s| s.to_str());
-    if pane_stem_str == Some("gemini") {
-        // gemini uses -i flag with the prompt as its argument
-        inner_cmd.push_str(&format!(" -i \"$(cat {})\"", prompt_path));
-    } else if pane_stem_str == Some("opencode") {
-        // opencode uses --prompt flag for interactive TUI with initial prompt
-        inner_cmd.push_str(&format!(" --prompt \"$(cat {})\"", prompt_path));
-    } else {
-        // Other agents use -- separator
-        inner_cmd.push_str(&format!(" -- \"$(cat {})\"", prompt_path));
-    }
+    // Add the prompt argument using agent profile
+    let profile = super::agent::resolve_profile(effective_agent);
+    inner_cmd.push(' ');
+    inner_cmd.push_str(&profile.prompt_argument(&prompt_path));
 
     // For POSIX shells (bash, zsh, sh, etc.), use the command directly.
     // For non-POSIX shells (nushell, fish, pwsh), wrap in sh -c '...' to ensure
