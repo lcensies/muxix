@@ -146,9 +146,6 @@ pub trait Multiplexer: Send + Sync {
     /// Clear status from a pane
     fn clear_status(&self, pane_id: &str) -> Result<()>;
 
-    /// Get all panes with agent status set
-    fn get_all_agent_panes(&self) -> Result<Vec<AgentPane>>;
-
     /// Ensure the status format is configured (for backends that need it)
     fn ensure_status_format(&self, pane_id: &str) -> Result<()>;
 
@@ -174,22 +171,6 @@ pub trait Multiplexer: Send + Sync {
     ) -> Result<PaneSetupResult>;
 
     // === Multi-Session/Workspace Support ===
-
-    /// Get the current session/workspace name, if determinable.
-    ///
-    /// Returns None if not running inside the multiplexer.
-    /// For tmux, this is the session name. For WezTerm, this is the workspace name.
-    fn current_session(&self) -> Option<String> {
-        None // Default: can't determine
-    }
-
-    /// Get all agent panes across ALL sessions/workspaces.
-    ///
-    /// Default implementation returns same as get_all_agent_panes() (single session).
-    /// WezTerm overrides this to return panes from all workspaces.
-    fn get_all_agent_panes_all_sessions(&self) -> Result<Vec<AgentPane>> {
-        self.get_all_agent_panes()
-    }
 
     /// Get all window names across ALL sessions/workspaces.
     ///

@@ -636,12 +636,6 @@ impl Multiplexer for TmuxBackend {
         Ok(())
     }
 
-    fn get_all_agent_panes(&self) -> Result<Vec<AgentPane>> {
-        // Agent state is now loaded from StateStore via load_reconciled_agents().
-        // This method is kept for trait compatibility but is unused.
-        Ok(Vec::new())
-    }
-
     fn ensure_status_format(&self, pane_id: &str) -> Result<()> {
         self.update_format_option(pane_id, "window-status-format")?;
         self.update_format_option(pane_id, "window-status-current-format")?;
