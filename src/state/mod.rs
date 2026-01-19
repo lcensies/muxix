@@ -6,3 +6,5 @@
 mod store;
 mod types;
 
+pub use store::StateStore;
+pub use types::{AgentState, PaneKey};
