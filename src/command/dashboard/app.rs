@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::git::{self, GitStatus};
-use crate::tmux::{self, AgentPane};
+use crate::multiplexer::{AgentPane, Multiplexer};
 
 use super::agent;
 use super::ansi::parse_ansi_to_lines;
@@ -39,6 +39,8 @@ pub enum ViewMode {
 
 /// App state for the TUI
 pub struct App {
+    /// The multiplexer backend
+    pub mux: Arc<dyn Multiplexer>,
     pub agents: Vec<AgentPane>,
     pub table_state: TableState,
     /// Track the selected item by pane_id to preserve selection across reorders
@@ -85,12 +87,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
+    pub fn new(mux: Arc<dyn Multiplexer>) -> Result<Self> {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
         // Get the active pane's directory to indicate the active worktree.
-        // Try tmux first (handles popup case), fall back to current_dir.
-        let current_worktree = crate::tmux::get_client_active_pane_path()
+        // Try multiplexer first (handles popup case), fall back to current_dir.
+        let current_worktree = mux
+            .get_client_active_pane_path()
             .or_else(|_| std::env::current_dir())
             .ok();
         // Preview size: CLI override > tmux saved > config default
@@ -100,6 +103,7 @@ impl App {
             .clamp(10, 90);
 
         let mut app = Self {
+            mux,
             agents: Vec::new(),
             table_state: TableState::default(),
             selected_pane_id: None,
@@ -139,7 +143,7 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
-        self.agents = tmux::get_all_agent_panes().unwrap_or_default();
+        self.agents = self.mux.get_all_agent_panes().unwrap_or_default();
         self.sort_agents();
 
         // Filter out stale agents if hide_stale is enabled
@@ -254,7 +258,7 @@ impl App {
             self.preview_pane_id = current_pane_id.clone();
             self.preview = current_pane_id
                 .as_ref()
-                .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+                .and_then(|pane_id| self.mux.capture_pane(pane_id, PREVIEW_LINES));
             // Reset scroll position when selection changes
             self.preview_scroll = None;
         }
@@ -265,7 +269,7 @@ impl App {
         self.preview = self
             .preview_pane_id
             .as_ref()
-            .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+            .and_then(|pane_id| self.mux.capture_pane(pane_id, PREVIEW_LINES));
     }
 
     /// Parse pane_id (e.g., "%0", "%10") to a number for proper ordering
@@ -413,7 +417,7 @@ impl App {
         {
             self.should_jump = true;
             // Jump to the specific pane
-            let _ = tmux::switch_to_pane(&agent.pane_id);
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
         }
     }
 
@@ -430,7 +434,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::switch_to_pane(&agent.pane_id);
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
             // Don't set should_jump - popup stays open
         }
     }
@@ -440,7 +444,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_key(&agent.pane_id, key);
+            let _ = self.mux.send_key(&agent.pane_id, key);
         }
     }
 
@@ -849,9 +853,9 @@ impl App {
         );
 
         // Use paste_multiline to properly handle newlines in the message
-        let _ = tmux::paste_multiline(&diff.pane_id, &message);
+        let _ = self.mux.paste_multiline(&diff.pane_id, &message);
         // Send an additional Enter to submit the comment to the agent
-        let _ = tmux::send_key(&diff.pane_id, "Enter");
+        let _ = self.mux.send_key(&diff.pane_id, "Enter");
     }
 
     /// Split the current hunk into smaller hunks if possible
@@ -998,7 +1002,7 @@ impl App {
     /// Send commit action to the agent pane and close diff modal
     pub fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
@@ -1010,7 +1014,7 @@ impl App {
     /// Send merge action to the agent pane and close diff modal
     pub fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),
@@ -1024,7 +1028,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
@@ -1037,7 +1041,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),

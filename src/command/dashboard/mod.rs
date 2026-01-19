@@ -44,8 +44,9 @@ use ratatui::backend::CrosstermBackend;
 use std::io;
 use std::time::Duration;
 
+use crate::config::Config;
 use crate::git;
-use crate::tmux;
+use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
 use self::app::{App, ViewMode};
@@ -104,9 +105,12 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
 }
 
 pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
-    // Check if tmux is running
-    if !tmux::is_running().unwrap_or(false) {
-        println!("No tmux server running.");
+    let config = Config::load(None)?;
+    let mux = create_backend(detect_backend(&config));
+
+    // Check if multiplexer is running
+    if !mux.is_running().unwrap_or(false) {
+        println!("No {} server running.", mux.name());
         return Ok(());
     }
 
@@ -118,7 +122,7 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new()?;
+    let mut app = App::new(mux)?;
 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {
