@@ -44,9 +44,10 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
             // Delete state file
             if let Ok(store) = StateStore::new()
-                && let Err(e) = store.delete_agent(&pane_key) {
-                    warn!(error = %e, "failed to delete agent state");
-                }
+                && let Err(e) = store.delete_agent(&pane_key)
+            {
+                warn!(error = %e, "failed to delete agent state");
+            }
 
             // Clear backend UI
             mux.clear_status(&pane_id)?;
@@ -95,9 +96,10 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
                 // Write to state store (don't fail the command if this fails)
                 if let Ok(store) = StateStore::new()
-                    && let Err(e) = store.upsert_agent(&state) {
-                        warn!(error = %e, "failed to persist agent state");
-                    }
+                    && let Err(e) = store.upsert_agent(&state)
+                {
+                    warn!(error = %e, "failed to persist agent state");
+                }
             }
 
             // Update backend UI (status bar icon)

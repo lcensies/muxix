@@ -69,9 +69,10 @@ impl SortMode {
     /// Save sort mode to StateStore.
     pub fn save(&self) {
         if let Ok(store) = StateStore::new()
-            && let Ok(mut settings) = store.load_settings() {
-                settings.sort_mode = self.as_str().to_string();
-                let _ = store.save_settings(&settings);
-            }
+            && let Ok(mut settings) = store.load_settings()
+        {
+            settings.sort_mode = self.as_str().to_string();
+            let _ = store.save_settings(&settings);
+        }
     }
 }

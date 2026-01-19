@@ -14,10 +14,11 @@ pub fn load_hide_stale() -> bool {
 /// Save hide_stale filter state to StateStore.
 pub fn save_hide_stale(hide_stale: bool) {
     if let Ok(store) = StateStore::new()
-        && let Ok(mut settings) = store.load_settings() {
-            settings.hide_stale = hide_stale;
-            let _ = store.save_settings(&settings);
-        }
+        && let Ok(mut settings) = store.load_settings()
+    {
+        settings.hide_stale = hide_stale;
+        let _ = store.save_settings(&settings);
+    }
 }
 
 /// Load preview size from StateStore.
@@ -32,8 +33,9 @@ pub fn load_preview_size() -> Option<u8> {
 /// Save preview size to StateStore.
 pub fn save_preview_size(size: u8) {
     if let Ok(store) = StateStore::new()
-        && let Ok(mut settings) = store.load_settings() {
-            settings.preview_size = Some(size);
-            let _ = store.save_settings(&settings);
-        }
+        && let Ok(mut settings) = store.load_settings()
+    {
+        settings.preview_size = Some(size);
+        let _ = store.save_settings(&settings);
+    }
 }
