@@ -5,7 +5,7 @@ use clap::ValueEnum;
 use tracing::warn;
 
 use crate::config::Config;
-use crate::multiplexer::{create_backend, detect_backend};
+use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::state::{AgentState, PaneKey, StateStore};
 use crate::tmux;
 
@@ -55,10 +55,14 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         SetWindowStatusCommand::Working
         | SetWindowStatusCommand::Waiting
         | SetWindowStatusCommand::Done => {
-            let icon = match cmd {
-                SetWindowStatusCommand::Working => config.status_icons.working(),
-                SetWindowStatusCommand::Waiting => config.status_icons.waiting(),
-                SetWindowStatusCommand::Done => config.status_icons.done(),
+            let (status, icon) = match cmd {
+                SetWindowStatusCommand::Working => {
+                    (AgentStatus::Working, config.status_icons.working())
+                }
+                SetWindowStatusCommand::Waiting => {
+                    (AgentStatus::Waiting, config.status_icons.waiting())
+                }
+                SetWindowStatusCommand::Done => (AgentStatus::Done, config.status_icons.done()),
                 SetWindowStatusCommand::Clear => unreachable!(),
             };
 
@@ -86,7 +90,7 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                 let state = AgentState {
                     pane_key,
                     workdir: live_info.working_dir,
-                    status: Some(icon.to_string()),
+                    status: Some(status),
                     status_ts: Some(now),
                     pane_title: live_info.title,
                     pane_pid: live_info.pid,

@@ -2,7 +2,23 @@
 //!
 //! These types are used by both the tmux and WezTerm backends.
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// Agent status representing the current state of an agent.
+///
+/// Stored as lowercase strings in JSON (e.g., "working", "waiting", "done").
+/// Icons are resolved at display time from config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentStatus {
+    /// Agent is actively processing
+    Working,
+    /// Agent needs user input
+    Waiting,
+    /// Agent has finished
+    Done,
+}
 
 /// Information about a specific pane running a workmux agent
 #[derive(Debug, Clone)]
@@ -17,8 +33,8 @@ pub struct AgentPane {
     pub path: PathBuf,
     /// Pane title (set by Claude Code to show session summary)
     pub pane_title: Option<String>,
-    /// Current status icon (if set)
-    pub status: Option<String>,
+    /// Current agent status
+    pub status: Option<AgentStatus>,
     /// Unix timestamp when status was last set
     pub status_ts: Option<u64>,
 }

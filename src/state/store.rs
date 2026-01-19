@@ -236,6 +236,7 @@ fn read_agent_file(path: &Path) -> Result<Option<AgentState>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::multiplexer::AgentStatus;
     use tempfile::TempDir;
 
     fn test_store() -> (StateStore, TempDir) {
@@ -256,7 +257,7 @@ mod tests {
         AgentState {
             pane_key: key,
             workdir: PathBuf::from("/home/user/project"),
-            status: Some("🤖".to_string()),
+            status: Some(AgentStatus::Working),
             status_ts: Some(1234567890),
             pane_title: Some("Implementing feature X".to_string()),
             pane_pid: 12345,

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Includes path separators and other filesystem-unsafe characters.
 const FILENAME_ENCODE_SET: &AsciiSet = &CONTROLS.add(b'/').add(b'\\').add(b':').add(b'%');
 
-use crate::multiplexer::types::AgentPane;
+use crate::multiplexer::types::{AgentPane, AgentStatus};
 
 /// Composite pane identifier for unique state file naming.
 ///
@@ -74,8 +74,8 @@ pub struct AgentState {
     /// Working directory of the agent
     pub workdir: PathBuf,
 
-    /// Current status icon (e.g., "🤖", "💬", "✅")
-    pub status: Option<String>,
+    /// Current agent status (working, waiting, done)
+    pub status: Option<AgentStatus>,
 
     /// Unix timestamp when status was last set
     pub status_ts: Option<u64>,
@@ -108,7 +108,7 @@ impl AgentState {
             pane_id: self.pane_key.pane_id.clone(),
             path: self.workdir.clone(),
             pane_title: self.pane_title.clone(),
-            status: self.status.clone(),
+            status: self.status,
             status_ts: self.status_ts,
         }
     }

@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::git::{self, GitStatus};
-use crate::multiplexer::{AgentPane, Multiplexer};
+use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
 
 use super::agent;
@@ -283,10 +283,6 @@ impl App {
 
     /// Sort agents based on the current sort mode
     fn sort_agents(&mut self) {
-        // Extract config values needed for sorting to avoid borrowing issues
-        let waiting = self.config.status_icons.waiting().to_string();
-        let working = self.config.status_icons.working().to_string();
-        let done = self.config.status_icons.done().to_string();
         let stale_threshold = self.stale_threshold_secs;
 
         let now = SystemTime::now()
@@ -305,11 +301,11 @@ impl App {
                 return 3; // Stale: lowest priority
             }
 
-            match agent.status.as_deref().unwrap_or("") {
-                s if s == waiting => 0, // Waiting: needs input
-                s if s == done => 1,    // Done: needs review
-                s if s == working => 2, // Working: no action needed
-                _ => 3,                 // Unknown/other: lowest priority
+            match agent.status {
+                Some(AgentStatus::Waiting) => 0, // Waiting: needs input
+                Some(AgentStatus::Done) => 1,    // Done: needs review
+                Some(AgentStatus::Working) => 2, // Working: no action needed
+                None => 3,                       // Unknown/other: lowest priority
             }
         };
 
@@ -492,36 +488,29 @@ impl App {
     }
 
     pub fn get_status_display(&self, agent: &AgentPane) -> (String, Color) {
-        let status = agent.status.as_deref().unwrap_or("");
         let is_stale = self.is_stale(agent);
 
-        // Match against configured icons
-        let working = self.config.status_icons.working();
-        let waiting = self.config.status_icons.waiting();
-        let done = self.config.status_icons.done();
-
-        // Get the base status text and color
-        let (status_text, base_color, is_working) = if status == working {
-            (status.to_string(), Color::Cyan, true)
-        } else if status == waiting {
-            (status.to_string(), Color::Magenta, false)
-        } else if status == done {
-            (status.to_string(), Color::Green, false)
-        } else {
-            (status.to_string(), Color::White, false)
+        // Map status enum to icon and color
+        let (icon, base_color, is_working) = match agent.status {
+            Some(AgentStatus::Working) => (self.config.status_icons.working(), Color::Cyan, true),
+            Some(AgentStatus::Waiting) => {
+                (self.config.status_icons.waiting(), Color::Magenta, false)
+            }
+            Some(AgentStatus::Done) => (self.config.status_icons.done(), Color::Green, false),
+            None => ("", Color::White, false),
         };
 
         // If stale, dim the color and add timer-off indicator
         if is_stale {
-            let display_text = format!("{} \u{f051b}", status_text);
+            let display_text = format!("{} \u{f051b}", icon);
             (display_text, Color::DarkGray)
         } else if is_working {
             // Add animated spinner when agent is working
             let spinner = SPINNER_FRAMES[self.spinner_frame as usize];
-            let display_text = format!("{} {}", status_text, spinner);
+            let display_text = format!("{} {}", icon, spinner);
             (display_text, base_color)
         } else {
-            (status_text, base_color)
+            (icon.to_string(), base_color)
         }
     }
 
