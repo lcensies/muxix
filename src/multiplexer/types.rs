@@ -117,3 +117,31 @@ impl std::str::FromStr for BackendType {
         }
     }
 }
+
+/// Live pane information from the multiplexer (used for reconciliation).
+///
+/// Contains current state of a pane as queried from the multiplexer,
+/// used to validate stored state against actual pane state.
+#[derive(Debug, Clone)]
+pub struct LivePaneInfo {
+    /// Pane identifier
+    pub pane_id: String,
+
+    /// PID of the pane's shell process
+    pub pid: u32,
+
+    /// Current foreground command (e.g., "node", "zsh")
+    pub current_command: String,
+
+    /// Working directory
+    pub working_dir: PathBuf,
+
+    /// Pane title (if set)
+    pub title: Option<String>,
+
+    /// Session name (tmux session or WezTerm workspace)
+    pub session: Option<String>,
+
+    /// Window name
+    pub window: Option<String>,
+}

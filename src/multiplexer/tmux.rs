@@ -910,6 +910,55 @@ impl Multiplexer for TmuxBackend {
             focus_pane_id: focus_pane_id.unwrap_or_else(|| initial_pane_id.to_string()),
         })
     }
+
+    // === State Reconciliation ===
+
+    fn instance_id(&self) -> String {
+        // Check TMUX environment variable for socket path
+        // Format: /path/to/socket,pid,session_index
+        std::env::var("TMUX")
+            .ok()
+            .and_then(|tmux| tmux.split(',').next().map(String::from))
+            .unwrap_or_else(|| "default".to_string())
+    }
+
+    fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>> {
+        let format = "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{session_name}\t#{window_name}";
+
+        // Use display-message to query a specific pane
+        let output = Cmd::new("tmux")
+            .args(&["display-message", "-t", pane_id, "-p", format])
+            .run_and_capture_stdout();
+
+        let output = match output {
+            Ok(o) => o,
+            Err(_) => return Ok(None), // Pane doesn't exist or error querying
+        };
+
+        let line = output.trim();
+        if line.is_empty() {
+            return Ok(None);
+        }
+
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 7 {
+            return Ok(None);
+        }
+
+        Ok(Some(LivePaneInfo {
+            pane_id: parts[0].to_string(),
+            pid: parts[1].parse().unwrap_or(0),
+            current_command: parts[2].to_string(),
+            working_dir: PathBuf::from(parts[3]),
+            title: if parts[4].is_empty() {
+                None
+            } else {
+                Some(parts[4].to_string())
+            },
+            session: Some(parts[5].to_string()),
+            window: Some(parts[6].to_string()),
+        }))
+    }
 }
 
 /// Format string to inject into tmux window-status-format.

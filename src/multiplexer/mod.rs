@@ -199,6 +199,23 @@ pub trait Multiplexer: Send + Sync {
     fn get_all_window_names_all_sessions(&self) -> Result<HashSet<String>> {
         self.get_all_window_names()
     }
+
+    // === State Reconciliation ===
+
+    /// Get the backend instance identifier (socket path, mux ID, etc.).
+    ///
+    /// This is used to create unique state file paths when multiple instances
+    /// of the same backend are running (e.g., multiple tmux servers).
+    ///
+    /// For tmux: socket path or "default" for standard socket
+    /// For WezTerm: mux domain ID
+    fn instance_id(&self) -> String;
+
+    /// Get live pane info including PID and current command.
+    ///
+    /// Returns None if pane does not exist. Used during state reconciliation
+    /// to validate stored state against actual pane state.
+    fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>>;
 }
 
 /// Detect which backend to use based on environment and config.
