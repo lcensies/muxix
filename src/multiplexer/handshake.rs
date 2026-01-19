@@ -76,15 +76,7 @@ impl PaneHandshake for TmuxHandshake {
     /// (`'\''`) doesn't work reliably when nushell parses the command before passing
     /// it to sh.
     fn wrapper_command(&self, shell: &str) -> String {
-        // Two-step escaping for the shell path:
-        // 1. Escape for inner single-quoted context (exec '...')
-        let inner_shell = shell.replace('\'', "'\\''");
-        // 2. Escape for outer double-quoted context (sh -c "...")
-        let escaped_shell = inner_shell
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('$', "\\$")
-            .replace('`', "\\`");
+        let escaped_shell = super::util::escape_for_sh_c_inner_single_quote(shell);
         format!(
             "sh -c \"stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l\"",
             self.channel, escaped_shell
