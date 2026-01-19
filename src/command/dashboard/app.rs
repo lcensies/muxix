@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::config::Config;
 use crate::git::{self, GitStatus};
 use crate::multiplexer::{AgentPane, Multiplexer};
+use crate::state::StateStore;
 
 use super::agent;
 use super::ansi::parse_ansi_to_lines;
@@ -143,7 +144,10 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
-        self.agents = self.mux.get_all_agent_panes().unwrap_or_default();
+        // Load agents from StateStore with reconciliation against live pane state
+        self.agents = StateStore::new()
+            .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
+            .unwrap_or_default();
         self.sort_agents();
 
         // Filter out stale agents if hide_stale is enabled

@@ -90,9 +90,10 @@ impl StateStore {
                 && !path
                     .file_name()
                     .is_some_and(|n| n.to_string_lossy().ends_with(".tmp"))
-                && let Some(state) = read_agent_file(&path)? {
-                    agents.push(state);
-                }
+                && let Some(state) = read_agent_file(&path)?
+            {
+                agents.push(state);
+            }
         }
         Ok(agents)
     }
@@ -134,6 +135,56 @@ impl StateStore {
         let path = self.settings_path();
         let content = serde_json::to_string_pretty(settings)?;
         write_atomic(&path, content.as_bytes())
+    }
+
+    /// Load agents with reconciliation against live multiplexer state.
+    ///
+    /// Two-layer exit detection:
+    /// - **PID validation**: Pane was closed and recycled (stored PID != live PID)
+    /// - **Command comparison**: Agent exited within pane (foreground command changed)
+    ///
+    /// Returns only valid agents; removes stale state files.
+    pub fn load_reconciled_agents(
+        &self,
+        mux: &dyn crate::multiplexer::Multiplexer,
+    ) -> Result<Vec<crate::multiplexer::AgentPane>> {
+        let mut valid_agents = Vec::new();
+        let backend = mux.name();
+        let instance = mux.instance_id();
+
+        for state in self.list_all_agents()? {
+            // Skip agents from other backends/instances
+            if state.pane_key.backend != backend || state.pane_key.instance != instance {
+                continue;
+            }
+
+            let live_pane = mux.get_live_pane_info(&state.pane_key.pane_id)?;
+
+            match live_pane {
+                None => {
+                    // Pane no longer exists in multiplexer
+                    self.delete_agent(&state.pane_key)?;
+                }
+                Some(ref live) if live.pid != state.pane_pid => {
+                    // PID mismatch - pane ID was recycled by a new process
+                    self.delete_agent(&state.pane_key)?;
+                }
+                Some(ref live) if live.current_command != state.command => {
+                    // Command changed - agent exited (e.g., "node" -> "zsh")
+                    self.delete_agent(&state.pane_key)?;
+                }
+                Some(live) => {
+                    // Valid - include in dashboard
+                    let agent_pane = state.to_agent_pane(
+                        live.session.unwrap_or_default(),
+                        live.window.unwrap_or_default(),
+                    );
+                    valid_agents.push(agent_pane);
+                }
+            }
+        }
+
+        Ok(valid_agents)
     }
 }
 
