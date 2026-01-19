@@ -3103,6 +3103,7 @@ dependencies = [
  "minijinja",
  "notify-rust",
  "pathdiff",
+ "percent-encoding",
  "pulldown-cmark",
  "ratatui",
  "regex",

@@ -1,7 +1,12 @@
 //! Core data structures for filesystem-based state storage.
 
+use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// Characters that need encoding in filenames (beyond control chars).
+/// Includes path separators and other filesystem-unsafe characters.
+const FILENAME_ENCODE_SET: &AsciiSet = &CONTROLS.add(b'/').add(b'\\').add(b':').add(b'%');
 
 use crate::multiplexer::types::AgentPane;
 
@@ -27,21 +32,29 @@ impl PaneKey {
     ///
     /// Format: `{backend}__{instance}__{pane_id}.json`
     /// Double underscores used since pane IDs may contain single underscores.
+    /// Filesystem-unsafe characters are percent-encoded for safety.
     pub fn to_filename(&self) -> String {
-        format!("{}__{}__{}.json", self.backend, self.instance, self.pane_id)
+        let safe_instance = utf8_percent_encode(&self.instance, FILENAME_ENCODE_SET).to_string();
+        let safe_pane_id = utf8_percent_encode(&self.pane_id, FILENAME_ENCODE_SET).to_string();
+        format!("{}__{}__{}.json", self.backend, safe_instance, safe_pane_id)
     }
 
     /// Parse a PaneKey from a filename.
     ///
     /// Returns None if the filename doesn't match the expected format.
+    #[allow(dead_code)] // Used in tests, may be used in future features
     pub fn from_filename(filename: &str) -> Option<Self> {
         let stem = filename.strip_suffix(".json")?;
         let parts: Vec<&str> = stem.splitn(3, "__").collect();
         if parts.len() == 3 {
             Some(PaneKey {
                 backend: parts[0].to_string(),
-                instance: parts[1].to_string(),
-                pane_id: parts[2].to_string(),
+                instance: percent_decode_str(parts[1])
+                    .decode_utf8_lossy()
+                    .into_owned(),
+                pane_id: percent_decode_str(parts[2])
+                    .decode_utf8_lossy()
+                    .into_owned(),
             })
         } else {
             None
@@ -125,12 +138,14 @@ mod tests {
             instance: "default".to_string(),
             pane_id: "%1".to_string(),
         };
-        assert_eq!(key.to_filename(), "tmux__default__%1.json");
+        // % is encoded as %25 for filesystem safety
+        assert_eq!(key.to_filename(), "tmux__default__%251.json");
     }
 
     #[test]
     fn test_pane_key_from_filename() {
-        let key = PaneKey::from_filename("tmux__default__%1.json").unwrap();
+        // %25 decodes to %
+        let key = PaneKey::from_filename("tmux__default__%251.json").unwrap();
         assert_eq!(key.backend, "tmux");
         assert_eq!(key.instance, "default");
         assert_eq!(key.pane_id, "%1");
@@ -165,5 +180,22 @@ mod tests {
         let filename = key.to_filename();
         let parsed = PaneKey::from_filename(&filename).unwrap();
         assert_eq!(parsed.pane_id, "pane_with_underscores");
+    }
+
+    #[test]
+    fn test_pane_key_with_socket_path() {
+        // Real-world tmux socket path
+        let key = PaneKey {
+            backend: "tmux".to_string(),
+            instance: "/private/tmp/tmux-501/default".to_string(),
+            pane_id: "%79".to_string(),
+        };
+        let filename = key.to_filename();
+        // Verify filename is safe (no slashes)
+        assert!(!filename.contains('/'));
+        // Verify roundtrip works
+        let parsed = PaneKey::from_filename(&filename).unwrap();
+        assert_eq!(parsed.instance, "/private/tmp/tmux-501/default");
+        assert_eq!(parsed.pane_id, "%79");
     }
 }

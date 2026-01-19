@@ -785,7 +785,6 @@ impl Multiplexer for TmuxBackend {
         }
 
         Ok(Some(LivePaneInfo {
-            pane_id: parts[0].to_string(),
             pid: parts[1].parse().unwrap_or(0),
             current_command: parts[2].to_string(),
             working_dir: PathBuf::from(parts[3]),

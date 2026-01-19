@@ -19,11 +19,6 @@ pub trait PaneHandshake: Send {
     /// This is formatted for shell evaluation (e.g., passing to tmux).
     fn wrapper_command(&self, shell: &str) -> String;
 
-    /// Returns the script content and shell path for direct execution.
-    /// Use this when the caller will invoke `sh -c <script>` directly
-    /// (e.g., WezTerm which takes command arguments separately).
-    fn script_and_shell(&self, shell: &str) -> (String, String);
-
     /// Waits for the handshake signal, consuming the handshake object.
     fn wait(self: Box<Self>) -> Result<()>;
 }
@@ -94,15 +89,6 @@ impl PaneHandshake for TmuxHandshake {
             "sh -c \"stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l\"",
             self.channel, escaped_shell
         )
-    }
-
-    fn script_and_shell(&self, shell: &str) -> (String, String) {
-        // For tmux, we use stty to suppress echo during handshake
-        let script = format!(
-            "stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l",
-            self.channel, shell
-        );
-        (script, shell.to_string())
     }
 
     /// Wait for the shell to signal it is ready, then clean up.

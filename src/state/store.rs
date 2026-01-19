@@ -68,6 +68,7 @@ impl StateStore {
     /// Read agent state by pane key.
     ///
     /// Returns None if the agent doesn't exist or the file is corrupted.
+    #[allow(dead_code)] // Used in tests, may be used in future features
     pub fn get_agent(&self, key: &PaneKey) -> Result<Option<AgentState>> {
         read_agent_file(&self.agent_path(key))
     }

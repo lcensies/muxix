@@ -89,9 +89,6 @@ impl std::str::FromStr for BackendType {
 /// used to validate stored state against actual pane state.
 #[derive(Debug, Clone)]
 pub struct LivePaneInfo {
-    /// Pane identifier
-    pub pane_id: String,
-
     /// PID of the pane's shell process
     pub pid: u32,
 
