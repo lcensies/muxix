@@ -1,47 +1,39 @@
-//! Tmux-persisted dashboard settings.
+//! Dashboard settings persistence using StateStore.
 
-use crate::cmd::Cmd;
+use crate::state::StateStore;
 
-const TMUX_HIDE_STALE_VAR: &str = "@workmux_hide_stale";
-const TMUX_PREVIEW_SIZE_VAR: &str = "@workmux_preview_size";
-
-/// Load hide_stale filter state from tmux global variable
-pub fn load_hide_stale_from_tmux() -> bool {
-    Cmd::new("tmux")
-        .args(&["show-option", "-gqv", TMUX_HIDE_STALE_VAR])
-        .run_and_capture_stdout()
+/// Load hide_stale filter state from StateStore.
+pub fn load_hide_stale() -> bool {
+    StateStore::new()
         .ok()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim() == "true")
+        .and_then(|store| store.load_settings().ok())
+        .map(|s| s.hide_stale)
         .unwrap_or(false)
 }
 
-/// Save hide_stale filter state to tmux global variable
-pub fn save_hide_stale_to_tmux(hide_stale: bool) {
-    let _ = Cmd::new("tmux")
-        .args(&[
-            "set-option",
-            "-g",
-            TMUX_HIDE_STALE_VAR,
-            if hide_stale { "true" } else { "false" },
-        ])
-        .run();
+/// Save hide_stale filter state to StateStore.
+pub fn save_hide_stale(hide_stale: bool) {
+    if let Ok(store) = StateStore::new()
+        && let Ok(mut settings) = store.load_settings() {
+            settings.hide_stale = hide_stale;
+            let _ = store.save_settings(&settings);
+        }
 }
 
-/// Load preview size from tmux global variable.
+/// Load preview size from StateStore.
 /// Returns None if not set (so config default can be used).
-pub fn load_preview_size_from_tmux() -> Option<u8> {
-    Cmd::new("tmux")
-        .args(&["show-option", "-gqv", TMUX_PREVIEW_SIZE_VAR])
-        .run_and_capture_stdout()
+pub fn load_preview_size() -> Option<u8> {
+    StateStore::new()
         .ok()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| s.trim().parse().ok())
+        .and_then(|store| store.load_settings().ok())
+        .and_then(|s| s.preview_size)
 }
 
-/// Save preview size to tmux global variable
-pub fn save_preview_size_to_tmux(size: u8) {
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-g", TMUX_PREVIEW_SIZE_VAR, &size.to_string()])
-        .run();
+/// Save preview size to StateStore.
+pub fn save_preview_size(size: u8) {
+    if let Ok(store) = StateStore::new()
+        && let Ok(mut settings) = store.load_settings() {
+            settings.preview_size = Some(size);
+            let _ = store.save_settings(&settings);
+        }
 }

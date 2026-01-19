@@ -1,8 +1,6 @@
 //! Sort mode logic for the dashboard agent list.
 
-use crate::cmd::Cmd;
-
-const TMUX_SORT_MODE_VAR: &str = "@workmux_sort_mode";
+use crate::state::StateStore;
 
 /// Available sort modes for the agent list
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -39,7 +37,7 @@ impl SortMode {
         }
     }
 
-    /// Convert to string for tmux storage
+    /// Convert to string for storage.
     fn as_str(&self) -> &'static str {
         match self {
             SortMode::Priority => "priority",
@@ -49,7 +47,7 @@ impl SortMode {
         }
     }
 
-    /// Parse from tmux storage string
+    /// Parse from storage string.
     fn from_str(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
             "project" => SortMode::Project,
@@ -59,21 +57,21 @@ impl SortMode {
         }
     }
 
-    /// Load sort mode from tmux global variable
-    pub fn load_from_tmux() -> Self {
-        Cmd::new("tmux")
-            .args(&["show-option", "-gqv", TMUX_SORT_MODE_VAR])
-            .run_and_capture_stdout()
+    /// Load sort mode from StateStore.
+    pub fn load() -> Self {
+        StateStore::new()
             .ok()
-            .filter(|s| !s.is_empty())
-            .map(|s| Self::from_str(&s))
+            .and_then(|store| store.load_settings().ok())
+            .map(|s| Self::from_str(&s.sort_mode))
             .unwrap_or_default()
     }
 
-    /// Save sort mode to tmux global variable
-    pub fn save_to_tmux(&self) {
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-g", TMUX_SORT_MODE_VAR, self.as_str()])
-            .run();
+    /// Save sort mode to StateStore.
+    pub fn save(&self) {
+        if let Ok(store) = StateStore::new()
+            && let Ok(mut settings) = store.load_settings() {
+                settings.sort_mode = self.as_str().to_string();
+                let _ = store.save_settings(&settings);
+            }
     }
 }

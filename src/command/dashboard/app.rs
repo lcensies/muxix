@@ -20,10 +20,7 @@ use super::diff::{
     DiffView, extract_file_list, get_diff_content, get_file_list_numstat, map_file_offsets,
     parse_hunk_header,
 };
-use super::settings::{
-    load_hide_stale_from_tmux, load_preview_size_from_tmux, save_hide_stale_to_tmux,
-    save_preview_size_to_tmux,
-};
+use super::settings::{load_hide_stale, load_preview_size, save_hide_stale, save_preview_size};
 use super::sort::SortMode;
 use super::spinner::SPINNER_FRAMES;
 
@@ -99,7 +96,7 @@ impl App {
             .ok();
         // Preview size: CLI override > tmux saved > config default
         // Clamp to 10-90 to handle manually corrupted tmux variables
-        let preview_size = load_preview_size_from_tmux()
+        let preview_size = load_preview_size()
             .unwrap_or_else(|| config.dashboard.preview_size())
             .clamp(10, 90);
 
@@ -113,7 +110,7 @@ impl App {
             config,
             should_quit: false,
             should_jump: false,
-            sort_mode: SortMode::load_from_tmux(),
+            sort_mode: SortMode::load(),
             view_mode: ViewMode::default(),
             preview: None,
             preview_pane_id: None,
@@ -128,7 +125,7 @@ impl App {
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
-            hide_stale: load_hide_stale_from_tmux(),
+            hide_stale: load_hide_stale(),
             show_help: false,
             preview_size,
         };
@@ -354,27 +351,27 @@ impl App {
     /// Cycle to the next sort mode, re-sort, and persist to tmux
     pub fn cycle_sort_mode(&mut self) {
         self.sort_mode = self.sort_mode.next();
-        self.sort_mode.save_to_tmux();
+        self.sort_mode.save();
         self.sort_agents();
     }
 
     /// Toggle hiding stale agents
     pub fn toggle_stale_filter(&mut self) {
         self.hide_stale = !self.hide_stale;
-        save_hide_stale_to_tmux(self.hide_stale);
+        save_hide_stale(self.hide_stale);
         self.refresh();
     }
 
     /// Increase preview size by 10% (max 90%)
     pub fn increase_preview_size(&mut self) {
         self.preview_size = (self.preview_size + 10).min(90);
-        save_preview_size_to_tmux(self.preview_size);
+        save_preview_size(self.preview_size);
     }
 
     /// Decrease preview size by 10% (min 10%)
     pub fn decrease_preview_size(&mut self) {
         self.preview_size = self.preview_size.saturating_sub(10).max(10);
-        save_preview_size_to_tmux(self.preview_size);
+        save_preview_size(self.preview_size);
     }
 
     pub fn next(&mut self) {
