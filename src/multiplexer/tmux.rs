@@ -31,11 +31,26 @@ impl TmuxBackend {
         Self
     }
 
+    /// Run a tmux command, returning an error with context on failure.
+    fn tmux_cmd(&self, args: &[&str]) -> Result<()> {
+        Cmd::new("tmux")
+            .args(args)
+            .run()
+            .with_context(|| format!("tmux command failed: {:?}", args))?;
+        Ok(())
+    }
+
+    /// Run a tmux command and capture stdout.
+    fn tmux_query(&self, args: &[&str]) -> Result<String> {
+        Cmd::new("tmux")
+            .args(args)
+            .run_and_capture_stdout()
+            .with_context(|| format!("tmux query failed: {:?}", args))
+    }
+
     /// Get the default shell configured in tmux.
     fn get_default_shell_internal(&self) -> Result<String> {
-        let output = Cmd::new("tmux")
-            .args(&["show-option", "-gqv", "default-shell"])
-            .run_and_capture_stdout()?;
+        let output = self.tmux_query(&["show-option", "-gqv", "default-shell"])?;
         let shell = output.trim();
         if shell.is_empty() {
             Ok("/bin/bash".to_string())
@@ -46,21 +61,13 @@ impl TmuxBackend {
 
     /// Execute a shell script via tmux run-shell.
     fn run_shell(&self, script: &str) -> Result<()> {
-        Cmd::new("tmux")
-            .args(&["run-shell", script])
-            .run()
-            .context("Failed to run shell command via tmux")?;
-        Ok(())
+        self.tmux_cmd(&["run-shell", script])
     }
 
     /// Clear the window status display (status bar icon).
     fn clear_window_status_internal(&self, pane_id: &str) {
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-uw", "-t", pane_id, "@workmux_status"])
-            .run();
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-uw", "-t", pane_id, "@workmux_status_ts"])
-            .run();
+        let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status"]);
+        let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status_ts"]);
     }
 
     /// Sets the "working" status on a pane.
@@ -79,17 +86,15 @@ impl TmuxBackend {
     /// Updates a single tmux format option for the target window to include workmux status.
     fn update_format_option(&self, pane: &str, option: &str) -> Result<()> {
         // Read current format. Try window-level first, fall back to global.
-        let window_format = Cmd::new("tmux")
-            .args(&["show-option", "-wv", "-t", pane, option])
-            .run_and_capture_stdout()
+        let window_format = self
+            .tmux_query(&["show-option", "-wv", "-t", pane, option])
             .ok()
             .filter(|s| !s.is_empty());
 
         let current = match window_format {
             Some(fmt) => fmt,
-            None => Cmd::new("tmux")
-                .args(&["show-option", "-gv", option])
-                .run_and_capture_stdout()
+            None => self
+                .tmux_query(&["show-option", "-gv", option])
                 .ok()
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "#I:#W#{?window_flags,#{window_flags}, }".to_string()),
@@ -98,9 +103,7 @@ impl TmuxBackend {
         if !current.contains("@workmux_status") {
             let new_format = inject_status_format(&current);
             // Set per-window to avoid affecting other windows/sessions
-            Cmd::new("tmux")
-                .args(&["set-option", "-w", "-t", pane, option, &new_format])
-                .run()?;
+            self.tmux_cmd(&["set-option", "-w", "-t", pane, option, &new_format])?;
         }
         Ok(())
     }
@@ -224,13 +227,7 @@ impl Multiplexer for TmuxBackend {
 
     fn kill_window(&self, full_name: &str) -> Result<()> {
         let target = format!("={}", full_name);
-
-        Cmd::new("tmux")
-            .args(&["kill-window", "-t", &target])
-            .run()
-            .context("Failed to kill tmux window")?;
-
-        Ok(())
+        self.tmux_cmd(&["kill-window", "-t", &target])
     }
 
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()> {
@@ -249,13 +246,7 @@ impl Multiplexer for TmuxBackend {
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let prefixed_name = util::prefixed(prefix, name);
         let target = format!("={}", prefixed_name);
-
-        Cmd::new("tmux")
-            .args(&["select-window", "-t", &target])
-            .run()
-            .context("Failed to select window")?;
-
-        Ok(())
+        self.tmux_cmd(&["select-window", "-t", &target])
     }
 
     fn window_exists(&self, prefix: &str, name: &str) -> Result<bool> {
@@ -264,32 +255,23 @@ impl Multiplexer for TmuxBackend {
     }
 
     fn window_exists_by_full_name(&self, full_name: &str) -> Result<bool> {
-        let windows = Cmd::new("tmux")
-            .args(&["list-windows", "-F", "#{window_name}"])
-            .run_and_capture_stdout();
-
-        match windows {
+        match self.tmux_query(&["list-windows", "-F", "#{window_name}"]) {
             Ok(output) => Ok(output.lines().any(|line| line == full_name)),
             Err(_) => Ok(false),
         }
     }
 
     fn current_window_name(&self) -> Result<Option<String>> {
-        match Cmd::new("tmux")
-            .args(&["display-message", "-p", "#{window_name}"])
-            .run_and_capture_stdout()
-        {
+        match self.tmux_query(&["display-message", "-p", "#{window_name}"]) {
             Ok(name) => Ok(Some(name.trim().to_string())),
             Err(_) => Ok(None),
         }
     }
 
     fn get_all_window_names(&self) -> Result<HashSet<String>> {
-        let windows = Cmd::new("tmux")
-            .args(&["list-windows", "-F", "#{window_name}"])
-            .run_and_capture_stdout()
+        let windows = self
+            .tmux_query(&["list-windows", "-F", "#{window_name}"])
             .unwrap_or_default();
-
         Ok(windows.lines().map(String::from).collect())
     }
 
@@ -304,9 +286,8 @@ impl Multiplexer for TmuxBackend {
     }
 
     fn find_last_window_with_prefix(&self, prefix: &str) -> Result<Option<String>> {
-        let output = Cmd::new("tmux")
-            .args(&["list-windows", "-F", "#{window_id} #{window_name}"])
-            .run_and_capture_stdout()
+        let output = self
+            .tmux_query(&["list-windows", "-F", "#{window_id} #{window_name}"])
             .unwrap_or_default();
 
         let mut last_match: Option<String> = None;
@@ -327,9 +308,8 @@ impl Multiplexer for TmuxBackend {
         prefix: &str,
         base_handle: &str,
     ) -> Result<Option<String>> {
-        let output = Cmd::new("tmux")
-            .args(&["list-windows", "-F", "#{window_id} #{window_name}"])
-            .run_and_capture_stdout()
+        let output = self
+            .tmux_query(&["list-windows", "-F", "#{window_id} #{window_name}"])
             .unwrap_or_default();
 
         let full_base = util::prefixed(prefix, base_handle);
@@ -416,31 +396,17 @@ impl Multiplexer for TmuxBackend {
             trash_removal = trash_removal,
         );
 
-        Cmd::new("tmux")
-            .args(&["run-shell", &script])
-            .run()
-            .context("Failed to schedule navigation and window close")?;
-
-        Ok(())
+        self.tmux_cmd(&["run-shell", &script])
     }
 
     // === Pane Management ===
 
     fn select_pane(&self, pane_id: &str) -> Result<()> {
-        Cmd::new("tmux")
-            .args(&["select-pane", "-t", pane_id])
-            .run()
-            .context("Failed to select pane")?;
-
-        Ok(())
+        self.tmux_cmd(&["select-pane", "-t", pane_id])
     }
 
     fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
-        Cmd::new("tmux")
-            .args(&["switch-client", "-t", pane_id])
-            .run()
-            .context("Failed to switch to pane")?;
-        Ok(())
+        self.tmux_cmd(&["switch-client", "-t", pane_id])
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
@@ -463,65 +429,37 @@ impl Multiplexer for TmuxBackend {
 
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String> {
         let start_line = format!("-{}", lines);
-        let output = Cmd::new("tmux")
-            .args(&["capture-pane", "-p", "-e", "-S", &start_line, "-t", pane_id])
-            .run_and_capture_stdout()
-            .ok()?;
-
-        Some(output)
+        self.tmux_query(&["capture-pane", "-p", "-e", "-S", &start_line, "-t", pane_id])
+            .ok()
     }
 
     // === Text I/O ===
 
     fn send_keys(&self, pane_id: &str, command: &str) -> Result<()> {
-        Cmd::new("tmux")
-            .args(&["send-keys", "-t", pane_id, "-l", command])
-            .run()
-            .context("Failed to send keys to pane")?;
-
-        Cmd::new("tmux")
-            .args(&["send-keys", "-t", pane_id, "Enter"])
-            .run()
-            .context("Failed to send Enter key to pane")?;
-
-        Ok(())
+        self.tmux_cmd(&["send-keys", "-t", pane_id, "-l", command])?;
+        self.tmux_cmd(&["send-keys", "-t", pane_id, "Enter"])
     }
 
     fn send_keys_to_agent(&self, pane_id: &str, command: &str, agent: Option<&str>) -> Result<()> {
         if util::is_claude_agent(agent) && command.starts_with('!') {
             // Send ! first
-            Cmd::new("tmux")
-                .args(&["send-keys", "-t", pane_id, "-l", "!"])
-                .run()
-                .context("Failed to send ! to pane")?;
+            self.tmux_cmd(&["send-keys", "-t", pane_id, "-l", "!"])?;
 
             // Small delay to let Claude register the !
             thread::sleep(Duration::from_millis(50));
 
             // Send the rest of the command
-            Cmd::new("tmux")
-                .args(&["send-keys", "-t", pane_id, "-l", &command[1..]])
-                .run()
-                .context("Failed to send keys to pane")?;
+            self.tmux_cmd(&["send-keys", "-t", pane_id, "-l", &command[1..]])?;
 
             // Send Enter
-            Cmd::new("tmux")
-                .args(&["send-keys", "-t", pane_id, "Enter"])
-                .run()
-                .context("Failed to send Enter key to pane")?;
-
-            Ok(())
+            self.tmux_cmd(&["send-keys", "-t", pane_id, "Enter"])
         } else {
             self.send_keys(pane_id, command)
         }
     }
 
     fn send_key(&self, pane_id: &str, key: &str) -> Result<()> {
-        Cmd::new("tmux")
-            .args(&["send-keys", "-t", pane_id, key])
-            .run()
-            .context("Failed to send key to pane")?;
-        Ok(())
+        self.tmux_cmd(&["send-keys", "-t", pane_id, key])
     }
 
     fn paste_multiline(&self, pane_id: &str, content: &str) -> Result<()> {
@@ -546,17 +484,8 @@ impl Multiplexer for TmuxBackend {
             return Err(anyhow::anyhow!("tmux load-buffer failed"));
         }
 
-        Cmd::new("tmux")
-            .args(&["paste-buffer", "-t", pane_id, "-p", "-d"])
-            .run()
-            .context("Failed to paste buffer to pane")?;
-
-        Cmd::new("tmux")
-            .args(&["send-keys", "-t", pane_id, "Enter"])
-            .run()
-            .context("Failed to send Enter after paste")?;
-
-        Ok(())
+        self.tmux_cmd(&["paste-buffer", "-t", pane_id, "-p", "-d"])?;
+        self.tmux_cmd(&["send-keys", "-t", pane_id, "Enter"])
     }
 
     // === Shell ===
@@ -581,22 +510,18 @@ impl Multiplexer for TmuxBackend {
         // Set Window Option for tmux status bar display.
         // Agent state is stored in filesystem (StateStore), these window options
         // are view-layer only for visual feedback in the status bar.
-        if let Err(e) = Cmd::new("tmux")
-            .args(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
-            .run()
+        if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
         {
             eprintln!("workmux: failed to set window status: {}", e);
         }
-        let _ = Cmd::new("tmux")
-            .args(&[
-                "set-option",
-                "-w",
-                "-t",
-                pane_id,
-                "@workmux_status_ts",
-                &now_str,
-            ])
-            .run();
+        let _ = self.tmux_cmd(&[
+            "set-option",
+            "-w",
+            "-t",
+            pane_id,
+            "@workmux_status_ts",
+            &now_str,
+        ]);
 
         Ok(())
     }
@@ -765,9 +690,7 @@ impl Multiplexer for TmuxBackend {
         let format = "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{session_name}\t#{window_name}";
 
         // Use display-message to query a specific pane
-        let output = Cmd::new("tmux")
-            .args(&["display-message", "-t", pane_id, "-p", format])
-            .run_and_capture_stdout();
+        let output = self.tmux_query(&["display-message", "-t", pane_id, "-p", format]);
 
         let output = match output {
             Ok(o) => o,
