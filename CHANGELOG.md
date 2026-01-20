@@ -14,6 +14,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.95 (2026-01-20)
+
+- Fixed prompts failing when branch names contain slashes
+  ([#37](https://github.com/raine/workmux/issues/37))
+
 ## v0.1.94 (2026-01-17)
 
 - Fixed dashboard commit and merge commands not working in Claude Code when
