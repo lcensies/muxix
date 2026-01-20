@@ -8,6 +8,14 @@ license = "MIT"
 documentation = "https://github.com/raine/workmux#readme"
 homepage = "https://github.com/raine/workmux"
 repository = "https://github.com/raine/workmux"
+include = [
+    "/src/**/*",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/README.md",
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
