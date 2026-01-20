@@ -381,8 +381,12 @@ pub fn write_prompt_file(branch_name: &str, prompt: &Prompt) -> Result<PathBuf> 
             .with_context(|| format!("Failed to read prompt file '{}'", path.display()))?,
     };
 
+    // Sanitize branch name: replace path separators with dashes to avoid
+    // interpreting slashes as directory separators (e.g., "feature/foo" -> "feature-foo")
+    let safe_branch_name = branch_name.replace(['/', '\\'], "-");
+
     // Write to temp directory instead of the worktree to avoid polluting git status
-    let prompt_filename = format!("workmux-prompt-{}.md", branch_name);
+    let prompt_filename = format!("workmux-prompt-{}.md", safe_branch_name);
     let prompt_path = std::env::temp_dir().join(prompt_filename);
     fs::write(&prompt_path, content)
         .with_context(|| format!("Failed to write prompt file '{}'", prompt_path.display()))?;
@@ -650,6 +654,36 @@ mod tests {
 
         let result = super::validate_prompt_consumption(&panes, None, &config, &options);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn write_prompt_file_sanitizes_branch_with_slashes() {
+        use crate::prompt::Prompt;
+
+        let branch_name = "feature/nested/add-login";
+        let prompt = Prompt::Inline("test prompt content".to_string());
+
+        let path =
+            super::write_prompt_file(branch_name, &prompt).expect("Should create prompt file");
+
+        // Verify filename does not contain slashes
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert!(
+            filename.contains("feature-nested-add-login"),
+            "Expected sanitized branch name in filename, got: {}",
+            filename
+        );
+        assert!(
+            !filename.contains('/'),
+            "Filename should not contain slashes"
+        );
+
+        // Verify content was written correctly
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "test prompt content");
+
+        // Cleanup
+        let _ = std::fs::remove_file(path);
     }
 }
 
