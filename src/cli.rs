@@ -359,6 +359,10 @@ enum Commands {
         base: String,
     },
 
+    /// Switch to the agent that most recently completed its task
+    #[command(hide = true, name = "last-done")]
+    LastDone,
+
     /// Generate shell completions
     Completions {
         /// The shell to generate completions for
@@ -485,6 +489,7 @@ pub fn run() -> Result<()> {
         },
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
         Commands::SetBase { base } => command::set_base::run(&base),
+        Commands::LastDone => command::last_done::run(),
         Commands::Completions { shell } => {
             generate_completions(shell);
             Ok(())

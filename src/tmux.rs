@@ -289,6 +289,49 @@ pub fn switch_to_pane(pane_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Switch to the agent pane that most recently completed its task, cycling through
+/// completed agents on repeated invocations.
+///
+/// Behavior:
+/// - If not currently on a "done" pane: switches to the most recently completed agent
+/// - If already on a "done" pane: switches to the next oldest completed agent
+/// - Wraps around to the most recent when reaching the oldest
+///
+/// Returns `Ok(true)` if a pane was found and switched to, `Ok(false)` if no
+/// completed agents were found.
+pub fn switch_to_last_completed(done_icon: &str) -> Result<bool> {
+    let agents = get_all_agent_panes()?;
+
+    // Filter to done agents and sort by timestamp descending (most recent first)
+    let mut done_agents: Vec<_> = agents
+        .into_iter()
+        .filter(|a| a.status.as_deref() == Some(done_icon))
+        .collect();
+
+    if done_agents.is_empty() {
+        return Ok(false);
+    }
+
+    done_agents.sort_by(|a, b| b.status_ts.cmp(&a.status_ts));
+
+    // Get current pane to determine where we are in the cycle
+    let current_pane = std::env::var("TMUX_PANE").ok();
+
+    // Find current position in the sorted list
+    let current_idx = current_pane
+        .as_ref()
+        .and_then(|current| done_agents.iter().position(|a| &a.pane_id == current));
+
+    // Determine which pane to switch to
+    let target_idx = match current_idx {
+        Some(idx) => (idx + 1) % done_agents.len(), // Cycle to next (older) agent
+        None => 0,                                  // Start with most recent
+    };
+
+    switch_to_pane(&done_agents[target_idx].pane_id)?;
+    Ok(true)
+}
+
 /// Capture the last N lines of a pane's terminal output with ANSI colors.
 /// Returns the captured text, or None if the pane doesn't exist.
 pub fn capture_pane(pane_id: &str, lines: u16) -> Option<String> {
