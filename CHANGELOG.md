@@ -14,6 +14,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.96 (2026-01-20)
+
+- Reduced crate download size by excluding unnecessary files from the published
+  package
+
 ## v0.1.95 (2026-01-20)
 
 - Fixed prompts failing when branch names contain slashes
