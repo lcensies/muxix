@@ -230,9 +230,24 @@ onMounted(() => {
   margin: 0;
 }
 
+@media (max-width: 640px) {
+  .why-section {
+    padding: 0;
+  }
+
+  .why-item {
+    padding: 20px;
+  }
+}
+
 .code-snippet {
   max-width: 500px;
   margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+}
+
+.code-snippet div[class*="language-"] {
+  border-radius: 8px;
 }
 
 .star-count {
@@ -451,6 +466,16 @@ onMounted(() => {
   text-decoration: underline;
 }
 
+@media (max-width: 640px) {
+  .testimonials-section {
+    padding: 0;
+  }
+
+  .testimonial {
+    padding: 1.25rem;
+  }
+}
+
 .cta-section {
   margin: 4rem 0 0;
   padding: 0 1.5rem 4rem;
@@ -498,6 +523,16 @@ onMounted(() => {
   color: var(--vp-c-text-1);
   transform: translateY(-1px);
   border-color: var(--vp-c-text-3);
+}
+
+@media (max-width: 640px) {
+  .cta-buttons {
+    flex-direction: column;
+  }
+
+  .cta-buttons a {
+    justify-content: center;
+  }
 }
 </style>
 
