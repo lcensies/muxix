@@ -40,7 +40,8 @@ from your conversation.
 each with its own AI agent. No stashing, no branch switching, no conflicts.
 
 **One window per task.** A natural mental model. Each has its own terminal
-state, editor session, dev server, and AI agent. Context switching is switching tabs.
+state, editor session, dev server, and AI agent. Context switching is switching
+tabs.
 
 **tmux is the interface.** For existing and new tmux users. If you already live
 in tmux, it fits your workflow. If you don't, it's worth picking up.
@@ -1962,15 +1963,9 @@ for managing parallel workflows without requiring a separate interface to learn.
 
 ## Contributing
 
-Thank you for your interest in contributing! Bug reports and feature suggestions
-are always welcome via issues.
-
-My goal is to keep the project simple and fun to maintain. I am generally not
-interested in reviewing complex PRs, refactors, or major feature additions, as
-they turn a fun hobby project into administrative work.
-
-If you have a small fix, feel free to submit it. For anything larger, please
-open an issue first. Thanks for understanding.
+Bug reports and feature suggestions are always welcome via issues or
+discussions. Large and/or complex PRs, especially without prior discussion, may
+not get merged. Thanks for contributing!
 
 ## Related projects
 
