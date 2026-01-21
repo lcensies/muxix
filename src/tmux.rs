@@ -347,47 +347,63 @@ pub fn pop_done_pane(pane_id: &str) {
 pub fn switch_to_last_completed() -> Result<bool> {
     let mut stack = get_done_stack();
 
-    // Remove stale panes first
-    let original_len = stack.len();
-    stack.retain(|id| pane_exists(id));
-    if stack.len() != original_len {
-        set_done_stack(&stack);
-    }
-
     if stack.is_empty() {
         return Ok(false);
     }
 
-    // Query tmux for the active pane (more reliable than TMUX_PANE env var with run-shell)
-    let current_pane = get_active_pane_id();
+    // Get current pane to determine where we are in the cycle
+    // Use tmux command instead of env var - TMUX_PANE is stale in run-shell contexts
+    let current_pane = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{pane_id}"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string());
 
     // Stack is ordered oldest-first, most-recent-last
     // We want to cycle: most recent -> second most recent -> ... -> oldest -> wrap
+    // So we iterate in reverse
 
-    // Find current position in the stack
+    // Find current position (searching from the end)
     let current_idx = current_pane
         .as_ref()
         .and_then(|current| stack.iter().rposition(|id| id == current));
 
-    // Determine which pane to switch to
-    let target_idx = match current_idx {
+    // Try to find a valid pane to switch to, starting from the appropriate position
+    let start_idx = match current_idx {
         Some(idx) if idx > 0 => idx - 1, // Next older (toward start of list)
         Some(_) => stack.len() - 1,      // At oldest, wrap to most recent (end)
         None => stack.len() - 1,         // Not on a done pane, start with most recent
     };
 
-    switch_to_pane(&stack[target_idx])?;
-    Ok(true)
-}
+    // Try each pane in the stack, removing stale ones
+    let mut removed_any = false;
+    for i in 0..stack.len() {
+        let idx = (start_idx + stack.len() - i) % stack.len();
+        let pane_id = &stack[idx];
 
-/// Get the active pane ID from tmux (more reliable than TMUX_PANE env var)
-fn get_active_pane_id() -> Option<String> {
-    Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{pane_id}"])
-        .run_and_capture_stdout()
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        // Check if pane still exists by trying to query it
+        if pane_exists(pane_id) {
+            switch_to_pane(pane_id)?;
+
+            // Clean up any stale panes we found
+            if removed_any {
+                stack.retain(|id| pane_exists(id));
+                set_done_stack(&stack);
+            }
+            return Ok(true);
+        } else {
+            // Mark for removal (we'll clean up after the loop or on success)
+            removed_any = true;
+        }
+    }
+
+    // All panes were stale, clear the stack
+    if removed_any {
+        stack.retain(|id| pane_exists(id));
+        set_done_stack(&stack);
+    }
+
+    Ok(false)
 }
 
 /// Check if a tmux pane exists
