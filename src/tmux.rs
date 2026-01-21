@@ -289,47 +289,123 @@ pub fn switch_to_pane(pane_id: &str) -> Result<()> {
     Ok(())
 }
 
+// --- Done Panes Stack (for fast last-done cycling) ---
+
+/// Tmux server variable storing the done panes stack (space-separated pane IDs, most recent last)
+const DONE_STACK_VAR: &str = "@workmux_done_stack";
+
+/// Get the list of done pane IDs from the tmux server variable.
+/// Returns panes in order: most recent last.
+fn get_done_stack() -> Vec<String> {
+    let output = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", DONE_STACK_VAR])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    output.split_whitespace().map(String::from).collect()
+}
+
+/// Set the done panes stack in the tmux server variable.
+fn set_done_stack(panes: &[String]) {
+    let value = panes.join(" ");
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-g", DONE_STACK_VAR, &value])
+        .run();
+}
+
+/// Add a pane to the done stack. If already present, moves it to the end (most recent).
+pub fn push_done_pane(pane_id: &str) {
+    let mut stack = get_done_stack();
+    stack.retain(|id| id != pane_id); // Remove if already present
+    stack.push(pane_id.to_string()); // Add to end (most recent)
+    set_done_stack(&stack);
+}
+
+/// Remove a pane from the done stack (when status changes away from done).
+pub fn pop_done_pane(pane_id: &str) {
+    let mut stack = get_done_stack();
+    let original_len = stack.len();
+    stack.retain(|id| id != pane_id);
+    if stack.len() != original_len {
+        set_done_stack(&stack);
+    }
+}
+
 /// Switch to the agent pane that most recently completed its task, cycling through
 /// completed agents on repeated invocations.
 ///
+/// Uses a persistent stack stored in tmux server variable for fast lookups.
+///
 /// Behavior:
-/// - If not currently on a "done" pane: switches to the most recently completed agent
-/// - If already on a "done" pane: switches to the next oldest completed agent
+/// - If not currently on a done pane: switches to the most recently completed agent
+/// - If already on a done pane: switches to the next oldest completed agent
 /// - Wraps around to the most recent when reaching the oldest
+/// - Automatically removes stale pane IDs that no longer exist
 ///
 /// Returns `Ok(true)` if a pane was found and switched to, `Ok(false)` if no
 /// completed agents were found.
-pub fn switch_to_last_completed(done_icon: &str) -> Result<bool> {
-    let agents = get_all_agent_panes()?;
+pub fn switch_to_last_completed() -> Result<bool> {
+    let mut stack = get_done_stack();
 
-    // Filter to done agents and sort by timestamp descending (most recent first)
-    let mut done_agents: Vec<_> = agents
-        .into_iter()
-        .filter(|a| a.status.as_deref() == Some(done_icon))
-        .collect();
-
-    if done_agents.is_empty() {
+    if stack.is_empty() {
         return Ok(false);
     }
-
-    done_agents.sort_by(|a, b| b.status_ts.cmp(&a.status_ts));
 
     // Get current pane to determine where we are in the cycle
     let current_pane = std::env::var("TMUX_PANE").ok();
 
-    // Find current position in the sorted list
+    // Stack is ordered oldest-first, most-recent-last
+    // We want to cycle: most recent -> second most recent -> ... -> oldest -> wrap
+    // So we iterate in reverse
+
+    // Find current position (searching from the end)
     let current_idx = current_pane
         .as_ref()
-        .and_then(|current| done_agents.iter().position(|a| &a.pane_id == current));
+        .and_then(|current| stack.iter().rposition(|id| id == current));
 
-    // Determine which pane to switch to
-    let target_idx = match current_idx {
-        Some(idx) => (idx + 1) % done_agents.len(), // Cycle to next (older) agent
-        None => 0,                                  // Start with most recent
+    // Try to find a valid pane to switch to, starting from the appropriate position
+    let start_idx = match current_idx {
+        Some(idx) if idx > 0 => idx - 1, // Next older (toward start of list)
+        Some(_) => stack.len() - 1,      // At oldest, wrap to most recent (end)
+        None => stack.len() - 1,         // Not on a done pane, start with most recent
     };
 
-    switch_to_pane(&done_agents[target_idx].pane_id)?;
-    Ok(true)
+    // Try each pane in the stack, removing stale ones
+    let mut removed_any = false;
+    for i in 0..stack.len() {
+        let idx = (start_idx + stack.len() - i) % stack.len();
+        let pane_id = &stack[idx];
+
+        // Check if pane still exists by trying to query it
+        if pane_exists(pane_id) {
+            switch_to_pane(pane_id)?;
+
+            // Clean up any stale panes we found
+            if removed_any {
+                set_done_stack(&stack);
+            }
+            return Ok(true);
+        } else {
+            // Mark for removal (we'll clean up after the loop or on success)
+            removed_any = true;
+        }
+    }
+
+    // All panes were stale, clear the stack
+    if removed_any {
+        stack.retain(|id| pane_exists(id));
+        set_done_stack(&stack);
+    }
+
+    Ok(false)
+}
+
+/// Check if a tmux pane exists
+fn pane_exists(pane_id: &str) -> bool {
+    Cmd::new("tmux")
+        .args(&["display-message", "-t", pane_id, "-p", ""])
+        .run()
+        .is_ok()
 }
 
 /// Capture the last N lines of a pane's terminal output with ANSI colors.

@@ -32,14 +32,22 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
     }
 
     match cmd {
-        SetWindowStatusCommand::Working => set_status(&pane, config.status_icons.working()),
+        SetWindowStatusCommand::Working => {
+            tmux::pop_done_pane(&pane); // Remove from done stack
+            set_status(&pane, config.status_icons.working())
+        }
         SetWindowStatusCommand::Waiting => {
+            tmux::pop_done_pane(&pane); // Remove from done stack
             set_status_with_auto_clear(&pane, config.status_icons.waiting())
         }
         SetWindowStatusCommand::Done => {
+            tmux::push_done_pane(&pane); // Add to done stack (most recent)
             set_status_with_auto_clear(&pane, config.status_icons.done())
         }
-        SetWindowStatusCommand::Clear => clear_status(&pane),
+        SetWindowStatusCommand::Clear => {
+            tmux::pop_done_pane(&pane); // Remove from done stack
+            clear_status(&pane)
+        }
     }
 }
 
