@@ -36,6 +36,11 @@ pub trait Multiplexer: Send + Sync {
     /// Get the current pane ID from environment (TMUX_PANE or WEZTERM_PANE)
     fn current_pane_id(&self) -> Option<String>;
 
+    /// Query the active pane ID directly from the multiplexer.
+    /// More reliable than current_pane_id() in run-shell contexts (keybindings)
+    /// where the env var may be stale or missing.
+    fn active_pane_id(&self) -> Option<String>;
+
     /// Get the working directory of the active pane in the current client's session
     fn get_client_active_pane_path(&self) -> Result<PathBuf>;
 

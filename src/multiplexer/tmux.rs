@@ -281,6 +281,13 @@ impl Multiplexer for TmuxBackend {
         std::env::var("TMUX_PANE").ok()
     }
 
+    fn active_pane_id(&self) -> Option<String> {
+        self.tmux_query(&["display-message", "-p", "#{pane_id}"])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
     fn get_client_active_pane_path(&self) -> Result<PathBuf> {
         let output = Cmd::new("sh")
             .args(&[

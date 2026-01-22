@@ -53,7 +53,8 @@ pub fn run() -> Result<()> {
     done_agents.sort_by(|a, b| b.status_ts.cmp(&a.status_ts));
 
     // Get current pane to determine where we are in the cycle
-    let current_pane = mux.current_pane_id();
+    // Use active_pane_id() instead of current_pane_id() - env var is stale in run-shell
+    let current_pane = mux.active_pane_id();
     let current_idx = current_pane.as_ref().and_then(|current| {
         done_agents
             .iter()
