@@ -14,6 +14,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.97 (2026-01-23)
+
+- Added bash installer script for easier installation (`curl -fsSL ... | bash`)
+- Added automatic nerdfont detection with fallback icons for users without
+  nerdfonts installed
+- Added `last-done` command to quickly switch to recently completed agents
+- Fixed race condition when running merge from inside a worktree agent
+
 ## v0.1.96 (2026-01-20)
 
 - Reduced crate download size by excluding unnecessary files from the published
