@@ -16,6 +16,10 @@ The dashboard is entirely optional. It becomes especially useful when running mu
 
 ## Setup
 
+::: warning Prerequisites
+The dashboard requires [status tracking hooks](/guide/status-tracking) to be configured. Without them, no agents will appear.
+:::
+
 Add this binding to your `~/.tmux.conf`:
 
 ```bash
@@ -26,10 +30,6 @@ Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup. Feel free to
 
 ::: tip Quick access
 Consider binding the dashboard to a key you can press without the tmux prefix, such as `Cmd+E` or `Ctrl+E` in your terminal emulator. This makes it easy to check on your agents at any time.
-:::
-
-::: warning Prerequisites
-This feature requires [status tracking hooks](/guide/status-tracking) to be configured. Without them, no agents will appear in the dashboard.
 :::
 
 See [command reference](/reference/commands/dashboard) for CLI options.
