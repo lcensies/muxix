@@ -164,20 +164,14 @@ pub fn prompt_setup() -> Result<Option<bool>> {
     println!("{} {}", corner_top, style("Nerdfont Setup").bold().cyan());
     println!("{}", dim);
     println!(
-        "{}  For the best experience, workmux recommends installing a Nerdfont.",
-        dim
-    );
-    println!("{}  {}", dim, style("https://www.nerdfonts.com/").blue());
-    println!("{}", dim);
-    println!(
         "{}  Does this look like a git branch icon?  {}  {}",
         dim,
         style("→").yellow(),
         style(GIT_BRANCH_ICON).green()
     );
     println!("{}", dim);
-    print!(
-        "{} {}{}{}es  {}{}{}o ",
+    let prompt_line = format!(
+        "{} {}{}{} Yes  {}{}{} No: ",
         corner_bottom,
         style("[").bold().cyan(),
         style("y").bold(),
@@ -186,20 +180,34 @@ pub fn prompt_setup() -> Result<Option<bool>> {
         style("n").bold(),
         style("]").bold().cyan(),
     );
-    io::stdout().flush()?;
 
-    // Read single character response
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let answer = input.trim().to_lowercase();
+    // Loop until valid input
+    let enabled = loop {
+        print!("{}", prompt_line);
+        io::stdout().flush()?;
 
-    let enabled = answer == "y" || answer == "yes";
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let answer = input.trim().to_lowercase();
+
+        match answer.as_str() {
+            "y" | "yes" => break true,
+            "n" | "no" => break false,
+            _ => {
+                println!("{}", style("  Please enter y or n").dim());
+            }
+        }
+    };
 
     // Show confirmation
     if enabled {
         println!("{}", style("✔ Nerdfont icons enabled").green());
     } else {
         println!("{}", style("✔ Using Unicode fallbacks").green());
+        println!(
+            "  {}",
+            style("Set nerdfont: true in ~/.config/workmux/config.yaml to enable later").dim()
+        );
     }
     println!();
 
