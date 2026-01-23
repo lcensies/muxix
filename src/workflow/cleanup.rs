@@ -437,20 +437,20 @@ pub fn navigate_to_target_and_close(
 
         let mut cmds = Vec::new();
         // 1. Rename worktree to trash
-        cmds.push(format!("mv {} {}", wt, trash));
+        cmds.push(format!("mv {} {} >/dev/null 2>&1", wt, trash));
         // 2. Prune git worktrees
-        cmds.push(format!("git -C {} worktree prune", git_dir));
+        cmds.push(format!("git -C {} worktree prune >/dev/null 2>&1", git_dir));
         // 3. Delete branch (if not keeping)
         if !dc.keep_branch {
             let branch = shell_escape(&dc.branch_name);
             let force_flag = if dc.force { "-D" } else { "-d" };
             cmds.push(format!(
-                "git -C {} branch {} {}",
+                "git -C {} branch {} {} >/dev/null 2>&1",
                 git_dir, force_flag, branch
             ));
         }
         // 4. Delete trash
-        cmds.push(format!("rm -rf {}", trash));
+        cmds.push(format!("rm -rf {} >/dev/null 2>&1", trash));
 
         format!("; {}", cmds.join("; "))
     }
