@@ -687,7 +687,7 @@ def run_workmux_command(
     workmux_cmd = (
         f"cd {workdir_str} && "
         f"{pipe_cmd}"
-        f"env PATH={path_str} {exe_str} {command} "
+        f"env PATH={path_str} WORKMUX_TEST=1 {exe_str} {command} "
         f"> {stdout_str} 2> {stderr_str}; "
         f"echo $? > {exit_code_str}"
     )

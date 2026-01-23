@@ -148,8 +148,13 @@ fn global_config_path() -> Option<PathBuf> {
 }
 
 /// Prompt the user to indicate if they have nerdfonts installed.
-/// Returns None if stdin is not a TTY (non-interactive).
+/// Returns None if stdin is not a TTY (non-interactive) or in CI/test environments.
 pub fn prompt_setup() -> Result<Option<bool>> {
+    // Skip prompt in CI or test environments
+    if std::env::var("CI").is_ok() || std::env::var("WORKMUX_TEST").is_ok() {
+        return Ok(None);
+    }
+
     // Only prompt in interactive mode
     if !io::stdin().is_terminal() {
         return Ok(None);

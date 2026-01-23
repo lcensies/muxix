@@ -76,6 +76,7 @@ test *ARGS: build
     #!/usr/bin/env bash
     set -euo pipefail
     source tests/venv/bin/activate
+    export WORKMUX_TEST=1
     quiet_flag=""
     [[ -n "${CLAUDECODE:-}" ]] && quiet_flag="-q"
     if [ $# -eq 0 ]; then
