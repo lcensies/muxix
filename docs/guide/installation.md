@@ -16,24 +16,6 @@ curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.
 brew install raine/workmux/workmux
 ```
 
-## Pre-built binaries
-
-Download the [latest release](https://github.com/raine/workmux/releases/latest) for your platform:
-
-| Platform              | Download                                                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Linux (x64)           | [workmux-linux-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-amd64.tar.gz)   |
-| Linux (ARM64)         | [workmux-linux-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-linux-arm64.tar.gz)   |
-| macOS (Intel)         | [workmux-darwin-amd64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-amd64.tar.gz) |
-| macOS (Apple Silicon) | [workmux-darwin-arm64.tar.gz](https://github.com/raine/workmux/releases/latest/download/workmux-darwin-arm64.tar.gz) |
-
-Extract and install:
-
-```bash
-tar xzf workmux-*.tar.gz
-sudo mv workmux /usr/local/bin/
-```
-
 ## Cargo
 
 Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
@@ -57,6 +39,10 @@ nix run github:raine/workmux -- --help
 ```
 
 See [Nix guide](/guide/nix) for flake integration and home-manager setup.
+
+---
+
+For manual installation, see [pre-built binaries](https://github.com/raine/workmux/releases/latest).
 
 ## Shell alias (recommended)
 
