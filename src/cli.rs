@@ -402,23 +402,20 @@ fn should_prompt_nerdfont(cmd: &Commands) -> bool {
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize nerdfont setting early, prompting if needed
-    if should_prompt_nerdfont(&cli.command) {
-        // Load config to check nerdfont setting
-        let cfg = config::Config::load(None).unwrap_or_default();
-        let has_pua = nerdfont::config_has_pua(&cfg);
-
-        // Determine nerdfont setting
-        let nerdfont_enabled = if cfg.nerdfont.is_some() || has_pua {
-            // Already configured or PUA detected
-            cfg.nerdfont.unwrap_or(has_pua)
-        } else {
-            // Prompt user (returns None in non-interactive mode)
-            nerdfont::check_and_prompt(&cfg)?.unwrap_or(false)
-        };
-
-        nerdfont::init(Some(nerdfont_enabled), has_pua);
-    }
+    // Always initialize nerdfont setting for prefix consistency across commands.
+    // Only prompt interactively for commands that display icons.
+    let cfg = config::Config::load(None).unwrap_or_default();
+    let has_pua = nerdfont::config_has_pua(&cfg);
+    let nerdfont_enabled = if cfg.nerdfont.is_some() || has_pua {
+        // Already configured or PUA detected
+        cfg.nerdfont.unwrap_or(has_pua)
+    } else if should_prompt_nerdfont(&cli.command) {
+        // Prompt user (returns None in non-interactive mode)
+        nerdfont::check_and_prompt(&cfg)?.unwrap_or(false)
+    } else {
+        false
+    };
+    nerdfont::init(Some(nerdfont_enabled), has_pua);
 
     match cli.command {
         Commands::Add {
