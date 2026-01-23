@@ -3,6 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::git::GitStatus;
+use crate::nerdfont;
 
 use super::super::spinner::SPINNER_FRAMES;
 
@@ -10,6 +11,8 @@ use super::super::spinner::SPINNER_FRAMES;
 /// Format: "→branch +N -M 󰏫 +X -Y 󰀪 ↑A ↓B"
 /// When there are uncommitted changes that differ from total, branch totals are dimmed
 pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(String, Style)> {
+    let icons = nerdfont::git_icons();
+
     if let Some(status) = status {
         let mut spans: Vec<(String, Style)> = Vec::new();
         let has_uncommitted =
@@ -39,7 +42,7 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
             if !spans.is_empty() {
                 spans.push((" ".to_string(), Style::default()));
             }
-            spans.push(("\u{f03eb}".to_string(), Style::default().fg(Color::Magenta)));
+            spans.push((icons.diff.to_string(), Style::default().fg(Color::Magenta)));
 
             if status.uncommitted_added > 0 {
                 spans.push((" ".to_string(), Style::default()));
@@ -83,7 +86,7 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
                 if !spans.is_empty() {
                     spans.push((" ".to_string(), Style::default()));
                 }
-                spans.push(("\u{f03eb}".to_string(), Style::default().fg(Color::Magenta)));
+                spans.push((icons.diff.to_string(), Style::default().fg(Color::Magenta)));
 
                 if status.uncommitted_added > 0 {
                     spans.push((" ".to_string(), Style::default()));
@@ -107,7 +110,7 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
             if !spans.is_empty() {
                 spans.push((" ".to_string(), Style::default()));
             }
-            spans.push(("\u{f002a}".to_string(), Style::default().fg(Color::Red)));
+            spans.push((icons.conflict.to_string(), Style::default().fg(Color::Red)));
         }
 
         // Ahead/behind upstream

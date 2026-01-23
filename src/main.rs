@@ -9,6 +9,7 @@ mod llm;
 mod logger;
 mod markdown;
 mod naming;
+mod nerdfont;
 mod prompt;
 mod spinner;
 mod template;

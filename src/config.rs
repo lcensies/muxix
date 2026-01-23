@@ -163,6 +163,10 @@ pub struct Config {
     /// Dashboard actions configuration
     #[serde(default)]
     pub dashboard: DashboardConfig,
+
+    /// Whether to use nerdfont icons (None = prompt user on first run)
+    #[serde(default)]
+    pub nerdfont: Option<bool>,
 }
 
 /// Configuration for a single tmux pane
@@ -461,6 +465,7 @@ impl Config {
             panes,
             status_format,
             auto_name,
+            nerdfont,
         );
 
         // Special case: worktree_naming (project wins if not default)

@@ -1,5 +1,5 @@
 use crate::command::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
-use crate::{claude, command, git};
+use crate::{claude, command, config, git, nerdfont};
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
@@ -385,9 +385,36 @@ enum ClaudeCommands {
     Prune,
 }
 
+/// Check if the command should show the nerdfont setup prompt.
+/// Only commands that display icons should trigger the prompt.
+fn should_prompt_nerdfont(cmd: &Commands) -> bool {
+    matches!(
+        cmd,
+        Commands::Add { .. } | Commands::Init | Commands::Dashboard { .. }
+    )
+}
+
 // --- Public Entry Point ---
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+
+    // Initialize nerdfont setting early, prompting if needed
+    if should_prompt_nerdfont(&cli.command) {
+        // Load config to check nerdfont setting
+        let cfg = config::Config::load(None).unwrap_or_default();
+        let has_pua = nerdfont::config_has_pua(&cfg);
+
+        // Determine nerdfont setting
+        let nerdfont_enabled = if cfg.nerdfont.is_some() || has_pua {
+            // Already configured or PUA detected
+            cfg.nerdfont.unwrap_or(has_pua)
+        } else {
+            // Prompt user (returns None in non-interactive mode)
+            nerdfont::check_and_prompt(&cfg)?.unwrap_or(false)
+        };
+
+        nerdfont::init(Some(nerdfont_enabled), has_pua);
+    }
 
     match cli.command {
         Commands::Add {

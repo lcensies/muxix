@@ -1,4 +1,4 @@
-use crate::{config, workflow};
+use crate::{config, nerdfont, workflow};
 use anyhow::Result;
 use pathdiff::diff_paths;
 use tabled::{
@@ -23,14 +23,14 @@ struct WorktreeRow {
 fn format_pr_status(pr_info: Option<crate::github::PrSummary>) -> String {
     pr_info
         .map(|pr| {
-            // Nerd Font icons with GitHub-style colors
-            // Green for open, gray for draft, purple for merged, red for closed
+            let icons = nerdfont::pr_icons();
+            // GitHub-style colors: green for open, gray for draft, purple for merged, red for closed
             let (icon, color) = match pr.state.as_str() {
-                "OPEN" if pr.is_draft => ("\u{f177}", "\x1b[90m"), // gray
-                "OPEN" => ("\u{f407}", "\x1b[32m"),                // green
-                "MERGED" => ("\u{f419}", "\x1b[35m"),              // purple/magenta
-                "CLOSED" => ("\u{f406}", "\x1b[31m"),              // red
-                _ => ("\u{f407}", "\x1b[32m"),
+                "OPEN" if pr.is_draft => (icons.draft, "\x1b[90m"), // gray
+                "OPEN" => (icons.open, "\x1b[32m"),                 // green
+                "MERGED" => (icons.merged, "\x1b[35m"),             // purple/magenta
+                "CLOSED" => (icons.closed, "\x1b[31m"),             // red
+                _ => (icons.open, "\x1b[32m"),
             };
             format!("#{} {}{}\x1b[0m", pr.number, color, icon)
         })
