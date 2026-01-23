@@ -83,6 +83,12 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
 ## Installation
 
+### Bash YOLO
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+```
+
 ### Homebrew (macOS/Linux)
 
 ```bash

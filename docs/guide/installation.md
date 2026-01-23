@@ -4,6 +4,12 @@ description: Install workmux via Homebrew, pre-built binaries, Cargo, or Nix
 
 # Installation
 
+## Bash YOLO
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+```
+
 ## Homebrew (macOS/Linux)
 
 ```bash
