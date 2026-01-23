@@ -36,6 +36,17 @@ pub struct RemoveResult {
     pub branch_removed: String,
 }
 
+/// Deferred cleanup operations to run after window close.
+/// Used when running inside the target window to avoid invalidating the agent's CWD.
+pub struct DeferredCleanup {
+    pub worktree_path: PathBuf,
+    pub trash_path: PathBuf,
+    pub branch_name: String,
+    pub keep_branch: bool,
+    pub force: bool,
+    pub git_common_dir: PathBuf,
+}
+
 /// Result of cleanup operations
 pub struct CleanupResult {
     pub tmux_window_killed: bool,
@@ -45,6 +56,9 @@ pub struct CleanupResult {
     pub window_to_close_later: Option<String>,
     /// Trash directory path to delete after window close (deferred to avoid race condition)
     pub trash_path_to_delete: Option<PathBuf>,
+    /// Full cleanup deferred until after window close (rename + prune + branch delete).
+    /// Used when running inside the target window to keep CWD valid for agent hooks.
+    pub deferred_cleanup: Option<DeferredCleanup>,
 }
 
 /// Options for setting up a worktree environment

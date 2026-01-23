@@ -8,7 +8,7 @@ use crate::{cmd, git, tmux};
 use tracing::{debug, info, warn};
 
 use super::context::WorkflowContext;
-use super::types::CleanupResult;
+use super::types::{CleanupResult, DeferredCleanup};
 
 const WINDOW_CLOSE_DELAY_MS: u64 = 300;
 
@@ -108,6 +108,7 @@ pub fn cleanup(
         local_branch_deleted: false,
         window_to_close_later: None,
         trash_path_to_delete: None,
+        deferred_cleanup: None,
     };
 
     // Helper closure to perform the actual filesystem and git cleanup.
@@ -268,7 +269,7 @@ pub fn cleanup(
         info!(
             branch = branch_name,
             current_window = current_window,
-            "cleanup:running inside matching window, will close all others first"
+            "cleanup:running inside matching window, deferring destructive cleanup"
         );
 
         // Find and kill all OTHER matching windows (not the current one)
@@ -293,8 +294,86 @@ pub fn cleanup(
         // Store the current window name for deferred close
         result.window_to_close_later = Some(current_window);
 
-        // Perform filesystem and git cleanup
-        perform_fs_git_cleanup(&mut result)?;
+        // Run pre-remove hooks synchronously (they need the worktree intact)
+        if worktree_path.exists()
+            && let Some(pre_remove_hooks) = &context.config.pre_remove
+        {
+            info!(
+                branch = branch_name,
+                count = pre_remove_hooks.len(),
+                "cleanup:running pre-remove hooks"
+            );
+            let abs_worktree_path = worktree_path
+                .canonicalize()
+                .unwrap_or_else(|_| worktree_path.to_path_buf());
+            let abs_project_root = context
+                .main_worktree_root
+                .canonicalize()
+                .unwrap_or_else(|_| context.main_worktree_root.clone());
+            let worktree_path_str = abs_worktree_path.to_string_lossy();
+            let project_root_str = abs_project_root.to_string_lossy();
+            let hook_env = [
+                ("WORKMUX_HANDLE", handle),
+                ("WM_HANDLE", handle),
+                ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
+                ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+            ];
+            for command in pre_remove_hooks {
+                cmd::shell_command_with_env(command, worktree_path, &hook_env)
+                    .with_context(|| format!("Failed to run pre-remove command: '{}'", command))?;
+            }
+        }
+
+        // Clean up prompt files immediately (harmless, doesn't affect CWD)
+        let temp_dir = std::env::temp_dir();
+        let prefix = format!("workmux-prompt-{}", branch_name);
+        if let Ok(entries) = std::fs::read_dir(&temp_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                    && filename.starts_with(&prefix)
+                    && filename.ends_with(".md")
+                {
+                    if let Err(e) = std::fs::remove_file(&path) {
+                        warn!(path = %path.display(), error = %e, "cleanup:failed to remove prompt file");
+                    } else {
+                        debug!(path = %path.display(), "cleanup:prompt file removed");
+                    }
+                }
+            }
+        }
+
+        // Defer destructive operations (rename, prune, branch delete) until after window close.
+        // This keeps the worktree path valid so agents can run their hooks.
+        if worktree_path.exists() {
+            let parent = worktree_path.parent().unwrap_or_else(|| Path::new("."));
+            let dir_name = worktree_path
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Invalid worktree path: no directory name"))?;
+            let timestamp = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let trash_name = format!(
+                ".workmux_trash_{}_{}",
+                dir_name.to_string_lossy(),
+                timestamp
+            );
+            let trash_path = parent.join(&trash_name);
+
+            result.deferred_cleanup = Some(DeferredCleanup {
+                worktree_path: worktree_path.to_path_buf(),
+                trash_path,
+                branch_name: branch_name.to_string(),
+                keep_branch,
+                force,
+                git_common_dir: context.git_common_dir.clone(),
+            });
+            debug!(
+                worktree = %worktree_path.display(),
+                "cleanup:deferred destructive cleanup until window close"
+            );
+        }
     } else {
         // Not running inside any matching window, so kill ALL matching windows first
         if tmux_running {
@@ -350,6 +429,32 @@ pub fn navigate_to_target_and_close(
         format!("'{}'", s.replace('\'', r#"'\''"#))
     }
 
+    /// Build the deferred cleanup script for rename, prune, branch delete, and trash removal.
+    fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
+        let wt = shell_escape(&dc.worktree_path.to_string_lossy());
+        let trash = shell_escape(&dc.trash_path.to_string_lossy());
+        let git_dir = shell_escape(&dc.git_common_dir.to_string_lossy());
+
+        let mut cmds = Vec::new();
+        // 1. Rename worktree to trash
+        cmds.push(format!("mv {} {}", wt, trash));
+        // 2. Prune git worktrees
+        cmds.push(format!("git -C {} worktree prune", git_dir));
+        // 3. Delete branch (if not keeping)
+        if !dc.keep_branch {
+            let branch = shell_escape(&dc.branch_name);
+            let force_flag = if dc.force { "-D" } else { "-d" };
+            cmds.push(format!(
+                "git -C {} branch {} {}",
+                git_dir, force_flag, branch
+            ));
+        }
+        // 4. Delete trash
+        cmds.push(format!("rm -rf {}", trash));
+
+        format!("; {}", cmds.join("; "))
+    }
+
     // Check if target window exists
     let tmux_running = tmux::is_running()?;
     let target_exists = if tmux_running {
@@ -363,6 +468,7 @@ pub fn navigate_to_target_and_close(
         tmux_running = tmux_running,
         target_exists = target_exists,
         window_to_close = ?cleanup_result.window_to_close_later,
+        deferred_cleanup = cleanup_result.deferred_cleanup.is_some(),
         "navigate_to_target_and_close:entry"
     );
     if !tmux_running || !target_exists {
@@ -373,18 +479,22 @@ pub fn navigate_to_target_and_close(
             let source_spec = format!("={}", window_to_close);
             let source_escaped = shell_escape(&source_spec);
 
-            // Append trash deletion if deferred
-            let trash_removal = cleanup_result
-                .trash_path_to_delete
-                .as_ref()
-                .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
-                .unwrap_or_default();
+            // Build cleanup script: prefer full deferred cleanup, fall back to trash-only
+            let cleanup_script = if let Some(ref dc) = cleanup_result.deferred_cleanup {
+                build_deferred_cleanup_script(dc)
+            } else {
+                cleanup_result
+                    .trash_path_to_delete
+                    .as_ref()
+                    .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+                    .unwrap_or_default()
+            };
 
             let script = format!(
-                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1{trash_removal}",
+                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1{cleanup}",
                 delay = delay_secs,
                 source = source_escaped,
-                trash_removal = trash_removal,
+                cleanup = cleanup_script,
             );
             debug!(
                 script = script,
@@ -415,19 +525,23 @@ pub fn navigate_to_target_and_close(
         let target_escaped = shell_escape(&target_spec);
         let source_escaped = shell_escape(&source_spec);
 
-        // Append trash deletion if deferred
-        let trash_removal = cleanup_result
-            .trash_path_to_delete
-            .as_ref()
-            .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
-            .unwrap_or_default();
+        // Build cleanup script: prefer full deferred cleanup, fall back to trash-only
+        let cleanup_script = if let Some(ref dc) = cleanup_result.deferred_cleanup {
+            build_deferred_cleanup_script(dc)
+        } else {
+            cleanup_result
+                .trash_path_to_delete
+                .as_ref()
+                .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+                .unwrap_or_default()
+        };
 
         let script = format!(
-            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1{trash_removal}",
+            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1{cleanup}",
             delay = delay_secs,
             target = target_escaped,
             source = source_escaped,
-            trash_removal = trash_removal,
+            cleanup = cleanup_script,
         );
         debug!(
             script = script,
