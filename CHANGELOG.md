@@ -14,6 +14,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.98 (2026-01-23)
+
+- Tmux window names now use a nerdfont git branch icon as the default prefix
+  when nerdfonts are available, replacing the previous "wm-" prefix. This can be
+  overridden with `window_prefix`
+- Fixed cleanup commands outputting noise to the terminal after merging or
+  removing worktrees
+
 ## v0.1.97 (2026-01-23)
 
 - Added bash installer script for easier installation (`curl -fsSL ... | bash`)
