@@ -16,7 +16,7 @@ Project settings override global settings. For `post_create` and file operation 
 `~/.config/workmux/config.yaml`:
 
 ```yaml
-window_prefix: "\uf418 " # Use nerdtree branch icon as prefix
+nerdfont: true # Enable nerdfont icons (prompted on first run)
 merge_strategy: rebase # Make workmux merge do rebase by default
 agent: claude
 
@@ -61,7 +61,8 @@ Most options have sensible defaults. You only need to configure what you want to
 | ---------------- | ---------------------------------------------------- | ----------------------- |
 | `main_branch`    | Branch to merge into                                 | Auto-detected           |
 | `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
-| `window_prefix`  | Prefix for tmux window names                         | `wm-`                   |
+| `nerdfont`       | Enable nerdfont icons (prompted on first run)        | Prompted                |
+| `window_prefix`  | Override tmux window prefix                          | Icon or `wm-`           |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
 

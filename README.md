@@ -180,7 +180,7 @@ replaced entirely when defined in the project config.
 `~/.config/workmux/config.yaml`:
 
 ```yaml
-window_prefix: "\uf418 " # Use nerdtree branch icon as prefix
+nerdfont: true # Enable nerdfont icons (prompted on first run)
 merge_strategy: rebase # Make workmux merge do rebase by default
 agent: claude
 
@@ -1806,18 +1806,20 @@ that are safe to share with your team, add them to the project's main
 
 ## Tips
 
-### Nerdfont window prefix
+### Nerdfont icons
 
-If you have a [Nerd Font](https://www.nerdfonts.com/) installed (fonts patched
-with icons for developers), you can use the git branch icon as your window
-prefix for a cleaner look:
-
-```yaml
-# ~/.config/workmux/config.yaml
-window_prefix: "\uf418 "
-```
+On first run, workmux prompts you to check if a git branch icon displays
+correctly. If you have a [Nerd Font](https://www.nerdfonts.com/) installed,
+answer yes to enable nerdfont icons throughout the interface, including the
+tmux window prefix.
 
 ![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
+
+To change the setting later, edit `~/.config/workmux/config.yaml`:
+
+```yaml
+nerdfont: true  # or false for unicode fallbacks
+```
 
 ### Using direnv
 

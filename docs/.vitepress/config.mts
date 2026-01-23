@@ -93,7 +93,6 @@ export default defineConfig({
       {
         text: "Guides",
         items: [
-          { text: "Nerdfont icons", link: "/guide/nerdfont-icons" },
           { text: "direnv", link: "/guide/direnv" },
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
