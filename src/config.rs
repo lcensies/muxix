@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
-use crate::{cmd, git};
+use crate::{cmd, git, nerdfont};
 use which::{which, which_in};
 
 /// Default script for cleaning up node_modules directories before worktree deletion.
@@ -550,9 +550,16 @@ impl Config {
         ]
     }
 
-    /// Get the window prefix to use, defaulting to "wm-" if not configured
+    /// Get the window prefix to use.
+    /// Priority: explicit window_prefix config > nerdfont icon > "wm-"
     pub fn window_prefix(&self) -> &str {
-        self.window_prefix.as_deref().unwrap_or("wm-")
+        if let Some(ref prefix) = self.window_prefix {
+            prefix
+        } else if nerdfont::is_enabled() {
+            "\u{f418} " // nf-oct-git_branch
+        } else {
+            "wm-"
+        }
     }
 
     /// Create an example .workmux.yaml configuration file
