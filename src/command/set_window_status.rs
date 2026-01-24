@@ -7,7 +7,6 @@ use tracing::warn;
 use crate::config::Config;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::state::{AgentState, PaneKey, StateStore};
-use crate::tmux;
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum SetWindowStatusCommand {
@@ -32,9 +31,6 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
 
     match cmd {
         SetWindowStatusCommand::Clear => {
-            // Remove from done stack (tmux-specific)
-            tmux::pop_done_pane(&pane_id);
-
             // Clear icon only - state file cleanup is handled by reconciliation
             mux.clear_status(&pane_id)?;
         }
@@ -53,15 +49,6 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                 }
                 SetWindowStatusCommand::Clear => unreachable!(),
             };
-
-            // Manage done stack for fast last-done cycling (tmux-specific)
-            match cmd {
-                SetWindowStatusCommand::Done => tmux::push_done_pane(&pane_id),
-                SetWindowStatusCommand::Working | SetWindowStatusCommand::Waiting => {
-                    tmux::pop_done_pane(&pane_id)
-                }
-                SetWindowStatusCommand::Clear => unreachable!(),
-            }
 
             let pane_key = PaneKey {
                 backend: mux.name().to_string(),

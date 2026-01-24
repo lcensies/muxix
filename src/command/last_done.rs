@@ -3,20 +3,13 @@ use tracing::debug;
 
 use crate::multiplexer::{AgentStatus, BackendType, create_backend};
 use crate::state::StateStore;
-use crate::tmux;
 
 /// Switch to the agent that most recently completed its task.
 ///
-/// Uses a persistent stack of done panes stored in a tmux server variable
-/// for fast lookups. Cycles through completed agents on repeated invocations.
-/// Falls back to StateStore-based lookup if the tmux stack is empty.
+/// Finds all agents with "done" status from the StateStore and switches to the
+/// one with the most recent timestamp. Cycles through completed agents on
+/// repeated invocations.
 pub fn run() -> Result<()> {
-    // First try the fast tmux done stack
-    if tmux::switch_to_last_completed()? {
-        return Ok(());
-    }
-
-    // Fall back to StateStore-based lookup for cross-session support
     // Skip config loading (which triggers git commands) - just check env var
     let backend_type = match std::env::var("WORKMUX_BACKEND") {
         Ok(s) if s.eq_ignore_ascii_case("wezterm") => BackendType::WezTerm,

@@ -770,6 +770,15 @@ impl Multiplexer for TmuxBackend {
     }
 }
 
+/// Execute a shell script via tmux run-shell
+pub fn run_shell(script: &str) -> Result<()> {
+    Cmd::new("tmux")
+        .args(&["run-shell", script])
+        .run()
+        .context("Failed to run shell command via tmux")?;
+    Ok(())
+}
+
 /// Format string to inject into tmux window-status-format.
 const WORKMUX_STATUS_FORMAT: &str = "#{?@workmux_status, #{@workmux_status},}";
 

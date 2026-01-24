@@ -4,8 +4,9 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::{thread, time::Duration};
 
+use crate::multiplexer::tmux;
 use crate::multiplexer::{Multiplexer, util::prefixed};
-use crate::{cmd, git, tmux};
+use crate::{cmd, git};
 use tracing::{debug, info, warn};
 
 use super::context::WorkflowContext;
