@@ -477,41 +477,6 @@ impl Multiplexer for TmuxBackend {
         }
     }
 
-    fn navigate_and_close_window(
-        &self,
-        prefix: &str,
-        target_name: &str,
-        source_name: &str,
-        delay: Duration,
-        trash_path: Option<&Path>,
-    ) -> Result<()> {
-        let delay_secs = format!("{:.3}", delay.as_secs_f64());
-        let target_full = util::prefixed(prefix, target_name);
-        let source_full = util::prefixed(prefix, source_name);
-
-        // Use exact match syntax (=name) for tmux
-        let target_spec = format!("={}", target_full);
-        let source_spec = format!("={}", source_full);
-        let target_escaped = util::shell_escape(&target_spec);
-        let source_escaped = util::shell_escape(&source_spec);
-
-        // Append trash deletion if requested
-        let trash_removal = trash_path
-            .map(|tp| format!("; rm -rf {}", util::shell_escape(&tp.to_string_lossy())))
-            .unwrap_or_default();
-
-        // Use tmux run-shell to execute all operations atomically in one script
-        let script = format!(
-            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1{trash_removal}",
-            delay = delay_secs,
-            target = target_escaped,
-            source = source_escaped,
-            trash_removal = trash_removal,
-        );
-
-        self.tmux_cmd(&["run-shell", &script])
-    }
-
     // === Pane Management ===
 
     fn select_pane(&self, pane_id: &str) -> Result<()> {

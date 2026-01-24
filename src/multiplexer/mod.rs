@@ -86,22 +86,6 @@ pub trait Multiplexer: Send + Sync {
     /// Wait until all specified windows are closed
     fn wait_until_windows_closed(&self, full_window_names: &[String]) -> Result<()>;
 
-    /// Navigate to target window and close source window after a delay.
-    ///
-    /// This operation is used during cleanup (merge/remove) when the user is inside
-    /// the window being closed. The delay allows the UI to update before navigation.
-    ///
-    /// Backends may implement this atomically (tmux run-shell) or as separate
-    /// operations (schedule close + navigate).
-    fn navigate_and_close_window(
-        &self,
-        prefix: &str,
-        target_name: &str,
-        source_name: &str,
-        delay: Duration,
-        trash_path: Option<&Path>,
-    ) -> Result<()>;
-
     // === Pane Management ===
 
     /// Select (focus) a pane by ID

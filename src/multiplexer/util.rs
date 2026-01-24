@@ -121,14 +121,6 @@ pub fn adjust_command<'a>(
     Cow::Borrowed(command)
 }
 
-/// Escape a string for safe inclusion in shell commands using single quotes.
-///
-/// This wraps the string in single quotes and escapes any embedded single quotes
-/// using the `'\''` pattern (end quote, escaped quote, start quote).
-pub fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r#"'\''"#))
-}
-
 /// Escape a string for embedding inside a double-quoted shell context.
 ///
 /// Escapes: backslash, double quote, dollar sign, backtick.
@@ -327,33 +319,6 @@ mod tests {
         let result =
             rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"), "/bin/zsh");
         assert_eq!(result, None);
-    }
-
-    // --- shell_escape tests ---
-
-    #[test]
-    fn test_shell_escape_simple() {
-        assert_eq!(shell_escape("hello"), "'hello'");
-        assert_eq!(shell_escape("foo bar"), "'foo bar'");
-    }
-
-    #[test]
-    fn test_shell_escape_with_single_quote() {
-        // Single quote becomes '\'' (end quote, escaped quote, start quote)
-        assert_eq!(shell_escape("it's"), "'it'\\''s'");
-        assert_eq!(shell_escape("don't"), "'don'\\''t'");
-    }
-
-    #[test]
-    fn test_shell_escape_with_special_chars() {
-        assert_eq!(shell_escape("foo$bar"), "'foo$bar'");
-        assert_eq!(shell_escape("a*b?c"), "'a*b?c'");
-        assert_eq!(shell_escape("hello\nworld"), "'hello\nworld'");
-    }
-
-    #[test]
-    fn test_shell_escape_empty() {
-        assert_eq!(shell_escape(""), "''");
     }
 
     // --- escape_for_double_quotes tests ---
