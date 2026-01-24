@@ -289,6 +289,14 @@ pub fn switch_to_pane(pane_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Try to switch to a pane, returning false if the pane doesn't exist
+fn try_switch_to_pane(pane_id: &str) -> bool {
+    Cmd::new("tmux")
+        .args(&["switch-client", "-t", pane_id])
+        .run()
+        .is_ok()
+}
+
 // --- Done Panes Stack (for fast last-done cycling) ---
 
 /// Tmux server variable storing the done panes stack (space-separated pane IDs, most recent last)
@@ -381,10 +389,8 @@ pub fn switch_to_last_completed() -> Result<bool> {
         let idx = (start_idx + stack.len() - i) % stack.len();
         let pane_id = &stack[idx];
 
-        // Check if pane still exists by trying to query it
-        if pane_exists(pane_id) {
-            switch_to_pane(pane_id)?;
-
+        // Try to switch - this atomically verifies existence and switches
+        if try_switch_to_pane(pane_id) {
             // Clean up any stale panes we found
             if removed_any {
                 stack.retain(|id| pane_exists(id));
@@ -392,7 +398,7 @@ pub fn switch_to_last_completed() -> Result<bool> {
             }
             return Ok(true);
         } else {
-            // Mark for removal (we'll clean up after the loop or on success)
+            // Pane doesn't exist, mark for removal
             removed_any = true;
         }
     }
