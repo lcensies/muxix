@@ -14,6 +14,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.99 (2026-01-24)
+
+- Dashboard: Detect and clear working agents that have stalled, for example due
+  to being interrupted
+- Fixed `last-done` command intermittently failing when switching to recently
+  completed agents
+
 ## v0.1.98 (2026-01-23)
 
 - Tmux window names now use a nerdfont git branch icon as the default prefix
