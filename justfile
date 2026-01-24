@@ -37,7 +37,7 @@ install-dev:
 
 # Run unit tests
 unit-tests:
-    cargo test --bin workmux
+    cargo test --bin workmux --quiet
 
 # Run ruff linter on Python tests
 ruff-check:
