@@ -14,6 +14,7 @@
 //! - `ansi`: ANSI escape sequence parsing and stripping
 //! - `diff`: Diff domain types and helper functions
 //! - `keymap`: Key-to-action mapping per context with help text
+//! - `monitor`: Agent stall detection and interrupt handling
 //! - `settings`: Tmux-persisted dashboard settings
 //! - `sort`: Sort mode enum and tmux persistence
 //! - `spinner`: Spinner animation constants
@@ -29,6 +30,7 @@ mod ansi;
 mod app;
 mod diff;
 mod keymap;
+mod monitor;
 mod settings;
 mod sort;
 mod spinner;

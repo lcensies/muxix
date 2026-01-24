@@ -14,6 +14,8 @@ use crate::git::{self, GitStatus};
 use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
 
+use super::monitor::AgentMonitor;
+
 use super::agent;
 use super::ansi::parse_ansi_to_lines;
 use super::diff::{
@@ -82,6 +84,8 @@ pub struct App {
     pub show_help: bool,
     /// Preview pane size as percentage (1-90). Higher = larger preview.
     pub preview_size: u8,
+    /// Monitors agents for stalls and interrupts
+    agent_monitor: AgentMonitor,
 }
 
 impl App {
@@ -128,6 +132,7 @@ impl App {
             hide_stale: load_hide_stale(),
             show_help: false,
             preview_size,
+            agent_monitor: AgentMonitor::new(),
         };
         app.refresh();
         // Select first item if available
@@ -145,6 +150,13 @@ impl App {
         self.agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
+
+        // Detect and handle stalled agents
+        let working_icon = self.config.status_icons.working();
+        self.agents =
+            self.agent_monitor
+                .process_stalls(self.agents.clone(), working_icon, self.mux.as_ref());
+
         self.sort_agents();
 
         // Filter out stale agents if hide_stale is enabled
