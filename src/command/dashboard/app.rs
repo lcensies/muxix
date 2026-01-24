@@ -82,6 +82,8 @@ pub struct App {
     pub show_help: bool,
     /// Preview pane size as percentage (1-90). Higher = larger preview.
     pub preview_size: u8,
+    /// Monitors agents for stalls and interrupts
+    agent_monitor: tmux::AgentMonitor,
 }
 
 impl App {
@@ -126,6 +128,7 @@ impl App {
             hide_stale: load_hide_stale_from_tmux(),
             show_help: false,
             preview_size,
+            agent_monitor: tmux::AgentMonitor::new(),
         };
         app.refresh();
         // Select first item if available
@@ -139,7 +142,9 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
-        self.agents = tmux::get_all_agent_panes().unwrap_or_default();
+        let working_icon = self.config.status_icons.working();
+        self.agents =
+            tmux::get_all_agent_panes(working_icon, &mut self.agent_monitor).unwrap_or_default();
         self.sort_agents();
 
         // Filter out stale agents if hide_stale is enabled

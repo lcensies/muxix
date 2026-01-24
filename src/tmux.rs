@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -184,17 +184,175 @@ pub struct AgentPane {
     pub status_ts: Option<u64>,
 }
 
+/// Monitors agent panes to detect stalls and interrupts.
+/// Tracks pane content hashes to identify when a "working" agent has stopped producing output.
+pub struct AgentMonitor {
+    /// Tracks pane content hashes for detecting stalled working agents
+    content_hashes: HashMap<String, u64>,
+    /// Set of pane IDs that have been detected as stalled (to avoid re-checking)
+    stalled_panes: HashSet<String>,
+}
+
+impl AgentMonitor {
+    pub fn new() -> Self {
+        Self {
+            content_hashes: HashMap::new(),
+            stalled_panes: HashSet::new(),
+        }
+    }
+
+    /// Check if a working agent pane is stalled (content unchanged).
+    /// Returns true if the agent was detected as stalled.
+    fn check_if_stalled(&mut self, pane_id: &str) -> bool {
+        let Some(content) = capture_pane(pane_id, 50) else {
+            return false;
+        };
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        content.hash(&mut hasher);
+        let current_hash = hasher.finish();
+
+        let pane_key = pane_id.to_string();
+        if let Some(&prev_hash) = self.content_hashes.get(&pane_key) {
+            if prev_hash == current_hash {
+                // Content unchanged - agent is stalled
+                mark_agent_interrupted(pane_id);
+                self.stalled_panes.insert(pane_key.clone());
+                self.content_hashes.remove(&pane_key);
+                return true;
+            } else {
+                // Content changed - agent is still working
+                self.content_hashes.insert(pane_key, current_hash);
+            }
+        } else {
+            // First time seeing this pane, start tracking
+            self.content_hashes.insert(pane_key, current_hash);
+        }
+        false
+    }
+
+    /// Clean up tracking data for panes that are no longer active.
+    fn cleanup_cache(&mut self, agents: &[AgentPane], working_icon: &str) {
+        // Remove hashes for panes that are no longer working
+        let working_pane_ids: HashSet<_> = agents
+            .iter()
+            .filter(|a| a.status.as_deref() == Some(working_icon))
+            .map(|a| a.pane_id.as_str())
+            .collect();
+        self.content_hashes
+            .retain(|k, _| working_pane_ids.contains(k.as_str()));
+
+        // Remove stalled panes that are no longer in the agent list or no longer have working status
+        let all_pane_ids: HashSet<_> = agents.iter().map(|a| a.pane_id.as_str()).collect();
+        self.stalled_panes.retain(|pane_id| {
+            all_pane_ids.contains(pane_id.as_str())
+                && agents
+                    .iter()
+                    .find(|a| &a.pane_id == pane_id)
+                    .map(|a| a.status.as_deref() == Some(working_icon))
+                    .unwrap_or(false)
+        });
+    }
+
+    /// Process agents to detect stalls. Modifies agent status in place for stalled agents.
+    pub fn process_stalls(
+        &mut self,
+        mut agents: Vec<AgentPane>,
+        working_icon: &str,
+    ) -> Vec<AgentPane> {
+        // Check each working agent for stalls
+        for agent in &mut agents {
+            if agent.status.as_deref() == Some(working_icon)
+                && !self.stalled_panes.contains(&agent.pane_id)
+                && self.check_if_stalled(&agent.pane_id)
+            {
+                // Clear status in the agent object to reflect the interrupt
+                agent.status = None;
+                // Timestamp was reset in mark_agent_interrupted, but we keep the old one
+                // in the struct for this refresh cycle - it will be updated on next fetch
+            }
+        }
+
+        // Clean up tracking data
+        self.cleanup_cache(&agents, working_icon);
+
+        agents
+    }
+}
+
+impl Default for AgentMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Parse a single line from tmux list-panes output into an AgentPane.
+fn parse_agent_pane_line(line: &str) -> Option<AgentPane> {
+    let parts: Vec<&str> = line.split('\t').collect();
+    if parts.len() < 9 {
+        return None;
+    }
+
+    let status = if parts[5].is_empty() {
+        None
+    } else {
+        Some(parts[5].to_string())
+    };
+
+    let pane_id = parts[2];
+    let original_cmd = parts[7]; // @workmux_pane_command (stored when status set)
+    let current_cmd = parts[8]; // pane_current_command (live)
+
+    // Only include panes that are or were agents
+    // Either: has a status set (active) OR has @workmux_pane_command set (was active)
+    if status.is_none() && original_cmd.is_empty() {
+        return None;
+    }
+
+    // If command changed, agent has exited - clear status and skip
+    if !original_cmd.is_empty() && current_cmd != original_cmd {
+        remove_agent_status(pane_id);
+        return None;
+    }
+
+    let status_ts = if parts[6].is_empty() {
+        None
+    } else {
+        parts[6].parse().ok()
+    };
+
+    let pane_title = if parts[4].is_empty() {
+        None
+    } else {
+        Some(parts[4].to_string())
+    };
+
+    Some(AgentPane {
+        session: parts[0].to_string(),
+        window_name: parts[1].to_string(),
+        pane_id: pane_id.to_string(),
+        path: PathBuf::from(parts[3]),
+        pane_title,
+        status,
+        status_ts,
+    })
+}
+
 /// Fetch all panes across all sessions that have workmux pane status set.
 /// This is used by the status dashboard to show all active agents.
 ///
 /// Automatically removes panes from the list when the agent has exited.
 /// This is detected by comparing the stored command (from when status was set)
 /// with the current foreground command. If they differ, the agent has exited.
-pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
+///
+/// Also detects stalled "working" agents using the provided monitor.
+pub fn get_all_agent_panes(
+    working_icon: &str,
+    monitor: &mut AgentMonitor,
+) -> Result<Vec<AgentPane>> {
     // Format string to extract all needed info in one call
     // Using tab as delimiter since it's less likely to appear in paths/names
-    // Note: Uses @workmux_pane_status (pane-level) not @workmux_status (window-level)
-    // Also includes @workmux_pane_command (stored) and pane_current_command (live) for exit detection
     let format = "#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{pane_title}\t#{@workmux_pane_status}\t#{@workmux_pane_status_ts}\t#{@workmux_pane_command}\t#{pane_current_command}";
 
     let output = Cmd::new("tmux")
@@ -202,67 +360,21 @@ pub fn get_all_agent_panes() -> Result<Vec<AgentPane>> {
         .run_and_capture_stdout()
         .unwrap_or_default();
 
-    let mut agents = Vec::new();
-    for line in output.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 9 {
-            continue;
-        }
+    // Parse all panes, filtering out exited agents
+    let agents: Vec<AgentPane> = output.lines().filter_map(parse_agent_pane_line).collect();
 
-        // Check PANE status specifically
-        let status = if parts[5].is_empty() {
-            None
-        } else {
-            Some(parts[5].to_string())
-        };
-
-        // Only include panes with a status set (active agents)
-        if status.is_none() {
-            continue;
-        }
-
-        let pane_id = parts[2];
-        let original_cmd = parts[7]; // @workmux_pane_command (stored when status set)
-        let current_cmd = parts[8]; // pane_current_command (live)
-
-        // If command changed, agent has exited - clear status and skip
-        if !original_cmd.is_empty() && current_cmd != original_cmd {
-            clear_pane_status(pane_id);
-            continue;
-        }
-
-        let status_ts = if parts[6].is_empty() {
-            None
-        } else {
-            parts[6].parse().ok()
-        };
-
-        // Pane title - Claude Code sets this to session summary (e.g., "✳ Feature Implementation")
-        let pane_title = if parts[4].is_empty() {
-            None
-        } else {
-            Some(parts[4].to_string())
-        };
-
-        agents.push(AgentPane {
-            session: parts[0].to_string(),
-            window_name: parts[1].to_string(),
-            pane_id: pane_id.to_string(),
-            path: PathBuf::from(parts[3]),
-            pane_title,
-            status,
-            status_ts,
-        });
-    }
+    // Process stalls using the monitor
+    let agents = monitor.process_stalls(agents, working_icon);
 
     Ok(agents)
 }
 
-/// Clear all workmux pane status options from a pane.
+/// Remove all workmux status tracking from a pane (when agent has exited).
+/// Clears all pane-level status options including the command tracker.
 /// Only clears pane-level options, not window-level, because:
 /// 1. Multiple panes in a window may have different agents
 /// 2. Window status uses "last write wins" - an active agent will re-set it
-fn clear_pane_status(pane_id: &str) {
+fn remove_agent_status(pane_id: &str) {
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"])
         .run();
@@ -278,6 +390,55 @@ fn clear_pane_status(pane_id: &str) {
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_command"])
         .run();
+}
+
+/// Mark an agent as interrupted by clearing its status icon and resetting timestamps.
+/// Used when an agent is detected as stalled (no pane content changes).
+/// Keeps the pane visible in the dashboard and maintains exit detection capability.
+/// Timestamps are reset to "now" so elapsed time starts from zero.
+fn mark_agent_interrupted(pane_id: &str) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let now_str = now.to_string();
+
+    // Clear pane-level status icon
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"])
+        .run();
+
+    // Reset pane-level timestamp to "now" (elapsed time starts from 0)
+    let _ = Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-p",
+            "-t",
+            pane_id,
+            "@workmux_pane_status_ts",
+            &now_str,
+        ])
+        .run();
+
+    // Clear window-level status icon
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-uw", "-t", pane_id, "@workmux_status"])
+        .run();
+
+    // Reset window-level timestamp to "now"
+    let _ = Cmd::new("tmux")
+        .args(&[
+            "set-option",
+            "-w",
+            "-t",
+            pane_id,
+            "@workmux_status_ts",
+            &now_str,
+        ])
+        .run();
+
+    // Note: @workmux_pane_command is intentionally NOT cleared
+    // This keeps the pane visible in the dashboard after interrupt
 }
 
 /// Switch the tmux client to a specific pane
