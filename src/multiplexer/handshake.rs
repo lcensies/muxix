@@ -256,11 +256,18 @@ impl PaneHandshake for UnixPipeHandshake {
             let ret = unsafe { libc::poll(&mut pollfd, 1, poll_timeout_ms) };
 
             if ret > 0 && (pollfd.revents & libc::POLLIN) != 0 {
-                // Data available - read and succeed
+                // Data available - read and verify we got data
                 let mut buf = [0u8; 64];
-                let _ = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                let bytes_read =
+                    unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 let _ = std::fs::remove_file(&self.pipe_path);
-                return Ok(());
+
+                if bytes_read > 0 {
+                    return Ok(());
+                } else {
+                    // EOF (0) or error (-1) - writer closed without sending data
+                    return Err(anyhow!("Pipe closed without receiving handshake signal"));
+                }
             }
 
             if start.elapsed() >= timeout {
