@@ -14,7 +14,7 @@ description: Release notes and version history for workmux
 
 # Changelog
 
-## Unreleased
+## v0.1.100 (2026-01-26)
 
 - Added nested config support for monorepos: place a `.workmux.yaml` in any
   subdirectory to configure that project independently. When you run workmux
