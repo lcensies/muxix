@@ -1810,15 +1810,15 @@ that are safe to share with your team, add them to the project's main
 
 On first run, workmux prompts you to check if a git branch icon displays
 correctly. If you have a [Nerd Font](https://www.nerdfonts.com/) installed,
-answer yes to enable nerdfont icons throughout the interface, including the
-tmux window prefix.
+answer yes to enable nerdfont icons throughout the interface, including the tmux
+window prefix.
 
 ![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
 
 To change the setting later, edit `~/.config/workmux/config.yaml`:
 
 ```yaml
-nerdfont: true  # or false for unicode fallbacks
+nerdfont: true # or false for unicode fallbacks
 ```
 
 ### Using direnv
@@ -1957,13 +1957,16 @@ workmux completions fish | source
 - Git 2.5+ (for worktree support)
 - tmux (or an alternative backend)
 
-### Alternative Backends
+### Alternative backends
 
-While tmux is the primary and recommended backend, workmux also supports alternative terminal multiplexers:
+While tmux is the primary and recommended backend, workmux also supports
+alternative terminal multiplexers:
 
-- **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer WezTerm's features
+- **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer
+  WezTerm's features
 
-workmux auto-detects the backend from environment variables (`$WEZTERM_PANE` or `$TMUX`).
+workmux auto-detects the backend from environment variables (`$WEZTERM_PANE` or
+`$TMUX`).
 
 ## Inspiration and related tools
 
