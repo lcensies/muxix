@@ -826,6 +826,9 @@ impl Multiplexer for WezTermBackend {
             Some(p) => {
                 // WezTerm doesn't expose PID or current command via CLI list.
                 // We extract both from the TTY using ps.
+                // TODO: Consider using sysinfo crate instead of shelling out to ps.
+                // This would be faster (no subprocess) and more portable (ps flags
+                // differ between BSD/Linux).
                 let tty_name = p.tty_name.as_ref().map(|t| t.trim_start_matches("/dev/"));
 
                 // Get foreground process PID (process with '+' in STAT)
