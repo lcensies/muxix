@@ -22,7 +22,7 @@ pub fn run(
     };
 
     let (config, config_location) = config::Config::load_with_location(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, config_location)?;
 
     // Load prompt if any prompt argument is provided

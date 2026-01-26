@@ -33,7 +33,7 @@ pub fn run(
     // Note: Must be done BEFORE creating WorkflowContext (which may change CWD)
     let name_to_merge = super::resolve_name(name)?;
 
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, None)?;
 
     // Announce pre-merge hooks if any (unless --no-verify is passed)

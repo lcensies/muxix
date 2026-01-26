@@ -9,19 +9,7 @@ description: Use WezTerm as an alternative multiplexer backend
 
 workmux supports WezTerm as an alternative to tmux. This is useful if you prefer WezTerm's features or don't have tmux installed.
 
-## Configuration
-
-Set the backend via environment variable:
-
-```bash
-export WORKMUX_BACKEND=wezterm
-```
-
-Or in your config file (`~/.config/workmux/config.yaml`):
-
-```yaml
-backend: wezterm
-```
+workmux automatically uses WezTerm when it detects the `$WEZTERM_PANE` environment variable.
 
 ## Differences from tmux
 

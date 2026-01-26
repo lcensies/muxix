@@ -40,7 +40,7 @@ fn format_pr_status(pr_info: Option<crate::github::PrSummary>) -> String {
 
 pub fn run(show_pr: bool) -> Result<()> {
     let config = config::Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let worktrees = workflow::list(&config, mux.as_ref(), show_pr)?;
 
     if worktrees.is_empty() {

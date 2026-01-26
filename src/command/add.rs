@@ -72,9 +72,7 @@ fn read_stdin_lines() -> Result<Vec<String>> {
 /// Returns Ok(()) if all preconditions are met, or an error listing all failures.
 fn check_preconditions() -> Result<()> {
     let is_git = git::is_git_repo()?;
-    // Load config to detect backend for precondition check
-    let config = config::Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let is_mux_running = mux.is_running()?;
 
     if is_git && is_mux_running {
@@ -215,7 +213,7 @@ pub fn run(
     if rescue.with_changes {
         let (rescue_config, rescue_location) =
             config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
-        let mux = create_backend(detect_backend(&rescue_config));
+        let mux = create_backend(detect_backend());
         let rescue_context = workflow::WorkflowContext::new(rescue_config, mux, rescue_location)?;
         // Derive handle for rescue flow (uses config for naming strategy/prefix)
         let handle =
@@ -468,9 +466,8 @@ impl<'a> CreationPlan<'a> {
             println!("Preparing to create {} worktrees...", self.specs.len());
         }
 
-        // Create backend once for all specs (backend selection is consistent across agents)
-        let config = config::Config::load(None)?;
-        let mux = create_backend(detect_backend(&config));
+        // Create backend once for all specs
+        let mux = create_backend(detect_backend());
 
         // Track windows for --wait (all created windows)
         let mut created_windows = Vec::new();

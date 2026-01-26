@@ -188,44 +188,23 @@ pub trait Multiplexer: Send + Sync {
     fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>>;
 }
 
-/// Detect which backend to use based on environment and config.
+/// Detect which backend to use based on environment.
 ///
-/// Priority order:
-/// 1. WORKMUX_BACKEND environment variable
-/// 2. Config file backend setting
-/// 3. Default to tmux
-pub fn detect_backend(config: &Config) -> BackendType {
-    // 1. Environment variable has highest priority
-    if let Ok(env_backend) = std::env::var("WORKMUX_BACKEND") {
-        match env_backend.to_lowercase().as_str() {
-            "wezterm" => return BackendType::WezTerm,
-            "tmux" => return BackendType::Tmux,
-            other => {
-                eprintln!(
-                    "workmux: unknown backend '{}' in WORKMUX_BACKEND, falling back to tmux",
-                    other
-                );
-                return BackendType::Tmux;
-            }
-        }
+/// Auto-detects from multiplexer environment variables:
+/// - `$WEZTERM_PANE` set → WezTerm
+/// - `$TMUX` set → tmux
+/// - Neither → defaults to tmux (for backward compatibility)
+pub fn detect_backend() -> BackendType {
+    // Auto-detect from environment
+    if std::env::var("WEZTERM_PANE").is_ok() {
+        return BackendType::WezTerm;
     }
 
-    // 2. Config file backend setting
-    if let Some(backend) = &config.backend {
-        match backend.to_lowercase().as_str() {
-            "wezterm" => return BackendType::WezTerm,
-            "tmux" => return BackendType::Tmux,
-            other => {
-                eprintln!(
-                    "workmux: unknown backend '{}' in config, falling back to tmux",
-                    other
-                );
-                return BackendType::Tmux;
-            }
-        }
+    if std::env::var("TMUX").is_ok() {
+        return BackendType::Tmux;
     }
 
-    // 3. Default to tmux for backward compatibility
+    // Default to tmux for backward compatibility
     BackendType::Tmux
 }
 

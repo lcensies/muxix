@@ -1963,7 +1963,7 @@ While tmux is the primary and recommended backend, workmux also supports alterna
 
 - **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer WezTerm's features
 
-Set `WORKMUX_BACKEND=wezterm` or configure in `~/.config/workmux/config.yaml`.
+workmux auto-detects the backend from environment variables (`$WEZTERM_PANE` or `$TMUX`).
 
 ## Inspiration and related tools
 

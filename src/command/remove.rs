@@ -450,7 +450,7 @@ fn run_gone(force: bool, keep_branch: bool) -> Result<()> {
 /// Execute the actual worktree removal
 fn remove_worktree(handle: &str, force: bool, keep_branch: bool) -> Result<()> {
     let config = config::Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, None)?;
 
     super::announce_hooks(&context.config, None, super::HookPhase::PreRemove);

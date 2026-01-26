@@ -46,7 +46,6 @@ use ratatui::backend::CrosstermBackend;
 use std::io;
 use std::time::Duration;
 
-use crate::config::Config;
 use crate::git;
 use crate::multiplexer::{create_backend, detect_backend};
 
@@ -107,8 +106,7 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
 }
 
 pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
-    let config = Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
 
     // Check if multiplexer is running
     if !mux.is_running().unwrap_or(false) {

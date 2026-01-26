@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 
 pub fn run(name: Option<&str>) -> Result<()> {
     let config = config::Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
     let prefix = config.window_prefix();
 
     // When no name is provided, prefer the current window name

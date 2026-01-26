@@ -22,7 +22,7 @@ pub enum SetWindowStatusCommand {
 
 pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
     let config = Config::load(None)?;
-    let mux = create_backend(detect_backend(&config));
+    let mux = create_backend(detect_backend());
 
     // Fail silently if not in a multiplexer session
     let Some(pane_id) = mux.current_pane_id() else {

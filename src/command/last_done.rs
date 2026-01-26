@@ -1,7 +1,7 @@
 use anyhow::Result;
 use tracing::debug;
 
-use crate::multiplexer::{AgentStatus, BackendType, create_backend};
+use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::state::StateStore;
 
 /// Switch to the agent that most recently completed its task.
@@ -10,13 +10,7 @@ use crate::state::StateStore;
 /// one with the most recent timestamp. Cycles through completed agents on
 /// repeated invocations.
 pub fn run() -> Result<()> {
-    // Skip config loading (which triggers git commands) - just check env var
-    let backend_type = match std::env::var("WORKMUX_BACKEND") {
-        Ok(s) if s.eq_ignore_ascii_case("wezterm") => BackendType::WezTerm,
-        _ => BackendType::Tmux,
-    };
-
-    let mux = create_backend(backend_type);
+    let mux = create_backend(detect_backend());
     let store = StateStore::new()?;
 
     // Read agent state directly from disk without validating against tmux.
