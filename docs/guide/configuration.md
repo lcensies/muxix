@@ -9,7 +9,7 @@ workmux uses a two-level configuration system:
 - **Global** (`~/.config/workmux/config.yaml`): Personal defaults for all projects
 - **Project** (`.workmux.yaml`): Project-specific overrides
 
-Project settings override global settings. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
+Project settings override global settings. When you run workmux from a subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing nested configs for monorepos. See [Monorepos](./monorepos.md#nested-configuration) for details. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
 
 ## Global configuration example
 
@@ -122,13 +122,15 @@ Both `copy` and `symlink` accept glob patterns.
 
 ### Lifecycle hooks
 
-Run commands at specific points in the worktree lifecycle. All hooks run with the **worktree directory** as the working directory and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`.
+Run commands at specific points in the worktree lifecycle. All hooks run with the **worktree directory** as the working directory (or the nested config directory for [nested configs](./monorepos.md#nested-configuration)) and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
 
 | Hook          | When it runs                                      | Additional env vars                  |
 | ------------- | ------------------------------------------------- | ------------------------------------ |
 | `post_create` | After worktree creation, before tmux window opens | —                                    |
 | `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
 | `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
+
+`WM_CONFIG_DIR` points to the directory containing the `.workmux.yaml` that was used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
 
 Example:
 

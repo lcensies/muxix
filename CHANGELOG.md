@@ -14,6 +14,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## Unreleased
+
+- Added nested config support for monorepos: place a `.workmux.yaml` in any
+  subdirectory to configure that project independently. When you run workmux
+  from a subdirectory, it finds the nearest config. Working directory, file
+  operations, and hooks are all scoped to the config directory.
+  ([#39](https://github.com/raine/workmux/issues/39))
+- Added `WM_CONFIG_DIR` environment variable for hooks, pointing to the
+  directory containing the `.workmux.yaml` that was used
+
 ## v0.1.99 (2026-01-24)
 
 - Dashboard: Detect and clear working agents that have stalled, for example due

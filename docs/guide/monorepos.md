@@ -1,10 +1,65 @@
 ---
-description: Handle port conflicts when running multiple services across worktrees
+description: Per-project configs and port isolation for monorepos with multiple services
 ---
 
 # Monorepos
 
 Tips for using workmux with monorepos containing multiple services.
+
+## Nested configuration
+
+Place a `.workmux.yaml` in any subdirectory to configure that project independently. When you run workmux from a subdirectory, it walks upward to find the nearest config:
+
+```
+monorepo/
+├── .workmux.yaml          # Root config (used from monorepo/)
+├── backend/
+│   ├── .workmux.yaml      # Backend config (used from backend/)
+│   └── src/
+└── frontend/
+    ├── .workmux.yaml      # Frontend config (used from frontend/)
+    └── src/
+```
+
+```bash
+cd monorepo/backend
+workmux add api-feature    # Uses backend/.workmux.yaml
+```
+
+When using a nested config:
+
+- **Working directory**: The tmux window opens in the subdirectory (e.g., `backend/`) within the new worktree, not the worktree root
+- **File operations**: `files.copy` and `files.symlink` paths are relative to the config directory
+- **Hooks**: Run with the subdirectory as the working directory
+
+### Example nested config
+
+```yaml
+# backend/.workmux.yaml
+agent: claude
+
+files:
+  copy:
+    - .env # Copies backend/.env to worktree's backend/.env
+
+post_create:
+  - cargo build # Runs in worktree's backend/ directory
+```
+
+### Environment variables
+
+Hooks receive `WM_CONFIG_DIR` pointing to the config directory in the new worktree:
+
+```yaml
+# backend/.workmux.yaml
+post_create:
+  - echo "Config dir: $WM_CONFIG_DIR" # /path/to/worktree/backend
+  - echo "Worktree root: $WM_WORKTREE_PATH" # /path/to/worktree
+```
+
+### No inheritance
+
+Nested configs completely replace the root config - they are not merged. If you need shared settings across projects, use the global config (`~/.config/workmux/config.yaml`) with the `<global>` placeholder.
 
 ## Port isolation
 
