@@ -21,9 +21,9 @@ pub fn run(
         (None, false) => bail!("Worktree name is required unless --new is provided"),
     };
 
-    let config = config::Config::load(None)?;
+    let (config, config_location) = config::Config::load_with_location(None)?;
     let mux = create_backend(detect_backend(&config));
-    let context = WorkflowContext::new(config, mux)?;
+    let context = WorkflowContext::new(config, mux, config_location)?;
 
     // Load prompt if any prompt argument is provided
     let prompt = load_prompt(&PromptLoadArgs {

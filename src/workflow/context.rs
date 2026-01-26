@@ -17,6 +17,12 @@ pub struct WorkflowContext {
     pub prefix: String,
     pub config: config::Config,
     pub mux: Arc<dyn Multiplexer>,
+    /// Relative path from repo root to config directory.
+    /// Empty if config is at repo root or using defaults.
+    pub config_rel_dir: PathBuf,
+    /// Absolute path to the directory where config was found.
+    /// Used as source for file operations (copy/symlink).
+    pub config_source_dir: PathBuf,
 }
 
 impl WorkflowContext {
@@ -25,7 +31,11 @@ impl WorkflowContext {
     /// Performs the git repository check and gathers all commonly needed data.
     /// Does NOT check if multiplexer is running or change the current directory - those
     /// are optional operations that can be performed via helper methods.
-    pub fn new(config: config::Config, mux: Arc<dyn Multiplexer>) -> Result<Self> {
+    pub fn new(
+        config: config::Config,
+        mux: Arc<dyn Multiplexer>,
+        config_location: Option<config::ConfigLocation>,
+    ) -> Result<Self> {
         if !git::is_git_repo()? {
             return Err(anyhow!("Not in a git repository"));
         }
@@ -44,12 +54,19 @@ impl WorkflowContext {
 
         let prefix = config.window_prefix().to_string();
 
+        let (config_rel_dir, config_source_dir) = match config_location {
+            Some(loc) => (loc.rel_dir, loc.config_dir),
+            None => (PathBuf::new(), main_worktree_root.clone()),
+        };
+
         debug!(
             main_worktree_root = %main_worktree_root.display(),
             git_common_dir = %git_common_dir.display(),
             main_branch = %main_branch,
             prefix = %prefix,
             backend = mux.name(),
+            config_rel_dir = %config_rel_dir.display(),
+            config_source_dir = %config_source_dir.display(),
             "workflow_context:created"
         );
 
@@ -60,6 +77,8 @@ impl WorkflowContext {
             prefix,
             config,
             mux,
+            config_rel_dir,
+            config_source_dir,
         })
     }
 

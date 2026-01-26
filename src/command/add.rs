@@ -213,9 +213,10 @@ pub fn run(
 
     // Handle rescue flow early if requested
     if rescue.with_changes {
-        let rescue_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+        let (rescue_config, rescue_location) =
+            config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
         let mux = create_backend(detect_backend(&rescue_config));
-        let rescue_context = workflow::WorkflowContext::new(rescue_config, mux)?;
+        let rescue_context = workflow::WorkflowContext::new(rescue_config, mux, rescue_location)?;
         // Derive handle for rescue flow (uses config for naming strategy/prefix)
         let handle =
             crate::naming::derive_handle(branch_name, name.as_deref(), &rescue_context.config)?;
@@ -492,7 +493,8 @@ impl<'a> CreationPlan<'a> {
                 }
             }
             // Load config for this specific agent to ensure correct agent resolution
-            let config = config::Config::load(spec.agent.as_deref())?;
+            let (config, config_location) =
+                config::Config::load_with_location(spec.agent.as_deref())?;
 
             // Render prompt first (needed for deferred auto-name)
             let rendered_prompt = if let Some(doc) = self.prompt_doc {
@@ -530,7 +532,7 @@ impl<'a> CreationPlan<'a> {
             super::announce_hooks(&config, Some(&self.options), super::HookPhase::PostCreate);
 
             // Create a WorkflowContext for this spec's config (reuse shared mux)
-            let context = workflow::WorkflowContext::new(config, mux.clone())?;
+            let context = workflow::WorkflowContext::new(config, mux.clone(), config_location)?;
 
             // Calculate window name for tracking
             let full_window_name = prefixed(&context.prefix, &handle);

@@ -235,6 +235,89 @@ pub enum WorktreeNaming {
     Basename,
 }
 
+/// Result of config discovery, including the relative path from repo root
+#[derive(Debug, Clone)]
+pub struct ConfigLocation {
+    /// Absolute path to the config file
+    pub config_path: PathBuf,
+    /// Absolute path to the directory containing the config
+    pub config_dir: PathBuf,
+    /// Relative path from repo root to config dir (e.g., "backend" for backend/.workmux.yaml)
+    /// Empty if config is at repo root
+    pub rel_dir: PathBuf,
+}
+
+/// Find the nearest .workmux.yaml by walking up from start_dir to repo root.
+/// Returns ConfigLocation with the relative path computed at discovery time.
+pub fn find_project_config(start_dir: &Path) -> anyhow::Result<Option<ConfigLocation>> {
+    let config_names = [".workmux.yaml", ".workmux.yml"];
+
+    let repo_root = match git::get_repo_root_for(start_dir) {
+        Ok(root) => root,
+        Err(_) => return Ok(None),
+    };
+
+    // Canonicalize both paths to handle symlinks and ensure consistent comparison
+    let repo_root = repo_root.canonicalize().unwrap_or(repo_root);
+    let mut dir = start_dir
+        .canonicalize()
+        .unwrap_or_else(|_| start_dir.to_path_buf());
+
+    // Safety: ensure we're inside the repo
+    if !dir.starts_with(&repo_root) {
+        return Ok(None);
+    }
+
+    // Walk upward from start_dir to repo_root (inclusive)
+    loop {
+        for name in &config_names {
+            let candidate = dir.join(name);
+            if candidate.exists() {
+                let rel_dir = dir
+                    .strip_prefix(&repo_root)
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default();
+                debug!(
+                    path = %candidate.display(),
+                    rel_dir = %rel_dir.display(),
+                    "config:found project config"
+                );
+                return Ok(Some(ConfigLocation {
+                    config_path: candidate,
+                    config_dir: dir,
+                    rel_dir,
+                }));
+            }
+        }
+        if dir == repo_root {
+            break;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+
+    // Fallback: check main worktree root (preserves existing behavior for linked worktrees)
+    if let Ok(main_root) = git::get_main_worktree_root() {
+        let main_root = main_root.canonicalize().unwrap_or(main_root);
+        if main_root != repo_root {
+            for name in &config_names {
+                let candidate = main_root.join(name);
+                if candidate.exists() {
+                    debug!(path = %candidate.display(), "config:found main-worktree config");
+                    return Ok(Some(ConfigLocation {
+                        config_path: candidate,
+                        config_dir: main_root.clone(),
+                        rel_dir: PathBuf::new(), // Main worktree root = empty rel_dir
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 impl WorktreeNaming {
     /// Derive a name from a branch name using this strategy
     pub fn derive_name(&self, branch: &str) -> String {
@@ -353,6 +436,61 @@ impl Config {
         Ok(config)
     }
 
+    /// Load and merge configs, returning the final config and project config location.
+    /// The location indicates where the project config was found (for working dir calculation).
+    pub fn load_with_location(
+        cli_agent: Option<&str>,
+    ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
+        debug!("config:loading with location");
+        let global_config = Self::load_global()?.unwrap_or_default();
+        let (project_config, location) = Self::load_project_with_location()?;
+        let project_config = project_config.unwrap_or_default();
+
+        let final_agent = cli_agent
+            .map(|s| s.to_string())
+            .or_else(|| project_config.agent.clone())
+            .or_else(|| global_config.agent.clone())
+            .unwrap_or_else(|| "claude".to_string());
+
+        let mut config = global_config.merge(project_config);
+        config.agent = Some(final_agent);
+
+        // Apply defaults - scope to config directory if nested config found
+        let defaults_root = location
+            .as_ref()
+            .map(|loc| loc.config_dir.clone())
+            .or_else(|| git::get_repo_root().ok())
+            .unwrap_or_default();
+
+        if !defaults_root.as_os_str().is_empty() {
+            let has_node_modules = defaults_root.join("pnpm-lock.yaml").exists()
+                || defaults_root.join("package-lock.json").exists()
+                || defaults_root.join("yarn.lock").exists();
+
+            if config.panes.is_none() {
+                if defaults_root.join("CLAUDE.md").exists() {
+                    config.panes = Some(Self::claude_default_panes());
+                } else {
+                    config.panes = Some(Self::default_panes());
+                }
+            }
+
+            if config.pre_remove.is_none() && has_node_modules {
+                config.pre_remove = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
+            }
+        } else if config.panes.is_none() {
+            config.panes = Some(Self::default_panes());
+        }
+
+        debug!(
+            agent = ?config.agent,
+            panes = config.panes.as_ref().map_or(0, |p| p.len()),
+            has_location = location.is_some(),
+            "config:loaded with location"
+        );
+        Ok((config, location))
+    }
+
     /// Load configuration from a specific path.
     fn load_from_path(path: &Path) -> anyhow::Result<Option<Self>> {
         if !path.exists() {
@@ -381,39 +519,27 @@ impl Config {
         Ok(None)
     }
 
+    /// Load project config and return its location.
+    /// Returns (Config, Option<ConfigLocation>) - location is None if no config found.
+    fn load_project_with_location() -> anyhow::Result<(Option<Self>, Option<ConfigLocation>)> {
+        let start_dir = std::env::current_dir().unwrap_or_default();
+
+        if let Some(location) = find_project_config(&start_dir)? {
+            let config = Self::load_from_path(&location.config_path)?;
+            return Ok((config, Some(location)));
+        }
+
+        Ok((None, None))
+    }
+
     /// Load the project-specific configuration file.
     ///
-    /// Searches for `.workmux.yaml` or `.workmux.yml` in the following order:
-    /// 1. Current worktree root (allows branch-specific config overrides)
-    /// 2. Main worktree root (shared config across all worktrees)
-    /// 3. Falls back gracefully when not in a git repository
+    /// Searches for `.workmux.yaml` or `.workmux.yml` by walking upward from CWD:
+    /// 1. Current directory up to repo root (finds nearest config)
+    /// 2. Main worktree root (fallback for linked worktrees)
     fn load_project() -> anyhow::Result<Option<Self>> {
-        let config_names = [".workmux.yaml", ".workmux.yml"];
-
-        // Build list of directories to search
-        let mut search_dirs = Vec::new();
-        if let Ok(repo_root) = git::get_repo_root() {
-            search_dirs.push(repo_root.clone());
-            // Also check main worktree root if different from current worktree
-            if let Ok(main_root) = git::get_main_worktree_root()
-                && main_root != repo_root
-            {
-                search_dirs.push(main_root);
-            }
-        }
-
-        // Search for config in each directory
-        for dir in search_dirs {
-            for name in &config_names {
-                let config_path = dir.join(name);
-                if config_path.exists() {
-                    debug!(path = %config_path.display(), "config:found project config");
-                    return Self::load_from_path(&config_path);
-                }
-            }
-        }
-
-        Ok(None)
+        let (config, _location) = Self::load_project_with_location()?;
+        Ok(config)
     }
 
     /// Merge a project config into a global config.
@@ -895,5 +1021,65 @@ mod tests {
     fn is_agent_command_empty() {
         assert!(!is_agent_command("", "claude"));
         assert!(!is_agent_command("   ", "claude"));
+    }
+
+    use super::find_project_config;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn find_project_config_from_subdir() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+
+        // Create nested structure: root/backend/.workmux.yaml
+        let backend = root.join("backend");
+        fs::create_dir_all(&backend).unwrap();
+        fs::write(backend.join(".workmux.yaml"), "agent: claude").unwrap();
+
+        // Create deeper directory: root/backend/src
+        let src = backend.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        // Find from src should find backend/.workmux.yaml
+        let result = find_project_config(&src).unwrap();
+        assert!(result.is_some());
+        let loc = result.unwrap();
+        assert!(loc.config_path.ends_with("backend/.workmux.yaml"));
+        assert_eq!(loc.rel_dir, std::path::PathBuf::from("backend"));
+    }
+
+    #[test]
+    fn find_project_config_nearest_wins() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+
+        // Create root config
+        fs::write(root.join(".workmux.yaml"), "agent: root").unwrap();
+
+        // Create nested config
+        let backend = root.join("backend");
+        fs::create_dir_all(&backend).unwrap();
+        fs::write(backend.join(".workmux.yaml"), "agent: backend").unwrap();
+
+        // Find from backend should find backend config, not root
+        let result = find_project_config(&backend).unwrap();
+        assert!(result.is_some());
+        let loc = result.unwrap();
+        assert!(loc.config_path.ends_with("backend/.workmux.yaml"));
     }
 }

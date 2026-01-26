@@ -34,7 +34,7 @@ pub fn run(
     let name_to_merge = super::resolve_name(name)?;
 
     let mux = create_backend(detect_backend(&config));
-    let context = WorkflowContext::new(config, mux)?;
+    let context = WorkflowContext::new(config, mux, None)?;
 
     // Announce pre-merge hooks if any (unless --no-verify is passed)
     if !no_verify {

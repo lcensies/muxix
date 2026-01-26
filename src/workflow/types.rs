@@ -70,6 +70,10 @@ pub struct SetupOptions {
     pub prompt_file_path: Option<PathBuf>,
     /// If true, switch to the new tmux window when done; if false, leave it in the background.
     pub focus_window: bool,
+    /// Working directory for the tmux window. If None, uses worktree_path.
+    pub working_dir: Option<PathBuf>,
+    /// Config root directory in source repo (for file ops). If None, uses main worktree root.
+    pub config_root: Option<PathBuf>,
 }
 
 impl SetupOptions {
@@ -82,6 +86,8 @@ impl SetupOptions {
             run_pane_commands: true,
             prompt_file_path: None,
             focus_window: true,
+            working_dir: None,
+            config_root: None,
         }
     }
 
@@ -93,6 +99,8 @@ impl SetupOptions {
             run_pane_commands,
             prompt_file_path: None,
             focus_window: true,
+            working_dir: None,
+            config_root: None,
         }
     }
 
@@ -110,6 +118,8 @@ impl SetupOptions {
             run_pane_commands,
             prompt_file_path,
             focus_window: true,
+            working_dir: None,
+            config_root: None,
         }
     }
 }
