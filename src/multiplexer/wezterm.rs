@@ -1052,11 +1052,11 @@ fn send_pane_switch_signal(workspace: &str, tab_title: &str) {
     use std::io::Write;
 
     // Send JSON with workspace and tab_title (stable across mux contexts)
-    let payload = format!(
-        r#"{{"workspace":"{}","tab_title":"{}"}}"#,
-        workspace, tab_title
-    );
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&payload);
+    let payload = serde_json::json!({
+        "workspace": workspace,
+        "tab_title": tab_title
+    });
+    let encoded = base64::engine::general_purpose::STANDARD.encode(payload.to_string());
     // OSC 1337 ; SetUserVar=name=base64_value BEL
     print!("\x1b]1337;SetUserVar=workmux-switch-pane={}\x07", encoded);
     // Flush to ensure it's sent immediately
