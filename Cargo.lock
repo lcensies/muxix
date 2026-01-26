@@ -3103,6 +3103,7 @@ dependencies = [
  "libc",
  "mac-notification-sys",
  "minijinja",
+ "nix 0.29.0",
  "notify-rust",
  "pathdiff",
  "percent-encoding",

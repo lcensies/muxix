@@ -4,6 +4,8 @@
 //! before sending commands to a pane.
 
 use anyhow::{Context, Result, anyhow};
+#[cfg(unix)]
+use nix::sys::stat::Mode;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -197,10 +199,9 @@ impl UnixPipeHandshake {
 
         let pipe_path = std::env::temp_dir().join(format!("workmux_pipe_{}_{}", pid, nanos));
 
-        std::process::Command::new("mkfifo")
-            .arg(&pipe_path)
-            .status()
-            .context("Failed to create named pipe")?;
+        // Create FIFO with 0o600 permissions (owner read/write only)
+        let mode = Mode::S_IRUSR | Mode::S_IWUSR;
+        nix::unistd::mkfifo(&pipe_path, mode).context("Failed to create named pipe")?;
 
         Ok(Self { pipe_path })
     }
