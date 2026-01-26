@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     get_worktree_path,
     run_workmux_add,
     run_workmux_merge,
@@ -18,12 +18,12 @@ class TestPreRemoveHooksRemove:
 
     def test_pre_remove_hook_runs_on_remove(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks run when removing a worktree."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-pre-remove"
         marker_file = env.tmp_path / "pre_remove_ran.txt"
 
@@ -43,12 +43,12 @@ class TestPreRemoveHooksRemove:
 
     def test_pre_remove_hook_receives_wm_handle(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_HANDLE environment variable is set correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-handle-test"
         env_file = env.tmp_path / "hook_env.txt"
 
@@ -68,12 +68,12 @@ class TestPreRemoveHooksRemove:
 
     def test_pre_remove_hook_receives_wm_worktree_path(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_WORKTREE_PATH environment variable is set correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-path-test"
         env_file = env.tmp_path / "hook_worktree_path.txt"
 
@@ -95,12 +95,12 @@ class TestPreRemoveHooksRemove:
 
     def test_pre_remove_hook_receives_wm_project_root(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_PROJECT_ROOT environment variable is set correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-root-test"
         env_file = env.tmp_path / "hook_project_root.txt"
 
@@ -120,12 +120,12 @@ class TestPreRemoveHooksRemove:
 
     def test_pre_remove_hook_can_copy_files_to_project_root(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that hooks can use env vars to copy files to the project root."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-copy-test"
         artifacts_dir = "artifacts"
 
@@ -153,12 +153,12 @@ class TestPreRemoveHooksMerge:
 
     def test_pre_remove_hook_runs_on_merge(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks run when merging a worktree."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-merge-hook"
         marker_file = env.tmp_path / "pre_remove_merge_ran.txt"
 
@@ -179,12 +179,12 @@ class TestPreRemoveHooksMerge:
 
     def test_pre_remove_hook_not_run_on_merge_with_keep(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks do NOT run with --keep flag."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-merge-keep"
         marker_file = env.tmp_path / "pre_remove_keep_ran.txt"
 
@@ -207,12 +207,12 @@ class TestPreRemoveHooksMerge:
 
     def test_pre_remove_hook_receives_all_env_vars_on_merge(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies all environment variables are set correctly during merge."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-merge-env"
         env_file = env.tmp_path / "merge_hook_env.txt"
 
@@ -244,12 +244,12 @@ class TestPreRemoveHookFailure:
 
     def test_pre_remove_hook_failure_aborts_remove(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that a failing pre_remove hook aborts the removal."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-fail-hook"
 
         write_workmux_config(

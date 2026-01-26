@@ -3,23 +3,29 @@
 import subprocess
 from pathlib import Path
 
+import pytest
 
 from .conftest import (
+    MuxEnvironment,
     TmuxEnvironment,
     run_workmux_command,
     run_workmux_open,
 )
 
+# These tests use tmux-specific features (get pane cwd, kill-window)
+pytestmark = pytest.mark.tmux_only
+
 
 def run_cmd(
-    cmd: list[str], cwd: Path, env: TmuxEnvironment
+    cmd: list[str], cwd: Path, env: MuxEnvironment
 ) -> subprocess.CompletedProcess:
     """Run a command in the test environment."""
     return env.run_command(cmd, cwd=cwd, check=True)
 
 
-def get_pane_cwd(env: TmuxEnvironment, window_name: str) -> Path:
+def get_pane_cwd(env: MuxEnvironment, window_name: str) -> Path:
     """Get the current working directory of a tmux pane by window name."""
+    assert isinstance(env, TmuxEnvironment), "get_pane_cwd requires tmux backend"
     result = env.tmux(
         ["display-message", "-p", "-t", window_name, "#{pane_current_path}"]
     )
@@ -45,12 +51,12 @@ class TestNestedConfigDiscovery:
 
     def test_find_config_in_current_directory(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Config in current directory is found."""
-        env = isolated_tmux_server
+        env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
         (backend / ".workmux.yaml").write_text("agent: claude\n")
@@ -66,12 +72,12 @@ class TestNestedConfigDiscovery:
 
     def test_find_config_in_parent_directory(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Config in parent directory is found when running from subdirectory."""
-        env = isolated_tmux_server
+        env = mux_server
         backend = repo_path / "backend"
         src = backend / "src"
         src.mkdir(parents=True)
@@ -88,13 +94,13 @@ class TestNestedConfigDiscovery:
 
     def test_nested_config_takes_precedence_over_root(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
         tmp_path: Path,
     ):
         """When both root and nested configs exist, nearest (nested) wins."""
-        env = isolated_tmux_server
+        env = mux_server
         output_file = tmp_path / "which_config.txt"
 
         # Create root config that writes "root" to file
@@ -126,12 +132,12 @@ class TestWorkingDirectory:
 
     def test_add_from_nested_config_sets_working_dir(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """wm add from nested config opens tmux in nested directory."""
-        env = isolated_tmux_server
+        env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
         (backend / ".workmux.yaml").write_text("agent: claude\n")
@@ -152,12 +158,12 @@ class TestWorkingDirectory:
 
     def test_open_from_nested_config_sets_working_dir(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """wm open from nested config opens tmux in nested directory."""
-        env = isolated_tmux_server
+        env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
         (backend / ".workmux.yaml").write_text("agent: claude\n")
@@ -171,6 +177,7 @@ class TestWorkingDirectory:
         )
 
         # Close the tmux window (but keep worktree on disk)
+        assert isinstance(env, TmuxEnvironment)
         env.tmux(["kill-window", "-t", "wm-test-branch"])
 
         # Reopen from backend/
@@ -191,12 +198,12 @@ class TestFileOperations:
 
     def test_file_copy_from_nested_config_dir(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Files are copied from config directory, not repo root."""
-        env = isolated_tmux_server
+        env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
         (backend / ".workmux.yaml").write_text(
@@ -228,13 +235,13 @@ class TestHooksEnvironment:
 
     def test_wm_config_dir_env_var(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
         tmp_path: Path,
     ):
         """WM_CONFIG_DIR points to nested directory in new worktree."""
-        env = isolated_tmux_server
+        env = mux_server
         output_file = tmp_path / "wm_config_dir.txt"
 
         backend = repo_path / "backend"
@@ -261,13 +268,13 @@ class TestHooksEnvironment:
 
     def test_hook_cwd_is_nested_directory(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
         tmp_path: Path,
     ):
         """Hooks run with CWD set to nested directory."""
-        env = isolated_tmux_server
+        env = mux_server
         output_file = tmp_path / "hook_cwd.txt"
 
         backend = repo_path / "backend"
@@ -297,12 +304,12 @@ class TestEdgeCases:
 
     def test_fallback_when_subdir_missing_in_target(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Falls back to worktree root if subdirectory doesn't exist in target branch."""
-        env = isolated_tmux_server
+        env = mux_server
 
         # Create backend config on main
         backend = repo_path / "backend"
@@ -344,12 +351,12 @@ class TestBackwardsCompatibility:
 
     def test_root_config_still_works(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Config at repo root works as before."""
-        env = isolated_tmux_server
+        env = mux_server
         (repo_path / ".workmux.yaml").write_text(
             "agent: claude\nfiles:\n  copy:\n    - .env\n"
         )
@@ -369,12 +376,12 @@ class TestBackwardsCompatibility:
 
     def test_no_config_uses_defaults(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """No config file uses default behavior."""
-        env = isolated_tmux_server
+        env = mux_server
 
         result = run_workmux_command(
             env, workmux_exe_path, repo_path, "add test-branch"

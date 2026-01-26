@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     get_worktree_path,
     run_workmux_add,
     run_workmux_merge,
@@ -17,12 +17,12 @@ class TestPreMergeHooks:
 
     def test_pre_merge_hook_runs_on_merge(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_merge hooks run when merging a worktree."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-pre-merge"
         marker_file = env.tmp_path / "pre_merge_ran.txt"
 
@@ -43,12 +43,12 @@ class TestPreMergeHooks:
 
     def test_pre_merge_hook_receives_all_env_vars(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies all environment variables are set correctly during merge."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-all-env"
         env_file = env.tmp_path / "merge_hook_env.txt"
 
@@ -80,12 +80,12 @@ class TestPreMergeHooks:
 
     def test_pre_merge_hook_failure_aborts_merge(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that a failing pre_merge hook aborts the merge."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-fail-hook"
 
         write_workmux_config(
@@ -106,12 +106,12 @@ class TestPreMergeHooks:
 
     def test_pre_merge_hook_skipped_with_no_verify(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_merge hooks are skipped when --no-verify is passed."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-no-verify"
         marker_file = env.tmp_path / "should_not_exist.txt"
 
@@ -134,12 +134,12 @@ class TestPreMergeHooks:
 
     def test_no_verify_bypasses_failing_hook(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that --no-verify allows merge to succeed even with a failing hook configured."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-bypass-fail"
 
         # Configure a hook that would fail

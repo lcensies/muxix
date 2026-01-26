@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from .conftest import TmuxEnvironment
+from .conftest import MuxEnvironment
 
 
 def test_init_creates_config_file_on_success(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path
 ):
     """Verifies `workmux init` creates .workmux.yaml with correct content."""
-    env = isolated_tmux_server
+    env = mux_server
     config_file_path = env.tmp_path / ".workmux.yaml"
 
     assert not config_file_path.exists()
@@ -37,10 +37,10 @@ def test_init_creates_config_file_on_success(
 
 
 def test_init_fails_if_config_exists(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path
 ):
     """Verifies `workmux init` fails if .workmux.yaml already exists."""
-    env = isolated_tmux_server
+    env = mux_server
     config_file_path = env.tmp_path / ".workmux.yaml"
     preexisting_content = "pre-existing content"
 
@@ -55,10 +55,10 @@ def test_init_fails_if_config_exists(
 
 
 def test_init_fails_in_readonly_directory(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path
 ):
     """Verifies `workmux init` fails gracefully if the directory is not writable."""
-    env = isolated_tmux_server
+    env = mux_server
     test_dir = env.tmp_path
     config_file_path = test_dir / ".workmux.yaml"
 

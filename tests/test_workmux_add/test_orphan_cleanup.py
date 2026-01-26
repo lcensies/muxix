@@ -13,13 +13,13 @@ class TestOrphanDirectoryCleanup:
     """Tests for auto-removal of orphan directories when creating worktrees."""
 
     def test_add_removes_empty_orphan_directory(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         Verifies that `workmux add` removes an empty orphan directory
         (exists on disk but not registered with git).
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-orphan-empty"
 
         write_workmux_config(repo_path)
@@ -49,13 +49,13 @@ class TestOrphanDirectoryCleanup:
         assert branch_name in result.stdout
 
     def test_add_removes_orphan_directory_with_nested_empty_dirs(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         Verifies that `workmux add` removes an orphan directory containing
         only nested empty subdirectories (common when build tools recreate paths).
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-orphan-nested"
 
         write_workmux_config(repo_path)
@@ -74,13 +74,13 @@ class TestOrphanDirectoryCleanup:
         assert (actual_path / ".git").exists()
 
     def test_add_removes_orphan_directory_with_build_artifacts(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         Verifies that `workmux add` removes an orphan directory containing
         build artifacts (files created by background processes after cleanup).
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-orphan-artifacts"
 
         write_workmux_config(repo_path)
@@ -103,13 +103,13 @@ class TestOrphanDirectoryCleanup:
         assert (actual_path / ".git").exists()
 
     def test_add_fails_for_orphan_directory_with_git_resource(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         Verifies that `workmux add` refuses to remove an orphan directory
         that contains a .git file/folder (could be corrupted worktree or manual clone).
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-orphan-git"
 
         write_workmux_config(repo_path)
@@ -132,13 +132,13 @@ class TestOrphanDirectoryCleanup:
         assert "not registered" in result.stderr
 
     def test_add_fails_for_registered_worktree(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         Verifies that `workmux add` still fails properly when the directory
         is a registered git worktree (not an orphan).
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-registered"
 
         write_workmux_config(repo_path)
@@ -158,13 +158,13 @@ class TestOrphanDirectoryCleanup:
         assert "already exists" in result.stderr
 
     def test_add_after_remove_with_orphan_recreation(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """
         End-to-end test: create worktree, remove it, simulate orphan recreation,
         then verify add succeeds again.
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-full-cycle"
 
         write_workmux_config(repo_path)

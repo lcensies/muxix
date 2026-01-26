@@ -5,7 +5,7 @@ Tests for PR checkout functionality (workmux add --pr <number>)
 from pathlib import Path
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     get_window_name,
     get_worktree_path,
     install_fake_gh_cli,
@@ -15,7 +15,7 @@ from .conftest import (
 
 
 def setup_pr_remote_and_branch(
-    env: TmuxEnvironment,
+    env: MuxEnvironment,
     repo_path: Path,
     remote_repo_path: Path,
     branch_name: str,
@@ -52,11 +52,9 @@ def setup_pr_remote_and_branch(
     env.run_command(["git", "branch", "-D", branch_name], cwd=repo_path)
 
 
-def test_add_pr_from_same_repo(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
-):
+def test_add_pr_from_same_repo(mux_server, workmux_exe_path, remote_repo_path):
     """Test basic PR checkout from same repository"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -82,15 +80,13 @@ def test_add_pr_from_same_repo(
     assert worktree_path.exists()
 
     window_name = get_window_name("feature-branch")
-    windows_result = env.tmux(["list-windows", "-t", "test"], check=False)
-    assert window_name in windows_result.stdout
+    windows = env.list_windows()
+    assert window_name in windows
 
 
-def test_add_pr_with_custom_branch_name(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
-):
+def test_add_pr_with_custom_branch_name(mux_server, workmux_exe_path, remote_repo_path):
     """Test PR checkout with custom branch name"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -116,15 +112,13 @@ def test_add_pr_with_custom_branch_name(
     assert worktree_path.exists()
 
     window_name = get_window_name("my-review")
-    windows_result = env.tmux(["list-windows", "-t", "test"], check=False)
-    assert window_name in windows_result.stdout
+    windows = env.list_windows()
+    assert window_name in windows
 
 
-def test_add_pr_merged_state_warning(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
-):
+def test_add_pr_merged_state_warning(mux_server, workmux_exe_path, remote_repo_path):
     """Test warning is displayed for merged PRs"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -149,9 +143,9 @@ def test_add_pr_merged_state_warning(
     assert worktree_path.exists()
 
 
-def test_add_pr_draft_warning(isolated_tmux_server, workmux_exe_path, remote_repo_path):
+def test_add_pr_draft_warning(mux_server, workmux_exe_path, remote_repo_path):
     """Test warning is displayed for draft PRs"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -176,10 +170,10 @@ def test_add_pr_draft_warning(isolated_tmux_server, workmux_exe_path, remote_rep
 
 
 def test_add_pr_fails_on_invalid_pr_number(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
+    mux_server, workmux_exe_path, remote_repo_path
 ):
     """Test error handling for invalid PR number"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -207,10 +201,10 @@ def test_add_pr_fails_on_invalid_pr_number(
 
 
 def test_add_pr_fails_when_gh_not_installed(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
+    mux_server, workmux_exe_path, remote_repo_path
 ):
     """Test error when gh CLI is not available"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -230,10 +224,10 @@ def test_add_pr_fails_when_gh_not_installed(
 
 
 def test_add_pr_conflicts_with_base_flag(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
+    mux_server, workmux_exe_path, remote_repo_path
 ):
     """Test that --pr conflicts with --base flag"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 
@@ -252,10 +246,10 @@ def test_add_pr_conflicts_with_base_flag(
 
 
 def test_add_pr_fails_when_worktree_exists(
-    isolated_tmux_server, workmux_exe_path, remote_repo_path
+    mux_server, workmux_exe_path, remote_repo_path
 ):
     """Test error when trying to checkout same PR twice"""
-    env = isolated_tmux_server
+    env = mux_server
     repo_path = env.tmp_path
     setup_git_repo(repo_path, env.env)
 

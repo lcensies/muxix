@@ -1,7 +1,9 @@
 """Tests for shell initialization and login shell behavior."""
 
+import pytest
+
 from ..conftest import (
-    configure_default_shell,
+    MuxEnvironment,
     poll_until,
     wait_for_file,
     write_workmux_config,
@@ -9,25 +11,27 @@ from ..conftest import (
 from .conftest import add_branch_and_get_worktree
 
 
+# WezTerm: CLI spawn doesn't support passing environment variables to spawned
+# panes, so we can't set a test HOME to verify .bash_profile is sourced.
+@pytest.mark.tmux_only
 class TestLoginShell:
     """Tests that workmux starts shells as login shells."""
 
     def test_panes_start_as_login_shells(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server: MuxEnvironment, workmux_exe_path, repo_path
     ):
         """
         Verifies that panes are started as login shells by checking if
         .bash_profile is sourced.
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-login-shell"
         marker_file = env.home_path / "profile_loaded"
 
         # 1. Configure bash as the shell
         # We use bash because its login shell behavior (.bash_profile) is standard
         bash_path = "/bin/bash"
-        for cmd in configure_default_shell(bash_path):
-            env.tmux(cmd)
+        env.configure_default_shell(bash_path)
 
         # 2. Create .bash_profile that creates a marker file
         # This file is only sourced if bash is started as a login shell (e.g. bash -l)
@@ -46,19 +50,18 @@ class TestLoginShell:
         wait_for_file(env, marker_file, timeout=5.0)
 
     def test_split_panes_start_as_login_shells(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server: MuxEnvironment, workmux_exe_path, repo_path
     ):
         """
         Verifies that split panes are also started as login shells.
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-split-login"
         log_file = env.home_path / "profile_log"
 
         # 1. Configure bash
         bash_path = "/bin/bash"
-        for cmd in configure_default_shell(bash_path):
-            env.tmux(cmd)
+        env.configure_default_shell(bash_path)
 
         # 2. Create .bash_profile that appends to a log
         bash_profile = env.home_path / ".bash_profile"
