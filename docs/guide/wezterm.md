@@ -4,8 +4,9 @@ description: Use WezTerm as an alternative multiplexer backend
 
 # WezTerm backend
 
-> **Support Level: Experimental**
-> The WezTerm backend is new and experimental. Expect rough edges and potential issues.
+::: warning Experimental
+The WezTerm backend is new and experimental. Expect rough edges and potential issues.
+:::
 
 workmux supports WezTerm as an alternative to tmux. This is useful if you prefer WezTerm's features or don't have tmux installed.
 
