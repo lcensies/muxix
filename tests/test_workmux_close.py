@@ -33,9 +33,8 @@ def run_workmux_close(
             f.unlink()
 
     name_arg = name if name else ""
-    # Include WORKMUX_BACKEND for proper backend detection
     close_script = (
-        f"export WORKMUX_BACKEND={env.backend_name} && cd {repo_path} && "
+        f"cd {repo_path} && "
         f"{workmux_exe_path} close {name_arg} "
         f"> {stdout_file} 2> {stderr_file}; "
         f"echo $? > {exit_code_file}"
@@ -187,7 +186,7 @@ def test_close_from_inside_worktree_window(
 
     # Send keystrokes directly to the worktree window to run close
     # This tests the schedule_window_close path (self-closing)
-    cmd = f"WORKMUX_BACKEND={env.backend_name} {workmux_exe_path} close"
+    cmd = f"{workmux_exe_path} close"
     env.send_keys(window_name, cmd, enter=True)
 
     # Poll until window is gone

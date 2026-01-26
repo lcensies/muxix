@@ -206,8 +206,9 @@ class TmuxEnvironment(MuxEnvironment):
         tmp_file.close()
         self.socket_path.unlink()
 
-        # Ensure we don't accidentally target user's tmux
+        # Ensure we don't accidentally target user's tmux or WezTerm
         self.env.pop("TMUX", None)
+        self.env.pop("WEZTERM_PANE", None)
         self.env["TMUX_CONF"] = "/dev/null"
 
     @property
@@ -317,9 +318,6 @@ class WezTermEnvironment(MuxEnvironment):
 
         # Remove TMUX env var to ensure we use WezTerm
         self.env.pop("TMUX", None)
-
-        # Set backend for workmux
-        self.env["WORKMUX_BACKEND"] = "wezterm"
 
     @property
     def backend_name(self) -> str:
@@ -1210,8 +1208,6 @@ def run_workmux_command(
 
     # Build env vars to pass to the command
     env_vars = [f"PATH={shlex.quote(env.env['PATH'])}"]
-    if "WORKMUX_BACKEND" in env.env:
-        env_vars.append(f"WORKMUX_BACKEND={shlex.quote(env.env['WORKMUX_BACKEND'])}")
     if "TMPDIR" in env.env:
         env_vars.append(f"TMPDIR={shlex.quote(env.env['TMPDIR'])}")
     if "HOME" in env.env:
@@ -1422,7 +1418,6 @@ def run_workmux_remove(
             repo_path, from_window.replace(DEFAULT_WINDOW_PREFIX, "")
         )
         remove_script = (
-            f"export WORKMUX_BACKEND={env.backend_name} && "
             f"cd {worktree_path} && "
             f"{input_cmd}"
             f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
@@ -1431,7 +1426,6 @@ def run_workmux_remove(
         )
     else:
         remove_script = (
-            f"export WORKMUX_BACKEND={env.backend_name} && "
             f"cd {repo_path} && "
             f"{input_cmd}"
             f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
@@ -1537,7 +1531,6 @@ def run_workmux_merge(
     editor_script.chmod(0o755)
 
     merge_script = (
-        f"export WORKMUX_BACKEND={env.backend_name} && "
         f"export GIT_EDITOR={shlex.quote(str(editor_script))} && "
         f"cd {script_dir} && "
         f"{workmux_exe_path} merge {flags_str} {branch_arg} "
