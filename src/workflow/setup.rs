@@ -42,9 +42,15 @@ pub fn setup_environment(
     // Use main worktree root for file operations since source files live there
     let repo_root = git::get_main_worktree_root()?;
 
+    // Determine effective working directory (config-relative or worktree root)
+    let effective_working_dir = options.working_dir.as_deref().unwrap_or(worktree_path);
+
+    // Determine source root for file operations
+    let file_ops_source = options.config_root.as_deref().unwrap_or(&repo_root);
+
     // Perform file operations (copy and symlink) if requested
     if options.run_file_ops {
-        handle_file_operations(&repo_root, worktree_path, &config.files)
+        handle_file_operations(file_ops_source, effective_working_dir, &config.files)
             .context("Failed to perform file operations")?;
         debug!(
             branch = branch_name,
@@ -67,18 +73,23 @@ pub fn setup_environment(
         let abs_project_root = repo_root
             .canonicalize()
             .unwrap_or_else(|_| repo_root.clone());
+        let abs_config_dir = effective_working_dir
+            .canonicalize()
+            .unwrap_or_else(|_| effective_working_dir.to_path_buf());
         let worktree_path_str = abs_worktree_path.to_string_lossy();
         let project_root_str = abs_project_root.to_string_lossy();
+        let config_dir_str = abs_config_dir.to_string_lossy();
         let hook_env = [
             ("WORKMUX_HANDLE", handle),
             ("WM_HANDLE", handle),
             ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
             ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+            ("WM_CONFIG_DIR", config_dir_str.as_ref()),
         ];
         for (idx, command) in post_create.iter().enumerate() {
             info!(branch = branch_name, step = idx + 1, total = hooks_run, command = %command, "setup_environment:hook start");
             info!(command = %command, "Running post-create hook {}/{}", idx + 1, hooks_run);
-            cmd::shell_command_with_env(command, worktree_path, &hook_env)
+            cmd::shell_command_with_env(command, effective_working_dir, &hook_env)
                 .with_context(|| format!("Failed to run post-create command: '{}'", command))?;
             info!(branch = branch_name, step = idx + 1, total = hooks_run, command = %command, "setup_environment:hook complete");
         }
@@ -101,7 +112,7 @@ pub fn setup_environment(
     let initial_pane_id = tmux::create_window(
         prefix,
         handle,
-        worktree_path,
+        effective_working_dir,
         /* detached: */ !options.focus_window,
         last_wm_window.as_deref(),
     )
@@ -125,7 +136,7 @@ pub fn setup_environment(
     let pane_setup_result = tmux::setup_panes(
         &initial_pane_id,
         &resolved_panes,
-        worktree_path,
+        effective_working_dir,
         tmux::PaneSetupOptions {
             run_commands: options.run_pane_commands,
             prompt_file_path: options.prompt_file_path.as_deref(),
@@ -494,6 +505,8 @@ mod tests {
             run_pane_commands,
             prompt_file_path: Some(std::path::PathBuf::from("/tmp/prompt.md")),
             focus_window: true,
+            working_dir: None,
+            config_root: None,
         }
     }
 

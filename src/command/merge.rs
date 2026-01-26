@@ -32,7 +32,7 @@ pub fn run(
     // Note: Must be done BEFORE creating WorkflowContext (which may change CWD)
     let name_to_merge = super::resolve_name(name)?;
 
-    let context = WorkflowContext::new(config)?;
+    let context = WorkflowContext::new(config, None)?;
 
     // Announce pre-merge hooks if any (unless --no-verify is passed)
     if !no_verify {

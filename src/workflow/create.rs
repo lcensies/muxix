@@ -249,9 +249,35 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         None
     };
 
-    // Merge prompt file path into options
+    // Compute working directory from config location
+    let working_dir = if !context.config_rel_dir.as_os_str().is_empty() {
+        let subdir_in_worktree = worktree_path.join(&context.config_rel_dir);
+        // Only use subdir if it exists (may not exist if base branch lacks it)
+        if subdir_in_worktree.exists() {
+            Some(subdir_in_worktree)
+        } else {
+            debug!(
+                subdir = %context.config_rel_dir.display(),
+                "create:config subdir does not exist in worktree, falling back to root"
+            );
+            None
+        }
+    } else {
+        None
+    };
+
+    // Use config_source_dir for file operations (the directory where config was found)
+    let config_root = if !context.config_rel_dir.as_os_str().is_empty() {
+        Some(context.config_source_dir.clone())
+    } else {
+        None
+    };
+
+    // Merge options
     let options_with_prompt = SetupOptions {
         prompt_file_path,
+        working_dir,
+        config_root,
         ..options
     };
     let mut result = setup::setup_environment(

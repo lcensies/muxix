@@ -105,6 +105,22 @@ pub fn get_repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
+/// Get the root directory of the git repository containing the given path.
+/// Uses `git -C <dir>` to run git from the target directory.
+pub fn get_repo_root_for(dir: &Path) -> Result<PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["-C", &dir.to_string_lossy(), "rev-parse", "--show-toplevel"])
+        .output()
+        .context("Failed to run git rev-parse")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Not a git repository: {}", dir.display());
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(PathBuf::from(path))
+}
+
 /// Get the common git directory (shared across all worktrees).
 ///
 /// This returns the absolute path where git stores shared data like refs, objects, and config.

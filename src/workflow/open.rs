@@ -79,13 +79,38 @@ pub fn open(
         (base_handle, None)
     };
 
+    // Compute working directory from config location
+    let working_dir = if !context.config_rel_dir.as_os_str().is_empty() {
+        let subdir_in_worktree = worktree_path.join(&context.config_rel_dir);
+        if subdir_in_worktree.exists() {
+            Some(subdir_in_worktree)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Use config_source_dir for file operations (the directory where config was found)
+    let config_root = if !context.config_rel_dir.as_os_str().is_empty() {
+        Some(context.config_source_dir.clone())
+    } else {
+        None
+    };
+
+    let options_with_workdir = SetupOptions {
+        working_dir,
+        config_root,
+        ..options
+    };
+
     // Setup the environment
     let result = setup::setup_environment(
         &branch_name,
         &handle,
         &worktree_path,
         &context.config,
-        &options,
+        &options_with_workdir,
         None,
         after_window,
     )?;
