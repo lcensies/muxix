@@ -112,24 +112,3 @@ just pyright     # Type check Python tests
 
 5. **Update docs**: If adding features, update relevant documentation in `docs/`
    or `README.md`.
-
-## Project structure
-
-```
-src/
-  multiplexer/       # Backend abstraction (Multiplexer trait)
-    mod.rs           # Trait definition
-    tmux.rs          # tmux implementation
-    wezterm.rs       # WezTerm implementation
-  command/           # CLI commands (add, open, merge, etc.)
-  state/             # Filesystem-based agent state
-tests/
-  conftest.py        # Test fixtures and helpers
-  test_*.py          # Test files
-docs/
-  guide/             # User guides
-```
-
-## Questions?
-
-Open an issue or discussion if you have questions about contributing.

@@ -1984,9 +1984,11 @@ for managing parallel workflows without requiring a separate interface to learn.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+Bug reports and feature suggestions are always welcome via issues or
+discussions. Large and/or complex PRs, especially without prior discussion, may
+not get merged. Thanks for contributing!
 
-Bug reports and feature suggestions are welcome via issues or discussions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
 
 ## Related projects
 
