@@ -483,7 +483,12 @@ pub fn navigate_to_target_and_close(
     );
 
     // Prepare escaped window names for tmux commands
-    let source_full = prefixed(prefix, source_handle);
+    // Use the actual window name from window_to_close_later when available (includes -N suffix),
+    // otherwise fall back to the base prefixed name
+    let source_full = cleanup_result
+        .window_to_close_later
+        .clone()
+        .unwrap_or_else(|| prefixed(prefix, source_handle));
     let target_full = prefixed(prefix, target_window_name);
     let source_escaped = shell_escape(&format!("={}", source_full));
     let target_escaped = shell_escape(&format!("={}", target_full));
