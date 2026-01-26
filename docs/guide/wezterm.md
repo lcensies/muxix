@@ -2,7 +2,7 @@
 description: Use WezTerm as an alternative multiplexer backend
 ---
 
-# WezTerm Backend
+# WezTerm backend
 
 > **Support Level: Experimental**
 > The WezTerm backend is new and experimental. Expect rough edges and potential issues.
@@ -30,7 +30,7 @@ workmux automatically uses WezTerm when it detects the `$WEZTERM_PANE` environme
 - Windows is **not supported**
 - **Required WezTerm configuration** (see below)
 
-## Required WezTerm Configuration
+## Required WezTerm configuration
 
 workmux relies on WezTerm's environment variables (`WEZTERM_PANE`, `WEZTERM_UNIX_SOCKET`) being consistent across all panes. This requires connecting to the mux server on startup.
 
@@ -61,7 +61,7 @@ Additionally, if you have custom keybindings for creating tabs, ensure they use 
 
 Without this configuration, panes created via keybindings may connect to a different socket than panes created by workmux, causing state inconsistencies.
 
-## Cross-Workspace Navigation
+## Cross-workspace navigation
 
 The dashboard can show agents from all workspaces with `--all` (or pressing `a`). However, WezTerm's CLI cannot directly switch workspaces. To enable jumping to tabs in other workspaces, add this to your `wezterm.lua`:
 
@@ -95,7 +95,7 @@ end)
 
 Without this configuration, the dashboard can display agents from all workspaces but jumping to panes in other workspaces will not work.
 
-## Known Limitations
+## Known limitations
 
 - Windows is not supported (requires Unix-specific features)
 - Cross-workspace jumping requires Lua config (see above)
