@@ -380,9 +380,6 @@ def test_close_in_duplicate_window_closes_correct_window(
     assert base_window in list_windows, "Original window should still exist"
 
 
-@pytest.mark.xfail(
-    reason="Known bug: workmux remove doesn't close all duplicate windows (only base and -2, not -3+)"
-)
 def test_remove_closes_all_duplicate_windows(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
