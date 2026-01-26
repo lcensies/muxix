@@ -1955,7 +1955,15 @@ workmux completions fish | source
 
 - Rust (for building)
 - Git 2.5+ (for worktree support)
-- tmux
+- tmux (or an alternative backend)
+
+### Alternative Backends
+
+While tmux is the primary and recommended backend, workmux also supports alternative terminal multiplexers:
+
+- **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer WezTerm's features
+
+Set `WORKMUX_BACKEND=wezterm` or configure in `~/.config/workmux/config.yaml`.
 
 ## Inspiration and related tools
 

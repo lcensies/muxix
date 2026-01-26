@@ -4,6 +4,7 @@
 //! before sending commands to a pane.
 
 use anyhow::{Context, Result, anyhow};
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, trace, warn};
@@ -18,6 +19,15 @@ pub trait PaneHandshake: Send {
     /// Returns the command that wraps the shell to signal readiness.
     /// This is formatted for shell evaluation (e.g., passing to tmux).
     fn wrapper_command(&self, shell: &str) -> String;
+
+    /// Returns the script content for direct execution.
+    /// Use this when the caller will invoke `sh -c <script>` directly
+    /// (e.g., WezTerm which takes command arguments separately).
+    fn script_content(&self, shell: &str) -> String {
+        // Default: extract script from wrapper_command
+        // Subclasses can override for cleaner scripts
+        self.wrapper_command(shell)
+    }
 
     /// Waits for the handshake signal, consuming the handshake object.
     fn wait(self: Box<Self>) -> Result<()>;
@@ -161,5 +171,114 @@ impl PaneHandshake for TmuxHandshake {
                 }
             }
         }
+    }
+}
+
+/// Unix named pipe (FIFO) based handshake for backends without wait-for.
+///
+/// Used by WezTerm and other backends that don't have a built-in synchronization
+/// mechanism like tmux's wait-for.
+#[cfg(unix)]
+pub struct UnixPipeHandshake {
+    pipe_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl UnixPipeHandshake {
+    /// Create a new pipe handshake.
+    ///
+    /// Creates a named pipe (FIFO) that the shell will write to when ready.
+    pub fn new() -> Result<Self> {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let pid = std::process::id();
+
+        let pipe_path = std::env::temp_dir().join(format!("workmux_pipe_{}_{}", pid, nanos));
+
+        std::process::Command::new("mkfifo")
+            .arg(&pipe_path)
+            .status()
+            .context("Failed to create named pipe")?;
+
+        Ok(Self { pipe_path })
+    }
+}
+
+#[cfg(unix)]
+impl PaneHandshake for UnixPipeHandshake {
+    fn wrapper_command(&self, shell: &str) -> String {
+        let escaped_shell = super::util::escape_for_sh_c_inner_single_quote(shell);
+        format!(
+            "sh -c 'echo ready > {}; exec '\\''{}'\\'' -l'",
+            self.pipe_path.display(),
+            escaped_shell
+        )
+    }
+
+    fn script_content(&self, shell: &str) -> String {
+        // Simple script without complex escaping - caller passes directly to sh -c
+        format!(
+            "echo ready > {}; exec '{}' -l",
+            self.pipe_path.display(),
+            shell
+        )
+    }
+
+    fn wait(self: Box<Self>) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::io::AsRawFd;
+
+        const POLL_INTERVAL_MS: u64 = 50;
+
+        // Open pipe for reading (non-blocking)
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&self.pipe_path)
+            .context("Failed to open pipe for reading")?;
+
+        let fd = file.as_raw_fd();
+        let start = Instant::now();
+        let timeout = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
+
+        loop {
+            // Check if data available via poll()
+            let mut pollfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+
+            let poll_timeout_ms = POLL_INTERVAL_MS as i32;
+            let ret = unsafe { libc::poll(&mut pollfd, 1, poll_timeout_ms) };
+
+            if ret > 0 && (pollfd.revents & libc::POLLIN) != 0 {
+                // Data available - read and succeed
+                let mut buf = [0u8; 64];
+                let _ = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                let _ = std::fs::remove_file(&self.pipe_path);
+                return Ok(());
+            }
+
+            if start.elapsed() >= timeout {
+                let _ = std::fs::remove_file(&self.pipe_path);
+                return Err(anyhow!(
+                    "Pane handshake timed out after {}s - shell may have failed to start",
+                    HANDSHAKE_TIMEOUT_SECS
+                ));
+            }
+
+            // Continue polling
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for UnixPipeHandshake {
+    fn drop(&mut self) {
+        // Clean up the pipe file if it still exists
+        let _ = std::fs::remove_file(&self.pipe_path);
     }
 }

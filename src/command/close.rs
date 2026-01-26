@@ -10,14 +10,16 @@ pub fn run(name: Option<&str>) -> Result<()> {
     // When no name is provided, prefer the current window name
     // This handles duplicate windows (e.g., wm:feature-2) correctly
     let (full_window_name, is_current_window) = match name {
-        Some(handle) => {
-            // Explicit name provided - validate the worktree exists
-            git::find_worktree(handle).with_context(|| {
+        Some(name) => {
+            // Explicit name provided - validate the worktree exists and get path
+            let (path, _branch) = git::find_worktree(name).with_context(|| {
                 format!(
                     "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
-                    handle
+                    name
                 )
             })?;
+            // Extract actual handle from worktree path (directory name)
+            let handle = path.file_name().and_then(|n| n.to_str()).unwrap_or(name);
             let prefixed = util::prefixed(prefix, handle);
             let current_window = mux.current_window_name()?;
             let is_current = current_window.as_deref() == Some(&prefixed);

@@ -3089,6 +3089,7 @@ version = "0.1.98"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
+ "base64",
  "clap",
  "clap_complete",
  "console",
@@ -3099,6 +3100,7 @@ dependencies = [
  "glob",
  "home",
  "indicatif",
+ "libc",
  "mac-notification-sys",
  "minijinja",
  "notify-rust",

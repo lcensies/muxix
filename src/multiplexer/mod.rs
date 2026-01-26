@@ -8,6 +8,7 @@ pub mod handshake;
 pub mod tmux;
 pub mod types;
 pub mod util;
+pub mod wezterm;
 
 use anyhow::Result;
 use std::collections::HashSet;
@@ -151,6 +152,15 @@ pub trait Multiplexer: Send + Sync {
 
     // === Multi-Session/Workspace Support ===
 
+    /// Get the current session/workspace name, if determinable.
+    ///
+    /// Returns None if not running inside the multiplexer.
+    /// For tmux, this is the session name. For WezTerm, this is the workspace name.
+    #[allow(dead_code)] // Reserved for future multi-session features
+    fn current_session(&self) -> Option<String> {
+        None // Default: can't determine
+    }
+
     /// Get all window names across ALL sessions/workspaces.
     ///
     /// Default implementation returns same as get_all_window_names() (single session).
@@ -168,7 +178,7 @@ pub trait Multiplexer: Send + Sync {
     /// of the same backend are running (e.g., multiple tmux servers).
     ///
     /// For tmux: socket path or "default" for standard socket
-    /// For WezTerm: mux domain ID
+    /// For WezTerm: mux domain ID or workspace name
     fn instance_id(&self) -> String;
 
     /// Get live pane info including PID and current command.
@@ -223,9 +233,6 @@ pub fn detect_backend(config: &Config) -> BackendType {
 pub fn create_backend(backend_type: BackendType) -> Arc<dyn Multiplexer> {
     match backend_type {
         BackendType::Tmux => Arc::new(TmuxBackend::new()),
-        BackendType::WezTerm => {
-            // WezTerm backend not yet implemented
-            panic!("WezTerm backend is not yet available")
-        }
+        BackendType::WezTerm => Arc::new(wezterm::WezTermBackend::new()),
     }
 }

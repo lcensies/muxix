@@ -72,8 +72,8 @@ fn read_stdin_lines() -> Result<Vec<String>> {
 /// Returns Ok(()) if all preconditions are met, or an error listing all failures.
 fn check_preconditions() -> Result<()> {
     let is_git = git::is_git_repo()?;
-    // Use default config to detect backend for precondition check
-    let config = config::Config::default();
+    // Load config to detect backend for precondition check
+    let config = config::Config::load(None)?;
     let mux = create_backend(detect_backend(&config));
     let is_mux_running = mux.is_running()?;
 
@@ -469,8 +469,8 @@ impl<'a> CreationPlan<'a> {
         }
 
         // Create backend once for all specs (backend selection is consistent across agents)
-        let default_config = config::Config::default();
-        let mux = create_backend(detect_backend(&default_config));
+        let config = config::Config::load(None)?;
+        let mux = create_backend(detect_backend(&config));
 
         // Track windows for --wait (all created windows)
         let mut created_windows = Vec::new();
