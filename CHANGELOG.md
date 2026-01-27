@@ -14,6 +14,23 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.100 (2026-01-26)
+
+- Added nested config support for monorepos: place a `.workmux.yaml` in any
+  subdirectory to configure that project independently. When you run workmux
+  from a subdirectory, it finds the nearest config. Working directory, file
+  operations, and hooks are all scoped to the config directory.
+  ([#39](https://github.com/raine/workmux/issues/39))
+- Added `WM_CONFIG_DIR` environment variable for hooks, pointing to the
+  directory containing the `.workmux.yaml` that was used
+
+## v0.1.99 (2026-01-24)
+
+- Dashboard: Detect and clear working agents that have stalled, for example due
+  to being interrupted
+- Fixed `last-done` command intermittently failing when switching to recently
+  completed agents
+
 ## v0.1.98 (2026-01-23)
 
 - Tmux window names now use a nerdfont git branch icon as the default prefix
