@@ -691,8 +691,10 @@ impl Multiplexer for TmuxBackend {
     // === State Reconciliation ===
 
     fn instance_id(&self) -> String {
-        // Check TMUX environment variable for socket path
-        // Format: /path/to/socket,pid,session_index
+        // TMUX env var format: /path/to/socket,pid,session_index
+        // We use only the socket path, which identifies the tmux server.
+        // All sessions on the same server share one socket, so instance_id
+        // is per-server, not per-session.
         std::env::var("TMUX")
             .ok()
             .and_then(|tmux| tmux.split(',').next().map(String::from))
