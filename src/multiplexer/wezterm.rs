@@ -801,9 +801,10 @@ impl Multiplexer for WezTermBackend {
     // === State Reconciliation ===
 
     fn instance_id(&self) -> String {
-        // Use the current workspace as instance ID, or "default" if not available
-        self.current_workspace()
-            .unwrap_or_else(|| "default".to_string())
+        // Use the unix socket path as instance ID so all workspaces on the same
+        // WezTerm server share one instance — matching tmux behavior where all
+        // sessions on the same server are visible in the dashboard.
+        std::env::var("WEZTERM_UNIX_SOCKET").unwrap_or_else(|_| "default".to_string())
     }
 
     fn active_pane_id(&self) -> Option<String> {
