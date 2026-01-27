@@ -83,7 +83,7 @@ Add a tmux keybinding for quick access:
 
 ```bash
 # ~/.tmux.conf
-bind-key L run-shell "workmux last-done"
+bind l run-shell "workmux last-done"
 ```
 
-Then press `prefix + L` to jump to the last completed agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to review their work in the order they finished.
+Then press `prefix + l` to jump to the last completed agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to review their work in the order they finished.
