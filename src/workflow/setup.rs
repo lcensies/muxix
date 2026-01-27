@@ -62,6 +62,12 @@ pub fn setup_environment(
         );
     }
 
+    // Auto-symlink CLAUDE.local.md from main worktree if it exists and is gitignored
+    if options.run_file_ops {
+        symlink_claude_local_md(&repo_root, effective_working_dir)
+            .context("Failed to auto-symlink CLAUDE.local.md")?;
+    }
+
     // Run post-create hooks before opening tmux so the new window appears "ready"
     let mut hooks_run = 0;
     if options.run_hooks
@@ -703,6 +709,38 @@ mod tests {
         // Cleanup
         let _ = std::fs::remove_file(path);
     }
+}
+
+/// Symlink CLAUDE.local.md from main worktree if it exists and is gitignored.
+fn symlink_claude_local_md(repo_root: &Path, worktree_path: &Path) -> Result<()> {
+    let source = repo_root.join("CLAUDE.local.md");
+    if !source.exists() {
+        return Ok(());
+    }
+
+    if !git::is_path_ignored(repo_root, "CLAUDE.local.md") {
+        return Ok(());
+    }
+
+    let dest = worktree_path.join("CLAUDE.local.md");
+    if dest.symlink_metadata().is_ok() {
+        // Already exists (file, symlink, or dir) -- skip
+        return Ok(());
+    }
+
+    let relative_source = pathdiff::diff_paths(&source, worktree_path)
+        .ok_or_else(|| anyhow!("Could not create relative path for CLAUDE.local.md symlink"))?;
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&relative_source, &dest)
+        .context("Failed to symlink CLAUDE.local.md")?;
+
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&relative_source, &dest)
+        .context("Failed to symlink CLAUDE.local.md")?;
+
+    info!("Symlinked CLAUDE.local.md to worktree");
+    Ok(())
 }
 
 /// Validates that a prompt will actually be consumed by an agent pane.
