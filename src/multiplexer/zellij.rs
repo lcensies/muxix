@@ -417,6 +417,15 @@ impl Multiplexer for ZellijBackend {
         Ok(())
     }
 
+    fn clear_pane(&self, _pane_id: &str) -> Result<()> {
+        // Clear the focused pane to hide handshake setup commands
+        Cmd::new("zellij")
+            .args(&["action", "clear"])
+            .run()
+            .context("Failed to clear pane")?;
+        Ok(())
+    }
+
     // === Shell ===
 
     fn get_default_shell(&self) -> Result<String> {

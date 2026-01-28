@@ -185,6 +185,11 @@ pub trait Multiplexer: Send + Sync {
     /// Paste multiline content to a pane (using bracketed paste)
     fn paste_multiline(&self, pane_id: &str, content: &str) -> Result<()>;
 
+    /// Clear the pane screen. Default is no-op; backends override if needed.
+    fn clear_pane(&self, _pane_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     // === Shell ===
 
     /// Get the default shell for new panes
@@ -367,6 +372,7 @@ pub trait Multiplexer: Send + Sync {
                     resolved.command.clone()
                 };
 
+                let _ = self.clear_pane(&spawned_id);
                 self.send_keys(&spawned_id, &final_command)?;
 
                 // Set working status for agent panes with injected prompts
