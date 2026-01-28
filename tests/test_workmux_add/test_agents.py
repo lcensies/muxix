@@ -7,6 +7,7 @@ from pathlib import Path
 from ..conftest import (
     MuxEnvironment,
     FakeAgentInstaller,
+    ShellCommands,
     assert_prompt_file_contents,
     assert_window_exists,
     get_window_name,
@@ -28,6 +29,7 @@ class TestInlinePrompts:
         workmux_exe_path: Path,
         mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Inline prompts should be written to PROMPT.md and passed to claude via command substitution."""
         env = mux_server
@@ -36,7 +38,10 @@ class TestInlinePrompts:
         output_filename = "claude_prompt.txt"
         window_name = get_window_name(branch_name)
 
-        fake_claude_path = fake_agent_installer.install(
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
+        fake_agent_installer.install(
             "claude",
             f"""#!/bin/sh
 # Debug: log all arguments
@@ -51,8 +56,17 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Use absolute path to ensure we use the fake claude
-        write_workmux_config(mux_repo_path, panes=[{"command": str(fake_claude_path)}])
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Use agent name - shell will find it via PATH from RC file
+        write_workmux_config(
+            mux_repo_path, agent="claude", panes=[{"command": "<agent>"}]
+        )
 
         worktree_path = add_branch_and_get_worktree(
             env,
@@ -71,7 +85,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
             debug_log_path=debug_output,
@@ -89,6 +103,7 @@ class TestPromptFile:
         workmux_exe_path: Path,
         mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Prompt file flag should populate PROMPT.md and pass it to gemini via command substitution."""
         env = mux_server
@@ -98,7 +113,10 @@ class TestPromptFile:
         prompt_source.write_text("File-based instructions")
         output_filename = "gemini_prompt.txt"
 
-        fake_gemini_path = fake_agent_installer.install(
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
+        fake_agent_installer.install(
             "gemini",
             f"""#!/bin/sh
 set -e
@@ -112,9 +130,16 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Use absolute path to ensure we use the fake gemini
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Use agent name - shell will find it via PATH from RC file
         write_workmux_config(
-            mux_repo_path, agent="gemini", panes=[{"command": str(fake_gemini_path)}]
+            mux_repo_path, agent="gemini", panes=[{"command": "<agent>"}]
         )
 
         worktree_path = add_branch_and_get_worktree(
@@ -133,7 +158,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -149,6 +174,7 @@ class TestAgentConfig:
         workmux_exe_path: Path,
         mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """The <agent> placeholder should use the agent configured in .workmux.yaml when --agent is not passed."""
         env = mux_server
@@ -157,8 +183,11 @@ class TestAgentConfig:
         prompt_text = "Using configured agent"
         output_filename = "agent_output.txt"
 
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
         # Install fake gemini agent
-        fake_gemini_path = fake_agent_installer.install(
+        fake_agent_installer.install(
             "gemini",
             f"""#!/bin/sh
 set -e
@@ -167,9 +196,16 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Configure .workmux.yaml to use the absolute path to the fake agent
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Configure .workmux.yaml to use the agent name (found via PATH)
         write_workmux_config(
-            mux_repo_path, agent=str(fake_gemini_path), panes=[{"command": "<agent>"}]
+            mux_repo_path, agent="gemini", panes=[{"command": "<agent>"}]
         )
 
         # Run 'add' WITHOUT --agent flag, should use gemini from config
@@ -186,7 +222,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -649,6 +685,7 @@ class TestShellAliases:
         workmux_exe_path: Path,
         mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Verifies that the <agent> placeholder triggers aliases defined in shell rc files."""
         env = mux_server
@@ -657,20 +694,19 @@ class TestShellAliases:
         marker_content = "alias_was_expanded"
 
         # Configure the default shell
-        env.configure_default_shell("/bin/zsh")
+        env.configure_default_shell(shell_cmd.path)
 
         # Get the path where the fake agent will be installed
         fake_bin_dir = fake_agent_installer.bin_dir
 
-        # Write a .zshrc that prepends our fake bin to the PATH and defines the alias.
-        # This ensures the shell finds our fake `claude` before any system-wide one.
-        (env.home_path / ".zshrc").write_text(
-            f"""
-export PATH="{fake_bin_dir}:$PATH"
-alias claude='claude --aliased'
-""".strip()
-            + "\n"
-        )
+        # Write shell-appropriate RC file that prepends our fake bin to PATH and defines alias
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_content = f"""
+{shell_cmd.prepend_path(str(fake_bin_dir))}
+{shell_cmd.alias("claude", "claude --aliased")}
+"""
+        rc_path.write_text(rc_content.strip() + "\n")
 
         fake_agent_installer.install(
             "claude",
@@ -699,7 +735,7 @@ exit 1
         wait_for_file(
             env,
             marker_file,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells like nushell
             window_name=window_name,
             worktree_path=worktree_path,
         )

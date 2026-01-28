@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..conftest import (
     MuxEnvironment,
+    ShellCommands,
     get_window_name,
     wait_for_pane_output,
     write_workmux_config,
@@ -114,25 +115,27 @@ class TestShellRcFiles:
         mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         mux_repo_path: Path,
+        shell_cmd: ShellCommands,
     ):
-        """Verifies that shell rc files (.zshrc) are sourced and aliases work in pane commands."""
+        """Verifies that pane commands run in a shell that has sourced its rc file."""
         env = mux_server
         branch_name = "feature-aliases"
         window_name = get_window_name(branch_name)
         alias_output = "custom_alias_worked_correctly"
 
         # Configure the default shell
-        env.configure_default_shell("/bin/zsh")
+        env.configure_default_shell(shell_cmd.path)
 
-        # The environment now provides an isolated HOME directory.
-        # Write the .zshrc file there.
-        zshrc_content = f"""
+        # Write the appropriate RC file for this shell
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_content = f"""
 # Test alias
-alias testcmd='echo "{alias_output}"'
+{shell_cmd.alias("testcmd", f'echo "{alias_output}"')}
 """
-        (env.home_path / ".zshrc").write_text(zshrc_content)
+        rc_path.write_text(rc_content)
 
-        write_workmux_config(mux_repo_path, panes=[{"command": "testcmd; sleep 0.5"}])
+        write_workmux_config(mux_repo_path, panes=[{"command": "testcmd"}])
 
         add_branch_and_get_worktree(env, workmux_exe_path, mux_repo_path, branch_name)
 
@@ -140,5 +143,5 @@ alias testcmd='echo "{alias_output}"'
             env,
             window_name,
             alias_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells like nushell
         )

@@ -18,6 +18,120 @@ import yaml
 
 
 # =============================================================================
+# Shell Testing Configuration
+# =============================================================================
+
+# Shell names to test - paths are discovered dynamically via shutil.which()
+SHELL_NAMES = ["bash", "zsh", "fish", "nu"]
+
+
+@dataclass
+class ShellCommands:
+    """Shell-specific command generation for multi-shell testing."""
+
+    path: str
+
+    @property
+    def name(self) -> str:
+        """Return shell name (e.g., 'zsh', 'bash', 'fish', 'nu')."""
+        return Path(self.path).name
+
+    @property
+    def rc_filename(self) -> str:
+        """Return the RC file path relative to HOME for this shell.
+
+        Note: Bash uses .bash_profile because tmux spawns login shells (-l),
+        which read .bash_profile, not .bashrc.
+        """
+        return {
+            "bash": ".bash_profile",
+            "zsh": ".zshrc",
+            "fish": ".config/fish/config.fish",
+            "nu": ".config/nushell/config.nu",
+        }[self.name]
+
+    def set_env(self, var: str, value: str) -> str:
+        """Generate shell-specific environment variable export statement.
+
+        Note: Do not use this for PATH - use prepend_path() instead.
+        """
+        match self.name:
+            case "fish":
+                return f"set -gx {var} '{value}'"
+            case "nu":
+                return f"$env.{var} = '{value}'"
+            case _:
+                return f"export {var}='{value}'"
+
+    def env_ref(self, var: str) -> str:
+        """Return shell-specific syntax for referencing an environment variable."""
+        match self.name:
+            case "nu":
+                return f"$env.{var}"
+            case _:
+                return f"${var}"
+
+    def prepend_path(self, dir_path: str) -> str:
+        """Generate shell-specific command to prepend a directory to PATH.
+
+        Fish and nushell treat PATH as a list, not a colon-separated string,
+        so they need special handling.
+        """
+        match self.name:
+            case "fish":
+                return f"set -gx PATH '{dir_path}' $PATH"
+            case "nu":
+                return f"$env.PATH = ($env.PATH | prepend '{dir_path}')"
+            case _:
+                return f"export PATH='{dir_path}':$PATH"
+
+    def alias(self, name: str, command: str) -> str:
+        """Generate shell-specific alias definition.
+
+        Note: Nushell aliases use `alias name = cmd` syntax. The ^ prefix
+        forces nushell to call the external command rather than recursing.
+        """
+        match self.name:
+            case "fish":
+                return f"alias {name} '{command}'"
+            case "nu":
+                # Use ^ to call external command, avoiding infinite recursion
+                return f"alias {name} = ^{command}"
+            case _:
+                return f"alias {name}='{command}'"
+
+    def append_to_file(self, text: str, file_path: str) -> str:
+        """Generate shell-specific command to append text to a file."""
+        match self.name:
+            case "nu":
+                return f'"{text}" | save --append {file_path}'
+            case _:
+                return f"echo '{text}' >> {file_path}"
+
+
+def get_shells_to_test() -> list[str]:
+    """Return list of shell paths to test based on environment variables.
+
+    Environment variables:
+        TEST_SHELL: Test a specific shell only (e.g., "fish", "nu", "bash", "zsh")
+
+    By default, tests run against all installed shells (bash, zsh, fish, nu).
+    Uses shutil.which() to discover actual shell paths rather than hardcoding,
+    ensuring portability across different systems (Linux, macOS, Homebrew, etc.).
+    """
+    # Test a specific shell
+    if specific_shell := os.environ.get("TEST_SHELL"):
+        path = shutil.which(specific_shell)
+        if path:
+            return [path]
+        raise ValueError(f"Shell '{specific_shell}' not found")
+
+    # Default: test all installed shells
+    shells = [p for p in (shutil.which(name) for name in SHELL_NAMES) if p]
+    return shells if shells else ["/bin/sh"]
+
+
+# =============================================================================
 # Backend Selection for Tests
 # =============================================================================
 #
@@ -63,6 +177,7 @@ class MuxEnvironment(ABC):
         # Explicitly set XDG_STATE_HOME to ensure state files are isolated
         # (config uses $HOME/.config/ directly, so HOME isolation handles that)
         self.env["XDG_STATE_HOME"] = str(self.home_path / ".local" / "state")
+        self.env["XDG_CONFIG_HOME"] = str(self.home_path / ".config")
 
         # Create fake git editor
         fake_editor_script = self.home_path / "fake_git_editor.sh"
@@ -930,6 +1045,22 @@ def mux_server(request, tmp_path: Path) -> Generator[MuxEnvironment, None, None]
     test_env.start_server()
     yield test_env
     test_env.stop_server()
+
+
+@pytest.fixture(params=get_shells_to_test(), ids=lambda s: Path(s).name)
+def shell_cmd(request) -> ShellCommands:
+    """
+    Fixture providing shell-specific command helpers.
+
+    By default, tests run with zsh only. To test all available shells:
+        TEST_ALL_SHELLS=1 pytest tests/
+
+    Tests using this fixture will run once per enabled shell.
+    """
+    shell_path = request.param
+    if not os.path.exists(shell_path):
+        pytest.skip(f"Shell {shell_path} not available")
+    return ShellCommands(shell_path)
 
 
 def setup_git_repo(path: Path, env_vars: Optional[dict] = None):
