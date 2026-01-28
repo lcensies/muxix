@@ -11,6 +11,7 @@ pub mod tmux;
 pub mod types;
 pub mod util;
 pub mod wezterm;
+pub mod zellij;
 
 use anyhow::{Result, anyhow};
 use std::collections::HashSet;
@@ -470,8 +471,9 @@ pub trait Multiplexer: Send + Sync {
 /// 1. `$WORKMUX_BACKEND` set → use that backend
 /// 2. `$TMUX` set → tmux
 /// 3. `$WEZTERM_PANE` set → WezTerm
-/// 4. `$KITTY_WINDOW_ID` set → Kitty
-/// 5. None → defaults to tmux (for backward compatibility)
+/// 4. `$ZELLIJ` set → Zellij
+/// 5. `$KITTY_WINDOW_ID` set → Kitty
+/// 6. None → defaults to tmux (for backward compatibility)
 ///
 /// This ordering ensures that running tmux inside kitty (or wezterm) correctly
 /// selects the innermost multiplexer.
@@ -480,7 +482,7 @@ pub fn detect_backend() -> BackendType {
         match val.parse() {
             Ok(bt) => return bt,
             Err(_) => {
-                eprintln!("workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty");
+                eprintln!("workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty|zellij");
             }
         }
     }
@@ -488,18 +490,23 @@ pub fn detect_backend() -> BackendType {
     resolve_backend(
         std::env::var("TMUX").is_ok(),
         std::env::var("WEZTERM_PANE").is_ok(),
+        std::env::var("ZELLIJ").is_ok(),
         std::env::var("KITTY_WINDOW_ID").is_ok(),
     )
 }
 
 /// Pure auto-detection logic, separated for testability.
-fn resolve_backend(tmux: bool, wezterm: bool, kitty: bool) -> BackendType {
+fn resolve_backend(tmux: bool, wezterm: bool, zellij: bool, kitty: bool) -> BackendType {
     if tmux {
         return BackendType::Tmux;
     }
 
     if wezterm {
         return BackendType::WezTerm;
+    }
+
+    if zellij {
+        return BackendType::Zellij;
     }
 
     if kitty {
@@ -515,6 +522,7 @@ pub fn create_backend(backend_type: BackendType) -> Arc<dyn Multiplexer> {
         BackendType::Tmux => Arc::new(TmuxBackend::new()),
         BackendType::WezTerm => Arc::new(wezterm::WezTermBackend::new()),
         BackendType::Kitty => Arc::new(kitty::KittyBackend::new()),
+        BackendType::Zellij => Arc::new(zellij::ZellijBackend::new()),
     }
 }
 
@@ -524,41 +532,56 @@ mod tests {
 
     #[test]
     fn no_env_defaults_to_tmux() {
-        assert_eq!(resolve_backend(false, false, false), BackendType::Tmux);
+        assert_eq!(resolve_backend(false, false, false, false), BackendType::Tmux);
     }
 
     #[test]
     fn tmux_only() {
-        assert_eq!(resolve_backend(true, false, false), BackendType::Tmux);
+        assert_eq!(resolve_backend(true, false, false, false), BackendType::Tmux);
     }
 
     #[test]
     fn wezterm_only() {
-        assert_eq!(resolve_backend(false, true, false), BackendType::WezTerm);
+        assert_eq!(resolve_backend(false, true, false, false), BackendType::WezTerm);
+    }
+
+    #[test]
+    fn zellij_only() {
+        assert_eq!(resolve_backend(false, false, true, false), BackendType::Zellij);
     }
 
     #[test]
     fn kitty_only() {
-        assert_eq!(resolve_backend(false, false, true), BackendType::Kitty);
+        assert_eq!(resolve_backend(false, false, false, true), BackendType::Kitty);
     }
 
     #[test]
     fn tmux_inside_kitty() {
-        assert_eq!(resolve_backend(true, false, true), BackendType::Tmux);
+        assert_eq!(resolve_backend(true, false, false, true), BackendType::Tmux);
     }
 
     #[test]
     fn tmux_inside_wezterm() {
-        assert_eq!(resolve_backend(true, true, false), BackendType::Tmux);
+        assert_eq!(resolve_backend(true, true, false, false), BackendType::Tmux);
+    }
+
+    #[test]
+    fn tmux_inside_zellij() {
+        assert_eq!(resolve_backend(true, false, true, false), BackendType::Tmux);
     }
 
     #[test]
     fn wezterm_inside_kitty() {
-        assert_eq!(resolve_backend(false, true, true), BackendType::WezTerm);
+        assert_eq!(resolve_backend(false, true, false, true), BackendType::WezTerm);
+    }
+
+    #[test]
+    fn zellij_inside_kitty() {
+        assert_eq!(resolve_backend(false, false, true, true), BackendType::Zellij);
     }
 
     #[test]
     fn all_env_vars_set() {
-        assert_eq!(resolve_backend(true, true, true), BackendType::Tmux);
+        assert_eq!(resolve_backend(true, true, true, true), BackendType::Tmux);
     }
 }
