@@ -149,7 +149,9 @@ impl Multiplexer for ZellijBackend {
         let original_tab = std::env::var("ZELLIJ_TAB_NAME").ok();
 
         Cmd::new("zellij")
-            .args(&["action", "new-tab", "--name", &full_name, "--cwd", cwd_str])
+            .args(&[
+                "action", "new-tab", "--layout", "default", "--name", &full_name, "--cwd", cwd_str,
+            ])
             .run()
             .with_context(|| format!("Failed to create zellij tab '{}'", full_name))?;
 
