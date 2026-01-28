@@ -792,6 +792,7 @@ impl Multiplexer for TmuxBackend {
         Ok(panes)
     }
 
+
     fn schedule_cleanup_and_close(
         &self,
         source_window: &str,

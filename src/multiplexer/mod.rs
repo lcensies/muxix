@@ -466,6 +466,7 @@ pub trait Multiplexer: Send + Sync {
     /// than calling get_live_pane_info repeatedly when validating many panes.
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>>;
 
+
     // === Deferred Cleanup ===
 
     /// Schedule a sequence of cleanup operations after a delay:
