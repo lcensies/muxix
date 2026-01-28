@@ -3,15 +3,6 @@ use crate::multiplexer::{create_backend, detect_backend, util};
 use crate::{config, git, sandbox};
 use anyhow::{Context, Result, anyhow};
 
-/// Determine the tmux target mode for a worktree from git metadata.
-/// Falls back to Window mode if no metadata is found (backward compatibility).
-fn get_worktree_target(handle: &str) -> TmuxTarget {
-    match git::get_worktree_meta(handle, "target") {
-        Some(target) if target == "session" => TmuxTarget::Session,
-        _ => TmuxTarget::Window,
-    }
-}
-
 pub fn run(name: Option<&str>) -> Result<()> {
     let config = config::Config::load(None)?;
     let mux = create_backend(detect_backend());
@@ -24,7 +15,7 @@ pub fn run(name: Option<&str>) -> Result<()> {
     };
 
     // Determine if this worktree was created as a session or window
-    let is_session_mode = get_worktree_target(&resolved_handle) == TmuxTarget::Session;
+    let is_session_mode = git::get_worktree_target(&resolved_handle) == TmuxTarget::Session;
 
     // When no name is provided, prefer the current window/session name
     // This handles duplicate windows/sessions (e.g., wm:feature-2) correctly

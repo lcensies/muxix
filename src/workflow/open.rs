@@ -6,18 +6,10 @@ use crate::git;
 use crate::multiplexer::util::prefixed;
 use tracing::info;
 
+use super::cleanup::get_worktree_target;
 use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
-
-/// Determine the tmux target mode for a worktree from git metadata.
-/// Falls back to Window mode if no metadata is found (backward compatibility).
-fn get_worktree_target(handle: &str) -> TmuxTarget {
-    match git::get_worktree_meta(handle, "target") {
-        Some(target) if target == "session" => TmuxTarget::Session,
-        _ => TmuxTarget::Window,
-    }
-}
 
 /// Open a tmux window for an existing worktree
 pub fn open(
