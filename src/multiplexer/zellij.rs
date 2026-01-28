@@ -629,9 +629,8 @@ impl Multiplexer for ZellijBackend {
 
         let delay_secs = delay.as_secs_f64();
 
-        // Build a robust shell script that survives the window closing
-        // trap '' HUP ensures the script continues even when the PTY is destroyed
-        let mut script = format!("trap '' HUP; sleep {:.1};", delay_secs);
+        // Build the cleanup script
+        let mut script = format!("sleep {:.1};", delay_secs);
 
         // 1. Navigate to target (if exists)
         if let Some(target) = target_window {
@@ -657,9 +656,19 @@ impl Multiplexer for ZellijBackend {
 
         debug!(script = script, "zellij:scheduling cleanup and close");
 
-        // Spawn detached background process
+        // Spawn as fully detached background process using nohup
+        // - Redirect stdin from /dev/null for proper detachment
+        // - Run from root dir to avoid holding a lock on the directory being deleted
+        // - Remove ZELLIJ_PANE_ID to avoid confusing zellij CLI
+        let full_cmd = format!(
+            "nohup sh -c {} </dev/null >/dev/null 2>&1 &",
+            shell_escape(&script)
+        );
+
         std::process::Command::new("sh")
-            .args(["-c", &script])
+            .args(["-c", &full_cmd])
+            .current_dir("/")
+            .env_remove("ZELLIJ_PANE_ID")
             .spawn()
             .context("Failed to spawn cleanup process")?;
 
