@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::config::TmuxTarget;
 use crate::github::PrSummary;
 use crate::multiplexer::AgentStatus;
 use crate::prompt::Prompt;
@@ -77,6 +78,8 @@ pub struct SetupOptions {
     pub config_root: Option<PathBuf>,
     /// If true, open existing worktree instead of failing when it already exists.
     pub open_if_exists: bool,
+    /// Target for tmux operations: window (default) or session
+    pub target: TmuxTarget,
 }
 
 impl SetupOptions {
@@ -92,6 +95,7 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
+            target: TmuxTarget::default(),
         }
     }
 
@@ -106,6 +110,7 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
+            target: TmuxTarget::default(),
         }
     }
 
@@ -126,6 +131,7 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
+            target: TmuxTarget::default(),
         }
     }
 }

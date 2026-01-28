@@ -52,6 +52,17 @@ pub struct CreateWindowParams<'a> {
     pub after_window: Option<&'a str>,
 }
 
+/// Parameters for creating a new session
+#[derive(Debug, Clone)]
+pub struct CreateSessionParams<'a> {
+    /// Prefix for the session name (e.g., "wm-")
+    pub prefix: &'a str,
+    /// Base session name
+    pub name: &'a str,
+    /// Working directory for the session's initial window
+    pub cwd: &'a std::path::Path,
+}
+
 /// Result of setting up panes in a window
 #[derive(Debug, Clone)]
 pub struct PaneSetupResult {

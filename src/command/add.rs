@@ -1,3 +1,4 @@
+use crate::config::TmuxTarget;
 use crate::multiplexer::{create_backend, detect_backend, util::prefixed};
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
@@ -113,6 +114,7 @@ pub fn run(
     rescue: RescueArgs,
     multi: MultiArgs,
     wait: bool,
+    session: bool,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
@@ -136,10 +138,19 @@ pub fn run(
     // Extract sandbox override before consuming setup flags
     let sandbox_override = setup.sandbox;
 
+    // Load config early to determine target (CLI flag overrides config)
+    let initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+    let target = if session {
+        TmuxTarget::Session
+    } else {
+        initial_config.target
+    };
+
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
     options.open_if_exists = setup.open_if_exists;
+    options.target = target;
 
     // If using --auto-name and config has auto_name.background = true, run in background
     if auto_name && options.focus_window {

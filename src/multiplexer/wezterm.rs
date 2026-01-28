@@ -242,6 +242,44 @@ impl Multiplexer for WezTermBackend {
         Ok(pane_id)
     }
 
+    fn create_session(&self, params: CreateSessionParams) -> Result<String> {
+        let full_name = util::prefixed(params.prefix, params.name);
+        let cwd_str = params.cwd.to_string_lossy();
+
+        // WezTerm sessions map to workspaces. Create a new window in a new workspace.
+        // The --workspace flag creates the workspace if it doesn't exist.
+        let output = self
+            .wezterm_cmd()
+            .args(&[
+                "cli",
+                "spawn",
+                "--new-window",
+                "--workspace",
+                &full_name,
+                "--cwd",
+                &*cwd_str,
+            ])
+            .run_and_capture_stdout()
+            .context("Failed to create WezTerm workspace")?;
+
+        let pane_id = output.trim().to_string();
+
+        // Set tab title for consistency
+        self.set_tab_title(&pane_id, &full_name)?;
+
+        Ok(pane_id)
+    }
+
+    fn switch_to_session(&self, prefix: &str, name: &str) -> Result<()> {
+        let full_name = util::prefixed(prefix, name);
+
+        // WezTerm sessions are workspaces. Use escape sequence to trigger workspace switch.
+        // This requires the user to have a Lua handler in their wezterm.lua.
+        send_workspace_switch_signal(&full_name);
+
+        Ok(())
+    }
+
     fn kill_window(&self, full_name: &str) -> Result<()> {
         let panes = self.list_panes()?;
         let current_ws = self.current_workspace();
@@ -885,6 +923,28 @@ impl Multiplexer for WezTermBackend {
             command,
         )
     }
+}
+
+/// Send escape sequence to trigger cross-workspace pane switch via WezTerm's user-var-changed event.
+///
+/// Send escape sequence to trigger workspace switch via WezTerm's user-var-changed event.
+///
+/// This requires the user to have a Lua handler in their wezterm.lua.
+/// See docs/guide/wezterm.md for the required handler.
+///
+/// Without this handler, the escape sequence is silently ignored.
+fn send_workspace_switch_signal(workspace: &str) {
+    use base64::Engine;
+    use std::io::Write;
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(workspace);
+    // OSC 1337 ; SetUserVar=name=base64_value BEL
+    print!(
+        "\x1b]1337;SetUserVar=workmux-switch-workspace={}\x07",
+        encoded
+    );
+    // Flush to ensure it's sent immediately
+    let _ = std::io::stdout().flush();
 }
 
 /// Send escape sequence to trigger cross-workspace pane switch via WezTerm's user-var-changed event.

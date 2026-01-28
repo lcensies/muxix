@@ -230,6 +230,41 @@ impl Multiplexer for TmuxBackend {
         Ok(pane_id.trim().to_string())
     }
 
+    fn create_session(&self, params: CreateSessionParams) -> Result<String> {
+        let prefixed_name = util::prefixed(params.prefix, params.name);
+        let working_dir_str = params
+            .cwd
+            .to_str()
+            .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
+
+        // Create a new detached session with the specified name and working directory
+        // -d: detached (don't switch to it yet)
+        // -s: session name
+        // -c: start directory
+        // -P -F: print the pane ID of the initial window
+        let pane_id = Cmd::new("tmux")
+            .args(&[
+                "new-session",
+                "-d",
+                "-s",
+                &prefixed_name,
+                "-c",
+                working_dir_str,
+                "-P",
+                "-F",
+                "#{pane_id}",
+            ])
+            .run_and_capture_stdout()
+            .context("Failed to create tmux session and get pane ID")?;
+
+        Ok(pane_id.trim().to_string())
+    }
+
+    fn switch_to_session(&self, prefix: &str, name: &str) -> Result<()> {
+        let prefixed_name = util::prefixed(prefix, name);
+        self.tmux_cmd(&["switch-client", "-t", &prefixed_name])
+    }
+
     fn kill_window(&self, full_name: &str) -> Result<()> {
         let target = format!("={}", full_name);
         self.tmux_cmd(&["kill-window", "-t", &target])

@@ -51,6 +51,16 @@ pub trait Multiplexer: Send + Sync {
     /// Create a new window/tab with the given parameters
     fn create_window(&self, params: CreateWindowParams) -> Result<String>;
 
+    /// Create a new session with the given parameters.
+    /// Returns the initial pane ID of the new session.
+    /// For backends that don't support sessions (e.g., WezTerm), this may create a workspace.
+    fn create_session(&self, params: CreateSessionParams) -> Result<String>;
+
+    /// Switch to a session by prefix and name.
+    /// For tmux, this switches the client to the session.
+    /// For WezTerm, this may switch to a workspace.
+    fn switch_to_session(&self, prefix: &str, name: &str) -> Result<()>;
+
     /// Kill a window by its full name (including prefix)
     fn kill_window(&self, full_name: &str) -> Result<()>;
 
