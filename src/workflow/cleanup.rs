@@ -306,7 +306,10 @@ pub fn cleanup(
                 }
             }
             if killed_count > 0 {
-                info!(count = killed_count, target_type, "cleanup:killed duplicate {}s", target_type);
+                info!(
+                    count = killed_count,
+                    target_type, "cleanup:killed duplicate {}s", target_type
+                );
             }
         }
 
@@ -546,8 +549,7 @@ pub fn navigate_to_target_and_close(
             );
             debug!(
                 script = script,
-                target_type,
-                "navigate_to_target_and_close:kill_only_script"
+                target_type, "navigate_to_target_and_close:kill_only_script"
             );
             match mux.run_deferred_script(&script) {
                 Ok(_) => info!(
@@ -602,8 +604,7 @@ pub fn navigate_to_target_and_close(
         );
         debug!(
             script = script,
-            target_type,
-            "navigate_to_target_and_close:nav_and_kill_script"
+            target_type, "navigate_to_target_and_close:nav_and_kill_script"
         );
 
         match mux.run_deferred_script(&script) {

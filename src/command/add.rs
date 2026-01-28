@@ -132,7 +132,7 @@ pub fn run(
         );
     }
 
-    // Ensure preconditions are met (git repo and tmux session)
+    // Ensure preconditions are met (git repo and multiplexer session)
     check_preconditions()?;
 
     // Extract sandbox override before consuming setup flags

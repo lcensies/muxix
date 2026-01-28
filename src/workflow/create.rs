@@ -279,10 +279,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // This allows remove/close/merge to know whether to kill a window or session
     if options.target == TmuxTarget::Session {
         git::set_worktree_meta(handle, "target", "session").with_context(|| {
-            format!(
-                "Failed to store tmux target mode for worktree '{}'",
-                handle
-            )
+            format!("Failed to store tmux target mode for worktree '{}'", handle)
         })?;
         debug!(
             handle = handle,
