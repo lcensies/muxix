@@ -650,7 +650,6 @@ pub fn navigate_to_target_and_close(
     if cleanup_result.window_to_close_later.is_some() {
         // Running inside a matching window: schedule navigation and kill together
         let delay = Duration::from_millis(WINDOW_CLOSE_DELAY_MS);
-        let delay_secs = format!("{:.3}", delay.as_secs_f64());
 
         // Build cleanup script: prefer full deferred cleanup, fall back to trash-only
         let cleanup_script = if let Some(ref dc) = cleanup_result.deferred_cleanup {
@@ -663,10 +662,12 @@ pub fn navigate_to_target_and_close(
                 .unwrap_or_default()
         };
 
-        let select_part = select_target_cmd
-            .as_ref()
-            .map(|cmd| format!("{}; ", cmd))
-            .unwrap_or_default();
+        // Determine target window (only if it exists)
+        let target = if mux_running && target_exists {
+            Some(target_full.as_str())
+        } else {
+            None
+        };
 
         let kill_part = kill_source_cmd
             .as_ref()

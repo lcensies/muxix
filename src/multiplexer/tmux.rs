@@ -791,8 +791,54 @@ impl Multiplexer for TmuxBackend {
 
         Ok(panes)
     }
-}
 
+    fn schedule_cleanup_and_close(
+        &self,
+        source_window: &str,
+        target_window: Option<&str>,
+        cleanup_script: &str,
+        delay: Duration,
+    ) -> Result<()> {
+        // Shell-escape helper for tmux target strings
+        fn shell_escape(s: &str) -> String {
+            format!("'{}'", s.replace('\'', r#"'\''"#))
+        }
+
+        let delay_secs = format!("{:.3}", delay.as_secs_f64());
+
+        // Get current session name for tmux targeting.
+        // tmux run-shell doesn't inherit the session context, so we must include
+        // the session name explicitly in targets: "session:=window_name"
+        let session = self.current_session().unwrap_or_default();
+        let session_prefix = if session.is_empty() {
+            String::new()
+        } else {
+            format!("{}:", session)
+        };
+
+        let source_escaped = shell_escape(&format!("{}={}", session_prefix, source_window));
+
+        let script = if let Some(target) = target_window {
+            let target_escaped = shell_escape(&format!("{}={}", session_prefix, target));
+            format!(
+                "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1; {cleanup}",
+                delay = delay_secs,
+                target = target_escaped,
+                source = source_escaped,
+                cleanup = cleanup_script,
+            )
+        } else {
+            format!(
+                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1; {cleanup}",
+                delay = delay_secs,
+                source = source_escaped,
+                cleanup = cleanup_script,
+            )
+        };
+
+        self.run_shell(&script)
+    }
+}
 /// Format string to inject into tmux window-status-format.
 const WORKMUX_STATUS_FORMAT: &str = "#{?@workmux_status, #{@workmux_status},}";
 

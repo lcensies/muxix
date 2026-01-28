@@ -614,4 +614,55 @@ impl Multiplexer for ZellijBackend {
             shell_escape(full_name)
         ))
     }
+
+    fn schedule_cleanup_and_close(
+        &self,
+        source_window: &str,
+        target_window: Option<&str>,
+        cleanup_script: &str,
+        delay: Duration,
+    ) -> Result<()> {
+        // Shell-escape helper
+        fn shell_escape(s: &str) -> String {
+            format!("'{}'", s.replace('\'', r#"'\''"#))
+        }
+
+        let delay_secs = delay.as_secs_f64();
+
+        // Build a robust shell script that survives the window closing
+        // trap '' HUP ensures the script continues even when the PTY is destroyed
+        let mut script = format!("trap '' HUP; sleep {:.1};", delay_secs);
+
+        // 1. Navigate to target (if exists)
+        if let Some(target) = target_window {
+            script.push_str(&format!(
+                " zellij action go-to-tab-name {} >/dev/null 2>&1;",
+                shell_escape(target)
+            ));
+        }
+
+        // 2. Close source tab
+        // In Zellij, we must focus the tab to close it
+        script.push_str(&format!(
+            " zellij action go-to-tab-name {} >/dev/null 2>&1;",
+            shell_escape(source_window)
+        ));
+        script.push_str(" zellij action close-tab >/dev/null 2>&1;");
+
+        // 3. Run cleanup script
+        if !cleanup_script.is_empty() {
+            script.push(' ');
+            script.push_str(cleanup_script);
+        }
+
+        debug!(script = script, "zellij:scheduling cleanup and close");
+
+        // Spawn detached background process
+        std::process::Command::new("sh")
+            .args(["-c", &script])
+            .spawn()
+            .context("Failed to spawn cleanup process")?;
+
+        Ok(())
+    }
 }

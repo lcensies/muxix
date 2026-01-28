@@ -465,6 +465,29 @@ pub trait Multiplexer: Send + Sync {
     /// Returns a HashMap from pane_id to LivePaneInfo. This is more efficient
     /// than calling get_live_pane_info repeatedly when validating many panes.
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>>;
+
+    // === Deferred Cleanup ===
+
+    /// Schedule a sequence of cleanup operations after a delay:
+    /// 1. Navigate to target window (if provided)
+    /// 2. Close source window
+    /// 3. Execute the provided shell script (cleanup)
+    ///
+    /// This is used when removing a worktree from inside its own window.
+    /// The implementation must ensure the script execution survives the window closing.
+    ///
+    /// Arguments:
+    /// - `source_window`: Full name of window to close (e.g., "wm-feature")
+    /// - `target_window`: Optional full name of window to navigate to first
+    /// - `cleanup_script`: Shell commands to run after window close (e.g., "rm -rf /path")
+    /// - `delay`: How long to wait before starting the operations
+    fn schedule_cleanup_and_close(
+        &self,
+        source_window: &str,
+        target_window: Option<&str>,
+        cleanup_script: &str,
+        delay: Duration,
+    ) -> Result<()>;
 }
 
 /// Detect which backend to use based on environment.

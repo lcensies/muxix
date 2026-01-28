@@ -941,6 +941,91 @@ impl Multiplexer for WezTermBackend {
             command,
         )
     }
+
+    fn schedule_cleanup_and_close(
+        &self,
+        source_window: &str,
+        target_window: Option<&str>,
+        cleanup_script: &str,
+        delay: Duration,
+    ) -> Result<()> {
+        // Shell-escape helper
+        fn shell_escape(s: &str) -> String {
+            format!("'{}'", s.replace('\'', r#"'\''"#))
+        }
+
+        let delay_secs = delay.as_secs_f64();
+
+        // Find pane IDs for source window (need to kill all panes in the tab)
+        let panes = self.list_panes()?;
+        let current_ws = self.current_workspace();
+
+        let source_panes: Vec<_> = panes
+            .iter()
+            .filter(|p| {
+                p.tab_title == source_window
+                    && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
+            })
+            .collect();
+
+        if source_panes.is_empty() {
+            // Window already gone, just run cleanup
+            if !cleanup_script.is_empty() {
+                let script = format!("sleep {:.1}; {}", delay_secs, cleanup_script);
+                std::process::Command::new("sh")
+                    .args(["-c", &script])
+                    .spawn()
+                    .context("Failed to spawn cleanup process")?;
+            }
+            return Ok(());
+        }
+
+        // Build kill commands for all panes (reverse order)
+        let kill_cmds: String = source_panes
+            .iter()
+            .rev()
+            .map(|p| format!("wezterm cli kill-pane --pane-id {}", p.pane_id))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        // Build the full script
+        // nohup inherits WEZTERM_UNIX_SOCKET from environment
+        let mut script = format!("sleep {:.1};", delay_secs);
+
+        // 1. Navigate to target (if exists)
+        if let Some(target) = target_window {
+            // Find target tab and activate it
+            if let Some(target_pane) = panes.iter().find(|p| {
+                p.tab_title == target && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
+            }) {
+                script.push_str(&format!(
+                    " wezterm cli activate-tab --tab-id {} >/dev/null 2>&1;",
+                    target_pane.tab_id
+                ));
+            }
+        }
+
+        // 2. Kill source panes
+        script.push(' ');
+        script.push_str(&kill_cmds);
+        script.push_str(" >/dev/null 2>&1;");
+
+        // 3. Run cleanup script
+        if !cleanup_script.is_empty() {
+            script.push(' ');
+            script.push_str(cleanup_script);
+        }
+
+        // Spawn as nohup to survive terminal close
+        let full_cmd = format!("nohup sh -c {} >/dev/null 2>&1 &", shell_escape(&script));
+
+        std::process::Command::new("sh")
+            .args(["-c", &full_cmd])
+            .spawn()
+            .context("Failed to spawn cleanup process")?;
+
+        Ok(())
+    }
 }
 
 /// Send escape sequence to trigger cross-workspace pane switch via WezTerm's user-var-changed event.

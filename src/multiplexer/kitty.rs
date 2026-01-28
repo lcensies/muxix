@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
+use tracing::debug;
 
 use crate::cmd::Cmd;
 use crate::config::SplitDirection;
@@ -477,6 +478,43 @@ impl Multiplexer for KittyBackend {
         Err(anyhow!(
             "Session mode is not supported in Kitty. Use window mode instead."
         ))
+    }
+
+    fn schedule_cleanup_and_close(
+        &self,
+        source_window: &str,
+        target_window: Option<&str>,
+        cleanup_script: &str,
+        delay: Duration,
+    ) -> Result<()> {
+        let delay_secs = format!("{:.3}", delay.as_secs_f64());
+
+        // Build script with sleep, navigation, kill, and cleanup
+        let mut script = format!("sleep {}", delay_secs);
+
+        // 1. Navigate to target (if exists)
+        if let Some(target) = target_window {
+            if let Ok(cmd) = self.shell_select_window_cmd(target) {
+                script.push_str(&format!("; {}", cmd));
+            }
+        }
+
+        // 2. Close source window
+        if let Ok(cmd) = self.shell_kill_window_cmd(source_window) {
+            script.push_str(&format!("; {}", cmd));
+        }
+
+        // 3. Run cleanup script
+        if !cleanup_script.is_empty() {
+            script.push_str(&format!("; {}", cleanup_script));
+        }
+
+        debug!(script = script, "kitty:scheduling cleanup and close");
+
+        // Run in background
+        self.run_deferred_script(&script)?;
+
+        Ok(())
     }
 
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
