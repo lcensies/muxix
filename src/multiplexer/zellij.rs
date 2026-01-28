@@ -464,6 +464,13 @@ impl Multiplexer for ZellijBackend {
             .run()
             .context("Failed to split pane")?;
 
+        // zellij's --cwd doesn't always work, so send cd command as fallback
+        let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
+        Cmd::new("zellij")
+            .args(&["action", "write-chars", &cd_cmd])
+            .run()?;
+        Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+
         // Send command if provided
         if let Some(cmd) = command {
             Cmd::new("zellij")
