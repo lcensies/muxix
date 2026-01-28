@@ -629,8 +629,9 @@ impl Multiplexer for ZellijBackend {
 
         let delay_secs = delay.as_secs_f64();
 
-        // Build the cleanup script
-        let mut script = format!("sleep {:.1};", delay_secs);
+        // Build a robust shell script that survives the window closing
+        // trap '' HUP ensures the script continues even when the PTY is destroyed
+        let mut script = format!("trap '' HUP; sleep {:.1};", delay_secs);
 
         // 1. Navigate to target (if exists)
         if let Some(target) = target_window {
