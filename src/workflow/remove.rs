@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
+use crate::config::TmuxTarget;
 use crate::git;
 use crate::sandbox;
 use tracing::{debug, info};
@@ -7,6 +8,15 @@ use tracing::{debug, info};
 use super::cleanup;
 use super::context::WorkflowContext;
 use super::types::RemoveResult;
+
+/// Determine the tmux target mode for a worktree from git metadata.
+/// Falls back to Window mode if no metadata is found (backward compatibility).
+fn get_worktree_target(handle: &str) -> TmuxTarget {
+    match git::get_worktree_meta(handle, "target") {
+        Some(target) if target == "session" => TmuxTarget::Session,
+        _ => TmuxTarget::Window,
+    }
+}
 
 /// Remove a worktree without merging
 pub fn remove(
@@ -97,13 +107,15 @@ pub fn remove(
         false, // no_hooks: run hooks normally for user-initiated remove
     )?;
 
-    // Navigate to the main branch window and close the source window
+    // Navigate to the main branch window/session and close the source
+    let is_session_mode = get_worktree_target(handle) == TmuxTarget::Session;
     cleanup::navigate_to_target_and_close(
         context.mux.as_ref(),
         &context.prefix,
         &context.main_branch,
         actual_handle,
         &cleanup_result,
+        is_session_mode,
     )?;
 
     Ok(RemoveResult {

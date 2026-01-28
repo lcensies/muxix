@@ -1,12 +1,23 @@
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 
+use crate::config::TmuxTarget;
 use crate::git;
+use crate::multiplexer::util::prefixed;
 use tracing::info;
 
 use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
+
+/// Determine the tmux target mode for a worktree from git metadata.
+/// Falls back to Window mode if no metadata is found (backward compatibility).
+fn get_worktree_target(handle: &str) -> TmuxTarget {
+    match git::get_worktree_meta(handle, "target") {
+        Some(target) if target == "session" => TmuxTarget::Session,
+        _ => TmuxTarget::Window,
+    }
+}
 
 /// Open a tmux window for an existing worktree
 pub fn open(
@@ -47,17 +58,23 @@ pub fn open(
         .to_string_lossy()
         .to_string();
 
-    // Determine final handle (with or without suffix)
-    let window_exists = context.mux.window_exists(&context.prefix, &base_handle)?;
+    // Determine the target mode from stored metadata (or default to Window)
+    let stored_target = get_worktree_target(&base_handle);
+    let is_session_mode = stored_target == TmuxTarget::Session;
+    let target_type = if is_session_mode { "session" } else { "window" };
 
-    // If window exists and we're not forcing new, switch to it
-    if window_exists && !new_window {
+    // Determine if target exists
+    let target_exists = context.mux.window_exists(&context.prefix, &base_handle)?;
+
+    // If target exists and we're not forcing new, switch to it
+    if target_exists && !new_window {
         context.mux.select_window(&context.prefix, &base_handle)?;
         info!(
             handle = base_handle,
             branch = branch_name,
             path = %worktree_path.display(),
-            "open:switched to existing window"
+            target_type,
+            "open:switched to existing target"
         );
         return Ok(CreateResult {
             worktree_path,
@@ -68,8 +85,8 @@ pub fn open(
         });
     }
 
-    // Determine handle: use suffix if forcing new window and one exists
-    let (handle, after_window) = if new_window && window_exists {
+    // Determine handle: use suffix if forcing new target and one exists
+    let (handle, after_window) = if new_window && target_exists {
         let unique_handle = resolve_unique_handle(context, &base_handle)?;
         // Insert after the last window in the base handle group (base or -N suffixes)
         let after = context
@@ -103,6 +120,7 @@ pub fn open(
     let options_with_workdir = SetupOptions {
         working_dir,
         config_root,
+        target: stored_target,
         ..options
     };
 
@@ -135,7 +153,6 @@ pub fn open(
 ///
 /// This returns "my-feature-3".
 fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result<String> {
-    use crate::multiplexer::util::prefixed;
     let all_windows = context.mux.get_all_window_names()?;
     let prefix = &context.prefix;
     let full_base = prefixed(prefix, base_handle);

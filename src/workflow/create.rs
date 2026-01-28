@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
+use crate::config::TmuxTarget;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
@@ -274,6 +275,22 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
     }
 
+    // Store the tmux target mode in git config for cleanup operations
+    // This allows remove/close/merge to know whether to kill a window or session
+    if options.target == TmuxTarget::Session {
+        git::set_worktree_meta(handle, "target", "session").with_context(|| {
+            format!(
+                "Failed to store tmux target mode for worktree '{}'",
+                handle
+            )
+        })?;
+        debug!(
+            handle = handle,
+            target = "session",
+            "create:stored tmux target in git config"
+        );
+    }
+
     // Setup the rest of the environment (tmux, files, hooks)
     let prompt_file_path = if let Some(p) = prompt {
         Some(setup::write_prompt_file(
@@ -379,6 +396,9 @@ pub fn create_with_changes(
         .context("Failed to stash current changes")?;
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
+    // Capture target mode before moving options (needed for rollback cleanup)
+    let is_session_mode = options.target == TmuxTarget::Session;
+
     // 2. Create new worktree
     let create_result = match create(
         context,
@@ -446,6 +466,7 @@ pub fn create_with_changes(
                 &context.main_branch,
                 handle,
                 &cleanup_result,
+                is_session_mode,
             )?;
 
             Err(anyhow!(

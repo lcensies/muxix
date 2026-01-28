@@ -4,6 +4,7 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::{thread, time::Duration};
 
+use crate::config::TmuxTarget;
 use crate::multiplexer::{Multiplexer, util::prefixed};
 use crate::{cmd, git};
 use tracing::{debug, info, warn};
@@ -73,9 +74,18 @@ fn is_inside_matching_window(
     }
 }
 
+/// Determine the tmux target mode for a worktree from git metadata.
+/// Falls back to Window mode if no metadata is found (backward compatibility).
+fn get_worktree_target(handle: &str) -> TmuxTarget {
+    match git::get_worktree_meta(handle, "target") {
+        Some(target) if target == "session" => TmuxTarget::Session,
+        _ => TmuxTarget::Window,
+    }
+}
+
 /// Centralized function to clean up tmux and git resources.
 /// `branch_name` is used for git operations (branch deletion).
-/// `handle` is used for tmux operations (window lookup/kill).
+/// `handle` is used for tmux operations (window/session lookup/kill).
 pub fn cleanup(
     context: &WorkflowContext,
     branch_name: &str,
@@ -85,12 +95,17 @@ pub fn cleanup(
     keep_branch: bool,
     no_hooks: bool,
 ) -> Result<CleanupResult> {
+    // Determine if this worktree was created as a session or window
+    let target = get_worktree_target(handle);
+    let is_session_mode = target == TmuxTarget::Session;
+
     info!(
         branch = branch_name,
         handle = handle,
         path = %worktree_path.display(),
         force,
         keep_branch,
+        is_session_mode,
         "cleanup:start"
     );
     // Change the CWD to main worktree before any destructive operations.
@@ -101,12 +116,12 @@ pub fn cleanup(
     let mux_running = context.mux.is_running().unwrap_or(false);
 
     // Check if we're running inside ANY matching window (original or duplicate)
-    let current_matching_window = if mux_running {
+    let current_matching_target = if mux_running {
         is_inside_matching_window(context.mux.as_ref(), &context.prefix, handle)?
     } else {
         None
     };
-    let running_inside_target_window = current_matching_window.is_some();
+    let running_inside_target = current_matching_target.is_some();
 
     let mut result = CleanupResult {
         tmux_window_killed: false,
@@ -271,12 +286,14 @@ pub fn cleanup(
         Ok(())
     };
 
-    if running_inside_target_window {
-        let current_window = current_matching_window.unwrap();
+    if running_inside_target {
+        let current_target = current_matching_target.unwrap();
+        let target_type = if is_session_mode { "session" } else { "window" };
         info!(
             branch = branch_name,
-            current_window = current_window,
-            "cleanup:running inside matching window, deferring destructive cleanup"
+            current_target = current_target,
+            target_type,
+            "cleanup:running inside matching target, deferring destructive cleanup",
         );
 
         // Find and kill all OTHER matching windows (not the current one)
@@ -285,7 +302,7 @@ pub fn cleanup(
                 find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
             let mut killed_count = 0;
             for window in &matching_windows {
-                if window != &current_window {
+                if window != &current_target {
                     if let Err(e) = context.mux.kill_window(window) {
                         warn!(window = window, error = %e, "cleanup:failed to kill duplicate window");
                     } else {
@@ -295,12 +312,12 @@ pub fn cleanup(
                 }
             }
             if killed_count > 0 {
-                info!(count = killed_count, "cleanup:killed duplicate windows");
+                info!(count = killed_count, target_type, "cleanup:killed duplicate {}s", target_type);
             }
         }
 
-        // Store the current window name for deferred close
-        result.window_to_close_later = Some(current_window);
+        // Store the current window/session name for deferred close
+        result.window_to_close_later = Some(current_target);
 
         // Run pre-remove hooks synchronously (they need the worktree intact)
         // Skip if --no-hooks is set (e.g., RPC-triggered merge).
@@ -353,7 +370,7 @@ pub fn cleanup(
             }
         }
 
-        // Defer destructive operations (rename, prune, branch delete) until after window close.
+        // Defer destructive operations (rename, prune, branch delete) until after window/session close.
         // This keeps the worktree path valid so agents can run their hooks.
         if worktree_path.exists() {
             let parent = worktree_path.parent().unwrap_or_else(|| Path::new("."));
@@ -381,7 +398,8 @@ pub fn cleanup(
             });
             debug!(
                 worktree = %worktree_path.display(),
-                "cleanup:deferred destructive cleanup until window close"
+                target_type,
+                "cleanup:deferred destructive cleanup until target close",
             );
         }
     } else {
@@ -423,6 +441,11 @@ pub fn cleanup(
         perform_fs_git_cleanup(&mut result)?;
     }
 
+    // Clean up worktree metadata from git config
+    if let Err(e) = git::remove_worktree_meta(handle) {
+        warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
+    }
+
     Ok(result)
 }
 
@@ -436,6 +459,7 @@ pub fn navigate_to_target_and_close(
     target_window_name: &str,
     source_handle: &str,
     cleanup_result: &CleanupResult,
+    is_session_mode: bool,
 ) -> Result<()> {
     use crate::shell::shell_quote as shell_escape;
 
@@ -472,15 +496,7 @@ pub fn navigate_to_target_and_close(
     } else {
         false
     };
-    debug!(
-        prefix = prefix,
-        target_window_name = target_window_name,
-        mux_running = mux_running,
-        target_exists = target_exists,
-        window_to_close = ?cleanup_result.window_to_close_later,
-        deferred_cleanup = cleanup_result.deferred_cleanup.is_some(),
-        "navigate_to_target_and_close:entry"
-    );
+    let target_type = if is_session_mode { "session" } else { "window" };
 
     // Prepare window names for shell commands
     // Use the actual window name from window_to_close_later when available (includes -N suffix),
@@ -494,6 +510,17 @@ pub fn navigate_to_target_and_close(
     // Generate backend-specific shell commands for deferred scripts
     let kill_source_cmd = mux.shell_kill_window_cmd(&source_full).ok();
     let select_target_cmd = mux.shell_select_window_cmd(&target_full).ok();
+
+    debug!(
+        prefix = prefix,
+        target_window_name = target_window_name,
+        mux_running = mux_running,
+        target_exists = target_exists,
+        target_type,
+        window_to_close = ?cleanup_result.window_to_close_later,
+        deferred_cleanup = cleanup_result.deferred_cleanup.is_some(),
+        "navigate_to_target_and_close:entry"
+    );
 
     if !mux_running || !target_exists {
         // If target window doesn't exist, still need to close source window if running inside it
@@ -525,18 +552,21 @@ pub fn navigate_to_target_and_close(
             );
             debug!(
                 script = script,
+                target_type,
                 "navigate_to_target_and_close:kill_only_script"
             );
             match mux.run_deferred_script(&script) {
                 Ok(_) => info!(
-                    window = window_to_close,
+                    target = window_to_close,
                     script = script,
-                    "cleanup:scheduled window close"
+                    target_type,
+                    "cleanup:scheduled target close",
                 ),
                 Err(e) => warn!(
-                    window = window_to_close,
+                    target = window_to_close,
                     error = ?e,
-                    "cleanup:failed to schedule window close",
+                    target_type,
+                    "cleanup:failed to schedule target close",
                 ),
             }
         }
@@ -578,6 +608,7 @@ pub fn navigate_to_target_and_close(
         );
         debug!(
             script = script,
+            target_type,
             "navigate_to_target_and_close:nav_and_kill_script"
         );
 
@@ -585,22 +616,25 @@ pub fn navigate_to_target_and_close(
             Ok(_) => info!(
                 source = source_handle,
                 target = target_window_name,
-                "cleanup:scheduled navigation to target and window close"
+                target_type,
+                "cleanup:scheduled navigation to target and source close",
             ),
             Err(e) => warn!(
                 source = source_handle,
                 error = ?e,
-                "cleanup:failed to schedule navigation and window close",
+                target_type,
+                "cleanup:failed to schedule navigation and source close",
             ),
         }
     } else if !cleanup_result.tmux_window_killed {
-        // Running outside and windows weren't killed yet (shouldn't happen normally)
+        // Running outside and targets weren't killed yet (shouldn't happen normally)
         // but handle it for completeness
         mux.select_window(prefix, target_window_name)?;
         info!(
             handle = source_handle,
             target = target_window_name,
-            "cleanup:navigated to target branch window"
+            target_type,
+            "cleanup:navigated to target branch",
         );
     }
 
