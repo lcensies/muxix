@@ -101,6 +101,50 @@ pub fn rewrite_agent_command(
     }
 }
 
+/// Resolve a pane's command: handle `<agent>` placeholder and adjust for prompt injection.
+///
+/// Returns the final command to send to the pane, or None if no command should be sent.
+/// This consolidates the duplicated command resolution logic from both backends' setup_panes.
+/// Result of resolving a pane command.
+pub struct ResolvedCommand {
+    /// The command string to send to the pane.
+    pub command: String,
+    /// Whether the command was rewritten to inject a prompt (needs auto-status).
+    pub prompt_injected: bool,
+}
+
+pub fn resolve_pane_command(
+    pane_command: Option<&str>,
+    run_commands: bool,
+    prompt_file_path: Option<&Path>,
+    working_dir: &Path,
+    effective_agent: Option<&str>,
+    shell: &str,
+) -> Option<ResolvedCommand> {
+    let command = if pane_command == Some("<agent>") {
+        effective_agent?
+    } else {
+        pane_command?
+    };
+
+    if !run_commands {
+        return None;
+    }
+
+    let result = adjust_command(
+        command,
+        prompt_file_path,
+        working_dir,
+        effective_agent,
+        shell,
+    );
+    let prompt_injected = matches!(result, Cow::Owned(_));
+    Some(ResolvedCommand {
+        command: result.into_owned(),
+        prompt_injected,
+    })
+}
+
 /// Adjust a command for execution, potentially rewriting it to inject prompts.
 ///
 /// This is a convenience wrapper around `rewrite_agent_command` that returns
@@ -417,5 +461,97 @@ mod tests {
             wrap_for_non_posix_shell("claude -- \"$(cat PROMPT.md)\""),
             "sh -c 'claude -- \"$(cat PROMPT.md)\"'"
         );
+    }
+
+    // --- resolve_pane_command tests ---
+
+    #[test]
+    fn test_resolve_pane_command_none_when_no_command() {
+        let result = resolve_pane_command(None, true, None, Path::new("/tmp"), None, "/bin/zsh");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_pane_command_none_when_run_commands_false() {
+        let result = resolve_pane_command(
+            Some("echo hello"),
+            false,
+            None,
+            Path::new("/tmp"),
+            None,
+            "/bin/zsh",
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_pane_command_returns_command_as_is() {
+        let result =
+            resolve_pane_command(Some("vim"), true, None, Path::new("/tmp"), None, "/bin/zsh");
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "vim");
+        assert!(!resolved.prompt_injected);
+    }
+
+    #[test]
+    fn test_resolve_pane_command_agent_placeholder_with_agent() {
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("claude"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "claude");
+        assert!(!resolved.prompt_injected);
+    }
+
+    #[test]
+    fn test_resolve_pane_command_agent_placeholder_without_agent() {
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            None,
+            "/bin/zsh",
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_pane_command_with_prompt_injection() {
+        let prompt = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+        let result = resolve_pane_command(
+            Some("claude"),
+            true,
+            Some(&prompt),
+            &working_dir,
+            Some("claude"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert!(resolved.prompt_injected);
+        assert!(resolved.command.contains("PROMPT.md"));
+    }
+
+    #[test]
+    fn test_resolve_pane_command_no_injection_for_mismatched_agent() {
+        let prompt = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+        let result = resolve_pane_command(
+            Some("vim"),
+            true,
+            Some(&prompt),
+            &working_dir,
+            Some("claude"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert!(!resolved.prompt_injected);
+        assert_eq!(resolved.command, "vim");
     }
 }

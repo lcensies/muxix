@@ -5,14 +5,13 @@
 
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
 use crate::cmd::Cmd;
-use crate::config::{Config, PaneConfig, SplitDirection};
+use crate::config::SplitDirection;
 
 use super::agent;
 use super::handshake::UnixPipeHandshake;
@@ -130,71 +129,8 @@ impl WezTermBackend {
         Ok(())
     }
 
-    /// Sets the "working" status on a pane.
-    fn set_pane_working_status(&self, pane_id: &str, config: &Config) -> Result<()> {
-        let icon = config.status_icons.working();
-
-        // Ensure the status format is applied so the icon shows up
-        if config.status_format.unwrap_or(true) {
-            let _ = self.ensure_status_format(pane_id);
-        }
-
-        self.set_status(pane_id, icon, false)?;
-        Ok(())
-    }
-
-    /// Split a pane with a shell script, passing arguments correctly to WezTerm.
-    /// This avoids the quoting issues with wrapper_command by passing sh, -c, and script separately.
-    fn split_pane_with_script(
-        &self,
-        target_pane_id: &str,
-        direction: SplitDirection,
-        cwd: &Path,
-        size: Option<u16>,
-        percentage: Option<u8>,
-        script: &str,
-    ) -> Result<String> {
-        let direction_arg = match direction {
-            SplitDirection::Horizontal => "--horizontal",
-            SplitDirection::Vertical => "--top-level",
-        };
-
-        let cwd_str = cwd.to_string_lossy();
-        let mut args = vec![
-            "cli",
-            "split-pane",
-            "--pane-id",
-            target_pane_id,
-            "--cwd",
-            &*cwd_str,
-            direction_arg,
-        ];
-
-        let percent_arg;
-        if let Some(p) = percentage {
-            percent_arg = format!("{}", p);
-            args.push("--percent");
-            args.push(&percent_arg);
-        }
-        let _ = size; // WezTerm doesn't support absolute sizes via CLI
-
-        // Pass sh -c <script> as separate arguments
-        args.push("--");
-        args.push("sh");
-        args.push("-c");
-        args.push(script);
-
-        let output = self
-            .wezterm_cmd()
-            .args(&args)
-            .run_and_capture_stdout()
-            .context("Failed to split WezTerm pane with script")?;
-
-        Ok(output.trim().to_string())
-    }
-
     /// Split a pane with optional command.
-    fn split_pane(
+    fn split_pane_internal(
         &self,
         target_pane_id: &str,
         direction: SplitDirection,
@@ -227,20 +163,13 @@ impl WezTermBackend {
         }
         let _ = size; // WezTerm doesn't support absolute sizes via CLI
 
-        // Handle optional command
-        let cmd_parts: Vec<String>;
+        // Handle optional command: always wrap in sh -c to correctly handle
+        // both simple commands and complex shell scripts with quoting
         if let Some(cmd) = command {
-            if let Some(script) = cmd.strip_prefix("sh -c ") {
-                // Remove surrounding quotes from the script
-                let script = script.trim_matches('\'');
-                cmd_parts = vec!["sh".to_string(), "-c".to_string(), script.to_string()];
-            } else {
-                cmd_parts = vec![cmd.to_string()];
-            }
             args.push("--");
-            for part in &cmd_parts {
-                args.push(part);
-            }
+            args.push("sh");
+            args.push("-c");
+            args.push(cmd);
         }
 
         let output = self
@@ -250,71 +179,6 @@ impl WezTermBackend {
             .context("Failed to split WezTerm pane")?;
 
         Ok(output.trim().to_string())
-    }
-
-    /// Respawn a pane with a shell script, passing arguments correctly to WezTerm.
-    fn respawn_pane_with_script(&self, pane_id: &str, cwd: &Path, script: &str) -> Result<String> {
-        let panes = self.list_panes()?;
-        let current_ws = self.current_workspace();
-
-        let target = panes
-            .iter()
-            .find(|p| {
-                p.pane_id.to_string() == pane_id
-                    && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
-            })
-            .ok_or_else(|| anyhow!("Pane {} not found", pane_id))?;
-
-        let tab_id = target.tab_id;
-        let original_tab_title = target.tab_title.clone();
-
-        // Find a sibling pane in the same tab
-        let sibling = panes.iter().find(|p| {
-            p.tab_id == tab_id
-                && p.pane_id.to_string() != pane_id
-                && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
-        });
-
-        if let Some(sib) = sibling {
-            // Has sibling: kill target, split from sibling with script
-            self.wezterm_cmd()
-                .args(&["cli", "kill-pane", "--pane-id", pane_id])
-                .run()?;
-
-            let new_pane_id = self.split_pane_with_script(
-                &sib.pane_id.to_string(),
-                SplitDirection::Horizontal,
-                cwd,
-                None,
-                None,
-                script,
-            )?;
-
-            Ok(new_pane_id)
-        } else {
-            // Only pane in tab: spawn new tab with script, kill old
-            let cwd_str = cwd.to_string_lossy();
-
-            // Pass sh -c <script> as separate arguments
-            let output = self
-                .wezterm_cmd()
-                .args(&["cli", "spawn", "--cwd", &*cwd_str, "--", "sh", "-c", script])
-                .run_and_capture_stdout()
-                .context("Failed to spawn new tab with script")?;
-
-            let new_pane_id = output.trim().to_string();
-
-            // Set tab title to preserve window name
-            self.set_tab_title(&new_pane_id, &original_tab_title)?;
-
-            // Kill old pane
-            let _ = self
-                .wezterm_cmd()
-                .args(&["cli", "kill-pane", "--pane-id", pane_id])
-                .run();
-
-            Ok(new_pane_id)
-        }
     }
 }
 
@@ -610,7 +474,7 @@ impl Multiplexer for WezTermBackend {
                 .args(&["cli", "kill-pane", "--pane-id", pane_id])
                 .run()?;
 
-            let new_pane_id = self.split_pane(
+            let new_pane_id = self.split_pane_internal(
                 &sib.pane_id.to_string(),
                 SplitDirection::Horizontal,
                 cwd,
@@ -625,21 +489,12 @@ impl Multiplexer for WezTermBackend {
             let cwd_str = cwd.to_string_lossy();
             let mut args = vec!["cli", "spawn", "--cwd", &*cwd_str];
 
-            // WezTerm expects command and args separately after --
-            // If cmd starts with "sh -c ", split it properly
-            let cmd_parts: Vec<String>;
+            // Wrap in sh -c to correctly handle complex shell scripts with quoting
             if let Some(c) = cmd {
-                if let Some(script) = c.strip_prefix("sh -c ") {
-                    // Remove surrounding quotes from the script
-                    let script = script.trim_matches('\'');
-                    cmd_parts = vec!["sh".to_string(), "-c".to_string(), script.to_string()];
-                } else {
-                    cmd_parts = vec![c.to_string()];
-                }
                 args.push("--");
-                for part in &cmd_parts {
-                    args.push(part);
-                }
+                args.push("sh");
+                args.push("-c");
+                args.push(c);
             }
 
             let output = self
@@ -897,150 +752,23 @@ impl Multiplexer for WezTermBackend {
         Ok(names)
     }
 
-    // === Pane Setup ===
-
-    fn setup_panes(
+    fn split_pane(
         &self,
-        initial_pane_id: &str,
-        panes: &[PaneConfig],
-        working_dir: &Path,
-        options: PaneSetupOptions<'_>,
-        config: &Config,
-        task_agent: Option<&str>,
-    ) -> Result<PaneSetupResult> {
-        if panes.is_empty() {
-            return Ok(PaneSetupResult {
-                focus_pane_id: initial_pane_id.to_string(),
-            });
-        }
-
-        let mut focus_pane_id: Option<String> = None;
-        let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
-        let mut current_pane_id = initial_pane_id.to_string();
-        let effective_agent = task_agent.or(config.agent.as_deref());
-        let shell = self.get_default_shell()?;
-
-        // Handle the first pane (initial pane from window creation)
-        if let Some(pane_config) = panes.first() {
-            let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-                effective_agent.map(|agent_cmd| agent_cmd.to_string())
-            } else {
-                pane_config.command.clone()
-            };
-
-            let adjusted_command = if options.run_commands {
-                command_to_run.as_ref().map(|cmd| {
-                    util::adjust_command(
-                        cmd,
-                        options.prompt_file_path,
-                        working_dir,
-                        effective_agent,
-                        &shell,
-                    )
-                })
-            } else {
-                None
-            };
-
-            if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                let handshake = self.create_handshake()?;
-                let script = handshake.script_content(&shell);
-
-                // respawn returns the new pane_id
-                // Pass script components directly for WezTerm's argument parsing
-                current_pane_id =
-                    self.respawn_pane_with_script(&current_pane_id, working_dir, &script)?;
-                pane_ids[0] = current_pane_id.clone();
-
-                handshake.wait()?;
-                self.send_keys(&current_pane_id, cmd_str)?;
-
-                if let Some(Cow::Owned(_)) = &adjusted_command
-                    && agent::resolve_profile(effective_agent).needs_auto_status()
-                {
-                    let _ = self.set_pane_working_status(&current_pane_id, config);
-                }
-            }
-            if pane_config.focus {
-                focus_pane_id = Some(current_pane_id.clone());
-            }
-        }
-
-        // Create additional panes by splitting
-        for pane_config in panes.iter().skip(1) {
-            if let Some(ref direction) = pane_config.split {
-                let target_pane_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
-                let target_pane_id = pane_ids
-                    .get(target_pane_idx)
-                    .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_pane_idx))?;
-
-                let command_to_run = if pane_config.command.as_deref() == Some("<agent>") {
-                    effective_agent.map(|agent_cmd| agent_cmd.to_string())
-                } else {
-                    pane_config.command.clone()
-                };
-
-                let adjusted_command = if options.run_commands {
-                    command_to_run.as_ref().map(|cmd| {
-                        util::adjust_command(
-                            cmd,
-                            options.prompt_file_path,
-                            working_dir,
-                            effective_agent,
-                            &shell,
-                        )
-                    })
-                } else {
-                    None
-                };
-
-                let new_pane_id =
-                    if let Some(cmd_str) = adjusted_command.as_ref().map(|c| c.as_ref()) {
-                        let handshake = self.create_handshake()?;
-                        let script = handshake.script_content(&shell);
-
-                        let pane_id = self.split_pane_with_script(
-                            target_pane_id,
-                            direction.clone(),
-                            working_dir,
-                            pane_config.size,
-                            pane_config.percentage,
-                            &script,
-                        )?;
-
-                        handshake.wait()?;
-                        self.send_keys(&pane_id, cmd_str)?;
-
-                        if let Some(Cow::Owned(_)) = &adjusted_command
-                            && agent::resolve_profile(effective_agent).needs_auto_status()
-                        {
-                            let _ = self.set_pane_working_status(&pane_id, config);
-                        }
-
-                        pane_id
-                    } else {
-                        self.split_pane(
-                            target_pane_id,
-                            direction.clone(),
-                            working_dir,
-                            pane_config.size,
-                            pane_config.percentage,
-                            None,
-                        )?
-                    };
-
-                if pane_config.focus {
-                    focus_pane_id = Some(new_pane_id.clone());
-                }
-                pane_ids.push(new_pane_id);
-            }
-        }
-
-        // No registration needed - panes are discovered via tab_title prefix from WezTerm CLI
-
-        Ok(PaneSetupResult {
-            focus_pane_id: focus_pane_id.unwrap_or_else(|| pane_ids[0].clone()),
-        })
+        target_pane_id: &str,
+        direction: &SplitDirection,
+        cwd: &Path,
+        size: Option<u16>,
+        percentage: Option<u8>,
+        command: Option<&str>,
+    ) -> Result<String> {
+        self.split_pane_internal(
+            target_pane_id,
+            direction.clone(),
+            cwd,
+            size,
+            percentage,
+            command,
+        )
     }
 }
 

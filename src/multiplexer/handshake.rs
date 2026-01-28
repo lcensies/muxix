@@ -18,16 +18,17 @@ use crate::cmd::Cmd;
 /// A handshake ensures the shell has started in a pane before sending commands.
 /// Different backends may use different mechanisms (tmux wait-for, named pipes, etc.)
 pub trait PaneHandshake: Send {
-    /// Returns the command that wraps the shell to signal readiness.
-    /// This is formatted for shell evaluation (e.g., passing to tmux).
+    /// Returns a full shell command string that wraps the shell to signal readiness.
+    /// Formatted for direct shell evaluation (e.g., `sh -c "..."`).
+    /// Used by backends that need a single command string (tmux).
     fn wrapper_command(&self, shell: &str) -> String;
 
-    /// Returns the script content for direct execution.
-    /// Use this when the caller will invoke `sh -c <script>` directly
-    /// (e.g., WezTerm which takes command arguments separately).
+    /// Returns the raw POSIX script body that signals readiness and exec's the shell.
+    /// Does NOT include `sh -c` wrapping -- the backend decides how to invoke it.
+    /// Used by the shared `setup_panes` implementation, where each backend wraps
+    /// the script appropriately for its CLI.
     fn script_content(&self, shell: &str) -> String {
-        // Default: extract script from wrapper_command
-        // Subclasses can override for cleaner scripts
+        // Default: delegate to wrapper_command (backwards compat)
         self.wrapper_command(shell)
     }
 
@@ -92,6 +93,13 @@ impl PaneHandshake for TmuxHandshake {
         format!(
             "sh -c \"stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l\"",
             self.channel, escaped_shell
+        )
+    }
+
+    fn script_content(&self, shell: &str) -> String {
+        format!(
+            "stty -echo 2>/dev/null; tmux wait-for -U {}; stty echo 2>/dev/null; exec '{}' -l",
+            self.channel, shell
         )
     }
 
@@ -219,7 +227,6 @@ impl PaneHandshake for UnixPipeHandshake {
     }
 
     fn script_content(&self, shell: &str) -> String {
-        // Simple script without complex escaping - caller passes directly to sh -c
         format!(
             "echo ready > {}; exec '{}' -l",
             self.pipe_path.display(),

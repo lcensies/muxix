@@ -10,7 +10,7 @@ pub mod types;
 pub mod util;
 pub mod wezterm;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ pub use handshake::PaneHandshake;
 pub use tmux::TmuxBackend;
 pub use types::*;
 
-use crate::config::{Config, PaneConfig};
+use crate::config::{Config, PaneConfig, SplitDirection};
 
 /// Main trait for terminal multiplexer backends.
 ///
@@ -139,7 +139,23 @@ pub trait Multiplexer: Send + Sync {
 
     // === Pane Setup ===
 
-    /// Setup panes in a window according to configuration
+    /// Split a pane, returning the new pane ID.
+    fn split_pane(
+        &self,
+        target_pane_id: &str,
+        direction: &SplitDirection,
+        cwd: &Path,
+        size: Option<u16>,
+        percentage: Option<u8>,
+        command: Option<&str>,
+    ) -> Result<String>;
+
+    /// Setup panes in a window according to configuration.
+    ///
+    /// Default implementation handles the full orchestration: command resolution,
+    /// handshake-based shell synchronization, command injection, and auto-status.
+    /// Backends only need to implement `respawn_pane`, `split_pane`, and other
+    /// primitive trait methods.
     fn setup_panes(
         &self,
         initial_pane_id: &str,
@@ -148,7 +164,109 @@ pub trait Multiplexer: Send + Sync {
         options: PaneSetupOptions<'_>,
         config: &Config,
         task_agent: Option<&str>,
-    ) -> Result<PaneSetupResult>;
+    ) -> Result<PaneSetupResult> {
+        if panes.is_empty() {
+            return Ok(PaneSetupResult {
+                focus_pane_id: initial_pane_id.to_string(),
+            });
+        }
+
+        let mut focus_pane_id: Option<String> = None;
+        let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
+        let effective_agent = task_agent.or(config.agent.as_deref());
+        let shell = self.get_default_shell()?;
+
+        for (i, pane_config) in panes.iter().enumerate() {
+            let is_first = i == 0;
+
+            // Skip non-first panes that have no split direction
+            if !is_first && pane_config.split.is_none() {
+                continue;
+            }
+
+            // Resolve command: handle <agent> placeholder and prompt injection
+            let adjusted_command = util::resolve_pane_command(
+                pane_config.command.as_deref(),
+                options.run_commands,
+                options.prompt_file_path,
+                working_dir,
+                effective_agent,
+                &shell,
+            );
+
+            let pane_id = if let Some(resolved) = adjusted_command {
+                // Spawn with handshake so we can send the command after shell is ready
+                let handshake = self.create_handshake()?;
+                let script = handshake.script_content(&shell);
+
+                let spawned_id = if is_first {
+                    self.respawn_pane(&pane_ids[0], working_dir, Some(&script))?
+                } else {
+                    let direction = pane_config.split.as_ref().unwrap();
+                    let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+                    let target = pane_ids
+                        .get(target_idx)
+                        .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
+                    self.split_pane(
+                        target,
+                        direction,
+                        working_dir,
+                        pane_config.size,
+                        pane_config.percentage,
+                        Some(&script),
+                    )?
+                };
+
+                handshake.wait()?;
+                self.send_keys(&spawned_id, &resolved.command)?;
+
+                // Set working status for agent panes with injected prompts
+                if resolved.prompt_injected
+                    && agent::resolve_profile(effective_agent).needs_auto_status()
+                {
+                    let icon = config.status_icons.working();
+                    if config.status_format.unwrap_or(true) {
+                        let _ = self.ensure_status_format(&spawned_id);
+                    }
+                    let _ = self.set_status(&spawned_id, icon, false);
+                }
+
+                spawned_id
+            } else if is_first {
+                // No command for first pane - keep as-is
+                pane_ids[0].clone()
+            } else {
+                // No command - just split
+                let direction = pane_config.split.as_ref().unwrap();
+                let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+                let target = pane_ids
+                    .get(target_idx)
+                    .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
+                self.split_pane(
+                    target,
+                    direction,
+                    working_dir,
+                    pane_config.size,
+                    pane_config.percentage,
+                    None,
+                )?
+            };
+
+            if is_first {
+                pane_ids[0] = pane_id.clone();
+            } else {
+                pane_ids.push(pane_id.clone());
+            }
+
+            if pane_config.focus {
+                focus_pane_id = Some(pane_id);
+            }
+        }
+
+        Ok(PaneSetupResult {
+            focus_pane_id: focus_pane_id.unwrap_or_else(|| pane_ids[0].clone()),
+        })
+    }
 
     // === Multi-Session/Workspace Support ===
 
