@@ -444,8 +444,8 @@ impl Multiplexer for ZellijBackend {
         // sizing via CLI. All splits are 50/50.
 
         let dir_arg = match direction {
-            SplitDirection::Horizontal => "down",
-            SplitDirection::Vertical => "right",
+            SplitDirection::Horizontal => "right", // panes side-by-side (left/right)
+            SplitDirection::Vertical => "down",    // panes stacked (top/bottom)
         };
 
         let cwd_str = cwd
