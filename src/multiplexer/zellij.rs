@@ -69,6 +69,31 @@ impl ZellijBackend {
         Ok(output.lines().map(|s| s.trim().to_string()).collect())
     }
 
+    /// Get the name of the currently focused tab by parsing dump-layout output.
+    fn focused_tab_name() -> Option<String> {
+        let output = Cmd::new("zellij")
+            .args(&["action", "dump-layout"])
+            .run_and_capture_stdout()
+            .ok()?;
+
+        // Parse: tab name="TabName" focus=true
+        // The focused tab has focus=true in its attributes
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("tab ") && trimmed.contains("focus=true") {
+                // Extract name="..." from the line
+                if let Some(name_start) = trimmed.find("name=\"") {
+                    let after_name = &trimmed[name_start + 6..];
+                    if let Some(name_end) = after_name.find('"') {
+                        return Some(after_name[..name_end].to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// Parse `zellij action list-clients` output
     /// Format: "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n1 terminal_3 vim file.txt"
     fn list_clients() -> Result<Vec<ClientInfo>> {
@@ -145,9 +170,6 @@ impl Multiplexer for ZellijBackend {
             debug!("Zellij does not support window insertion order - ignoring after_window");
         }
 
-        // Save current tab to return to if needed
-        let original_tab = std::env::var("ZELLIJ_TAB_NAME").ok();
-
         Cmd::new("zellij")
             .args(&[
                 "action", "new-tab", "--layout", "default", "--name", &full_name, "--cwd", cwd_str,
@@ -155,12 +177,7 @@ impl Multiplexer for ZellijBackend {
             .run()
             .with_context(|| format!("Failed to create zellij tab '{}'", full_name))?;
 
-        // Return to original tab (create_window should not change focus)
-        if let Some(orig) = original_tab {
-            let _ = Cmd::new("zellij")
-                .args(&["action", "go-to-tab-name", &orig])
-                .run();
-        }
+        // Stay on the new tab - pane setup expects focus on the new window
 
         Ok(full_name)
     }
@@ -220,7 +237,7 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn current_window_name(&self) -> Result<Option<String>> {
-        Ok(std::env::var("ZELLIJ_TAB_NAME").ok())
+        Ok(Self::focused_tab_name())
     }
 
     fn get_all_window_names(&self) -> Result<HashSet<String>> {
@@ -510,7 +527,7 @@ impl Multiplexer for ZellijBackend {
                     working_dir: PathBuf::new(), // Not available
                     title: None,
                     session: Self::session_name(),
-                    window: std::env::var("ZELLIJ_TAB_NAME").ok(),
+                    window: Self::focused_tab_name(),
                 }));
             }
         }
@@ -519,12 +536,7 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>> {
-        use std::collections::HashMap;
-
-        let mut result = HashMap::new();
-
-        // Zellij's list-clients only shows info for currently visible clients
-        // This is a limitation of zellij's CLI - we can't query all panes
+        let mut result = std::collections::HashMap::new();
         let clients = Self::list_clients()?;
 
         for client in clients {
@@ -538,12 +550,12 @@ impl Multiplexer for ZellijBackend {
             result.insert(
                 client.pane_id,
                 LivePaneInfo {
-                    pid: 0, // Zellij doesn't expose PID
+                    pid: 0,
                     current_command,
-                    working_dir: std::env::current_dir().unwrap_or_default(),
+                    working_dir: PathBuf::new(),
                     title: None,
                     session: Self::session_name(),
-                    window: std::env::var("ZELLIJ_TAB_NAME").ok(),
+                    window: Self::focused_tab_name(),
                 },
             );
         }
