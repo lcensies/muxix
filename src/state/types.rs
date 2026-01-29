@@ -112,24 +112,13 @@ impl AgentState {
     ///
     /// Uses stored session/window names if provided, otherwise uses the arguments.
     /// This allows fallback for backends (like Zellij) that can't query unfocused panes.
-    /// If pane_title is None, uses the command as a fallback title.
     pub fn to_agent_pane(&self, session: String, window_name: String) -> AgentPane {
-        // Use command as fallback title if pane_title is not set
-        // This is especially useful for Zellij which can't query pane titles
-        let title = self.pane_title.clone().or_else(|| {
-            if !self.command.is_empty() {
-                Some(self.command.clone())
-            } else {
-                None
-            }
-        });
-
         AgentPane {
             session: self.session_name.clone().unwrap_or(session),
             window_name: self.window_name.clone().unwrap_or(window_name),
             pane_id: self.pane_key.pane_id.clone(),
             path: self.workdir.clone(),
-            pane_title: title,
+            pane_title: self.pane_title.clone(),
             status: self.status,
             status_ts: self.status_ts,
         }
