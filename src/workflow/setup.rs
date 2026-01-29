@@ -2,7 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{cmd, config, git, prompt::Prompt, tmux};
+use crate::multiplexer::{CreateWindowParams, Multiplexer, PaneSetupOptions};
+use crate::{cmd, config, git, prompt::Prompt};
 use tracing::{debug, info};
 
 use fs_extra::dir as fs_dir;
@@ -10,18 +11,21 @@ use fs_extra::file as fs_file;
 
 use super::types::CreateResult;
 
-/// Sets up the tmux window, files, and hooks for a worktree.
+/// Sets up the terminal window, files, and hooks for a worktree.
 /// This is the shared logic between `create` and `open`.
 ///
 /// # Arguments
+/// * `mux` - The terminal multiplexer backend
 /// * `branch_name` - The git branch name (for logging/reference)
-/// * `handle` - The display name used for tmux window naming
+/// * `handle` - The display name used for window naming
 /// * `worktree_path` - Path to the worktree directory
 /// * `config` - Configuration settings
 /// * `options` - Setup options (hooks, file ops, etc.)
 /// * `agent` - Optional agent override
 /// * `after_window` - Optional window ID to insert after (for grouping duplicates)
+#[allow(clippy::too_many_arguments)]
 pub fn setup_environment(
+    mux: &dyn Multiplexer,
     branch_name: &str,
     handle: &str,
     worktree_path: &Path,
@@ -56,6 +60,12 @@ pub fn setup_environment(
             branch = branch_name,
             "setup_environment:file operations applied"
         );
+    }
+
+    // Auto-symlink CLAUDE.local.md from main worktree if it exists and is gitignored
+    if options.run_file_ops {
+        symlink_claude_local_md(&repo_root, effective_working_dir)
+            .context("Failed to auto-symlink CLAUDE.local.md")?;
     }
 
     // Run post-create hooks before opening tmux so the new window appears "ready"
@@ -105,23 +115,23 @@ pub fn setup_environment(
     // Otherwise, use prefix-based lookup to group workmux windows together.
     // If not found (or error), falls back to default append behavior.
     let last_wm_window =
-        after_window.or_else(|| tmux::find_last_window_with_prefix(prefix).unwrap_or(None));
+        after_window.or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
 
-    // Create tmux window and get the initial pane's ID
+    // Create window and get the initial pane's ID
     // Use handle for the window name (not branch_name)
-    let initial_pane_id = tmux::create_window(
-        prefix,
-        handle,
-        effective_working_dir,
-        /* detached: */ !options.focus_window,
-        last_wm_window.as_deref(),
-    )
-    .context("Failed to create tmux window")?;
+    let initial_pane_id = mux
+        .create_window(CreateWindowParams {
+            prefix,
+            name: handle,
+            cwd: effective_working_dir,
+            after_window: last_wm_window.as_deref(),
+        })
+        .context("Failed to create window")?;
     info!(
         branch = branch_name,
         handle = handle,
         pane_id = %initial_pane_id,
-        "setup_environment:tmux window created"
+        "setup_environment:window created"
     );
 
     // Setup panes
@@ -133,18 +143,19 @@ pub fn setup_environment(
         validate_prompt_consumption(&resolved_panes, agent, config, options)?;
     }
 
-    let pane_setup_result = tmux::setup_panes(
-        &initial_pane_id,
-        &resolved_panes,
-        effective_working_dir,
-        tmux::PaneSetupOptions {
-            run_commands: options.run_pane_commands,
-            prompt_file_path: options.prompt_file_path.as_deref(),
-        },
-        config,
-        agent,
-    )
-    .context("Failed to setup panes")?;
+    let pane_setup_result = mux
+        .setup_panes(
+            &initial_pane_id,
+            &resolved_panes,
+            effective_working_dir,
+            PaneSetupOptions {
+                run_commands: options.run_pane_commands,
+                prompt_file_path: options.prompt_file_path.as_deref(),
+            },
+            config,
+            agent,
+        )
+        .context("Failed to setup panes")?;
     debug!(
         branch = branch_name,
         focus_id = %pane_setup_result.focus_pane_id,
@@ -153,9 +164,9 @@ pub fn setup_environment(
 
     // Focus the configured pane and optionally switch to the window
     if options.focus_window {
-        tmux::select_pane(&pane_setup_result.focus_pane_id)?;
+        mux.select_pane(&pane_setup_result.focus_pane_id)?;
         // Use handle for window selection (not branch_name)
-        tmux::select_window(prefix, handle)?;
+        mux.select_window(prefix, handle)?;
     } else {
         // Background mode: do not steal focus from the current window.
         // We intentionally skip select_window to keep the user's current window.
@@ -698,6 +709,38 @@ mod tests {
         // Cleanup
         let _ = std::fs::remove_file(path);
     }
+}
+
+/// Symlink CLAUDE.local.md from main worktree if it exists and is gitignored.
+fn symlink_claude_local_md(repo_root: &Path, worktree_path: &Path) -> Result<()> {
+    let source = repo_root.join("CLAUDE.local.md");
+    if !source.exists() {
+        return Ok(());
+    }
+
+    if !git::is_path_ignored(repo_root, "CLAUDE.local.md") {
+        return Ok(());
+    }
+
+    let dest = worktree_path.join("CLAUDE.local.md");
+    if dest.symlink_metadata().is_ok() {
+        // Already exists (file, symlink, or dir) -- skip
+        return Ok(());
+    }
+
+    let relative_source = pathdiff::diff_paths(&source, worktree_path)
+        .ok_or_else(|| anyhow!("Could not create relative path for CLAUDE.local.md symlink"))?;
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&relative_source, &dest)
+        .context("Failed to symlink CLAUDE.local.md")?;
+
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&relative_source, &dest)
+        .context("Failed to symlink CLAUDE.local.md")?;
+
+    info!("Symlinked CLAUDE.local.md to worktree");
+    Ok(())
 }
 
 /// Validates that a prompt will actually be consumed by an agent pane.

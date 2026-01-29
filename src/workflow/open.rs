@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 
-use crate::{git, tmux};
+use crate::git;
 use tracing::info;
 
 use super::context::WorkflowContext;
@@ -29,7 +29,7 @@ pub fn open(
     }
 
     // Pre-flight checks
-    context.ensure_tmux_running()?;
+    context.ensure_mux_running()?;
 
     // This command requires the worktree to already exist
     // Smart resolution: try handle first, then branch name
@@ -48,11 +48,11 @@ pub fn open(
         .to_string();
 
     // Determine final handle (with or without suffix)
-    let window_exists = tmux::window_exists(&context.prefix, &base_handle)?;
+    let window_exists = context.mux.window_exists(&context.prefix, &base_handle)?;
 
     // If window exists and we're not forcing new, switch to it
     if window_exists && !new_window {
-        tmux::select_window(&context.prefix, &base_handle)?;
+        context.mux.select_window(&context.prefix, &base_handle)?;
         info!(
             handle = base_handle,
             branch = branch_name,
@@ -72,8 +72,10 @@ pub fn open(
     let (handle, after_window) = if new_window && window_exists {
         let unique_handle = resolve_unique_handle(context, &base_handle)?;
         // Insert after the last window in the base handle group (base or -N suffixes)
-        let after =
-            tmux::find_last_window_with_base_handle(&context.prefix, &base_handle).unwrap_or(None);
+        let after = context
+            .mux
+            .find_last_window_with_base_handle(&context.prefix, &base_handle)
+            .unwrap_or(None);
         (unique_handle, after)
     } else {
         (base_handle, None)
@@ -106,6 +108,7 @@ pub fn open(
 
     // Setup the environment
     let result = setup::setup_environment(
+        context.mux.as_ref(),
         &branch_name,
         &handle,
         &worktree_path,
@@ -132,9 +135,10 @@ pub fn open(
 ///
 /// This returns "my-feature-3".
 fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result<String> {
-    let all_windows = tmux::get_all_window_names()?;
+    use crate::multiplexer::util::prefixed;
+    let all_windows = context.mux.get_all_window_names()?;
     let prefix = &context.prefix;
-    let full_base = tmux::prefixed(prefix, base_handle);
+    let full_base = prefixed(prefix, base_handle);
 
     // If base name doesn't exist, use it directly
     if !all_windows.contains(&full_base) {

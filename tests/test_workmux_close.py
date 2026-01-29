@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     WorkmuxCommandResult,
     get_window_name,
     get_worktree_path,
@@ -13,7 +13,7 @@ from .conftest import (
 
 
 def run_workmux_close(
-    env: TmuxEnvironment,
+    env: MuxEnvironment,
     workmux_exe_path: Path,
     repo_path: Path,
     name: str | None = None,
@@ -22,7 +22,7 @@ def run_workmux_close(
     """
     Helper to run `workmux close` command.
 
-    Uses tmux run-shell -b to avoid hanging when close kills the current window.
+    Uses run_shell_background to avoid hanging when close kills the current window.
     """
     stdout_file = env.tmp_path / "workmux_close_stdout.txt"
     stderr_file = env.tmp_path / "workmux_close_stderr.txt"
@@ -40,7 +40,7 @@ def run_workmux_close(
         f"echo $? > {exit_code_file}"
     )
 
-    env.tmux(["run-shell", "-b", close_script])
+    env.run_shell_background(close_script)
 
     assert poll_until(exit_code_file.exists, timeout=5.0), (
         "workmux close did not complete in time"
@@ -70,76 +70,72 @@ def run_workmux_close(
     return result
 
 
-def test_close_kills_tmux_window_keeps_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+def test_close_kills_window_keeps_worktree(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
-    """Verifies `workmux close` kills the tmux window but keeps the worktree."""
-    env = isolated_tmux_server
+    """Verifies `workmux close` kills the multiplexer window but keeps the worktree."""
+    env = mux_server
     branch_name = "feature-close-test"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Verify window exists before close
-    list_windows = env.tmux(
-        ["list-windows", "-F", "#{window_name}"]
-    ).stdout.splitlines()
-    assert window_name in list_windows
+    windows = env.list_windows()
+    assert window_name in windows
 
     # Close the window
-    run_workmux_close(env, workmux_exe_path, repo_path, branch_name)
+    run_workmux_close(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Verify window is gone
-    list_windows = env.tmux(
-        ["list-windows", "-F", "#{window_name}"]
-    ).stdout.splitlines()
-    assert window_name not in list_windows
+    windows = env.list_windows()
+    assert window_name not in windows
 
     # Verify worktree still exists
-    worktree_path = get_worktree_path(repo_path, branch_name)
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
     assert worktree_path.exists(), "Worktree should still exist after close"
 
 
 def test_close_fails_when_no_window_exists(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
-    """Verifies `workmux close` fails if no tmux window exists for the worktree."""
-    env = isolated_tmux_server
+    """Verifies `workmux close` fails if no window exists for the worktree."""
+    env = mux_server
     branch_name = "feature-no-window"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Kill the window manually
-    env.tmux(["kill-window", "-t", window_name])
+    env.kill_window(window_name)
 
     # Now try to close - should fail because window doesn't exist
     result = run_workmux_close(
         env,
         workmux_exe_path,
-        repo_path,
+        mux_repo_path,
         branch_name,
         expect_fail=True,
     )
 
-    assert "No active tmux window found" in result.stderr
+    assert "No active window found" in result.stderr
 
 
 def test_close_fails_when_worktree_missing(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies `workmux close` fails if the worktree does not exist."""
-    env = isolated_tmux_server
+    env = mux_server
     worktree_name = "nonexistent-worktree"
 
-    write_workmux_config(repo_path)
+    write_workmux_config(mux_repo_path)
 
     result = run_workmux_close(
         env,
         workmux_exe_path,
-        repo_path,
+        mux_repo_path,
         worktree_name,
         expect_fail=True,
     )
@@ -148,64 +144,57 @@ def test_close_fails_when_worktree_missing(
 
 
 def test_close_can_reopen_with_open(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies that after `workmux close`, `workmux open` can recreate the window."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-close-reopen"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Close the window
-    run_workmux_close(env, workmux_exe_path, repo_path, branch_name)
+    run_workmux_close(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Verify window is gone
-    list_windows = env.tmux(
-        ["list-windows", "-F", "#{window_name}"]
-    ).stdout.splitlines()
-    assert window_name not in list_windows
+    windows = env.list_windows()
+    assert window_name not in windows
 
     # Reopen with workmux open
-    run_workmux_command(env, workmux_exe_path, repo_path, f"open {branch_name}")
+    run_workmux_command(env, workmux_exe_path, mux_repo_path, f"open {branch_name}")
 
     # Verify window is back
-    list_windows = env.tmux(
-        ["list-windows", "-F", "#{window_name}"]
-    ).stdout.splitlines()
-    assert window_name in list_windows
+    windows = env.list_windows()
+    assert window_name in windows
 
 
 def test_close_from_inside_worktree_window(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies `workmux close` works when run from inside the target window itself."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-self-close"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Verify window exists
-    list_windows = env.tmux(
-        ["list-windows", "-F", "#{window_name}"]
-    ).stdout.splitlines()
-    assert window_name in list_windows
+    windows = env.list_windows()
+    assert window_name in windows
 
     # Send keystrokes directly to the worktree window to run close
     # This tests the schedule_window_close path (self-closing)
     cmd = f"{workmux_exe_path} close"
-    env.tmux(["send-keys", "-t", window_name, cmd, "Enter"])
+    env.send_keys(window_name, cmd, enter=True)
 
     # Poll until window is gone
     def window_is_gone():
-        windows = env.tmux(["list-windows", "-F", "#{window_name}"]).stdout.splitlines()
-        return window_name not in windows
+        return window_name not in env.list_windows()
 
     assert poll_until(window_is_gone, timeout=5.0), "Window did not close itself"
 
     # Verify worktree still exists
-    worktree_path = get_worktree_path(repo_path, branch_name)
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
     assert worktree_path.exists(), "Worktree should still exist after self-close"

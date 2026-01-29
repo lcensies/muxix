@@ -1,9 +1,18 @@
-"""Tests for tmux pane-base-index configuration compatibility."""
+"""Tests for tmux pane-base-index configuration compatibility.
 
+These tests are tmux-specific because they test pane-base-index and
+base-index configuration options that only exist in tmux.
+
+WezTerm: Does not have pane-base-index or base-index configuration options.
+"""
+
+import pytest
 from pathlib import Path
+from typing import cast
 
 
 from .conftest import (
+    MuxEnvironment,
     TmuxEnvironment,
     get_window_name,
     run_workmux_add,
@@ -11,8 +20,10 @@ from .conftest import (
 )
 
 
+# WezTerm: pane-base-index is a tmux-specific configuration option.
+@pytest.mark.tmux_only
 def test_pane_base_index_1_works_with_pane_ids(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """
     Verifies that workmux works correctly with pane-base-index 1 using pane IDs.
@@ -20,7 +31,8 @@ def test_pane_base_index_1_works_with_pane_ids(
     This test configures tmux with pane-base-index 1 (making panes 1-indexed instead
     of 0-indexed) and verifies that workmux successfully creates panes using pane IDs.
     """
-    env = isolated_tmux_server
+    # Cast to TmuxEnvironment since this is a tmux-only test
+    env = cast(TmuxEnvironment, mux_server)
     branch_name = "test-pane-index"
     window_name = get_window_name(branch_name)
 
@@ -55,15 +67,18 @@ def test_pane_base_index_1_works_with_pane_ids(
     assert len(pane_count) == 2, f"Expected 2 panes, got {len(pane_count)}"
 
 
+# WezTerm: pane-base-index is a tmux-specific configuration option.
+@pytest.mark.tmux_only
 def test_pane_base_index_1_with_multiple_panes(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """
     Verifies that workmux works correctly with pane-base-index 1 with multiple panes.
 
     This comprehensive test validates the pane ID-based targeting with complex layouts.
     """
-    env = isolated_tmux_server
+    # Cast to TmuxEnvironment since this is a tmux-only test
+    env = cast(TmuxEnvironment, mux_server)
     branch_name = "test-pane-index-fixed"
     window_name = get_window_name(branch_name)
 
@@ -97,15 +112,18 @@ def test_pane_base_index_1_with_multiple_panes(
     assert len(pane_count) == 3, f"Expected 3 panes, got {len(pane_count)}"
 
 
+# WezTerm: pane-base-index is a tmux-specific configuration option.
+@pytest.mark.tmux_only
 def test_default_pane_base_index_0_works(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """
     Verifies that workmux works correctly with default pane-base-index 0.
 
     This is a control test to ensure the existing behavior works.
     """
-    env = isolated_tmux_server
+    # Cast to TmuxEnvironment since this is a tmux-only test
+    env = cast(TmuxEnvironment, mux_server)
     branch_name = "test-default-index"
     window_name = get_window_name(branch_name)
 

@@ -5,11 +5,11 @@ from pathlib import Path
 
 
 from ..conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     FakeAgentInstaller,
+    ShellCommands,
     assert_prompt_file_contents,
     assert_window_exists,
-    configure_default_shell,
     get_window_name,
     get_worktree_path,
     poll_until,
@@ -25,19 +25,23 @@ class TestInlinePrompts:
 
     def test_add_inline_prompt_injects_into_claude(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Inline prompts should be written to PROMPT.md and passed to claude via command substitution."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-inline-prompt"
         prompt_text = "Implement inline prompt"
         output_filename = "claude_prompt.txt"
         window_name = get_window_name(branch_name)
 
-        fake_claude_path = fake_agent_installer.install(
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
+        fake_agent_installer.install(
             "claude",
             f"""#!/bin/sh
 # Debug: log all arguments
@@ -52,13 +56,22 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Use absolute path to ensure we use the fake claude
-        write_workmux_config(repo_path, panes=[{"command": str(fake_claude_path)}])
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Use agent name - shell will find it via PATH from RC file
+        write_workmux_config(
+            mux_repo_path, agent="claude", panes=[{"command": "<agent>"}]
+        )
 
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
@@ -72,7 +85,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
             debug_log_path=debug_output,
@@ -86,20 +99,24 @@ class TestPromptFile:
 
     def test_add_prompt_file_injects_into_gemini(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Prompt file flag should populate PROMPT.md and pass it to gemini via command substitution."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-file-prompt"
         window_name = get_window_name(branch_name)
-        prompt_source = repo_path / "prompt_source.txt"
+        prompt_source = mux_repo_path / "prompt_source.txt"
         prompt_source.write_text("File-based instructions")
         output_filename = "gemini_prompt.txt"
 
-        fake_gemini_path = fake_agent_installer.install(
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
+        fake_agent_installer.install(
             "gemini",
             f"""#!/bin/sh
 set -e
@@ -113,15 +130,22 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Use absolute path to ensure we use the fake gemini
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Use agent name - shell will find it via PATH from RC file
         write_workmux_config(
-            repo_path, agent="gemini", panes=[{"command": str(fake_gemini_path)}]
+            mux_repo_path, agent="gemini", panes=[{"command": "<agent>"}]
         )
 
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--prompt-file {shlex.quote(str(prompt_source))}",
         )
@@ -134,7 +158,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -146,20 +170,24 @@ class TestAgentConfig:
 
     def test_add_uses_agent_from_config(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """The <agent> placeholder should use the agent configured in .workmux.yaml when --agent is not passed."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-config-agent"
         window_name = get_window_name(branch_name)
         prompt_text = "Using configured agent"
         output_filename = "agent_output.txt"
 
+        # Configure the shell
+        env.configure_default_shell(shell_cmd.path)
+
         # Install fake gemini agent
-        fake_gemini_path = fake_agent_installer.install(
+        fake_agent_installer.install(
             "gemini",
             f"""#!/bin/sh
 set -e
@@ -168,16 +196,23 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Configure .workmux.yaml to use the absolute path to the fake agent
+        # Write RC file with PATH to fake agent
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        # Configure .workmux.yaml to use the agent name (found via PATH)
         write_workmux_config(
-            repo_path, agent=str(fake_gemini_path), panes=[{"command": "<agent>"}]
+            mux_repo_path, agent="gemini", panes=[{"command": "<agent>"}]
         )
 
         # Run 'add' WITHOUT --agent flag, should use gemini from config
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
@@ -187,7 +222,7 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -195,13 +230,13 @@ printf '%s' "$2" > "{output_filename}"
 
     def test_add_with_agent_flag_overrides_default(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """The --agent flag should override the default agent and inject prompts correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-agent-override"
         window_name = get_window_name(branch_name)
         prompt_text = "This is for the override agent"
@@ -224,13 +259,13 @@ printf '%s' "$2" > "{output_filename}"
         )
 
         # Configure workmux to use <agent> placeholder. The default should be 'claude'.
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
 
         # Run 'add' with the --agent flag to override the default, using absolute path
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--agent {shlex.quote(str(fake_gemini_path))} --prompt {shlex.quote(prompt_text)}",
         )
@@ -254,13 +289,13 @@ class TestAgentWithArguments:
 
     def test_agent_with_dangerously_skip_permissions_flag(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Agent config with --dangerously-skip-permissions should pass flag and prompt correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-yolo-mode"
         window_name = get_window_name(branch_name)
         prompt_text = "Implement yolo feature"
@@ -310,7 +345,7 @@ printf '%s' "$prompt" > "{output_filename}"
 
         # Configure agent with the flag included
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             agent=f"{fake_claude_path} --dangerously-skip-permissions",
             panes=[{"command": "<agent>"}],
         )
@@ -318,7 +353,7 @@ printf '%s' "$prompt" > "{output_filename}"
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
@@ -347,13 +382,13 @@ printf '%s' "$prompt" > "{output_filename}"
 
     def test_agent_with_multiple_arguments(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Agent config with multiple arguments should pass all args and prompt correctly."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-multi-args"
         window_name = get_window_name(branch_name)
         prompt_text = "Multi-arg task"
@@ -393,7 +428,7 @@ printf '%s' "$prompt" > "{output_filename}"
 
         # Configure agent with multiple flags
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             agent=f"{fake_claude_path} --verbose --model opus",
             panes=[{"command": "<agent>"}],
         )
@@ -401,7 +436,7 @@ printf '%s' "$prompt" > "{output_filename}"
         worktree_path = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
@@ -432,13 +467,13 @@ class TestMultiAgent:
 
     def test_add_multi_agent_creates_separate_worktrees_and_runs_correct_agents(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Verifies `-a` with multiple agents creates distinct worktrees for each agent."""
-        env = isolated_tmux_server
+        env = mux_server
         base_name = "feature-multi-agent"
         prompt_text = "Implement for {{ agent }}"
 
@@ -451,17 +486,17 @@ class TestMultiAgent:
             "#!/bin/sh\nprintf '%s' \"$2\" > gemini_out.txt",
         )
 
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
 
         run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             f"add {base_name} -a {shlex.quote(str(claude_path))} -a {shlex.quote(str(gemini_path))} --prompt '{prompt_text}'",
         )
 
         claude_branch = f"{base_name}-claude"
-        claude_worktree = get_worktree_path(repo_path, claude_branch)
+        claude_worktree = get_worktree_path(mux_repo_path, claude_branch)
         assert claude_worktree.is_dir()
         claude_window = get_window_name(claude_branch)
         assert_window_exists(env, claude_window)
@@ -476,7 +511,7 @@ class TestMultiAgent:
         ).read_text() == "Implement for claude"
 
         gemini_branch = f"{base_name}-gemini"
-        gemini_worktree = get_worktree_path(repo_path, gemini_branch)
+        gemini_worktree = get_worktree_path(mux_repo_path, gemini_branch)
         assert gemini_worktree.is_dir()
         gemini_window = get_window_name(gemini_branch)
         assert_window_exists(env, gemini_window)
@@ -492,13 +527,13 @@ class TestMultiAgent:
 
     def test_add_with_count_and_agent_uses_agent_in_all_instances(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Verifies count with a single agent uses that agent in all generated worktrees."""
-        env = isolated_tmux_server
+        env = mux_server
         base_name = "feature-counted-agent"
         prompt_text = "Task {{ num }}"
 
@@ -506,18 +541,18 @@ class TestMultiAgent:
             "gemini",
             '#!/bin/sh\nprintf \'%s\' "$2" > "gemini_task_${HOSTNAME}.txt"',
         )
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
 
         run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             f"add {base_name} -a {shlex.quote(str(fake_gemini_path))} -n 2 --prompt '{prompt_text}'",
         )
 
         for idx in (1, 2):
             branch = f"{base_name}-gemini-{idx}"
-            worktree = get_worktree_path(repo_path, branch)
+            worktree = get_worktree_path(mux_repo_path, branch)
             assert worktree.is_dir()
             files: list[Path] = []
 
@@ -537,13 +572,13 @@ class TestForeach:
 
     def test_add_foreach_creates_worktrees_from_matrix(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Verifies foreach matrix expands into multiple worktrees with templated prompts."""
-        env = isolated_tmux_server
+        env = mux_server
         base_name = "feature-matrix"
         prompt_text = "Build for {{ platform }} using {{ lang }}"
 
@@ -552,13 +587,13 @@ class TestForeach:
             "#!/bin/sh\nprintf '%s' \"$2\" > out.txt",
         )
         write_workmux_config(
-            repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
+            mux_repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
         )
 
         run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             (
                 f"add {base_name} --foreach "
                 "'platform:ios,android;lang:swift,kotlin' "
@@ -572,7 +607,7 @@ class TestForeach:
         ]
         for platform, lang in combos:
             branch = f"{base_name}-{lang}-{platform}"
-            worktree = get_worktree_path(repo_path, branch)
+            worktree = get_worktree_path(mux_repo_path, branch)
             assert worktree.is_dir()
             window = get_window_name(branch)
             assert_window_exists(env, window)
@@ -592,26 +627,26 @@ class TestBranchTemplate:
 
     def test_add_with_custom_branch_template(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies `--branch-template` controls the branch naming scheme."""
-        env = isolated_tmux_server
+        env = mux_server
         base_name = "TICKET-123"
         template = r"{{ agent }}/{{ base_name | lower }}-{{ num }}"
 
-        write_workmux_config(repo_path)
+        write_workmux_config(mux_repo_path)
         run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             f"add {base_name} -a Gemini -n 2 --branch-template '{template}'",
         )
 
         for idx in (1, 2):
             branch = f"gemini/ticket-123-{idx}"
-            worktree = get_worktree_path(repo_path, branch)
+            worktree = get_worktree_path(mux_repo_path, branch)
             assert worktree.is_dir(), f"Worktree {branch} not found"
 
 
@@ -620,20 +655,20 @@ class TestNoPrompt:
 
     def test_add_without_prompt_skips_prompt_file(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Worktrees created without prompt flags should not create PROMPT.md."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-no-prompt"
 
         from ..conftest import prompt_file_for_branch
 
-        write_workmux_config(repo_path, panes=[])
+        write_workmux_config(mux_repo_path, panes=[])
 
         worktree_path = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         # Verify no PROMPT.md in worktree
         assert not (worktree_path / "PROMPT.md").exists()
@@ -646,29 +681,32 @@ class TestShellAliases:
 
     def test_agent_placeholder_respects_shell_aliases(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
     ):
         """Verifies that the <agent> placeholder triggers aliases defined in shell rc files."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-agent-alias"
         window_name = get_window_name(branch_name)
         marker_content = "alias_was_expanded"
 
+        # Configure the default shell
+        env.configure_default_shell(shell_cmd.path)
+
         # Get the path where the fake agent will be installed
         fake_bin_dir = fake_agent_installer.bin_dir
 
-        # Write a .zshrc that prepends our fake bin to the PATH and defines the alias.
-        # This ensures the shell finds our fake `claude` before any system-wide one.
-        (env.home_path / ".zshrc").write_text(
-            f"""
-export PATH="{fake_bin_dir}:$PATH"
-alias claude='claude --aliased'
-""".strip()
-            + "\n"
-        )
+        # Write shell-appropriate RC file that prepends our fake bin to PATH and defines alias
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_content = f"""
+{shell_cmd.prepend_path(str(fake_bin_dir))}
+{shell_cmd.alias("claude", "claude --aliased")}
+"""
+        rc_path.write_text(rc_content.strip() + "\n")
 
         fake_agent_installer.install(
             "claude",
@@ -685,19 +723,19 @@ exit 1
 """,
         )
 
-        write_workmux_config(repo_path, agent="claude", panes=[{"command": "<agent>"}])
-
-        pre_cmds = configure_default_shell()
+        write_workmux_config(
+            mux_repo_path, agent="claude", panes=[{"command": "<agent>"}]
+        )
 
         worktree_path = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name, pre_run_tmux_cmds=pre_cmds
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         marker_file = worktree_path / "alias_marker.txt"
 
         wait_for_file(
             env,
             marker_file,
-            timeout=2.0,
+            timeout=5.0,  # Increased for slower shells like nushell
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -711,16 +749,16 @@ class TestAgentErrors:
 
     def test_add_fails_with_count_and_multiple_agents(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies --count cannot be combined with multiple --agent flags."""
-        env = isolated_tmux_server
+        env = mux_server
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature -n 2 -a claude -a gemini",
             expect_fail=True,
         )
@@ -728,16 +766,16 @@ class TestAgentErrors:
 
     def test_add_fails_with_foreach_and_agent(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies clap rejects --foreach in combination with --agent."""
-        env = isolated_tmux_server
+        env = mux_server
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --foreach 'p:a' -a claude",
             expect_fail=True,
         )
@@ -748,16 +786,16 @@ class TestAgentErrors:
 
     def test_add_fails_with_foreach_mismatched_lengths(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies foreach parser enforces equal list lengths."""
-        env = isolated_tmux_server
+        env = mux_server
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --foreach 'platform:ios,android;lang:swift'",
             expect_fail=True,
         )
@@ -768,18 +806,18 @@ class TestAgentErrors:
 
     def test_add_fails_with_prompt_but_no_pane_has_agent_placeholder(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies -p fails when panes don't include <agent> placeholder and don't run the default agent."""
-        env = isolated_tmux_server
+        env = mux_server
         # Config with no <agent> placeholder - agent defaults to "claude" but no pane runs it
-        write_workmux_config(repo_path, panes=[{"command": "clear"}])
+        write_workmux_config(mux_repo_path, panes=[{"command": "clear"}])
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --prompt 'do something'",
             expect_fail=True,
         )
@@ -789,22 +827,22 @@ class TestAgentErrors:
 
     def test_add_fails_with_prompt_but_no_pane_runs_agent(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies -p fails when panes don't run the configured agent."""
-        env = isolated_tmux_server
+        env = mux_server
         # Config with agent but panes don't use it
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             agent="claude",
             panes=[{"command": "vim"}, {"command": "clear", "split": "horizontal"}],
         )
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --prompt 'do something'",
             expect_fail=True,
         )
@@ -813,17 +851,17 @@ class TestAgentErrors:
 
     def test_add_fails_with_prompt_and_no_pane_cmds(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies -p fails when combined with --no-pane-cmds."""
-        env = isolated_tmux_server
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        env = mux_server
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --prompt 'do something' --no-pane-cmds",
             expect_fail=True,
         )
@@ -835,17 +873,17 @@ class TestTemplateVariableValidation:
 
     def test_add_fails_with_undefined_prompt_variable(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies prompt with undefined template variable fails with helpful error."""
-        env = isolated_tmux_server
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        env = mux_server
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature --prompt 'Build for {{ undefined_var }}'",
             expect_fail=True,
         )
@@ -855,17 +893,17 @@ class TestTemplateVariableValidation:
 
     def test_add_fails_with_undefined_branch_template_variable(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies branch template with undefined variable fails with helpful error."""
-        env = isolated_tmux_server
-        write_workmux_config(repo_path, panes=[])
+        env = mux_server
+        write_workmux_config(mux_repo_path, panes=[])
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             "add my-feature -n 2 --branch-template '{{ base_name }}-{{ typo }}'",
             expect_fail=True,
         )
@@ -874,13 +912,13 @@ class TestTemplateVariableValidation:
 
     def test_add_succeeds_with_valid_foreach_variables(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         fake_agent_installer: FakeAgentInstaller,
     ):
         """Verifies foreach variables are available in prompts."""
-        env = isolated_tmux_server
+        env = mux_server
         base_name = "feature-valid-vars"
 
         claude_path = fake_agent_installer.install(
@@ -888,14 +926,14 @@ class TestTemplateVariableValidation:
             "#!/bin/sh\nprintf '%s' \"$2\" > out.txt",
         )
         write_workmux_config(
-            repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
+            mux_repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
         )
 
         # This should succeed because platform and lang are defined by foreach
         run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             (
                 f"add {base_name} --foreach "
                 "'platform:ios;lang:swift' "
@@ -904,22 +942,22 @@ class TestTemplateVariableValidation:
         )
 
         # Verify worktree was created
-        worktree = get_worktree_path(repo_path, f"{base_name}-swift-ios")
+        worktree = get_worktree_path(mux_repo_path, f"{base_name}-swift-ios")
         assert worktree.is_dir()
 
     def test_add_fails_with_typo_in_foreach_variable_name(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Verifies typo in foreach variable name fails with helpful error."""
-        env = isolated_tmux_server
-        write_workmux_config(repo_path, panes=[{"command": "<agent>"}])
+        env = mux_server
+        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
         result = run_workmux_command(
             env,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             (
                 "add my-feature --foreach "
                 "'platform:ios,android' "

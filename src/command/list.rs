@@ -1,3 +1,4 @@
+use crate::multiplexer::{create_backend, detect_backend};
 use crate::{config, nerdfont, workflow};
 use anyhow::Result;
 use pathdiff::diff_paths;
@@ -12,8 +13,8 @@ struct WorktreeRow {
     branch: String,
     #[tabled(rename = "PR")]
     pr_status: String,
-    #[tabled(rename = "TMUX")]
-    tmux_status: String,
+    #[tabled(rename = "MUX")]
+    mux_status: String,
     #[tabled(rename = "UNMERGED")]
     unmerged_status: String,
     #[tabled(rename = "PATH")]
@@ -39,7 +40,8 @@ fn format_pr_status(pr_info: Option<crate::github::PrSummary>) -> String {
 
 pub fn run(show_pr: bool) -> Result<()> {
     let config = config::Config::load(None)?;
-    let worktrees = workflow::list(&config, show_pr)?;
+    let mux = create_backend(detect_backend());
+    let worktrees = workflow::list(&config, mux.as_ref(), show_pr)?;
 
     if worktrees.is_empty() {
         println!("No worktrees found");
@@ -65,8 +67,7 @@ pub fn run(show_pr: bool) -> Result<()> {
             WorktreeRow {
                 branch: wt.branch,
                 pr_status: format_pr_status(wt.pr_info),
-                path_str,
-                tmux_status: if wt.has_tmux {
+                mux_status: if wt.has_mux_window {
                     "✓".to_string()
                 } else {
                     "-".to_string()
@@ -76,6 +77,7 @@ pub fn run(show_pr: bool) -> Result<()> {
                 } else {
                     "-".to_string()
                 },
+                path_str,
             }
         })
         .collect();
@@ -83,9 +85,9 @@ pub fn run(show_pr: bool) -> Result<()> {
     let mut table = Table::new(display_data);
     table
         .with(Style::blank())
-        .modify(Columns::new(0..4), Padding::new(0, 1, 0, 0));
+        .modify(Columns::new(0..5), Padding::new(0, 1, 0, 0));
 
-    // Hide PR column if --pr flag not used
+    // Hide PR column if --pr flag not used (column 1)
     if !show_pr {
         table.with(Remove::column(Columns::new(1..2)));
     }

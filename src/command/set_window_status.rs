@@ -1,9 +1,12 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use anyhow::Result;
 use clap::ValueEnum;
+use tracing::warn;
 
-use crate::cmd::Cmd;
 use crate::config::Config;
-use crate::tmux;
+use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
+use crate::state::{AgentState, PaneKey, StateStore};
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum SetWindowStatusCommand {
@@ -18,83 +21,76 @@ pub enum SetWindowStatusCommand {
 }
 
 pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
-    // Fail silently if not in tmux to avoid polluting non-tmux shells
-    let Ok(pane) = std::env::var("TMUX_PANE") else {
+    let config = Config::load(None)?;
+    let mux = create_backend(detect_backend());
+
+    // Fail silently if not in a multiplexer session
+    let Some(pane_id) = mux.current_pane_id() else {
         return Ok(());
     };
 
-    let config = Config::load(None)?;
-
-    // Ensure the status format is applied so the icon actually shows up
-    // Skip for Clear since there's nothing to display
-    if config.status_format.unwrap_or(true) && !matches!(cmd, SetWindowStatusCommand::Clear) {
-        let _ = tmux::ensure_status_format(&pane);
-    }
-
     match cmd {
-        SetWindowStatusCommand::Working => {
-            tmux::pop_done_pane(&pane); // Remove from done stack
-            set_status(&pane, config.status_icons.working())
-        }
-        SetWindowStatusCommand::Waiting => {
-            tmux::pop_done_pane(&pane); // Remove from done stack
-            set_status_with_auto_clear(&pane, config.status_icons.waiting())
-        }
-        SetWindowStatusCommand::Done => {
-            tmux::push_done_pane(&pane); // Add to done stack (most recent)
-            set_status_with_auto_clear(&pane, config.status_icons.done())
-        }
         SetWindowStatusCommand::Clear => {
-            tmux::pop_done_pane(&pane); // Remove from done stack
-            clear_status(&pane)
+            // Clear icon only - state file cleanup is handled by reconciliation
+            mux.clear_status(&pane_id)?;
+        }
+        SetWindowStatusCommand::Working
+        | SetWindowStatusCommand::Waiting
+        | SetWindowStatusCommand::Done => {
+            let (status, icon, auto_clear) = match cmd {
+                SetWindowStatusCommand::Working => {
+                    (AgentStatus::Working, config.status_icons.working(), false)
+                }
+                SetWindowStatusCommand::Waiting => {
+                    (AgentStatus::Waiting, config.status_icons.waiting(), true)
+                }
+                SetWindowStatusCommand::Done => {
+                    (AgentStatus::Done, config.status_icons.done(), true)
+                }
+                SetWindowStatusCommand::Clear => unreachable!(),
+            };
+
+            let pane_key = PaneKey {
+                backend: mux.name().to_string(),
+                instance: mux.instance_id(),
+                pane_id: pane_id.clone(),
+            };
+
+            // Ensure the status format is applied so the icon actually shows up
+            if config.status_format.unwrap_or(true) {
+                let _ = mux.ensure_status_format(&pane_id);
+            }
+
+            // Get live pane info for PID and command
+            if let Ok(Some(live_info)) = mux.get_live_pane_info(&pane_id) {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+
+                let state = AgentState {
+                    pane_key,
+                    workdir: live_info.working_dir,
+                    status: Some(status),
+                    status_ts: Some(now),
+                    pane_title: live_info.title,
+                    pane_pid: live_info.pid,
+                    command: live_info.current_command,
+                    updated_ts: now,
+                };
+
+                // Write to state store (don't fail the command if this fails)
+                if let Ok(store) = StateStore::new()
+                    && let Err(e) = store.upsert_agent(&state)
+                {
+                    warn!(error = %e, "failed to persist agent state");
+                }
+            }
+
+            // Update backend UI (status bar icon)
+            mux.set_status(&pane_id, icon, auto_clear)?;
         }
     }
-}
-
-fn set_status(pane: &str, icon: &str) -> Result<()> {
-    tmux::set_status_options(pane, icon, true);
-    Ok(())
-}
-
-fn set_status_with_auto_clear(pane: &str, icon: &str) -> Result<()> {
-    tmux::set_status_options(pane, icon, true);
-
-    // Attach hook to clear window status on focus (only if status still matches the icon)
-    // Uses tmux conditional: if @workmux_status equals the icon, clear window options
-    // Note: Pane options are NOT cleared - they persist for status popup/dashboard tracking
-    let hook_cmd = format!(
-        "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \
-         \"set-option -uw @workmux_status ; \
-           set-option -uw @workmux_status_ts\"",
-        icon
-    );
-
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-w", "-t", pane, "pane-focus-in", &hook_cmd])
-        .run();
-
-    Ok(())
-}
-
-fn clear_status(pane: &str) -> Result<()> {
-    // Clear Window Options
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-uw", "-t", pane, "@workmux_status"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-uw", "-t", pane, "@workmux_status_ts"])
-        .run();
-
-    // Clear Pane Options
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_status_ts"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-up", "-t", pane, "@workmux_pane_command"])
-        .run();
 
     Ok(())
 }

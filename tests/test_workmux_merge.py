@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     create_commit,
     create_dirty_file,
     get_window_name,
@@ -13,10 +13,10 @@ from .conftest import (
 
 
 def test_merge_default_strategy_succeeds_and_cleans_up(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies a standard merge succeeds and cleans up all resources."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-to-merge"
     window_name = get_window_name(branch_name)
     write_workmux_config(repo_path, env=env)
@@ -42,8 +42,8 @@ def test_merge_default_strategy_succeeds_and_cleans_up(
     run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
 
     assert not worktree_path.exists(), "Worktree directory should be removed"
-    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-    assert window_name not in list_windows_result.stdout, "Tmux window should be closed"
+    windows = env.list_windows()
+    assert window_name not in windows, "Window should be closed"
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name not in branch_list_result.stdout, (
         "Local branch should be deleted"
@@ -55,10 +55,10 @@ def test_merge_default_strategy_succeeds_and_cleans_up(
 
 
 def test_merge_from_within_worktree_succeeds(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux merge` with no branch arg works from inside the worktree window."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-in-window"
     window_name = get_window_name(branch_name)
     write_workmux_config(repo_path, env=env)
@@ -76,17 +76,17 @@ def test_merge_from_within_worktree_succeeds(
     )
 
     assert not worktree_path.exists()
-    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-    assert window_name not in list_windows_result.stdout
+    windows = env.list_windows()
+    assert window_name not in windows
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name not in branch_list_result.stdout
 
 
 def test_merge_rebase_strategy_succeeds(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --rebase merge results in a linear history."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-to-rebase"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -130,10 +130,10 @@ def test_merge_rebase_strategy_succeeds(
 
 
 def test_merge_strategy_config_rebase(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge_strategy config option applies rebase without CLI flag."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-config-rebase"
     write_workmux_config(repo_path, env=env, merge_strategy="rebase")
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -165,10 +165,10 @@ def test_merge_strategy_config_rebase(
 
 
 def test_merge_squash_strategy_succeeds(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --squash merge combines multiple commits into one."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-to-squash"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -198,10 +198,10 @@ def test_merge_squash_strategy_succeeds(
 
 
 def test_merge_fails_on_unstaged_changes(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge fails if worktree has unstaged changes."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-with-unstaged"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -218,10 +218,10 @@ def test_merge_fails_on_unstaged_changes(
 
 
 def test_merge_succeeds_with_ignore_uncommitted_flag(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --ignore-uncommitted allows merge despite unstaged changes."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-ignore-uncommitted"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -238,10 +238,10 @@ def test_merge_succeeds_with_ignore_uncommitted_flag(
 
 
 def test_merge_commits_staged_changes_before_merge(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge automatically commits staged changes."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-with-staged"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -259,10 +259,10 @@ def test_merge_commits_staged_changes_before_merge(
 
 
 def test_merge_fails_if_main_worktree_has_uncommitted_tracked_changes(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge fails if main worktree has uncommitted tracked changes."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-clean"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -281,10 +281,10 @@ def test_merge_fails_if_main_worktree_has_uncommitted_tracked_changes(
 
 
 def test_merge_succeeds_with_untracked_files_in_main_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge succeeds when main worktree has untracked files."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-with-untracked-main"
     write_workmux_config(repo_path, env=env)
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -305,10 +305,10 @@ def test_merge_succeeds_with_untracked_files_in_main_worktree(
 
 
 def test_merge_with_keep_flag_skips_cleanup(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --keep flag merges without cleaning up worktree, window, or branch."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-to-keep"
     window_name = get_window_name(branch_name)
     write_workmux_config(repo_path, env=env)
@@ -330,17 +330,17 @@ def test_merge_with_keep_flag_skips_cleanup(
 
     # Verify cleanup did NOT happen
     assert worktree_path.exists(), "Worktree should still exist with --keep"
-    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-    assert window_name in list_windows_result.stdout, "Tmux window should still exist"
+    windows = env.list_windows()
+    assert window_name in windows, "Window should still exist"
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name in branch_list_result.stdout, "Local branch should still exist"
 
 
 def test_merge_into_different_branch(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --into flag merges into a different branch instead of main."""
-    env = isolated_tmux_server
+    env = mux_server
     parent_branch = "feature/parent"
     child_branch = "feature/child"
     child_window_name = get_window_name(child_branch)
@@ -369,10 +369,8 @@ def test_merge_into_different_branch(
 
     # Verify child worktree was cleaned up
     assert not child_worktree_path.exists(), "Child worktree should be removed"
-    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-    assert child_window_name not in list_windows_result.stdout, (
-        "Child tmux window should be closed"
-    )
+    windows = env.list_windows()
+    assert child_window_name not in windows, "Child window should be closed"
     branch_list_result = env.run_command(["git", "branch", "--list", child_branch])
     assert child_branch not in branch_list_result.stdout, (
         "Child branch should be deleted"
@@ -398,7 +396,7 @@ def test_merge_into_different_branch(
 
 
 def test_merge_auto_detects_base_branch(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge auto-detects base branch when --into is not specified.
 
@@ -406,7 +404,7 @@ def test_merge_auto_detects_base_branch(
     the merge command should automatically merge back into that base branch
     without requiring --into to be specified.
     """
-    env = isolated_tmux_server
+    env = mux_server
     parent_branch = "feature/parent-auto"
     child_branch = "feature/child-auto"
     child_window_name = get_window_name(child_branch)
@@ -433,10 +431,8 @@ def test_merge_auto_detects_base_branch(
 
     # Verify child worktree was cleaned up
     assert not child_worktree_path.exists(), "Child worktree should be removed"
-    list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-    assert child_window_name not in list_windows_result.stdout, (
-        "Child tmux window should be closed"
-    )
+    windows = env.list_windows()
+    assert child_window_name not in windows, "Child window should be closed"
     branch_list_result = env.run_command(["git", "branch", "--list", child_branch])
     assert child_branch not in branch_list_result.stdout, (
         "Child branch should be deleted"
@@ -462,10 +458,10 @@ def test_merge_auto_detects_base_branch(
 
 
 def test_merge_falls_back_to_main_when_base_branch_deleted(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge falls back to main when the stored base branch no longer exists."""
-    env = isolated_tmux_server
+    env = mux_server
     parent_branch = "feature/temp-parent"
     child_branch = "feature/orphan-child"
     write_workmux_config(repo_path, env=env)
@@ -508,7 +504,7 @@ def test_merge_falls_back_to_main_when_base_branch_deleted(
 
 
 def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies merge works when target branch is in a linked worktree.
 
@@ -516,7 +512,7 @@ def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
     workmux should perform the merge in that worktree instead of trying to switch
     branches in the main worktree root.
     """
-    env = isolated_tmux_server
+    env = mux_server
     feature_branch = "feature-issue-29"
     write_workmux_config(repo_path, env=env)
 
@@ -556,7 +552,7 @@ def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
 
 
 def test_merge_succeeds_with_bare_repo_and_linked_worktrees(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path
 ):
     """Verifies merge works correctly in a bare repo with linked worktrees setup.
 
@@ -577,7 +573,7 @@ def test_merge_succeeds_with_bare_repo_and_linked_worktrees(
     5. After the feature worktree is renamed to trash, that path no longer exists
     6. prune_worktrees() tries to run git from that non-existent path and fails
     """
-    env = isolated_tmux_server
+    env = mux_server
     base_dir = env.tmp_path / "bare-repo-test"
     base_dir.mkdir()
 

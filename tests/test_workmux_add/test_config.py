@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ..conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     RepoBuilder,
     assert_copied_file,
     assert_symlink_to,
@@ -21,43 +21,42 @@ class TestConfigPrecedence:
 
     def test_project_config_overrides_global_config(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Project-level settings should override conflicting global settings."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-project-overrides"
         global_prefix = "global-"
         project_prefix = "project-"
 
         write_global_workmux_config(env, window_prefix=global_prefix)
-        write_workmux_config(repo_path, window_prefix=project_prefix)
+        write_workmux_config(mux_repo_path, window_prefix=project_prefix)
 
-        add_branch_and_get_worktree(env, workmux_exe_path, repo_path, branch_name)
+        add_branch_and_get_worktree(env, workmux_exe_path, mux_repo_path, branch_name)
 
         project_window = f"{project_prefix}{branch_name}"
         assert_window_exists(env, project_window)
 
-        list_windows_result = env.tmux(["list-windows", "-F", "#{window_name}"])
-        existing_windows = list_windows_result.stdout.strip().split("\n")
+        existing_windows = env.list_windows()
         assert f"{global_prefix}{branch_name}" not in existing_windows
 
     def test_global_config_used_when_project_config_absent(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Global config should be respected even if the repository lacks .workmux.yaml."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-global-only"
         hook_file = "global_only_hook.txt"
 
         write_global_workmux_config(env, post_create=[f"touch {hook_file}"])
 
         worktree_path = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         assert (worktree_path / hook_file).exists()
 
@@ -67,12 +66,12 @@ class TestGlobalPlaceholderPostCreate:
 
     def test_global_placeholder_merges_post_create_commands(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """The '<global>' placeholder should expand to global post_create commands."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-global-hooks"
         global_hook = "created_from_global.txt"
         before_hook = "project_before.txt"
@@ -80,12 +79,12 @@ class TestGlobalPlaceholderPostCreate:
 
         write_global_workmux_config(env, post_create=[f"touch {global_hook}"])
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             post_create=[f"touch {before_hook}", "<global>", f"touch {after_hook}"],
         )
 
         worktree_dir = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         assert (worktree_dir / before_hook).exists()
         assert (worktree_dir / global_hook).exists()
@@ -97,13 +96,13 @@ class TestGlobalPlaceholderFiles:
 
     def test_global_placeholder_merges_file_operations(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         repo_builder: RepoBuilder,
     ):
         """The '<global>' placeholder should merge copy and symlink file operations."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-global-files"
 
         # Create files/directories that will be copied or symlinked.
@@ -121,7 +120,7 @@ class TestGlobalPlaceholderFiles:
             files={"copy": ["global.env"], "symlink": ["global_cache"]},
         )
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             files={
                 "copy": ["<global>", "project.env"],
                 "symlink": ["<global>", "project_cache"],
@@ -129,7 +128,7 @@ class TestGlobalPlaceholderFiles:
         )
 
         worktree_dir = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         symlinked_global = assert_symlink_to(worktree_dir, "global_cache")
         symlinked_project = assert_symlink_to(worktree_dir, "project_cache")
@@ -141,13 +140,13 @@ class TestGlobalPlaceholderFiles:
 
     def test_global_placeholder_only_merges_specific_file_lists(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         repo_builder: RepoBuilder,
     ):
         """`<global>` can merge copy patterns while symlink patterns fully override."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-partial-file-merge"
 
         repo_builder.add_to_gitignore(
@@ -159,12 +158,12 @@ class TestGlobalPlaceholderFiles:
             ]
         )
 
-        (repo_path / "global_copy.txt").write_text("global copy")
-        (repo_path / "project_copy.txt").write_text("project copy")
-        global_symlink_dir = repo_path / "global_symlink_dir"
+        (mux_repo_path / "global_copy.txt").write_text("global copy")
+        (mux_repo_path / "project_copy.txt").write_text("project copy")
+        global_symlink_dir = mux_repo_path / "global_symlink_dir"
         global_symlink_dir.mkdir()
         (global_symlink_dir / "global.txt").write_text("global data")
-        project_symlink_dir = repo_path / "project_symlink_dir"
+        project_symlink_dir = mux_repo_path / "project_symlink_dir"
         project_symlink_dir.mkdir()
         (project_symlink_dir / "project.txt").write_text("project data")
 
@@ -173,7 +172,7 @@ class TestGlobalPlaceholderFiles:
             files={"copy": ["global_copy.txt"], "symlink": ["global_symlink_dir"]},
         )
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             files={
                 "copy": ["<global>", "project_copy.txt"],
                 "symlink": ["project_symlink_dir"],
@@ -181,7 +180,7 @@ class TestGlobalPlaceholderFiles:
         )
 
         worktree_dir = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         assert_copied_file(worktree_dir, "global_copy.txt")
         assert_copied_file(worktree_dir, "project_copy.txt")
@@ -195,13 +194,13 @@ class TestEmptyOverrides:
 
     def test_project_empty_file_lists_override_global_lists(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
         repo_builder: RepoBuilder,
     ):
         """Explicit empty lists suppress the corresponding global file operations."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-empty-file-override"
 
         repo_builder.add_to_gitignore(
@@ -211,8 +210,8 @@ class TestEmptyOverrides:
             ]
         )
 
-        (repo_path / "global_only.env").write_text("SECRET=1")
-        global_shared_dir = repo_path / "global_shared_dir"
+        (mux_repo_path / "global_only.env").write_text("SECRET=1")
+        global_shared_dir = mux_repo_path / "global_shared_dir"
         global_shared_dir.mkdir()
         (global_shared_dir / "package.json").write_text('{"name":"demo"}')
 
@@ -221,12 +220,12 @@ class TestEmptyOverrides:
             files={"copy": ["global_only.env"], "symlink": ["global_shared_dir"]},
         )
         write_workmux_config(
-            repo_path,
+            mux_repo_path,
             files={"copy": [], "symlink": []},
         )
 
         worktree_dir = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name
+            env, workmux_exe_path, mux_repo_path, branch_name
         )
         assert not (worktree_dir / "global_only.env").exists()
         assert not (worktree_dir / "global_shared_dir").exists()
@@ -237,12 +236,12 @@ class TestPaneOverrides:
 
     def test_project_panes_replace_global_panes(
         self,
-        isolated_tmux_server: TmuxEnvironment,
+        mux_server: MuxEnvironment,
         workmux_exe_path: Path,
-        repo_path: Path,
+        mux_repo_path: Path,
     ):
         """Project panes should completely replace global panes (no merging)."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-pane-override"
         window_name = get_window_name(branch_name)
         global_output = "GLOBAL_PANE_OUTPUT"
@@ -252,12 +251,13 @@ class TestPaneOverrides:
             env, panes=[{"command": f"echo '{global_output}'; sleep 0.5"}]
         )
         write_workmux_config(
-            repo_path, panes=[{"command": f"echo '{project_output}'; sleep 0.5"}]
+            mux_repo_path, panes=[{"command": f"echo '{project_output}'; sleep 0.5"}]
         )
 
-        add_branch_and_get_worktree(env, workmux_exe_path, repo_path, branch_name)
+        add_branch_and_get_worktree(env, workmux_exe_path, mux_repo_path, branch_name)
 
         wait_for_pane_output(env, window_name, project_output)
 
-        capture_result = env.tmux(["capture-pane", "-p", "-t", window_name])
-        assert global_output not in capture_result.stdout
+        pane_content = env.capture_pane(window_name)
+        assert pane_content is not None
+        assert global_output not in pane_content

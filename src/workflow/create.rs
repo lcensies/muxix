@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::{git, spinner, tmux};
+use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
 /// Check if a path is registered as a git worktree.
@@ -59,12 +59,13 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Pre-flight checks
-    context.ensure_tmux_running()?;
+    context.ensure_mux_running()?;
 
-    // Check tmux window using handle (the display name)
-    if tmux::window_exists(&context.prefix, handle)? {
+    // Check window using handle (the display name)
+    if context.mux.window_exists(&context.prefix, handle)? {
         return Err(anyhow!(
-            "A tmux window named '{}{}' already exists",
+            "A {} window named '{}{}' already exists",
+            context.mux.name(),
             context.prefix,
             handle
         ));
@@ -281,6 +282,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         ..options
     };
     let mut result = setup::setup_environment(
+        context.mux.as_ref(),
         branch_name,
         handle,
         &worktree_path,
@@ -401,8 +403,9 @@ pub fn create_with_changes(
                 "Rollback failed: could not clean up the new worktree. Please do so manually.",
             )?;
 
-            // Handle tmux window navigation/closing based on whether we're inside the source window
+            // Handle window navigation/closing based on whether we're inside the source window
             cleanup::navigate_to_target_and_close(
+                context.mux.as_ref(),
                 &context.prefix,
                 &context.main_branch,
                 handle,

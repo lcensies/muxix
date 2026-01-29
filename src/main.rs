@@ -8,12 +8,13 @@ mod github;
 mod llm;
 mod logger;
 mod markdown;
+mod multiplexer;
 mod naming;
 mod nerdfont;
 mod prompt;
 mod spinner;
+mod state;
 mod template;
-mod tmux;
 mod workflow;
 
 use anyhow::Result;

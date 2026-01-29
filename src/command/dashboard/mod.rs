@@ -14,6 +14,7 @@
 //! - `ansi`: ANSI escape sequence parsing and stripping
 //! - `diff`: Diff domain types and helper functions
 //! - `keymap`: Key-to-action mapping per context with help text
+//! - `monitor`: Agent stall detection and interrupt handling
 //! - `settings`: Tmux-persisted dashboard settings
 //! - `sort`: Sort mode enum and tmux persistence
 //! - `spinner`: Spinner animation constants
@@ -29,6 +30,7 @@ mod ansi;
 mod app;
 mod diff;
 mod keymap;
+mod monitor;
 mod settings;
 mod sort;
 mod spinner;
@@ -45,7 +47,7 @@ use std::io;
 use std::time::Duration;
 
 use crate::git;
-use crate::tmux;
+use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
 use self::app::{App, ViewMode};
@@ -104,9 +106,11 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
 }
 
 pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
-    // Check if tmux is running
-    if !tmux::is_running().unwrap_or(false) {
-        println!("No tmux server running.");
+    let mux = create_backend(detect_backend());
+
+    // Check if multiplexer is running
+    if !mux.is_running().unwrap_or(false) {
+        println!("No {} server running.", mux.name());
         return Ok(());
     }
 
@@ -118,7 +122,7 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new()?;
+    let mut app = App::new(mux)?;
 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {

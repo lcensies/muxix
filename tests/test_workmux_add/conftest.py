@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ..conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     get_worktree_path,
     run_workmux_command,
     write_workmux_config,
@@ -13,7 +13,7 @@ from ..conftest import (
 
 
 def add_branch_and_get_worktree(
-    env: TmuxEnvironment,
+    env: MuxEnvironment,
     workmux_exe_path: Path,
     repo_path: Path,
     branch_name: str,
@@ -41,8 +41,8 @@ def add_branch_and_get_worktree(
 
 
 @pytest.fixture
-def add_worktree(isolated_tmux_server, workmux_exe_path, repo_path):
-    """Factory fixture to add worktrees with less boilerplate."""
+def mux_add_worktree(mux_server, workmux_exe_path, mux_repo_path):
+    """Factory fixture to add worktrees with less boilerplate (multibackend)."""
 
     def _add(
         branch_name: str,
@@ -51,9 +51,9 @@ def add_worktree(isolated_tmux_server, workmux_exe_path, repo_path):
         **kwargs,
     ) -> Path:
         return add_branch_and_get_worktree(
-            isolated_tmux_server,
+            mux_server,
             workmux_exe_path,
-            repo_path,
+            mux_repo_path,
             branch_name,
             extra_args=extra_args,
             command_target=command_target,
@@ -64,10 +64,10 @@ def add_worktree(isolated_tmux_server, workmux_exe_path, repo_path):
 
 
 @pytest.fixture
-def setup_workmux_config(repo_path):
-    """Factory fixture to write workmux config with less boilerplate."""
+def mux_setup_workmux_config(mux_repo_path):
+    """Factory fixture to write workmux config with less boilerplate (multibackend)."""
 
     def _setup(**kwargs):
-        write_workmux_config(repo_path, **kwargs)
+        write_workmux_config(mux_repo_path, **kwargs)
 
     return _setup

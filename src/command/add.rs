@@ -1,3 +1,4 @@
+use crate::multiplexer::{create_backend, detect_backend, util::prefixed};
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
 use crate::template::{
@@ -7,7 +8,7 @@ use crate::template::{
 use crate::workflow::SetupOptions;
 use crate::workflow::pr::detect_remote_branch;
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt, parse_prompt_with_frontmatter};
-use crate::{config, git, tmux, workflow};
+use crate::{config, git, workflow};
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -67,33 +68,34 @@ fn read_stdin_lines() -> Result<Vec<String>> {
     Ok(lines)
 }
 
-/// Check preconditions for the add command (git repo and tmux session).
+/// Check preconditions for the add command (git repo and multiplexer session).
 /// Returns Ok(()) if all preconditions are met, or an error listing all failures.
 fn check_preconditions() -> Result<()> {
     let is_git = git::is_git_repo()?;
-    let is_tmux = tmux::is_running()?;
+    let mux = create_backend(detect_backend());
+    let is_mux_running = mux.is_running()?;
 
-    if is_git && is_tmux {
+    if is_git && is_mux_running {
         return Ok(());
     }
 
     let mut errors = Vec::new();
 
-    if !is_tmux {
-        errors.push("tmux is not running.");
+    if !is_mux_running {
+        errors.push(format!("{} is not running.", mux.name()));
     }
     if !is_git {
-        errors.push("Current directory is not a git repository.");
+        errors.push("Current directory is not a git repository.".to_string());
     }
 
     // Add blank line before suggestions
-    errors.push("");
+    errors.push("".to_string());
 
-    if !is_tmux {
-        errors.push("Please start a tmux session first.");
+    if !is_mux_running {
+        errors.push(format!("Please start a {} session first.", mux.name()));
     }
     if !is_git {
-        errors.push("Please run this command from within a git repository.");
+        errors.push("Please run this command from within a git repository.".to_string());
     }
 
     Err(anyhow!(errors.join("\n")))
@@ -211,7 +213,8 @@ pub fn run(
     if rescue.with_changes {
         let (rescue_config, rescue_location) =
             config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
-        let rescue_context = workflow::WorkflowContext::new(rescue_config, rescue_location)?;
+        let mux = create_backend(detect_backend());
+        let rescue_context = workflow::WorkflowContext::new(rescue_config, mux, rescue_location)?;
         // Derive handle for rescue flow (uses config for naming strategy/prefix)
         let handle =
             crate::naming::derive_handle(branch_name, name.as_deref(), &rescue_context.config)?;
@@ -360,8 +363,8 @@ fn handle_rescue_flow(
     );
 
     if wait {
-        let full_window_name = tmux::prefixed(&context.prefix, handle);
-        tmux::wait_until_windows_closed(&[full_window_name])?;
+        let full_window_name = prefixed(&context.prefix, handle);
+        context.mux.wait_until_windows_closed(&[full_window_name])?;
     }
 
     Ok(true)
@@ -463,6 +466,9 @@ impl<'a> CreationPlan<'a> {
             println!("Preparing to create {} worktrees...", self.specs.len());
         }
 
+        // Create backend once for all specs
+        let mux = create_backend(detect_backend());
+
         // Track windows for --wait (all created windows)
         let mut created_windows = Vec::new();
         // Track currently active windows for --max-concurrent
@@ -475,7 +481,7 @@ impl<'a> CreationPlan<'a> {
                 // Only enter polling loop if we're at capacity
                 if active_windows.len() >= limit {
                     loop {
-                        active_windows = tmux::filter_active_windows(&active_windows)?;
+                        active_windows = mux.filter_active_windows(&active_windows)?;
                         if active_windows.len() < limit {
                             break;
                         }
@@ -522,11 +528,11 @@ impl<'a> CreationPlan<'a> {
 
             super::announce_hooks(&config, Some(&self.options), super::HookPhase::PostCreate);
 
-            // Create a WorkflowContext for this spec's config
-            let context = workflow::WorkflowContext::new(config, config_location)?;
+            // Create a WorkflowContext for this spec's config (reuse shared mux)
+            let context = workflow::WorkflowContext::new(config, mux.clone(), config_location)?;
 
             // Calculate window name for tracking
-            let full_window_name = tmux::prefixed(&context.prefix, &handle);
+            let full_window_name = prefixed(&context.prefix, &handle);
 
             if self.wait {
                 created_windows.push(full_window_name.clone());
@@ -571,7 +577,7 @@ impl<'a> CreationPlan<'a> {
         }
 
         if self.wait && !created_windows.is_empty() {
-            tmux::wait_until_windows_closed(&created_windows)?;
+            mux.wait_until_windows_closed(&created_windows)?;
         }
 
         Ok(())

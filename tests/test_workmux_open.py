@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from .conftest import (
     DEFAULT_WINDOW_PREFIX,
-    TmuxEnvironment,
+    MuxEnvironment,
     get_window_name,
     get_worktree_path,
     poll_until,
@@ -13,23 +15,23 @@ from .conftest import (
 )
 
 
-def _kill_window(env: TmuxEnvironment, branch_name: str) -> None:
-    """Helper to close the tmux window for a branch if it exists."""
+def _kill_window(env: MuxEnvironment, branch_name: str) -> None:
+    """Helper to close the window for a branch if it exists."""
     window_name = get_window_name(branch_name)
-    env.tmux(["has-session", "-t", window_name], check=False)
-    env.tmux(["kill-window", "-t", window_name], check=False)
+    if window_name in env.list_windows():
+        env.kill_window(window_name)
 
 
-def _get_all_windows(env: TmuxEnvironment) -> list[str]:
-    """Helper to get all tmux window names."""
-    return env.tmux(["list-windows", "-F", "#{window_name}"]).stdout.splitlines()
+def _get_all_windows(env: MuxEnvironment) -> list[str]:
+    """Helper to get all window names."""
+    return env.list_windows()
 
 
 def test_open_recreates_tmux_window_for_existing_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
-    """Verifies `workmux open` recreates a tmux window for an existing worktree."""
-    env = isolated_tmux_server
+    """Verifies `workmux open` recreates a window for an existing worktree."""
+    env = mux_server
     branch_name = "feature-open-success"
     window_name = get_window_name(branch_name)
 
@@ -37,7 +39,7 @@ def test_open_recreates_tmux_window_for_existing_worktree(
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
 
     # Close the original window to simulate a detached worktree
-    env.tmux(["kill-window", "-t", window_name])
+    env.kill_window(window_name)
 
     run_workmux_open(env, workmux_exe_path, repo_path, branch_name)
 
@@ -45,11 +47,14 @@ def test_open_recreates_tmux_window_for_existing_worktree(
     assert window_name in list_windows
 
 
+# WezTerm: get_current_window() returns None because WezTerm doesn't expose
+# session-level window focus via CLI - GUI focus is controlled by window manager.
+@pytest.mark.tmux_only
 def test_open_switches_to_existing_window_by_default(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open` switches to existing window instead of erroring."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-switch-test"
     target_window = get_window_name(branch_name)
 
@@ -59,7 +64,7 @@ def test_open_switches_to_existing_window_by_default(
     # Open again - should switch, not error
     result = run_workmux_open(env, workmux_exe_path, repo_path, branch_name)
 
-    assert "Switched to existing tmux window" in result.stdout
+    assert "Switched to existing" in result.stdout
 
     # Should still only have one window for this worktree
     list_windows = _get_all_windows(env)
@@ -68,18 +73,18 @@ def test_open_switches_to_existing_window_by_default(
     ]
     assert len(matching) == 1
 
-    # Verify tmux actually switched focus to the target window
-    active_window = env.tmux(["display-message", "-p", "#{window_name}"]).stdout.strip()
+    # Verify focus actually switched to the target window
+    active_window = env.get_current_window()
     assert active_window == target_window, (
         f"Expected active window to be '{target_window}', got '{active_window}'"
     )
 
 
 def test_open_with_new_flag_creates_duplicate_window(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --new` creates a duplicate window with suffix."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-duplicate"
     base_window = get_window_name(branch_name)
 
@@ -91,7 +96,7 @@ def test_open_with_new_flag_creates_duplicate_window(
         env, workmux_exe_path, repo_path, branch_name, new_window=True
     )
 
-    assert "Opened tmux window" in result.stdout
+    assert "Opened" in result.stdout
 
     # Should now have two windows: base and -2
     list_windows = _get_all_windows(env)
@@ -100,10 +105,10 @@ def test_open_with_new_flag_creates_duplicate_window(
 
 
 def test_open_new_without_name_uses_current_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --new` without name uses current worktree from cwd."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-open-current"
     base_window = get_window_name(branch_name)
 
@@ -123,7 +128,7 @@ def test_open_new_without_name_uses_current_worktree(
         working_dir=worktree_path,
     )
 
-    assert "Opened tmux window" in result.stdout
+    assert "Opened" in result.stdout
 
     # Should now have two windows: base and -2
     list_windows = _get_all_windows(env)
@@ -132,10 +137,10 @@ def test_open_new_without_name_uses_current_worktree(
 
 
 def test_open_with_new_flag_creates_incrementing_suffixes(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies multiple `workmux open --new` creates incrementing suffixes (-2, -3, -4)."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-multi-dup"
     base_window = get_window_name(branch_name)
 
@@ -154,11 +159,14 @@ def test_open_with_new_flag_creates_incrementing_suffixes(
     assert f"{base_window}-4" in list_windows
 
 
+# WezTerm: CLI doesn't support inserting tabs at specific positions like tmux's
+# -a flag. New tabs always append at the end.
+@pytest.mark.tmux_only
 def test_open_new_inserts_after_base_group(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --new` inserts duplicate after base handle group, not at end."""
-    env = isolated_tmux_server
+    env = mux_server
 
     write_workmux_config(repo_path)
 
@@ -187,10 +195,10 @@ def test_open_new_inserts_after_base_group(
 
 
 def test_open_new_flag_when_no_window_exists_uses_base_name(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --new` uses base name when no window exists."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-new-no-existing"
     window_name = get_window_name(branch_name)
 
@@ -198,7 +206,7 @@ def test_open_new_flag_when_no_window_exists_uses_base_name(
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
 
     # Kill the original window
-    env.tmux(["kill-window", "-t", window_name])
+    env.kill_window(window_name)
 
     # Open with --new flag - should use base name since none exists
     run_workmux_open(env, workmux_exe_path, repo_path, branch_name, new_window=True)
@@ -210,10 +218,10 @@ def test_open_new_flag_when_no_window_exists_uses_base_name(
 
 
 def test_open_new_flag_with_gap_appends_after_highest(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --new` appends after highest suffix, not filling gaps."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-gap-test"
     base_window = get_window_name(branch_name)
 
@@ -231,7 +239,7 @@ def test_open_new_flag_with_gap_appends_after_highest(
     assert f"{base_window}-3" in list_windows
 
     # Kill -2 to create a gap
-    env.tmux(["kill-window", "-t", f"={base_window}-2"])
+    env.kill_window(f"{base_window}-2")
 
     # Verify gap exists
     list_windows = _get_all_windows(env)
@@ -250,10 +258,10 @@ def test_open_new_flag_with_gap_appends_after_highest(
 
 
 def test_open_fails_when_worktree_missing(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open` fails if the worktree does not exist."""
-    env = isolated_tmux_server
+    env = mux_server
     worktree_name = "missing-worktree"
 
     write_workmux_config(repo_path)
@@ -270,10 +278,10 @@ def test_open_fails_when_worktree_missing(
 
 
 def test_open_with_run_hooks_reexecutes_post_create_commands(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --run-hooks` re-runs post_create hooks."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-open-hooks"
     hook_file = "open_hook.txt"
 
@@ -298,10 +306,10 @@ def test_open_with_run_hooks_reexecutes_post_create_commands(
 
 
 def test_open_with_force_files_reapplies_file_operations(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open --force-files` reapplies copy operations."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-open-files"
     shared_file = repo_path / "shared.env"
     shared_file.write_text("KEY=value")
@@ -333,10 +341,10 @@ def test_open_with_force_files_reapplies_file_operations(
 
 
 def test_close_in_duplicate_window_closes_correct_window(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux close` in a duplicate window closes only that window."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-close-dup"
     base_window = get_window_name(branch_name)
     dup_window = f"{base_window}-2"
@@ -354,16 +362,11 @@ def test_close_in_duplicate_window_closes_correct_window(
 
     # Send close command directly to the duplicate window's pane using send-keys
     # This properly sets TMUX_PANE environment variable unlike run-shell
-    # Use session:=window format for exact window name matching
     worktree_path = get_worktree_path(repo_path, branch_name)
-    env.tmux(
-        [
-            "send-keys",
-            "-t",
-            f"test:={dup_window}",
-            f"cd {worktree_path} && {workmux_exe_path} close",
-            "Enter",
-        ]
+    env.send_keys(
+        dup_window,
+        f"cd {worktree_path} && {workmux_exe_path} close",
+        enter=True,
     )
 
     # Wait for the duplicate window to disappear
@@ -378,10 +381,10 @@ def test_close_in_duplicate_window_closes_correct_window(
 
 
 def test_remove_closes_all_duplicate_windows(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux remove` closes all duplicate windows for a worktree."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-remove-dups"
     base_window = get_window_name(branch_name)
 
@@ -413,10 +416,10 @@ def test_remove_closes_all_duplicate_windows(
 
 
 def test_open_with_inline_prompt(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open -p` passes prompt to the worktree."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-open-prompt"
     prompt_text = "Fix the login bug"
 
@@ -448,13 +451,14 @@ def test_open_with_inline_prompt(
 
 
 def test_open_with_special_characters_in_prompt(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies prompt handling with special characters (quotes, $VAR, backticks)."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-special-prompt"
-    # Prompt with quotes, dollar signs, backticks, and newlines
-    prompt_text = "Refactor: 'Module' needs $FIX.\nVerify `code` behavior."
+    # Prompt with quotes, dollar signs, and backticks
+    # Note: newlines can't be tested via -p due to tmux send-keys limitations
+    prompt_text = "Refactor: 'Module' needs $FIX. Verify `code` behavior."
 
     write_workmux_config(repo_path, panes=[{"command": "<agent>"}], agent="claude")
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
@@ -482,10 +486,10 @@ def test_open_with_special_characters_in_prompt(
 
 
 def test_open_from_inside_worktree_switches_to_other(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open` from inside one worktree can switch to another."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_a = "feature-source"
     branch_b = "feature-target"
     window_a = get_window_name(branch_a)
@@ -496,18 +500,14 @@ def test_open_from_inside_worktree_switches_to_other(
     run_workmux_add(env, workmux_exe_path, repo_path, branch_b)
 
     # Kill window B to simulate a detached worktree
-    env.tmux(["kill-window", "-t", f"test:={window_b}"])
+    env.kill_window(window_b)
 
     # Run open from inside window A to open window B
     worktree_a_path = get_worktree_path(repo_path, branch_a)
-    env.tmux(
-        [
-            "send-keys",
-            "-t",
-            f"test:={window_a}",
-            f"cd {worktree_a_path} && {workmux_exe_path} open {branch_b}",
-            "Enter",
-        ]
+    env.send_keys(
+        window_a,
+        f"cd {worktree_a_path} && {workmux_exe_path} open {branch_b}",
+        enter=True,
     )
 
     # Wait for window B to appear
@@ -523,10 +523,10 @@ def test_open_from_inside_worktree_switches_to_other(
 
 
 def test_open_with_prompt_file(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies `workmux open -P` reads prompt from file."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-open-prompt-file"
     prompt_text = "Implement the new feature\n\nDetails here."
 

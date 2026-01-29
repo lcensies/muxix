@@ -83,6 +83,18 @@ pub fn save_status_cache(statuses: &HashMap<PathBuf, GitStatus>) {
     }
 }
 
+/// Check if a path is ignored by git (via .gitignore, global gitignore, etc.)
+pub fn is_path_ignored(repo_path: &Path, file_path: &str) -> bool {
+    std::process::Command::new("git")
+        .args(["check-ignore", "-q", file_path])
+        .current_dir(repo_path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Check if we're in a git repository
 pub fn is_git_repo() -> Result<bool> {
     Cmd::new("git")

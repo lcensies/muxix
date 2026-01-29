@@ -20,7 +20,20 @@ pub fn remove(
     // Smart resolution: try handle first, then branch name
     let (worktree_path, branch_name) = git::find_worktree(handle)
         .with_context(|| format!("No worktree found with name '{}'", handle))?;
-    debug!(handle = handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
+
+    // Extract actual handle from worktree path (directory name)
+    // User may have provided branch name (with slashes) but window names use handle (with dashes)
+    let actual_handle = worktree_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| {
+            anyhow!(
+                "Could not derive handle from worktree path: {}",
+                worktree_path.display()
+            )
+        })?;
+
+    debug!(handle = actual_handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
 
     // Safety Check: Prevent deleting the main worktree itself, regardless of branch.
     let is_main_worktree = match (
@@ -69,7 +82,7 @@ pub fn remove(
     let cleanup_result = cleanup::cleanup(
         context,
         &branch_name,
-        handle,
+        actual_handle,
         &worktree_path,
         force,
         keep_branch,
@@ -77,9 +90,10 @@ pub fn remove(
 
     // Navigate to the main branch window and close the source window
     cleanup::navigate_to_target_and_close(
+        context.mux.as_ref(),
         &context.prefix,
         &context.main_branch,
-        handle,
+        actual_handle,
         &cleanup_result,
     )?;
 

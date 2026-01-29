@@ -11,7 +11,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::git::{self, GitStatus};
-use crate::tmux::{self, AgentPane};
+use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
+use crate::state::StateStore;
+
+use super::monitor::AgentMonitor;
 
 use super::agent;
 use super::ansi::parse_ansi_to_lines;
@@ -19,10 +22,7 @@ use super::diff::{
     DiffView, extract_file_list, get_diff_content, get_file_list_numstat, map_file_offsets,
     parse_hunk_header,
 };
-use super::settings::{
-    load_hide_stale_from_tmux, load_preview_size_from_tmux, save_hide_stale_to_tmux,
-    save_preview_size_to_tmux,
-};
+use super::settings::{load_hide_stale, load_preview_size, save_hide_stale, save_preview_size};
 use super::sort::SortMode;
 use super::spinner::SPINNER_FRAMES;
 
@@ -39,6 +39,8 @@ pub enum ViewMode {
 
 /// App state for the TUI
 pub struct App {
+    /// The multiplexer backend
+    pub mux: Arc<dyn Multiplexer>,
     pub agents: Vec<AgentPane>,
     pub table_state: TableState,
     /// Track the selected item by pane_id to preserve selection across reorders
@@ -83,25 +85,27 @@ pub struct App {
     /// Preview pane size as percentage (1-90). Higher = larger preview.
     pub preview_size: u8,
     /// Monitors agents for stalls and interrupts
-    agent_monitor: tmux::AgentMonitor,
+    agent_monitor: AgentMonitor,
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
+    pub fn new(mux: Arc<dyn Multiplexer>) -> Result<Self> {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
         // Get the active pane's directory to indicate the active worktree.
-        // Try tmux first (handles popup case), fall back to current_dir.
-        let current_worktree = crate::tmux::get_client_active_pane_path()
+        // Try multiplexer first (handles popup case), fall back to current_dir.
+        let current_worktree = mux
+            .get_client_active_pane_path()
             .or_else(|_| std::env::current_dir())
             .ok();
         // Preview size: CLI override > tmux saved > config default
         // Clamp to 10-90 to handle manually corrupted tmux variables
-        let preview_size = load_preview_size_from_tmux()
+        let preview_size = load_preview_size()
             .unwrap_or_else(|| config.dashboard.preview_size())
             .clamp(10, 90);
 
         let mut app = Self {
+            mux,
             agents: Vec::new(),
             table_state: TableState::default(),
             selected_pane_id: None,
@@ -110,7 +114,7 @@ impl App {
             config,
             should_quit: false,
             should_jump: false,
-            sort_mode: SortMode::load_from_tmux(),
+            sort_mode: SortMode::load(),
             view_mode: ViewMode::default(),
             preview: None,
             preview_pane_id: None,
@@ -125,10 +129,10 @@ impl App {
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
-            hide_stale: load_hide_stale_from_tmux(),
+            hide_stale: load_hide_stale(),
             show_help: false,
             preview_size,
-            agent_monitor: tmux::AgentMonitor::new(),
+            agent_monitor: AgentMonitor::new(),
         };
         app.refresh();
         // Select first item if available
@@ -142,9 +146,17 @@ impl App {
     }
 
     pub fn refresh(&mut self) {
+        // Load agents from StateStore with reconciliation against live pane state
+        self.agents = StateStore::new()
+            .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
+            .unwrap_or_default();
+
+        // Detect and handle stalled agents
         let working_icon = self.config.status_icons.working();
         self.agents =
-            tmux::get_all_agent_panes(working_icon, &mut self.agent_monitor).unwrap_or_default();
+            self.agent_monitor
+                .process_stalls(self.agents.clone(), working_icon, self.mux.as_ref());
+
         self.sort_agents();
 
         // Filter out stale agents if hide_stale is enabled
@@ -259,7 +271,7 @@ impl App {
             self.preview_pane_id = current_pane_id.clone();
             self.preview = current_pane_id
                 .as_ref()
-                .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+                .and_then(|pane_id| self.mux.capture_pane(pane_id, PREVIEW_LINES));
             // Reset scroll position when selection changes
             self.preview_scroll = None;
         }
@@ -270,7 +282,7 @@ impl App {
         self.preview = self
             .preview_pane_id
             .as_ref()
-            .and_then(|pane_id| tmux::capture_pane(pane_id, PREVIEW_LINES));
+            .and_then(|pane_id| self.mux.capture_pane(pane_id, PREVIEW_LINES));
     }
 
     /// Parse pane_id (e.g., "%0", "%10") to a number for proper ordering
@@ -283,10 +295,6 @@ impl App {
 
     /// Sort agents based on the current sort mode
     fn sort_agents(&mut self) {
-        // Extract config values needed for sorting to avoid borrowing issues
-        let waiting = self.config.status_icons.waiting().to_string();
-        let working = self.config.status_icons.working().to_string();
-        let done = self.config.status_icons.done().to_string();
         let stale_threshold = self.stale_threshold_secs;
 
         let now = SystemTime::now()
@@ -305,11 +313,11 @@ impl App {
                 return 3; // Stale: lowest priority
             }
 
-            match agent.status.as_deref().unwrap_or("") {
-                s if s == waiting => 0, // Waiting: needs input
-                s if s == done => 1,    // Done: needs review
-                s if s == working => 2, // Working: no action needed
-                _ => 3,                 // Unknown/other: lowest priority
+            match agent.status {
+                Some(AgentStatus::Waiting) => 0, // Waiting: needs input
+                Some(AgentStatus::Done) => 1,    // Done: needs review
+                Some(AgentStatus::Working) => 2, // Working: no action needed
+                None => 3,                       // Unknown/other: lowest priority
             }
         };
 
@@ -351,27 +359,27 @@ impl App {
     /// Cycle to the next sort mode, re-sort, and persist to tmux
     pub fn cycle_sort_mode(&mut self) {
         self.sort_mode = self.sort_mode.next();
-        self.sort_mode.save_to_tmux();
+        self.sort_mode.save();
         self.sort_agents();
     }
 
     /// Toggle hiding stale agents
     pub fn toggle_stale_filter(&mut self) {
         self.hide_stale = !self.hide_stale;
-        save_hide_stale_to_tmux(self.hide_stale);
+        save_hide_stale(self.hide_stale);
         self.refresh();
     }
 
     /// Increase preview size by 10% (max 90%)
     pub fn increase_preview_size(&mut self) {
         self.preview_size = (self.preview_size + 10).min(90);
-        save_preview_size_to_tmux(self.preview_size);
+        save_preview_size(self.preview_size);
     }
 
     /// Decrease preview size by 10% (min 10%)
     pub fn decrease_preview_size(&mut self) {
         self.preview_size = self.preview_size.saturating_sub(10).max(10);
-        save_preview_size_to_tmux(self.preview_size);
+        save_preview_size(self.preview_size);
     }
 
     pub fn next(&mut self) {
@@ -418,7 +426,7 @@ impl App {
         {
             self.should_jump = true;
             // Jump to the specific pane
-            let _ = tmux::switch_to_pane(&agent.pane_id);
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
         }
     }
 
@@ -435,7 +443,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::switch_to_pane(&agent.pane_id);
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
             // Don't set should_jump - popup stays open
         }
     }
@@ -445,7 +453,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_key(&agent.pane_id, key);
+            let _ = self.mux.send_key(&agent.pane_id, key);
         }
     }
 
@@ -492,36 +500,29 @@ impl App {
     }
 
     pub fn get_status_display(&self, agent: &AgentPane) -> (String, Color) {
-        let status = agent.status.as_deref().unwrap_or("");
         let is_stale = self.is_stale(agent);
 
-        // Match against configured icons
-        let working = self.config.status_icons.working();
-        let waiting = self.config.status_icons.waiting();
-        let done = self.config.status_icons.done();
-
-        // Get the base status text and color
-        let (status_text, base_color, is_working) = if status == working {
-            (status.to_string(), Color::Cyan, true)
-        } else if status == waiting {
-            (status.to_string(), Color::Magenta, false)
-        } else if status == done {
-            (status.to_string(), Color::Green, false)
-        } else {
-            (status.to_string(), Color::White, false)
+        // Map status enum to icon and color
+        let (icon, base_color, is_working) = match agent.status {
+            Some(AgentStatus::Working) => (self.config.status_icons.working(), Color::Cyan, true),
+            Some(AgentStatus::Waiting) => {
+                (self.config.status_icons.waiting(), Color::Magenta, false)
+            }
+            Some(AgentStatus::Done) => (self.config.status_icons.done(), Color::Green, false),
+            None => ("", Color::White, false),
         };
 
         // If stale, dim the color and add timer-off indicator
         if is_stale {
-            let display_text = format!("{} \u{f051b}", status_text);
+            let display_text = format!("{} \u{f051b}", icon);
             (display_text, Color::DarkGray)
         } else if is_working {
             // Add animated spinner when agent is working
             let spinner = SPINNER_FRAMES[self.spinner_frame as usize];
-            let display_text = format!("{} {}", status_text, spinner);
+            let display_text = format!("{} {}", icon, spinner);
             (display_text, base_color)
         } else {
-            (status_text, base_color)
+            (icon.to_string(), base_color)
         }
     }
 
@@ -854,9 +855,9 @@ impl App {
         );
 
         // Use paste_multiline to properly handle newlines in the message
-        let _ = tmux::paste_multiline(&diff.pane_id, &message);
+        let _ = self.mux.paste_multiline(&diff.pane_id, &message);
         // Send an additional Enter to submit the comment to the agent
-        let _ = tmux::send_key(&diff.pane_id, "Enter");
+        let _ = self.mux.send_key(&diff.pane_id, "Enter");
     }
 
     /// Split the current hunk into smaller hunks if possible
@@ -1003,7 +1004,7 @@ impl App {
     /// Send commit action to the agent pane and close diff modal
     pub fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
@@ -1015,7 +1016,7 @@ impl App {
     /// Send merge action to the agent pane and close diff modal
     pub fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),
@@ -1029,7 +1030,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
@@ -1042,7 +1043,7 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = tmux::send_keys_to_agent(
+            let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),

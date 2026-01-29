@@ -1,4 +1,5 @@
 use crate::command::args::PromptArgs;
+use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
@@ -21,7 +22,8 @@ pub fn run(
     };
 
     let (config, config_location) = config::Config::load_with_location(None)?;
-    let context = WorkflowContext::new(config, config_location)?;
+    let mux = create_backend(detect_backend());
+    let context = WorkflowContext::new(config, mux, config_location)?;
 
     // Load prompt if any prompt argument is provided
     let prompt = load_prompt(&PromptLoadArgs {

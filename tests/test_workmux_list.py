@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .conftest import (
-    TmuxEnvironment,
+    MuxEnvironment,
     create_commit,
     get_window_name,
     get_worktree_path,
@@ -15,10 +15,10 @@ from .conftest import (
 
 
 def run_workmux_list(
-    env: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    env: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ) -> str:
     """
-    Runs `workmux list` inside the isolated tmux session and returns the output.
+    Runs `workmux list` inside the multiplexer session and returns the output.
     """
     run_workmux_command(env, workmux_exe_path, repo_path, "list")
     stdout_file = env.tmp_path / "workmux_stdout.txt"
@@ -60,16 +60,16 @@ def parse_list_output(output: str) -> List[Dict[str, str]]:
 
 
 def test_list_output_format(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies `workmux list` produces correctly formatted table output."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-test"
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
-    output = run_workmux_list(env, workmux_exe_path, repo_path)
-    worktree_path = get_worktree_path(repo_path, branch_name)
+    output = run_workmux_list(env, workmux_exe_path, mux_repo_path)
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
 
     # Parse and verify the output contains the expected data
     parsed_output = parse_list_output(output)
@@ -77,57 +77,57 @@ def test_list_output_format(
 
     # Verify header is present
     assert "BRANCH" in output
-    assert "TMUX" in output
+    assert "MUX" in output
     assert "UNMERGED" in output
     assert "PATH" in output
 
-    # Verify main branch entry - should show "(here)" when run from repo_path
+    # Verify main branch entry - should show "(here)" when run from mux_repo_path
     main_entry = next((r for r in parsed_output if r["BRANCH"] == "main"), None)
     assert main_entry is not None
-    assert main_entry["TMUX"] == "-"
+    assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
     assert main_entry["PATH"] == "(here)"
 
     # Verify feature branch entry - shows as relative path
     feature_entry = next((r for r in parsed_output if r["BRANCH"] == branch_name), None)
     assert feature_entry is not None
-    assert feature_entry["TMUX"] == "✓"
+    assert feature_entry["MUX"] == "✓"
     assert feature_entry["UNMERGED"] == "-"
     # Convert relative path to absolute and compare
-    expected_relative = os.path.relpath(worktree_path, repo_path)
+    expected_relative = os.path.relpath(worktree_path, mux_repo_path)
     assert feature_entry["PATH"] == expected_relative
 
 
 def test_list_initial_state(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies `workmux list` shows only the main branch in a new repo."""
-    env = isolated_tmux_server
+    env = mux_server
 
-    output = run_workmux_list(env, workmux_exe_path, repo_path)
+    output = run_workmux_list(env, workmux_exe_path, mux_repo_path)
     parsed_output = parse_list_output(output)
     assert len(parsed_output) == 1
 
     main_entry = parsed_output[0]
     assert main_entry["BRANCH"] == "main"
-    assert main_entry["TMUX"] == "-"
+    assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
-    # When run from repo_path, main branch shows as "(here)"
+    # When run from mux_repo_path, main branch shows as "(here)"
     assert main_entry["PATH"] == "(here)"
 
 
 def test_list_with_active_worktree(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
-    """Verifies `list` shows an active worktree with a tmux window ('✓')."""
-    env = isolated_tmux_server
+    """Verifies `list` shows an active worktree with a multiplexer window ('✓')."""
+    env = mux_server
     branch_name = "feature-active"
-    write_workmux_config(repo_path)
+    write_workmux_config(mux_repo_path)
 
     # Create the worktree and window
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
-    output = run_workmux_list(env, workmux_exe_path, repo_path)
+    output = run_workmux_list(env, workmux_exe_path, mux_repo_path)
     parsed_output = parse_list_output(output)
     assert len(parsed_output) == 2
 
@@ -135,73 +135,73 @@ def test_list_with_active_worktree(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "✓"
+    assert worktree_entry["MUX"] == "✓"
     assert worktree_entry["UNMERGED"] == "-"
-    # Path shows as relative when run from repo_path
-    expected_path = get_worktree_path(repo_path, branch_name)
-    expected_relative = os.path.relpath(expected_path, repo_path)
+    # Path shows as relative when run from mux_repo_path
+    expected_path = get_worktree_path(mux_repo_path, branch_name)
+    expected_relative = os.path.relpath(expected_path, mux_repo_path)
     assert worktree_entry["PATH"] == expected_relative
 
 
 def test_list_with_unmerged_commits(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies `list` shows a worktree with unmerged commits ('●')."""
-    env = isolated_tmux_server
+    env = mux_server
     branch_name = "feature-unmerged"
-    worktree_path = get_worktree_path(repo_path, branch_name)
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Create a commit only on the feature branch
     create_commit(env, worktree_path, "This commit is unmerged")
 
-    output = run_workmux_list(env, workmux_exe_path, repo_path)
+    output = run_workmux_list(env, workmux_exe_path, mux_repo_path)
     parsed_output = parse_list_output(output)
     worktree_entry = next(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "✓"
+    assert worktree_entry["MUX"] == "✓"
     assert worktree_entry["UNMERGED"] == "●"
 
 
 def test_list_with_detached_window(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
-    """Verifies `list` shows a worktree whose tmux window has been closed ('-')."""
-    env = isolated_tmux_server
+    """Verifies `list` shows a worktree whose window has been closed ('-')."""
+    env = mux_server
     branch_name = "feature-detached"
     window_name = get_window_name(branch_name)
-    write_workmux_config(repo_path)
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
-    # Kill the tmux window manually
-    env.tmux(["kill-window", "-t", window_name])
+    # Kill the window manually
+    env.kill_window(window_name)
 
-    output = run_workmux_list(env, workmux_exe_path, repo_path)
+    output = run_workmux_list(env, workmux_exe_path, mux_repo_path)
     parsed_output = parse_list_output(output)
     worktree_entry = next(
         (r for r in parsed_output if r["BRANCH"] == branch_name), None
     )
     assert worktree_entry is not None
-    assert worktree_entry["TMUX"] == "-"
+    assert worktree_entry["MUX"] == "-"
     assert worktree_entry["UNMERGED"] == "-"
 
 
 def test_list_alias_ls_works(
-    isolated_tmux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies that the `ls` alias for `list` works correctly."""
-    env = isolated_tmux_server
+    env = mux_server
 
     # Run `ls` and verify it produces expected output
-    run_workmux_command(env, workmux_exe_path, repo_path, "ls")
+    run_workmux_command(env, workmux_exe_path, mux_repo_path, "ls")
     stdout_file = env.tmp_path / "workmux_stdout.txt"
     ls_output = stdout_file.read_text()
 
     parsed_output = parse_list_output(ls_output)
     assert len(parsed_output) == 1
     assert parsed_output[0]["BRANCH"] == "main"
-    # When run from repo_path, main branch shows as "(here)"
+    # When run from mux_repo_path, main branch shows as "(here)"
     assert parsed_output[0]["PATH"] == "(here)"
