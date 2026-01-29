@@ -14,6 +14,18 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.102 (2026-01-29)
+
+- Moved internal state management from tmux-specific mechanisms to
+  filesystem-based JSON storage, laying the groundwork for multi-backend support
+- Added experimental WezTerm backend support. workmux auto-detects the backend
+  from environment variables. See the
+  [WezTerm guide](https://workmux.raine.dev/guide/wezterm) for setup
+  instructions. (contributed by [@JeremyBYU](https://github.com/JeremyBYU))
+- New worktrees now automatically get a symlink to a gitignored
+  `CLAUDE.local.md` from your main worktree, so your local Claude Code
+  instructions are available without manual setup
+
 ## v0.1.101 (2026-01-29)
 
 - Fixed status icons breaking tmux themes that use padding spaces in window
