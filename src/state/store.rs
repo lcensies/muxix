@@ -188,9 +188,7 @@ impl StateStore {
 
     /// Load agents with reconciliation against live multiplexer state.
     ///
-    /// Two-layer exit detection:
-    /// - **PID validation**: Pane was closed and recycled (stored PID != live PID)
-    /// - **Command comparison**: Agent exited within pane (foreground command changed)
+    /// Uses batched pane queries for performance, with backend-specific fallback validation.
     ///
     /// Returns only valid agents; removes stale state files.
     pub fn load_reconciled_agents(
@@ -218,11 +216,23 @@ impl StateStore {
             let pane_id = &state.pane_key.pane_id;
             match live_pane {
                 None => {
-                    info!(pane_id, "reconcile: removing agent, pane no longer exists");
-                    self.delete_agent(&state.pane_key)?;
-                    // Note: Can't clear window status since pane is gone
+                    // Pane not in batched result - use backend-specific validation
+                    // (Important for Zellij which can't query all panes)
+                    if mux.validate_agent_alive(&state)? {
+                        let agent_pane = state.to_agent_pane(
+                            state.session_name.clone().unwrap_or_default(),
+                            state.window_name.clone().unwrap_or_default(),
+                        );
+                        valid_agents.push(agent_pane);
+                    } else {
+                        info!(pane_id, "reconcile: removing agent, pane no longer exists");
+                        self.delete_agent(&state.pane_key)?;
+                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                    }
                 }
-                Some(live) if live.pid != state.pane_pid => {
+                Some(live) if live.pid != state.pane_pid && live.pid != 0 => {
+                    // PID mismatch - pane ID was recycled by a new process
+                    // (Skip check if pid=0, which means backend doesn't support PIDs)
                     info!(
                         pane_id,
                         stored_pid = state.pane_pid,
@@ -230,10 +240,11 @@ impl StateStore {
                         "reconcile: removing agent, pane PID changed (pane ID recycled)"
                     );
                     self.delete_agent(&state.pane_key)?;
-                    // Clear stale window status icon from status bar
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
-                Some(live) if live.current_command != state.command => {
+                Some(live) if !live.current_command.is_empty() && live.current_command != state.command => {
+                    // Command changed - agent exited (e.g., "node" -> "zsh")
+                    // (Skip check if command is empty, which means backend doesn't support it)
                     info!(
                         pane_id,
                         stored_command = state.command,
@@ -241,14 +252,13 @@ impl StateStore {
                         "reconcile: removing agent, foreground command changed"
                     );
                     self.delete_agent(&state.pane_key)?;
-                    // Clear stale window status icon from status bar
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
                 Some(live) => {
                     // Valid - include in dashboard
                     let agent_pane = state.to_agent_pane(
-                        live.session.clone().unwrap_or_default(),
-                        live.window.clone().unwrap_or_default(),
+                        live.session.clone().unwrap_or_else(|| state.session_name.clone().unwrap_or_default()),
+                        live.window.clone().unwrap_or_else(|| state.window_name.clone().unwrap_or_default()),
                     );
                     valid_agents.push(agent_pane);
                 }
@@ -333,6 +343,8 @@ mod tests {
             pane_pid: 12345,
             command: "node".to_string(),
             updated_ts: 1234567890,
+            window_name: Some("wm-test".to_string()),
+            session_name: Some("main".to_string()),
         }
     }
 

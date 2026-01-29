@@ -82,6 +82,8 @@ pub fn persist_agent_update(
         pane_pid: live_info.pid,
         command: live_info.current_command,
         updated_ts: now,
+        window_name: live_info.window,
+        session_name: live_info.session,
     };
 
     if let Ok(store) = StateStore::new()

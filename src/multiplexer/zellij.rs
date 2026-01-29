@@ -662,9 +662,8 @@ impl Multiplexer for ZellijBackend {
 
     fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>> {
         // list-clients only shows the focused pane, not arbitrary pane IDs.
-        // For zellij, state reconciliation uses query-tab-names instead.
-        // This is implemented for interface compliance but returns None
-        // unless the requested pane happens to be focused.
+        // For focused panes, return accurate info. For unfocused panes,
+        // return fallback data to allow state persistence.
         let clients = Self::list_clients()?;
 
         for client in clients {
@@ -679,7 +678,7 @@ impl Multiplexer for ZellijBackend {
                 return Ok(Some(LivePaneInfo {
                     pid: 0, // Zellij doesn't expose PID
                     current_command,
-                    working_dir: PathBuf::new(), // Not available
+                    working_dir: std::env::current_dir().unwrap_or_default(),
                     title: None,
                     session: Self::session_name(),
                     window: Self::focused_tab_name(),
@@ -687,11 +686,56 @@ impl Multiplexer for ZellijBackend {
             }
         }
 
-        Ok(None)
+        // For unfocused panes: return fallback data to allow state persistence.
+        // Validation is handled by validate_agent_alive() instead.
+        Ok(Some(LivePaneInfo {
+            pid: 0,
+            current_command: String::new(),
+            working_dir: std::env::current_dir().unwrap_or_default(),
+            title: None,
+            session: Self::session_name(),
+            window: None, // Can't determine for unfocused panes
+        }))
+    }
+
+    fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
+        use std::time::{Duration, SystemTime};
+
+        // For Zellij, we can't validate PID or command for unfocused panes.
+        // Instead, we use tab-level validation:
+        // 1. Check if the tab (window) still exists
+        // 2. Check if the state is stale (no updates in > 1 hour)
+
+        // Check 1: Does the tab still exist?
+        if let Some(window_name) = &state.window_name {
+            if !self.window_exists_by_full_name(window_name)? {
+                return Ok(false); // Tab was closed
+            }
+        } else {
+            // No window name stored - this is an old state file or error.
+            // Be conservative and keep it (don't delete valid agents)
+            return Ok(true);
+        }
+
+        // Check 2: Is the state stale? (no updates in > 1 hour)
+        let stale_threshold = Duration::from_secs(3600);
+        if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            let state_age_secs = now.as_secs().saturating_sub(state.updated_ts);
+            if state_age_secs > stale_threshold.as_secs() {
+                return Ok(false); // Stale agent
+            }
+        }
+
+        Ok(true) // Agent is valid
     }
 
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>> {
-        let mut result = std::collections::HashMap::new();
+        use std::collections::HashMap;
+
+        let mut result = HashMap::new();
+
+        // Zellij's list-clients only shows info for currently visible clients
+        // This is a limitation of zellij's CLI - we can't query all panes
         let clients = Self::list_clients()?;
 
         for client in clients {
@@ -705,9 +749,9 @@ impl Multiplexer for ZellijBackend {
             result.insert(
                 client.pane_id,
                 LivePaneInfo {
-                    pid: 0,
+                    pid: 0, // Zellij doesn't expose PID
                     current_command,
-                    working_dir: PathBuf::new(),
+                    working_dir: std::env::current_dir().unwrap_or_default(),
                     title: None,
                     session: Self::session_name(),
                     window: Self::focused_tab_name(),

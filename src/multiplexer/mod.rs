@@ -466,6 +466,24 @@ pub trait Multiplexer: Send + Sync {
     /// than calling get_live_pane_info repeatedly when validating many panes.
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>>;
 
+    /// Validate if an agent is still alive and should be kept in the dashboard.
+    ///
+    /// Backends can implement custom validation logic based on their capabilities:
+    /// - tmux/WezTerm: Check if PID is still running (default implementation)
+    /// - Zellij: Check if tab exists and state isn't stale
+    ///
+    /// Default implementation uses `get_live_pane_info()` and validates PID/command.
+    fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
+        let live_pane = self.get_live_pane_info(&state.pane_key.pane_id)?;
+
+        match live_pane {
+            None => Ok(false), // Pane no longer exists
+            Some(ref live) if live.pid != state.pane_pid => Ok(false), // PID mismatch
+            Some(ref live) if live.current_command != state.command => Ok(false), // Command changed
+            Some(_) => Ok(true), // Valid
+        }
+    }
+
 
     // === Deferred Cleanup ===
 

@@ -95,16 +95,27 @@ pub struct AgentState {
     /// Note: This is NOT a heartbeat - only updated when status changes.
     /// Used for staleness detection and recency sorting.
     pub updated_ts: u64,
+
+    /// Window/tab name where this agent is running.
+    /// Stored here because some backends (Zellij) can't query unfocused panes.
+    #[serde(default)]
+    pub window_name: Option<String>,
+
+    /// Session name where this agent is running.
+    /// Stored here for consistency with window_name.
+    #[serde(default)]
+    pub session_name: Option<String>,
 }
 
 impl AgentState {
     /// Convert to AgentPane for dashboard display.
     ///
-    /// Requires session/window info from multiplexer since we don't store those.
+    /// Uses stored session/window names if provided, otherwise uses the arguments.
+    /// This allows fallback for backends (like Zellij) that can't query unfocused panes.
     pub fn to_agent_pane(&self, session: String, window_name: String) -> AgentPane {
         AgentPane {
-            session,
-            window_name,
+            session: self.session_name.clone().unwrap_or(session),
+            window_name: self.window_name.clone().unwrap_or(window_name),
             pane_id: self.pane_key.pane_id.clone(),
             path: self.workdir.clone(),
             pane_title: self.pane_title.clone(),
