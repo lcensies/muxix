@@ -559,7 +559,10 @@ impl App {
             return;
         }
 
-        self.should_jump = true;
+        // Exit dashboard after jump (or keep open, depending on multiplexer)
+        if self.mux.should_exit_on_jump() {
+            self.should_jump = true;
+        }
 
         // Only update last_pane_id if:
         // 1. We actually moved to a different pane

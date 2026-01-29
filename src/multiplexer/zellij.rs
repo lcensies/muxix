@@ -48,6 +48,14 @@ impl ZellijBackend {
         std::env::var("ZELLIJ").is_ok()
     }
 
+    /// Check if content contains dashboard UI patterns
+    fn contains_dashboard_ui(content: &str) -> bool {
+        // Check for distinctive dashboard UI elements
+        // The "Preview:" section is unique to the dashboard
+        content.contains("Preview:")
+            || (content.contains("[i] input") && content.contains("[d] diff"))
+    }
+
     /// Get session name from environment
     fn session_name() -> Option<String> {
         std::env::var("ZELLIJ_SESSION_NAME").ok()
@@ -291,9 +299,38 @@ impl Multiplexer for ZellijBackend {
         Ok(())
     }
 
-    fn switch_to_pane(&self, _pane_id: &str) -> Result<()> {
-        warn!("Zellij does not support switching to panes by ID");
-        Ok(())
+    fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
+        // Zellij can't switch to arbitrary panes, but we can switch to the tab containing the pane.
+        // Look up the window name from the state store and switch to that tab.
+
+        use crate::state::StateStore;
+
+        let store = StateStore::new()?;
+        let agents = store.load_reconciled_agents(self)?;
+
+        debug!("switch_to_pane: looking for pane_id '{}', found {} agents", pane_id, agents.len());
+
+        // Find the agent with matching pane_id
+        if let Some(agent) = agents.iter().find(|a| a.pane_id == pane_id) {
+            debug!("switch_to_pane: found agent, switching to tab '{}'", agent.window_name);
+            // Switch to the tab using go-to-tab-name
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-name", &agent.window_name])
+                .run()
+                .with_context(|| format!("Failed to switch to tab '{}'", agent.window_name))?;
+            debug!("switch_to_pane: successfully switched to tab '{}'", agent.window_name);
+            Ok(())
+        } else {
+            warn!("Could not find agent with pane_id '{}' in state store", pane_id);
+            debug!("Available pane_ids: {:?}", agents.iter().map(|a| &a.pane_id).collect::<Vec<_>>());
+            Ok(())
+        }
+    }
+
+    fn should_exit_on_jump(&self) -> bool {
+        // In Zellij, keep the dashboard open after jumping
+        // This allows users to easily switch back to the dashboard tab
+        false
     }
 
     fn respawn_pane(&self, _pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
@@ -324,8 +361,11 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn capture_pane(&self, _pane_id: &str, _lines: u16) -> Option<String> {
-        // dump-screen captures entire screen, not specific pane
-        // Create a temp file for output
+        // Zellij limitation: dump-screen always captures the focused pane,
+        // not the pane specified by pane_id. When the dashboard is focused,
+        // it captures itself, creating a recursive loop. We detect this and
+        // return None to prevent the recursion.
+
         let temp_path = std::env::temp_dir().join(format!("zellij_capture_{}", std::process::id()));
         let temp_str = temp_path.to_string_lossy();
 
@@ -334,12 +374,22 @@ impl Multiplexer for ZellijBackend {
             .run()
             .is_ok()
         {
-            let content = std::fs::read_to_string(&temp_path).ok();
+            if let Some(content) = std::fs::read_to_string(&temp_path).ok() {
+                let _ = std::fs::remove_file(&temp_path);
+
+                // If captured content contains dashboard UI, we're capturing
+                // the dashboard itself (not the agent pane). Return None to
+                // prevent recursive rendering.
+                if Self::contains_dashboard_ui(&content) {
+                    return None;
+                }
+
+                return Some(content);
+            }
             let _ = std::fs::remove_file(&temp_path);
-            content
-        } else {
-            None
         }
+
+        None
     }
 
     // === Text I/O ===

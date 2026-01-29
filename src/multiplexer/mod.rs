@@ -165,6 +165,12 @@ pub trait Multiplexer: Send + Sync {
     /// Switch to a pane (may also switch windows/tabs as needed)
     fn switch_to_pane(&self, pane_id: &str) -> Result<()>;
 
+    /// Whether jumping to a pane should exit the dashboard.
+    /// Returns true for tmux/WezTerm (exit after jump), false for Zellij (keep dashboard open).
+    fn should_exit_on_jump(&self) -> bool {
+        true // default: exit after jump
+    }
+
     /// Respawn a pane with optional command. Returns the (possibly new) pane ID.
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String>;
 

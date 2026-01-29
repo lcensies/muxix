@@ -18,21 +18,38 @@ use super::format::{format_git_status, format_pr_status};
 pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Layout: table (top), preview (bottom), footer
-    // Table gets (100 - preview_size)%, preview gets preview_size%
-    let table_size = 100u16.saturating_sub(app.preview_size as u16);
-    let chunks = Layout::vertical([
-        Constraint::Percentage(table_size), // Table (top)
-        Constraint::Min(5),                 // Preview (bottom, at least 5 lines)
-        Constraint::Length(1),              // Footer
-    ])
-    .split(area);
+    // Check if we're using Zellij (which doesn't support preview)
+    let is_zellij = app.mux.name() == "zellij";
+
+    // Layout: table (top), preview (bottom, only if not Zellij), footer
+    let chunks = if is_zellij {
+        // Zellij: no preview section
+        Layout::vertical([
+            Constraint::Min(5),     // Table (takes all space except footer)
+            Constraint::Length(1),  // Footer
+        ])
+        .split(area)
+    } else {
+        // Other multiplexers: include preview
+        let table_size = 100u16.saturating_sub(app.preview_size as u16);
+        Layout::vertical([
+            Constraint::Percentage(table_size), // Table (top)
+            Constraint::Min(5),                 // Preview (bottom, at least 5 lines)
+            Constraint::Length(1),              // Footer
+        ])
+        .split(area)
+    };
 
     // Table
     render_table(f, app, chunks[0]);
 
-    // Preview
-    render_preview(f, app, chunks[1]);
+    // Preview (only for non-Zellij multiplexers)
+    let footer_index = if !is_zellij {
+        render_preview(f, app, chunks[1]);
+        2 // Footer is at index 2 when preview is shown
+    } else {
+        1 // Footer is at index 1 when preview is hidden
+    };
 
     // Footer - show different help based on mode
     let footer_text = if app.input_mode {
@@ -55,15 +72,24 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" diff  "),
             Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
             Span::raw(" jump  "),
-            Span::styled("[p]", Style::default().fg(Color::Cyan)),
-            Span::raw(" peek  "),
+        ];
+
+        // Only show peek command if not using Zellij (no preview support)
+        if !is_zellij {
+            spans.extend(vec![
+                Span::styled("[p]", Style::default().fg(Color::Cyan)),
+                Span::raw(" peek  "),
+            ]);
+        }
+
+        spans.extend(vec![
             Span::styled("[s]", Style::default().fg(Color::Cyan)),
             Span::raw(" sort: "),
             Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
             Span::raw("  "),
             Span::styled("[f]", Style::default().fg(Color::Cyan)),
             Span::raw(" filter: "),
-        ];
+        ]);
 
         if app.hide_stale {
             spans.push(Span::styled(
@@ -88,7 +114,7 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
 
         Paragraph::new(Line::from(spans))
     };
-    f.render_widget(footer_text, chunks[2]);
+    f.render_widget(footer_text, chunks[footer_index]);
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
