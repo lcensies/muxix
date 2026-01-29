@@ -286,7 +286,8 @@ impl Multiplexer for ZellijBackend {
     // === Pane Management ===
 
     fn select_pane(&self, _pane_id: &str) -> Result<()> {
-        warn!("Zellij does not support selecting panes by ID");
+        // Zellij doesn't support selecting panes by arbitrary IDs.
+        // This is handled in our setup_panes override using focus navigation.
         Ok(())
     }
 
@@ -456,6 +457,151 @@ impl Multiplexer for ZellijBackend {
     }
 
     // === Pane Setup ===
+
+    fn setup_panes(
+        &self,
+        initial_pane_id: &str,
+        panes: &[crate::config::PaneConfig],
+        working_dir: &Path,
+        options: super::types::PaneSetupOptions<'_>,
+        config: &crate::config::Config,
+        task_agent: Option<&str>,
+    ) -> Result<super::types::PaneSetupResult> {
+        use super::{agent, util};
+
+        // Zellij-specific implementation with focus navigation support
+        if panes.is_empty() {
+            return Ok(super::types::PaneSetupResult {
+                focus_pane_id: initial_pane_id.to_string(),
+            });
+        }
+
+        let mut focus_pane_id: Option<String> = None;
+        let mut focus_pane_index: Option<usize> = None;
+        let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
+        let effective_agent = task_agent.or(config.agent.as_deref());
+        let shell = self.get_default_shell()?;
+
+        for (i, pane_config) in panes.iter().enumerate() {
+            let is_first = i == 0;
+
+            // Skip non-first panes that have no split direction
+            if !is_first && pane_config.split.is_none() {
+                continue;
+            }
+
+            // Resolve command: handle <agent> placeholder and prompt injection
+            let adjusted_command = util::resolve_pane_command(
+                pane_config.command.as_deref(),
+                options.run_commands,
+                options.prompt_file_path,
+                working_dir,
+                effective_agent,
+                &shell,
+            );
+
+            let pane_id = if let Some(resolved) = adjusted_command {
+                // Spawn with handshake so we can send the command after shell is ready
+                let handshake = self.create_handshake()?;
+                let script = handshake.script_content(&shell);
+
+                let spawned_id = if is_first {
+                    self.respawn_pane(&pane_ids[0], working_dir, Some(&script))?
+                } else {
+                    let direction = pane_config.split.as_ref().unwrap();
+                    let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+                    let target = pane_ids
+                        .get(target_idx)
+                        .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
+                    self.split_pane(
+                        target,
+                        direction,
+                        working_dir,
+                        pane_config.size,
+                        pane_config.percentage,
+                        Some(&script),
+                    )?
+                };
+
+                handshake.wait()?;
+                let _ = self.clear_pane(&spawned_id);
+                self.send_keys(&spawned_id, &resolved.command)?;
+
+                // Set working status for agent panes with injected prompts
+                if resolved.prompt_injected
+                    && agent::resolve_profile(effective_agent).needs_auto_status()
+                {
+                    let icon = config.status_icons.working();
+                    if config.status_format.unwrap_or(true) {
+                        let _ = self.ensure_status_format(&spawned_id);
+                    }
+                    let _ = self.set_status(&spawned_id, icon, false);
+                }
+
+                spawned_id
+            } else if is_first {
+                // No command for first pane - keep as-is
+                pane_ids[0].clone()
+            } else {
+                // No command - just split
+                let direction = pane_config.split.as_ref().unwrap();
+                let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+                let target = pane_ids
+                    .get(target_idx)
+                    .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
+                self.split_pane(
+                    target,
+                    direction,
+                    working_dir,
+                    pane_config.size,
+                    pane_config.percentage,
+                    None,
+                )?
+            };
+
+            if is_first {
+                pane_ids[0] = pane_id.clone();
+            } else {
+                pane_ids.push(pane_id.clone());
+            }
+
+            if pane_config.focus {
+                focus_pane_id = Some(pane_id);
+                focus_pane_index = Some(i);
+            }
+        }
+
+        // Zellij-specific: navigate to the focused pane
+        // After pane creation, the last created pane has focus
+        if let Some(target_index) = focus_pane_index {
+            let current_index = pane_ids.len() - 1;
+            if target_index < current_index {
+                // Navigate backwards
+                let steps = current_index - target_index;
+                for _ in 0..steps {
+                    Cmd::new("zellij")
+                        .args(&["action", "focus-previous-pane"])
+                        .run()
+                        .context("Failed to navigate to previous pane")?;
+                }
+                debug!(target_index, current_index, steps, "Navigated backwards to focused pane");
+            } else if target_index > current_index {
+                // Navigate forwards
+                let steps = target_index - current_index;
+                for _ in 0..steps {
+                    Cmd::new("zellij")
+                        .args(&["action", "focus-next-pane"])
+                        .run()
+                        .context("Failed to navigate to next pane")?;
+                }
+                debug!(target_index, current_index, steps, "Navigated forwards to focused pane");
+            }
+        }
+
+        Ok(super::types::PaneSetupResult {
+            focus_pane_id: focus_pane_id.unwrap_or_else(|| pane_ids[0].clone()),
+        })
+    }
 
     fn split_pane(
         &self,
