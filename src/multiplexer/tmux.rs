@@ -70,16 +70,26 @@ impl TmuxBackend {
     /// Updates a single tmux format option for the target window to include workmux status.
     fn update_format_option(&self, pane: &str, option: &str) -> Result<()> {
         // Read current format. Try window-level first, fall back to global.
-        let window_format = self
-            .tmux_query(&["show-option", "-wv", "-t", pane, option])
+        //
+        // Uses run() instead of tmux_query()/run_and_capture_stdout() because the latter
+        // calls .trim() which strips meaningful whitespace from format strings (e.g.,
+        // padding spaces in tmux themes). We only strip trailing newlines from command output.
+        let window_format = Cmd::new("tmux")
+            .args(&["show-option", "-wv", "-t", pane, option])
+            .run()
             .ok()
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .map(|s| s.trim_end_matches('\n').to_string())
             .filter(|s| !s.is_empty());
 
         let current = match window_format {
             Some(fmt) => fmt,
-            None => self
-                .tmux_query(&["show-option", "-gv", option])
+            None => Cmd::new("tmux")
+                .args(&["show-option", "-gv", option])
+                .run()
                 .ok()
+                .and_then(|output| String::from_utf8(output.stdout).ok())
+                .map(|s| s.trim_end_matches('\n').to_string())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "#I:#W#{?window_flags,#{window_flags}, }".to_string()),
         };
@@ -619,6 +629,32 @@ mod tests {
         assert_eq!(
             result,
             "#[fg=blue]#I#[default] #{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags},}"
+        );
+    }
+
+    #[test]
+    fn test_inject_status_format_preserves_whitespace() {
+        // Leading and trailing spaces from tmux themes must be preserved
+        let input = " #I:#W#{window_flags} ";
+        let result = inject_status_format(input);
+        assert_eq!(
+            result,
+            " #I:#W#{?@workmux_status, #{@workmux_status},}#{window_flags} "
+        );
+    }
+
+    #[test]
+    fn test_trim_end_newlines_preserves_spaces() {
+        // Simulates processing tmux show-option output: trailing newlines are
+        // stripped but meaningful whitespace (padding spaces) is kept intact.
+        let raw_output = " #I:#W#{window_flags} \n";
+        let processed = raw_output.trim_end_matches('\n').to_string();
+        assert_eq!(processed, " #I:#W#{window_flags} ");
+
+        let result = inject_status_format(&processed);
+        assert_eq!(
+            result,
+            " #I:#W#{?@workmux_status, #{@workmux_status},}#{window_flags} "
         );
     }
 }
