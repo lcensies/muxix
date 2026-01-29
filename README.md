@@ -174,10 +174,10 @@ Project settings override global settings. When you run workmux from a
 subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing
 nested configs for monorepos. See the
 [Monorepos guide](https://workmux.raine.dev/guide/monorepos#nested-configuration)
-for details. For `post_create` and file operation
-lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include
-global values alongside project-specific ones. Other settings like `panes` are
-replaced entirely when defined in the project config.
+for details. For `post_create` and file operation lists (`files.copy`,
+`files.symlink`), you can use `"<global>"` to include global values alongside
+project-specific ones. Other settings like `panes` are replaced entirely when
+defined in the project config.
 
 ### Global configuration example
 
@@ -1973,7 +1973,8 @@ While tmux is the primary and recommended backend, workmux also supports
 alternative terminal multiplexers:
 
 - **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer
-  WezTerm's features
+  WezTerm's features. Thanks to [@JeremyBYU](https://github.com/JeremyBYU) for
+  contributing this backend.
 
 workmux auto-detects the backend from environment variables (`$WEZTERM_PANE` or
 `$TMUX`).

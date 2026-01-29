@@ -102,3 +102,7 @@ Without this configuration, the dashboard can display agents from all workspaces
 - Cross-workspace jumping requires Lua config (see above)
 - Some edge cases may not be as thoroughly tested as the tmux backend
 - Agent status icons do not appear in tab titles
+
+## Credits
+
+Thanks to [@JeremyBYU](https://github.com/JeremyBYU) for contributing WezTerm support.
