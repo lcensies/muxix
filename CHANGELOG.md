@@ -14,6 +14,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.101 (2026-01-29)
+
+- Fixed status icons breaking tmux themes that use padding spaces in window
+  format strings ([#45](https://github.com/raine/workmux/pull/45))
+
 ## v0.1.100 (2026-01-26)
 
 - Added nested config support for monorepos: place a `.workmux.yaml` in any
