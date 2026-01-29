@@ -327,12 +327,6 @@ impl Multiplexer for ZellijBackend {
         }
     }
 
-    fn should_exit_on_jump(&self) -> bool {
-        // In Zellij, keep the dashboard open after jumping
-        // This allows users to easily switch back to the dashboard tab
-        false
-    }
-
     fn respawn_pane(&self, _pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
         // Zellij doesn't have respawn-pane; send cd + command to current pane
         let cwd_str = cwd
@@ -725,11 +719,19 @@ impl Multiplexer for ZellijBackend {
                     .unwrap_or("")
                     .to_string();
 
+                // Zellij doesn't expose pane titles via CLI (unlike tmux's #{pane_title}).
+                // Use the running command as a fallback title so the dashboard shows something useful.
+                let title = if current_command.is_empty() || current_command == "N/A" {
+                    None
+                } else {
+                    Some(current_command.clone())
+                };
+
                 return Ok(Some(LivePaneInfo {
                     pid: 0, // Zellij doesn't expose PID
                     current_command,
                     working_dir: std::env::current_dir().unwrap_or_default(),
-                    title: None,
+                    title,
                     session: Self::session_name(),
                     window: Self::focused_tab_name(),
                 }));
