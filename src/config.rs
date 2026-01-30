@@ -59,6 +59,10 @@ pub struct AutoNameConfig {
     /// Custom system prompt for branch name generation.
     /// If not set, uses the default prompt that asks for a kebab-case branch name.
     pub system_prompt: Option<String>,
+
+    /// Whether to always run in background mode when using --auto-name.
+    /// If true, the window will be created but not focused.
+    pub background: Option<bool>,
 }
 
 /// Configuration for dashboard actions (commit, merge keybindings)
@@ -769,10 +773,11 @@ impl Config {
 # Default: "claude"
 # agent: claude
 
-# LLM-based branch name generation (`workmux add -a`).
+# LLM-based branch name generation (`workmux add -A`).
 # auto_name:
 #   model: "gpt-4o-mini"
 #   system_prompt: "Generate a kebab-case git branch name."
+#   background: true  # Always run in background when using --auto-name
 
 #-------------------------------------------------------------------------------
 # Hooks

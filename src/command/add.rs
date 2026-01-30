@@ -121,6 +121,19 @@ pub fn run(
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
 
+    // If using --auto-name and config has auto_name.background = true, run in background
+    if auto_name && options.focus_window {
+        let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+        if config
+            .auto_name
+            .as_ref()
+            .and_then(|c| c.background)
+            .unwrap_or(false)
+        {
+            options.focus_window = false;
+        }
+    }
+
     // Detect stdin input early
     let stdin_lines = read_stdin_lines()?;
     let has_stdin = !stdin_lines.is_empty();

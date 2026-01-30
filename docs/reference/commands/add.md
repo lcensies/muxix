@@ -179,11 +179,12 @@ llm install llm-ollama
 
 ### Configuration
 
-Optionally specify a model and/or custom system prompt in `.workmux.yaml`:
+Optionally configure auto-name behavior in `.workmux.yaml`:
 
 ```yaml
 auto_name:
   model: "gemini-2.5-flash-lite"
+  background: true # Always run in background when using --auto-name
   system_prompt: |
     Generate a concise git branch name based on the task description.
 
@@ -203,7 +204,11 @@ auto_name:
     Output ONLY the branch name, nothing else.
 ```
 
-If `model` is not configured, uses `llm`'s default model.
+| Option          | Description                                       | Default         |
+| --------------- | ------------------------------------------------- | --------------- |
+| `model`         | LLM model to use with the `llm` CLI               | `llm`'s default |
+| `background`    | Always run in background when using `--auto-name` | `false`         |
+| `system_prompt` | Custom system prompt for branch name generation   | Built-in prompt |
 
 Recommended models for fast, cheap branch name generation:
 

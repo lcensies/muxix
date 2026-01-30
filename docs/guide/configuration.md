@@ -155,6 +155,25 @@ status_icons:
 
 Set `status_format: false` to disable automatic tmux format modification.
 
+### Auto-name configuration
+
+Configure LLM-based branch name generation for the `--auto-name` (`-A`) flag:
+
+```yaml
+auto_name:
+  model: "gemini-2.5-flash-lite"
+  background: true
+  system_prompt: "Generate a kebab-case git branch name."
+```
+
+| Option          | Description                                       | Default         |
+| --------------- | ------------------------------------------------- | --------------- |
+| `model`         | LLM model to use with the `llm` CLI               | `llm`'s default |
+| `background`    | Always run in background when using `--auto-name` | `false`         |
+| `system_prompt` | Custom system prompt for branch name generation   | Built-in prompt |
+
+See [`workmux add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
+
 ## Default behavior
 
 - Worktrees are created in `<project>__worktrees` as a sibling directory to your project by default
