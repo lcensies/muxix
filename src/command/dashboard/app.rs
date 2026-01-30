@@ -187,12 +187,33 @@ impl App {
 
         self.sort_agents();
 
-        // Cache repo roots for new agents
-        for agent in &self.agents {
-            if !self.repo_roots.contains_key(&agent.path)
-                && let Ok(root) = git::get_repo_root_for(&agent.path)
-            {
-                self.repo_roots.insert(agent.path.clone(), root);
+        // Cache repo roots for new agents (parallel execution)
+        let paths_to_resolve: Vec<PathBuf> = self
+            .agents
+            .iter()
+            .filter(|a| !self.repo_roots.contains_key(&a.path))
+            .map(|a| a.path.clone())
+            .collect();
+
+        if !paths_to_resolve.is_empty() {
+            // Resolve repo roots in parallel using threads
+            let results: Vec<_> = paths_to_resolve
+                .into_iter()
+                .map(|path| {
+                    std::thread::spawn(move || {
+                        let root = git::get_repo_root_for(&path).ok();
+                        (path, root)
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .filter_map(|handle| handle.join().ok())
+                .collect();
+
+            for (path, root) in results {
+                if let Some(r) = root {
+                    self.repo_roots.insert(path, r);
+                }
             }
         }
 
