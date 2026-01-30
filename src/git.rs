@@ -56,6 +56,9 @@ pub struct GitStatus {
     /// The branch name for this worktree (None if detached HEAD)
     #[serde(default)]
     pub branch: Option<String>,
+    /// Whether the branch has an upstream tracking branch
+    #[serde(default)]
+    pub has_upstream: bool,
 }
 
 /// Get the path to the git status cache file
@@ -991,12 +994,13 @@ pub fn get_branch_base_in(branch: &str, workdir: Option<&Path>) -> Result<String
 }
 
 /// Parse git status porcelain v2 output to extract branch info and dirty state.
-/// Returns (branch_name, ahead, behind, is_dirty).
-fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, bool) {
+/// Returns (branch_name, ahead, behind, is_dirty, has_upstream).
+fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, bool, bool) {
     let mut branch_name: Option<String> = None;
     let mut ahead: usize = 0;
     let mut behind: usize = 0;
     let mut is_dirty = false;
+    let mut has_upstream = false;
 
     for line in output.lines() {
         if let Some(rest) = line.strip_prefix("# branch.head ") {
@@ -1006,7 +1010,8 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
             }
         } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
             // Format: "+<ahead> -<behind>"
-            // Use iterator directly to avoid Vec allocation
+            // This line only appears when branch has an upstream
+            has_upstream = true;
             let mut parts = rest.split_whitespace();
             if let (Some(part_a), Some(part_b)) = (parts.next(), parts.next()) {
                 if let Some(a) = part_a.strip_prefix('+') {
@@ -1026,7 +1031,7 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
         }
     }
 
-    (branch_name, ahead, behind, is_dirty)
+    (branch_name, ahead, behind, is_dirty, has_upstream)
 }
 
 /// Count lines in a file, treating it like git (text files only).
@@ -1177,7 +1182,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         .ok();
 
     // Get branch info, ahead/behind, and dirty state in one command
-    let (branch, ahead, behind, is_dirty) = match Cmd::new("git")
+    let (branch, ahead, behind, is_dirty, has_upstream) = match Cmd::new("git")
         .workdir(worktree_path)
         .args(&["status", "--porcelain=v2", "--branch"])
         .run_and_capture_stdout()
@@ -1200,6 +1205,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
                 is_dirty,
                 cached_at: now,
                 branch: None,
+                has_upstream,
                 ..Default::default()
             };
         }
@@ -1225,6 +1231,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
             cached_at: now,
             base_branch,
             branch: Some(branch),
+            has_upstream,
             ..Default::default()
         };
     }
@@ -1260,6 +1267,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         cached_at: now,
         base_branch,
         branch: Some(branch),
+        has_upstream,
     }
 }
 
@@ -1415,48 +1423,52 @@ mod tests {
     #[test]
     fn test_parse_porcelain_v2_clean_repo() {
         let output = "# branch.oid abc123def456\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -0\n";
-        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("main".to_string()));
         assert_eq!(ahead, 0);
         assert_eq!(behind, 0);
         assert!(!is_dirty);
+        assert!(has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_dirty_repo() {
         let output = "# branch.oid abc123\n# branch.head feature\n# branch.upstream origin/feature\n# branch.ab +1 -2\n1 .M N... 100644 100644 100644 abc123 def456 src/file.rs\n? untracked.txt\n";
-        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("feature".to_string()));
         assert_eq!(ahead, 1);
         assert_eq!(behind, 2);
         assert!(is_dirty);
+        assert!(has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_no_upstream() {
         // When there's no upstream, branch.ab line is missing
         let output = "# branch.oid abc123\n# branch.head new-branch\n";
-        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("new-branch".to_string()));
         assert_eq!(ahead, 0);
         assert_eq!(behind, 0);
         assert!(!is_dirty);
+        assert!(!has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_detached_head() {
         let output = "# branch.oid abc123\n# branch.head (detached)\n";
-        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, None);
         assert_eq!(ahead, 0);
         assert_eq!(behind, 0);
         assert!(!is_dirty);
+        assert!(!has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_untracked_only() {
         let output = "# branch.oid abc123\n# branch.head main\n? untracked.txt\n";
-        let (branch, _ahead, _behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, _ahead, _behind, is_dirty, _has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("main".to_string()));
         assert!(is_dirty);
     }
@@ -1464,7 +1476,7 @@ mod tests {
     #[test]
     fn test_parse_porcelain_v2_renamed_file() {
         let output = "# branch.oid abc123\n# branch.head main\n2 R. N... 100644 100644 100644 abc123 def456 R100 old.rs\tnew.rs\n";
-        let (branch, _ahead, _behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, _ahead, _behind, is_dirty, _has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("main".to_string()));
         assert!(is_dirty);
     }
@@ -1473,19 +1485,21 @@ mod tests {
     fn test_parse_porcelain_v2_initial_commit() {
         // Repo created but no commits made yet
         let output = "# branch.oid (initial)\n# branch.head master\n";
-        let (branch, ahead, behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("master".to_string()));
         assert_eq!(ahead, 0);
         assert_eq!(behind, 0);
         assert!(!is_dirty);
+        assert!(!has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_unmerged_conflict() {
         // Merge conflict (unmerged entry starting with 'u')
         let output = "# branch.oid abc123\n# branch.head feature\n# branch.upstream origin/feature\n# branch.ab +0 -0\nu UU N... 100644 100644 100644 100644 abc def ghi jkl src/conflict.rs\n";
-        let (branch, _ahead, _behind, is_dirty) = parse_porcelain_v2_status(output);
+        let (branch, _ahead, _behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
         assert_eq!(branch, Some("feature".to_string()));
         assert!(is_dirty);
+        assert!(has_upstream);
     }
 }

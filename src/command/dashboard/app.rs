@@ -316,10 +316,24 @@ impl App {
             return;
         }
 
-        // Collect unique repo roots from cache
+        // Collect repo roots that have at least one pushed feature branch
+        // (skip repos where no branches have upstreams, excluding main/master)
         let repo_roots: std::collections::HashSet<PathBuf> = self
             .agents
             .iter()
+            .filter(|agent| {
+                let Some(status) = self.git_statuses.get(&agent.path) else {
+                    return false;
+                };
+                let Some(ref branch) = status.branch else {
+                    return false;
+                };
+                // Skip main/master - they don't need PR status
+                if branch == "main" || branch == "master" {
+                    return false;
+                }
+                status.has_upstream
+            })
             .filter_map(|agent| self.repo_roots.get(&agent.path).cloned())
             .collect();
 
@@ -677,6 +691,10 @@ impl App {
         let repo_root = self.repo_roots.get(&agent.path)?;
         let git_status = self.git_statuses.get(&agent.path)?;
         let branch = git_status.branch.as_ref()?;
+        // Don't show PRs for main/master - you merge INTO main, not FROM it
+        if branch == "main" || branch == "master" {
+            return None;
+        }
         self.pr_statuses.get(repo_root)?.get(branch)
     }
 
