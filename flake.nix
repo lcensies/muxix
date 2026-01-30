@@ -15,7 +15,7 @@
           version = self.shortRev or self.dirtyShortRev or "dev";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ pkgs.installShellFiles ];
+          nativeBuildInputs = [ pkgs.installShellFiles pkgs.git ];
           postInstall = ''
             export HOME=$TMPDIR
             installShellCompletion --cmd workmux \
