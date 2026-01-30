@@ -34,6 +34,17 @@ impl PrDetails {
     }
 }
 
+/// Aggregated status of PR checks
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum CheckState {
+    /// All checks passed
+    Success,
+    /// Some checks failed (passed/total)
+    Failure { passed: u32, total: u32 },
+    /// Checks still running (passed/total)
+    Pending { passed: u32, total: u32 },
+}
+
 /// Summary of a PR found by head ref search
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrSummary {
@@ -42,6 +53,66 @@ pub struct PrSummary {
     pub state: String,
     #[serde(rename = "isDraft")]
     pub is_draft: bool,
+    /// Aggregated check status (None if no checks configured)
+    #[serde(default)]
+    pub checks: Option<CheckState>,
+}
+
+/// Handles both CheckRun (status/conclusion) and StatusContext (state) from GitHub API
+#[derive(Debug, Deserialize)]
+struct CheckRollupItem {
+    #[serde(alias = "state")]
+    status: Option<String>,
+    conclusion: Option<String>,
+}
+
+/// Aggregate check results into a single CheckState
+fn aggregate_checks(checks: &[CheckRollupItem]) -> Option<CheckState> {
+    if checks.is_empty() {
+        return None;
+    }
+
+    let mut passed = 0u32;
+    let mut failed = 0u32;
+    let mut pending = 0u32;
+    let mut skipped = 0u32;
+
+    for check in checks {
+        let status = check.status.as_deref().unwrap_or("");
+        let conclusion = check.conclusion.as_deref().unwrap_or("");
+
+        match (status, conclusion) {
+            // Success states
+            (_, "SUCCESS") | ("SUCCESS", _) => passed += 1,
+            // Failure states (expanded to catch all failure-like conclusions)
+            (_, "FAILURE" | "CANCELLED" | "TIMED_OUT" | "STARTUP_FAILURE" | "ACTION_REQUIRED")
+            | ("FAILURE" | "ERROR", _) => failed += 1,
+            // Neutral/skipped - track but don't count toward active total
+            (_, "NEUTRAL" | "SKIPPED") => skipped += 1,
+            // Pending states (expanded)
+            ("IN_PROGRESS" | "QUEUED" | "PENDING" | "REQUESTED" | "WAITING", _) => pending += 1,
+            _ => {}
+        }
+    }
+
+    let total = passed + failed + pending;
+
+    // If no active checks but some were skipped, treat as success (GitHub behavior)
+    if total == 0 {
+        return if skipped > 0 {
+            Some(CheckState::Success)
+        } else {
+            None
+        };
+    }
+
+    Some(if failed > 0 {
+        CheckState::Failure { passed, total }
+    } else if pending > 0 {
+        CheckState::Pending { passed, total }
+    } else {
+        CheckState::Success
+    })
 }
 
 /// Internal struct for parsing PR list results with owner info
@@ -112,6 +183,7 @@ pub fn find_pr_by_head_ref(owner: &str, branch: &str) -> Result<Option<PrSummary
         title: pr.title,
         state: pr.state,
         is_draft: pr.is_draft,
+        checks: None,
     }))
 }
 
@@ -170,6 +242,8 @@ struct PrBatchItem {
     is_draft: bool,
     #[serde(rename = "headRefName")]
     head_ref_name: String,
+    #[serde(rename = "statusCheckRollup", default)]
+    status_check_rollup: Vec<CheckRollupItem>,
 }
 
 /// Fetch all PRs for the current repository.
@@ -181,7 +255,7 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
             "--state",
             "all",
             "--json",
-            "number,title,state,isDraft,headRefName",
+            "number,title,state,isDraft,headRefName,statusCheckRollup",
             "--limit",
             "200",
         ])
@@ -218,6 +292,7 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
                     title: pr.title,
                     state: pr.state,
                     is_draft: pr.is_draft,
+                    checks: aggregate_checks(&pr.status_check_rollup),
                 },
             )
         })
@@ -236,7 +311,7 @@ pub fn list_prs_in_repo(repo_root: &Path) -> Result<HashMap<String, PrSummary>> 
             "--state",
             "all",
             "--json",
-            "number,title,state,isDraft,headRefName",
+            "number,title,state,isDraft,headRefName,statusCheckRollup",
             "--limit",
             "200",
         ])
@@ -267,6 +342,7 @@ pub fn list_prs_in_repo(repo_root: &Path) -> Result<HashMap<String, PrSummary>> 
                     title: pr.title,
                     state: pr.state,
                     is_draft: pr.is_draft,
+                    checks: aggregate_checks(&pr.status_check_rollup),
                 },
             )
         })
@@ -300,5 +376,199 @@ pub fn save_pr_cache(statuses: &HashMap<PathBuf, HashMap<String, PrSummary>>) {
         && let Ok(content) = serde_json::to_string(statuses)
     {
         let _ = std::fs::write(path, content);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check_item(status: Option<&str>, conclusion: Option<&str>) -> CheckRollupItem {
+        CheckRollupItem {
+            status: status.map(String::from),
+            conclusion: conclusion.map(String::from),
+        }
+    }
+
+    #[test]
+    fn aggregate_checks_empty() {
+        assert_eq!(aggregate_checks(&[]), None);
+    }
+
+    #[test]
+    fn aggregate_checks_all_success() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+        ];
+        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+    }
+
+    #[test]
+    fn aggregate_checks_with_failure() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+            check_item(Some("COMPLETED"), Some("FAILURE")),
+        ];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Failure {
+                passed: 1,
+                total: 2
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_with_pending() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+            check_item(Some("IN_PROGRESS"), None),
+        ];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 1,
+                total: 2
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_failure_takes_priority_over_pending() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+            check_item(Some("COMPLETED"), Some("FAILURE")),
+            check_item(Some("IN_PROGRESS"), None),
+        ];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Failure {
+                passed: 1,
+                total: 3
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_status_context_success() {
+        // StatusContext uses "state" field (aliased to status) with values like SUCCESS
+        let checks = vec![check_item(Some("SUCCESS"), None)];
+        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+    }
+
+    #[test]
+    fn aggregate_checks_status_context_pending() {
+        let checks = vec![check_item(Some("PENDING"), None)];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 0,
+                total: 1
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_status_context_error() {
+        let checks = vec![check_item(Some("ERROR"), None)];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Failure {
+                passed: 0,
+                total: 1
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_all_skipped_returns_success() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SKIPPED")),
+            check_item(Some("COMPLETED"), Some("NEUTRAL")),
+        ];
+        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+    }
+
+    #[test]
+    fn aggregate_checks_skipped_not_counted_in_total() {
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")),
+            check_item(Some("COMPLETED"), Some("SKIPPED")),
+            check_item(Some("IN_PROGRESS"), None),
+        ];
+        // Only SUCCESS and IN_PROGRESS count toward total (2), not SKIPPED
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 1,
+                total: 2
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_cancelled_is_failure() {
+        let checks = vec![check_item(Some("COMPLETED"), Some("CANCELLED"))];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Failure {
+                passed: 0,
+                total: 1
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_timed_out_is_failure() {
+        let checks = vec![check_item(Some("COMPLETED"), Some("TIMED_OUT"))];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Failure {
+                passed: 0,
+                total: 1
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_mixed_check_types() {
+        // Mix of CheckRun (status/conclusion) and StatusContext (state only)
+        let checks = vec![
+            check_item(Some("COMPLETED"), Some("SUCCESS")), // CheckRun success
+            check_item(Some("IN_PROGRESS"), None),          // CheckRun pending
+            check_item(Some("SUCCESS"), None),              // StatusContext success
+        ];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 2,
+                total: 3
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_queued_is_pending() {
+        let checks = vec![check_item(Some("QUEUED"), None)];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 0,
+                total: 1
+            })
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_waiting_is_pending() {
+        let checks = vec![check_item(Some("WAITING"), None)];
+        assert_eq!(
+            aggregate_checks(&checks),
+            Some(CheckState::Pending {
+                passed: 0,
+                total: 1
+            })
+        );
     }
 }

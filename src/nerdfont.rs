@@ -43,6 +43,26 @@ const FALLBACK_PR_ICONS: PrIcons = PrIcons {
     closed: "×",
 };
 
+/// Icons for CI/CD check status display.
+#[derive(Clone, Copy)]
+pub struct CheckIcons {
+    pub success: &'static str,
+    pub failure: &'static str,
+    pub pending: &'static str,
+}
+
+const NERDFONT_CHECK_ICONS: CheckIcons = CheckIcons {
+    success: "\u{f0134}", // 󰄴 nf-md-check_circle
+    failure: "\u{f0159}", // 󰅙 nf-md-close_circle
+    pending: "\u{f1423}", // 󱐣 nf-md-timer_sand
+};
+
+const FALLBACK_CHECK_ICONS: CheckIcons = CheckIcons {
+    success: "✓",
+    failure: "×",
+    pending: "◷",
+};
+
 const NERDFONT_GIT_ICONS: GitIcons = GitIcons {
     diff: "\u{f03eb}",     // nf-md-file_document_edit_outline
     conflict: "\u{f002a}", // nf-md-alert
@@ -74,6 +94,15 @@ pub fn pr_icons() -> PrIcons {
         NERDFONT_PR_ICONS
     } else {
         FALLBACK_PR_ICONS
+    }
+}
+
+/// Get check status icons based on nerdfont setting.
+pub fn check_icons() -> CheckIcons {
+    if is_enabled() {
+        NERDFONT_CHECK_ICONS
+    } else {
+        FALLBACK_CHECK_ICONS
     }
 }
 

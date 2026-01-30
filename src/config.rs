@@ -79,6 +79,10 @@ pub struct DashboardConfig {
     /// Size of the preview pane as a percentage of terminal height (1-90).
     /// Default: 60 (60% for preview, 40% for table)
     pub preview_size: Option<u8>,
+
+    /// Show check pass/total counts alongside check icon (default: false)
+    #[serde(default)]
+    pub show_check_counts: Option<bool>,
 }
 
 impl DashboardConfig {
@@ -96,6 +100,12 @@ impl DashboardConfig {
     /// Default: 60
     pub fn preview_size(&self) -> u8 {
         self.preview_size.unwrap_or(60).clamp(10, 90)
+    }
+
+    /// Whether to show check pass/total counts alongside check icons.
+    /// Default: false
+    pub fn show_check_counts(&self) -> bool {
+        self.show_check_counts.unwrap_or(false)
     }
 }
 
@@ -631,6 +641,10 @@ impl Config {
                 .dashboard
                 .preview_size
                 .or(self.dashboard.preview_size),
+            show_check_counts: project
+                .dashboard
+                .show_check_counts
+                .or(self.dashboard.show_check_counts),
         };
 
         merged

@@ -94,6 +94,7 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Check if we should show the PR column (only when at least one agent has a PR)
     let show_pr_column = app.has_any_pr();
+    let show_check_counts = app.config.dashboard.show_check_counts();
 
     // Check if git data is being refreshed
     let is_git_fetching = app
@@ -216,7 +217,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             // Get PR status for this agent (only if column is shown)
             let pr_spans = if show_pr_column {
                 let pr = app.get_pr_for_agent(agent);
-                Some(format_pr_status(pr))
+                Some(format_pr_status(pr, show_check_counts))
             } else {
                 None
             };
@@ -284,7 +285,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             })
             .max()
             .unwrap_or(4)
-            .clamp(4, 12)
+            .clamp(4, 16) // Increased from 12 to accommodate check icons + counts
             + 1
     } else {
         0

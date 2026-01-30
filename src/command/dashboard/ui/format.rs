@@ -3,7 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::git::GitStatus;
-use crate::github::PrSummary;
+use crate::github::{CheckState, PrSummary};
 use crate::nerdfont;
 
 use super::super::spinner::SPINNER_FRAMES;
@@ -147,7 +147,7 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
 }
 
 /// Format PR status as styled spans for dashboard display
-pub fn format_pr_status(pr: Option<&PrSummary>) -> Vec<(String, Style)> {
+pub fn format_pr_status(pr: Option<&PrSummary>, show_check_counts: bool) -> Vec<(String, Style)> {
     match pr {
         Some(pr) => {
             let icons = nerdfont::pr_icons();
@@ -161,10 +161,36 @@ pub fn format_pr_status(pr: Option<&PrSummary>) -> Vec<(String, Style)> {
                     _ => ("?", Color::DarkGray),
                 }
             };
-            vec![
+            let mut spans = vec![
                 (format!("#{} ", pr.number), Style::default().fg(color)),
                 (icon.to_string(), Style::default().fg(color)),
-            ]
+            ];
+
+            // Append check status if present
+            if let Some(ref checks) = pr.checks {
+                let check_icons = nerdfont::check_icons();
+                let (check_icon, check_color, counts) = match checks {
+                    CheckState::Success => (check_icons.success, Color::Green, None),
+                    CheckState::Failure { passed, total } => {
+                        (check_icons.failure, Color::Red, Some((*passed, *total)))
+                    }
+                    CheckState::Pending { passed, total } => {
+                        (check_icons.pending, Color::Yellow, Some((*passed, *total)))
+                    }
+                };
+
+                spans.push((" ".to_string(), Style::default()));
+                spans.push((check_icon.to_string(), Style::default().fg(check_color)));
+
+                if show_check_counts && let Some((passed, total)) = counts {
+                    spans.push((
+                        format!(" {}/{}", passed, total),
+                        Style::default().fg(check_color),
+                    ));
+                }
+            }
+
+            spans
         }
         None => vec![("-".to_string(), Style::default().fg(Color::DarkGray))],
     }
