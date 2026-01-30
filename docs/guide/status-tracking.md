@@ -87,3 +87,18 @@ bind l run-shell "workmux last-done"
 ```
 
 Then press `prefix + l` to jump to the last completed agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to review their work in the order they finished.
+
+## Toggle between agents
+
+Use `workmux last-agent` to toggle between your current agent and the last one you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it remembers which agent you came from and switches back to it. Pressing it again returns you to where you were.
+
+This is available both as a CLI command and as the `Tab` key in the [dashboard](/guide/dashboard/).
+
+Add a tmux keybinding for quick access:
+
+```bash
+# ~/.tmux.conf
+bind Tab run-shell "workmux last-agent"
+```
+
+Then press `prefix + Tab` to toggle between your two most recent agents.

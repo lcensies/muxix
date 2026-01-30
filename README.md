@@ -1213,6 +1213,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `Tab`     | Toggle between current and last agent   |
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
@@ -1502,6 +1503,24 @@ bind-key L run-shell "workmux last-done"
 
 Then press `prefix + L` to jump to the last completed agent, press again to
 cycle to the next oldest, and so on.
+
+### Toggle between agents
+
+Use `workmux last-agent` to toggle between your current agent and the last one
+you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it
+remembers which agent you came from and switches back to it. Pressing it again
+returns you to where you were.
+
+This is available both as a CLI command and as the `Tab` key in the dashboard.
+
+Add a tmux keybinding for quick access:
+
+```bash
+# ~/.tmux.conf
+bind Tab run-shell "workmux last-agent"
+```
+
+Then press `prefix + Tab` to toggle between your two most recent agents.
 
 ## Workflow example
 

@@ -39,6 +39,7 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
+| `Tab`     | Toggle between current and last agent   |
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
