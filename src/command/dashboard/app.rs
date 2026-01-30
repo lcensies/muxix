@@ -112,17 +112,25 @@ impl App {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
         let (pr_tx, pr_rx) = mpsc::channel();
+
         // Get the active pane's directory to indicate the active worktree.
         // Try multiplexer first (handles popup case), fall back to current_dir.
         let current_worktree = mux
             .get_client_active_pane_path()
             .or_else(|_| std::env::current_dir())
             .ok();
+
         // Preview size: CLI override > tmux saved > config default
         // Clamp to 10-90 to handle manually corrupted tmux variables
         let preview_size = load_preview_size()
             .unwrap_or_else(|| config.dashboard.preview_size())
             .clamp(10, 90);
+
+        let sort_mode = SortMode::load();
+        let git_statuses = git::load_status_cache();
+        let pr_statuses = crate::github::load_pr_cache();
+        let hide_stale = load_hide_stale();
+        let last_pane_id = load_last_pane_id();
 
         let mut app = Self {
             mux,
@@ -134,7 +142,7 @@ impl App {
             config,
             should_quit: false,
             should_jump: false,
-            sort_mode: SortMode::load(),
+            sort_mode,
             view_mode: ViewMode::default(),
             preview: None,
             preview_pane_id: None,
@@ -142,13 +150,13 @@ impl App {
             preview_scroll: None,
             preview_line_count: 0,
             preview_height: 0,
-            git_statuses: git::load_status_cache(),
+            git_statuses,
             git_rx,
             git_tx,
             // Set to past to trigger immediate fetch on first refresh
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
-            pr_statuses: crate::github::load_pr_cache(),
+            pr_statuses,
             pr_rx,
             pr_tx,
             // Set to past to trigger immediate fetch on first refresh
@@ -156,20 +164,24 @@ impl App {
             is_pr_fetching: Arc::new(AtomicBool::new(false)),
             repo_roots: HashMap::new(),
             spinner_frame: 0,
-            hide_stale: load_hide_stale(),
+            hide_stale,
             show_help: false,
             preview_size,
             agent_monitor: AgentMonitor::new(),
-            last_pane_id: load_last_pane_id(),
+            last_pane_id,
         };
+
         app.refresh();
+
         // Select first item if available
         if !app.agents.is_empty() {
             app.table_state.select(Some(0));
             app.selected_pane_id = app.agents.first().map(|a| a.pane_id.clone());
         }
+
         // Initial preview fetch
         app.update_preview();
+
         Ok(app)
     }
 
