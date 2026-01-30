@@ -439,9 +439,12 @@ impl App {
 
         self.should_jump = true;
 
-        // Only update last_pane_id if we actually moved to a different pane
+        // Only update last_pane_id if:
+        // 1. We actually moved to a different pane
+        // 2. The previous pane was an agent pane (not just any tmux pane)
         if let Some(ref current) = current_pane
             && current != target_pane_id
+            && self.agents.iter().any(|a| a.pane_id == *current)
         {
             self.last_pane_id = Some(current.clone());
             save_last_pane_id(current);
