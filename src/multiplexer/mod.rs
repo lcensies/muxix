@@ -304,6 +304,12 @@ pub trait Multiplexer: Send + Sync {
     /// Returns None if pane does not exist. Used during state reconciliation
     /// to validate stored state against actual pane state.
     fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>>;
+
+    /// Get live pane info for all panes at once (batched query).
+    ///
+    /// Returns a HashMap from pane_id to LivePaneInfo. This is more efficient
+    /// than calling get_live_pane_info repeatedly when validating many panes.
+    fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>>;
 }
 
 /// Detect which backend to use based on environment.

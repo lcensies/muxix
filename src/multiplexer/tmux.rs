@@ -567,6 +567,43 @@ impl Multiplexer for TmuxBackend {
             window: Some(parts[6].to_string()),
         }))
     }
+
+    fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>> {
+        use std::collections::HashMap;
+
+        let format = "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{session_name}\t#{window_name}";
+
+        // Use list-panes -a to query ALL panes across all sessions at once
+        let output = self.tmux_query(&["list-panes", "-a", "-F", format])?;
+
+        let mut panes = HashMap::new();
+
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 7 {
+                continue;
+            }
+
+            let pane_id = parts[0].to_string();
+            panes.insert(
+                pane_id,
+                LivePaneInfo {
+                    pid: parts[1].parse().unwrap_or(0),
+                    current_command: parts[2].to_string(),
+                    working_dir: PathBuf::from(parts[3]),
+                    title: if parts[4].is_empty() {
+                        None
+                    } else {
+                        Some(parts[4].to_string())
+                    },
+                    session: Some(parts[5].to_string()),
+                    window: Some(parts[6].to_string()),
+                },
+            );
+        }
+
+        Ok(panes)
+    }
 }
 
 /// Execute a shell script via tmux run-shell

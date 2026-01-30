@@ -752,6 +752,71 @@ impl Multiplexer for WezTermBackend {
         Ok(names)
     }
 
+    fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>> {
+        use std::collections::HashMap;
+
+        let mut result = HashMap::new();
+
+        for p in self.list_panes()? {
+            let pane_id = p.pane_id.to_string();
+
+            // WezTerm doesn't expose PID or current command via CLI list.
+            // We extract both from the TTY using ps.
+            let tty_name = p.tty_name.as_ref().map(|t| t.trim_start_matches("/dev/"));
+
+            let pid = tty_name
+                .and_then(|tty| {
+                    Cmd::new("sh")
+                        .args(&[
+                            "-c",
+                            &format!(
+                                "ps -t {} -o pid=,stat= | grep '+' | head -1 | awk '{{print $1}}'",
+                                tty
+                            ),
+                        ])
+                        .run_and_capture_stdout()
+                        .ok()
+                })
+                .and_then(|output| output.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+
+            let current_command = tty_name
+                .and_then(|tty| {
+                    Cmd::new("sh")
+                        .args(&[
+                            "-c",
+                            &format!(
+                                "ps -t {} -o stat=,comm= | grep '+' | head -1 | awk '{{print $2}}'",
+                                tty
+                            ),
+                        ])
+                        .run_and_capture_stdout()
+                        .ok()
+                })
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            result.insert(
+                pane_id,
+                LivePaneInfo {
+                    pid,
+                    current_command,
+                    working_dir: p.cwd_path(),
+                    title: if p.title.is_empty() {
+                        None
+                    } else {
+                        Some(p.title.clone())
+                    },
+                    session: Some(p.workspace.clone()),
+                    window: Some(p.tab_title.clone()),
+                },
+            );
+        }
+
+        Ok(result)
+    }
+
     fn split_pane(
         &self,
         target_pane_id: &str,

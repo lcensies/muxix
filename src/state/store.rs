@@ -149,17 +149,23 @@ impl StateStore {
         &self,
         mux: &dyn crate::multiplexer::Multiplexer,
     ) -> Result<Vec<crate::multiplexer::AgentPane>> {
+        let all_agents = self.list_all_agents()?;
+
+        // Fetch all live pane info in a single batched query
+        let live_panes = mux.get_all_live_pane_info()?;
+
         let mut valid_agents = Vec::new();
         let backend = mux.name();
         let instance = mux.instance_id();
 
-        for state in self.list_all_agents()? {
+        for state in all_agents {
             // Skip agents from other backends/instances
             if state.pane_key.backend != backend || state.pane_key.instance != instance {
                 continue;
             }
 
-            let live_pane = mux.get_live_pane_info(&state.pane_key.pane_id)?;
+            // Look up pane in the batched result
+            let live_pane = live_panes.get(&state.pane_key.pane_id);
 
             match live_pane {
                 None => {
@@ -167,13 +173,13 @@ impl StateStore {
                     self.delete_agent(&state.pane_key)?;
                     // Note: Can't clear window status since pane is gone
                 }
-                Some(ref live) if live.pid != state.pane_pid => {
+                Some(live) if live.pid != state.pane_pid => {
                     // PID mismatch - pane ID was recycled by a new process
                     self.delete_agent(&state.pane_key)?;
                     // Clear stale window status icon from status bar
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
-                Some(ref live) if live.current_command != state.command => {
+                Some(live) if live.current_command != state.command => {
                     // Command changed - agent exited (e.g., "node" -> "zsh")
                     self.delete_agent(&state.pane_key)?;
                     // Clear stale window status icon from status bar
@@ -182,8 +188,8 @@ impl StateStore {
                 Some(live) => {
                     // Valid - include in dashboard
                     let agent_pane = state.to_agent_pane(
-                        live.session.unwrap_or_default(),
-                        live.window.unwrap_or_default(),
+                        live.session.clone().unwrap_or_default(),
+                        live.window.clone().unwrap_or_default(),
                     );
                     valid_agents.push(agent_pane);
                 }
