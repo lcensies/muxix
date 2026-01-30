@@ -47,6 +47,7 @@ use std::io;
 use std::time::Duration;
 
 use crate::git;
+use crate::github;
 use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
@@ -232,6 +233,9 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
 
     // Save git status cache before exiting
     git::save_status_cache(&app.git_statuses);
+
+    // Save PR status cache before exiting
+    github::save_pr_cache(app.pr_statuses());
 
     // Restore terminal
     disable_raw_mode()?;

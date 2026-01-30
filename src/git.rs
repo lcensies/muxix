@@ -53,6 +53,9 @@ pub struct GitStatus {
     /// The base branch used for comparison (e.g., "main")
     #[serde(default)]
     pub base_branch: String,
+    /// The branch name for this worktree (None if detached HEAD)
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 /// Get the path to the git status cache file
@@ -1183,6 +1186,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         Err(_) => {
             return GitStatus {
                 cached_at: now,
+                branch: None,
                 ..Default::default()
             };
         }
@@ -1195,6 +1199,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
             return GitStatus {
                 is_dirty,
                 cached_at: now,
+                branch: None,
                 ..Default::default()
             };
         }
@@ -1219,6 +1224,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
             uncommitted_removed: stats.uncommitted_removed,
             cached_at: now,
             base_branch,
+            branch: Some(branch),
             ..Default::default()
         };
     }
@@ -1253,6 +1259,7 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
         uncommitted_removed: diff_stats.uncommitted_removed,
         cached_at: now,
         base_branch,
+        branch: Some(branch),
     }
 }
 

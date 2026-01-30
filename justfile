@@ -59,7 +59,7 @@ docs-check:
         if ! head -20 "$file" | grep -q '^description:'; then
             missing+=("$file")
         fi
-    done < <(find docs -name "*.md" -not -path "*/node_modules/*")
+    done < <(find docs -name "*.md" -not -path "*/node_modules/*" -not -path "docs/README.md")
     if [ ${#missing[@]} -gt 0 ]; then
         echo "Missing meta description in:"
         printf '  %s\n' "${missing[@]}"

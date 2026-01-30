@@ -3,6 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::git::GitStatus;
+use crate::github::PrSummary;
 use crate::nerdfont;
 
 use super::super::spinner::SPINNER_FRAMES;
@@ -142,5 +143,29 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
         // No status yet - show spinner
         let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
         vec![(frame.to_string(), Style::default().fg(Color::DarkGray))]
+    }
+}
+
+/// Format PR status as styled spans for dashboard display
+pub fn format_pr_status(pr: Option<&PrSummary>) -> Vec<(String, Style)> {
+    match pr {
+        Some(pr) => {
+            let icons = nerdfont::pr_icons();
+            let (icon, color) = if pr.is_draft {
+                (icons.draft, Color::DarkGray)
+            } else {
+                match pr.state.as_str() {
+                    "OPEN" => (icons.open, Color::Green),
+                    "MERGED" => (icons.merged, Color::Magenta),
+                    "CLOSED" => (icons.closed, Color::Red),
+                    _ => ("?", Color::DarkGray),
+                }
+            };
+            vec![
+                (format!("#{} ", pr.number), Style::default().fg(color)),
+                (icon.to_string(), Style::default().fg(color)),
+            ]
+        }
+        None => vec![("-".to_string(), Style::default().fg(Color::DarkGray))],
     }
 }

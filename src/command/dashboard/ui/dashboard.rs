@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::super::app::App;
 use super::super::spinner::SPINNER_FRAMES;
-use super::format::format_git_status;
+use super::format::{format_git_status, format_pr_status};
 
 /// Render the dashboard view (table + preview + footer).
 pub fn render_dashboard(f: &mut Frame, app: &mut App) {
@@ -92,6 +92,9 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
+    // Check if we should show the PR column (only when at least one agent has a PR)
+    let show_pr_column = app.has_any_pr();
+
     // Check if git data is being refreshed
     let is_git_fetching = app
         .is_git_fetching
@@ -108,17 +111,36 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(Span::styled("Git", Style::default().fg(Color::Cyan).bold()))
     };
 
+    // Build PR header with spinner when fetching
+    let pr_header = if app.is_pr_fetching() {
+        let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
+        Line::from(vec![
+            Span::styled("PR ", Style::default().fg(Color::Cyan).bold()),
+            Span::styled(spinner.to_string(), Style::default().fg(Color::DarkGray)),
+        ])
+    } else {
+        Line::from(Span::styled("PR", Style::default().fg(Color::Cyan).bold()))
+    };
+
     let header_style = Style::default().fg(Color::Cyan).bold();
-    let header = Row::new(vec![
+    let mut header_cells = vec![
         Cell::from("#").style(header_style),
         Cell::from("Project").style(header_style),
         Cell::from("Worktree").style(header_style),
         Cell::from(git_header),
+    ];
+
+    if show_pr_column {
+        header_cells.push(Cell::from(pr_header));
+    }
+
+    header_cells.extend(vec![
         Cell::from("Status").style(header_style),
         Cell::from("Time").style(header_style),
         Cell::from("Title").style(header_style),
-    ])
-    .height(1);
+    ]);
+
+    let header = Row::new(header_cells).height(1);
 
     // Group agents by (session, window_name) to detect multi-pane windows
     let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
@@ -191,6 +213,14 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             let git_status = app.git_statuses.get(&agent.path);
             let git_spans = format_git_status(git_status, app.spinner_frame);
 
+            // Get PR status for this agent (only if column is shown)
+            let pr_spans = if show_pr_column {
+                let pr = app.get_pr_for_agent(agent);
+                Some(format_pr_status(pr))
+            } else {
+                None
+            };
+
             (
                 jump_key,
                 project,
@@ -198,6 +228,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 is_main,
                 is_current,
                 git_spans,
+                pr_spans,
                 status_text,
                 status_color,
                 duration,
@@ -209,7 +240,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
@@ -219,7 +250,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
         .max(8) // min 8 (header width)
@@ -229,7 +260,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use chars().count() instead of len() because Nerd Font icons are multi-byte
     let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, _, _, git_spans, _, _, _, _)| {
+        .map(|(_, _, _, _, _, git_spans, _, _, _, _, _)| {
             git_spans
                 .iter()
                 .map(|(text, _)| text.chars().count())
@@ -239,6 +270,25 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(4)
         .clamp(4, 30) // min 4, max 30 (increased for base branch)
         + 1; // padding
+
+    // Calculate max PR status width (only if showing PR column)
+    let max_pr_width = if show_pr_column {
+        row_data
+            .iter()
+            .filter_map(|(_, _, _, _, _, _, pr_spans, _, _, _, _)| pr_spans.as_ref())
+            .map(|spans| {
+                spans
+                    .iter()
+                    .map(|(text, _)| text.chars().count())
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or(4)
+            .clamp(4, 12)
+            + 1
+    } else {
+        0
+    };
 
     let rows: Vec<Row> = row_data
         .into_iter()
@@ -250,6 +300,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 is_main,
                 is_current,
                 git_spans,
+                pr_spans,
                 status_text,
                 status_color,
                 duration,
@@ -269,15 +320,32 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                         .map(|(text, style)| Span::styled(text, style))
                         .collect::<Vec<_>>(),
                 );
-                let row = Row::new(vec![
+
+                let mut cells = vec![
                     Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
                     Cell::from(git_line),
+                ];
+
+                // Add PR cell if column is shown
+                if let Some(pr_spans) = pr_spans {
+                    let pr_line = Line::from(
+                        pr_spans
+                            .into_iter()
+                            .map(|(text, style)| Span::styled(text, style))
+                            .collect::<Vec<_>>(),
+                    );
+                    cells.push(Cell::from(pr_line));
+                }
+
+                cells.extend(vec![
                     Cell::from(status_text).style(Style::default().fg(status_color)),
                     Cell::from(duration),
                     Cell::from(title),
                 ]);
+
+                let row = Row::new(cells);
                 // Subtle background for the active worktree row
                 if is_current {
                     row.style(Style::default().bg(Color::Rgb(35, 40, 35)))
@@ -288,22 +356,29 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         )
         .collect();
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(2),                         // #: jump key
-            Constraint::Length(max_project_width as u16),  // Project: auto-sized
-            Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
-            Constraint::Length(max_git_width as u16),      // Git: auto-sized
-            Constraint::Length(8),                         // Status: fixed (icons)
-            Constraint::Length(10),                        // Time: HH:MM:SS + padding
-            Constraint::Fill(1),                           // Title: takes remaining space
-        ],
-    )
-    .header(header)
-    .block(Block::default())
-    .row_highlight_style(Style::default().bg(Color::Rgb(50, 50, 55)))
-    .highlight_symbol("> ");
+    // Build column constraints conditionally based on whether PR column is shown
+    let mut constraints = vec![
+        Constraint::Length(2),                         // #: jump key
+        Constraint::Length(max_project_width as u16),  // Project: auto-sized
+        Constraint::Length(max_worktree_width as u16), // Worktree: auto-sized
+        Constraint::Length(max_git_width as u16),      // Git: auto-sized
+    ];
+
+    if show_pr_column {
+        constraints.push(Constraint::Length(max_pr_width as u16)); // PR: auto-sized
+    }
+
+    constraints.extend(vec![
+        Constraint::Length(8),  // Status: fixed (icons)
+        Constraint::Length(10), // Time: HH:MM:SS + padding
+        Constraint::Fill(1),    // Title: takes remaining space
+    ]);
+
+    let table = Table::new(rows, constraints)
+        .header(header)
+        .block(Block::default())
+        .row_highlight_style(Style::default().bg(Color::Rgb(50, 50, 55)))
+        .highlight_symbol("> ");
 
     f.render_stateful_widget(table, area, &mut app.table_state);
 }

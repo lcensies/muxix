@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::debug;
 
@@ -34,7 +35,7 @@ impl PrDetails {
 }
 
 /// Summary of a PR found by head ref search
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrSummary {
     pub number: u32,
     pub title: String,
@@ -223,4 +224,117 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
         .collect();
 
     Ok(pr_map)
+}
+
+/// List PRs for a specific repository, filtered to repo owner only (excludes fork PRs)
+pub fn list_prs_in_repo(repo_root: &Path) -> Result<HashMap<String, PrSummary>> {
+    #[derive(Debug, Deserialize)]
+    struct PrItem {
+        number: u32,
+        title: String,
+        state: String,
+        #[serde(rename = "isDraft")]
+        is_draft: bool,
+        #[serde(rename = "headRefName")]
+        head_ref_name: String,
+        #[serde(rename = "headRepositoryOwner")]
+        head_repository_owner: RepositoryOwner,
+    }
+
+    let output = match Command::new("gh")
+        .current_dir(repo_root)
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--json",
+            "number,title,state,isDraft,headRefName,headRepositoryOwner",
+            "--limit",
+            "200",
+        ])
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => {
+            tracing::warn!("Failed to run gh pr list: {}", e);
+            return Ok(HashMap::new());
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::warn!("gh pr list failed: {}", stderr);
+        return Ok(HashMap::new());
+    }
+
+    let prs: Vec<PrItem> = serde_json::from_slice(&output.stdout)?;
+
+    // Get repo owner to filter out fork PRs
+    let repo_owner = get_repo_owner(repo_root).unwrap_or_default();
+
+    let mut map = HashMap::new();
+    for pr in prs {
+        // Filter to only PRs from the repo owner (exclude forks)
+        if pr
+            .head_repository_owner
+            .login
+            .eq_ignore_ascii_case(&repo_owner)
+        {
+            map.insert(
+                pr.head_ref_name,
+                PrSummary {
+                    number: pr.number,
+                    title: pr.title,
+                    state: pr.state,
+                    is_draft: pr.is_draft,
+                },
+            );
+        }
+    }
+
+    Ok(map)
+}
+
+/// Get the owner of the repository
+fn get_repo_owner(repo_root: &Path) -> Option<String> {
+    let output = Command::new("gh")
+        .current_dir(repo_root)
+        .args(["repo", "view", "--json", "owner", "-q", ".owner.login"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+/// Get the path to the PR status cache file
+fn get_pr_cache_path() -> Result<PathBuf> {
+    let home = home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+    let cache_dir = home.join(".cache").join("workmux");
+    std::fs::create_dir_all(&cache_dir)?;
+    Ok(cache_dir.join("pr_status_cache.json"))
+}
+
+/// Load the PR status cache from disk
+pub fn load_pr_cache() -> HashMap<PathBuf, HashMap<String, PrSummary>> {
+    if let Ok(path) = get_pr_cache_path()
+        && path.exists()
+        && let Ok(content) = std::fs::read_to_string(&path)
+    {
+        return serde_json::from_str(&content).unwrap_or_default();
+    }
+    HashMap::new()
+}
+
+/// Save the PR status cache to disk
+pub fn save_pr_cache(statuses: &HashMap<PathBuf, HashMap<String, PrSummary>>) {
+    if let Ok(path) = get_pr_cache_path()
+        && let Ok(content) = serde_json::to_string(statuses)
+    {
+        let _ = std::fs::write(path, content);
+    }
 }

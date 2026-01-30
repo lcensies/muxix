@@ -11,8 +11,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::git::{self, GitStatus};
+use crate::github::PrSummary;
 use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
+
+const PR_FETCH_INTERVAL: Duration = Duration::from_secs(30);
 
 use super::monitor::AgentMonitor;
 
@@ -79,6 +82,15 @@ pub struct App {
     last_git_fetch: std::time::Instant,
     /// Flag to track if a git fetch is in progress (prevents thread pile-up)
     pub is_git_fetching: Arc<AtomicBool>,
+    /// PR info indexed by repo root, then branch name
+    pr_statuses: HashMap<PathBuf, HashMap<String, PrSummary>>,
+    /// Channel for PR status updates (repo_root, prs)
+    pr_rx: mpsc::Receiver<(PathBuf, HashMap<String, PrSummary>)>,
+    pr_tx: mpsc::Sender<(PathBuf, HashMap<String, PrSummary>)>,
+    /// Last PR fetch time
+    last_pr_fetch: std::time::Instant,
+    /// Flag to prevent concurrent PR fetches
+    is_pr_fetching: Arc<AtomicBool>,
     /// Frame counter for spinner animation (increments each tick)
     pub spinner_frame: u8,
     /// Whether to hide stale agents from the list
@@ -97,6 +109,7 @@ impl App {
     pub fn new(mux: Arc<dyn Multiplexer>) -> Result<Self> {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
+        let (pr_tx, pr_rx) = mpsc::channel();
         // Get the active pane's directory to indicate the active worktree.
         // Try multiplexer first (handles popup case), fall back to current_dir.
         let current_worktree = mux
@@ -133,6 +146,12 @@ impl App {
             // Set to past to trigger immediate fetch on first refresh
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
+            pr_statuses: crate::github::load_pr_cache(),
+            pr_rx,
+            pr_tx,
+            // Set to past to trigger immediate fetch on first refresh
+            last_pr_fetch: std::time::Instant::now() - PR_FETCH_INTERVAL,
+            is_pr_fetching: Arc::new(AtomicBool::new(false)),
             spinner_frame: 0,
             hide_stale: load_hide_stale(),
             show_help: false,
@@ -189,6 +208,17 @@ impl App {
         if self.last_git_fetch.elapsed() >= Duration::from_secs(5) {
             self.last_git_fetch = std::time::Instant::now();
             self.spawn_git_status_fetch();
+        }
+
+        // Consume any pending PR status updates
+        while let Ok((repo_root, prs)) = self.pr_rx.try_recv() {
+            self.pr_statuses.insert(repo_root, prs);
+        }
+
+        // Trigger PR fetch every 30 seconds
+        if self.last_pr_fetch.elapsed() >= PR_FETCH_INTERVAL {
+            self.last_pr_fetch = std::time::Instant::now();
+            self.spawn_pr_status_fetch();
         }
 
         // Restore selection by pane_id to follow the item across reorders
@@ -259,6 +289,49 @@ impl App {
                 let status = git::get_git_status(&path);
                 // Ignore send errors (receiver dropped means app is shutting down)
                 let _ = tx.send((path, status));
+            }
+        });
+    }
+
+    /// Spawn a background thread to fetch PR status for all repos
+    fn spawn_pr_status_fetch(&self) {
+        // Skip if already fetching
+        if self
+            .is_pr_fetching
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
+        // Collect unique repo roots from agents
+        let repo_roots: std::collections::HashSet<PathBuf> = self
+            .agents
+            .iter()
+            .filter_map(|agent| crate::git::get_repo_root_for(&agent.path).ok())
+            .collect();
+
+        let tx = self.pr_tx.clone();
+        let is_fetching = self.is_pr_fetching.clone();
+
+        std::thread::spawn(move || {
+            struct ResetFlag(Arc<AtomicBool>);
+            impl Drop for ResetFlag {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
+                }
+            }
+            let _reset = ResetFlag(is_fetching);
+
+            for repo_root in repo_roots {
+                match crate::github::list_prs_in_repo(&repo_root) {
+                    Ok(prs) => {
+                        let _ = tx.send((repo_root, prs));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch PRs for {:?}: {}", repo_root, e);
+                    }
+                }
             }
         });
     }
@@ -585,6 +658,31 @@ impl App {
 
     pub fn extract_project_name(agent_pane: &AgentPane) -> String {
         agent::extract_project_name(&agent_pane.path)
+    }
+
+    /// Get PR info for an agent by looking up its branch in PR statuses
+    pub fn get_pr_for_agent(&self, agent: &AgentPane) -> Option<&PrSummary> {
+        let repo_root = crate::git::get_repo_root_for(&agent.path).ok()?;
+        let git_status = self.git_statuses.get(&agent.path)?;
+        let branch = git_status.branch.as_ref()?;
+        self.pr_statuses.get(&repo_root)?.get(branch)
+    }
+
+    /// Whether a PR fetch is currently in progress
+    pub fn is_pr_fetching(&self) -> bool {
+        self.is_pr_fetching.load(Ordering::Relaxed)
+    }
+
+    /// Whether any agent has a matching PR (for column visibility)
+    pub fn has_any_pr(&self) -> bool {
+        self.agents
+            .iter()
+            .any(|agent| self.get_pr_for_agent(agent).is_some())
+    }
+
+    /// Get PR statuses for caching
+    pub fn pr_statuses(&self) -> &HashMap<PathBuf, HashMap<String, PrSummary>> {
+        &self.pr_statuses
     }
 
     /// Stage a single hunk using git apply --cached
