@@ -14,6 +14,18 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.103 (2026-01-30)
+
+- Dashboard now shows PR status column with number and state icon (open, merged,
+  closed, draft) for each agent's worktree
+- Dashboard displays CI/CD check status alongside PRs with pass/fail/pending
+  icons. Enable `dashboard.show_check_counts` to show pass/total counts
+- Added last-agent toggle (Tab key in dashboard, `workmux last-agent` CLI) to
+  quickly switch between current and previous agent
+- Added `auto_name.background` config option to always run `--auto-name` agents
+  in background mode
+- Improved dashboard startup performance
+
 ## v0.1.102 (2026-01-29)
 
 - Moved internal state management from tmux-specific mechanisms to
