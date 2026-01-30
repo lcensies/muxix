@@ -91,6 +91,8 @@ pub struct App {
     last_pr_fetch: std::time::Instant,
     /// Flag to prevent concurrent PR fetches
     is_pr_fetching: Arc<AtomicBool>,
+    /// Cache of repo roots for agent paths
+    repo_roots: HashMap<PathBuf, PathBuf>,
     /// Frame counter for spinner animation (increments each tick)
     pub spinner_frame: u8,
     /// Whether to hide stale agents from the list
@@ -152,6 +154,7 @@ impl App {
             // Set to past to trigger immediate fetch on first refresh
             last_pr_fetch: std::time::Instant::now() - PR_FETCH_INTERVAL,
             is_pr_fetching: Arc::new(AtomicBool::new(false)),
+            repo_roots: HashMap::new(),
             spinner_frame: 0,
             hide_stale: load_hide_stale(),
             show_help: false,
@@ -183,6 +186,14 @@ impl App {
                 .process_stalls(self.agents.clone(), working_icon, self.mux.as_ref());
 
         self.sort_agents();
+
+        // Cache repo roots for new agents
+        for agent in &self.agents {
+            if !self.repo_roots.contains_key(&agent.path)
+                && let Ok(root) = git::get_repo_root_for(&agent.path) {
+                    self.repo_roots.insert(agent.path.clone(), root);
+                }
+        }
 
         // Filter out stale agents if hide_stale is enabled
         if self.hide_stale {
@@ -304,11 +315,11 @@ impl App {
             return;
         }
 
-        // Collect unique repo roots from agents
+        // Collect unique repo roots from cache
         let repo_roots: std::collections::HashSet<PathBuf> = self
             .agents
             .iter()
-            .filter_map(|agent| crate::git::get_repo_root_for(&agent.path).ok())
+            .filter_map(|agent| self.repo_roots.get(&agent.path).cloned())
             .collect();
 
         let tx = self.pr_tx.clone();
@@ -662,10 +673,10 @@ impl App {
 
     /// Get PR info for an agent by looking up its branch in PR statuses
     pub fn get_pr_for_agent(&self, agent: &AgentPane) -> Option<&PrSummary> {
-        let repo_root = crate::git::get_repo_root_for(&agent.path).ok()?;
+        let repo_root = self.repo_roots.get(&agent.path)?;
         let git_status = self.git_statuses.get(&agent.path)?;
         let branch = git_status.branch.as_ref()?;
-        self.pr_statuses.get(&repo_root)?.get(branch)
+        self.pr_statuses.get(repo_root)?.get(branch)
     }
 
     /// Whether a PR fetch is currently in progress
