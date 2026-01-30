@@ -190,9 +190,10 @@ impl App {
         // Cache repo roots for new agents
         for agent in &self.agents {
             if !self.repo_roots.contains_key(&agent.path)
-                && let Ok(root) = git::get_repo_root_for(&agent.path) {
-                    self.repo_roots.insert(agent.path.clone(), root);
-                }
+                && let Ok(root) = git::get_repo_root_for(&agent.path)
+            {
+                self.repo_roots.insert(agent.path.clone(), root);
+            }
         }
 
         // Filter out stale agents if hide_stale is enabled
