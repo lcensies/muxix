@@ -363,6 +363,10 @@ enum Commands {
     #[command(hide = true, name = "last-done")]
     LastDone,
 
+    /// Switch to the last visited agent (toggle between two)
+    #[command(hide = true, name = "last-agent")]
+    LastAgent,
+
     /// Generate shell completions
     Completions {
         /// The shell to generate completions for
@@ -487,6 +491,7 @@ pub fn run() -> Result<()> {
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
         Commands::SetBase { base } => command::set_base::run(&base),
         Commands::LastDone => command::last_done::run(),
+        Commands::LastAgent => command::last_agent::run(),
         Commands::Completions { shell } => {
             generate_completions(shell);
             Ok(())

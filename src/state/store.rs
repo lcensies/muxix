@@ -381,6 +381,7 @@ mod tests {
             sort_mode: "priority".to_string(),
             hide_stale: true,
             preview_size: Some(30),
+            last_pane_id: Some("%5".to_string()),
         };
 
         store.save_settings(&settings).unwrap();
@@ -389,6 +390,7 @@ mod tests {
         assert_eq!(loaded.sort_mode, settings.sort_mode);
         assert_eq!(loaded.hide_stale, settings.hide_stale);
         assert_eq!(loaded.preview_size, settings.preview_size);
+        assert_eq!(loaded.last_pane_id, settings.last_pane_id);
     }
 
     #[test]
@@ -399,6 +401,7 @@ mod tests {
         assert_eq!(settings.sort_mode, "");
         assert!(!settings.hide_stale);
         assert!(settings.preview_size.is_none());
+        assert!(settings.last_pane_id.is_none());
     }
 
     #[test]

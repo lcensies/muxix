@@ -39,3 +39,23 @@ pub fn save_preview_size(size: u8) {
         let _ = store.save_settings(&settings);
     }
 }
+
+/// Load last visited pane_id from StateStore.
+pub fn load_last_pane_id() -> Option<String> {
+    StateStore::new()
+        .ok()
+        .and_then(|store| store.load_settings().ok())
+        .and_then(|s| s.last_pane_id)
+}
+
+/// Save last visited pane_id to StateStore.
+/// Only saves if value actually changed to minimize disk writes.
+pub fn save_last_pane_id(pane_id: &str) {
+    if let Ok(store) = StateStore::new()
+        && let Ok(mut settings) = store.load_settings()
+        && settings.last_pane_id.as_deref() != Some(pane_id)
+    {
+        settings.last_pane_id = Some(pane_id.to_string());
+        let _ = store.save_settings(&settings);
+    }
+}

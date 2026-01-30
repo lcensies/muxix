@@ -14,6 +14,7 @@ pub enum Action {
     Previous,
     JumpToSelected,
     JumpToIndex(usize),
+    JumpToLast,
     PeekSelected,
 
     // Dashboard commands
@@ -89,6 +90,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::JumpToIndex(idx) => {
             app.jump_to_index(idx);
+            false
+        }
+        Action::JumpToLast => {
+            app.jump_to_last();
             false
         }
         Action::PeekSelected => {

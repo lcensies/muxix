@@ -125,6 +125,9 @@ pub struct GlobalSettings {
 
     /// Preview pane size percentage (10-90)
     pub preview_size: Option<u8>,
+
+    /// Last visited agent pane_id (for quick toggle)
+    pub last_pane_id: Option<String>,
 }
 
 #[cfg(test)]

@@ -22,7 +22,10 @@ use super::diff::{
     DiffView, extract_file_list, get_diff_content, get_file_list_numstat, map_file_offsets,
     parse_hunk_header,
 };
-use super::settings::{load_hide_stale, load_preview_size, save_hide_stale, save_preview_size};
+use super::settings::{
+    load_hide_stale, load_last_pane_id, load_preview_size, save_hide_stale, save_last_pane_id,
+    save_preview_size,
+};
 use super::sort::SortMode;
 use super::spinner::SPINNER_FRAMES;
 
@@ -86,6 +89,8 @@ pub struct App {
     pub preview_size: u8,
     /// Monitors agents for stalls and interrupts
     agent_monitor: AgentMonitor,
+    /// Last jumped-to pane_id for quick toggle (cached from settings)
+    last_pane_id: Option<String>,
 }
 
 impl App {
@@ -133,6 +138,7 @@ impl App {
             show_help: false,
             preview_size,
             agent_monitor: AgentMonitor::new(),
+            last_pane_id: load_last_pane_id(),
         };
         app.refresh();
         // Select first item if available
@@ -420,13 +426,34 @@ impl App {
         self.update_preview();
     }
 
+    /// Switch to a pane and track the previous pane for toggle feature.
+    /// This is the single source of truth for all pane switching.
+    fn switch_to_pane_and_track(&mut self, target_pane_id: &str) {
+        // Get the REAL current pane from the multiplexer (not UI state)
+        let current_pane = self.mux.active_pane_id();
+
+        // Attempt the switch first - only update state on success
+        if self.mux.switch_to_pane(target_pane_id).is_err() {
+            return;
+        }
+
+        self.should_jump = true;
+
+        // Only update last_pane_id if we actually moved to a different pane
+        if let Some(ref current) = current_pane
+            && current != target_pane_id
+        {
+            self.last_pane_id = Some(current.clone());
+            save_last_pane_id(current);
+        }
+    }
+
     pub fn jump_to_selected(&mut self) {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            self.should_jump = true;
-            // Jump to the specific pane
-            let _ = self.mux.switch_to_pane(&agent.pane_id);
+            let target = agent.pane_id.clone();
+            self.switch_to_pane_and_track(&target);
         }
     }
 
@@ -436,6 +463,27 @@ impl App {
             self.selected_pane_id = self.agents.get(index).map(|a| a.pane_id.clone());
             self.jump_to_selected();
         }
+    }
+
+    /// Jump to the last visited agent (toggle behavior).
+    /// Reloads from settings to pick up changes from CLI command.
+    pub fn jump_to_last(&mut self) {
+        // Reload from settings to handle CLI/dashboard interop
+        self.last_pane_id = load_last_pane_id();
+
+        let Some(ref last_id) = self.last_pane_id else {
+            return;
+        };
+        let last_id = last_id.clone();
+
+        // Update table selection if the pane exists in current list
+        // (handles filtered/hidden agents gracefully - still switches even if not visible)
+        if let Some(idx) = self.agents.iter().position(|a| a.pane_id == last_id) {
+            self.table_state.select(Some(idx));
+        }
+
+        // Switch to the pane (works even if agent is filtered out of dashboard)
+        self.switch_to_pane_and_track(&last_id);
     }
 
     pub fn peek_selected(&mut self) {
