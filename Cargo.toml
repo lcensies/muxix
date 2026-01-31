@@ -50,7 +50,7 @@ ansi-to-tui = "8"
 notify-rust = "4"
 libc = "0.2"
 base64 = "0.22"
-nix = { version = "0.29", features = ["fs"] }
+nix = { version = "0.31.1", features = ["fs"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
