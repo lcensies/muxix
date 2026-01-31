@@ -308,21 +308,37 @@ impl Multiplexer for ZellijBackend {
         let store = StateStore::new()?;
         let agents = store.load_reconciled_agents(self)?;
 
-        debug!("switch_to_pane: looking for pane_id '{}', found {} agents", pane_id, agents.len());
+        debug!(
+            "switch_to_pane: looking for pane_id '{}', found {} agents",
+            pane_id,
+            agents.len()
+        );
 
         // Find the agent with matching pane_id
         if let Some(agent) = agents.iter().find(|a| a.pane_id == pane_id) {
-            debug!("switch_to_pane: found agent, switching to tab '{}'", agent.window_name);
+            debug!(
+                "switch_to_pane: found agent, switching to tab '{}'",
+                agent.window_name
+            );
             // Switch to the tab using go-to-tab-name
             Cmd::new("zellij")
                 .args(&["action", "go-to-tab-name", &agent.window_name])
                 .run()
                 .with_context(|| format!("Failed to switch to tab '{}'", agent.window_name))?;
-            debug!("switch_to_pane: successfully switched to tab '{}'", agent.window_name);
+            debug!(
+                "switch_to_pane: successfully switched to tab '{}'",
+                agent.window_name
+            );
             Ok(())
         } else {
-            warn!("Could not find agent with pane_id '{}' in state store", pane_id);
-            debug!("Available pane_ids: {:?}", agents.iter().map(|a| &a.pane_id).collect::<Vec<_>>());
+            warn!(
+                "Could not find agent with pane_id '{}' in state store",
+                pane_id
+            );
+            debug!(
+                "Available pane_ids: {:?}",
+                agents.iter().map(|a| &a.pane_id).collect::<Vec<_>>()
+            );
             Ok(())
         }
     }
@@ -368,7 +384,7 @@ impl Multiplexer for ZellijBackend {
             .run()
             .is_ok()
         {
-            if let Some(content) = std::fs::read_to_string(&temp_path).ok() {
+            if let Ok(content) = std::fs::read_to_string(&temp_path) {
                 let _ = std::fs::remove_file(&temp_path);
 
                 // If captured content contains dashboard UI, we're capturing
@@ -628,7 +644,10 @@ impl Multiplexer for ZellijBackend {
                         .run()
                         .context("Failed to navigate to previous pane")?;
                 }
-                debug!(target_index, current_index, steps, "Navigated backwards to focused pane");
+                debug!(
+                    target_index,
+                    current_index, steps, "Navigated backwards to focused pane"
+                );
             } else if target_index > current_index {
                 // Navigate forwards
                 let steps = target_index - current_index;
@@ -638,7 +657,10 @@ impl Multiplexer for ZellijBackend {
                         .run()
                         .context("Failed to navigate to next pane")?;
                 }
-                debug!(target_index, current_index, steps, "Navigated forwards to focused pane");
+                debug!(
+                    target_index,
+                    current_index, steps, "Navigated forwards to focused pane"
+                );
             }
         }
 

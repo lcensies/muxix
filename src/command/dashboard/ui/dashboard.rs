@@ -25,8 +25,8 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let chunks = if is_zellij {
         // Zellij: no preview section
         Layout::vertical([
-            Constraint::Min(5),     // Table (takes all space except footer)
-            Constraint::Length(1),  // Footer
+            Constraint::Min(5),    // Table (takes all space except footer)
+            Constraint::Length(1), // Footer
         ])
         .split(area)
     } else {
