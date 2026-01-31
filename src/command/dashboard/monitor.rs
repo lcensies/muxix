@@ -121,6 +121,8 @@ impl Default for AgentMonitor {
 /// Used when an agent is detected as stalled (no pane content changes).
 /// Updates both StateStore and multiplexer window status.
 fn mark_agent_interrupted(pane_id: &str, mux: &dyn Multiplexer) {
+    tracing::info!(pane_id = %pane_id, "agent reset due to inactivity");
+
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
