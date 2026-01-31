@@ -490,8 +490,19 @@ pub fn navigate_to_target_and_close(
         .clone()
         .unwrap_or_else(|| prefixed(prefix, source_handle));
     let target_full = prefixed(prefix, target_window_name);
-    let source_escaped = shell_escape(&format!("={}", source_full));
-    let target_escaped = shell_escape(&format!("={}", target_full));
+
+    // Get current session name for tmux targeting.
+    // tmux run-shell doesn't inherit the session context, so we must include
+    // the session name explicitly in targets: "session:=window_name"
+    let session = mux.current_session().unwrap_or_default();
+    let session_prefix = if session.is_empty() {
+        String::new()
+    } else {
+        format!("{}:", session)
+    };
+
+    let source_escaped = shell_escape(&format!("{}={}", session_prefix, source_full));
+    let target_escaped = shell_escape(&format!("{}={}", session_prefix, target_full));
 
     if !mux_running || !target_exists {
         // If target window doesn't exist, still need to close source window if running inside it
