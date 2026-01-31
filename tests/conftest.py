@@ -1175,6 +1175,33 @@ def poll_until(
     return False
 
 
+def poll_until_file_has_content(file_path: Path, timeout: float = 5.0) -> bool:
+    """
+    Poll until a file exists and has non-empty content.
+
+    This avoids race conditions where a file is created but not yet written to.
+    Shell redirection like `echo $? > file` may create an empty file before
+    writing the actual content.
+
+    Args:
+        file_path: Path to the file to check
+        timeout: Maximum time to wait in seconds
+
+    Returns:
+        True if file exists with content, False if timeout was reached
+    """
+
+    def has_content() -> bool:
+        if not file_path.exists():
+            return False
+        try:
+            return bool(file_path.read_text().strip())
+        except (IOError, OSError):
+            return False
+
+    return poll_until(has_content, timeout=timeout)
+
+
 @dataclass
 class WorkmuxCommandResult:
     """Represents the result of running a workmux command inside tmux."""
@@ -1361,7 +1388,7 @@ def run_workmux_command(
 
     env.send_keys("test:", workmux_cmd, enter=True)
 
-    if not poll_until(exit_code_file.exists, timeout=5.0):
+    if not poll_until_file_has_content(exit_code_file, timeout=5.0):
         # Capture pane content for debugging
         pane_content = env.capture_pane("test") or "(empty)"
         raise AssertionError(
@@ -1567,7 +1594,7 @@ def run_workmux_remove(
     env.run_shell_background(remove_script)
 
     # Wait for command to complete (longer timeout for --gone which runs git fetch)
-    assert poll_until(exit_code_file.exists, timeout=15.0), (
+    assert poll_until_file_has_content(exit_code_file, timeout=15.0), (
         "workmux remove did not complete in time"
     )
 
@@ -1671,7 +1698,7 @@ def run_workmux_merge(
 
     env.run_shell_background(merge_script)
 
-    assert poll_until(exit_code_file.exists, timeout=10.0), (
+    assert poll_until_file_has_content(exit_code_file, timeout=10.0), (
         "workmux merge did not complete in time"
     )
 

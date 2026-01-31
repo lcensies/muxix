@@ -6,6 +6,7 @@ from .conftest import (
     get_window_name,
     get_worktree_path,
     poll_until,
+    poll_until_file_has_content,
     run_workmux_add,
     run_workmux_command,
     write_workmux_config,
@@ -42,7 +43,7 @@ def run_workmux_close(
 
     env.run_shell_background(close_script)
 
-    assert poll_until(exit_code_file.exists, timeout=5.0), (
+    assert poll_until_file_has_content(exit_code_file, timeout=5.0), (
         "workmux close did not complete in time"
     )
 
