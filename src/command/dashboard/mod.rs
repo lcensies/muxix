@@ -29,6 +29,7 @@ mod agent;
 mod ansi;
 mod app;
 mod diff;
+mod diff_ops;
 mod keymap;
 mod monitor;
 mod settings;
@@ -52,6 +53,7 @@ use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
 use self::app::{App, ViewMode};
+use self::diff_ops::DiffOps;
 use self::keymap::{Context, action_for_key};
 use self::spinner::SPINNER_FRAME_COUNT;
 use self::ui::ui;

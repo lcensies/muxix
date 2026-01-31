@@ -1,6 +1,7 @@
 //! Action enum and dispatcher for dashboard key handling.
 
 use super::app::{App, ViewMode};
+use super::diff_ops::DiffOps;
 
 /// All possible actions in the dashboard.
 #[derive(Debug, Clone, PartialEq, Eq)]
