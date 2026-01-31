@@ -68,11 +68,20 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
 
+                // Preserve existing status_ts if status hasn't changed
+                // This prevents timer reset when agent repeatedly reports same status
+                let status_ts = StateStore::new()
+                    .ok()
+                    .and_then(|store| store.get_agent(&pane_key).ok().flatten())
+                    .filter(|existing| existing.status == Some(status))
+                    .and_then(|existing| existing.status_ts)
+                    .unwrap_or(now);
+
                 let state = AgentState {
                     pane_key,
                     workdir: live_info.working_dir,
                     status: Some(status),
-                    status_ts: Some(now),
+                    status_ts: Some(status_ts),
                     pane_title: live_info.title,
                     pane_pid: live_info.pid,
                     command: live_info.current_command,
