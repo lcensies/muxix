@@ -356,6 +356,81 @@ class TestExistingBranch:
         assert f"A worktree for branch '{branch_name}' already exists." in stderr
         assert "Use 'workmux open" in stderr
 
+    def test_add_with_open_if_exists_opens_existing_worktree(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `workmux add -o` opens an existing worktree instead of failing."""
+        env = mux_server
+        branch_name = "feature-open-if-exists"
+
+        write_workmux_config(mux_repo_path)
+
+        # Create the branch and worktree first
+        worktree_path = add_branch_and_get_worktree(
+            env, workmux_exe_path, mux_repo_path, branch_name
+        )
+        assert worktree_path.is_dir()
+
+        # Close the window but keep the worktree
+        window_name = get_window_name(branch_name)
+        env.kill_window(window_name)
+
+        # Verify window is gone
+        windows = env.list_windows()
+        assert window_name not in windows
+
+        # Run workmux add again with -o flag - should succeed and open the worktree
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} -o",
+        )
+
+        # Verify window was recreated
+        assert_window_exists(env, window_name)
+
+    def test_add_with_open_if_exists_creates_when_not_exists(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `workmux add -o` creates a new worktree when it doesn't exist."""
+        env = mux_server
+        branch_name = "feature-open-if-exists-new"
+
+        write_workmux_config(mux_repo_path)
+
+        # Run workmux add with -o flag on a non-existent branch
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args="-o",
+        )
+
+        # Verify worktree was created
+        assert worktree_path.is_dir()
+        assert_window_exists(env, get_window_name(branch_name))
+
+    def test_add_open_if_exists_conflicts_with_with_changes(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `-o` and `-w` flags conflict."""
+        env = mux_server
+        branch_name = "feature-conflict-test"
+
+        write_workmux_config(mux_repo_path)
+
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} -o -w",
+            expect_fail=True,
+        )
+
+        assert "cannot be used with" in result.stderr
+
 
 class TestRemoteBranch:
     """Tests for behavior with remote branches."""
