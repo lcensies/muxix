@@ -233,20 +233,35 @@ pub fn prompt_setup() -> Result<Option<bool>> {
         }
     };
 
-    // Show confirmation
+    // Show confirmation first so user knows their choice is active
     if enabled {
         println!("{}", style("✔ Nerdfont icons enabled").green());
     } else {
         println!("{}", style("✔ Using Unicode fallbacks").green());
+    }
+
+    // Save to global config
+    if let Err(e) = save_nerdfont_preference(enabled) {
+        // Config file might be read-only (e.g., symlink to Nix store)
+        println!(
+            "  {}",
+            style(format!("Could not save preference: {}", e)).yellow()
+        );
+        println!(
+            "  {}",
+            style(format!(
+                "Add 'nerdfont: {}' to ~/.config/workmux/config.yaml to persist this setting",
+                enabled
+            ))
+            .dim()
+        );
+    } else if !enabled {
         println!(
             "  {}",
             style("Set nerdfont: true in ~/.config/workmux/config.yaml to enable later").dim()
         );
     }
     println!();
-
-    // Save to global config
-    save_nerdfont_preference(enabled)?;
 
     Ok(Some(enabled))
 }
