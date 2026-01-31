@@ -37,6 +37,10 @@ pub struct SetupFlags {
     /// Create tmux window in the background (do not switch to it)
     #[arg(short = 'b', long = "background")]
     pub background: bool,
+
+    /// Open existing worktree if it exists instead of failing (like tmux new -A)
+    #[arg(short = 'o', long, conflicts_with = "with_changes")]
+    pub open_if_exists: bool,
 }
 
 #[derive(clap::Args, Debug)]

@@ -518,6 +518,7 @@ mod tests {
             focus_window: true,
             working_dir: None,
             config_root: None,
+            open_if_exists: false,
         }
     }
 

@@ -31,6 +31,7 @@ workmux add <branch-name> [flags]
 | `-e, --prompt-editor`          | Open your `$EDITOR` (or `$VISUAL`) to write the prompt interactively.                                                                                                                                                                                                   |
 | `-a, --agent <name>`           | The agent(s) to use for the worktree(s). Can be specified multiple times to generate a worktree for each agent. Overrides the `agent` from your config file.                                                                                                            |
 | `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `workmux remove --keep-branch`.                                                                 |
+| `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists.                                                                                       |
 
 ## Skip options
 
@@ -77,6 +78,9 @@ workmux add feature/parallel-task --background
 
 # Use a custom name for the worktree directory and tmux window
 workmux add feature/long-descriptive-branch-name --name short
+
+# Open existing worktree if it exists, create if it doesn't (idempotent)
+workmux add my-feature -o
 ```
 
 ```bash [Pull requests & forks]

@@ -120,6 +120,7 @@ pub fn run(
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
+    options.open_if_exists = setup.open_if_exists;
 
     // If using --auto-name and config has auto_name.background = true, run in background
     if auto_name && options.focus_window {

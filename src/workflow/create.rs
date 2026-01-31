@@ -61,8 +61,39 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Pre-flight checks
     context.ensure_mux_running()?;
 
+    // Check if worktree or window already exists
+    let window_exists = context.mux.window_exists(&context.prefix, handle)?;
+    let worktree_exists = git::worktree_exists(branch_name)?;
+
+    // If open_if_exists is set and either exists, delegate to open workflow
+    if options.open_if_exists && (window_exists || worktree_exists) {
+        debug!(
+            branch = branch_name,
+            handle = handle,
+            window_exists,
+            worktree_exists,
+            "create:delegating to open (open_if_exists=true)"
+        );
+
+        // Create open options - don't run hooks or file ops since this is an existing worktree.
+        // Pane commands are handled by the open workflow: if the window exists it just switches,
+        // if not it creates the window and runs pane commands.
+        let open_options = SetupOptions {
+            run_hooks: false,
+            run_file_ops: false,
+            run_pane_commands: options.run_pane_commands,
+            prompt_file_path: options.prompt_file_path.clone(),
+            focus_window: options.focus_window,
+            working_dir: options.working_dir.clone(),
+            config_root: options.config_root.clone(),
+            open_if_exists: false,
+        };
+
+        return super::open::open(branch_name, context, open_options, false);
+    }
+
     // Check window using handle (the display name)
-    if context.mux.window_exists(&context.prefix, handle)? {
+    if window_exists {
         return Err(anyhow!(
             "A {} window named '{}{}' already exists",
             context.mux.name(),
@@ -72,7 +103,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Check if branch already has a worktree
-    if git::worktree_exists(branch_name)? {
+    if worktree_exists {
         return Err(anyhow!(
             "A worktree for branch '{}' already exists. Use 'workmux open {}' to open it.",
             branch_name,

@@ -74,6 +74,8 @@ pub struct SetupOptions {
     pub working_dir: Option<PathBuf>,
     /// Config root directory in source repo (for file ops). If None, uses main worktree root.
     pub config_root: Option<PathBuf>,
+    /// If true, open existing worktree instead of failing when it already exists.
+    pub open_if_exists: bool,
 }
 
 impl SetupOptions {
@@ -88,6 +90,7 @@ impl SetupOptions {
             focus_window: true,
             working_dir: None,
             config_root: None,
+            open_if_exists: false,
         }
     }
 
@@ -101,6 +104,7 @@ impl SetupOptions {
             focus_window: true,
             working_dir: None,
             config_root: None,
+            open_if_exists: false,
         }
     }
 
@@ -120,6 +124,7 @@ impl SetupOptions {
             focus_window: true,
             working_dir: None,
             config_root: None,
+            open_if_exists: false,
         }
     }
 }
