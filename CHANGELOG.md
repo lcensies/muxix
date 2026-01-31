@@ -14,6 +14,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.104 (2026-01-31)
+
+- Added `-o`/`--open-if-exists` flag to `workmux add` for idempotent worktree
+  creation: if the worktree already exists, switches to it instead of failing.
+
 ## v0.1.103 (2026-01-30)
 
 - Dashboard now shows PR status column with number and state icon (open, merged,
