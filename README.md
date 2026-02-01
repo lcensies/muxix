@@ -2039,6 +2039,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
   tmux to quickly insert file paths, perfect for AI coding assistants
 - [tmux-bro](https://github.com/raine/tmux-bro) — Smart tmux session manager
   that sets up project-specific sessions automatically
+- [git-surgeon](https://github.com/raine/git-surgeon) — Non-interactive
+  hunk-level git staging for AI agents
 - [claude-history](https://github.com/raine/claude-history) — Search and view
   Claude Code conversation history with fzf
 - [consult-llm-mcp](https://github.com/raine/consult-llm-mcp) — MCP server that
