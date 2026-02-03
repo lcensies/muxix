@@ -38,6 +38,12 @@ workmux merge
 
 Merges your branch into main and cleans up everything (tmux window, worktree, and local branch).
 
+::: tip Using pull requests?
+If your workflow uses pull requests, the merge happens on the remote. Use `workmux remove` to clean up after your PR is merged.
+:::
+
+See [Workflows](/guide/workflows) for more patterns including delegating tasks from agent sessions.
+
 ## Directory structure
 
 Here's how workmux organizes your worktrees by default:
