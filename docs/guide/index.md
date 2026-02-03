@@ -120,7 +120,7 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
 - Create git worktrees with matching tmux windows in a single command (`add`)
 - Merge branches and clean up everything (worktree, tmux window, branches) in one command (`merge`)
 - [Dashboard](/guide/dashboard/) for monitoring agents, reviewing changes, and sending commands
-- [Delegate tasks to worktree agents](/guide/delegating-tasks) with a `/worktree` slash command
+- [Delegate tasks to worktree agents](/guide/slash-commands#example-worktree-command) with a `/worktree` slash command
 - [Display Claude agent status in tmux window names](/guide/status-tracking)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers, etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)

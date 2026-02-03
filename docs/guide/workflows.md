@@ -38,7 +38,7 @@ workmux add -A -P task-spec.md
 
 ### From an ongoing agent session
 
-When you're already working with an agent and want to spin off a task into a separate worktree, use the [`/worktree` slash command](/guide/delegating-tasks). The agent has context on what you've discussed, so it can write a detailed prompt for the new worktree agent.
+When you're already working with an agent and want to spin off a task into a separate worktree, use the [`/worktree` slash command](/guide/slash-commands#example-worktree-command). The agent has context on what you've discussed, so it can write a detailed prompt for the new worktree agent.
 
 ```
 > /worktree Implement the caching layer we discussed
@@ -50,7 +50,7 @@ The main agent writes a prompt file with all the relevant context and runs `work
 - You want to parallelize work while continuing in the main window
 - You're delegating multiple related tasks from a plan
 
-See [Delegating tasks](/guide/delegating-tasks) for the slash command setup.
+See [Slash commands](/guide/slash-commands#example-worktree-command) for the command setup.
 
 ## Finishing work
 

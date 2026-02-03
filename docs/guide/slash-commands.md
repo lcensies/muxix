@@ -14,10 +14,10 @@ This documentation uses Claude Code's command support as example, but some other
 
 Slash commands pair well with workmux workflows:
 
-- **`/merge`** - Commit, rebase, and merge the current branch
-- **`/rebase`** - Rebase with flexible target and smart conflict resolution
-- **`/commit`** - Commit staged changes with your preferred style
-- **`/worktree`** - Delegate tasks to parallel worktree agents
+- [**`/merge`**](#example-merge-command) - Commit, rebase, and merge the current branch
+- [**`/rebase`**](#example-rebase-command) - Rebase with flexible target and smart conflict resolution
+- [**`/commit`**](#example-commit-command) - Commit staged changes with your preferred style
+- [**`/worktree`**](#example-worktree-command) - Delegate tasks to parallel worktree agents
 
 You can trigger these from the [dashboard](/guide/dashboard/configuration) using the `c` and `m` keybindings:
 
