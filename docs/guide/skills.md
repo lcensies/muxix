@@ -16,15 +16,13 @@ Skills unlock the full potential of workmux. While you can run workmux commands 
 
 - [**`/merge`**](#-merge) - Commit, rebase, and merge the current branch
 - [**`/rebase`**](#-rebase) - Rebase with flexible target and smart conflict resolution
-- [**`/commit`**](#-commit) - Commit staged changes with your preferred style
 - [**`/worktree`**](#-worktree) - Delegate tasks to parallel worktree agents
 - [**`/open-pr`**](#-open-pr) - Write a PR description using conversation context
 
-You can trigger `/commit` and `/merge` from the [dashboard](/guide/dashboard/configuration) using the `c` and `m` keybindings:
+You can trigger `/merge` from the [dashboard](/guide/dashboard/configuration) using the `m` keybinding:
 
 ```yaml
 dashboard:
-  commit: "/commit"
   merge: "/merge"
 ```
 
@@ -33,8 +31,6 @@ dashboard:
 Copy the skills you want from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
 
 **Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`)
-
-Each skill has a comment at the top explaining what to customize.
 
 ## `/merge`
 
@@ -45,8 +41,6 @@ Handles the complete merge workflow:
 3. Run `workmux merge` to merge, clean up, and send a notification when complete
 
 [**View skill →**](https://github.com/raine/workmux/tree/main/skills/merge/SKILL.md)
-
-### Why this works well
 
 Instead of just running `workmux merge`, this skill:
 
@@ -63,12 +57,6 @@ Rebases with flexible target selection and smart conflict resolution.
 Usage: `/rebase`, `/rebase origin`, `/rebase origin/develop`, `/rebase feature-branch`
 
 See [Resolve merge conflicts with Claude Code](https://raine.dev/blog/resolve-conflicts-with-claude/) for more on this approach.
-
-## `/commit`
-
-Commits staged changes following a consistent style.
-
-[**View skill →**](https://github.com/raine/workmux/tree/main/skills/commit/SKILL.md)
 
 ## `/worktree`
 
@@ -92,6 +80,10 @@ You can customize the skill to add additional instructions for worktree agents. 
 
 ## `/open-pr`
 
-Writes a PR description using the conversation context and opens the PR creation page in browser.
+Writes a PR description using the conversation context and opens the PR creation page in browser. This is the recommended way to finish work in repos that use pull requests.
 
 [**View skill →**](https://github.com/raine/workmux/tree/main/skills/open-pr/SKILL.md)
+
+The skill is opinionated: it opens the PR creation page in your browser rather than creating the PR directly. This lets you review and edit the description before submitting.
+
+The agent knows what it built and why, so it can write a PR description that captures that context.

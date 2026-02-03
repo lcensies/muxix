@@ -34,9 +34,8 @@ The CLI flag `--preview-size` (`-P`) overrides both the config and saved prefere
 ## Examples
 
 ```yaml
-# Use Claude slash commands (requires ~/.claude/commands/ setup)
+# Use Claude skill for merge (see skills guide)
 dashboard:
-  commit: "/commit"
   merge: "/merge"
 
 # Custom shell commands
@@ -55,8 +54,7 @@ For complex workflows, [skills](/guide/skills) are more powerful than simple pro
 
 ```yaml
 dashboard:
-  commit: "/commit"
   merge: "/merge"
 ```
 
-See the [skills guide](/guide/skills) for a complete `/merge` example you can copy.
+See the [skills guide](/guide/skills) for the `/merge` skill you can copy.

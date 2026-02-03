@@ -29,18 +29,11 @@ This will:
 
 Work on your feature, fix a bug, or let an AI agent handle it.
 
-## 4. When done, merge and clean up
+## 4. When done
 
-```bash
-# Run in the worktree window
-workmux merge
-```
+**With pull requests:** Use [`/open-pr`](/guide/skills#open-pr) to push and open a PR. After it's merged, run `workmux remove` to clean up.
 
-Merges your branch into main and cleans up everything (tmux window, worktree, and local branch).
-
-::: tip Using pull requests?
-If your workflow uses pull requests, the merge happens on the remote. Use `workmux remove` to clean up after your PR is merged.
-:::
+**Without pull requests:** Run `workmux merge` to merge into the base branch and clean up automatically.
 
 See [Workflows](/guide/workflows) for more patterns including delegating tasks from agent sessions.
 
