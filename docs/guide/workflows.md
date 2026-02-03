@@ -54,7 +54,11 @@ See [Delegating tasks](/guide/delegating-tasks) for the slash command setup.
 
 ## Finishing work
 
-When an agent completes its task, use `/merge` to commit, rebase, and merge in one step:
+How you finish depends on whether you merge locally or use pull requests.
+
+### Direct merge
+
+When you want to merge directly without a pull request, use `/merge` to commit, rebase, and merge in one step:
 
 ```
 > /merge
@@ -69,3 +73,34 @@ If you need to sync with main before you're ready to merge (e.g., to pick up cha
 ```
 
 See [Slash commands](/guide/slash-commands) for the command setup.
+
+### PR-based
+
+If your team uses pull requests for code review, the merge happens on the remote after review. Push your branch and clean up after the PR is merged.
+
+After committing your changes, push and create a PR. If you're working with an agent, consider using a slash command like `/open-pr` that can write the PR description using the conversation context:
+
+```
+> /open-pr
+```
+
+See [`skills/open-pr`](https://github.com/raine/workmux/tree/main/skills/open-pr/SKILL.md) for an example skill you can adapt.
+
+Or manually:
+
+```bash
+git push -u origin feature-123
+gh pr create
+```
+
+Once your PR is merged on GitHub, use `workmux remove` to clean up:
+
+```bash
+# Remove a specific worktree
+workmux remove feature-123
+
+# Or clean up all worktrees whose remote branches were deleted
+workmux rm --gone
+```
+
+The `--gone` flag is particularly useful - it automatically finds worktrees whose upstream branches no longer exist (because the PR was merged and the branch was deleted on GitHub) and removes them.
