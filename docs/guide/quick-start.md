@@ -29,11 +29,11 @@ This will:
 
 Work on your feature, fix a bug, or let an AI agent handle it.
 
-## 4. When done
+## 4. Finish and clean up
 
-**With pull requests:** Use [`/open-pr`](/guide/skills#open-pr) to push and open a PR. After it's merged, run `workmux remove` to clean up.
+**Local merge:** Run `workmux merge` to merge into the base branch and clean up in one step.
 
-**Without pull requests:** Run `workmux merge` to merge into the base branch and clean up automatically.
+**PR workflow:** Use [`/open-pr`](/guide/skills#open-pr) to push and open a PR. After it's merged, run `workmux remove` to clean up.
 
 See [Workflows](/guide/workflows) for more patterns including delegating tasks from agent sessions.
 

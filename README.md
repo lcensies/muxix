@@ -146,21 +146,13 @@ For manual installation, see
 
 3. **Do your thing**
 
-4. **When done, merge and clean up**:
+4. **Finish and clean up**
 
-   ```bash
-   # Run in the worktree window
-   workmux merge
-   ```
+   **Local merge:** Run `workmux merge` to merge into the base branch and clean
+   up in one step.
 
-Merges your branch into main and cleans up everything (tmux window, worktree,
-and local branch).
-
-<!-- prettier-ignore -->
-> [!TIP]
-> **Using pull requests?** If your workflow uses pull requests, the merge
-> happens on the remote. Use `workmux remove` to clean up after your PR is
-> merged.
+   **PR workflow:** Push and open a PR. After it's merged, run `workmux remove`
+   to clean up.
 
 ## Configuration
 
