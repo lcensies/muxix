@@ -49,9 +49,9 @@ dashboard:
   merge: "Rebase onto main and run workmux merge"
 ```
 
-## Using slash commands
+## Using skills
 
-For complex workflows, [slash commands](/guide/slash-commands) are more powerful than simple prompts or shell commands. A slash command can encode detailed, multi-step instructions that the agent follows intelligently.
+For complex workflows, [skills](/guide/skills) are more powerful than simple prompts or shell commands. A skill can encode detailed, multi-step instructions that the agent follows intelligently.
 
 ```yaml
 dashboard:
@@ -59,4 +59,4 @@ dashboard:
   merge: "/merge"
 ```
 
-See the [slash commands guide](/guide/slash-commands) for a complete `/merge` example you can copy.
+See the [skills guide](/guide/skills) for a complete `/merge` example you can copy.

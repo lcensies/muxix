@@ -77,7 +77,7 @@ export default defineConfig({
           { text: "Workflows", link: "/guide/workflows" },
           { text: "Claude Code", link: "/guide/claude-code" },
           { text: "Status tracking", link: "/guide/status-tracking" },
-          { text: "Slash commands", link: "/guide/slash-commands" },
+          { text: "Skills", link: "/guide/skills" },
         ],
       },
       {

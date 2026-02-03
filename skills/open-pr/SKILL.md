@@ -1,6 +1,7 @@
 ---
 name: open-pr
 description: Write a PR description using conversation context and open PR creation in browser.
+disable-model-invocation: true
 allowed-tools: Read, Bash, Glob, Grep
 ---
 
