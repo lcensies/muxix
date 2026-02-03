@@ -9,11 +9,13 @@ Launch one or more tasks in new git worktrees using workmux.
 
 Tasks: $ARGUMENTS
 
-## Instructions
+## You are a dispatcher, not an implementer
 
-Note: The tasks above may reference something discussed earlier in the
-conversation (e.g., "do option 2", "implement the fix we discussed"). Include
-all relevant context from the conversation in each prompt you write.
+**FORBIDDEN:** Do NOT read source files, edit code, or fix issues yourself. You
+only write prompt files and run `workmux add` commands.
+
+If tasks reference earlier conversation (e.g., "do option 2"), include all
+relevant context in each prompt you write.
 
 If tasks reference a markdown file (e.g., a plan or spec), re-read the file to
 ensure you have the latest version before writing prompts.
@@ -31,8 +33,58 @@ The prompt file should:
   root directory)
 - Be specific about what the agent should accomplish
 
+## Skill delegation
+
+If the user passes a skill reference (e.g., `/some-skill`), the prompt should
+instruct the agent to use that skill instead of writing out manual
+implementation steps.
+
+**Skills can have flags.** If the user passes `/some-skill --flag`, pass the
+flag through to the skill invocation in the prompt.
+
+Example prompt:
+
+```
+[Task description here]
+
+Use the skill: /skill-name [flags if any] [task description]
+```
+
+Do NOT write detailed implementation steps when a skill is specified - the skill
+handles that.
+
+## Flags
+
+**`--merge`**: When passed, add instruction to use `/merge` skill at the end to
+commit, rebase, and merge the branch.
+
+```
+...
+Then use the /merge skill to commit, rebase, and merge the branch.
+```
+
 ## Workflow
 
-Write ALL temp files first, THEN run all workmux commands in parallel.
+Write ALL temp files first, THEN run all workmux commands.
+
+Step 1 - Write all prompt files (in parallel):
+
+```bash
+tmpfile=$(mktemp).md
+cat > "$tmpfile" << 'EOF'
+Implement feature X...
+EOF
+echo "$tmpfile"  # Note the path for step 2
+```
+
+Step 2 - After ALL files are written, run workmux commands (in parallel):
+
+```bash
+workmux add feature-x -b -P /tmp/tmp.abc123.md
+workmux add feature-y -b -P /tmp/tmp.def456.md
+```
 
 After creating the worktrees, inform the user which branches were created.
+
+**Remember:** Your task is COMPLETE once worktrees are created. Do NOT implement
+anything yourself.
