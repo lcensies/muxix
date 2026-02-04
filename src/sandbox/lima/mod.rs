@@ -19,6 +19,7 @@ pub const VM_PREFIX: &str = "wm-";
 use crate::config::{Config, IsolationLevel};
 use anyhow::Result;
 use std::path::Path;
+use tracing::debug;
 
 /// Generate a unique instance name for a worktree based on isolation level.
 pub fn instance_name(
@@ -48,8 +49,10 @@ pub fn instance_name(
     key.hash(&mut hasher);
     let hash = hasher.finish();
 
-    Ok(format!("{}{:x}", VM_PREFIX, hash)
+    let name: String = format!("{}{:x}", VM_PREFIX, hash)
         .chars()
         .take(11)
-        .collect())
+        .collect();
+    debug!(isolation = ?isolation, key = %key, vm_name = %name, "resolved Lima VM instance name");
+    Ok(name)
 }

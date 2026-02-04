@@ -46,24 +46,27 @@ impl Mount {
 }
 
 /// Determine the project root using git.
-/// Uses `git rev-parse --show-toplevel` to get the actual project root,
-/// handling bare repos, submodules, and other edge cases correctly.
+///
+/// Uses the git common directory's parent to find the main repository root.
+/// This is stable across worktrees: `--show-toplevel` returns each worktree's
+/// own path, but `--git-common-dir` always points to the shared `.git` directory
+/// in the main repo, so its parent is the true project root.
+///
+/// This matters for both VM naming (project-level isolation hashes this path)
+/// and mount generation (must mount the real project root, not a worktree).
+/// Using `--show-toplevel` would produce per-worktree paths like
+/// `/code/project__worktrees/feature-a`, causing each worktree to get its own
+/// VM and a nonsensical worktrees_dir mount like `feature-a__worktrees`.
 pub fn determine_project_root(worktree: &Path) -> Result<PathBuf> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(worktree)
-        .arg("rev-parse")
-        .arg("--path-format=absolute")
-        .arg("--show-toplevel")
-        .output()?;
+    let git_common_dir = determine_git_common_dir(worktree)?;
 
-    if !output.status.success() {
-        bail!("Failed to determine project root: not a git repository");
-    }
+    // The git common dir is typically `/path/to/project/.git`.
+    // Its parent is the project root.
+    let project_root = git_common_dir.parent().ok_or_else(|| {
+        anyhow::anyhow!("Git common dir has no parent: {}", git_common_dir.display())
+    })?;
 
-    let path = String::from_utf8(output.stdout)?.trim().to_string();
-
-    Ok(PathBuf::from(path))
+    Ok(project_root.to_path_buf())
 }
 
 /// Determine the git common directory using git.
