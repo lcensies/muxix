@@ -17,7 +17,7 @@ pub struct LimaInstanceInfo {
 }
 
 /// Parse NDJSON output from `limactl list --json` (one JSON object per line).
-fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
+pub fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
     std::str::from_utf8(stdout)?
         .lines()
         .filter(|l| !l.trim().is_empty())

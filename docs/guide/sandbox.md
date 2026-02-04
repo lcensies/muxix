@@ -199,3 +199,54 @@ The container runs as your host user (UID:GID). Ensure your image doesn't requir
 ### Agent can't find credentials
 
 Run `workmux sandbox auth` to authenticate inside the container. Credentials are separate from host credentials.
+
+## Lima VM Backend
+
+::: info
+Lima VM backend support is currently in development. This section documents the `prune` command for managing Lima VMs.
+:::
+
+workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing on macOS. Over time, unused VMs can accumulate and consume significant disk space.
+
+### Cleaning up unused VMs
+
+Use the `prune` command to delete unused Lima VMs created by workmux:
+
+```bash
+workmux sandbox prune
+```
+
+This command:
+
+- Lists all Lima VMs with the `wm-` prefix (workmux VMs)
+- Shows details for each VM: name, status, size, age, and last accessed time
+- Displays total disk space used
+- Prompts for confirmation before deletion
+
+**Force deletion without confirmation:**
+
+```bash
+workmux sandbox prune --force
+```
+
+**Example output:**
+
+```
+Found 2 workmux Lima VM(s):
+
+1. wm-bbeb2cbf (Running)
+   Size: 100.87 GB
+   Age: 2 hours ago
+   Last accessed: 5 minutes ago
+
+2. wm-d1370a2a (Stopped)
+   Size: 100.87 GB
+   Age: 1 day ago
+   Last accessed: 1 day ago
+
+Total disk space: 201.74 GB
+
+Delete all these VMs? [y/N]
+```
+
+Lima VMs are stored in `~/.lima/<name>/`. Each VM typically uses 100GB of disk space by default.

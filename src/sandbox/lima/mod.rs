@@ -8,7 +8,7 @@ mod mounts;
 mod wrap;
 
 pub use config::generate_lima_config;
-pub use instance::LimaInstance;
+pub use instance::{LimaInstance, parse_lima_instances};
 pub use mounts::{determine_project_root, generate_mounts};
 pub use wrap::wrap_for_lima;
 
