@@ -14,6 +14,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.106 (2026-02-04)
+
+- Fixed dashboard incorrectly showing the worktree directory name instead of the
+  project name when using a custom `worktree_dir` configuration
+  ([#48](https://github.com/raine/workmux/pull/48))
+
 ## v0.1.105 (2026-01-31)
 
 - Nerdfont setup now handles read-only config files gracefully (e.g., when
