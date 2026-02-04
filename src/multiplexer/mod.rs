@@ -290,11 +290,24 @@ pub trait Multiplexer: Send + Sync {
                         // Use worktree_root for mounting, working_dir for cwd
                         let wt_root = options.worktree_root.unwrap_or(working_dir);
 
+                        // Inject skip-permissions flag for agents that support it
+                        // (sandbox provides the security boundary, so permission
+                        // prompts are unnecessary and break autonomous workflow)
+                        let command_to_wrap = {
+                            let profile =
+                                crate::multiplexer::agent::resolve_profile(effective_agent);
+                            if let Some(flag) = profile.skip_permissions_flag() {
+                                util::inject_skip_permissions_flag(&resolved.command, flag)
+                            } else {
+                                resolved.command.clone()
+                            }
+                        };
+
                         // Choose backend based on config
                         let wrap_result = match config.sandbox.backend() {
                             crate::config::SandboxBackend::Container => {
                                 crate::sandbox::wrap_for_container(
-                                    &resolved.command,
+                                    &command_to_wrap,
                                     &config.sandbox,
                                     wt_root,
                                     working_dir,
@@ -308,7 +321,7 @@ pub trait Multiplexer: Send + Sync {
                                     )
                                 })?;
                                 crate::sandbox::wrap_for_lima(
-                                    &resolved.command,
+                                    &command_to_wrap,
                                     config,
                                     vm_name,
                                     working_dir,

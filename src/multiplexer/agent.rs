@@ -29,6 +29,14 @@ pub trait AgentProfile: Send + Sync {
         false
     }
 
+    /// CLI flag to skip interactive permission prompts when running in a sandbox.
+    ///
+    /// Returns `None` for agents that don't support this, or a flag string
+    /// like `--dangerously-skip-permissions` for agents that do.
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Format the prompt injection argument for this agent.
     ///
     /// Returns the CLI fragment to append (e.g., `-- "$(cat PROMPT.md)"`).
@@ -52,6 +60,10 @@ impl AgentProfile for ClaudeProfile {
 
     fn needs_auto_status(&self) -> bool {
         true
+    }
+
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        Some("--dangerously-skip-permissions")
     }
 }
 
@@ -162,6 +174,10 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "-- \"$(cat PROMPT.md)\""
         );
+        assert_eq!(
+            profile.skip_permissions_flag(),
+            Some("--dangerously-skip-permissions")
+        );
     }
 
     #[test]
@@ -174,6 +190,7 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "-i \"$(cat PROMPT.md)\""
         );
+        assert_eq!(profile.skip_permissions_flag(), None);
     }
 
     #[test]

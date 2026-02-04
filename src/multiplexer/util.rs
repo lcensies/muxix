@@ -204,6 +204,45 @@ pub fn wrap_for_non_posix_shell(command: &str) -> String {
     format!("sh -c '{}'", escaped)
 }
 
+/// Inject a permissions flag into an agent command string.
+///
+/// Inserts the flag after the executable token but before any existing arguments.
+/// For commands like ` claude -- "$(cat PROMPT.md)"`, produces
+/// ` claude --dangerously-skip-permissions -- "$(cat PROMPT.md)"`.
+///
+/// For non-POSIX wrapped commands like ` sh -c 'claude -- ...'`, the flag
+/// is inserted inside the inner command.
+pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
+    // Handle the leading space (history prevention prefix)
+    let trimmed = command.trim_start();
+    let leading_spaces = &command[..command.len() - trimmed.len()];
+
+    // Handle sh -c wrapper (non-POSIX shells)
+    if trimmed.starts_with("sh -c '") && trimmed.ends_with('\'') {
+        let inner = &trimmed[7..trimmed.len() - 1];
+        let inner_unescaped = inner.replace("'\\''", "'");
+        let injected = inject_flag_after_executable(&inner_unescaped, flag);
+        let re_escaped = injected.replace('\'', "'\\''");
+        return format!("{}sh -c '{}'", leading_spaces, re_escaped);
+    }
+
+    format!(
+        "{}{}",
+        leading_spaces,
+        inject_flag_after_executable(trimmed, flag)
+    )
+}
+
+/// Insert a flag after the first token (executable) in a simple command.
+fn inject_flag_after_executable(command: &str, flag: &str) -> String {
+    if let Some(space_idx) = command.find(' ') {
+        let (exe, rest) = command.split_at(space_idx);
+        format!("{} {}{}", exe, flag, rest)
+    } else {
+        format!("{} {}", command, flag)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,6 +499,50 @@ mod tests {
         assert_eq!(
             wrap_for_non_posix_shell("claude -- \"$(cat PROMPT.md)\""),
             "sh -c 'claude -- \"$(cat PROMPT.md)\"'"
+        );
+    }
+
+    // --- inject_skip_permissions_flag tests ---
+
+    #[test]
+    fn test_inject_skip_permissions_with_prompt() {
+        let result = inject_skip_permissions_flag(
+            " claude -- \"$(cat PROMPT.md)\"",
+            "--dangerously-skip-permissions",
+        );
+        assert_eq!(
+            result,
+            " claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\""
+        );
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_with_existing_args() {
+        let result = inject_skip_permissions_flag(
+            " claude --verbose -- \"$(cat PROMPT.md)\"",
+            "--dangerously-skip-permissions",
+        );
+        assert_eq!(
+            result,
+            " claude --dangerously-skip-permissions --verbose -- \"$(cat PROMPT.md)\""
+        );
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_bare_command() {
+        let result = inject_skip_permissions_flag("claude", "--dangerously-skip-permissions");
+        assert_eq!(result, "claude --dangerously-skip-permissions");
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_non_posix_shell() {
+        let result = inject_skip_permissions_flag(
+            " sh -c 'claude -- \"$(cat PROMPT.md)\"'",
+            "--dangerously-skip-permissions",
+        );
+        assert_eq!(
+            result,
+            " sh -c 'claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\"'"
         );
     }
 
