@@ -250,3 +250,28 @@ Delete all these VMs? [y/N]
 ```
 
 Lima VMs are stored in `~/.lima/<name>/`. Each VM typically uses 100GB of disk space by default.
+
+### Stopping Lima VMs
+
+When using the Lima backend, you can stop running VMs to free up system resources:
+
+```bash
+# Interactive mode - shows list of running VMs
+workmux sandbox stop
+
+# Stop a specific VM
+workmux sandbox stop wm-abc123
+
+# Stop all workmux VMs
+workmux sandbox stop --all
+
+# Skip confirmation (useful for scripts)
+workmux sandbox stop --all --yes
+```
+
+This is useful when you want to:
+- Free up CPU and memory resources
+- Reduce battery usage on laptops
+- Clean up after finishing work
+
+The VMs will automatically restart when needed for new worktrees.

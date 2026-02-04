@@ -34,6 +34,42 @@ workmux sandbox auth
 
 This starts an interactive session inside your configured sandbox container, allowing you to authenticate your agent. Credentials are saved to `~/.claude-sandbox.json` and `~/.claude-sandbox/`, which are separate from your host agent credentials.
 
+### sandbox stop
+
+Stop Lima VMs to free resources.
+
+```bash
+# Interactive mode - show list and select VM
+workmux sandbox stop
+
+# Stop specific VM
+workmux sandbox stop <vm-name>
+
+# Stop all workmux VMs
+workmux sandbox stop --all
+
+# Skip confirmation prompt
+workmux sandbox stop --all --yes
+```
+
+**Arguments:**
+
+- `<vm-name>` - Name of the VM to stop (optional, conflicts with `--all`)
+
+**Options:**
+
+- `--all` - Stop all workmux VMs (those starting with `wm-` prefix)
+- `-y, --yes` - Skip confirmation prompt
+
+This command helps you stop running Lima VMs created by workmux to free up system resources. When run without arguments, it shows an interactive list of running workmux VMs for you to choose from. The command will ask for confirmation before stopping any VMs unless `--yes` is provided.
+
+**Notes:**
+
+- This command only works with Lima backend and requires `limactl` to be installed
+- Only running VMs are shown in interactive mode
+- If a specified VM is already stopped, the command reports this and exits successfully
+- Non-interactive environments (pipes, scripts) require `--all` or a specific VM name
+
 ## Quick Setup
 
 ```bash

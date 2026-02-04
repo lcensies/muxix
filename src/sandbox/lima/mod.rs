@@ -8,9 +8,12 @@ mod mounts;
 mod wrap;
 
 pub use config::generate_lima_config;
-pub use instance::{LimaInstance, parse_lima_instances};
+pub use instance::{LimaInstance, LimaInstanceInfo, parse_lima_instances};
 pub use mounts::{determine_project_root, generate_mounts};
 pub use wrap::wrap_for_lima;
+
+/// Prefix for all workmux-managed Lima VM names.
+pub const VM_PREFIX: &str = "wm-";
 
 use crate::config::{Config, IsolationLevel};
 use anyhow::Result;
@@ -44,5 +47,8 @@ pub fn instance_name(
     key.hash(&mut hasher);
     let hash = hasher.finish();
 
-    Ok(format!("wm-{:x}", hash).chars().take(11).collect())
+    Ok(format!("{}{:x}", VM_PREFIX, hash)
+        .chars()
+        .take(11)
+        .collect())
 }

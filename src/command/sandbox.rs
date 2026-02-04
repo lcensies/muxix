@@ -34,6 +34,18 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         force: bool,
     },
+    /// Stop Lima VMs to free resources.
+    Stop {
+        /// VM name to stop (if not provided, show interactive list)
+        #[arg(conflicts_with = "all")]
+        name: Option<String>,
+        /// Stop all workmux VMs (wm-* prefix)
+        #[arg(long)]
+        all: bool,
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 pub fn run(args: SandboxArgs) -> Result<()> {
@@ -41,6 +53,7 @@ pub fn run(args: SandboxArgs) -> Result<()> {
         SandboxCommand::Auth => run_auth(),
         SandboxCommand::Build { force } => run_build(force),
         SandboxCommand::Prune { force } => run_prune(force),
+        SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
     }
 }
 
@@ -335,4 +348,167 @@ fn format_duration_since(time: SystemTime) -> String {
 
     let years = months / 12;
     format!("{} year{} ago", years, if years == 1 { "" } else { "s" })
+}
+
+fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
+    use crate::sandbox::lima::{LimaInstance, LimaInstanceInfo, VM_PREFIX};
+    use std::io::{self, IsTerminal, Write};
+
+    // Check if limactl is available
+    if !LimaInstance::is_lima_available() {
+        anyhow::bail!("limactl not found. Please install Lima first.");
+    }
+
+    // Get list of all workmux VMs
+    let all_vms = LimaInstance::list()?;
+    let workmux_vms: Vec<LimaInstanceInfo> = all_vms
+        .into_iter()
+        .filter(|vm| vm.name.starts_with(VM_PREFIX))
+        .collect();
+
+    // Filter to running VMs for display/selection
+    let running_vms: Vec<&LimaInstanceInfo> =
+        workmux_vms.iter().filter(|vm| vm.is_running()).collect();
+
+    let vms_to_stop: Vec<&LimaInstanceInfo> = if all {
+        // Stop all running VMs
+        if running_vms.is_empty() {
+            println!("No running workmux VMs found.");
+            return Ok(());
+        }
+        running_vms
+    } else if let Some(ref vm_name) = name {
+        // Stop specific VM - check all VMs (not just running) for better error messages
+        let vm = workmux_vms.iter().find(|v| v.name == *vm_name);
+        match vm {
+            Some(v) if v.is_running() => vec![v],
+            Some(v) => {
+                println!(
+                    "VM '{}' is already stopped (status: {}).",
+                    vm_name, v.status
+                );
+                return Ok(());
+            }
+            None => {
+                anyhow::bail!(
+                    "VM '{}' not found. Use 'workmux sandbox stop' to see available VMs.",
+                    vm_name
+                );
+            }
+        }
+    } else {
+        // Interactive mode: require TTY
+        if !std::io::stdin().is_terminal() {
+            anyhow::bail!("Non-interactive stdin detected. Use --all or specify a VM name.");
+        }
+
+        if running_vms.is_empty() {
+            println!("No running workmux VMs found.");
+            return Ok(());
+        }
+
+        select_vms_interactive(&running_vms)?
+    };
+
+    if vms_to_stop.is_empty() {
+        println!("No VMs selected.");
+        return Ok(());
+    }
+
+    // Show what will be stopped
+    println!("The following VMs will be stopped:");
+    for vm in &vms_to_stop {
+        println!("  - {} ({})", vm.name, vm.status);
+    }
+
+    // Confirm unless --yes flag is provided
+    if !skip_confirm {
+        print!(
+            "\nAre you sure you want to stop {} VM(s)? [y/N] ",
+            vms_to_stop.len()
+        );
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        let answer = input.trim().to_ascii_lowercase();
+        if !matches!(answer.as_str(), "y" | "yes") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    // Stop VMs
+    let mut success_count = 0;
+    let mut failed: Vec<(String, String)> = Vec::new();
+
+    for vm in vms_to_stop {
+        print!("Stopping {}... ", vm.name);
+        io::stdout().flush()?;
+
+        match LimaInstance::stop_by_name(&vm.name) {
+            Ok(()) => {
+                println!("✓");
+                success_count += 1;
+            }
+            Err(e) => {
+                println!("✗");
+                failed.push((vm.name.clone(), e.to_string()));
+            }
+        }
+    }
+
+    // Report results
+    if success_count > 0 {
+        println!("\n✓ Successfully stopped {} VM(s)", success_count);
+    }
+
+    if !failed.is_empty() {
+        eprintln!("\nFailed to stop {} VM(s):", failed.len());
+        for (name, error) in &failed {
+            eprintln!("  - {}: {}", name, error);
+        }
+        anyhow::bail!("Some VMs could not be stopped");
+    }
+
+    Ok(())
+}
+
+fn select_vms_interactive<'a>(
+    vms: &'a [&'a crate::sandbox::lima::LimaInstanceInfo],
+) -> Result<Vec<&'a crate::sandbox::lima::LimaInstanceInfo>> {
+    use std::io::{self, Write};
+
+    println!("Running workmux VMs:");
+    println!();
+    for (idx, vm) in vms.iter().enumerate() {
+        println!("  {}. {} ({})", idx + 1, vm.name, vm.status);
+    }
+    println!();
+    println!("Enter VM number to stop (or 'all' for all VMs):");
+    print!("> ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+
+    if input.eq_ignore_ascii_case("all") {
+        return Ok(vms.to_vec());
+    }
+
+    // Parse as number
+    let idx: usize = input
+        .parse()
+        .context("Invalid input. Please enter a number or 'all'.")?;
+
+    if idx < 1 || idx > vms.len() {
+        anyhow::bail!(
+            "Invalid selection. Please choose a number between 1 and {}",
+            vms.len()
+        );
+    }
+
+    Ok(vec![vms[idx - 1]])
 }
