@@ -29,24 +29,41 @@ brew install podman
 
 ### 2. Build the sandbox image
 
-Create a Dockerfile with your agent installed:
+On a **Linux machine**, run:
 
-```dockerfile
-FROM ubuntu:24.04
-
-# Install dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git tmux socat ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install your agent (e.g., Claude Code)
-RUN curl -fsSL https://install.example.com | bash
-
-# Optional: Install workmux for status hooks
-# COPY workmux /usr/local/bin/workmux
+```bash
+workmux sandbox build
 ```
 
-Build it:
+This builds a Docker image named `workmux-sandbox` containing:
+
+- Claude Code CLI
+- The workmux binary (for status hooks)
+- Git and other dependencies
+
+**Note:** The build command must be run on Linux because it copies your local
+workmux binary into the image. On macOS/Windows, the binary would be
+incompatible with the Linux container.
+
+**Alternative: Manual build**
+
+If you need to build on a non-Linux machine or want a custom image:
+
+```dockerfile
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl git ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Optional: download workmux from releases
+# RUN curl -fsSL https://github.com/user/workmux/releases/latest/download/workmux-linux -o /usr/local/bin/workmux && chmod +x /usr/local/bin/workmux
+
+ENV PATH="/root/.claude/local/bin:${PATH}"
+```
 
 ```bash
 docker build -t workmux-sandbox .
@@ -60,7 +77,7 @@ Add to your global or project config:
 # ~/.config/workmux/config.yaml or .workmux.yaml
 sandbox:
   enabled: true
-  image: workmux-sandbox
+  # image defaults to 'workmux-sandbox' if not specified
 ```
 
 ### 4. Authenticate once
@@ -80,7 +97,7 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 | `enabled` | `false` | Enable container sandboxing |
 | `runtime` | `docker` | Container runtime: `docker` or `podman` |
 | `target` | `agent` | Which panes to sandbox: `agent` or `all` |
-| `image` | (required) | Container image name |
+| `image` | `workmux-sandbox` | Container image name |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through |
 
 ### Example configurations
@@ -90,7 +107,6 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 ```yaml
 sandbox:
   enabled: true
-  image: workmux-sandbox
 ```
 
 **With Podman and custom env:**
@@ -110,7 +126,6 @@ sandbox:
 ```yaml
 sandbox:
   enabled: true
-  image: workmux-sandbox
   target: all
 ```
 
@@ -166,15 +181,12 @@ On macOS with Docker Desktop, status updates require a TCP bridge because Unix s
 
 ## Troubleshooting
 
-### "Sandbox enabled but no image configured"
+### Build fails on macOS/Windows
 
-Add `image:` to your sandbox config:
-
-```yaml
-sandbox:
-  enabled: true
-  image: your-image-name
-```
+The `workmux sandbox build` command only works on Linux because it copies your
+local binary into the container. Use `--force` to build anyway (the image will
+work but workmux status hooks won't function), or build manually with a
+Dockerfile that downloads workmux from releases.
 
 ### Git commands fail with "not a git repository"
 

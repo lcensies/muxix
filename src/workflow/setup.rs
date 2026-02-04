@@ -433,14 +433,13 @@ pub fn write_prompt_file(
         // In worktrees, .git is a file pointing to the real git dir, so we need to resolve it
         if let Some(exclude_path) = resolve_git_exclude_path(dir)
             && exclude_path.exists()
-                && let Ok(content) = fs::read_to_string(&exclude_path)
-                    && !content.lines().any(|line| line.trim() == ".workmux/")
-                        && let Ok(mut file) =
-                            fs::OpenOptions::new().append(true).open(&exclude_path)
-                        {
-                            use std::io::Write;
-                            let _ = writeln!(file, "\n# workmux prompt files\n.workmux/");
-                        }
+            && let Ok(content) = fs::read_to_string(&exclude_path)
+            && !content.lines().any(|line| line.trim() == ".workmux/")
+            && let Ok(mut file) = fs::OpenOptions::new().append(true).open(&exclude_path)
+        {
+            use std::io::Write;
+            let _ = writeln!(file, "\n# workmux prompt files\n.workmux/");
+        }
 
         let prompt_filename = format!("PROMPT-{}.md", safe_branch_name);
         workmux_dir.join(prompt_filename)

@@ -325,6 +325,11 @@ impl SandboxConfig {
         self.image.as_deref()
     }
 
+    /// Get the image name, falling back to default "workmux-sandbox".
+    pub fn resolved_image(&self) -> &str {
+        self.image.as_deref().unwrap_or("workmux-sandbox")
+    }
+
     pub fn env_passthrough(&self) -> Vec<&str> {
         self.env_passthrough
             .as_ref()

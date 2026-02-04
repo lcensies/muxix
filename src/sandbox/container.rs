@@ -7,6 +7,28 @@ use anyhow::{Context, Result};
 
 use crate::config::{SandboxConfig, SandboxRuntime};
 
+/// Embedded Dockerfile for building sandbox image.
+/// Uses debian:bookworm-slim for glibc compatibility with host-built binaries.
+const SANDBOX_DOCKERFILE: &str = r#"FROM debian:bookworm-slim
+
+# Install dependencies for Claude Code + git operations
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Copy workmux binary from build context
+COPY workmux /usr/local/bin/workmux
+RUN chmod +x /usr/local/bin/workmux
+
+# Add claude to PATH
+ENV PATH="/root/.claude/local/bin:${PATH}"
+"#;
+
 /// Sandbox-specific config paths on host.
 /// These are separate from host CLI config to avoid confusion.
 pub struct SandboxPaths {
@@ -53,7 +75,7 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
     };
-    let image = config.image().context("sandbox.image must be configured")?;
+    let image = config.resolved_image();
 
     let status = Command::new(runtime)
         .args([
@@ -85,6 +107,68 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
 
     if !status.success() {
         anyhow::bail!("Auth container exited with status: {}", status);
+    }
+
+    Ok(())
+}
+
+/// Build the sandbox container image.
+///
+/// Creates a minimal build context with the current workmux binary and an
+/// embedded Dockerfile, then runs docker/podman build.
+///
+/// # Arguments
+/// * `config` - Sandbox configuration
+/// * `force` - If true, skip OS compatibility check
+pub fn build_image(config: &SandboxConfig, force: bool) -> Result<()> {
+    // Check OS compatibility - Linux binaries won't run on other OSes
+    if !cfg!(target_os = "linux") && !force {
+        anyhow::bail!(
+            "Cannot build sandbox image on non-Linux OS.\n\
+             The workmux binary in your image would be incompatible with the Linux container.\n\n\
+             Options:\n\
+             1. Build on a Linux machine\n\
+             2. Use --force to build anyway (image will lack working workmux)\n\
+             3. Manually build an image with workmux installed from releases"
+        );
+    }
+
+    let runtime = match config.runtime() {
+        SandboxRuntime::Podman => "podman",
+        SandboxRuntime::Docker => "docker",
+    };
+
+    let image_name = config.resolved_image();
+
+    // Create temporary build context
+    let temp_dir = tempfile::Builder::new()
+        .prefix("workmux-sandbox-build-")
+        .tempdir()
+        .context("Failed to create temporary build directory")?;
+    let context_path = temp_dir.path();
+
+    // Copy current workmux binary to build context
+    let current_exe =
+        std::env::current_exe().context("Failed to locate current workmux executable")?;
+    let dest_exe = context_path.join("workmux");
+    std::fs::copy(&current_exe, &dest_exe)
+        .context("Failed to copy workmux binary to build context")?;
+
+    // Write Dockerfile
+    let dockerfile_path = context_path.join("Dockerfile");
+    std::fs::write(&dockerfile_path, SANDBOX_DOCKERFILE).context("Failed to write Dockerfile")?;
+
+    println!("Building image '{}' using {}...", image_name, runtime);
+
+    // Run build
+    let status = Command::new(runtime)
+        .args(["build", "-t", image_name, "."])
+        .current_dir(context_path)
+        .status()
+        .with_context(|| format!("Failed to run {} build", runtime))?;
+
+    if !status.success() {
+        anyhow::bail!("{} build failed with exit code: {}", runtime, status);
     }
 
     Ok(())
