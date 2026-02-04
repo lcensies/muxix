@@ -3,7 +3,8 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
+use std::time::Duration;
 
 /// Lima instance information from `limactl list --json`.
 #[derive(Debug, Deserialize, Serialize)]
@@ -26,6 +27,66 @@ fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
         .collect()
 }
 
+/// Run a limactl command with comprehensive logging and timeout.
+/// Returns the command output if successful, or an error if it fails or times out.
+fn run_limactl(args: &[&str], timeout: Duration) -> Result<Output> {
+    // Log the command before execution
+    tracing::debug!("executing limactl command: limactl {}", args.join(" "));
+
+    // Spawn the command in a thread to enable timeout handling
+    let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let handle = std::thread::spawn(move || Command::new("limactl").args(&args_vec).output());
+
+    // Wait for the thread with timeout
+    let start = std::time::Instant::now();
+    loop {
+        if start.elapsed() >= timeout {
+            // Timeout occurred - the thread will be detached and the process may continue running
+            tracing::warn!(
+                "limactl command timed out after {} seconds, command may still be running in background",
+                timeout.as_secs()
+            );
+            bail!(
+                "limactl command timed out after {} seconds: limactl {}",
+                timeout.as_secs(),
+                args.join(" ")
+            );
+        }
+
+        if handle.is_finished() {
+            let output = handle
+                .join()
+                .map_err(|_| anyhow::anyhow!("thread panicked"))?
+                .context("failed to execute limactl command")?;
+
+            // Log stdout if not empty
+            if !output.stdout.is_empty() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                tracing::debug!("limactl stdout: {}", stdout.trim());
+            }
+
+            // Log stderr if not empty
+            if !output.stderr.is_empty() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if output.status.success() {
+                    tracing::debug!("limactl stderr: {}", stderr.trim());
+                } else {
+                    tracing::info!("limactl stderr: {}", stderr.trim());
+                }
+            }
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!("limactl command failed: {}", stderr);
+            }
+
+            return Ok(output);
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 /// A Lima VM instance.
 pub struct LimaInstance {
     name: String,
@@ -46,68 +107,44 @@ impl LimaInstance {
 
     /// Start an existing Lima VM (without config file).
     pub fn start(&self) -> Result<()> {
-        let output = Command::new("limactl")
-            .arg("start")
-            .arg("--tty=false")
-            .arg(&self.name)
-            .output()
-            .context("Failed to execute limactl start")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Failed to start Lima VM '{}': {}", self.name, stderr);
-        }
-
+        let timeout = Duration::from_secs(300); // 5 minutes for VM creation
+        run_limactl(&["start", "--tty=false", &self.name], timeout)
+            .with_context(|| format!("failed to start Lima VM '{}'", self.name))?;
         Ok(())
     }
 
     /// Create and start a new Lima VM instance using the config file.
     fn create_and_start(&self) -> Result<()> {
-        let output = Command::new("limactl")
-            .arg("start")
-            .arg("--name")
-            .arg(&self.name)
-            .arg("--tty=false")
-            .arg(&self.config_path)
-            .output()
-            .context("Failed to execute limactl start")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Failed to create Lima VM '{}': {}", self.name, stderr);
-        }
-
+        let timeout = Duration::from_secs(300); // 5 minutes for VM creation
+        let config_path_str = self.config_path.to_string_lossy();
+        run_limactl(
+            &[
+                "start",
+                "--name",
+                &self.name,
+                "--tty=false",
+                &config_path_str,
+            ],
+            timeout,
+        )
+        .with_context(|| format!("failed to create Lima VM '{}'", self.name))?;
         Ok(())
     }
 
     /// Stop the Lima VM.
     #[allow(dead_code)]
     pub fn stop(&self) -> Result<()> {
-        let output = Command::new("limactl")
-            .arg("stop")
-            .arg(&self.name)
-            .output()
-            .context("Failed to execute limactl stop")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Failed to stop Lima VM '{}': {}", self.name, stderr);
-        }
-
+        let timeout = Duration::from_secs(30);
+        run_limactl(&["stop", &self.name], timeout)
+            .with_context(|| format!("failed to stop Lima VM '{}'", self.name))?;
         Ok(())
     }
 
     /// Check if the Lima VM is running.
     pub fn is_running(&self) -> Result<bool> {
-        let output = Command::new("limactl")
-            .arg("list")
-            .arg("--json")
-            .output()
-            .context("Failed to execute limactl list")?;
-
-        if !output.status.success() {
-            bail!("Failed to list Lima instances");
-        }
+        let timeout = Duration::from_secs(10);
+        let output =
+            run_limactl(&["list", "--json"], timeout).context("failed to list Lima instances")?;
 
         let instances = parse_lima_instances(&output.stdout)?;
 
@@ -119,20 +156,9 @@ impl LimaInstance {
     /// Execute a shell command in the Lima VM.
     #[allow(dead_code)]
     pub fn shell(&self, command: &str) -> Result<String> {
-        let output = Command::new("limactl")
-            .arg("shell")
-            .arg(&self.name)
-            .arg("--")
-            .arg("sh")
-            .arg("-c")
-            .arg(command)
-            .output()
-            .context("Failed to execute limactl shell")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Command failed in VM '{}': {}", self.name, stderr);
-        }
+        let timeout = Duration::from_secs(60);
+        let output = run_limactl(&["shell", &self.name, "--", "sh", "-c", command], timeout)
+            .with_context(|| format!("failed to execute command in VM '{}'", self.name))?;
 
         Ok(String::from_utf8(output.stdout)?)
     }
@@ -145,11 +171,18 @@ impl LimaInstance {
 
     /// Check if limactl is available on the system.
     pub fn is_lima_available() -> bool {
-        Command::new("limactl")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        tracing::debug!("checking if limactl is available");
+        let timeout = Duration::from_secs(5);
+        match run_limactl(&["--version"], timeout) {
+            Ok(_) => {
+                tracing::debug!("limactl is available");
+                true
+            }
+            Err(e) => {
+                tracing::debug!("limactl is not available: {}", e);
+                false
+            }
+        }
     }
 
     /// Get or create a Lima instance with the given name and config.
@@ -165,21 +198,17 @@ impl LimaInstance {
         }
 
         // Check if exists but stopped
-        let output = Command::new("limactl")
-            .arg("list")
-            .arg("--json")
-            .output()
-            .context("Failed to execute limactl list")?;
+        let timeout = Duration::from_secs(10);
+        let output =
+            run_limactl(&["list", "--json"], timeout).context("failed to list Lima instances")?;
 
-        if output.status.success() {
-            let instances = parse_lima_instances(&output.stdout)?;
+        let instances = parse_lima_instances(&output.stdout)?;
 
-            let exists = instances.iter().any(|i| i.name == name);
-            if exists {
-                // Start existing instance (without config file)
-                instance.start()?;
-                return Ok(instance);
-            }
+        let exists = instances.iter().any(|i| i.name == name);
+        if exists {
+            // Start existing instance (without config file)
+            instance.start()?;
+            return Ok(instance);
         }
 
         // Create and start new instance (with config file)
