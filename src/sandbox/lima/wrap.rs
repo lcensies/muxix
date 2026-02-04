@@ -10,49 +10,43 @@ fn shell_escape(s: &str) -> String {
     s.replace('\'', "'\\''")
 }
 
-/// Wrap a command to run inside a Lima VM via `limactl shell`.
+/// Wrap a command to run inside a Lima VM via the sandbox supervisor.
 ///
-/// Returns the shell command that executes inside an already-running VM.
-/// The VM must be booted before calling this (via `ensure_vm_running()`).
+/// Generates a `workmux sandbox run` command that manages the VM lifecycle,
+/// starts an RPC server, and executes the agent command inside the VM.
+///
+/// The supervisor handles:
+/// - Ensuring the VM is running
+/// - Starting the TCP RPC server
+/// - Passing sandbox env vars (WM_SANDBOX_GUEST, WM_RPC_HOST, WM_RPC_PORT, WM_RPC_TOKEN)
+/// - Setting the working directory via `limactl shell --workdir`
+/// - Running the command via `limactl shell`
 ///
 /// # Arguments
-/// * `command` - The command to run (e.g., "claude", "bash")
-/// * `config` - The workmux configuration (for env passthrough)
-/// * `vm_name` - The Lima VM instance name (from `ensure_vm_running()`)
+/// * `command` - The command string to run (may contain shell operators)
+/// * `_config` - The workmux configuration (env passthrough handled by supervisor)
+/// * `_vm_name` - The Lima VM instance name (supervisor resolves this itself)
 /// * `working_dir` - Working directory inside the VM
 pub fn wrap_for_lima(
     command: &str,
-    config: &Config,
-    vm_name: &str,
+    _config: &Config,
+    _vm_name: &str,
     working_dir: &Path,
 ) -> Result<String> {
-    // Build the limactl shell command
-    let mut shell_cmd = format!("limactl shell {}", vm_name);
-
-    // Pass through environment variables
-    for env_var in config.sandbox.env_passthrough() {
-        if let Ok(val) = std::env::var(env_var) {
-            shell_cmd.push_str(&format!(" --setenv {}='{}'", env_var, shell_escape(&val)));
-        }
-    }
-
-    // Build the inner script with properly quoted paths, then escape for sh -c.
-    // The inner cd path needs its own quoting to handle spaces.
-    let inner_script = format!(
-        "cd '{}' && {}",
+    // The command may contain shell operators (pipes, &&, subshells), so wrap
+    // it in `sh -lc '...'` to ensure it's executed as a single shell payload
+    // inside the VM. The supervisor passes each arg to `limactl shell -- ...`.
+    Ok(format!(
+        "workmux sandbox run '{}' -- sh -lc '{}'",
         shell_escape(&working_dir.to_string_lossy()),
-        command
-    );
-    shell_cmd.push_str(&format!(" -- sh -c '{}'", shell_escape(&inner_script)));
-
-    Ok(shell_cmd)
+        shell_escape(command)
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sandbox::lima::LimaInstanceInfo;
-    use std::path::PathBuf;
 
     #[test]
     fn test_shell_escape_simple() {
@@ -107,51 +101,68 @@ mod tests {
     }
 
     #[test]
-    fn test_wrap_format_shell_command() {
-        // Test the limactl shell command format directly
-        let vm_name = "wm-abc12345";
-        let working_dir = PathBuf::from("/Users/test/project");
-        let command = "claude";
+    fn test_wrap_generates_supervisor_command() {
+        let config = Config::default();
+        let result = wrap_for_lima(
+            "claude",
+            &config,
+            "wm-abc12345",
+            Path::new("/Users/test/project"),
+        )
+        .unwrap();
 
-        let inner_script = format!(
-            "cd '{}' && {}",
-            shell_escape(&working_dir.to_string_lossy()),
-            command
-        );
-        let shell_cmd = format!(
-            "limactl shell {} -- sh -c '{}'",
-            vm_name,
-            shell_escape(&inner_script)
-        );
-
-        assert!(shell_cmd.contains("limactl shell wm-abc12345"));
-        assert!(shell_cmd.contains("/Users/test/project"));
-        assert!(shell_cmd.contains("claude"));
+        assert!(result.starts_with("workmux sandbox run"));
+        assert!(result.contains("/Users/test/project"));
+        assert!(result.contains("-- sh -lc"));
+        assert!(result.contains("claude"));
     }
 
     #[test]
-    fn test_wrap_format_with_spaces_in_path() {
-        let vm_name = "wm-abc12345";
-        let working_dir = PathBuf::from("/Users/test user/my project");
-        let command = "claude";
+    fn test_wrap_with_spaces_in_path() {
+        let config = Config::default();
+        let result = wrap_for_lima(
+            "claude",
+            &config,
+            "wm-abc12345",
+            Path::new("/Users/test user/my project"),
+        )
+        .unwrap();
 
-        let inner_script = format!(
-            "cd '{}' && {}",
-            shell_escape(&working_dir.to_string_lossy()),
-            command
-        );
-        let shell_cmd = format!(
-            "limactl shell {} -- sh -c '{}'",
-            vm_name,
-            shell_escape(&inner_script)
-        );
+        assert!(result.contains("test user/my project"));
+        // Path should be in single quotes
+        assert!(result.contains("'/Users/test user/my project'"));
+    }
 
-        // The inner cd path is single-quoted, and those quotes get escaped
-        // for the outer sh -c single-quote context. When sh parses the outer
-        // quotes, the inner quotes are restored, giving: cd '/path with spaces'
-        assert!(shell_cmd.contains("/Users/test user/my project"));
-        // Verify the inner quotes are present (escaped as '\'' for outer context)
-        assert!(shell_cmd.contains("cd '\\''"));
+    #[test]
+    fn test_wrap_with_complex_command() {
+        let config = Config::default();
+        let result = wrap_for_lima(
+            "claude --dangerously-skip-permissions -- \"$(cat .workmux/prompts/PROMPT.md)\"",
+            &config,
+            "wm-abc",
+            Path::new("/tmp/wt"),
+        )
+        .unwrap();
+
+        // The complex command should be wrapped in sh -lc '...'
+        assert!(result.contains("sh -lc"));
+        assert!(result.contains("claude"));
+        assert!(result.contains("dangerously-skip-permissions"));
+    }
+
+    #[test]
+    fn test_wrap_escapes_single_quotes_in_command() {
+        let config = Config::default();
+        let result = wrap_for_lima(
+            "echo 'hello world'",
+            &config,
+            "wm-abc",
+            Path::new("/tmp/wt"),
+        )
+        .unwrap();
+
+        // Single quotes in the command should be escaped
+        assert!(result.contains("echo '\\''hello world'\\''"));
     }
 
     #[test]

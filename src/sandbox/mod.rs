@@ -1,7 +1,9 @@
 //! Sandbox backends for running agents in isolated environments.
 
 mod container;
+pub mod guest;
 pub mod lima;
+pub mod rpc;
 
 pub use container::build_image;
 pub use container::run_auth;

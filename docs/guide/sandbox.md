@@ -202,11 +202,53 @@ Run `workmux sandbox auth` to authenticate inside the container. Credentials are
 
 ## Lima VM Backend
 
-::: info
-Lima VM backend support is currently in development. This section documents the `prune` command for managing Lima VMs.
-:::
+workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing on macOS, providing stronger isolation than containers with full VM-level separation.
 
-workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing on macOS. Over time, unused VMs can accumulate and consume significant disk space.
+### How it works
+
+When using the Lima backend, each sandboxed pane runs a supervisor process (`workmux sandbox run`) that:
+
+1. Ensures the Lima VM is running (creates it on first use)
+2. Starts a TCP RPC server on a random port
+3. Runs the agent command inside the VM via `limactl shell`
+4. Handles RPC requests from the guest workmux binary
+
+The guest VM connects back to the host via `host.lima.internal` (Lima's built-in hostname) to send RPC requests like status updates and agent spawning.
+
+### Lima configuration
+
+```yaml
+sandbox:
+  enabled: true
+  backend: lima
+  isolation: project  # default: one VM per git repository
+  env_passthrough:
+    - GITHUB_TOKEN
+    - ANTHROPIC_API_KEY
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `backend` | `container` | Set to `lima` for VM sandboxing |
+| `isolation` | `project` | `project` (one VM per repo) or `user` (single global VM) |
+| `projects_dir` | - | Required for `user` isolation: parent directory of all projects |
+| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM |
+
+### RPC protocol
+
+The supervisor and guest communicate via JSON-lines over TCP. Each request is a single JSON object on one line.
+
+**Supported requests:**
+- `SetStatus` -- updates the tmux pane status icon (working/waiting/done/clear)
+- `SetTitle` -- renames the tmux window
+- `Heartbeat` -- health check, returns Ok
+- `SpawnAgent` -- runs `workmux add` on the host to create a new worktree and pane
+
+Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
+
+### Cleaning up unused VMs
+
+Over time, unused VMs can accumulate and consume significant disk space.
 
 ### Cleaning up unused VMs
 

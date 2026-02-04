@@ -6,6 +6,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
+use tracing::debug;
 
 use crate::config::Config;
 use crate::sandbox;
@@ -34,6 +35,15 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         force: bool,
     },
+    /// Run a command inside a Lima sandbox (internal, used by pane setup).
+    #[command(hide = true)]
+    Run {
+        /// Path to the worktree
+        worktree: PathBuf,
+        /// Command and arguments to run inside the sandbox
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
     /// Stop Lima VMs to free resources.
     Stop {
         /// VM name to stop (if not provided, show interactive list)
@@ -52,6 +62,11 @@ pub fn run(args: SandboxArgs) -> Result<()> {
     match args.command {
         SandboxCommand::Auth => run_auth(),
         SandboxCommand::Build { force } => run_build(force),
+        SandboxCommand::Run { worktree, command } => {
+            debug!(worktree = %worktree.display(), ?command, "sandbox run");
+            let exit_code = super::sandbox_run::run(worktree, command)?;
+            std::process::exit(exit_code);
+        }
         SandboxCommand::Prune { force } => run_prune(force),
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
     }
