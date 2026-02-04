@@ -1,5 +1,5 @@
 # Dynamic worktree handle completion (directory names)
-# Used for open/remove/merge/path - these accept handles or branch names
+# Used for open/remove/merge/path/close - these accept handles or branch names
 _workmux_handles() {
     workmux _complete-handles 2>/dev/null
 }
@@ -40,7 +40,7 @@ _workmux_dynamic() {
                     return
                 fi
                 ;;
-            open|remove|rm|path)
+            open|remove|rm|path|close)
                 # Positional arg: handles
                 if [[ "$cur" != -* ]]; then
                     COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))

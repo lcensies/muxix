@@ -1,5 +1,5 @@
 # Dynamic worktree handle completion (directory names)
-# Used for open/remove/merge/path - these accept handles or branch names
+# Used for open/remove/merge/path/close - these accept handles or branch names
 _workmux_handles() {
     local handles
     handles=("${(@f)$(workmux _complete-handles 2>/dev/null)}")
@@ -67,7 +67,7 @@ _workmux_dynamic() {
 
     # Only handle commands that need dynamic completion
     case "$cmd" in
-        open|remove|rm|path|merge)
+        open|remove|rm|path|merge|close)
             # Offer handles mixed with any remaining flags
             _workmux "$@"
             _workmux_handles
