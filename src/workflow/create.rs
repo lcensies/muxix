@@ -276,7 +276,11 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Setup the rest of the environment (tmux, files, hooks)
     let prompt_file_path = if let Some(p) = prompt {
-        Some(setup::write_prompt_file(branch_name, p)?)
+        Some(setup::write_prompt_file(
+            Some(&worktree_path),
+            branch_name,
+            p,
+        )?)
     } else {
         None
     };

@@ -151,6 +151,7 @@ pub fn setup_environment(
             PaneSetupOptions {
                 run_commands: options.run_pane_commands,
                 prompt_file_path: options.prompt_file_path.as_deref(),
+                worktree_root: Some(worktree_path),
             },
             config,
             agent,
@@ -398,7 +399,19 @@ pub fn handle_file_operations(
     Ok(())
 }
 
-pub fn write_prompt_file(branch_name: &str, prompt: &Prompt) -> Result<PathBuf> {
+/// Write a prompt file for agent consumption.
+///
+/// When `working_dir` is provided, writes to `<working_dir>/.workmux/PROMPT-<branch>.md`
+/// so the prompt is accessible inside container sandboxes. Also adds `.workmux/` to
+/// `.git/info/exclude` to avoid polluting git status.
+///
+/// When `working_dir` is None, writes to a temp directory (legacy behavior for open command
+/// which doesn't know the worktree path at prompt write time).
+pub fn write_prompt_file(
+    working_dir: Option<&Path>,
+    branch_name: &str,
+    prompt: &Prompt,
+) -> Result<PathBuf> {
     let content = match prompt {
         Prompt::Inline(text) => text.clone(),
         Prompt::FromFile(path) => fs::read_to_string(path)
@@ -407,14 +420,61 @@ pub fn write_prompt_file(branch_name: &str, prompt: &Prompt) -> Result<PathBuf> 
 
     // Sanitize branch name: replace path separators with dashes to avoid
     // interpreting slashes as directory separators (e.g., "feature/foo" -> "feature-foo")
-    let safe_branch_name = branch_name.replace(['/', '\\'], "-");
+    let safe_branch_name = branch_name.replace(['/', '\\', ':'], "-");
 
-    // Write to temp directory instead of the worktree to avoid polluting git status
-    let prompt_filename = format!("workmux-prompt-{}.md", safe_branch_name);
-    let prompt_path = std::env::temp_dir().join(prompt_filename);
+    let prompt_path = if let Some(dir) = working_dir {
+        // Write to .workmux/ inside the worktree so it's accessible in container sandbox
+        let workmux_dir = dir.join(".workmux");
+        fs::create_dir_all(&workmux_dir).with_context(|| {
+            format!("Failed to create .workmux directory in '{}'", dir.display())
+        })?;
+
+        // Add .workmux/ to git exclude to avoid polluting git status
+        // In worktrees, .git is a file pointing to the real git dir, so we need to resolve it
+        if let Some(exclude_path) = resolve_git_exclude_path(dir)
+            && exclude_path.exists()
+                && let Ok(content) = fs::read_to_string(&exclude_path)
+                    && !content.lines().any(|line| line.trim() == ".workmux/")
+                        && let Ok(mut file) =
+                            fs::OpenOptions::new().append(true).open(&exclude_path)
+                        {
+                            use std::io::Write;
+                            let _ = writeln!(file, "\n# workmux prompt files\n.workmux/");
+                        }
+
+        let prompt_filename = format!("PROMPT-{}.md", safe_branch_name);
+        workmux_dir.join(prompt_filename)
+    } else {
+        // Legacy: write to temp directory for open command
+        let prompt_filename = format!("workmux-prompt-{}.md", safe_branch_name);
+        std::env::temp_dir().join(prompt_filename)
+    };
+
     fs::write(&prompt_path, content)
         .with_context(|| format!("Failed to write prompt file '{}'", prompt_path.display()))?;
     Ok(prompt_path)
+}
+
+/// Resolve the path to .git/info/exclude, handling worktrees correctly.
+/// In a worktree, .git is a file containing "gitdir: /path/to/.git/worktrees/name",
+/// so we need to find the actual git directory.
+fn resolve_git_exclude_path(dir: &Path) -> Option<PathBuf> {
+    let git_path = dir.join(".git");
+
+    if git_path.is_dir() {
+        // Regular git repo: .git is a directory
+        Some(git_path.join("info/exclude"))
+    } else if git_path.is_file() {
+        // Git worktree: .git is a file pointing to the real git dir
+        // Format: "gitdir: /path/to/main/.git/worktrees/name"
+        let content = fs::read_to_string(&git_path).ok()?;
+        let gitdir = content.strip_prefix("gitdir: ")?.trim();
+        // Go up two levels from worktrees/<name> to get to .git/
+        let main_git = Path::new(gitdir).ancestors().nth(2)?;
+        Some(main_git.join("info/exclude"))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -690,8 +750,9 @@ mod tests {
         let branch_name = "feature/nested/add-login";
         let prompt = Prompt::Inline("test prompt content".to_string());
 
-        let path =
-            super::write_prompt_file(branch_name, &prompt).expect("Should create prompt file");
+        // Test legacy mode (None working_dir)
+        let path = super::write_prompt_file(None, branch_name, &prompt)
+            .expect("Should create prompt file");
 
         // Verify filename does not contain slashes
         let filename = path.file_name().unwrap().to_str().unwrap();
@@ -711,6 +772,33 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_prompt_file_with_working_dir() {
+        use crate::prompt::Prompt;
+        use tempfile::TempDir;
+
+        let temp = TempDir::new().unwrap();
+        let branch_name = "feature/test";
+        let prompt = Prompt::Inline("test prompt".to_string());
+
+        let path = super::write_prompt_file(Some(temp.path()), branch_name, &prompt)
+            .expect("Should create prompt file");
+
+        // Verify it's in .workmux/ directory
+        assert!(path.starts_with(temp.path().join(".workmux")));
+        assert!(
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("PROMPT-feature-test")
+        );
+
+        // Verify content
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "test prompt");
     }
 }
 

@@ -794,16 +794,28 @@ def wait_for_file(
 # =============================================================================
 
 
-def prompt_file_for_branch(tmp_path: Path, branch_name: str) -> Path:
-    """Return the path to the prompt file for the given branch."""
-    return tmp_path / f"workmux-prompt-{branch_name}.md"
+def prompt_file_for_branch(worktree_path: Path, branch_name: str) -> Path:
+    """Return the path to the prompt file for the given branch.
+
+    Prompt files are now stored in <worktree>/.workmux/PROMPT-<sanitized-branch>.md
+    Branch names with slashes are sanitized to dashes.
+    """
+    sanitized_branch = branch_name.replace("/", "-")
+    return worktree_path / ".workmux" / f"PROMPT-{sanitized_branch}.md"
 
 
 def assert_prompt_file_contents(
-    env: MuxEnvironment, branch_name: str, expected_text: str
+    env: MuxEnvironment,
+    branch_name: str,
+    expected_text: str,
+    worktree_path: Optional[Path] = None,
 ) -> None:
     """Assert that a prompt file exists for the branch and matches the expected text."""
-    prompt_file = prompt_file_for_branch(env.tmp_path, branch_name)
+    if worktree_path is None:
+        raise ValueError(
+            "worktree_path is required - prompt files are now in <worktree>/.workmux/"
+        )
+    prompt_file = prompt_file_for_branch(worktree_path, branch_name)
     assert prompt_file.exists(), f"Prompt file not found at {prompt_file}"
     actual_text = prompt_file.read_text()
     assert actual_text == expected_text, (

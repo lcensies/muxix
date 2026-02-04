@@ -431,6 +431,9 @@ enum Commands {
         command: ClaudeCommands,
     },
 
+    /// Manage sandbox settings
+    Sandbox(command::sandbox::SandboxArgs),
+
     /// Set agent status for the current tmux window (used by hooks)
     #[command(hide = true)]
     SetWindowStatus {
@@ -606,6 +609,7 @@ pub fn run() -> Result<()> {
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },
+        Commands::Sandbox(args) => command::sandbox::run(args),
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
         Commands::SetBase { base } => command::set_base::run(&base),
         Commands::LastDone => command::last_done::run(),

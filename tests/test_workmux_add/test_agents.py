@@ -76,8 +76,8 @@ printf '%s' "$2" > "{output_filename}"
             extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
 
-        # Prompt file is now written to the test's temp directory
-        assert_prompt_file_contents(env, branch_name, prompt_text)
+        # Prompt file is now written to <worktree>/.workmux/
+        assert_prompt_file_contents(env, branch_name, prompt_text, worktree_path)
 
         agent_output = worktree_path / output_filename
         debug_output = worktree_path / "debug_args.txt"
@@ -150,8 +150,10 @@ printf '%s' "$2" > "{output_filename}"
             extra_args=f"--prompt-file {shlex.quote(str(prompt_source))}",
         )
 
-        # Prompt file is now written to the test's temp directory
-        assert_prompt_file_contents(env, branch_name, prompt_source.read_text())
+        # Prompt file is now written to <worktree>/.workmux/
+        assert_prompt_file_contents(
+            env, branch_name, prompt_source.read_text(), worktree_path
+        )
 
         agent_output = worktree_path / output_filename
 

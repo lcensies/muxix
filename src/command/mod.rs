@@ -14,6 +14,7 @@ pub mod open;
 pub mod path;
 pub mod remove;
 pub mod run;
+pub mod sandbox;
 pub mod send;
 pub mod set_base;
 pub mod set_window_status;

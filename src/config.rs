@@ -185,6 +185,10 @@ pub struct Config {
     /// Color theme for the dashboard (dark or light)
     #[serde(default)]
     pub theme: Theme,
+
+    /// Container sandbox configuration
+    #[serde(default)]
+    pub sandbox: SandboxConfig,
 }
 
 /// Configuration for a single tmux pane
@@ -255,6 +259,78 @@ pub enum WorktreeNaming {
     Full,
     /// Use only the part after the last `/` (e.g., `prj-123/feature` → `feature`)
     Basename,
+}
+
+/// Container runtime for sandbox
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SandboxRuntime {
+    /// Docker (default)
+    #[default]
+    Docker,
+    /// Podman
+    Podman,
+}
+
+/// Which panes to sandbox
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SandboxTarget {
+    /// Only sandbox agent panes (default, recommended)
+    #[default]
+    Agent,
+    /// Sandbox all panes
+    All,
+}
+
+/// Configuration for container sandboxing (Docker/Podman)
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SandboxConfig {
+    /// Enable sandboxing. Default: false
+    #[serde(default)]
+    pub enabled: Option<bool>,
+
+    /// Container runtime. Default: docker
+    #[serde(default)]
+    pub runtime: Option<SandboxRuntime>,
+
+    /// Which panes to sandbox. Default: agent
+    #[serde(default)]
+    pub target: Option<SandboxTarget>,
+
+    /// Container image. Required when sandbox is enabled.
+    #[serde(default)]
+    pub image: Option<String>,
+
+    /// Environment variables to pass to container.
+    /// Default: ["GITHUB_TOKEN"]
+    #[serde(default)]
+    pub env_passthrough: Option<Vec<String>>,
+}
+
+impl SandboxConfig {
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
+
+    pub fn runtime(&self) -> SandboxRuntime {
+        self.runtime.clone().unwrap_or_default()
+    }
+
+    pub fn target(&self) -> SandboxTarget {
+        self.target.clone().unwrap_or_default()
+    }
+
+    pub fn image(&self) -> Option<&str> {
+        self.image.as_deref()
+    }
+
+    pub fn env_passthrough(&self) -> Vec<&str> {
+        self.env_passthrough
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect())
+            .unwrap_or_else(|| vec!["GITHUB_TOKEN"])
+    }
 }
 
 /// Result of config discovery, including the relative path from repo root
@@ -667,6 +743,27 @@ impl Config {
                 .or(self.dashboard.show_check_counts),
         };
 
+        // Sandbox config: per-field override
+        merged.sandbox = SandboxConfig {
+            enabled: project.sandbox.enabled.or(self.sandbox.enabled),
+            runtime: project
+                .sandbox
+                .runtime
+                .clone()
+                .or(self.sandbox.runtime.clone()),
+            target: project
+                .sandbox
+                .target
+                .clone()
+                .or(self.sandbox.target.clone()),
+            image: project.sandbox.image.clone().or(self.sandbox.image.clone()),
+            env_passthrough: project
+                .sandbox
+                .env_passthrough
+                .clone()
+                .or(self.sandbox.env_passthrough.clone()),
+        };
+
         merged
     }
 
@@ -989,7 +1086,9 @@ pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_agent_command, split_first_token};
+    use super::{
+        Config, SandboxConfig, SandboxRuntime, SandboxTarget, is_agent_command, split_first_token,
+    };
 
     #[test]
     fn split_first_token_single_word() {
@@ -1122,5 +1221,40 @@ mod tests {
         assert!(result.is_some());
         let loc = result.unwrap();
         assert!(loc.config_path.ends_with("backend/.workmux.yaml"));
+    }
+
+    #[test]
+    fn sandbox_config_defaults() {
+        let config = SandboxConfig::default();
+        assert!(!config.is_enabled());
+        assert_eq!(config.runtime(), SandboxRuntime::Docker);
+        assert_eq!(config.target(), SandboxTarget::Agent);
+        assert!(config.env_passthrough().contains(&"GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn sandbox_config_merge() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                enabled: Some(true),
+                runtime: Some(SandboxRuntime::Docker),
+                image: Some("global-image".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                image: Some("project-image".to_string()),
+                runtime: Some(SandboxRuntime::Podman),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.is_enabled()); // from global
+        assert_eq!(merged.sandbox.image(), Some("project-image")); // from project
+        assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
     }
 }

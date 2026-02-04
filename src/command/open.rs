@@ -34,6 +34,9 @@ pub fn run(
 
     // Write prompt to temp file if provided
     // Use unique filename with timestamp to prevent race condition when opening multiple duplicates
+    // Note: We use None for working_dir here because we don't know the worktree path yet
+    // (open resolves it later). The temp dir approach works fine for open since sandbox
+    // wrapping only happens during initial create, not open.
     let prompt_file_path = if let Some(ref p) = prompt {
         let unique_name = format!(
             "{}-{}",
@@ -43,7 +46,7 @@ pub fn run(
                 .unwrap_or_default()
                 .as_millis()
         );
-        Some(crate::workflow::write_prompt_file(&unique_name, p)?)
+        Some(crate::workflow::write_prompt_file(None, &unique_name, p)?)
     } else {
         None
     };

@@ -231,7 +231,43 @@ pub trait Multiplexer: Send + Sync {
                 };
 
                 handshake.wait()?;
-                self.send_keys(&spawned_id, &resolved.command)?;
+
+                // Detect if this is an agent pane for sandbox targeting
+                let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
+                    cmd == "<agent>"
+                        || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
+                });
+
+                // Apply sandbox wrapping if enabled for this pane type
+                let final_command = if config.sandbox.is_enabled() {
+                    let should_wrap = match config.sandbox.target() {
+                        crate::config::SandboxTarget::All => true,
+                        crate::config::SandboxTarget::Agent => is_agent_pane,
+                    };
+                    if should_wrap {
+                        // Use worktree_root for mounting, working_dir for cwd
+                        let wt_root = options.worktree_root.unwrap_or(working_dir);
+                        match crate::sandbox::wrap_for_container(
+                            &resolved.command,
+                            &config.sandbox,
+                            wt_root,
+                            working_dir,
+                        ) {
+                            Ok(wrapped) => wrapped,
+                            Err(e) => {
+                                // Log error but don't fail - run unsandboxed
+                                tracing::warn!(error = %e, "Failed to wrap command for sandbox, running unsandboxed");
+                                resolved.command.clone()
+                            }
+                        }
+                    } else {
+                        resolved.command.clone()
+                    }
+                } else {
+                    resolved.command.clone()
+                };
+
+                self.send_keys(&spawned_id, &final_command)?;
 
                 // Set working status for agent panes with injected prompts
                 if resolved.prompt_injected

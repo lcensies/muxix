@@ -99,6 +99,7 @@ export default defineConfig({
       {
         text: "Guides",
         items: [
+          { text: "Container sandbox", link: "/guide/sandbox" },
           { text: "direnv", link: "/guide/direnv" },
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
@@ -118,6 +119,7 @@ export default defineConfig({
           { text: "dashboard", link: "/reference/commands/dashboard" },
           { text: "init", link: "/reference/commands/init" },
           { text: "claude prune", link: "/reference/commands/claude" },
+          { text: "sandbox", link: "/reference/commands/sandbox" },
           { text: "completions", link: "/reference/commands/completions" },
           { text: "docs", link: "/reference/commands/docs" },
         ],

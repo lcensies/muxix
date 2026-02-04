@@ -66,6 +66,8 @@ pub struct PaneSetupOptions<'a> {
     pub run_commands: bool,
     /// Path to the prompt file for agent panes
     pub prompt_file_path: Option<&'a std::path::Path>,
+    /// Root of the worktree (for sandbox mounting). May differ from working_dir in monorepos.
+    pub worktree_root: Option<&'a std::path::Path>,
 }
 
 /// Backend type for multiplexer selection
