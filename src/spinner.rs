@@ -88,9 +88,10 @@ pub fn with_streaming_command_formatted(
                 if let Ok(line) = line
                     && !line.trim().is_empty()
                     && let Some(formatted) = stderr_formatter(&line)
-                        && !formatted.is_empty() {
-                            pb_err.println(&formatted);
-                        }
+                    && !formatted.is_empty()
+                {
+                    pb_err.println(&formatted);
+                }
             }
         }
     });

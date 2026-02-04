@@ -1,5 +1,6 @@
 //! Parse and reformat limactl logrus-style log lines for clean display.
 
+use console::strip_ansi_codes;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -13,15 +14,30 @@ static LOGRUS_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Warning/error messages are never filtered.
 const FILTERED_SUBSTRINGS: &[&str] = &["Terminal is not available", "Not forwarding TCP"];
 
+/// Clean a non-logrus line by stripping ANSI escapes and handling carriage returns.
+///
+/// Installers (e.g. Claude Code) use `\r` to overwrite lines for progress display.
+/// We take the last `\r`-delimited segment to get the final state of the line.
+fn clean_raw_line(line: &str) -> Option<String> {
+    // Take the last \r-delimited segment (the final "frame" of a progress update)
+    let last_segment = line.rsplit('\r').next().unwrap_or(line);
+    let stripped = strip_ansi_codes(last_segment);
+    let trimmed = stripped.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(format!("  {}", trimmed))
+}
+
 /// Format a limactl logrus log line into a clean display string.
 ///
 /// Returns `None` if the line should be filtered out.
 /// Returns `Some(formatted)` with the clean message.
-/// Lines that don't match logrus format are passed through unchanged.
+/// Lines that don't match logrus format are cleaned of ANSI escapes and passed through.
 pub fn format_lima_log_line(line: &str) -> Option<String> {
     let Some(caps) = LOGRUS_RE.captures(line) else {
-        // Not a logrus line, pass through as-is
-        return Some(line.to_string());
+        // Not a logrus line -- strip ANSI escapes and \r artifacts
+        return clean_raw_line(line);
     };
 
     let level = &caps[1];
@@ -111,8 +127,32 @@ mod tests {
         let line = "some random output line";
         assert_eq!(
             format_lima_log_line(line),
-            Some("some random output line".to_string())
+            Some("  some random output line".to_string())
         );
+    }
+
+    #[test]
+    fn test_ansi_escape_stripping() {
+        let line = "\x1b[?2026l\x1b[?2026h\r\x1b[1AInstalling Cl\x1b[1Cude C\x1b[1Cde n\x1b[2Cive build\x1b[1Clatest...";
+        let result = format_lima_log_line(line).unwrap();
+        assert!(!result.contains('\x1b'));
+        assert!(result.contains("Installing"));
+    }
+
+    #[test]
+    fn test_carriage_return_takes_last_segment() {
+        // Simulates progress bar: first segment is old, last is current
+        let line = "old progress 50%\rnew progress 100%";
+        assert_eq!(
+            format_lima_log_line(line),
+            Some("  new progress 100%".to_string())
+        );
+    }
+
+    #[test]
+    fn test_blank_after_stripping_filtered() {
+        let line = "\x1b[?2026h\r\x1b[1A";
+        assert_eq!(format_lima_log_line(line), None);
     }
 
     #[test]
