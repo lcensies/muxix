@@ -30,6 +30,15 @@ pub fn wrap_for_lima(
     worktree_path: &Path,
     working_dir: &Path,
 ) -> Result<String> {
+    // Check if Lima is available
+    if !LimaInstance::is_lima_available() {
+        anyhow::bail!(
+            "Lima backend is enabled but limactl is not installed.\n\
+             Install Lima: https://lima-vm.io/docs/installation/\n\
+             Or disable sandbox: set 'sandbox.enabled: false' in config."
+        );
+    }
+
     let isolation = config.sandbox.isolation();
 
     // Generate instance name based on isolation level

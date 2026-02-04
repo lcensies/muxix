@@ -34,12 +34,19 @@ pub fn generate_lima_config(_instance_name: &str, mounts: &[Mount]) -> Result<St
     {
         config.insert("vmType".into(), "vz".into());
 
-        // Enable Rosetta for x86 binaries on ARM
+        // Enable Rosetta for x86 binaries on ARM (use new nested format)
         if arch == "aarch64" || arch == "arm64" {
             let mut rosetta = serde_yaml::Mapping::new();
             rosetta.insert("enabled".into(), true.into());
             rosetta.insert("binfmt".into(), true.into());
-            config.insert("rosetta".into(), rosetta.into());
+
+            let mut vz = serde_yaml::Mapping::new();
+            vz.insert("rosetta".into(), rosetta.into());
+
+            let mut vm_opts = serde_yaml::Mapping::new();
+            vm_opts.insert("vz".into(), vz.into());
+
+            config.insert("vmOpts".into(), vm_opts.into());
         }
     }
 

@@ -81,6 +81,7 @@ impl LimaInstance {
     }
 
     /// Stop the Lima VM.
+    #[allow(dead_code)]
     pub fn stop(&self) -> Result<()> {
         let output = Command::new("limactl")
             .arg("stop")
@@ -116,6 +117,7 @@ impl LimaInstance {
     }
 
     /// Execute a shell command in the Lima VM.
+    #[allow(dead_code)]
     pub fn shell(&self, command: &str) -> Result<String> {
         let output = Command::new("limactl")
             .arg("shell")
@@ -136,6 +138,7 @@ impl LimaInstance {
     }
 
     /// Get the instance name.
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         &self.name
     }
