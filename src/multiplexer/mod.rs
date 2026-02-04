@@ -247,12 +247,28 @@ pub trait Multiplexer: Send + Sync {
                     if should_wrap {
                         // Use worktree_root for mounting, working_dir for cwd
                         let wt_root = options.worktree_root.unwrap_or(working_dir);
-                        match crate::sandbox::wrap_for_container(
-                            &resolved.command,
-                            &config.sandbox,
-                            wt_root,
-                            working_dir,
-                        ) {
+
+                        // Choose backend based on config
+                        let wrap_result = match config.sandbox.backend() {
+                            crate::config::SandboxBackend::Container => {
+                                crate::sandbox::wrap_for_container(
+                                    &resolved.command,
+                                    &config.sandbox,
+                                    wt_root,
+                                    working_dir,
+                                )
+                            }
+                            crate::config::SandboxBackend::Lima => {
+                                crate::sandbox::wrap_for_lima(
+                                    &resolved.command,
+                                    config,
+                                    wt_root,
+                                    working_dir,
+                                )
+                            }
+                        };
+
+                        match wrap_result {
                             Ok(wrapped) => wrapped,
                             Err(e) => {
                                 // Log error but don't fail - run unsandboxed

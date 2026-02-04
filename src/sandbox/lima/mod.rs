@@ -5,10 +5,12 @@
 mod config;
 mod instance;
 mod mounts;
+mod wrap;
 
 pub use config::generate_lima_config;
 pub use instance::LimaInstance;
 pub use mounts::{determine_git_common_dir, determine_project_root, generate_mounts};
+pub use wrap::wrap_for_lima;
 
 use crate::config::{Config, IsolationLevel};
 use anyhow::Result;
