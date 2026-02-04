@@ -1,10 +1,11 @@
 //! Lima VM instance management.
 
 use anyhow::{Context, Result, bail};
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Lima instance information from `limactl list --json`.
 #[derive(Debug, Deserialize, Serialize)]
@@ -107,17 +108,54 @@ impl LimaInstance {
 
     /// Start an existing Lima VM (without config file).
     pub fn start(&self) -> Result<()> {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
+        spinner.set_message(format!("Starting existing VM {}...", self.name));
+        spinner.enable_steady_tick(Duration::from_millis(100));
+
+        let start_time = Instant::now();
         let timeout = Duration::from_secs(300); // 5 minutes for VM creation
-        run_limactl(&["start", "--tty=false", &self.name], timeout)
-            .with_context(|| format!("failed to start Lima VM '{}'", self.name))?;
+        let result = run_limactl(&["start", "--tty=false", &self.name], timeout);
+        let elapsed = start_time.elapsed();
+
+        match result {
+            Ok(_) => {
+                spinner.finish_with_message(format!(
+                    "Started existing VM {} ({:.1}s)",
+                    self.name,
+                    elapsed.as_secs_f64()
+                ));
+            }
+            Err(e) => {
+                spinner.finish_and_clear();
+                return Err(e).with_context(|| format!("failed to start Lima VM '{}'", self.name));
+            }
+        }
         Ok(())
     }
 
     /// Create and start a new Lima VM instance using the config file.
     fn create_and_start(&self) -> Result<()> {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
+        spinner.set_message(format!(
+            "Starting Lima VM {} (first boot takes ~30s)...",
+            self.name
+        ));
+        spinner.enable_steady_tick(Duration::from_millis(100));
+
+        let start_time = Instant::now();
         let timeout = Duration::from_secs(300); // 5 minutes for VM creation
         let config_path_str = self.config_path.to_string_lossy();
-        run_limactl(
+        let result = run_limactl(
             &[
                 "start",
                 "--name",
@@ -126,8 +164,22 @@ impl LimaInstance {
                 &config_path_str,
             ],
             timeout,
-        )
-        .with_context(|| format!("failed to create Lima VM '{}'", self.name))?;
+        );
+        let elapsed = start_time.elapsed();
+
+        match result {
+            Ok(_) => {
+                spinner.finish_with_message(format!(
+                    "Started Lima VM {} ({:.1}s)",
+                    self.name,
+                    elapsed.as_secs_f64()
+                ));
+            }
+            Err(e) => {
+                spinner.finish_and_clear();
+                return Err(e).with_context(|| format!("failed to create Lima VM '{}'", self.name));
+            }
+        }
         Ok(())
     }
 
