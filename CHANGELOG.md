@@ -14,6 +14,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.107 (2026-02-04)
+
+- Shell autocompletion now suggests worktree names for the `close` command
+  (bash, zsh, fish) ([#47](https://github.com/raine/workmux/issues/47))
+
 ## v0.1.106 (2026-02-04)
 
 - Fixed dashboard incorrectly showing the worktree directory name instead of the
