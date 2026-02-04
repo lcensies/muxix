@@ -4,6 +4,7 @@
 
 mod config;
 mod instance;
+pub(crate) mod log_format;
 mod mounts;
 mod wrap;
 

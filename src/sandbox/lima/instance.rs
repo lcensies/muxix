@@ -134,9 +134,13 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
         VmState::Stopped => {
             let msg = format!("Starting Lima VM {}", vm_name);
             let mut cmd = Command::new("limactl");
-            cmd.args(["start", "--tty=false", &vm_name]);
+            cmd.args(["start", "--tty=false", "--progress", &vm_name]);
 
-            match crate::spinner::with_streaming_command(&msg, cmd) {
+            match crate::spinner::with_streaming_command_formatted(
+                &msg,
+                cmd,
+                super::log_format::format_lima_log_line,
+            ) {
                 Ok(()) => {}
                 Err(_) => {
                     // Race condition: another process may have started the VM.
@@ -165,10 +169,15 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
                 "--name",
                 &vm_name,
                 "--tty=false",
+                "--progress",
                 &config_path.to_string_lossy(),
             ]);
 
-            match crate::spinner::with_streaming_command(&msg, cmd) {
+            match crate::spinner::with_streaming_command_formatted(
+                &msg,
+                cmd,
+                super::log_format::format_lima_log_line,
+            ) {
                 Ok(()) => {}
                 Err(_) => {
                     // Race condition: another process may have created the VM.

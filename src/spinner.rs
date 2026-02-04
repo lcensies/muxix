@@ -35,7 +35,21 @@ where
 /// Shows a spinner with the given message while the command runs. Lines from
 /// the command's stdout and stderr are printed above the spinner in real time.
 /// On completion, the spinner shows success/failure.
-pub fn with_streaming_command(msg: &str, mut cmd: std::process::Command) -> Result<()> {
+#[allow(dead_code)]
+pub fn with_streaming_command(msg: &str, cmd: std::process::Command) -> Result<()> {
+    with_streaming_command_formatted(msg, cmd, |line| Some(line.to_string()))
+}
+
+/// Run a command with a spinner, formatting stderr lines through a formatter.
+///
+/// Like `with_streaming_command`, but each stderr line is passed through `stderr_formatter`.
+/// Returning `None` filters the line out; returning `Some(s)` prints `s` above the spinner.
+/// Stdout lines are passed through unchanged.
+pub fn with_streaming_command_formatted(
+    msg: &str,
+    mut cmd: std::process::Command,
+    stderr_formatter: impl Fn(&str) -> Option<String> + Send + 'static,
+) -> Result<()> {
     use std::io::{BufRead, BufReader};
     use std::process::Stdio;
 
@@ -60,9 +74,10 @@ pub fn with_streaming_command(msg: &str, mut cmd: std::process::Command) -> Resu
         if let Some(stdout) = stdout {
             for line in BufReader::new(stdout).lines() {
                 if let Ok(line) = line
-                    && !line.trim().is_empty() {
-                        pb_out.println(&line);
-                    }
+                    && !line.trim().is_empty()
+                {
+                    pb_out.println(&line);
+                }
             }
         }
     });
@@ -71,9 +86,11 @@ pub fn with_streaming_command(msg: &str, mut cmd: std::process::Command) -> Resu
         if let Some(stderr) = stderr {
             for line in BufReader::new(stderr).lines() {
                 if let Ok(line) = line
-                    && !line.trim().is_empty() {
-                        pb_err.println(&line);
-                    }
+                    && !line.trim().is_empty()
+                    && let Some(formatted) = stderr_formatter(&line)
+                        && !formatted.is_empty() {
+                            pb_err.println(&formatted);
+                        }
             }
         }
     });
