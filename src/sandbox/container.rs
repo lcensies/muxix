@@ -18,15 +18,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install Claude Code and make it accessible by all users
+# (container runs as host UID, not root)
+RUN curl -fsSL https://claude.ai/install.sh | bash && \
+    chmod a+x /root && \
+    chmod -R a+rX /root/.local /root/.claude
 
 # Copy workmux binary from build context
 COPY workmux /usr/local/bin/workmux
 RUN chmod +x /usr/local/bin/workmux
 
-# Add claude to PATH
-ENV PATH="/root/.claude/local/bin:${PATH}"
+# Add claude to PATH (installed to .local/bin by installer)
+ENV PATH="/root/.local/bin:${PATH}"
 "#;
 
 /// Sandbox-specific config paths on host.
@@ -98,7 +101,7 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
             "HOME=/tmp",
             // PATH for claude binary (include Claude Code install location)
             "--env",
-            "PATH=/root/.claude/local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
             image,
             "claude",
         ])
@@ -286,9 +289,7 @@ pub fn wrap_for_container(
 
     // PATH for agent binaries (include Claude Code install location)
     args.push("--env".to_string());
-    args.push(
-        "PATH=/root/.claude/local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
-    );
+    args.push("PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string());
 
     // Image
     args.push(image.to_string());

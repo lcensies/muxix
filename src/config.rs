@@ -261,6 +261,17 @@ pub enum WorktreeNaming {
     Basename,
 }
 
+/// Sandbox backend type
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SandboxBackend {
+    /// Docker/Podman containers (default)
+    #[default]
+    Container,
+    /// Lima VM backend
+    Lima,
+}
+
 /// Container runtime for sandbox
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -270,6 +281,17 @@ pub enum SandboxRuntime {
     Docker,
     /// Podman
     Podman,
+}
+
+/// Isolation level for Lima backend
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum IsolationLevel {
+    /// One VM for all projects (fastest)
+    User,
+    /// One VM per git repository (default, balanced)
+    #[default]
+    Project,
 }
 
 /// Which panes to sandbox
@@ -283,14 +305,18 @@ pub enum SandboxTarget {
     All,
 }
 
-/// Configuration for container sandboxing (Docker/Podman)
+/// Configuration for sandboxing (Container or Lima)
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SandboxConfig {
     /// Enable sandboxing. Default: false
     #[serde(default)]
     pub enabled: Option<bool>,
 
-    /// Container runtime. Default: docker
+    /// Sandbox backend. Default: container
+    #[serde(default)]
+    pub backend: Option<SandboxBackend>,
+
+    /// Container runtime (for container backend). Default: docker
     #[serde(default)]
     pub runtime: Option<SandboxRuntime>,
 
@@ -298,7 +324,7 @@ pub struct SandboxConfig {
     #[serde(default)]
     pub target: Option<SandboxTarget>,
 
-    /// Container image. Default: "workmux-sandbox"
+    /// Container image (for container backend). Default: "workmux-sandbox"
     #[serde(default)]
     pub image: Option<String>,
 
@@ -306,11 +332,23 @@ pub struct SandboxConfig {
     /// Default: ["GITHUB_TOKEN"]
     #[serde(default)]
     pub env_passthrough: Option<Vec<String>>,
+
+    /// Isolation level for Lima backend. Default: project
+    #[serde(default)]
+    pub isolation: Option<IsolationLevel>,
+
+    /// Projects directory for user isolation (required when isolation: user)
+    #[serde(default)]
+    pub projects_dir: Option<PathBuf>,
 }
 
 impl SandboxConfig {
     pub fn is_enabled(&self) -> bool {
         self.enabled.unwrap_or(false)
+    }
+
+    pub fn backend(&self) -> SandboxBackend {
+        self.backend.clone().unwrap_or_default()
     }
 
     pub fn runtime(&self) -> SandboxRuntime {
@@ -331,6 +369,10 @@ impl SandboxConfig {
             .as_ref()
             .map(|v| v.iter().map(|s| s.as_str()).collect())
             .unwrap_or_else(|| vec!["GITHUB_TOKEN"])
+    }
+
+    pub fn isolation(&self) -> IsolationLevel {
+        self.isolation.clone().unwrap_or_default()
     }
 }
 
@@ -747,6 +789,11 @@ impl Config {
         // Sandbox config: per-field override
         merged.sandbox = SandboxConfig {
             enabled: project.sandbox.enabled.or(self.sandbox.enabled),
+            backend: project
+                .sandbox
+                .backend
+                .clone()
+                .or(self.sandbox.backend.clone()),
             runtime: project
                 .sandbox
                 .runtime
@@ -763,6 +810,16 @@ impl Config {
                 .env_passthrough
                 .clone()
                 .or(self.sandbox.env_passthrough.clone()),
+            isolation: project
+                .sandbox
+                .isolation
+                .clone()
+                .or(self.sandbox.isolation.clone()),
+            projects_dir: project
+                .sandbox
+                .projects_dir
+                .clone()
+                .or(self.sandbox.projects_dir.clone()),
         };
 
         merged

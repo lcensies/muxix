@@ -1,6 +1,7 @@
-//! Container sandbox for running agents in isolated Docker/Podman containers.
+//! Sandbox backends for running agents in isolated environments.
 
 mod container;
+pub mod lima;
 
 pub use container::build_image;
 pub use container::run_auth;
