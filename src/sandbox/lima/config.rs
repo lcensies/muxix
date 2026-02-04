@@ -9,16 +9,17 @@ use super::mounts::Mount;
 pub fn generate_lima_config(_instance_name: &str, mounts: &[Mount]) -> Result<String> {
     let mut config = serde_yaml::Mapping::new();
 
-    // Use minimal Ubuntu image (aarch64 for Apple Silicon, x86_64 for Intel)
+    // Use minimal Debian 12 image (aarch64 for Apple Silicon, x86_64 for Intel)
+    // Debian genericcloud images are ~330MB vs Ubuntu's ~600MB
     let arch = std::env::consts::ARCH;
     let (image_url, image_arch) = if arch == "aarch64" || arch == "arm64" {
         (
-            "https://cloud-images.ubuntu.com/releases/25.10/release/ubuntu-25.10-server-cloudimg-arm64.img",
+            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2",
             "aarch64",
         )
     } else {
         (
-            "https://cloud-images.ubuntu.com/releases/25.10/release/ubuntu-25.10-server-cloudimg-amd64.img",
+            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2",
             "x86_64",
         )
     };
