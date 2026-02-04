@@ -110,6 +110,29 @@ pub fn setup_environment(
         );
     }
 
+    // Resolve pane configuration early -- needed for Lima pre-boot check
+    // and prompt validation, both of which must happen before window creation.
+    let panes = config.panes.as_deref().unwrap_or(&[]);
+    let resolved_panes = resolve_pane_configuration(panes, agent);
+
+    // Validate that prompt will be consumed if one was provided
+    if options.prompt_file_path.is_some() {
+        validate_prompt_consumption(&resolved_panes, agent, config, options)?;
+    }
+
+    // Pre-boot Lima VM if needed BEFORE creating the tmux window.
+    // This ensures the user sees VM boot progress in their terminal
+    // and the window only appears once the VM is ready.
+    let lima_vm_name = pre_boot_lima_vm(
+        mux,
+        config,
+        &resolved_panes,
+        effective_working_dir,
+        worktree_path,
+        options,
+        agent,
+    )?;
+
     // Find the last workmux-managed window to insert the new one after.
     // If after_window is provided (for duplicate windows), use that to group with base handle.
     // Otherwise, use prefix-based lookup to group workmux windows together.
@@ -134,15 +157,6 @@ pub fn setup_environment(
         "setup_environment:window created"
     );
 
-    // Setup panes
-    let panes = config.panes.as_deref().unwrap_or(&[]);
-    let resolved_panes = resolve_pane_configuration(panes, agent);
-
-    // Validate that prompt will be consumed if one was provided
-    if options.prompt_file_path.is_some() {
-        validate_prompt_consumption(&resolved_panes, agent, config, options)?;
-    }
-
     let pane_setup_result = mux
         .setup_panes(
             &initial_pane_id,
@@ -152,6 +166,7 @@ pub fn setup_environment(
                 run_commands: options.run_pane_commands,
                 prompt_file_path: options.prompt_file_path.as_deref(),
                 worktree_root: Some(worktree_path),
+                lima_vm_name: lima_vm_name.as_deref(),
             },
             config,
             agent,
@@ -180,6 +195,66 @@ pub fn setup_environment(
         base_branch: None,
         did_switch: false,
     })
+}
+
+/// Pre-boot a Lima VM if sandbox is enabled with the Lima backend and any
+/// pane requires sandboxing. Must be called BEFORE creating the tmux window
+/// so the user sees VM boot progress in their terminal.
+///
+/// Returns the VM name if booted, None otherwise.
+#[allow(clippy::too_many_arguments)]
+fn pre_boot_lima_vm(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    config: &config::Config,
+    panes: &[config::PaneConfig],
+    working_dir: &Path,
+    worktree_path: &Path,
+    options: &super::types::SetupOptions,
+    agent: Option<&str>,
+) -> Result<Option<String>> {
+    if !config.sandbox.is_enabled()
+        || !matches!(
+            config.sandbox.backend(),
+            crate::config::SandboxBackend::Lima
+        )
+    {
+        return Ok(None);
+    }
+
+    let effective_agent = agent.or(config.agent.as_deref());
+    let shell = mux.get_default_shell()?;
+
+    // Check if any pane will actually need Lima wrapping by resolving
+    // commands the same way setup_panes does (respects run_commands flag).
+    let any_pane_needs_lima = panes.iter().any(|pane_config| {
+        let resolved = crate::multiplexer::util::resolve_pane_command(
+            pane_config.command.as_deref(),
+            options.run_pane_commands,
+            options.prompt_file_path.as_deref(),
+            working_dir,
+            effective_agent,
+            &shell,
+        );
+        if resolved.is_none() {
+            return false;
+        }
+        let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
+            cmd == "<agent>"
+                || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
+        });
+        match config.sandbox.target() {
+            crate::config::SandboxTarget::All => true,
+            crate::config::SandboxTarget::Agent => is_agent_pane,
+        }
+    });
+
+    if !any_pane_needs_lima {
+        return Ok(None);
+    }
+
+    info!("pre-booting Lima VM before window creation");
+    let vm_name = crate::sandbox::ensure_lima_vm(config, worktree_path)?;
+    Ok(Some(vm_name))
 }
 
 pub fn resolve_pane_configuration(

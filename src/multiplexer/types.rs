@@ -68,6 +68,8 @@ pub struct PaneSetupOptions<'a> {
     pub prompt_file_path: Option<&'a std::path::Path>,
     /// Root of the worktree (for sandbox mounting). May differ from working_dir in monorepos.
     pub worktree_root: Option<&'a std::path::Path>,
+    /// Pre-booted Lima VM name (if sandbox backend is Lima and VM was booted before window creation)
+    pub lima_vm_name: Option<&'a str>,
 }
 
 /// Backend type for multiplexer selection

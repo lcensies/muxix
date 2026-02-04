@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
+use tracing::{debug, info};
 
 use crate::config::Config;
 
@@ -124,14 +125,15 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
     let isolation = config.sandbox.isolation();
     let vm_name = super::instance_name(worktree_path, isolation.clone(), config)?;
 
-    // Check VM state first to avoid unnecessary config generation
+    debug!(vm_name = %vm_name, "checking Lima VM state");
     let vm_state = check_vm_state(&vm_name)?;
 
     match vm_state {
         VmState::Running => {
-            // Already running, nothing to do
+            debug!(vm_name = %vm_name, "Lima VM already running");
         }
         VmState::Stopped => {
+            info!(vm_name = %vm_name, "starting stopped Lima VM");
             let msg = format!("Starting Lima VM {}", vm_name);
             let mut cmd = Command::new("limactl");
             cmd.args(["start", "--tty=false", "--progress", &vm_name]);
@@ -153,6 +155,7 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
             }
         }
         VmState::NotFound => {
+            info!(vm_name = %vm_name, "creating new Lima VM");
             // Only generate config and mounts when we need to create a new VM
             let mounts = super::generate_mounts(worktree_path, isolation, config)?;
             let lima_config = super::generate_lima_config(&vm_name, &mounts)?;
@@ -191,5 +194,6 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
         }
     }
 
+    info!(vm_name = %vm_name, "Lima VM ready");
     Ok(vm_name)
 }

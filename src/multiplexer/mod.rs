@@ -189,48 +189,6 @@ pub trait Multiplexer: Send + Sync {
         let effective_agent = task_agent.or(config.agent.as_deref());
         let shell = self.get_default_shell()?;
 
-        // Pre-boot Lima VM if needed (before creating any panes).
-        // This ensures VM creation/startup output is shown in the user's terminal
-        // rather than inside a tmux pane where it's confusing and can race.
-        let lima_vm_name = if config.sandbox.is_enabled()
-            && matches!(
-                config.sandbox.backend(),
-                crate::config::SandboxBackend::Lima
-            ) {
-            // Check if any pane will actually need Lima wrapping by resolving
-            // commands the same way the pane loop does (respects run_commands).
-            let any_pane_needs_lima = panes.iter().any(|pane_config| {
-                let resolved = util::resolve_pane_command(
-                    pane_config.command.as_deref(),
-                    options.run_commands,
-                    options.prompt_file_path,
-                    working_dir,
-                    effective_agent,
-                    &shell,
-                );
-                if resolved.is_none() {
-                    return false;
-                }
-                let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
-                    cmd == "<agent>"
-                        || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
-                });
-                match config.sandbox.target() {
-                    crate::config::SandboxTarget::All => true,
-                    crate::config::SandboxTarget::Agent => is_agent_pane,
-                }
-            });
-
-            if any_pane_needs_lima {
-                let wt_root = options.worktree_root.unwrap_or(working_dir);
-                Some(crate::sandbox::ensure_lima_vm(config, wt_root)?)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
         for (i, pane_config) in panes.iter().enumerate() {
             let is_first = i == 0;
 
@@ -314,7 +272,7 @@ pub trait Multiplexer: Send + Sync {
                                 )
                             }
                             crate::config::SandboxBackend::Lima => {
-                                let vm_name = lima_vm_name.as_deref().ok_or_else(|| {
+                                let vm_name = options.lima_vm_name.ok_or_else(|| {
                                     anyhow!(
                                         "Lima VM name missing despite sandbox wrap request. \
                                          This is a bug in workmux."
