@@ -234,12 +234,12 @@ workmux sandbox prune --force
 ```
 Found 2 workmux Lima VM(s):
 
-1. wm-bbeb2cbf (Running)
+1. wm-myproject-bbeb2cbf (Running)
    Size: 100.87 GB
    Age: 2 hours ago
    Last accessed: 5 minutes ago
 
-2. wm-d1370a2a (Stopped)
+2. wm-another-proj-d1370a2a (Stopped)
    Size: 100.87 GB
    Age: 1 day ago
    Last accessed: 1 day ago
@@ -260,7 +260,7 @@ When using the Lima backend, you can stop running VMs to free up system resource
 workmux sandbox stop
 
 # Stop a specific VM
-workmux sandbox stop wm-abc123
+workmux sandbox stop wm-myproject-abc12345
 
 # Stop all workmux VMs
 workmux sandbox stop --all
