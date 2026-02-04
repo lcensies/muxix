@@ -96,9 +96,9 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
             // Set HOME to /tmp where config is mounted
             "--env",
             "HOME=/tmp",
-            // PATH for claude binary
+            // PATH for claude binary (include Claude Code install location)
             "--env",
-            "PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "PATH=/root/.claude/local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
             image,
             "claude",
         ])
@@ -199,9 +199,7 @@ pub fn wrap_for_container(
         SandboxRuntime::Docker => "docker",
     };
 
-    let image = config
-        .image()
-        .context("Sandbox enabled but no image configured")?;
+    let image = config.resolved_image();
     let worktree_root_str = worktree_root.to_string_lossy();
     let pane_cwd_str = pane_cwd.to_string_lossy();
 
@@ -286,9 +284,11 @@ pub fn wrap_for_container(
         }
     }
 
-    // PATH for agent binaries
+    // PATH for agent binaries (include Claude Code install location)
     args.push("--env".to_string());
-    args.push("PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string());
+    args.push(
+        "PATH=/root/.claude/local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
+    );
 
     // Image
     args.push(image.to_string());
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn test_wrap_missing_image_returns_error() {
+    fn test_wrap_uses_default_image_when_not_configured() {
         let config = SandboxConfig {
             enabled: Some(true),
             image: None,
@@ -397,9 +397,10 @@ mod tests {
             &config,
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
-        );
+        )
+        .unwrap();
 
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no image"));
+        // Should use default image name
+        assert!(result.contains("workmux-sandbox"));
     }
 }

@@ -298,7 +298,7 @@ pub struct SandboxConfig {
     #[serde(default)]
     pub target: Option<SandboxTarget>,
 
-    /// Container image. Required when sandbox is enabled.
+    /// Container image. Default: "workmux-sandbox"
     #[serde(default)]
     pub image: Option<String>,
 
@@ -319,10 +319,6 @@ impl SandboxConfig {
 
     pub fn target(&self) -> SandboxTarget {
         self.target.clone().unwrap_or_default()
-    }
-
-    pub fn image(&self) -> Option<&str> {
-        self.image.as_deref()
     }
 
     /// Get the image name, falling back to default "workmux-sandbox".
@@ -1259,7 +1255,7 @@ mod tests {
 
         let merged = global.merge(project);
         assert!(merged.sandbox.is_enabled()); // from global
-        assert_eq!(merged.sandbox.image(), Some("project-image")); // from project
+        assert_eq!(merged.sandbox.resolved_image(), "project-image"); // from project
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
     }
 }
