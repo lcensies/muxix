@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -27,10 +27,12 @@ pub fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
         .collect()
 }
 
-/// Execute a command and stream its output in real-time.
+/// Execute a command and stream its output in real-time using byte-streaming.
+/// This preserves progress bars with carriage returns and handles invalid UTF-8.
 /// Returns an error if the command fails with a non-zero exit code.
 fn stream_command(mut command: Command) -> Result<()> {
     let mut child = command
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -39,27 +41,48 @@ fn stream_command(mut command: Command) -> Result<()> {
     let stdout = child.stdout.take().context("Failed to capture stdout")?;
     let stderr = child.stderr.take().context("Failed to capture stderr")?;
 
-    // Spawn threads to stream stdout and stderr
-    let stdout_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            println!("{}", line);
+    // Spawn thread to stream stdout
+    let stdout_handle = std::thread::spawn(move || -> std::io::Result<()> {
+        let mut reader = stdout;
+        let mut writer = std::io::stdout().lock();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&buf[..n])?;
+            writer.flush()?; // Ensures real-time output even when stdout is piped
         }
+        Ok(())
     });
 
-    let stderr_handle = std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines().map_while(Result::ok) {
-            eprintln!("{}", line);
+    // Spawn thread to stream stderr
+    let stderr_handle = std::thread::spawn(move || -> std::io::Result<()> {
+        let mut reader = stderr;
+        let mut writer = std::io::stderr().lock();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&buf[..n])?;
+            writer.flush()?; // Ensures real-time output even when stderr is piped
         }
+        Ok(())
     });
 
-    // Wait for output threads to complete
-    let _ = stdout_handle.join();
-    let _ = stderr_handle.join();
-
-    // Wait for the command to finish and check exit status
+    // Wait for the command to finish
     let status = child.wait().context("Failed to wait for command")?;
+
+    // Wait for output threads and propagate any errors
+    stdout_handle
+        .join()
+        .map_err(|_| anyhow::anyhow!("stdout thread panicked"))??;
+    stderr_handle
+        .join()
+        .map_err(|_| anyhow::anyhow!("stderr thread panicked"))??;
 
     if !status.success() {
         bail!("Command failed with exit code: {:?}", status.code());
