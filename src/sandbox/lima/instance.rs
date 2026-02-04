@@ -2,7 +2,10 @@
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::Command;
+
+use crate::config::Config;
 
 /// Lima instance information from `limactl list --json`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -32,11 +35,28 @@ pub fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
         .collect()
 }
 
+/// VM state detected from `limactl list`.
+pub(crate) enum VmState {
+    /// VM is already running, no boot needed
+    Running,
+    /// VM exists but is stopped, needs `limactl start <name>`
+    Stopped,
+    /// VM doesn't exist, needs `limactl start --name <name> <config>`
+    NotFound,
+}
+
+/// Check the current state of a Lima VM by name.
+pub(crate) fn check_vm_state(vm_name: &str) -> Result<VmState> {
+    let instances = LimaInstance::list()?;
+
+    match instances.iter().find(|i| i.name == vm_name) {
+        Some(info) if info.is_running() => Ok(VmState::Running),
+        Some(_) => Ok(VmState::Stopped),
+        None => Ok(VmState::NotFound),
+    }
+}
+
 /// Lima VM operations.
-///
-/// This is a thin wrapper around `limactl` commands. VM boot is not performed
-/// here -- it is deferred to the tmux pane via the command returned by
-/// `wrap_for_lima()`, so the user sees boot progress output directly.
 pub struct LimaInstance;
 
 impl LimaInstance {
@@ -83,4 +103,84 @@ impl LimaInstance {
 
         Ok(())
     }
+}
+
+/// Ensure a Lima VM is running for the given worktree.
+///
+/// Checks the VM state and boots it if necessary, showing a spinner with
+/// streaming limactl output in the user's terminal. Should be called from
+/// the main process BEFORE creating tmux panes.
+///
+/// Returns the VM name for use by `wrap_for_lima()`.
+pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String> {
+    if !LimaInstance::is_lima_available() {
+        bail!(
+            "Lima backend is enabled but limactl is not installed.\n\
+             Install Lima: https://lima-vm.io/docs/installation/\n\
+             Or disable sandbox: set 'sandbox.enabled: false' in config."
+        );
+    }
+
+    let isolation = config.sandbox.isolation();
+    let vm_name = super::instance_name(worktree_path, isolation.clone(), config)?;
+
+    // Check VM state first to avoid unnecessary config generation
+    let vm_state = check_vm_state(&vm_name)?;
+
+    match vm_state {
+        VmState::Running => {
+            // Already running, nothing to do
+        }
+        VmState::Stopped => {
+            let msg = format!("Starting Lima VM {}", vm_name);
+            let mut cmd = Command::new("limactl");
+            cmd.args(["start", "--tty=false", &vm_name]);
+
+            match crate::spinner::with_streaming_command(&msg, cmd) {
+                Ok(()) => {}
+                Err(_) => {
+                    // Race condition: another process may have started the VM.
+                    // Re-check state before failing.
+                    if matches!(check_vm_state(&vm_name)?, VmState::Running) {
+                        return Ok(vm_name);
+                    }
+                    bail!("Failed to start Lima VM '{}'", vm_name);
+                }
+            }
+        }
+        VmState::NotFound => {
+            // Only generate config and mounts when we need to create a new VM
+            let mounts = super::generate_mounts(worktree_path, isolation, config)?;
+            let lima_config = super::generate_lima_config(&vm_name, &mounts)?;
+
+            let config_path = std::env::temp_dir().join(format!("workmux-lima-{}.yaml", vm_name));
+            std::fs::write(&config_path, &lima_config).with_context(|| {
+                format!("Failed to write Lima config to {}", config_path.display())
+            })?;
+
+            let msg = format!("Creating Lima VM {}", vm_name);
+            let mut cmd = Command::new("limactl");
+            cmd.args([
+                "start",
+                "--name",
+                &vm_name,
+                "--tty=false",
+                &config_path.to_string_lossy(),
+            ]);
+
+            match crate::spinner::with_streaming_command(&msg, cmd) {
+                Ok(()) => {}
+                Err(_) => {
+                    // Race condition: another process may have created the VM.
+                    // Re-check state before failing.
+                    if matches!(check_vm_state(&vm_name)?, VmState::Running) {
+                        return Ok(vm_name);
+                    }
+                    bail!("Failed to create Lima VM '{}'", vm_name);
+                }
+            }
+        }
+    }
+
+    Ok(vm_name)
 }

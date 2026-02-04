@@ -29,3 +29,68 @@ where
     }
     result
 }
+
+/// Run a command with a spinner, streaming its output above the spinner line.
+///
+/// Shows a spinner with the given message while the command runs. Lines from
+/// the command's stdout and stderr are printed above the spinner in real time.
+/// On completion, the spinner shows success/failure.
+pub fn with_streaming_command(msg: &str, mut cmd: std::process::Command) -> Result<()> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let pb = create_spinner(msg);
+
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            pb.finish_with_message(format!("✘ {}", msg));
+            anyhow::anyhow!("Failed to spawn command: {}", e)
+        })?;
+
+    // Stream stdout and stderr in separate threads, printing above the spinner
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let pb_out = pb.clone();
+    let pb_err = pb.clone();
+
+    let stdout_thread = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            for line in BufReader::new(stdout).lines() {
+                if let Ok(line) = line
+                    && !line.trim().is_empty() {
+                        pb_out.println(&line);
+                    }
+            }
+        }
+    });
+
+    let stderr_thread = std::thread::spawn(move || {
+        if let Some(stderr) = stderr {
+            for line in BufReader::new(stderr).lines() {
+                if let Ok(line) = line
+                    && !line.trim().is_empty() {
+                        pb_err.println(&line);
+                    }
+            }
+        }
+    });
+
+    stdout_thread.join().ok();
+    stderr_thread.join().ok();
+
+    let status = child.wait().map_err(|e| {
+        pb.finish_with_message(format!("✘ {}", msg));
+        anyhow::anyhow!("Failed to wait for command: {}", e)
+    })?;
+
+    if status.success() {
+        pb.finish_with_message(format!("✔ {}", msg));
+        Ok(())
+    } else {
+        pb.finish_with_message(format!("✘ {}", msg));
+        anyhow::bail!("{} (exit code: {})", msg, status.code().unwrap_or(-1))
+    }
+}
