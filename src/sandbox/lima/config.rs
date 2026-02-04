@@ -89,6 +89,36 @@ pub fn generate_lima_config(_instance_name: &str, mounts: &[Mount]) -> Result<St
         .collect();
     config.insert("mounts".into(), mount_list.into());
 
+    // Provision scripts (run on first VM creation only)
+    let system_script = r#"#!/bin/bash
+set -eux
+apt-get update
+apt-get install -y --no-install-recommends curl ca-certificates git
+rm -rf /var/lib/apt/lists/*
+"#;
+
+    let user_script = r#"#!/bin/bash
+set -eux
+curl -fsSL https://claude.ai/install.sh | bash
+"#;
+
+    let mut system_provision = serde_yaml::Mapping::new();
+    system_provision.insert("mode".into(), "system".into());
+    system_provision.insert("script".into(), system_script.into());
+
+    let mut user_provision = serde_yaml::Mapping::new();
+    user_provision.insert("mode".into(), "user".into());
+    user_provision.insert("script".into(), user_script.into());
+
+    config.insert(
+        "provision".into(),
+        vec![
+            Value::Mapping(system_provision),
+            Value::Mapping(user_provision),
+        ]
+        .into(),
+    );
+
     Ok(serde_yaml::to_string(&config)?)
 }
 
@@ -115,5 +145,22 @@ mod tests {
         assert!(yaml.contains("mounts:"));
         assert!(yaml.contains("/Users/test/code"));
         assert!(yaml.contains("containerd:"));
+        assert!(yaml.contains("provision:"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_provision_scripts() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let yaml = generate_lima_config("test-vm", &mounts).unwrap();
+
+        // System provision installs dependencies
+        assert!(yaml.contains("mode: system"));
+        assert!(yaml.contains("apt-get install"));
+        assert!(yaml.contains("curl"));
+        assert!(yaml.contains("git"));
+
+        // User provision installs Claude Code
+        assert!(yaml.contains("mode: user"));
+        assert!(yaml.contains("claude.ai/install.sh"));
     }
 }
