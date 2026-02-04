@@ -1,6 +1,6 @@
 //! Lima VM instance management.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -12,6 +12,18 @@ pub struct LimaInstanceInfo {
     pub status: String,
     #[serde(default)]
     pub dir: Option<String>,
+}
+
+/// Parse NDJSON output from `limactl list --json` (one JSON object per line).
+fn parse_lima_instances(stdout: &[u8]) -> Result<Vec<LimaInstanceInfo>> {
+    std::str::from_utf8(stdout)?
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            serde_json::from_str::<LimaInstanceInfo>(l)
+                .with_context(|| format!("Failed to parse limactl row: {}", l))
+        })
+        .collect()
 }
 
 /// A Lima VM instance.
@@ -32,8 +44,25 @@ impl LimaInstance {
         Ok(Self { name, config_path })
     }
 
-    /// Start the Lima VM.
+    /// Start an existing Lima VM (without config file).
     pub fn start(&self) -> Result<()> {
+        let output = Command::new("limactl")
+            .arg("start")
+            .arg("--tty=false")
+            .arg(&self.name)
+            .output()
+            .context("Failed to execute limactl start")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Failed to start Lima VM '{}': {}", self.name, stderr);
+        }
+
+        Ok(())
+    }
+
+    /// Create and start a new Lima VM instance using the config file.
+    fn create_and_start(&self) -> Result<()> {
         let output = Command::new("limactl")
             .arg("start")
             .arg("--name")
@@ -45,7 +74,7 @@ impl LimaInstance {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Failed to start Lima VM '{}': {}", self.name, stderr);
+            bail!("Failed to create Lima VM '{}': {}", self.name, stderr);
         }
 
         Ok(())
@@ -79,8 +108,7 @@ impl LimaInstance {
             bail!("Failed to list Lima instances");
         }
 
-        let instances: Vec<LimaInstanceInfo> = serde_json::from_slice(&output.stdout)
-            .context("Failed to parse limactl list output")?;
+        let instances = parse_lima_instances(&output.stdout)?;
 
         Ok(instances
             .iter()
@@ -141,19 +169,18 @@ impl LimaInstance {
             .context("Failed to execute limactl list")?;
 
         if output.status.success() {
-            let instances: Vec<LimaInstanceInfo> = serde_json::from_slice(&output.stdout)
-                .context("Failed to parse limactl list output")?;
+            let instances = parse_lima_instances(&output.stdout)?;
 
             let exists = instances.iter().any(|i| i.name == name);
             if exists {
-                // Start existing instance
+                // Start existing instance (without config file)
                 instance.start()?;
                 return Ok(instance);
             }
         }
 
-        // Create and start new instance
-        instance.start()?;
+        // Create and start new instance (with config file)
+        instance.create_and_start()?;
         Ok(instance)
     }
 }
@@ -164,11 +191,8 @@ mod tests {
 
     #[test]
     fn test_instance_creation() {
-        let instance = LimaInstance::create(
-            "test-vm".to_string(),
-            "# Test config\nimages: []\n",
-        )
-        .unwrap();
+        let instance =
+            LimaInstance::create("test-vm".to_string(), "# Test config\nimages: []\n").unwrap();
 
         assert_eq!(instance.name(), "test-vm");
         assert!(instance.config_path.exists());

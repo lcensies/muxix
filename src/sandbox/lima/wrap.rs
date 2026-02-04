@@ -3,8 +3,13 @@
 use anyhow::Result;
 use std::path::Path;
 
-use super::{generate_lima_config, generate_mounts, instance_name, LimaInstance};
+use super::{LimaInstance, generate_lima_config, generate_mounts, instance_name};
 use crate::config::Config;
+
+/// Escape a string for use in a single-quoted shell string.
+fn shell_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
 
 /// Wrap a command to run inside a Lima VM.
 ///
@@ -44,14 +49,22 @@ pub fn wrap_for_lima(
         anyhow::bail!("Lima VM '{}' failed to start", vm_name);
     }
 
-    // Wrap the command to run inside the VM
-    // Format: limactl shell <vm-name> <command>
-    let wrapped = format!(
-        "limactl shell {} -- sh -c 'cd {} && {}'",
-        vm_name,
-        working_dir.display(),
-        command.replace('\'', "'\\''") // Escape single quotes in command
-    );
+    // Build limactl shell command with environment variables
+    let mut wrapped = format!("limactl shell {}", vm_name);
+
+    // Pass through environment variables
+    for env_var in config.sandbox.env_passthrough() {
+        if let Ok(val) = std::env::var(env_var) {
+            wrapped.push_str(&format!(" --setenv {}={}", env_var, shell_escape(&val)));
+        }
+    }
+
+    // Add the shell command with proper escaping
+    wrapped.push_str(&format!(
+        " -- sh -c 'cd {} && {}'",
+        shell_escape(&working_dir.to_string_lossy()),
+        shell_escape(command)
+    ));
 
     Ok(wrapped)
 }

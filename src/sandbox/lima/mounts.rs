@@ -1,6 +1,6 @@
 //! Mount path resolution for Lima backend.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -61,9 +61,7 @@ pub fn determine_project_root(worktree: &Path) -> Result<PathBuf> {
         bail!("Failed to determine project root: not a git repository");
     }
 
-    let path = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let path = String::from_utf8(output.stdout)?.trim().to_string();
 
     Ok(PathBuf::from(path))
 }
@@ -83,9 +81,7 @@ pub fn determine_git_common_dir(worktree: &Path) -> Result<PathBuf> {
         bail!("Failed to determine git common dir");
     }
 
-    let path = String::from_utf8(output.stdout)?
-        .trim()
-        .to_string();
+    let path = String::from_utf8(output.stdout)?.trim().to_string();
 
     Ok(PathBuf::from(path))
 }
@@ -137,21 +133,17 @@ pub fn generate_mounts(
 
     match isolation {
         IsolationLevel::User => {
-            let projects_dir = config
-                .sandbox
-                .projects_dir
-                .as_ref()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "User isolation requires 'sandbox.projects_dir' in config.\n\
+            let projects_dir = config.sandbox.projects_dir.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "User isolation requires 'sandbox.projects_dir' in config.\n\
                          All projects must be under a single root directory.\n\
                          \n\
                          Example config:\n\
                          sandbox:\n  \
                            isolation: user\n  \
                            projects_dir: /Users/me/code"
-                    )
-                })?;
+                )
+            })?;
 
             mounts.push(Mount::rw(projects_dir.clone()));
         }
@@ -186,11 +178,11 @@ pub fn generate_mounts(
         }
     }
 
-    // Always mount sandbox auth
+    // Always mount sandbox auth (mount to same path as host so Claude finds it)
     if let Some(auth_dir) = sandbox_auth_dir() {
         mounts.push(Mount {
-            host_path: auth_dir,
-            guest_path: PathBuf::from("/root/.claude"),
+            host_path: auth_dir.clone(),
+            guest_path: auth_dir, // Same path as host
             read_only: false,
         });
     }

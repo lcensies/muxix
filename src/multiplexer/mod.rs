@@ -258,22 +258,23 @@ pub trait Multiplexer: Send + Sync {
                                     working_dir,
                                 )
                             }
-                            crate::config::SandboxBackend::Lima => {
-                                crate::sandbox::wrap_for_lima(
-                                    &resolved.command,
-                                    config,
-                                    wt_root,
-                                    working_dir,
-                                )
-                            }
+                            crate::config::SandboxBackend::Lima => crate::sandbox::wrap_for_lima(
+                                &resolved.command,
+                                config,
+                                wt_root,
+                                working_dir,
+                            ),
                         };
 
+                        // Fail closed: if sandbox is enabled but wrapping fails, don't fall back to unsandboxed
                         match wrap_result {
                             Ok(wrapped) => wrapped,
                             Err(e) => {
-                                // Log error but don't fail - run unsandboxed
-                                tracing::warn!(error = %e, "Failed to wrap command for sandbox, running unsandboxed");
-                                resolved.command.clone()
+                                return Err(anyhow!(
+                                    "Sandbox is enabled but failed to wrap command: {}. \
+                                     To disable sandbox, set 'sandbox.enabled: false' in config.",
+                                    e
+                                ));
                             }
                         }
                     } else {
