@@ -11,12 +11,10 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::Config;
 use crate::multiplexer::{AgentStatus, Multiplexer};
-use crate::state::{AgentState, PaneKey, StateStore};
 
 // ── Protocol types ──────────────────────────────────────────────────────
 
@@ -257,7 +255,12 @@ fn handle_set_status(status: &str, ctx: &RpcContext) -> RpcResponse {
         Ok(()) => {
             // Persist agent state to StateStore so the dashboard sees this agent
             if let Some(agent_status) = agent_status {
-                persist_agent_state(ctx, Some(agent_status), None);
+                crate::state::persist_agent_update(
+                    &*ctx.mux,
+                    &ctx.pane_id,
+                    Some(agent_status),
+                    None,
+                );
             }
             RpcResponse::Ok
         }
@@ -277,86 +280,17 @@ fn handle_set_title(title: &str, ctx: &RpcContext) -> RpcResponse {
     {
         Ok(_) => {
             // Persist title to StateStore so the dashboard sees it
-            persist_agent_state(ctx, None, Some(title.to_string()));
+            crate::state::persist_agent_update(
+                &*ctx.mux,
+                &ctx.pane_id,
+                None,
+                Some(title.to_string()),
+            );
             RpcResponse::Ok
         }
         Err(e) => RpcResponse::Error {
             message: format!("Failed to set title: {}", e),
         },
-    }
-}
-
-/// Persist agent state to the StateStore so the dashboard can see agents
-/// updated via RPC. Mirrors the persistence logic from `set_window_status.rs`.
-///
-/// Merges with existing state so partial updates don't wipe other fields:
-/// - If `status` is Some, updates the agent's status. If None, preserves existing.
-/// - If `title_override` is Some, uses it. If None, preserves existing title.
-///
-/// Does not fail the RPC response if persistence fails (just logs a warning).
-fn persist_agent_state(
-    ctx: &RpcContext,
-    status: Option<AgentStatus>,
-    title_override: Option<String>,
-) {
-    let pane_key = PaneKey {
-        backend: ctx.mux.name().to_string(),
-        instance: ctx.mux.instance_id(),
-        pane_id: ctx.pane_id.clone(),
-    };
-
-    let live_info = match ctx.mux.get_live_pane_info(&ctx.pane_id) {
-        Ok(Some(info)) => info,
-        Ok(None) => {
-            warn!(pane_id = %ctx.pane_id, "pane not found, skipping state persist");
-            return;
-        }
-        Err(e) => {
-            warn!(error = %e, "failed to get live pane info, skipping state persist");
-            return;
-        }
-    };
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    // Load existing state to merge with
-    let existing = StateStore::new()
-        .ok()
-        .and_then(|store| store.get_agent(&pane_key).ok().flatten());
-
-    // Resolve status: explicit update wins, otherwise preserve existing
-    let final_status = status.or(existing.as_ref().and_then(|e| e.status));
-
-    // Preserve existing status_ts if status hasn't changed (avoids resetting timer)
-    let status_ts = if final_status == existing.as_ref().and_then(|e| e.status) {
-        existing.as_ref().and_then(|e| e.status_ts).unwrap_or(now)
-    } else {
-        now
-    };
-
-    // Resolve title: explicit override wins, then existing stored title, then live
-    let pane_title = title_override
-        .or(existing.and_then(|e| e.pane_title))
-        .or(live_info.title);
-
-    let state = AgentState {
-        pane_key,
-        workdir: live_info.working_dir,
-        status: final_status,
-        status_ts: Some(status_ts),
-        pane_title,
-        pane_pid: live_info.pid,
-        command: live_info.current_command,
-        updated_ts: now,
-    };
-
-    if let Ok(store) = StateStore::new()
-        && let Err(e) = store.upsert_agent(&state)
-    {
-        warn!(error = %e, "failed to persist agent state via RPC");
     }
 }
 

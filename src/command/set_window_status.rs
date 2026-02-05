@@ -1,12 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use anyhow::Result;
 use clap::ValueEnum;
 use tracing::warn;
 
 use crate::config::Config;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
-use crate::state::{AgentState, PaneKey, StateStore};
 
 #[derive(ValueEnum, Debug, Clone)]
 pub enum SetWindowStatusCommand {
@@ -55,54 +52,16 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                 SetWindowStatusCommand::Clear => unreachable!(),
             };
 
-            let pane_key = PaneKey {
-                backend: mux.name().to_string(),
-                instance: mux.instance_id(),
-                pane_id: pane_id.clone(),
-            };
-
             // Ensure the status format is applied so the icon actually shows up
             if config.status_format.unwrap_or(true) {
                 let _ = mux.ensure_status_format(&pane_id);
             }
 
-            // Get live pane info for PID and command
-            if let Ok(Some(live_info)) = mux.get_live_pane_info(&pane_id) {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-
-                // Preserve existing status_ts if status hasn't changed
-                // This prevents timer reset when agent repeatedly reports same status
-                let status_ts = StateStore::new()
-                    .ok()
-                    .and_then(|store| store.get_agent(&pane_key).ok().flatten())
-                    .filter(|existing| existing.status == Some(status))
-                    .and_then(|existing| existing.status_ts)
-                    .unwrap_or(now);
-
-                let state = AgentState {
-                    pane_key,
-                    workdir: live_info.working_dir,
-                    status: Some(status),
-                    status_ts: Some(status_ts),
-                    pane_title: live_info.title,
-                    pane_pid: live_info.pid,
-                    command: live_info.current_command,
-                    updated_ts: now,
-                };
-
-                // Write to state store (don't fail the command if this fails)
-                if let Ok(store) = StateStore::new()
-                    && let Err(e) = store.upsert_agent(&state)
-                {
-                    warn!(error = %e, "failed to persist agent state");
-                }
-            }
-
             // Update backend UI (status bar icon)
             mux.set_status(&pane_id, icon, auto_clear)?;
+
+            // Persist to state store so the dashboard sees this agent
+            crate::state::persist_agent_update(&*mux, &pane_id, Some(status), None);
         }
     }
 
