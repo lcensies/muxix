@@ -33,11 +33,15 @@ pub fn wrap_for_lima(
     _vm_name: &str,
     working_dir: &Path,
 ) -> Result<String> {
-    // The command may contain shell operators (pipes, &&, subshells), so wrap
-    // it in `sh -lc '...'` to ensure it's executed as a single shell payload
-    // inside the VM. The supervisor passes each arg to `limactl shell -- ...`.
+    // Strip the single leading space that rewrite_agent_command adds for
+    // shell history prevention -- it's not needed here since the sandbox
+    // supervisor is not an interactive shell.
+    let command = command.strip_prefix(' ').unwrap_or(command);
+    // Pass the command as a single quoted argument. The sandbox supervisor
+    // (sandbox_run.rs) handles wrapping it in `sh -lc '...'` for limactl,
+    // which is necessary because limactl/SSH flattens separate args.
     Ok(format!(
-        "workmux sandbox run '{}' -- sh -lc '{}'",
+        "workmux sandbox run '{}' -- '{}'",
         shell_escape(&working_dir.to_string_lossy()),
         shell_escape(command)
     ))
@@ -113,8 +117,24 @@ mod tests {
 
         assert!(result.starts_with("workmux sandbox run"));
         assert!(result.contains("/Users/test/project"));
-        assert!(result.contains("-- sh -lc"));
-        assert!(result.contains("claude"));
+        // Command is passed as a single quoted arg (no sh -lc at this level)
+        assert!(result.contains("-- 'claude'"));
+    }
+
+    #[test]
+    fn test_wrap_strips_leading_space() {
+        let config = Config::default();
+        // rewrite_agent_command adds a leading space for history prevention
+        let result = wrap_for_lima(
+            " claude -- \"$(cat PROMPT.md)\"",
+            &config,
+            "wm-abc12345",
+            Path::new("/tmp/wt"),
+        )
+        .unwrap();
+
+        // Leading space should be stripped
+        assert!(result.contains("-- 'claude -- \"$(cat PROMPT.md)\"'"));
     }
 
     #[test]
@@ -144,8 +164,8 @@ mod tests {
         )
         .unwrap();
 
-        // The complex command should be wrapped in sh -lc '...'
-        assert!(result.contains("sh -lc"));
+        // Command passed as single quoted arg
+        assert!(!result.contains("sh -lc"));
         assert!(result.contains("claude"));
         assert!(result.contains("dangerously-skip-permissions"));
     }
