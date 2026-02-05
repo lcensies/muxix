@@ -76,6 +76,8 @@ pub fn run(worktree: PathBuf, command: Vec<String>) -> Result<i32> {
     // $(cat ...) would become literal). Prepending `eval` adds one extra
     // level of shell interpretation that undoes Lima's protective quoting.
     let mut env_exports = vec![
+        // Ensure ~/.local/bin is on PATH (Claude Code installs there)
+        r#"PATH="$HOME/.local/bin:$PATH""#.to_string(),
         "WM_SANDBOX_GUEST=1".to_string(),
         "WM_RPC_HOST=host.lima.internal".to_string(),
         format!("WM_RPC_PORT={}", rpc_port),

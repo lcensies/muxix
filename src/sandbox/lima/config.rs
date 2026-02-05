@@ -100,6 +100,8 @@ rm -rf /var/lib/apt/lists/*
     let user_script = r#"#!/bin/bash
 set -eux
 curl -fsSL https://claude.ai/install.sh | bash
+# Ensure ~/.local/bin is on PATH for non-interactive shells
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
 "#;
 
     let mut system_provision = serde_yaml::Mapping::new();
