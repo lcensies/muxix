@@ -94,6 +94,15 @@ fn sandbox_auth_dir() -> Option<PathBuf> {
     home::home_dir().map(|h| h.join(".claude"))
 }
 
+/// Get the Lima guest home directory.
+///
+/// Lima creates a user named `<host-username>.linux` with home at
+/// `/home/<host-username>.linux/`.
+fn lima_guest_home() -> Option<PathBuf> {
+    let username = std::env::var("USER").ok()?;
+    Some(PathBuf::from(format!("/home/{}.linux", username)))
+}
+
 /// Calculate the standard worktrees directory for a project.
 fn calc_worktrees_dir(project_root: &Path) -> Result<PathBuf> {
     let project_name = project_root
@@ -181,11 +190,14 @@ pub fn generate_mounts(
         }
     }
 
-    // Always mount sandbox auth (mount to same path as host so Claude finds it)
+    // Mount host ~/.claude/ to guest $HOME/.claude/ so Claude finds credentials
     if let Some(auth_dir) = sandbox_auth_dir() {
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".claude"))
+            .unwrap_or_else(|| auth_dir.clone());
         mounts.push(Mount {
-            host_path: auth_dir.clone(),
-            guest_path: auth_dir, // Same path as host
+            host_path: auth_dir,
+            guest_path,
             read_only: false,
         });
     }
