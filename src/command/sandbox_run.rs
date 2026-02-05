@@ -56,32 +56,48 @@ pub fn run(worktree: PathBuf, command: Vec<String>) -> Result<i32> {
     let _rpc_handle = rpc_server.spawn(ctx);
 
     // 5. Build limactl shell command
+    //
+    // Important: `limactl shell` uses cobra with non-interspersed args, so
+    // all flags (--workdir) must come BEFORE the instance name. Anything
+    // after the instance name is treated as the remote command.
+    //
+    // Also, `limactl shell` does NOT support `--setenv`. Environment
+    // variables are passed by embedding `export` statements in the command.
     let mut lima_cmd = Command::new("limactl");
-    lima_cmd.arg("shell").arg(&vm_name);
+    lima_cmd
+        .arg("shell")
+        .args(["--workdir", &worktree.to_string_lossy()])
+        .arg(&vm_name);
 
-    // Pass through env vars from config
+    // Build env var exports to embed in the command.
+    // limactl shell wraps commands in `$SHELL --login -c '<escaped>'` where
+    // each arg is individually shell-quoted, then the joined string is quoted
+    // AGAIN for -c. This double-quoting prevents shell expansion (e.g.,
+    // $(cat ...) would become literal). Prepending `eval` adds one extra
+    // level of shell interpretation that undoes Lima's protective quoting.
+    let mut env_exports = vec![
+        "WM_SANDBOX_GUEST=1".to_string(),
+        "WM_RPC_HOST=host.lima.internal".to_string(),
+        format!("WM_RPC_PORT={}", rpc_port),
+        format!("WM_RPC_TOKEN={}", rpc_token),
+    ];
     for env_var in config.sandbox.env_passthrough() {
         if let Ok(val) = std::env::var(env_var) {
-            lima_cmd.args(["--setenv", &format!("{}={}", env_var, val)]);
+            env_exports.push(format!("{}={}", env_var, val));
         }
     }
 
-    // Set sandbox-specific env vars
-    lima_cmd.args(["--setenv", "WM_SANDBOX_GUEST=1"]);
-    lima_cmd.args(["--setenv", "WM_RPC_HOST=host.lima.internal"]);
-    lima_cmd.args(["--setenv", &format!("WM_RPC_PORT={}", rpc_port)]);
-    lima_cmd.args(["--setenv", &format!("WM_RPC_TOKEN={}", rpc_token)]);
+    let exports: String = env_exports
+        .iter()
+        .map(|e| format!("export {e}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let user_command = command.join(" ");
+    let full_command = format!("{exports}; {user_command}");
 
-    // Set working directory
-    lima_cmd.args(["--workdir", &worktree.to_string_lossy()]);
-
-    // Add the command separator and actual command.
-    // Wrap in `sh -lc '...'` as a single argument so the command survives
-    // limactl's SSH transport, which flattens separate args with spaces.
-    // Using -l for a login shell ensures the VM user's PATH is set up.
-    let shell_command = build_shell_command(&command);
     lima_cmd.arg("--");
-    lima_cmd.arg(&shell_command);
+    lima_cmd.arg("eval");
+    lima_cmd.arg(&full_command);
 
     debug!(cmd = ?lima_cmd, "spawning limactl shell");
 
@@ -94,67 +110,4 @@ pub fn run(worktree: PathBuf, command: Vec<String>) -> Result<i32> {
     info!(exit_code, "agent command exited");
 
     Ok(exit_code)
-}
-
-/// Build a shell command string from the command arguments.
-///
-/// When a single argument is provided (the common case from `wrap_for_lima`),
-/// it's treated as a raw shell command string and used directly as the
-/// `sh -lc` payload. When multiple arguments are provided, each is
-/// individually single-quoted to preserve argument boundaries.
-///
-/// Note: this command is internal (`workmux sandbox run` is hidden) and only
-/// called by `wrap_for_lima`, which always passes a single pre-composed
-/// command string. The multi-arg path is a defensive fallback.
-fn build_shell_command(command: &[String]) -> String {
-    let payload = if command.len() == 1 {
-        command[0].clone()
-    } else {
-        command
-            .iter()
-            .map(|arg| format!("'{}'", arg.replace('\'', "'\\''")))
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
-    let escaped = payload.replace('\'', "'\\''");
-    format!("sh -lc '{}'", escaped)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_shell_command_single_arg() {
-        let cmd = vec!["claude --dangerously-skip-permissions".to_string()];
-        let result = build_shell_command(&cmd);
-        assert_eq!(result, "sh -lc 'claude --dangerously-skip-permissions'");
-    }
-
-    #[test]
-    fn test_build_shell_command_with_subshell() {
-        let cmd = vec!["claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\"".to_string()];
-        let result = build_shell_command(&cmd);
-        assert_eq!(
-            result,
-            "sh -lc 'claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\"'"
-        );
-    }
-
-    #[test]
-    fn test_build_shell_command_with_single_quotes() {
-        let cmd = vec!["echo 'hello world'".to_string()];
-        let result = build_shell_command(&cmd);
-        assert_eq!(result, "sh -lc 'echo '\\''hello world'\\'''");
-    }
-
-    #[test]
-    fn test_build_shell_command_multiple_args() {
-        let cmd = vec!["sh".to_string(), "-c".to_string(), "echo hello".to_string()];
-        let result = build_shell_command(&cmd);
-        // Each arg is individually quoted in the payload, then the whole
-        // payload is wrapped in sh -lc '...'
-        assert!(result.starts_with("sh -lc '"));
-        assert!(result.ends_with('\''));
-    }
 }
