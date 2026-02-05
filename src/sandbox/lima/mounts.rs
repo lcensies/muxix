@@ -158,22 +158,18 @@ pub(crate) fn lima_state_dir_path(vm_name: &str) -> Result<PathBuf> {
     Ok(get_state_dir()?.join("workmux/lima").join(vm_name))
 }
 
-/// Seed ~/.claude.json from host into the VM's state directory.
-/// Only copies when the destination doesn't exist (if_missing policy).
-/// Each VM evolves its own copy independently after seeding.
+/// Seed ~/.claude.json into the VM's state directory.
+/// Writes a minimal config with hasCompletedOnboarding so Claude Code
+/// skips the onboarding flow. Only writes when the destination doesn't
+/// exist (if_missing policy). Each VM evolves its own copy independently.
 pub(crate) fn seed_claude_json(vm_name: &str) -> Result<()> {
-    let host_file = match home::home_dir() {
-        Some(h) => h.join(".claude.json"),
-        None => return Ok(()),
-    };
-    if !host_file.exists() {
-        return Ok(());
-    }
-
     let state_dir = lima_state_dir(vm_name)?;
     let dest = state_dir.join(".claude.json");
     if !dest.exists() {
-        std::fs::copy(&host_file, &dest)?;
+        std::fs::write(
+            &dest,
+            r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#,
+        )?;
     }
     Ok(())
 }
@@ -282,22 +278,23 @@ mod tests {
     }
 
     #[test]
-    fn test_seed_claude_json_copies_when_missing() {
+    fn test_seed_claude_json_writes_onboarding_config() {
         let tmp = tempfile::tempdir().unwrap();
-        let host_file = tmp.path().join(".claude.json");
-        std::fs::write(&host_file, r#"{"tips_shown": 3}"#).unwrap();
-
         let state_dir = tmp.path().join("state");
         std::fs::create_dir_all(&state_dir).unwrap();
         let dest = state_dir.join(".claude.json");
 
-        // Simulate: host file exists, dest doesn't
         assert!(!dest.exists());
-        std::fs::copy(&host_file, &dest).unwrap();
+        std::fs::write(
+            &dest,
+            r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#,
+        )
+        .unwrap();
         assert!(dest.exists());
 
-        let contents = std::fs::read_to_string(&dest).unwrap();
-        assert_eq!(contents, r#"{"tips_shown": 3}"#);
+        let contents: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&dest).unwrap()).unwrap();
+        assert_eq!(contents["hasCompletedOnboarding"], true);
     }
 
     #[test]
@@ -307,40 +304,20 @@ mod tests {
         std::fs::create_dir_all(&state_dir).unwrap();
 
         let dest = state_dir.join(".claude.json");
-        std::fs::write(&dest, r#"{"tips_shown": 10}"#).unwrap();
-
-        let host_file = tmp.path().join(".claude.json");
-        std::fs::write(&host_file, r#"{"tips_shown": 3}"#).unwrap();
+        std::fs::write(&dest, r#"{"hasCompletedOnboarding":true,"tips_shown":10}"#).unwrap();
 
         // if_missing policy: don't overwrite
         if !dest.exists() {
-            std::fs::copy(&host_file, &dest).unwrap();
+            std::fs::write(
+                &dest,
+                r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#,
+            )
+            .unwrap();
         }
 
-        let contents = std::fs::read_to_string(&dest).unwrap();
-        assert_eq!(contents, r#"{"tips_shown": 10}"#);
-    }
-
-    #[test]
-    fn test_seed_claude_json_noop_when_no_host_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let host_file = tmp.path().join(".claude.json");
-
-        // Host file doesn't exist -- should be a no-op
-        assert!(!host_file.exists());
-
-        let state_dir = tmp.path().join("state");
-        std::fs::create_dir_all(&state_dir).unwrap();
-        let dest = state_dir.join(".claude.json");
-
-        // Mimicking seed_claude_json logic: no host file = early return
-        if host_file.exists() {
-            if !dest.exists() {
-                std::fs::copy(&host_file, &dest).unwrap();
-            }
-        }
-
-        assert!(!dest.exists());
+        let contents: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&dest).unwrap()).unwrap();
+        assert_eq!(contents["tips_shown"], 10);
     }
 
     #[test]
