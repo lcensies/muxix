@@ -131,9 +131,15 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
     match vm_state {
         VmState::Running => {
             debug!(vm_name = %vm_name, "Lima VM already running");
+            if config.sandbox.provision_script().is_some() {
+                info!(vm_name = %vm_name, "custom provision script only runs on first VM creation; recreate VM to apply changes");
+            }
         }
         VmState::Stopped => {
             info!(vm_name = %vm_name, "starting stopped Lima VM");
+            if config.sandbox.provision_script().is_some() {
+                info!(vm_name = %vm_name, "custom provision script only runs on first VM creation; recreate VM to apply changes");
+            }
             let msg = format!("Starting Lima VM {}", vm_name);
             let mut cmd = Command::new("limactl");
             cmd.args(["start", "--tty=false", "--progress", &vm_name]);

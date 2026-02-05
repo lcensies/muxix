@@ -227,6 +227,8 @@ sandbox:
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
+  provision: |
+    sudo apt-get install -y ripgrep fd-find jq
 ```
 
 | Option | Default | Description |
@@ -237,7 +239,34 @@ sandbox:
 | `cpus` | `4` | Number of CPUs for Lima VMs |
 | `memory` | `4GiB` | Memory for Lima VMs |
 | `disk` | `100GiB` | Disk size for Lima VMs |
+| `provision` | - | Custom user-mode shell script run once at VM creation after built-in steps |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM |
+
+### Custom provisioning
+
+The `provision` field accepts a shell script that runs as a third provisioning step during VM creation, after the built-in steps that install core dependencies (git, curl, Claude CLI, workmux). Use it to customize the VM environment for your project.
+
+The script runs in `user` mode. Use `sudo` for system-level commands.
+
+```yaml
+sandbox:
+  backend: lima
+  provision: |
+    # Install extra CLI tools
+    sudo apt-get install -y ripgrep fd-find jq
+
+    # Install Node.js via nvm
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
+    . "$NVM_DIR/nvm.sh"
+    nvm install 22
+```
+
+**Important:**
+
+- Provisioning only runs when the VM is first created. Changing the script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
+- With `isolation: user` (shared VM), only the first project to create the VM gets its provision script run. Use `isolation: project` (default) if different projects need different provisioning.
+- The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
 
 ### RPC protocol
 

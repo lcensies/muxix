@@ -352,6 +352,12 @@ pub struct SandboxConfig {
     /// Disk size for Lima VMs (e.g. "100GiB"). Default: "100GiB" (Lima default)
     #[serde(default)]
     pub disk: Option<String>,
+
+    /// Custom user provision script run once during Lima VM creation,
+    /// after built-in system and user provisioning steps.
+    /// Runs as user (not root). Use `sudo` for system-level commands.
+    #[serde(default)]
+    pub provision: Option<String>,
 }
 
 impl SandboxConfig {
@@ -397,6 +403,10 @@ impl SandboxConfig {
 
     pub fn disk(&self) -> &str {
         self.disk.as_deref().unwrap_or("100GiB")
+    }
+
+    pub fn provision_script(&self) -> Option<&str> {
+        self.provision.as_deref().filter(|s| !s.trim().is_empty())
     }
 }
 
@@ -851,6 +861,11 @@ impl Config {
                 .clone()
                 .or(self.sandbox.memory.clone()),
             disk: project.sandbox.disk.clone().or(self.sandbox.disk.clone()),
+            provision: project
+                .sandbox
+                .provision
+                .clone()
+                .or(self.sandbox.provision.clone()),
         };
 
         merged
@@ -1073,6 +1088,18 @@ impl Config {
 #   commit: "Commit staged changes with a descriptive message"
 #   merge: "!workmux merge"
 #   preview_size: 60
+
+#-------------------------------------------------------------------------------
+# Sandbox
+#-------------------------------------------------------------------------------
+
+# sandbox:
+#   enabled: false
+#   backend: lima
+#   # Custom provision script (runs once on VM creation, as user).
+#   # Use sudo for system commands.
+#   # provision: |
+#   #   sudo apt-get install -y ripgrep fd-find jq
 "#;
 
         fs::write(&config_path, example_config)?;
@@ -1345,5 +1372,65 @@ mod tests {
         assert!(merged.sandbox.is_enabled()); // from global
         assert_eq!(merged.sandbox.resolved_image(), "project-image"); // from project
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
+    }
+
+    #[test]
+    fn sandbox_provision_merge_override() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                provision: Some("echo global".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                provision: Some("echo project".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.provision_script(), Some("echo project"));
+    }
+
+    #[test]
+    fn sandbox_provision_merge_fallback() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                provision: Some("echo global".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.provision_script(), Some("echo global"));
+    }
+
+    #[test]
+    fn sandbox_provision_empty_disables_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                provision: Some("echo global".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                provision: Some("".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Empty string wins over global (project explicitly set it)
+        assert_eq!(merged.sandbox.provision, Some("".to_string()));
+        // But provision_script() filters it out
+        assert_eq!(merged.sandbox.provision_script(), None);
     }
 }

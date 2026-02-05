@@ -100,7 +100,6 @@ pub fn generate_lima_config(
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends curl ca-certificates git
-rm -rf /var/lib/apt/lists/*
 "#;
 
     let user_script = r#"#!/bin/bash
@@ -127,14 +126,19 @@ chmod +x ~/.local/bin/afplay
     user_provision.insert("mode".into(), "user".into());
     user_provision.insert("script".into(), user_script.into());
 
-    config.insert(
-        "provision".into(),
-        vec![
-            Value::Mapping(system_provision),
-            Value::Mapping(user_provision),
-        ]
-        .into(),
-    );
+    let mut provisions = vec![
+        Value::Mapping(system_provision),
+        Value::Mapping(user_provision),
+    ];
+
+    if let Some(script) = sandbox_config.provision_script() {
+        let mut custom_provision = serde_yaml::Mapping::new();
+        custom_provision.insert("mode".into(), "user".into());
+        custom_provision.insert("script".into(), script.into());
+        provisions.push(Value::Mapping(custom_provision));
+    }
+
+    config.insert("provision".into(), provisions.into());
 
     Ok(serde_yaml::to_string(&config)?)
 }
@@ -185,5 +189,40 @@ mod tests {
         assert!(yaml.contains("mode: user"));
         assert!(yaml.contains("claude.ai/install.sh"));
         assert!(yaml.contains("workmux/main/scripts/install.sh"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_default_provision_count() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let provisions = parsed["provision"].as_sequence().unwrap();
+        assert_eq!(provisions.len(), 2, "default should have 2 provision steps");
+    }
+
+    #[test]
+    fn test_generate_lima_config_custom_provision() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig {
+            provision: Some("sudo apt-get install -y ripgrep\necho done".to_string()),
+            ..Default::default()
+        };
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let provisions = parsed["provision"].as_sequence().unwrap();
+        assert_eq!(
+            provisions.len(),
+            3,
+            "should have 3 provision steps with custom script"
+        );
+
+        let custom = &provisions[2];
+        assert_eq!(custom["mode"].as_str().unwrap(), "user");
+        let script = custom["script"].as_str().unwrap();
+        assert!(script.contains("sudo apt-get install -y ripgrep"));
+        assert!(script.contains("echo done"));
     }
 }
