@@ -293,16 +293,14 @@ fn handle_spawn_agent(
 
 /// RPC client for guest-side use. Connects to the host supervisor.
 ///
-/// Used by the guest workmux binary to send requests to the host supervisor.
-/// Guest-side command integration (intercepting `workmux status`, etc.) will
-/// use this client in a follow-up.
-#[allow(dead_code)]
+/// Used by the guest workmux binary to send requests to the host supervisor
+/// when `WM_SANDBOX_GUEST=1` is set. Commands like `set-window-status` route
+/// through RPC instead of calling tmux directly.
 pub struct RpcClient {
     reader: BufReader<TcpStream>,
     writer: TcpStream,
 }
 
-#[allow(dead_code)]
 impl RpcClient {
     /// Connect using WM_RPC_HOST, WM_RPC_PORT, and WM_RPC_TOKEN env vars.
     pub fn from_env() -> Result<Self> {

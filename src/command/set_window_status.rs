@@ -21,6 +21,11 @@ pub enum SetWindowStatusCommand {
 }
 
 pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
+    // Inside a sandbox guest, route through RPC to the host supervisor
+    if crate::sandbox::guest::is_sandbox_guest() {
+        return run_via_rpc(cmd);
+    }
+
     let config = Config::load(None)?;
     let mux = create_backend(detect_backend());
 
@@ -102,4 +107,29 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Send a status update via RPC when running inside a sandbox guest.
+fn run_via_rpc(cmd: SetWindowStatusCommand) -> Result<()> {
+    use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
+
+    let status = match cmd {
+        SetWindowStatusCommand::Working => "working",
+        SetWindowStatusCommand::Waiting => "waiting",
+        SetWindowStatusCommand::Done => "done",
+        SetWindowStatusCommand::Clear => "clear",
+    };
+
+    let mut client = RpcClient::from_env()?;
+    let response = client.call(&RpcRequest::SetStatus {
+        status: status.to_string(),
+    })?;
+
+    match response {
+        RpcResponse::Ok => Ok(()),
+        RpcResponse::Error { message } => {
+            warn!(error = %message, "RPC SetStatus failed");
+            Ok(()) // Fail silently like the host path does
+        }
+    }
 }

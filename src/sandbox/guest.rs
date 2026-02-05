@@ -2,12 +2,8 @@
 //!
 //! When `WM_SANDBOX_GUEST=1` is set, the workmux binary is running inside
 //! a Lima VM and should use RPC instead of direct tmux/host operations.
-//!
-//! These helpers will be used by guest-side command integration in a follow-up
-//! (intercepting `workmux status`, `workmux add`, etc. to use RPC).
 
 /// Check if running inside a sandbox guest VM.
-#[allow(dead_code)]
 pub fn is_sandbox_guest() -> bool {
     std::env::var_os("WM_SANDBOX_GUEST").is_some()
 }
