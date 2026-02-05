@@ -4,9 +4,14 @@ use anyhow::Result;
 use serde_yaml::Value;
 
 use super::mounts::Mount;
+use crate::config::SandboxConfig;
 
 /// Generate Lima configuration YAML.
-pub fn generate_lima_config(_instance_name: &str, mounts: &[Mount]) -> Result<String> {
+pub fn generate_lima_config(
+    _instance_name: &str,
+    mounts: &[Mount],
+    sandbox_config: &SandboxConfig,
+) -> Result<String> {
     let mut config = serde_yaml::Mapping::new();
 
     // Use minimal Debian 12 image (aarch64 for Apple Silicon, x86_64 for Intel)
@@ -57,8 +62,9 @@ pub fn generate_lima_config(_instance_name: &str, mounts: &[Mount]) -> Result<St
     }
 
     // Resource allocation
-    config.insert("cpus".into(), Value::Number(2.into()));
-    config.insert("memory".into(), "2GiB".into());
+    config.insert("cpus".into(), Value::Number(sandbox_config.cpus().into()));
+    config.insert("memory".into(), sandbox_config.memory().into());
+    config.insert("disk".into(), sandbox_config.disk().into());
 
     // CRITICAL: Disable containerd (saves 30-40 seconds boot time)
     let mut containerd = serde_yaml::Mapping::new();
@@ -141,7 +147,8 @@ mod tests {
             },
         ];
 
-        let yaml = generate_lima_config("test-vm", &mounts).unwrap();
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
 
         // Basic sanity checks
         assert!(yaml.contains("images:"));
@@ -149,12 +156,16 @@ mod tests {
         assert!(yaml.contains("/Users/test/code"));
         assert!(yaml.contains("containerd:"));
         assert!(yaml.contains("provision:"));
+        assert!(yaml.contains("cpus: 4"));
+        assert!(yaml.contains("memory: 4GiB"));
+        assert!(yaml.contains("disk: 100GiB"));
     }
 
     #[test]
     fn test_generate_lima_config_provision_scripts() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
-        let yaml = generate_lima_config("test-vm", &mounts).unwrap();
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
 
         // System provision installs dependencies
         assert!(yaml.contains("mode: system"));

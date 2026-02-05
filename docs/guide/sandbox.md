@@ -222,6 +222,8 @@ sandbox:
   enabled: true
   backend: lima
   isolation: project  # default: one VM per git repository
+  cpus: 8
+  memory: 8GiB
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
@@ -232,6 +234,9 @@ sandbox:
 | `backend` | `container` | Set to `lima` for VM sandboxing |
 | `isolation` | `project` | `project` (one VM per repo) or `user` (single global VM) |
 | `projects_dir` | - | Required for `user` isolation: parent directory of all projects |
+| `cpus` | `4` | Number of CPUs for Lima VMs |
+| `memory` | `4GiB` | Memory for Lima VMs |
+| `disk` | `100GiB` | Disk size for Lima VMs |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM |
 
 ### RPC protocol

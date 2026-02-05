@@ -340,6 +340,18 @@ pub struct SandboxConfig {
     /// Projects directory for user isolation (required when isolation: user)
     #[serde(default)]
     pub projects_dir: Option<PathBuf>,
+
+    /// Number of CPUs for Lima VMs. Default: 4 (Lima default)
+    #[serde(default)]
+    pub cpus: Option<u32>,
+
+    /// Memory for Lima VMs (e.g. "4GiB", "8GiB"). Default: "4GiB" (Lima default)
+    #[serde(default)]
+    pub memory: Option<String>,
+
+    /// Disk size for Lima VMs (e.g. "100GiB"). Default: "100GiB" (Lima default)
+    #[serde(default)]
+    pub disk: Option<String>,
 }
 
 impl SandboxConfig {
@@ -373,6 +385,18 @@ impl SandboxConfig {
 
     pub fn isolation(&self) -> IsolationLevel {
         self.isolation.clone().unwrap_or_default()
+    }
+
+    pub fn cpus(&self) -> u32 {
+        self.cpus.unwrap_or(4)
+    }
+
+    pub fn memory(&self) -> &str {
+        self.memory.as_deref().unwrap_or("4GiB")
+    }
+
+    pub fn disk(&self) -> &str {
+        self.disk.as_deref().unwrap_or("100GiB")
     }
 }
 
@@ -820,6 +844,13 @@ impl Config {
                 .projects_dir
                 .clone()
                 .or(self.sandbox.projects_dir.clone()),
+            cpus: project.sandbox.cpus.or(self.sandbox.cpus),
+            memory: project
+                .sandbox
+                .memory
+                .clone()
+                .or(self.sandbox.memory.clone()),
+            disk: project.sandbox.disk.clone().or(self.sandbox.disk.clone()),
         };
 
         merged

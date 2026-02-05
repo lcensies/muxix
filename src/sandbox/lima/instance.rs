@@ -173,7 +173,7 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
                 }
             }
 
-            let lima_config = super::generate_lima_config(&vm_name, &mounts)?;
+            let lima_config = super::generate_lima_config(&vm_name, &mounts, &config.sandbox)?;
 
             let config_path = std::env::temp_dir().join(format!("workmux-lima-{}.yaml", vm_name));
             std::fs::write(&config_path, &lima_config).with_context(|| {
