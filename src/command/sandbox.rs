@@ -218,11 +218,17 @@ fn cross_compile(target: &str, release: bool) -> Result<PathBuf> {
 }
 
 fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
-    // Ensure target directory exists.
-    // limactl shell defaults to $HOME as working directory, so use relative paths
-    // to avoid shell variable expansion issues with $HOME in Command args.
+    // Use bash -c with $HOME for absolute paths because limactl shell sets
+    // the working directory to the host cwd (if mounted), not $HOME.
     let mkdir = Command::new("limactl")
-        .args(["shell", vm_name, "--", "mkdir", "-p", ".local/bin"])
+        .args([
+            "shell",
+            vm_name,
+            "--",
+            "bash",
+            "-c",
+            "mkdir -p \"$HOME/.local/bin\"",
+        ])
         .output()
         .context("Failed to run limactl shell for mkdir")?;
     if !mkdir.status.success() {
@@ -247,11 +253,9 @@ fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
             "shell",
             vm_name,
             "--",
-            "install",
-            "-m",
-            "755",
-            "/tmp/workmux.new",
-            ".local/bin/workmux",
+            "bash",
+            "-c",
+            "install -m 755 /tmp/workmux.new \"$HOME/.local/bin/workmux\"",
         ])
         .output()
         .context("Failed to run limactl shell for install")?;
