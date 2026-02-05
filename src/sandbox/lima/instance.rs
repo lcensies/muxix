@@ -158,6 +158,21 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
             info!(vm_name = %vm_name, "creating new Lima VM");
             // Only generate config and mounts when we need to create a new VM
             let mounts = super::generate_mounts(worktree_path, isolation, config)?;
+
+            eprintln!("  Mounts:");
+            for m in &mounts {
+                if m.host_path == m.guest_path {
+                    eprintln!("    {} (rw)", m.host_path.display());
+                } else {
+                    eprintln!(
+                        "    {} -> {} ({})",
+                        m.host_path.display(),
+                        m.guest_path.display(),
+                        if m.read_only { "ro" } else { "rw" }
+                    );
+                }
+            }
+
             let lima_config = super::generate_lima_config(&vm_name, &mounts)?;
 
             let config_path = std::env::temp_dir().join(format!("workmux-lima-{}.yaml", vm_name));
