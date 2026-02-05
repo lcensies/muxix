@@ -88,6 +88,16 @@ pub fn run(worktree: PathBuf, command: Vec<String>) -> Result<i32> {
         format!("WM_RPC_PORT={}", rpc_port),
         format!("WM_RPC_TOKEN={}", rpc_token),
     ];
+
+    // Forward terminal capability variables so the guest renders colors
+    // correctly. Without COLORTERM=truecolor, apps fall back to 256-color
+    // approximation (slightly off colors).
+    for term_var in ["TERM", "COLORTERM"] {
+        if let Ok(val) = std::env::var(term_var) {
+            env_exports.push(format!("{}={}", term_var, val));
+        }
+    }
+
     for env_var in config.sandbox.env_passthrough() {
         if let Ok(val) = std::env::var(env_var) {
             env_exports.push(format!("{}={}", env_var, val));
