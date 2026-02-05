@@ -117,6 +117,9 @@ pub fn run(
     // Ensure preconditions are met (git repo and tmux session)
     check_preconditions()?;
 
+    // Extract sandbox override before consuming setup flags
+    let sandbox_override = setup.sandbox;
+
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
@@ -225,8 +228,11 @@ pub fn run(
 
     // Handle rescue flow early if requested
     if rescue.with_changes {
-        let (rescue_config, rescue_location) =
+        let (mut rescue_config, rescue_location) =
             config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
+        if sandbox_override {
+            rescue_config.sandbox.enabled = Some(true);
+        }
         let mux = create_backend(detect_backend());
         let rescue_context = workflow::WorkflowContext::new(rescue_config, mux, rescue_location)?;
         // Derive handle for rescue flow (uses config for naming strategy/prefix)
@@ -342,6 +348,7 @@ pub fn run(
         wait,
         deferred_auto_name,
         max_concurrent: multi.max_concurrent,
+        sandbox_override,
     };
     plan.execute()
 }
@@ -467,6 +474,7 @@ struct CreationPlan<'a> {
     wait: bool,
     deferred_auto_name: bool,
     max_concurrent: Option<u32>,
+    sandbox_override: bool,
 }
 
 impl<'a> CreationPlan<'a> {
@@ -504,8 +512,11 @@ impl<'a> CreationPlan<'a> {
                 }
             }
             // Load config for this specific agent to ensure correct agent resolution
-            let (config, config_location) =
+            let (mut config, config_location) =
                 config::Config::load_with_location(spec.agent.as_deref())?;
+            if self.sandbox_override {
+                config.sandbox.enabled = Some(true);
+            }
 
             // Render prompt first (needed for deferred auto-name)
             let rendered_prompt = if let Some(doc) = self.prompt_doc {

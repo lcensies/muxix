@@ -41,6 +41,10 @@ pub struct SetupFlags {
     /// Open existing worktree if it exists instead of failing (like tmux new -A)
     #[arg(short = 'o', long, conflicts_with = "with_changes")]
     pub open_if_exists: bool,
+
+    /// Enable sandbox mode even when disabled in config
+    #[arg(short = 'S', long)]
+    pub sandbox: bool,
 }
 
 #[derive(clap::Args, Debug)]
