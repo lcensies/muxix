@@ -35,6 +35,11 @@ pub fn run(worktree: PathBuf, command: Vec<String>) -> Result<i32> {
     let vm_name = lima::ensure_vm_running(&config, &worktree)?;
     info!(vm_name = %vm_name, "Lima VM ready");
 
+    // Seed Claude config into VM state dir (best-effort, don't block on failure)
+    if let Err(e) = lima::mounts::seed_claude_json(&vm_name) {
+        tracing::warn!(vm_name = %vm_name, error = %e, "failed to seed ~/.claude.json; continuing");
+    }
+
     // 2. Start RPC server
     let rpc_server = RpcServer::bind()?;
     let rpc_port = rpc_server.port();

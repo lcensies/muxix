@@ -10,6 +10,7 @@ use tracing::debug;
 
 use crate::config::Config;
 use crate::sandbox;
+use crate::sandbox::lima;
 use crate::sandbox::lima::{LimaInstance, parse_lima_instances};
 
 #[derive(Debug, Args)]
@@ -464,6 +465,14 @@ fn run_prune(force: bool) -> Result<()> {
                 println!("done");
                 deleted_count += 1;
                 reclaimed_bytes += vm.size_bytes;
+
+                // Clean up per-VM state directory
+                if let Ok(state_dir) = lima::mounts::lima_state_dir_path(&vm.name)
+                    && state_dir.exists()
+                    && let Err(e) = std::fs::remove_dir_all(&state_dir)
+                {
+                    tracing::warn!(vm = %vm.name, error = %e, "failed to clean up state dir");
+                }
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);

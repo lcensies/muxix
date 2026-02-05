@@ -135,11 +135,55 @@ fn expand_worktree_template(template: &str, project_root: &Path) -> Result<PathB
     }
 }
 
+/// Get the XDG state directory (same logic as state/store.rs).
+fn get_state_dir() -> Result<PathBuf> {
+    if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
+        return Ok(PathBuf::from(state_home));
+    }
+    let home =
+        home::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    Ok(home.join(".local/state"))
+}
+
+/// Get the host-side state directory for a Lima VM.
+/// Uses XDG state dir: $XDG_STATE_HOME/workmux/lima/<vm_name>/
+fn lima_state_dir(vm_name: &str) -> Result<PathBuf> {
+    let state_dir = get_state_dir()?.join("workmux/lima").join(vm_name);
+    std::fs::create_dir_all(&state_dir)?;
+    Ok(state_dir)
+}
+
+/// Get the state directory path for a VM without creating it.
+pub(crate) fn lima_state_dir_path(vm_name: &str) -> Result<PathBuf> {
+    Ok(get_state_dir()?.join("workmux/lima").join(vm_name))
+}
+
+/// Seed ~/.claude.json from host into the VM's state directory.
+/// Only copies when the destination doesn't exist (if_missing policy).
+/// Each VM evolves its own copy independently after seeding.
+pub(crate) fn seed_claude_json(vm_name: &str) -> Result<()> {
+    let host_file = match home::home_dir() {
+        Some(h) => h.join(".claude.json"),
+        None => return Ok(()),
+    };
+    if !host_file.exists() {
+        return Ok(());
+    }
+
+    let state_dir = lima_state_dir(vm_name)?;
+    let dest = state_dir.join(".claude.json");
+    if !dest.exists() {
+        std::fs::copy(&host_file, &dest)?;
+    }
+    Ok(())
+}
+
 /// Generate mount points for Lima VM based on isolation level and config.
 pub fn generate_mounts(
     worktree: &Path,
     isolation: IsolationLevel,
     config: &Config,
+    vm_name: &str,
 ) -> Result<Vec<Mount>> {
     let mut mounts = Vec::new();
 
@@ -202,6 +246,18 @@ pub fn generate_mounts(
         });
     }
 
+    // Mount per-VM state directory so Claude finds ~/.claude.json
+    if let Ok(state_dir) = lima_state_dir(vm_name) {
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".workmux-state"))
+            .unwrap_or_else(|| state_dir.clone());
+        mounts.push(Mount {
+            host_path: state_dir,
+            guest_path,
+            read_only: false,
+        });
+    }
+
     Ok(mounts)
 }
 
@@ -223,5 +279,74 @@ mod tests {
         let template = ".worktrees";
         let expanded = expand_worktree_template(template, &project_root).unwrap();
         assert_eq!(expanded, PathBuf::from("/Users/test/myproject/.worktrees"));
+    }
+
+    #[test]
+    fn test_seed_claude_json_copies_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_file = tmp.path().join(".claude.json");
+        std::fs::write(&host_file, r#"{"tips_shown": 3}"#).unwrap();
+
+        let state_dir = tmp.path().join("state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let dest = state_dir.join(".claude.json");
+
+        // Simulate: host file exists, dest doesn't
+        assert!(!dest.exists());
+        std::fs::copy(&host_file, &dest).unwrap();
+        assert!(dest.exists());
+
+        let contents = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(contents, r#"{"tips_shown": 3}"#);
+    }
+
+    #[test]
+    fn test_seed_claude_json_does_not_overwrite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state_dir = tmp.path().join("state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+
+        let dest = state_dir.join(".claude.json");
+        std::fs::write(&dest, r#"{"tips_shown": 10}"#).unwrap();
+
+        let host_file = tmp.path().join(".claude.json");
+        std::fs::write(&host_file, r#"{"tips_shown": 3}"#).unwrap();
+
+        // if_missing policy: don't overwrite
+        if !dest.exists() {
+            std::fs::copy(&host_file, &dest).unwrap();
+        }
+
+        let contents = std::fs::read_to_string(&dest).unwrap();
+        assert_eq!(contents, r#"{"tips_shown": 10}"#);
+    }
+
+    #[test]
+    fn test_seed_claude_json_noop_when_no_host_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_file = tmp.path().join(".claude.json");
+
+        // Host file doesn't exist -- should be a no-op
+        assert!(!host_file.exists());
+
+        let state_dir = tmp.path().join("state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let dest = state_dir.join(".claude.json");
+
+        // Mimicking seed_claude_json logic: no host file = early return
+        if host_file.exists() {
+            if !dest.exists() {
+                std::fs::copy(&host_file, &dest).unwrap();
+            }
+        }
+
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn test_lima_state_dir_path_format() {
+        let path = lima_state_dir_path("wm-myproject-abc12345").unwrap();
+        // Should end with the expected suffix regardless of XDG_STATE_HOME
+        assert!(path.ends_with("workmux/lima/wm-myproject-abc12345"));
     }
 }

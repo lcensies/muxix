@@ -5,7 +5,7 @@
 mod config;
 mod instance;
 pub(crate) mod log_format;
-mod mounts;
+pub(crate) mod mounts;
 mod wrap;
 
 pub use config::generate_lima_config;

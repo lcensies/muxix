@@ -109,6 +109,10 @@ curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.
 # Ensure ~/.local/bin is on PATH for non-interactive shells
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
 
+# Symlink Claude config from mounted state directory (seeded from host)
+# This preserves onboarding state, tips history, etc. across VM recreations
+ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
+
 # Install afplay shim that routes through workmux RPC to host
 cat > ~/.local/bin/afplay << 'SHIM'
 #!/bin/sh
@@ -189,6 +193,11 @@ mod tests {
         assert!(yaml.contains("mode: user"));
         assert!(yaml.contains("claude.ai/install.sh"));
         assert!(yaml.contains("workmux/main/scripts/install.sh"));
+
+        // User provision symlinks Claude config from state directory
+        assert!(
+            yaml.contains(r#"ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json""#)
+        );
     }
 
     #[test]

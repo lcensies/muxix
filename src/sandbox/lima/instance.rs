@@ -162,7 +162,7 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
         VmState::NotFound => {
             info!(vm_name = %vm_name, "creating new Lima VM");
             // Only generate config and mounts when we need to create a new VM
-            let mounts = super::generate_mounts(worktree_path, isolation, config)?;
+            let mounts = super::generate_mounts(worktree_path, isolation, config, &vm_name)?;
 
             eprintln!("  Mounts:");
             for m in &mounts {

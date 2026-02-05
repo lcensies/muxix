@@ -295,6 +295,12 @@ The container and Lima backends handle credentials differently:
 
 **Lima backend:** Mounts the host's `~/.claude/` directory into the guest VM at `$HOME/.claude/`. This means the VM shares your host credentials -- no separate auth step is needed. When you authenticate Claude Code on the host, the VM picks it up automatically, and vice versa.
 
+The Lima backend also persists Claude Code's configuration state (`~/.claude.json`)
+which contains onboarding progress, tip history, and other settings. This is stored
+per-VM in `~/.local/state/workmux/lima/<vm-name>/` and symlinked into the guest,
+so agents don't need to re-complete onboarding when VMs are recreated. These
+state directories are cleaned up automatically by `workmux sandbox prune`.
+
 | | Container | Lima |
 |---|---|---|
 | Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
