@@ -267,13 +267,14 @@ pub fn wrap_for_container(
 
     // Mount sandbox-specific config to /tmp (matching HOME) for auth persistence
     if let Some(paths) = SandboxPaths::new()
-        && paths.config_file.exists() {
-            args.push("--mount".to_string());
-            args.push(format!(
-                "type=bind,source={},target=/tmp/.claude.json",
-                paths.config_file.display()
-            ));
-        }
+        && paths.config_file.exists()
+    {
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source={},target=/tmp/.claude.json",
+            paths.config_file.display()
+        ));
+    }
 
     // Mount host ~/.claude/ directory so credentials and settings are available
     if let Some(home) = home::home_dir() {
@@ -284,6 +285,16 @@ pub fn wrap_for_container(
                 "type=bind,source={},target=/tmp/.claude",
                 claude_dir.display()
             ));
+        }
+    }
+
+    // Forward terminal capability variables so the container renders colors
+    // correctly. Without COLORTERM=truecolor, apps fall back to 256-color
+    // approximation (slightly off colors).
+    for term_var in ["TERM", "COLORTERM"] {
+        if std::env::var(term_var).is_ok() {
+            args.push("--env".to_string());
+            args.push(term_var.to_string());
         }
     }
 
