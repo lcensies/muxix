@@ -14,24 +14,27 @@ pub fn generate_lima_config(
 ) -> Result<String> {
     let mut config = serde_yaml::Mapping::new();
 
-    // Use minimal Debian 12 image (aarch64 for Apple Silicon, x86_64 for Intel)
+    // Use custom image if configured, otherwise default to minimal Debian 12
     // Debian genericcloud images are ~330MB vs Ubuntu's ~600MB
     let arch = std::env::consts::ARCH;
-    let (image_url, image_arch) = if arch == "aarch64" || arch == "arm64" {
-        (
-            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2",
-            "aarch64",
-        )
+    let image_arch = if arch == "aarch64" || arch == "arm64" {
+        "aarch64"
     } else {
-        (
-            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2",
-            "x86_64",
-        )
+        "x86_64"
     };
 
     let mut image_config = serde_yaml::Mapping::new();
-    image_config.insert("location".into(), image_url.into());
-    image_config.insert("arch".into(), image_arch.into());
+    if let Some(custom_image) = &sandbox_config.image {
+        image_config.insert("location".into(), custom_image.as_str().into());
+    } else {
+        let default_url = if image_arch == "aarch64" {
+            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2"
+        } else {
+            "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
+        };
+        image_config.insert("location".into(), default_url.into());
+        image_config.insert("arch".into(), image_arch.into());
+    }
 
     config.insert("images".into(), vec![Value::Mapping(image_config)].into());
 
@@ -96,13 +99,16 @@ pub fn generate_lima_config(
     config.insert("mounts".into(), mount_list.into());
 
     // Provision scripts (run on first VM creation only)
-    let system_script = r#"#!/bin/bash
+    let mut provisions = Vec::new();
+
+    if !sandbox_config.skip_default_provision() {
+        let system_script = r#"#!/bin/bash
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends curl ca-certificates git
 "#;
 
-    let user_script = r#"#!/bin/bash
+        let user_script = r#"#!/bin/bash
 set -eux
 curl -fsSL https://claude.ai/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
@@ -122,18 +128,17 @@ SHIM
 chmod +x ~/.local/bin/afplay
 "#;
 
-    let mut system_provision = serde_yaml::Mapping::new();
-    system_provision.insert("mode".into(), "system".into());
-    system_provision.insert("script".into(), system_script.into());
+        let mut system_provision = serde_yaml::Mapping::new();
+        system_provision.insert("mode".into(), "system".into());
+        system_provision.insert("script".into(), system_script.into());
 
-    let mut user_provision = serde_yaml::Mapping::new();
-    user_provision.insert("mode".into(), "user".into());
-    user_provision.insert("script".into(), user_script.into());
+        let mut user_provision = serde_yaml::Mapping::new();
+        user_provision.insert("mode".into(), "user".into());
+        user_provision.insert("script".into(), user_script.into());
 
-    let mut provisions = vec![
-        Value::Mapping(system_provision),
-        Value::Mapping(user_provision),
-    ];
+        provisions.push(Value::Mapping(system_provision));
+        provisions.push(Value::Mapping(user_provision));
+    }
 
     if let Some(script) = sandbox_config.provision_script() {
         let mut custom_provision = serde_yaml::Mapping::new();
@@ -233,5 +238,87 @@ mod tests {
         let script = custom["script"].as_str().unwrap();
         assert!(script.contains("sudo apt-get install -y ripgrep"));
         assert!(script.contains("echo done"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_custom_image() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig {
+            image: Some("file:///Users/me/.lima/images/workmux-golden.qcow2".to_string()),
+            ..Default::default()
+        };
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let images = parsed["images"].as_sequence().unwrap();
+        let image = &images[0];
+        assert_eq!(
+            image["location"].as_str().unwrap(),
+            "file:///Users/me/.lima/images/workmux-golden.qcow2"
+        );
+        // Custom images should not have arch set (user provides arch-appropriate image)
+        assert!(image["arch"].is_null());
+    }
+
+    #[test]
+    fn test_generate_lima_config_default_image() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let images = parsed["images"].as_sequence().unwrap();
+        let image = &images[0];
+        let location = image["location"].as_str().unwrap();
+        assert!(location.contains("debian-12-genericcloud"));
+        assert!(image["arch"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_generate_lima_config_skip_default_provision() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig {
+            skip_default_provision: Some(true),
+            ..Default::default()
+        };
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let provisions = parsed["provision"].as_sequence().unwrap();
+        assert_eq!(
+            provisions.len(),
+            0,
+            "should have no provision steps when skipping defaults"
+        );
+        assert!(!yaml.contains("apt-get"));
+        assert!(!yaml.contains("claude.ai/install.sh"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_skip_default_provision_with_custom() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig {
+            skip_default_provision: Some(true),
+            provision: Some("echo custom setup".to_string()),
+            ..Default::default()
+        };
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let provisions = parsed["provision"].as_sequence().unwrap();
+        assert_eq!(
+            provisions.len(),
+            1,
+            "should have only custom provision step"
+        );
+
+        let custom = &provisions[0];
+        assert_eq!(custom["mode"].as_str().unwrap(), "user");
+        assert!(
+            custom["script"]
+                .as_str()
+                .unwrap()
+                .contains("echo custom setup")
+        );
     }
 }

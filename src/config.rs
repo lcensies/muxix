@@ -358,6 +358,12 @@ pub struct SandboxConfig {
     /// Runs as user (not root). Use `sudo` for system-level commands.
     #[serde(default)]
     pub provision: Option<String>,
+
+    /// Skip built-in provisioning scripts (system dependencies and tool installation).
+    /// Useful when using a custom image that already has everything pre-installed.
+    /// Custom `provision` script still runs if specified.
+    #[serde(default)]
+    pub skip_default_provision: Option<bool>,
 }
 
 impl SandboxConfig {
@@ -407,6 +413,10 @@ impl SandboxConfig {
 
     pub fn provision_script(&self) -> Option<&str> {
         self.provision.as_deref().filter(|s| !s.trim().is_empty())
+    }
+
+    pub fn skip_default_provision(&self) -> bool {
+        self.skip_default_provision.unwrap_or(false)
     }
 }
 
@@ -866,6 +876,10 @@ impl Config {
                 .provision
                 .clone()
                 .or(self.sandbox.provision.clone()),
+            skip_default_provision: project
+                .sandbox
+                .skip_default_provision
+                .or(self.sandbox.skip_default_provision),
         };
 
         merged
@@ -1432,5 +1446,47 @@ mod tests {
         assert_eq!(merged.sandbox.provision, Some("".to_string()));
         // But provision_script() filters it out
         assert_eq!(merged.sandbox.provision_script(), None);
+    }
+
+    #[test]
+    fn sandbox_skip_default_provision_defaults_false() {
+        let config = SandboxConfig::default();
+        assert!(!config.skip_default_provision());
+    }
+
+    #[test]
+    fn sandbox_skip_default_provision_merge() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                skip_default_provision: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.skip_default_provision());
+    }
+
+    #[test]
+    fn sandbox_skip_default_provision_project_overrides() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                skip_default_provision: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                skip_default_provision: Some(false),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(!merged.sandbox.skip_default_provision());
     }
 }

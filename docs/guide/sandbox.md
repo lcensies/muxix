@@ -236,6 +236,8 @@ sandbox:
 | `backend` | `container` | Set to `lima` for VM sandboxing |
 | `isolation` | `project` | `project` (one VM per repo) or `user` (single global VM) |
 | `projects_dir` | - | Required for `user` isolation: parent directory of all projects |
+| `image` | Debian 12 | Custom qcow2 image URL or `file://` path |
+| `skip_default_provision` | `false` | Skip built-in provisioning (system deps + tool install) |
 | `cpus` | `4` | Number of CPUs for Lima VMs |
 | `memory` | `4GiB` | Memory for Lima VMs |
 | `disk` | `100GiB` | Disk size for Lima VMs |
@@ -267,6 +269,63 @@ sandbox:
 - Provisioning only runs when the VM is first created. Changing the script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
 - With `isolation: user` (shared VM), only the first project to create the VM gets its provision script run. Use `isolation: project` (default) if different projects need different provisioning.
 - The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
+
+### Custom images
+
+You can use a pre-built qcow2 image to skip provisioning entirely, reducing VM creation time from minutes to seconds. This is useful when you want every VM to start from an identical, known-good state.
+
+```yaml
+sandbox:
+  backend: lima
+  image: file:///Users/me/.lima/images/workmux-golden.qcow2
+  skip_default_provision: true
+```
+
+When `image` is set, it replaces the default Debian 12 genericcloud image. The value can be a `file://` path to a local qcow2 image or an HTTP(S) URL.
+
+When `skip_default_provision` is true, the built-in provisioning steps are skipped:
+
+- System provision (apt-get install of curl, ca-certificates, git)
+- User provision (Claude CLI, workmux, afplay shim)
+
+Custom `provision` scripts still run even when `skip_default_provision` is true, so you can layer additional setup on top of a pre-built image.
+
+#### Creating a pre-built image
+
+1. Create a VM with default provisioning and let it fully provision:
+
+    ```yaml
+    sandbox:
+      backend: lima
+      provision: |
+        sudo apt-get install -y ripgrep fd-find jq
+    ```
+
+2. After the VM is running, stop it:
+
+    ```bash
+    limactl stop wm-yourproject-abc12345
+    ```
+
+3. Export the disk image (flattens base + changes into a single file):
+
+    ```bash
+    mkdir -p ~/.lima/images
+    qemu-img convert -O qcow2 \
+      ~/.lima/wm-yourproject-abc12345/diffdisk \
+      ~/.lima/images/workmux-golden.qcow2
+    ```
+
+4. Update your config to use the pre-built image:
+
+    ```yaml
+    sandbox:
+      backend: lima
+      image: file:///Users/me/.lima/images/workmux-golden.qcow2
+      skip_default_provision: true
+    ```
+
+New VMs will now boot from the snapshot with everything pre-installed.
 
 ### RPC protocol
 
