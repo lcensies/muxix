@@ -434,6 +434,13 @@ enum Commands {
     /// Manage sandbox settings
     Sandbox(command::sandbox::SandboxArgs),
 
+    /// Send a notification to the host (used by guest shims)
+    #[command(hide = true)]
+    Notify {
+        #[command(subcommand)]
+        command: NotifyCommands,
+    },
+
     /// Set agent status for the current tmux window (used by hooks)
     #[command(hide = true)]
     SetWindowStatus {
@@ -489,6 +496,16 @@ enum Commands {
 enum ClaudeCommands {
     /// Remove stale entries from ~/.claude.json for deleted worktrees
     Prune,
+}
+
+#[derive(Subcommand)]
+enum NotifyCommands {
+    /// Play a sound file on the host
+    Sound {
+        /// Sound file path and optional arguments (e.g., /System/Library/Sounds/Glass.aiff)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        args: Vec<String>,
+    },
 }
 
 /// Check if the command should show the nerdfont setup prompt.
@@ -610,6 +627,9 @@ pub fn run() -> Result<()> {
             ClaudeCommands::Prune => prune_claude_config(),
         },
         Commands::Sandbox(args) => command::sandbox::run(args),
+        Commands::Notify { command } => match command {
+            NotifyCommands::Sound { args } => command::notify::run_sound(&args),
+        },
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
         Commands::SetBase { base } => command::set_base::run(&base),
         Commands::LastDone => command::last_done::run(),

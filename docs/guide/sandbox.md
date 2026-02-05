@@ -248,8 +248,15 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `SetTitle` -- renames the tmux window
 - `Heartbeat` -- health check, returns Ok
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree and pane
+- `Notify` -- triggers host-side notifications (e.g., playing sounds via `afplay`)
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
+
+### Sound notifications
+
+Claude Code hooks often use `afplay` to play notification sounds (e.g., when an agent finishes). Since `afplay` is a macOS-only binary, it doesn't exist inside the Linux guest VM. workmux solves this by installing an `afplay` shim in the guest that forwards sound playback to the host via RPC.
+
+This is transparent -- when a hook runs `afplay /System/Library/Sounds/Glass.aiff` inside the VM, the shim sends a `Notify` RPC request and the host plays the sound. No configuration is needed.
 
 ### Credentials
 

@@ -109,6 +109,14 @@ curl -fsSL https://claude.ai/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 # Ensure ~/.local/bin is on PATH for non-interactive shells
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
+
+# Install afplay shim that routes through workmux RPC to host
+cat > ~/.local/bin/afplay << 'SHIM'
+#!/bin/sh
+# Shim that forwards afplay calls to the host via workmux RPC
+exec workmux notify sound "$@"
+SHIM
+chmod +x ~/.local/bin/afplay
 "#;
 
     let mut system_provision = serde_yaml::Mapping::new();

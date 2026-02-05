@@ -34,6 +34,15 @@ pub enum RpcRequest {
         branch_name: Option<String>,
         background: Option<bool>,
     },
+    Notify(NotifyRequest),
+}
+
+/// Typed notification request sent from guest to host.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum NotifyRequest {
+    /// Play a sound file on the host.
+    Sound { args: Vec<String> },
 }
 
 /// RPC response sent from host to guest.
@@ -190,6 +199,7 @@ fn dispatch_request(request: &RpcRequest, ctx: &RpcContext) -> RpcResponse {
             *background,
             &ctx.worktree_path,
         ),
+        RpcRequest::Notify(req) => handle_notify(req),
     }
 }
 
@@ -286,6 +296,27 @@ fn handle_spawn_agent(
         Err(e) => RpcResponse::Error {
             message: format!("Failed to run workmux add: {}", e),
         },
+    }
+}
+
+fn handle_notify(req: &NotifyRequest) -> RpcResponse {
+    match req {
+        NotifyRequest::Sound { args } => {
+            use std::process::Command;
+            // Spawn afplay in a detached thread to avoid blocking the RPC response
+            // while still reaping the child process (preventing zombies).
+            let args = args.clone();
+            thread::spawn(move || match Command::new("afplay").args(&args).status() {
+                Ok(status) if !status.success() => {
+                    debug!(?args, ?status, "afplay exited with error");
+                }
+                Err(e) => {
+                    debug!(?args, error = %e, "failed to run afplay");
+                }
+                _ => {}
+            });
+            RpcResponse::Ok
+        }
     }
 }
 
@@ -410,12 +441,33 @@ mod tests {
     }
 
     #[test]
+    fn test_request_serialization_notify_sound() {
+        let req = RpcRequest::Notify(NotifyRequest::Sound {
+            args: vec!["/System/Library/Sounds/Glass.aiff".to_string()],
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"Notify\""));
+        assert!(json.contains("\"kind\":\"Sound\""));
+        assert!(json.contains("/System/Library/Sounds/Glass.aiff"));
+
+        // Roundtrip
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::Notify(NotifyRequest::Sound { args }) => {
+                assert_eq!(args, vec!["/System/Library/Sounds/Glass.aiff"]);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
     fn test_request_roundtrip_deserialization() {
         let cases = vec![
             r#"{"type":"Heartbeat"}"#,
             r#"{"type":"SetStatus","status":"working"}"#,
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
+            r#"{"type":"Notify","kind":"Sound","args":["/tmp/beep.aiff"]}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
