@@ -44,6 +44,15 @@ pub enum SandboxCommand {
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
+    /// Cross-compile and install workmux into running Lima VMs for development.
+    InstallDev {
+        /// Skip cross-compilation and use existing binary
+        #[arg(long)]
+        skip_build: bool,
+        /// Use release profile (slower build, faster binary)
+        #[arg(long)]
+        release: bool,
+    },
     /// Stop Lima VMs to free resources.
     Stop {
         /// VM name to stop (if not provided, show interactive list)
@@ -67,6 +76,10 @@ pub fn run(args: SandboxArgs) -> Result<()> {
             let exit_code = super::sandbox_run::run(worktree, command)?;
             std::process::exit(exit_code);
         }
+        SandboxCommand::InstallDev {
+            skip_build,
+            release,
+        } => run_install_dev(skip_build, release),
         SandboxCommand::Prune { force } => run_prune(force),
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
     }
@@ -110,6 +123,210 @@ fn run_build(force: bool) -> Result<()> {
     println!();
     println!("Then authenticate with: workmux sandbox auth");
 
+    Ok(())
+}
+
+fn linux_target_triple() -> Result<&'static str> {
+    match std::env::consts::ARCH {
+        "aarch64" => Ok("aarch64-unknown-linux-gnu"),
+        "x86_64" => Ok("x86_64-unknown-linux-gnu"),
+        arch => bail!(
+            "unsupported host architecture for cross-compilation: {}",
+            arch
+        ),
+    }
+}
+
+fn find_cargo_workspace() -> Result<PathBuf> {
+    let output = Command::new("cargo")
+        .args(["locate-project", "--workspace", "--message-format=plain"])
+        .output()
+        .context("Failed to run cargo locate-project")?;
+    if !output.status.success() {
+        bail!("Failed to locate cargo workspace");
+    }
+    let path = String::from_utf8_lossy(&output.stdout);
+    let cargo_toml = PathBuf::from(path.trim());
+    cargo_toml
+        .parent()
+        .map(|p| p.to_path_buf())
+        .context("Failed to determine workspace root from Cargo.toml path")
+}
+
+fn cross_compile(target: &str, release: bool) -> Result<PathBuf> {
+    // Check if target is installed
+    let output = Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .context("Failed to run rustup")?;
+    let installed = String::from_utf8_lossy(&output.stdout);
+    if !installed.lines().any(|l| l.trim() == target) {
+        bail!(
+            "Rust target {} is not installed.\n\
+             Install it with: rustup target add {}",
+            target,
+            target
+        );
+    }
+
+    // Check if cross-linker is available (unless CARGO_TARGET_*_LINKER is set)
+    let linker_env = format!(
+        "CARGO_TARGET_{}_LINKER",
+        target.to_uppercase().replace('-', "_")
+    );
+    let linker_set = std::env::var(&linker_env).is_ok();
+    if !linker_set && which::which(format!("{}-gcc", target)).is_err() {
+        bail!(
+            "Cross-linker {}-gcc not found and {} is not set.\n\
+             Install with: brew install messense/macos-cross-toolchains/{}",
+            target,
+            linker_env,
+            target,
+        );
+    }
+
+    let workspace = find_cargo_workspace()?;
+    let profile = if release { "release" } else { "debug" };
+    let profile_dir = if release { "release" } else { "debug" };
+
+    println!("Cross-compiling workmux for {} ({})...\n", target, profile);
+
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "--target", target]);
+    if release {
+        cmd.arg("--release");
+    }
+    cmd.current_dir(&workspace);
+
+    // Set linker env var if not already set
+    if !linker_set {
+        cmd.env(&linker_env, format!("{}-gcc", target));
+    }
+
+    let status = cmd.status().context("Failed to run cargo build")?;
+    if !status.success() {
+        bail!("Cross-compilation failed");
+    }
+
+    let binary = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
+    if !binary.exists() {
+        bail!("Expected binary not found at {}", binary.display());
+    }
+
+    println!();
+    Ok(binary)
+}
+
+fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
+    // Ensure target directory exists
+    let mkdir = Command::new("limactl")
+        .args(["shell", vm_name, "--", "mkdir", "-p", "$HOME/.local/bin"])
+        .output()
+        .context("Failed to run limactl shell for mkdir")?;
+    if !mkdir.status.success() {
+        let stderr = String::from_utf8_lossy(&mkdir.stderr);
+        bail!("Failed to create ~/.local/bin: {}", stderr.trim());
+    }
+
+    // Copy to temp location to avoid "text file busy"
+    let tmp_dest = format!("{}:/tmp/workmux.new", vm_name);
+    let cp = Command::new("limactl")
+        .args(["cp", &binary_path.to_string_lossy(), &tmp_dest])
+        .output()
+        .context("Failed to run limactl cp")?;
+    if !cp.status.success() {
+        let stderr = String::from_utf8_lossy(&cp.stderr);
+        bail!("Failed to copy binary: {}", stderr.trim());
+    }
+
+    // Move into place and make executable
+    let install = Command::new("limactl")
+        .args([
+            "shell",
+            vm_name,
+            "--",
+            "install",
+            "-m",
+            "755",
+            "/tmp/workmux.new",
+            "$HOME/.local/bin/workmux",
+        ])
+        .output()
+        .context("Failed to run limactl shell for install")?;
+    if !install.status.success() {
+        let stderr = String::from_utf8_lossy(&install.stderr);
+        bail!("Failed to install binary: {}", stderr.trim());
+    }
+
+    Ok(())
+}
+
+fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
+    use crate::sandbox::lima::VM_PREFIX;
+
+    if !LimaInstance::is_lima_available() {
+        bail!("limactl is not installed or not in PATH");
+    }
+
+    let target = linux_target_triple()?;
+
+    // Check for running VMs first (before potentially slow compilation)
+    let instances = LimaInstance::list()?;
+    let running: Vec<_> = instances
+        .iter()
+        .filter(|i| i.name.starts_with(VM_PREFIX) && i.is_running())
+        .collect();
+
+    if running.is_empty() {
+        println!("No running workmux VMs found.");
+        return Ok(());
+    }
+
+    // Cross-compile (or locate existing binary)
+    let binary_path = if !skip_build {
+        cross_compile(target, release)?
+    } else {
+        let workspace = find_cargo_workspace()?;
+        let profile_dir = if release { "release" } else { "debug" };
+        let path = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
+        if !path.exists() {
+            bail!(
+                "No cross-compiled binary found at {}\nRun without --skip-build first.",
+                path.display()
+            );
+        }
+        path
+    };
+
+    // Install into each running VM
+    println!(
+        "Installing workmux into {} running VM(s)...\n",
+        running.len()
+    );
+    let mut failed: Vec<(String, String)> = Vec::new();
+
+    for vm in &running {
+        print!("  {} ... ", vm.name);
+        io::stdout().flush().ok();
+
+        match install_to_vm(&binary_path, &vm.name) {
+            Ok(()) => println!("ok"),
+            Err(e) => {
+                println!("failed");
+                failed.push((vm.name.clone(), e.to_string()));
+            }
+        }
+    }
+
+    if !failed.is_empty() {
+        eprintln!("\nFailed to install to {} VM(s):", failed.len());
+        for (name, error) in &failed {
+            eprintln!("  - {}: {}", name, error);
+        }
+        bail!("Some installations failed");
+    }
+
+    println!("\nDone.");
     Ok(())
 }
 

@@ -57,6 +57,35 @@ The RPC server handles requests from the guest workmux binary:
 - `Heartbeat` -- health check
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree
 
+### sandbox install-dev
+
+Cross-compile and install workmux into running Lima VMs for local development.
+
+```bash
+# Cross-compile and install into all running VMs
+workmux sandbox install-dev
+
+# Use release profile (slower build, faster binary)
+workmux sandbox install-dev --release
+
+# Skip compilation, copy existing binary
+workmux sandbox install-dev --skip-build
+```
+
+**Options:**
+
+- `--skip-build` - Skip cross-compilation and copy the previously built binary
+- `--release` - Use release profile (default is debug for faster iteration)
+
+This is a developer-only command for getting local workmux builds into Lima VMs. The host macOS binary is a Mach-O binary that cannot run inside the Linux VM, so this command cross-compiles for the correct Linux architecture and copies the result into each running VM.
+
+**Prerequisites:**
+
+- Rust cross-compilation target: `rustup target add aarch64-unknown-linux-gnu`
+- Cross-linker: `brew install messense/macos-cross-toolchains/aarch64-unknown-linux-gnu`
+
+The binary is installed to `~/.local/bin/workmux` inside the VM, which is already on PATH.
+
 ### sandbox stop
 
 Stop Lima VMs to free resources.

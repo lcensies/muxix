@@ -303,6 +303,30 @@ Delete all these VMs? [y/N]
 
 Lima VMs are stored in `~/.lima/<name>/`. Each VM typically uses 100GB of disk space by default.
 
+### Installing local builds into VMs
+
+During development, the macOS host binary cannot run inside the Linux VM. Use `install-dev` to cross-compile and install your local workmux build:
+
+```bash
+# First time: install prerequisites
+rustup target add aarch64-unknown-linux-gnu
+brew install messense/macos-cross-toolchains/aarch64-unknown-linux-gnu
+
+# Cross-compile and install into all running VMs
+workmux sandbox install-dev
+
+# After code changes, rebuild and reinstall
+workmux sandbox install-dev
+
+# Use --release for optimized builds
+workmux sandbox install-dev --release
+
+# Skip rebuild if binary hasn't changed
+workmux sandbox install-dev --skip-build
+```
+
+The binary is installed to `~/.local/bin/workmux` inside the VM (already on PATH).
+
 ### Stopping Lima VMs
 
 When using the Lima backend, you can stop running VMs to free up system resources:
