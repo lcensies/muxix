@@ -246,9 +246,19 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
 
-### Cleaning up unused VMs
+### Credentials
 
-Over time, unused VMs can accumulate and consume significant disk space.
+The container and Lima backends handle credentials differently:
+
+**Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Run `workmux sandbox auth` once to authenticate inside a container. These credentials are mounted into every container.
+
+**Lima backend:** Mounts the host's `~/.claude/` directory into the guest VM at `$HOME/.claude/`. This means the VM shares your host credentials -- no separate auth step is needed. When you authenticate Claude Code on the host, the VM picks it up automatically, and vice versa.
+
+| | Container | Lima |
+|---|---|---|
+| Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
+| Auth setup | `workmux sandbox auth` required | None needed |
+| Shared with host | No | Yes |
 
 ### Cleaning up unused VMs
 
