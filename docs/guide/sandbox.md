@@ -12,7 +12,7 @@ When sandbox is enabled:
 
 - Agents can only access the current worktree directory
 - The main `.git` directory is mounted read-write (for git operations)
-- Sandbox uses separate authentication stored in `~/.claude-sandbox.json`
+- Sandbox uses separate authentication stored in `~/.claude-sandbox.json`, with host `~/.claude/` mounted for settings
 - Host credentials (SSH keys, AWS, etc.) are not accessible
 
 ## Setup
@@ -88,7 +88,7 @@ The sandbox uses separate credentials from your host. Run this once to authentic
 workmux sandbox auth
 ```
 
-This saves credentials to `~/.claude-sandbox.json`, which is mounted into containers.
+This saves credentials to `~/.claude-sandbox.json`, which is mounted into containers. The host `~/.claude/` directory is also mounted for settings.
 
 ## Configuration
 
@@ -142,7 +142,8 @@ docker run --rm -it \
   --user 501:20 \
   --mount type=bind,source=/path/to/worktree,target=/path/to/worktree \
   --mount type=bind,source=/path/to/main/.git,target=/path/to/main/.git \
-  --mount type=bind,source=~/.claude-sandbox.json,target=/root/.claude.json \
+  --mount type=bind,source=~/.claude-sandbox.json,target=/tmp/.claude.json \
+  --mount type=bind,source=~/.claude,target=/tmp/.claude \
   --workdir /path/to/worktree \
   workmux-sandbox \
   sh -c 'claude -- "$(cat .workmux/PROMPT-feature-x.md)"'
@@ -155,7 +156,7 @@ docker run --rm -it \
 | Worktree directory       | read-write | Source code    |
 | Main `.git`              | read-write | Git operations |
 | `~/.claude-sandbox.json` | read-write | Agent config   |
-| `~/.claude-sandbox/`     | read-write | Agent settings |
+| `~/.claude/`             | read-write | Agent settings |
 
 ### What's NOT accessible
 
@@ -351,7 +352,7 @@ This is transparent -- when a hook runs `afplay /System/Library/Sounds/Glass.aif
 
 The container and Lima backends handle credentials differently:
 
-**Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Run `workmux sandbox auth` once to authenticate inside a container. These credentials are mounted into every container.
+**Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Run `workmux sandbox auth` once to authenticate inside a container. The host `~/.claude/` directory is mounted for settings (project configs, MCP servers, etc.).
 
 **Lima backend:** Mounts the host's `~/.claude/` directory into the guest VM at `$HOME/.claude/`. This means the VM shares your host credentials -- no separate auth step is needed. When you authenticate Claude Code on the host, the VM picks it up automatically, and vice versa.
 
@@ -364,8 +365,8 @@ the guest. These state directories are cleaned up automatically by
 |                    | Container                           | Lima                                             |
 | ------------------ | ----------------------------------- | ------------------------------------------------ |
 | Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
+| Settings directory | `~/.claude/` (shared with host)     | `~/.claude/` (shared with host)                  |
 | Auth setup         | `workmux sandbox auth` required     | None needed                                      |
-| Shared with host   | No                                  | Yes                                              |
 
 ### Cleaning up unused VMs
 

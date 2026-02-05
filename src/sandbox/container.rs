@@ -33,12 +33,11 @@ ENV PATH="/root/.local/bin:${PATH}"
 "#;
 
 /// Sandbox-specific config paths on host.
-/// These are separate from host CLI config to avoid confusion.
+/// The config file (~/.claude-sandbox.json) is separate from host CLI config
+/// to avoid confusion, while ~/.claude/ is shared from the host.
 pub struct SandboxPaths {
     /// ~/.claude-sandbox.json - main config/auth file
     pub config_file: PathBuf,
-    /// ~/.claude-sandbox/ - settings directory
-    pub config_dir: PathBuf,
 }
 
 impl SandboxPaths {
@@ -46,12 +45,11 @@ impl SandboxPaths {
         let home = home::home_dir()?;
         Some(Self {
             config_file: home.join(".claude-sandbox.json"),
-            config_dir: home.join(".claude-sandbox"),
         })
     }
 }
 
-/// Ensure sandbox config directories exist on host.
+/// Ensure sandbox config files exist on host.
 pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
     let paths = SandboxPaths::new().context("Could not determine home directory")?;
 
@@ -59,12 +57,6 @@ pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
     if !paths.config_file.exists() {
         std::fs::write(&paths.config_file, "{}")
             .with_context(|| format!("Failed to create {}", paths.config_file.display()))?;
-    }
-
-    // Create config directory if it doesn't exist
-    if !paths.config_dir.exists() {
-        std::fs::create_dir_all(&paths.config_dir)
-            .with_context(|| format!("Failed to create {}", paths.config_dir.display()))?;
     }
 
     Ok(paths)
@@ -80,31 +72,43 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
     };
     let image = config.resolved_image();
 
-    let status = Command::new(runtime)
-        .args([
-            "run",
-            "-it",
-            "--rm",
-            // Mount sandbox-specific config (read-write for auth)
-            "--mount",
-            &format!(
-                "type=bind,source={},target=/tmp/.claude.json",
-                paths.config_file.display()
-            ),
-            "--mount",
-            &format!(
+    let mut args = vec![
+        "run".to_string(),
+        "-it".to_string(),
+        "--rm".to_string(),
+        // Mount sandbox-specific config (read-write for auth)
+        "--mount".to_string(),
+        format!(
+            "type=bind,source={},target=/tmp/.claude.json",
+            paths.config_file.display()
+        ),
+    ];
+
+    // Mount host ~/.claude/ directory so credentials and settings are available
+    if let Some(home) = home::home_dir() {
+        let claude_dir = home.join(".claude");
+        if claude_dir.exists() {
+            args.push("--mount".to_string());
+            args.push(format!(
                 "type=bind,source={},target=/tmp/.claude",
-                paths.config_dir.display()
-            ),
-            // Set HOME to /tmp where config is mounted
-            "--env",
-            "HOME=/tmp",
-            // PATH for claude binary (include Claude Code install location)
-            "--env",
-            "PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            image,
-            "claude",
-        ])
+                claude_dir.display()
+            ));
+        }
+    }
+
+    args.extend([
+        // Set HOME to /tmp where config is mounted
+        "--env".to_string(),
+        "HOME=/tmp".to_string(),
+        // PATH for claude binary (include Claude Code install location)
+        "--env".to_string(),
+        "PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
+        image.to_string(),
+        "claude".to_string(),
+    ]);
+
+    let status = Command::new(runtime)
+        .args(&args)
         .status()
         .context("Failed to run container")?;
 
@@ -182,9 +186,9 @@ pub fn build_image(config: &SandboxConfig, force: bool) -> Result<()> {
 /// Uses mirror mounting (project at same path) to preserve git worktree
 /// references and terminal hyperlink compatibility.
 ///
-/// Config mounts use sandbox-specific paths:
-/// - ~/.claude-sandbox.json -> /root/.claude.json
-/// - ~/.claude-sandbox/ -> /root/.claude/
+/// Config mounts:
+/// - ~/.claude-sandbox.json -> /tmp/.claude.json
+/// - ~/.claude/ -> /tmp/.claude/
 ///
 /// # Arguments
 /// * `command` - The command to run inside the container
@@ -262,19 +266,23 @@ pub fn wrap_for_container(
     args.push("HOME=/tmp".to_string());
 
     // Mount sandbox-specific config to /tmp (matching HOME) for auth persistence
-    if let Some(paths) = SandboxPaths::new() {
-        if paths.config_file.exists() {
+    if let Some(paths) = SandboxPaths::new()
+        && paths.config_file.exists() {
             args.push("--mount".to_string());
             args.push(format!(
                 "type=bind,source={},target=/tmp/.claude.json",
                 paths.config_file.display()
             ));
         }
-        if paths.config_dir.exists() {
+
+    // Mount host ~/.claude/ directory so credentials and settings are available
+    if let Some(home) = home::home_dir() {
+        let claude_dir = home.join(".claude");
+        if claude_dir.exists() {
             args.push("--mount".to_string());
             args.push(format!(
                 "type=bind,source={},target=/tmp/.claude",
-                paths.config_dir.display()
+                claude_dir.display()
             ));
         }
     }
