@@ -92,13 +92,13 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 
 ## Configuration
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | `false` | Enable container sandboxing |
-| `runtime` | `docker` | Container runtime: `docker` or `podman` |
-| `target` | `agent` | Which panes to sandbox: `agent` or `all` |
-| `image` | `workmux-sandbox` | Container image name |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through |
+| Option            | Default            | Description                              |
+| ----------------- | ------------------ | ---------------------------------------- |
+| `enabled`         | `false`            | Enable container sandboxing              |
+| `runtime`         | `docker`           | Container runtime: `docker` or `podman`  |
+| `target`          | `agent`            | Which panes to sandbox: `agent` or `all` |
+| `image`           | `workmux-sandbox`  | Container image name                     |
+| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
 
 ### Example configurations
 
@@ -150,12 +150,12 @@ docker run --rm -it \
 
 ### What's mounted
 
-| Mount | Access | Purpose |
-|-------|--------|---------|
-| Worktree directory | read-write | Source code |
-| Main `.git` | read-write | Git operations |
-| `~/.claude-sandbox.json` | read-write | Agent config |
-| `~/.claude-sandbox/` | read-write | Agent settings |
+| Mount                    | Access     | Purpose        |
+| ------------------------ | ---------- | -------------- |
+| Worktree directory       | read-write | Source code    |
+| Main `.git`              | read-write | Git operations |
+| `~/.claude-sandbox.json` | read-write | Agent config   |
+| `~/.claude-sandbox/`     | read-write | Agent settings |
 
 ### What's NOT accessible
 
@@ -221,7 +221,7 @@ The guest VM connects back to the host via `host.lima.internal` (Lima's built-in
 sandbox:
   enabled: true
   backend: lima
-  isolation: project  # default: one VM per git repository
+  isolation: project # default: one VM per git repository
   cpus: 8
   memory: 8GiB
   env_passthrough:
@@ -231,18 +231,18 @@ sandbox:
     sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `backend` | `container` | Set to `lima` for VM sandboxing |
-| `isolation` | `project` | `project` (one VM per repo) or `user` (single global VM) |
-| `projects_dir` | - | Required for `user` isolation: parent directory of all projects |
-| `image` | Debian 12 | Custom qcow2 image URL or `file://` path |
-| `skip_default_provision` | `false` | Skip built-in provisioning (system deps + tool install) |
-| `cpus` | `4` | Number of CPUs for Lima VMs |
-| `memory` | `4GiB` | Memory for Lima VMs |
-| `disk` | `100GiB` | Disk size for Lima VMs |
-| `provision` | - | Custom user-mode shell script run once at VM creation after built-in steps |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM |
+| Option                   | Default            | Description                                                                |
+| ------------------------ | ------------------ | -------------------------------------------------------------------------- |
+| `backend`                | `container`        | Set to `lima` for VM sandboxing                                            |
+| `isolation`              | `project`          | `project` (one VM per repo) or `user` (single global VM)                   |
+| `projects_dir`           | -                  | Required for `user` isolation: parent directory of all projects            |
+| `image`                  | Debian 12          | Custom qcow2 image URL or `file://` path                                   |
+| `skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                    |
+| `cpus`                   | `4`                | Number of CPUs for Lima VMs                                                |
+| `memory`                 | `4GiB`             | Memory for Lima VMs                                                        |
+| `disk`                   | `100GiB`           | Disk size for Lima VMs                                                     |
+| `provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps |
+| `env_passthrough`        | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                            |
 
 ### Custom provisioning
 
@@ -294,36 +294,36 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
 
 1. Create a VM with default provisioning and let it fully provision:
 
-    ```yaml
-    sandbox:
-      backend: lima
-      provision: |
-        sudo apt-get install -y ripgrep fd-find jq
-    ```
+   ```yaml
+   sandbox:
+     backend: lima
+     provision: |
+       sudo apt-get install -y ripgrep fd-find jq
+   ```
 
 2. After the VM is running, stop it:
 
-    ```bash
-    limactl stop wm-yourproject-abc12345
-    ```
+   ```bash
+   limactl stop wm-yourproject-abc12345
+   ```
 
 3. Export the disk image (flattens base + changes into a single file):
 
-    ```bash
-    mkdir -p ~/.lima/images
-    qemu-img convert -O qcow2 \
-      ~/.lima/wm-yourproject-abc12345/diffdisk \
-      ~/.lima/images/workmux-golden.qcow2
-    ```
+   ```bash
+   mkdir -p ~/.lima/images
+   qemu-img convert -O qcow2 \
+     ~/.lima/wm-yourproject-abc12345/diffdisk \
+     ~/.lima/images/workmux-golden.qcow2
+   ```
 
 4. Update your config to use the pre-built image:
 
-    ```yaml
-    sandbox:
-      backend: lima
-      image: file:///Users/me/.lima/images/workmux-golden.qcow2
-      skip_default_provision: true
-    ```
+   ```yaml
+   sandbox:
+     backend: lima
+     image: file:///Users/me/.lima/images/workmux-golden.qcow2
+     skip_default_provision: true
+   ```
 
 New VMs will now boot from the snapshot with everything pre-installed.
 
@@ -332,6 +332,7 @@ New VMs will now boot from the snapshot with everything pre-installed.
 The supervisor and guest communicate via JSON-lines over TCP. Each request is a single JSON object on one line.
 
 **Supported requests:**
+
 - `SetStatus` -- updates the tmux pane status icon (working/waiting/done/clear)
 - `SetTitle` -- renames the tmux window
 - `Heartbeat` -- health check, returns Ok
@@ -360,11 +361,11 @@ is stored per-VM in `~/.local/state/workmux/lima/<vm-name>/` and symlinked into
 the guest. These state directories are cleaned up automatically by
 `workmux sandbox prune`.
 
-| | Container | Lima |
-|---|---|---|
+|                    | Container                           | Lima                                             |
+| ------------------ | ----------------------------------- | ------------------------------------------------ |
 | Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
-| Auth setup | `workmux sandbox auth` required | None needed |
-| Shared with host | No | Yes |
+| Auth setup         | `workmux sandbox auth` required     | None needed                                      |
+| Shared with host   | No                                  | Yes                                              |
 
 ### Cleaning up unused VMs
 
@@ -452,6 +453,7 @@ workmux sandbox stop --all --yes
 ```
 
 This is useful when you want to:
+
 - Free up CPU and memory resources
 - Reduce battery usage on laptops
 - Clean up after finishing work
