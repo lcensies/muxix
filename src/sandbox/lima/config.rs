@@ -100,6 +100,7 @@ rm -rf /var/lib/apt/lists/*
     let user_script = r#"#!/bin/bash
 set -eux
 curl -fsSL https://claude.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 # Ensure ~/.local/bin is on PATH for non-interactive shells
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
 "#;
@@ -161,8 +162,9 @@ mod tests {
         assert!(yaml.contains("curl"));
         assert!(yaml.contains("git"));
 
-        // User provision installs Claude Code
+        // User provision installs Claude Code and workmux
         assert!(yaml.contains("mode: user"));
         assert!(yaml.contains("claude.ai/install.sh"));
+        assert!(yaml.contains("workmux/main/scripts/install.sh"));
     }
 }
