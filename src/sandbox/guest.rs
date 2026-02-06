@@ -1,7 +1,8 @@
 //! Guest-side detection helpers for sandbox environments.
 //!
 //! When `WM_SANDBOX_GUEST=1` is set, the workmux binary is running inside
-//! a Lima VM and should use RPC instead of direct tmux/host operations.
+//! a sandbox (Lima VM or Docker container) and should use RPC instead of
+//! direct tmux/host operations.
 
 /// Check if running inside a sandbox guest VM.
 pub fn is_sandbox_guest() -> bool {

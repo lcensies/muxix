@@ -283,6 +283,19 @@ pub enum SandboxRuntime {
     Podman,
 }
 
+impl SandboxRuntime {
+    /// Returns the default hostname that a container guest should use to reach the host.
+    ///
+    /// - Docker: `host.docker.internal` (Docker Desktop built-in)
+    /// - Podman: `host.containers.internal` (Podman built-in)
+    pub fn rpc_host_address(&self) -> &'static str {
+        match self {
+            SandboxRuntime::Docker => "host.docker.internal",
+            SandboxRuntime::Podman => "host.containers.internal",
+        }
+    }
+}
+
 /// Isolation level for Lima backend
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -332,6 +345,12 @@ pub struct SandboxConfig {
     /// Default: ["GITHUB_TOKEN"]
     #[serde(default)]
     pub env_passthrough: Option<Vec<String>>,
+
+    /// Override the hostname used by containers to reach the host RPC server.
+    /// Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman).
+    /// Useful for non-standard Podman or custom networking setups.
+    #[serde(default)]
+    pub rpc_host: Option<String>,
 
     /// Isolation level for Lima backend. Default: project
     #[serde(default)]
@@ -393,6 +412,13 @@ impl SandboxConfig {
             .as_ref()
             .map(|v| v.iter().map(|s| s.as_str()).collect())
             .unwrap_or_else(|| vec!["GITHUB_TOKEN"])
+    }
+
+    /// Get the RPC host address, using config override or runtime default.
+    pub fn resolved_rpc_host(&self) -> String {
+        self.rpc_host
+            .clone()
+            .unwrap_or_else(|| self.runtime().rpc_host_address().to_string())
     }
 
     pub fn isolation(&self) -> IsolationLevel {
@@ -854,6 +880,11 @@ impl Config {
                 .env_passthrough
                 .clone()
                 .or(self.sandbox.env_passthrough.clone()),
+            rpc_host: project
+                .sandbox
+                .rpc_host
+                .clone()
+                .or(self.sandbox.rpc_host.clone()),
             isolation: project
                 .sandbox
                 .isolation
@@ -1488,5 +1519,35 @@ mod tests {
 
         let merged = global.merge(project);
         assert!(!merged.sandbox.skip_default_provision());
+    }
+
+    #[test]
+    fn test_rpc_host_address_defaults() {
+        assert_eq!(
+            SandboxRuntime::Docker.rpc_host_address(),
+            "host.docker.internal"
+        );
+        assert_eq!(
+            SandboxRuntime::Podman.rpc_host_address(),
+            "host.containers.internal"
+        );
+    }
+
+    #[test]
+    fn test_resolved_rpc_host_uses_override() {
+        let config = SandboxConfig {
+            rpc_host: Some("custom.host.local".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.resolved_rpc_host(), "custom.host.local");
+    }
+
+    #[test]
+    fn test_resolved_rpc_host_falls_back_to_runtime() {
+        let config = SandboxConfig {
+            runtime: Some(SandboxRuntime::Podman),
+            ..Default::default()
+        };
+        assert_eq!(config.resolved_rpc_host(), "host.containers.internal");
     }
 }

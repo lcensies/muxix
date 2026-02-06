@@ -1,8 +1,8 @@
-//! TCP RPC protocol for guest-host communication in Lima sandbox.
+//! TCP RPC protocol for guest-host communication in sandboxed environments.
 //!
 //! The host-side supervisor runs an RPC server on a random port. The guest
-//! workmux binary connects via `host.lima.internal:<port>` and sends
-//! JSON-lines requests.
+//! workmux binary connects via a host-internal address and sends JSON-lines
+//! requests.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

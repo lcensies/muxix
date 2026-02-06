@@ -36,11 +36,14 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         force: bool,
     },
-    /// Run a command inside a Lima sandbox (internal, used by pane setup).
+    /// Run a command inside a sandbox (internal, used by pane setup).
     #[command(hide = true)]
     Run {
-        /// Path to the worktree
+        /// Path to the working directory
         worktree: PathBuf,
+        /// Root of the worktree for mounting (defaults to worktree path)
+        #[arg(long)]
+        worktree_root: Option<PathBuf>,
         /// Command and arguments to run inside the sandbox
         #[arg(last = true, required = true)]
         command: Vec<String>,
@@ -72,9 +75,13 @@ pub fn run(args: SandboxArgs) -> Result<()> {
     match args.command {
         SandboxCommand::Auth => run_auth(),
         SandboxCommand::Build { force } => run_build(force),
-        SandboxCommand::Run { worktree, command } => {
-            debug!(worktree = %worktree.display(), ?command, "sandbox run");
-            let exit_code = super::sandbox_run::run(worktree, command)?;
+        SandboxCommand::Run {
+            worktree,
+            worktree_root,
+            command,
+        } => {
+            debug!(worktree = %worktree.display(), ?worktree_root, ?command, "sandbox run");
+            let exit_code = super::sandbox_run::run(worktree, worktree_root, command)?;
             std::process::exit(exit_code);
         }
         SandboxCommand::InstallDev {
