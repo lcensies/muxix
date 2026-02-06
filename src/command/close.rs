@@ -1,5 +1,5 @@
 use crate::multiplexer::{create_backend, detect_backend, util};
-use crate::{config, git};
+use crate::{config, git, sandbox};
 use anyhow::{Context, Result, anyhow};
 
 pub fn run(name: Option<&str>) -> Result<()> {
@@ -50,6 +50,13 @@ pub fn run(name: Option<&str>) -> Result<()> {
             "No active window found for '{}'. The worktree exists but has no open window.",
             full_window_name
         ));
+    }
+
+    // Stop any running containers for this worktree before killing the window.
+    // We try unconditionally since sandbox may have been enabled via --sandbox flag.
+    // Extract handle from full window name (e.g., "wm:feature-auth" -> "feature-auth")
+    if let Some(handle) = full_window_name.strip_prefix(prefix) {
+        sandbox::stop_containers_for_handle(handle, &config.sandbox);
     }
 
     if is_current_window {

@@ -190,8 +190,13 @@ fn run_container(
         SandboxRuntime::Docker => "docker",
     };
 
-    // Generate unique container name for cleanup
-    let container_name = format!("wm-{}", std::process::id());
+    // Generate container name from worktree directory name so cleanup can find it.
+    // Include PID to allow multiple agents in the same worktree (e.g., open -n).
+    let worktree_name = worktree_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    let container_name = format!("wm-{}-{}", worktree_name, std::process::id());
 
     let rpc_port_str = rpc_port.to_string();
     let extra_envs = [

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 
 use crate::git;
+use crate::sandbox;
 use tracing::{debug, info};
 
 use super::cleanup;
@@ -78,6 +79,13 @@ pub fn remove(
 
     // Note: Unmerged branch check removed - git branch -d/D handles this natively
     // The CLI provides a user-friendly confirmation prompt before calling this function
+
+    // Stop any running containers for this worktree before killing the window.
+    // This is necessary because tmux kill-window sends SIGHUP which doesn't allow
+    // the supervisor's Drop handler to run. We try unconditionally since sandbox
+    // may have been enabled via --sandbox flag even if disabled in config.
+    sandbox::stop_containers_for_handle(actual_handle, &context.config.sandbox);
+
     info!(branch = %branch_name, keep_branch, "remove:cleanup start");
     let cleanup_result = cleanup::cleanup(
         context,

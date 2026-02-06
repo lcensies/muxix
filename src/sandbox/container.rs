@@ -343,6 +343,56 @@ pub fn wrap_for_container(
     Ok(parts)
 }
 
+/// Stop any running containers associated with a worktree handle.
+///
+/// Container names follow the pattern `wm-<handle>-<pid>`. This function
+/// finds and stops all matching containers, which is necessary before
+/// killing the tmux window (since tmux kill-window uses SIGHUP which
+/// doesn't allow cleanup handlers to run).
+pub fn stop_containers_for_handle(handle: &str, config: &SandboxConfig) {
+    let runtime = match config.runtime() {
+        SandboxRuntime::Podman => "podman",
+        SandboxRuntime::Docker => "docker",
+    };
+
+    // Find containers matching the pattern wm-<handle>-*
+    let filter = format!("name=^wm-{}-", handle);
+    let output = match Command::new(runtime)
+        .args(["ps", "-q", "--filter", &filter])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::debug!(handle, error = %e, "failed to list containers");
+            return;
+        }
+    };
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return;
+    }
+
+    // Stop each matching container
+    let container_ids: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap_or("")
+        .lines()
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if container_ids.is_empty() {
+        return;
+    }
+
+    // Stop all containers in one command (runtime handles parallelism)
+    tracing::debug!(?container_ids, handle, "stopping containers for worktree");
+    let _ = Command::new(runtime)
+        .arg("stop")
+        .arg("-t")
+        .arg("2")
+        .args(&container_ids)
+        .output();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
