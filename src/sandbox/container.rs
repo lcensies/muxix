@@ -9,8 +9,8 @@ use crate::config::{SandboxConfig, SandboxRuntime};
 use crate::state::StateStore;
 
 /// Embedded Dockerfile for building sandbox image.
-/// Uses debian:bookworm-slim for glibc compatibility with host-built binaries.
-const SANDBOX_DOCKERFILE: &str = r#"FROM debian:bookworm-slim
+/// Also exported by `workmux sandbox init-dockerfile` as a customization starting point.
+pub const SANDBOX_DOCKERFILE: &str = r#"FROM debian:bookworm-slim
 
 # Install dependencies for Claude Code + git operations + Nix
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,9 +39,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     mkdir -p /tmp/.local && \
     ln -s /root/.local/bin /tmp/.local/bin
 
-# Copy workmux binary from build context
-COPY workmux /usr/local/bin/workmux
-RUN chmod +x /usr/local/bin/workmux
+# Install workmux (needed for sandbox RPC)
+RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash && \
+    mv ~/.local/bin/workmux /usr/local/bin/workmux
 
 # Install afplay shim that routes sound playback to host via RPC
 RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
@@ -151,13 +151,10 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
 
 /// Build the sandbox container image.
 ///
-/// Creates a minimal build context with the provided workmux binary and an
-/// embedded Dockerfile, then runs docker/podman build.
-///
-/// # Arguments
-/// * `config` - Sandbox configuration
-/// * `workmux_binary` - Path to a Linux workmux binary to include in the image
-pub fn build_image(config: &SandboxConfig, workmux_binary: &Path) -> Result<()> {
+/// Writes the embedded Dockerfile to a temp directory and runs docker/podman
+/// build. The Dockerfile installs workmux via the install script (no local
+/// binary needed).
+pub fn build_image(config: &SandboxConfig) -> Result<()> {
     let runtime = match config.runtime() {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
@@ -171,11 +168,6 @@ pub fn build_image(config: &SandboxConfig, workmux_binary: &Path) -> Result<()> 
         .tempdir()
         .context("Failed to create temporary build directory")?;
     let context_path = temp_dir.path();
-
-    // Copy workmux binary to build context
-    let dest_exe = context_path.join("workmux");
-    std::fs::copy(workmux_binary, &dest_exe)
-        .context("Failed to copy workmux binary to build context")?;
 
     // Write Dockerfile
     let dockerfile_path = context_path.join("Dockerfile");

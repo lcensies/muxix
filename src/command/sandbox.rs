@@ -25,8 +25,10 @@ pub enum SandboxCommand {
     /// Run this once before using sandbox mode.
     Auth,
     /// Build the sandbox container image with Claude Code and workmux.
-    Build {
-        /// Skip cross-compilation (workmux binary will not work in image)
+    Build,
+    /// Export a customizable Dockerfile template for building your own sandbox image.
+    InitDockerfile {
+        /// Overwrite existing Dockerfile.sandbox
         #[arg(long)]
         force: bool,
     },
@@ -84,7 +86,8 @@ pub enum SandboxCommand {
 pub fn run(args: SandboxArgs) -> Result<()> {
     match args.command {
         SandboxCommand::Auth => run_auth(),
-        SandboxCommand::Build { force } => run_build(force),
+        SandboxCommand::Build => run_build(),
+        SandboxCommand::InitDockerfile { force } => run_init_dockerfile(force),
         SandboxCommand::Run {
             worktree,
             worktree_root,
@@ -122,24 +125,13 @@ fn run_auth() -> Result<()> {
     Ok(())
 }
 
-fn run_build(force: bool) -> Result<()> {
+fn run_build() -> Result<()> {
     let config = Config::load(None)?;
 
     let image_name = config.sandbox.resolved_image();
     println!("Building sandbox image '{}'...\n", image_name);
 
-    // On non-Linux hosts, cross-compile a Linux binary first
-    let binary_path = if cfg!(target_os = "linux") {
-        std::env::current_exe().context("Failed to locate current workmux executable")?
-    } else if force {
-        // --force: use the host binary as-is (workmux won't work in the container)
-        std::env::current_exe().context("Failed to locate current workmux executable")?
-    } else {
-        let target = linux_target_triple()?;
-        cross_compile(target, false)?
-    };
-
-    sandbox::build_image(&config.sandbox, &binary_path)?;
+    sandbox::build_image(&config.sandbox)?;
 
     println!("\nSandbox image built successfully!");
     println!();
@@ -152,6 +144,34 @@ fn run_build(force: bool) -> Result<()> {
     }
     println!();
     println!("Then authenticate with: workmux sandbox auth");
+
+    Ok(())
+}
+
+fn run_init_dockerfile(force: bool) -> Result<()> {
+    use console::style;
+
+    let path = PathBuf::from("Dockerfile.sandbox");
+
+    if path.exists() && !force {
+        bail!("Dockerfile.sandbox already exists. Use --force to overwrite.");
+    }
+
+    std::fs::write(&path, sandbox::SANDBOX_DOCKERFILE)
+        .context("Failed to write Dockerfile.sandbox")?;
+
+    println!("✓ Created {}", style("Dockerfile.sandbox").bold());
+    println!();
+    println!("{}:", style("Next steps").bold());
+    println!("  1. Edit Dockerfile.sandbox to add your packages");
+    println!(
+        "  2. Build: {}",
+        style("docker build -t my-sandbox -f Dockerfile.sandbox .").dim()
+    );
+    println!("  3. Configure {}:", style(".workmux.yaml").bold());
+    println!("       {}", style("sandbox:").dim());
+    println!("         {}", style("enabled: true").dim());
+    println!("         {}", style("image: my-sandbox").dim());
 
     Ok(())
 }

@@ -5,6 +5,7 @@ pub mod guest;
 pub mod lima;
 pub mod rpc;
 
+pub use container::SANDBOX_DOCKERFILE;
 pub(crate) use container::build_docker_run_args;
 pub use container::build_image;
 pub(crate) use container::ensure_sandbox_config_dirs;
