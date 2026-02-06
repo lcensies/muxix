@@ -66,7 +66,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
                     "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }}; ",
                     "fi; ",
                     "export _WM_CWD; ",
-                    "devbox run -c \"$_WM_CACHE\" -- bash -lc 'cd \"$_WM_CWD\" && {}'"
+                    "devbox run -c \"$_WM_CACHE\" -- bash -c 'cd \"$_WM_CWD\" && {}'"
                 ),
                 escaped
             )
