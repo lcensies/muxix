@@ -69,6 +69,16 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Start an interactive shell in a container sandbox.
+    /// Uses the same mounts and environment as a normal worktree sandbox.
+    Shell {
+        /// Exec into an existing container for this worktree instead of starting a new one
+        #[arg(long, short)]
+        exec: bool,
+        /// Command to run instead of bash
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
 }
 
 pub fn run(args: SandboxArgs) -> Result<()> {
@@ -90,6 +100,7 @@ pub fn run(args: SandboxArgs) -> Result<()> {
         } => run_install_dev(skip_build, release),
         SandboxCommand::Prune { force } => run_prune(force),
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
+        SandboxCommand::Shell { exec, command } => run_shell(exec, command),
     }
 }
 
@@ -738,6 +749,93 @@ fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
+    use crate::config::SandboxRuntime;
+    use crate::state::StateStore;
+
+    let config = Config::load(None)?;
+
+    // Get current directory as worktree
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+    let worktree_root = cwd.clone();
+
+    // Get handle from directory name
+    let handle = worktree_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("Could not determine worktree handle from directory name")?;
+
+    let runtime = match config.sandbox.runtime() {
+        SandboxRuntime::Podman => "podman",
+        SandboxRuntime::Docker => "docker",
+    };
+
+    // Build shell command
+    let shell_cmd = if command.is_empty() {
+        "bash".to_string()
+    } else {
+        command.join(" ")
+    };
+
+    if exec {
+        // Find existing container for this worktree
+        let store = StateStore::new().context("Failed to access state store")?;
+        let containers = store.list_containers(handle);
+
+        if containers.is_empty() {
+            bail!(
+                "No running container found for worktree '{}'. \n\
+                 Start a sandbox first with 'workmux add --sandbox' or use 'workmux sandbox shell' without --exec.",
+                handle
+            );
+        }
+
+        // Use the first (usually only) container
+        let container_name = &containers[0];
+        if containers.len() > 1 {
+            println!(
+                "Multiple containers found, using: {} (others: {})",
+                container_name,
+                containers[1..].join(", ")
+            );
+        }
+
+        debug!(
+            runtime,
+            container = container_name,
+            cmd = shell_cmd,
+            "exec into container"
+        );
+
+        let status = Command::new(runtime)
+            .args(["exec", "-it", container_name, "bash", "-c", &shell_cmd])
+            .status()
+            .with_context(|| format!("Failed to exec into container {}", container_name))?;
+
+        std::process::exit(status.code().unwrap_or(1));
+    } else {
+        // Start new container
+        sandbox::ensure_sandbox_config_dirs()?;
+
+        // Build docker run args (no RPC env vars needed for shell)
+        let mut docker_args =
+            sandbox::build_docker_run_args(&shell_cmd, &config.sandbox, &worktree_root, &cwd, &[])?;
+
+        // Add container name for easier identification
+        docker_args.insert(1, "--name".to_string());
+        docker_args.insert(2, format!("wm-shell-{}", std::process::id()));
+
+        debug!(runtime, args = ?docker_args, "starting shell container");
+
+        let status = Command::new(runtime)
+            .args(&docker_args)
+            .status()
+            .with_context(|| format!("Failed to execute {} run", runtime))?;
+
+        std::process::exit(status.code().unwrap_or(1));
+    }
 }
 
 fn select_vms_interactive<'a>(
