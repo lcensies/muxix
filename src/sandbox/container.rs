@@ -30,6 +30,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
 COPY workmux /usr/local/bin/workmux
 RUN chmod +x /usr/local/bin/workmux
 
+# Install afplay shim that routes sound playback to host via RPC
+RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
+    chmod +x /usr/local/bin/afplay
+
 # Add claude to PATH (installed to .local/bin by installer)
 ENV PATH="/root/.local/bin:${PATH}"
 "#;
