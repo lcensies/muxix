@@ -14,6 +14,7 @@ use crate::multiplexer;
 use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
 use crate::sandbox::lima;
+use crate::sandbox::lima::toolchain;
 use crate::sandbox::rpc::{RpcContext, RpcServer, generate_token};
 use crate::state::StateStore;
 
@@ -145,7 +146,14 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         .collect::<Vec<_>>()
         .join("; ");
     let user_command = command.join(" ");
-    let full_command = format!("{exports}; {user_command}");
+
+    // Detect and wrap with toolchain environment if configured
+    let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree);
+    if detected != toolchain::DetectedToolchain::None {
+        info!(toolchain = ?detected, "wrapping command with toolchain environment");
+    }
+    let final_command = toolchain::wrap_command(&user_command, &detected);
+    let full_command = format!("{exports}; {final_command}");
 
     lima_cmd.arg("--");
     lima_cmd.arg("eval");

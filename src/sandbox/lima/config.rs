@@ -105,7 +105,7 @@ pub fn generate_lima_config(
         let system_script = r#"#!/bin/bash
 set -eux
 apt-get update
-apt-get install -y --no-install-recommends curl ca-certificates git
+apt-get install -y --no-install-recommends curl ca-certificates git xz-utils
 "#;
 
         let user_script = r#"#!/bin/bash
@@ -114,6 +114,25 @@ curl -fsSL https://claude.ai/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 # Ensure ~/.local/bin is on PATH for non-interactive shells
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
+
+# Install Nix via Determinate Systems installer (needs root for /nix)
+if ! command -v nix >/dev/null 2>&1; then
+    curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | \
+      sudo sh -s -- install linux --init none --no-confirm
+fi
+
+# Source nix profile for this script and future login shells
+if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+fi
+if ! grep -q 'nix-daemon.sh' ~/.profile 2>/dev/null; then
+    echo '. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' >> ~/.profile
+fi
+
+# Install Devbox (needs root for /usr/local/bin)
+if ! command -v devbox >/dev/null 2>&1; then
+    curl -fsSL https://get.jetify.com/devbox | sudo bash -s -- -f
+fi
 
 # Symlink Claude config from mounted state directory (seeded from host)
 # This preserves onboarding state, tips history, etc. across VM recreations
@@ -193,11 +212,16 @@ mod tests {
         assert!(yaml.contains("apt-get install"));
         assert!(yaml.contains("curl"));
         assert!(yaml.contains("git"));
+        assert!(yaml.contains("xz-utils"));
 
         // User provision installs Claude Code and workmux
         assert!(yaml.contains("mode: user"));
         assert!(yaml.contains("claude.ai/install.sh"));
         assert!(yaml.contains("workmux/main/scripts/install.sh"));
+
+        // User provision installs Nix and Devbox
+        assert!(yaml.contains("install.determinate.systems/nix"));
+        assert!(yaml.contains("get.jetify.com/devbox"));
 
         // User provision symlinks Claude config from state directory
         assert!(

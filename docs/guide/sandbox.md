@@ -233,18 +233,19 @@ sandbox:
     sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option                   | Default            | Description                                                                |
-| ------------------------ | ------------------ | -------------------------------------------------------------------------- |
-| `backend`                | `container`        | Set to `lima` for VM sandboxing                                            |
-| `isolation`              | `project`          | `project` (one VM per repo) or `user` (single global VM)                   |
-| `projects_dir`           | -                  | Required for `user` isolation: parent directory of all projects            |
-| `image`                  | Debian 12          | Custom qcow2 image URL or `file://` path                                   |
-| `skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                    |
-| `cpus`                   | `4`                | Number of CPUs for Lima VMs                                                |
-| `memory`                 | `4GiB`             | Memory for Lima VMs                                                        |
-| `disk`                   | `100GiB`           | Disk size for Lima VMs                                                     |
-| `provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps |
-| `env_passthrough`        | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                            |
+| Option                   | Default            | Description                                                                          |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------ |
+| `backend`                | `container`        | Set to `lima` for VM sandboxing                                                      |
+| `isolation`              | `project`          | `project` (one VM per repo) or `user` (single global VM)                             |
+| `projects_dir`           | -                  | Required for `user` isolation: parent directory of all projects                      |
+| `image`                  | Debian 12          | Custom qcow2 image URL or `file://` path                                             |
+| `skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                              |
+| `cpus`                   | `4`                | Number of CPUs for Lima VMs                                                          |
+| `memory`                 | `4GiB`             | Memory for Lima VMs                                                                  |
+| `disk`                   | `100GiB`           | Disk size for Lima VMs                                                               |
+| `provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps           |
+| `toolchain`              | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`  |
+| `env_passthrough`        | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                      |
 
 ### Custom provisioning
 
@@ -328,6 +329,70 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    ```
 
 New VMs will now boot from the snapshot with everything pre-installed.
+
+### Nix and Devbox toolchain
+
+The Lima backend has built-in support for [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) to provide declarative, cached toolchain management inside VMs.
+
+By default (`toolchain: auto`), workmux checks for `devbox.json` or `flake.nix` in the project root and wraps agent commands in the appropriate environment:
+
+- **Devbox**: Commands run via `devbox run -- <command>`
+- **Nix flakes**: Commands run via `nix develop --command bash -c '<command>'`
+
+If both `devbox.json` and `flake.nix` exist, Devbox takes priority.
+
+#### Example: Rust project with Devbox
+
+Add a `devbox.json` to your project root:
+
+```json
+{
+  "packages": ["rustc@latest", "cargo@latest", "just@latest", "ripgrep@latest"]
+}
+```
+
+When workmux creates a sandbox, the agent automatically has access to `rustc`, `cargo`, `just`, and `rg` without any provisioning scripts.
+
+#### Example: Node.js project with Devbox
+
+```json
+{
+  "packages": ["nodejs@22", "yarn@latest"],
+  "shell": {
+    "init_hook": ["echo 'Node.js environment ready'"]
+  }
+}
+```
+
+#### Disabling toolchain integration
+
+To disable auto-detection (e.g., if your project has a `devbox.json` that should not be used in the sandbox):
+
+```yaml
+sandbox:
+  backend: lima
+  toolchain: off
+```
+
+To force a specific toolchain mode regardless of which config files exist:
+
+```yaml
+sandbox:
+  backend: lima
+  toolchain: devbox  # or: flake
+```
+
+#### How it works
+
+Nix and Devbox are pre-installed during VM provisioning. Tools declared in `devbox.json` or `flake.nix` are downloaded as pre-built binaries from the Nix binary cache -- no compilation needed.
+
+The `/nix/store` persists inside the VM across sessions, so subsequent activations are instant. If the VM is pruned with `workmux sandbox prune`, packages will be re-downloaded on next use.
+
+#### Toolchain vs provisioning
+
+Use **toolchain** (`devbox.json`/`flake.nix`) for project-specific development tools like compilers, linters, and build tools. Changes take effect immediately without recreating the VM.
+
+Use **provisioning** for one-time VM setup like system packages, shell configuration, or services that need to run as root. Provisioning only runs on VM creation.
 
 ### RPC protocol
 

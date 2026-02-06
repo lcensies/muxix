@@ -318,6 +318,23 @@ pub enum SandboxTarget {
     All,
 }
 
+/// Toolchain integration mode for Lima sandboxes.
+/// Controls whether devbox.json/flake.nix are detected and used
+/// to wrap agent commands with the appropriate environment.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolchainMode {
+    /// Auto-detect devbox.json or flake.nix and wrap commands (default)
+    #[default]
+    Auto,
+    /// Disable toolchain integration
+    Off,
+    /// Force Devbox mode (use devbox.json)
+    Devbox,
+    /// Force Nix flake mode (use flake.nix)
+    Flake,
+}
+
 /// Configuration for sandboxing (Container or Lima)
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SandboxConfig {
@@ -383,6 +400,12 @@ pub struct SandboxConfig {
     /// Custom `provision` script still runs if specified.
     #[serde(default)]
     pub skip_default_provision: Option<bool>,
+
+    /// Toolchain integration mode for Lima sandboxes.
+    /// Controls automatic detection and use of devbox.json/flake.nix.
+    /// Default: auto (detect and wrap automatically)
+    #[serde(default)]
+    pub toolchain: Option<ToolchainMode>,
 }
 
 impl SandboxConfig {
@@ -443,6 +466,10 @@ impl SandboxConfig {
 
     pub fn skip_default_provision(&self) -> bool {
         self.skip_default_provision.unwrap_or(false)
+    }
+
+    pub fn toolchain(&self) -> ToolchainMode {
+        self.toolchain.clone().unwrap_or_default()
     }
 }
 
@@ -911,6 +938,11 @@ impl Config {
                 .sandbox
                 .skip_default_provision
                 .or(self.sandbox.skip_default_provision),
+            toolchain: project
+                .sandbox
+                .toolchain
+                .clone()
+                .or(self.sandbox.toolchain.clone()),
         };
 
         merged
@@ -1248,7 +1280,8 @@ pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Config, SandboxConfig, SandboxRuntime, SandboxTarget, is_agent_command, split_first_token,
+        Config, SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode, is_agent_command,
+        split_first_token,
     };
 
     #[test]
@@ -1549,5 +1582,45 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.resolved_rpc_host(), "host.containers.internal");
+    }
+
+    #[test]
+    fn sandbox_toolchain_defaults_to_auto() {
+        let config = SandboxConfig::default();
+        assert_eq!(config.toolchain(), ToolchainMode::Auto);
+    }
+
+    #[test]
+    fn sandbox_toolchain_merge_project_overrides() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                toolchain: Some(ToolchainMode::Auto),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                toolchain: Some(ToolchainMode::Off),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.toolchain(), ToolchainMode::Off);
+    }
+
+    #[test]
+    fn sandbox_toolchain_merge_fallback_to_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                toolchain: Some(ToolchainMode::Devbox),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.toolchain(), ToolchainMode::Devbox);
     }
 }
