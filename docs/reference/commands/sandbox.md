@@ -13,16 +13,24 @@ Commands for managing container sandbox functionality.
 Build the sandbox container image with Claude Code and workmux pre-installed.
 
 ```bash
-workmux sandbox build [--force]
+workmux sandbox build
+```
+
+This builds a Docker image named `workmux-sandbox` (or your configured image name) containing Claude Code and workmux. The image is built from an embedded Dockerfile that installs workmux via the GitHub releases install script -- no local binary or cross-compilation needed.
+
+### sandbox init-dockerfile
+
+Export a customizable Dockerfile template for building your own sandbox image.
+
+```bash
+workmux sandbox init-dockerfile [--force]
 ```
 
 **Options:**
 
-- `--force` - Build even on non-Linux OS (the workmux binary will not work in the image)
+- `--force` - Overwrite existing `Dockerfile.sandbox`
 
-This builds a Docker image named `workmux-sandbox` (or your configured image name) containing Claude Code and the workmux binary. The image is built from an embedded Dockerfile template.
-
-**Note:** This command must be run on Linux because it copies your local workmux binary into the image. On macOS/Windows, it will fail unless `--force` is used.
+Creates `Dockerfile.sandbox` in the current directory with the same content as the embedded Dockerfile, plus guide comments showing which sections are required and where to add custom packages.
 
 ### sandbox auth
 
@@ -59,10 +67,10 @@ The RPC server handles requests from the guest workmux binary:
 
 ### sandbox install-dev
 
-Cross-compile and install workmux into running Lima VMs for local development.
+Cross-compile and install workmux into container images and running Lima VMs for local development.
 
 ```bash
-# Cross-compile and install into all running VMs
+# Cross-compile and install into containers and running VMs
 workmux sandbox install-dev
 
 # Use release profile (slower build, faster binary)
@@ -77,7 +85,9 @@ workmux sandbox install-dev --skip-build
 - `--skip-build` - Skip cross-compilation and copy the previously built binary
 - `--release` - Use release profile (default is debug for faster iteration)
 
-This is a developer-only command for getting local workmux builds into Lima VMs. The host macOS binary is a Mach-O binary that cannot run inside the Linux VM, so this command cross-compiles for the correct Linux architecture and copies the result into each running VM.
+This is a developer-only command for getting local workmux builds into sandbox environments. The host macOS binary cannot run inside Linux containers or VMs, so this command cross-compiles for the correct Linux architecture.
+
+For container sandboxes, it builds a thin overlay image (`FROM <image>` + `COPY workmux`) on top of the configured sandbox image, replacing it in-place. For Lima VMs, it copies the binary into each running VM.
 
 **Prerequisites:**
 
@@ -125,7 +135,7 @@ This command helps you stop running Lima VMs created by workmux to free up syste
 ## Quick Setup
 
 ```bash
-# 1. Build the image (on Linux)
+# 1. Build the image
 workmux sandbox build
 
 # 2. Authenticate

@@ -29,8 +29,6 @@ brew install podman
 
 ### 2. Build the sandbox image
 
-On a **Linux machine**, run:
-
 ```bash
 workmux sandbox build
 ```
@@ -38,35 +36,27 @@ workmux sandbox build
 This builds a Docker image named `workmux-sandbox` containing:
 
 - Claude Code CLI
-- The workmux binary (for status hooks)
+- workmux (installed from GitHub releases)
+- Nix and Devbox
 - Git and other dependencies
 
-**Note:** The build command must be run on Linux because it copies your local
-workmux binary into the image. On macOS/Windows, the binary would be
-incompatible with the Linux container.
+### Custom images
 
-**Alternative: Manual build**
-
-If you need to build on a non-Linux machine or want a custom image:
-
-```dockerfile
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Claude Code
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Optional: download workmux from releases
-# RUN curl -fsSL https://github.com/user/workmux/releases/latest/download/workmux-linux -o /usr/local/bin/workmux && chmod +x /usr/local/bin/workmux
-
-ENV PATH="/root/.claude/local/bin:${PATH}"
-```
+To add tools or customize the sandbox environment, export the Dockerfile
+template and modify it:
 
 ```bash
-docker build -t workmux-sandbox .
+workmux sandbox init-dockerfile        # creates Dockerfile.sandbox
+vim Dockerfile.sandbox                  # customize
+docker build -t my-sandbox -f Dockerfile.sandbox .
+```
+
+Then set the image in your config:
+
+```yaml
+sandbox:
+  enabled: true
+  image: my-sandbox
 ```
 
 ### 3. Enable sandbox in config
@@ -182,13 +172,6 @@ The `merge` command requires access to multiple worktrees, which breaks the sand
 On macOS with Docker Desktop, status updates require a TCP bridge because Unix sockets don't work across the VM boundary. This is optional for basic functionality.
 
 ## Troubleshooting
-
-### Build fails on macOS/Windows
-
-The `workmux sandbox build` command only works on Linux because it copies your
-local binary into the container. Use `--force` to build anyway (the image will
-work but workmux status hooks won't function), or build manually with a
-Dockerfile that downloads workmux from releases.
 
 ### Git commands fail with "not a git repository"
 
@@ -477,16 +460,16 @@ Delete all these VMs? [y/N]
 
 Lima VMs are stored in `~/.lima/<name>/`. Each VM typically uses 100GB of disk space by default.
 
-### Installing local builds into VMs
+### Installing local builds into sandboxes
 
-During development, the macOS host binary cannot run inside the Linux VM. Use `install-dev` to cross-compile and install your local workmux build:
+During development, the macOS host binary cannot run inside Linux containers or VMs. Use `install-dev` to cross-compile and install your local workmux build:
 
 ```bash
 # First time: install prerequisites
 rustup target add aarch64-unknown-linux-gnu
 brew install messense/macos-cross-toolchains/aarch64-unknown-linux-gnu
 
-# Cross-compile and install into all running VMs
+# Cross-compile and install into containers and running VMs
 workmux sandbox install-dev
 
 # After code changes, rebuild and reinstall
@@ -499,7 +482,7 @@ workmux sandbox install-dev --release
 workmux sandbox install-dev --skip-build
 ```
 
-The binary is installed to `~/.local/bin/workmux` inside the VM (already on PATH).
+For containers, this builds a thin overlay image (`FROM <image>` + `COPY workmux`) on top of the configured sandbox image, replacing it in-place. For Lima VMs, the binary is installed to `~/.local/bin/workmux` inside each running VM.
 
 ### Stopping Lima VMs
 
