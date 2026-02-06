@@ -19,10 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code and make it accessible by all users
-# (container runs as host UID, not root)
+# (container runs as host UID, not root, with HOME=/tmp)
 RUN curl -fsSL https://claude.ai/install.sh | bash && \
     chmod a+x /root && \
-    chmod -R a+rX /root/.local /root/.claude
+    chmod -R a+rX /root/.local /root/.claude && \
+    mkdir -p /tmp/.local && \
+    ln -s /root/.local/bin /tmp/.local/bin
 
 # Copy workmux binary from build context
 COPY workmux /usr/local/bin/workmux
