@@ -57,6 +57,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
             // a new cache entry.
             format!(
                 concat!(
+                    "_WM_CWD=\"$PWD\"; ",
                     "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | md5sum | cut -d\" \" -f1); ",
                     "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
                     "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
@@ -64,7 +65,8 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
                     "cp devbox.json \"$_WM_CACHE/\" && ",
                     "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }}; ",
                     "fi; ",
-                    "devbox run -c \"$_WM_CACHE\" -- bash -lc '{}'"
+                    "export _WM_CWD; ",
+                    "devbox run -c \"$_WM_CACHE\" -- bash -lc 'cd \"$_WM_CWD\" && {}'"
                 ),
                 escaped
             )
@@ -151,6 +153,10 @@ mod tests {
     #[test]
     fn test_wrap_devbox_uses_cache() {
         let wrapped = wrap_command("claude --help", &DetectedToolchain::Devbox);
+        // Should save working directory and restore it inside devbox
+        assert!(wrapped.contains("_WM_CWD=\"$PWD\""));
+        assert!(wrapped.contains("export _WM_CWD"));
+        assert!(wrapped.contains("cd \"$_WM_CWD\""));
         // Should hash config files for cache key
         assert!(wrapped.contains("md5sum"));
         assert!(wrapped.contains("devbox.json"));
