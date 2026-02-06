@@ -115,6 +115,12 @@ pub fn list(
         Vec::new()
     };
 
+    // Pre-calculate canonical paths for agents to avoid repeated syscalls
+    let agent_panes_canon: Vec<_> = agent_panes
+        .iter()
+        .map(|a| (canon_or_self(&a.path), a.status))
+        .collect();
+
     let prefix = config.window_prefix();
     let worktrees: Vec<WorktreeInfo> = worktrees_data
         .into_iter()
@@ -147,14 +153,13 @@ pub fn list(
             // Match agents to this worktree by comparing canonicalized paths.
             // An agent's workdir should be within the worktree directory.
             let canon_wt_path = canon_or_self(&path);
-            let matching_statuses: Vec<_> = agent_panes
+            let matching_statuses: Vec<_> = agent_panes_canon
                 .iter()
-                .filter(|agent| {
-                    let canon_agent_path = canon_or_self(&agent.path);
-                    canon_agent_path == canon_wt_path
+                .filter(|(canon_agent_path, _)| {
+                    *canon_agent_path == canon_wt_path
                         || canon_agent_path.starts_with(&canon_wt_path)
                 })
-                .filter_map(|agent| agent.status)
+                .filter_map(|(_, status)| *status)
                 .collect();
 
             let agent_status = if matching_statuses.is_empty() {
