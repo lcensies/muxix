@@ -142,6 +142,7 @@ docker run --rm -it \
   --user 501:20 \
   --mount type=bind,source=/path/to/worktree,target=/path/to/worktree \
   --mount type=bind,source=/path/to/main/.git,target=/path/to/main/.git \
+  --mount type=bind,source=/path/to/main,target=/path/to/main \
   --mount type=bind,source=~/.claude-sandbox.json,target=/tmp/.claude.json \
   --mount type=bind,source=~/.claude,target=/tmp/.claude \
   --workdir /path/to/worktree \
@@ -151,12 +152,13 @@ docker run --rm -it \
 
 ### What's mounted
 
-| Mount                    | Access     | Purpose        |
-| ------------------------ | ---------- | -------------- |
-| Worktree directory       | read-write | Source code    |
-| Main `.git`              | read-write | Git operations |
-| `~/.claude-sandbox.json` | read-write | Agent config   |
-| `~/.claude/`             | read-write | Agent settings |
+| Mount                    | Access     | Purpose                              |
+| ------------------------ | ---------- | ------------------------------------ |
+| Worktree directory       | read-write | Source code                          |
+| Main worktree            | read-write | Symlink resolution (e.g., CLAUDE.md) |
+| Main `.git`              | read-write | Git operations                       |
+| `~/.claude-sandbox.json` | read-write | Agent config                         |
+| `~/.claude/`             | read-write | Agent settings                       |
 
 ### What's NOT accessible
 
@@ -164,7 +166,6 @@ docker run --rm -it \
 - `~/.aws/` (AWS credentials)
 - `~/.config/` (other app configs)
 - Other worktrees
-- Main worktree source files
 
 ## Limitations
 

@@ -223,7 +223,7 @@ pub fn build_docker_run_args(
         worktree_root_str, worktree_root_str
     ));
 
-    // Git worktree .git directory mount
+    // Git worktree mounts: .git directory + main worktree (for symlink resolution)
     let git_path = worktree_root.join(".git");
     if git_path.is_file()
         && let Ok(content) = std::fs::read_to_string(&git_path)
@@ -231,12 +231,24 @@ pub fn build_docker_run_args(
     {
         let gitdir = gitdir.trim();
         if let Some(main_git) = Path::new(gitdir).ancestors().nth(2) {
+            // Mount the .git directory for git operations
             args.push("--mount".to_string());
             args.push(format!(
                 "type=bind,source={},target={}",
                 main_git.display(),
                 main_git.display()
             ));
+
+            // Mount the main worktree to resolve symlinks pointing there
+            // (e.g., CLAUDE.md -> ../../main-worktree/CLAUDE.md)
+            if let Some(main_worktree) = main_git.parent() {
+                args.push("--mount".to_string());
+                args.push(format!(
+                    "type=bind,source={},target={}",
+                    main_worktree.display(),
+                    main_worktree.display()
+                ));
+            }
         }
     }
 
