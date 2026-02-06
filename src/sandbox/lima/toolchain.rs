@@ -34,16 +34,43 @@ pub fn resolve_toolchain(mode: &ToolchainMode, dir: &Path) -> DetectedToolchain 
     }
 }
 
+fn shell_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
+
 /// Wrap a command string to run inside the appropriate toolchain environment.
 /// Returns the original command unchanged if no toolchain is active.
+///
+/// For Devbox, generates a shell wrapper that:
+/// 1. Hashes devbox.json + devbox.lock to compute a content-addressable cache key
+/// 2. Creates a shared cache directory inside the VM (~/.cache/workmux/devbox/<hash>/)
+/// 3. Copies config files there if not already present
+/// 4. Runs `devbox run -c <cache-dir>` so all worktrees with the same config share
+///    one .devbox/ environment, avoiding expensive re-initialization per worktree
 pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
     match toolchain {
         DetectedToolchain::Devbox => {
-            let escaped = command.replace('\'', "'\\''");
-            format!("devbox run -- bash -lc '{}'", escaped)
+            let escaped = shell_escape(command);
+            // Shell wrapper that bootstraps a content-addressable devbox cache.
+            // The hash is computed at runtime inside the VM from the mounted
+            // devbox.json + devbox.lock, so config changes automatically create
+            // a new cache entry.
+            format!(
+                concat!(
+                    "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | md5sum | cut -d\" \" -f1); ",
+                    "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
+                    "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
+                    "mkdir -p \"$_WM_CACHE\" && ",
+                    "cp devbox.json \"$_WM_CACHE/\" && ",
+                    "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }}; ",
+                    "fi; ",
+                    "devbox run -c \"$_WM_CACHE\" -- bash -lc '{}'"
+                ),
+                escaped
+            )
         }
         DetectedToolchain::Flake => {
-            let escaped = command.replace('\'', "'\\''");
+            let escaped = shell_escape(command);
             format!("nix develop --command bash -c '{}'", escaped)
         }
         DetectedToolchain::None => command.to_string(),
@@ -122,11 +149,26 @@ mod tests {
     }
 
     #[test]
-    fn test_wrap_devbox() {
-        assert_eq!(
-            wrap_command("claude --help", &DetectedToolchain::Devbox),
-            "devbox run -- bash -lc 'claude --help'"
-        );
+    fn test_wrap_devbox_uses_cache() {
+        let wrapped = wrap_command("claude --help", &DetectedToolchain::Devbox);
+        // Should hash config files for cache key
+        assert!(wrapped.contains("md5sum"));
+        assert!(wrapped.contains("devbox.json"));
+        assert!(wrapped.contains("devbox.lock"));
+        // Should use shared cache dir
+        assert!(wrapped.contains(".cache/workmux/devbox/"));
+        // Should copy config to cache
+        assert!(wrapped.contains("cp devbox.json"));
+        // Should use -c flag pointing to cache
+        assert!(wrapped.contains("devbox run -c"));
+        // Should contain the escaped command
+        assert!(wrapped.contains("claude --help"));
+    }
+
+    #[test]
+    fn test_wrap_devbox_escapes_quotes() {
+        let wrapped = wrap_command("echo 'hello'", &DetectedToolchain::Devbox);
+        assert!(wrapped.contains(r"echo '\''hello'\''"));
     }
 
     #[test]
