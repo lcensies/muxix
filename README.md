@@ -1037,7 +1037,13 @@ workmux rm --all
 
 ### `workmux list` (alias: `ls`)
 
-Lists all git worktrees with their tmux window status and merge status.
+Lists all git worktrees with their agent status, multiplexer window status, and
+merge status. Supports filtering by worktree handle or branch name.
+
+#### Arguments
+
+- `[worktree-or-branch...]`: Filter by worktree handle (directory name) or
+  branch name. Accepts multiple values. When omitted, shows all worktrees.
 
 #### Options
 
@@ -1054,21 +1060,29 @@ workmux list
 
 # List with PR status
 workmux list --pr
+
+# Filter to specific worktrees
+workmux list my-feature
+workmux list feature-auth feature-api
 ```
 
 #### Example output
 
 ```
-BRANCH      TMUX    UNMERGED    PATH
-------      ----    --------    ----
-main        -       -           ~/project
-user-auth   ✓       -           ~/project__worktrees/user-auth
-bug-fix     ✓       ●           ~/project__worktrees/bug-fix
+BRANCH      AGENT  MUX  UNMERGED  PATH
+main        -      -    -         ~/project
+user-auth   🤖     ✓    -         ~/project__worktrees/user-auth
+bug-fix     ✅     ✓    ●         ~/project__worktrees/bug-fix
+api-work    -      ✓    -         ~/project__worktrees/api-work
 ```
 
 #### Key
 
-- `✓` in TMUX column = tmux window exists for this worktree
+- AGENT shows the current agent status (see
+  [status tracking](https://workmux.dev/guide/status-tracking/)):
+  - `🤖` = working, `💬` = waiting for input, `✅` = finished
+  - Multiple agents per worktree show a count (e.g., `2🤖 1✅`)
+- `✓` in MUX column = multiplexer window exists for this worktree
 - `●` in UNMERGED column = branch has commits not merged into main
 - `-` = not applicable
 
