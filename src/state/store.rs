@@ -46,6 +46,11 @@ impl StateStore {
         self.base_path.join("agents")
     }
 
+    /// Path to containers directory.
+    fn containers_dir(&self) -> PathBuf {
+        self.base_path.join("containers")
+    }
+
     /// Path to settings file.
     fn settings_path(&self) -> PathBuf {
         self.base_path.join("settings.json")
@@ -136,6 +141,49 @@ impl StateStore {
         let path = self.settings_path();
         let content = serde_json::to_string_pretty(settings)?;
         write_atomic(&path, content.as_bytes())
+    }
+
+    // ── Container state management ──────────────────────────────────────────
+
+    /// Register a running container for a worktree handle.
+    ///
+    /// Creates a marker file at `containers/<handle>/<container_name>`.
+    pub fn register_container(&self, handle: &str, container_name: &str) -> Result<()> {
+        let dir = self.containers_dir().join(handle);
+        fs::create_dir_all(&dir).context("Failed to create container state directory")?;
+        fs::write(dir.join(container_name), "").context("Failed to write container marker")?;
+        Ok(())
+    }
+
+    /// Unregister a container.
+    ///
+    /// Removes the marker file and cleans up the directory if empty.
+    pub fn unregister_container(&self, handle: &str, container_name: &str) {
+        let dir = self.containers_dir().join(handle);
+        let path = dir.join(container_name);
+
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+
+        // Try to remove the handle directory if empty (ignore errors)
+        let _ = fs::remove_dir(&dir);
+    }
+
+    /// List registered containers for a worktree handle.
+    pub fn list_containers(&self, handle: &str) -> Vec<String> {
+        let dir = self.containers_dir().join(handle);
+        if !dir.exists() {
+            return Vec::new();
+        }
+
+        fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| !name.starts_with('.'))
+            .collect()
     }
 
     /// Load agents with reconciliation against live multiplexer state.

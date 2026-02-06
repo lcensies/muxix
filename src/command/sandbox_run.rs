@@ -15,12 +15,14 @@ use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
 use crate::sandbox::lima;
 use crate::sandbox::rpc::{RpcContext, RpcServer, generate_token};
+use crate::state::StateStore;
 
 /// Guard that stops a container when dropped.
 /// Ensures cleanup even if the supervisor is killed or panics.
 struct ContainerGuard {
     runtime: &'static str,
     name: String,
+    handle: String,
 }
 
 impl Drop for ContainerGuard {
@@ -43,6 +45,11 @@ impl Drop for ContainerGuard {
             Err(e) => {
                 warn!(container = %self.name, error = %e, "failed to run docker stop");
             }
+        }
+
+        // Unregister container from state store
+        if let Ok(store) = StateStore::new() {
+            store.unregister_container(&self.handle, &self.name);
         }
     }
 }
@@ -192,11 +199,19 @@ fn run_container(
 
     // Generate container name from worktree directory name so cleanup can find it.
     // Include PID to allow multiple agents in the same worktree (e.g., open -n).
-    let worktree_name = worktree_root
+    let handle = worktree_root
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("unknown");
-    let container_name = format!("wm-{}-{}", worktree_name, std::process::id());
+        .unwrap_or("unknown")
+        .to_string();
+    let container_name = format!("wm-{}-{}", handle, std::process::id());
+
+    // Register container in state store so cleanup can find it without docker ps
+    if let Ok(store) = StateStore::new()
+        && let Err(e) = store.register_container(&handle, &container_name)
+    {
+        warn!(error = %e, "failed to register container state");
+    }
 
     let rpc_port_str = rpc_port.to_string();
     let extra_envs = [
@@ -225,6 +240,7 @@ fn run_container(
     let _guard = ContainerGuard {
         runtime: runtime_bin,
         name: container_name,
+        handle,
     };
 
     let status = Command::new(runtime_bin)
