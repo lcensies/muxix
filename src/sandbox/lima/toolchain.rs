@@ -58,7 +58,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
             format!(
                 concat!(
                     "_WM_CWD=\"$PWD\"; ",
-                    "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | md5sum | cut -d\" \" -f1); ",
+                    "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
                     "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
                     "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
                     "mkdir -p \"$_WM_CACHE\" && ",
@@ -157,8 +157,9 @@ mod tests {
         assert!(wrapped.contains("_WM_CWD=\"$PWD\""));
         assert!(wrapped.contains("export _WM_CWD"));
         assert!(wrapped.contains("cd \"$_WM_CWD\""));
-        // Should hash config files for cache key
+        // Should hash config files for cache key (portable: md5sum || md5)
         assert!(wrapped.contains("md5sum"));
+        assert!(wrapped.contains("md5 -q"));
         assert!(wrapped.contains("devbox.json"));
         assert!(wrapped.contains("devbox.lock"));
         // Should use shared cache dir
