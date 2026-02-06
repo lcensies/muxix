@@ -351,8 +351,7 @@ impl App {
             return;
         }
 
-        // Collect repo roots that have at least one pushed feature branch
-        // (skip repos where no branches have upstreams, excluding main/master)
+        // Collect repo roots that have at least one non-main feature branch
         let repo_roots: std::collections::HashSet<PathBuf> = self
             .agents
             .iter()
@@ -364,10 +363,7 @@ impl App {
                     return false;
                 };
                 // Skip main/master - they don't need PR status
-                if branch == "main" || branch == "master" {
-                    return false;
-                }
-                status.has_upstream
+                branch != "main" && branch != "master"
             })
             .filter_map(|agent| self.repo_roots.get(&agent.path).cloned())
             .collect();
