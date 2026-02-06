@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::{Config, SandboxBackend, SandboxRuntime};
 use crate::multiplexer;
@@ -15,6 +15,37 @@ use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
 use crate::sandbox::lima;
 use crate::sandbox::rpc::{RpcContext, RpcServer, generate_token};
+
+/// Guard that stops a container when dropped.
+/// Ensures cleanup even if the supervisor is killed or panics.
+struct ContainerGuard {
+    runtime: &'static str,
+    name: String,
+}
+
+impl Drop for ContainerGuard {
+    fn drop(&mut self) {
+        debug!(container = %self.name, "stopping container");
+        let result = Command::new(self.runtime)
+            .args(["stop", "-t", "2", &self.name])
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {
+                debug!(container = %self.name, "container stopped");
+            }
+            Ok(output) => {
+                // Container may have already exited, which is fine
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.contains("No such container") {
+                    warn!(container = %self.name, stderr = %stderr.trim(), "failed to stop container");
+                }
+            }
+            Err(e) => {
+                warn!(container = %self.name, error = %e, "failed to run docker stop");
+            }
+        }
+    }
+}
 
 /// Run the sandbox supervisor.
 ///
@@ -154,10 +185,13 @@ fn run_container(
     // Compute RPC host BEFORE matching on runtime (SandboxRuntime is not Copy)
     let rpc_host = config.sandbox.resolved_rpc_host();
     let runtime = config.sandbox.runtime();
-    let runtime_bin = match runtime {
+    let runtime_bin: &'static str = match runtime {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
     };
+
+    // Generate unique container name for cleanup
+    let container_name = format!("wm-{}", std::process::id());
 
     let rpc_port_str = rpc_port.to_string();
     let extra_envs = [
@@ -168,7 +202,7 @@ fn run_container(
     ];
 
     let user_command = command.join(" ");
-    let docker_args = build_docker_run_args(
+    let mut docker_args = build_docker_run_args(
         &user_command,
         &config.sandbox,
         worktree_root,
@@ -176,7 +210,17 @@ fn run_container(
         &extra_envs,
     )?;
 
-    debug!(runtime = runtime_bin, args = ?docker_args, "spawning container");
+    // Insert --name after "run" (index 0 is "run")
+    docker_args.insert(1, "--name".to_string());
+    docker_args.insert(2, container_name.clone());
+
+    debug!(runtime = runtime_bin, container = %container_name, args = ?docker_args, "spawning container");
+
+    // Create guard to stop container on exit (panic, SIGTERM, etc.)
+    let _guard = ContainerGuard {
+        runtime: runtime_bin,
+        name: container_name,
+    };
 
     let status = Command::new(runtime_bin)
         .args(&docker_args)
