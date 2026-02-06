@@ -106,9 +106,10 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
         // Set HOME to /tmp where config is mounted
         "--env".to_string(),
         "HOME=/tmp".to_string(),
-        // PATH for claude binary (include Claude Code install location)
+        // PATH: include both /root/.local/bin (where Claude is installed) and
+        // /tmp/.local/bin (symlink, so Claude sees $HOME/.local/bin in PATH)
         "--env".to_string(),
-        "PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
+        "PATH=/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
         image.to_string(),
         "claude".to_string(),
     ]);
@@ -288,9 +289,10 @@ pub fn build_docker_run_args(
         args.push(format!("{}={}", key, value));
     }
 
-    // PATH
+    // PATH: include both /root/.local/bin (where Claude is installed) and
+    // /tmp/.local/bin (symlink, but needed so Claude sees $HOME/.local/bin in PATH)
     args.push("--env".to_string());
-    args.push("PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string());
+    args.push("PATH=/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string());
 
     // Image
     args.push(image.to_string());
