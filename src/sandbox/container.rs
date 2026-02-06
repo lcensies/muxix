@@ -12,12 +12,24 @@ use crate::state::StateStore;
 /// Uses debian:bookworm-slim for glibc compatibility with host-built binaries.
 const SANDBOX_DOCKERFILE: &str = r#"FROM debian:bookworm-slim
 
-# Install dependencies for Claude Code + git operations
+# Install dependencies for Claude Code + git operations + Nix
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Nix via Determinate Systems installer (single-user mode)
+# Make /nix world-writable so non-root users can operate in single-user mode
+RUN curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | \
+    sh -s -- install linux --init none --no-confirm && \
+    chmod -R 0777 /nix
+
+# Install Devbox and make it accessible to all users
+RUN . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh && \
+    curl -fsSL https://get.jetify.com/devbox | bash -s -- -f && \
+    chmod a+rx /usr/local/bin/devbox
 
 # Install Claude Code and make it accessible by all users
 # (container runs as host UID, not root, with HOME=/tmp)
@@ -35,8 +47,18 @@ RUN chmod +x /usr/local/bin/workmux
 RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
     chmod +x /usr/local/bin/afplay
 
-# Add claude to PATH (installed to .local/bin by installer)
-ENV PATH="/root/.local/bin:${PATH}"
+# Create entrypoint that sources nix profile for proper environment setup
+RUN printf '#!/bin/bash\n\
+if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then\n\
+  . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh\n\
+fi\n\
+exec "$@"\n' > /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
+
+# Add claude, nix, and devbox to PATH
+ENV PATH="/root/.local/bin:/nix/var/nix/profiles/default/bin:${PATH}"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 "#;
 
 /// Sandbox-specific config paths on host.
@@ -110,7 +132,7 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
         // PATH: include both /root/.local/bin (where Claude is installed) and
         // /tmp/.local/bin (symlink, so Claude sees $HOME/.local/bin in PATH)
         "--env".to_string(),
-        "PATH=/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
+        "PATH=/tmp/.local/bin:/root/.local/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
         image.to_string(),
         "claude".to_string(),
     ]);
@@ -216,6 +238,13 @@ pub fn build_docker_run_args(
     args.push("--user".to_string());
     args.push(format!("{}:{}", uid, gid));
 
+    // Persistent volume for Nix store (shared across all containers)
+    // This allows devbox packages to be cached between container runs.
+    // Note: We use a regular -v mount instead of --mount because Docker's default
+    // behavior copies the image's /nix contents to an empty volume on first use.
+    args.push("-v".to_string());
+    args.push("workmux-nix:/nix".to_string());
+
     // Mirror mount worktree
     args.push("--mount".to_string());
     args.push(format!(
@@ -305,7 +334,7 @@ pub fn build_docker_run_args(
     // PATH: include both /root/.local/bin (where Claude is installed) and
     // /tmp/.local/bin (symlink, but needed so Claude sees $HOME/.local/bin in PATH)
     args.push("--env".to_string());
-    args.push("PATH=/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string());
+    args.push("PATH=/tmp/.local/bin:/root/.local/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin".to_string());
 
     // Image
     args.push(image.to_string());
