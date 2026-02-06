@@ -309,6 +309,10 @@ enum Commands {
         /// Show PR status for each worktree (requires gh CLI)
         #[arg(long)]
         pr: bool,
+
+        /// Filter by worktree name or branch (supports multiple)
+        #[arg(value_parser = WorktreeBranchParser::new())]
+        filter: Vec<String>,
     },
 
     /// Get the filesystem path of a worktree
@@ -398,7 +402,7 @@ enum ClaudeCommands {
 fn should_prompt_nerdfont(cmd: &Commands) -> bool {
     matches!(
         cmd,
-        Commands::Add { .. } | Commands::Init | Commands::Dashboard { .. }
+        Commands::Add { .. } | Commands::Init | Commands::Dashboard { .. } | Commands::List { .. }
     )
 }
 
@@ -479,7 +483,7 @@ pub fn run() -> Result<()> {
             force,
             keep_branch,
         } => command::remove::run(names, gone, all, force, keep_branch),
-        Commands::List { pr } => command::list::run(pr),
+        Commands::List { pr, filter } => command::list::run(pr, &filter),
         Commands::Path { name } => command::path::run(&name),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),

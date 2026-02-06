@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::github::PrSummary;
+use crate::multiplexer::AgentStatus;
 use crate::prompt::Prompt;
 
 /// Arguments for creating a worktree
@@ -129,6 +130,11 @@ impl SetupOptions {
     }
 }
 
+/// Summary of agent statuses for a worktree (may have multiple agents)
+pub struct AgentStatusSummary {
+    pub statuses: Vec<AgentStatus>,
+}
+
 /// List all worktrees with their status
 pub struct WorktreeInfo {
     pub branch: String,
@@ -136,4 +142,5 @@ pub struct WorktreeInfo {
     pub has_mux_window: bool,
     pub has_unmerged: bool,
     pub pr_info: Option<PrSummary>,
+    pub agent_status: Option<AgentStatusSummary>,
 }

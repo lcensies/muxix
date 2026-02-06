@@ -1,16 +1,64 @@
 use anyhow::{Result, anyhow};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use crate::multiplexer::{Multiplexer, util};
+use crate::state::StateStore;
 use crate::{config, git, github, spinner};
 
-use super::types::WorktreeInfo;
+use super::types::{AgentStatusSummary, WorktreeInfo};
+
+/// Canonicalize a path, falling back to the original if canonicalization fails.
+fn canon_or_self(p: &Path) -> PathBuf {
+    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Filter worktrees by handle (directory name) or branch name.
+/// Uses handle-first precedence: if a filter token matches a handle, that takes
+/// priority over branch name matches.
+fn filter_worktrees(
+    worktrees: Vec<(PathBuf, String)>,
+    filter: &[String],
+) -> Vec<(PathBuf, String)> {
+    if filter.is_empty() {
+        return worktrees;
+    }
+
+    let mut matched_paths = HashSet::new();
+
+    for token in filter {
+        // First: try to match by handle (directory name)
+        let handle_match = worktrees.iter().find(|(path, _)| {
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|name| name == token)
+        });
+
+        if let Some((path, _)) = handle_match {
+            matched_paths.insert(path.clone());
+            continue;
+        }
+
+        // Fallback: try to match by branch name
+        for (path, branch) in &worktrees {
+            if branch == token {
+                matched_paths.insert(path.clone());
+            }
+        }
+    }
+
+    worktrees
+        .into_iter()
+        .filter(|(path, _)| matched_paths.contains(path))
+        .collect()
+}
 
 /// List all worktrees with their status
 pub fn list(
     config: &config::Config,
     mux: &dyn Multiplexer,
     fetch_pr_status: bool,
+    filter: &[String],
 ) -> Result<Vec<WorktreeInfo>> {
     if !git::is_git_repo()? {
         return Err(anyhow!("Not in a git repository"));
@@ -22,8 +70,16 @@ pub fn list(
         return Ok(Vec::new());
     }
 
+    // Apply filter early before expensive operations
+    let worktrees_data = filter_worktrees(worktrees_data, filter);
+
+    if worktrees_data.is_empty() {
+        return Ok(Vec::new());
+    }
+
     // Check mux status and get all windows once to avoid repeated process calls
-    let mux_windows: HashSet<String> = if mux.is_running().unwrap_or(false) {
+    let mux_running = mux.is_running().unwrap_or(false);
+    let mux_windows: HashSet<String> = if mux_running {
         mux.get_all_window_names().unwrap_or_default()
     } else {
         HashSet::new()
@@ -47,6 +103,16 @@ pub fn list(
         })?
     } else {
         std::collections::HashMap::new()
+    };
+
+    // Load reconciled agent states (only if multiplexer is running)
+    let agent_panes = if mux_running {
+        StateStore::new()
+            .ok()
+            .and_then(|store| store.load_reconciled_agents(mux).ok())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
     };
 
     let prefix = config.window_prefix();
@@ -78,12 +144,34 @@ pub fn list(
             // Lookup PR info from batch fetch
             let pr_info = pr_map.get(&branch).cloned();
 
+            // Match agents to this worktree by comparing canonicalized paths.
+            // An agent's workdir should be within the worktree directory.
+            let canon_wt_path = canon_or_self(&path);
+            let matching_statuses: Vec<_> = agent_panes
+                .iter()
+                .filter(|agent| {
+                    let canon_agent_path = canon_or_self(&agent.path);
+                    canon_agent_path == canon_wt_path
+                        || canon_agent_path.starts_with(&canon_wt_path)
+                })
+                .filter_map(|agent| agent.status)
+                .collect();
+
+            let agent_status = if matching_statuses.is_empty() {
+                None
+            } else {
+                Some(AgentStatusSummary {
+                    statuses: matching_statuses,
+                })
+            };
+
             WorktreeInfo {
                 branch,
                 path,
                 has_mux_window,
                 has_unmerged,
                 pr_info,
+                agent_status,
             }
         })
         .collect();
