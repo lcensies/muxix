@@ -8,11 +8,21 @@ use tracing_appender::rolling;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
 
+use crate::sandbox::guest::is_sandbox_guest;
+
 static INIT: OnceLock<()> = OnceLock::new();
 static GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 pub fn init() -> Result<()> {
     if INIT.get().is_some() {
+        return Ok(());
+    }
+
+    // Skip file logging in sandbox guests - they're thin RPC clients and the
+    // host supervisor handles all real logging. Also avoids needing to create
+    // ~/.local/state/ in containers.
+    if is_sandbox_guest() {
+        let _ = INIT.set(());
         return Ok(());
     }
 
