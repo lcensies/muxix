@@ -121,7 +121,7 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         .arg(&vm_name);
 
     let mut env_exports = vec![
-        r#"PATH="$HOME/.local/bin:$PATH""#.to_string(),
+        r#"PATH="$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
         "WM_SANDBOX_GUEST=1".to_string(),
         "WM_RPC_HOST=host.lima.internal".to_string(),
         format!("WM_RPC_PORT={}", rpc_port),
