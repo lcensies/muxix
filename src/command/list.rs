@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use crate::config;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::workflow::types::AgentStatusSummary;
@@ -42,7 +44,28 @@ fn format_pr_status(pr_info: Option<crate::github::PrSummary>) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
-fn format_agent_status(summary: Option<&AgentStatusSummary>, config: &config::Config) -> String {
+/// Format a single agent status as either an icon (TTY) or text label (piped).
+fn format_status_label(status: AgentStatus, config: &config::Config, use_icons: bool) -> String {
+    if use_icons {
+        match status {
+            AgentStatus::Working => config.status_icons.working().to_string(),
+            AgentStatus::Waiting => config.status_icons.waiting().to_string(),
+            AgentStatus::Done => config.status_icons.done().to_string(),
+        }
+    } else {
+        match status {
+            AgentStatus::Working => "working".to_string(),
+            AgentStatus::Waiting => "waiting".to_string(),
+            AgentStatus::Done => "done".to_string(),
+        }
+    }
+}
+
+fn format_agent_status(
+    summary: Option<&AgentStatusSummary>,
+    config: &config::Config,
+    use_icons: bool,
+) -> String {
     let summary = match summary {
         Some(s) if !s.statuses.is_empty() => s,
         _ => return "-".to_string(),
@@ -50,12 +73,7 @@ fn format_agent_status(summary: Option<&AgentStatusSummary>, config: &config::Co
 
     let total = summary.statuses.len();
     if total == 1 {
-        // Single agent: just show icon
-        match summary.statuses[0] {
-            AgentStatus::Working => config.status_icons.working().to_string(),
-            AgentStatus::Waiting => config.status_icons.waiting().to_string(),
-            AgentStatus::Done => config.status_icons.done().to_string(),
-        }
+        format_status_label(summary.statuses[0], config, use_icons)
     } else {
         // Multiple agents: show breakdown
         let working = summary
@@ -76,13 +94,16 @@ fn format_agent_status(summary: Option<&AgentStatusSummary>, config: &config::Co
 
         let mut parts = Vec::new();
         if working > 0 {
-            parts.push(format!("{}{}", working, config.status_icons.working()));
+            let label = format_status_label(AgentStatus::Working, config, use_icons);
+            parts.push(format!("{}{}", working, label));
         }
         if waiting > 0 {
-            parts.push(format!("{}{}", waiting, config.status_icons.waiting()));
+            let label = format_status_label(AgentStatus::Waiting, config, use_icons);
+            parts.push(format!("{}{}", waiting, label));
         }
         if done > 0 {
-            parts.push(format!("{}{}", done, config.status_icons.done()));
+            let label = format_status_label(AgentStatus::Done, config, use_icons);
+            parts.push(format!("{}{}", done, label));
         }
         parts.join(" ")
     }
@@ -98,6 +119,8 @@ pub fn run(show_pr: bool, filter: &[String]) -> Result<()> {
         return Ok(());
     }
 
+    // Use icons when outputting to a terminal, text labels when piped (for agents)
+    let use_icons = std::io::stdout().is_terminal();
     let current_dir = std::env::current_dir()?;
 
     let display_data: Vec<WorktreeRow> = worktrees
@@ -117,7 +140,7 @@ pub fn run(show_pr: bool, filter: &[String]) -> Result<()> {
             WorktreeRow {
                 branch: wt.branch,
                 pr_status: format_pr_status(wt.pr_info),
-                agent_status: format_agent_status(wt.agent_status.as_ref(), &config),
+                agent_status: format_agent_status(wt.agent_status.as_ref(), &config, use_icons),
                 mux_status: if wt.has_mux_window {
                     "✓".to_string()
                 } else {
