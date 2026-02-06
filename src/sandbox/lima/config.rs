@@ -119,6 +119,9 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
 if ! command -v nix >/dev/null 2>&1; then
     curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | \
       sudo sh -s -- install linux --init none --no-confirm
+    # Single-user VM: make nix store writable by the user so nix/devbox
+    # can install packages without root
+    sudo chown -R "$(id -u):$(id -g)" /nix
 fi
 
 # Source nix profile for this script and future login shells
@@ -132,6 +135,10 @@ fi
 # Install Devbox (needs root for /usr/local/bin)
 if ! command -v devbox >/dev/null 2>&1; then
     curl -fsSL https://get.jetify.com/devbox | sudo bash -s -- -f
+    # Launcher script has execute-only perms; bash needs read permission
+    sudo chmod +r /usr/local/bin/devbox
+    # Trigger download of the real binary during provisioning
+    devbox version
 fi
 
 # Symlink Claude config from mounted state directory (seeded from host)
