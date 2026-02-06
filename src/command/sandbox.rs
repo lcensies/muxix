@@ -26,7 +26,7 @@ pub enum SandboxCommand {
     Auth,
     /// Build the sandbox container image with Claude Code and workmux.
     Build {
-        /// Build even on non-Linux OS (workmux binary will not work in image)
+        /// Skip cross-compilation (workmux binary will not work in image)
         #[arg(long)]
         force: bool,
     },
@@ -110,7 +110,18 @@ fn run_build(force: bool) -> Result<()> {
     let image_name = config.sandbox.resolved_image();
     println!("Building sandbox image '{}'...\n", image_name);
 
-    sandbox::build_image(&config.sandbox, force)?;
+    // On non-Linux hosts, cross-compile a Linux binary first
+    let binary_path = if cfg!(target_os = "linux") {
+        std::env::current_exe().context("Failed to locate current workmux executable")?
+    } else if force {
+        // --force: use the host binary as-is (workmux won't work in the container)
+        std::env::current_exe().context("Failed to locate current workmux executable")?
+    } else {
+        let target = linux_target_triple()?;
+        cross_compile(target, false)?
+    };
+
+    sandbox::build_image(&config.sandbox, &binary_path)?;
 
     println!("\nSandbox image built successfully!");
     println!();

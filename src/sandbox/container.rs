@@ -123,25 +123,13 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
 
 /// Build the sandbox container image.
 ///
-/// Creates a minimal build context with the current workmux binary and an
+/// Creates a minimal build context with the provided workmux binary and an
 /// embedded Dockerfile, then runs docker/podman build.
 ///
 /// # Arguments
 /// * `config` - Sandbox configuration
-/// * `force` - If true, skip OS compatibility check
-pub fn build_image(config: &SandboxConfig, force: bool) -> Result<()> {
-    // Check OS compatibility - Linux binaries won't run on other OSes
-    if !cfg!(target_os = "linux") && !force {
-        anyhow::bail!(
-            "Cannot build sandbox image on non-Linux OS.\n\
-             The workmux binary in your image would be incompatible with the Linux container.\n\n\
-             Options:\n\
-             1. Build on a Linux machine\n\
-             2. Use --force to build anyway (image will lack working workmux)\n\
-             3. Manually build an image with workmux installed from releases"
-        );
-    }
-
+/// * `workmux_binary` - Path to a Linux workmux binary to include in the image
+pub fn build_image(config: &SandboxConfig, workmux_binary: &Path) -> Result<()> {
     let runtime = match config.runtime() {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
@@ -156,11 +144,9 @@ pub fn build_image(config: &SandboxConfig, force: bool) -> Result<()> {
         .context("Failed to create temporary build directory")?;
     let context_path = temp_dir.path();
 
-    // Copy current workmux binary to build context
-    let current_exe =
-        std::env::current_exe().context("Failed to locate current workmux executable")?;
+    // Copy workmux binary to build context
     let dest_exe = context_path.join("workmux");
-    std::fs::copy(&current_exe, &dest_exe)
+    std::fs::copy(workmux_binary, &dest_exe)
         .context("Failed to copy workmux binary to build context")?;
 
     // Write Dockerfile
