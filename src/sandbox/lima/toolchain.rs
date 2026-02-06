@@ -55,6 +55,12 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
             // The hash is computed at runtime inside the VM from the mounted
             // devbox.json + devbox.lock, so config changes automatically create
             // a new cache entry.
+            //
+            // The command is passed as a single string (not via bash -c) because
+            // devbox internally joins all args with spaces before passing to
+            // `sh -c`, which breaks multi-word bash -c arguments. Passing a
+            // single string preserves the quoting and ensures cd runs before
+            // any command substitutions like $(cat ...).
             format!(
                 concat!(
                     "_WM_CWD=\"$PWD\"; ",
@@ -66,7 +72,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
                     "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }}; ",
                     "fi; ",
                     "export _WM_CWD; ",
-                    "devbox run -c \"$_WM_CACHE\" -- bash -c 'cd \"$_WM_CWD\" && {}'"
+                    "devbox run -c \"$_WM_CACHE\" -- 'cd \"$_WM_CWD\" && {}'"
                 ),
                 escaped
             )
