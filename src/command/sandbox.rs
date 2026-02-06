@@ -320,23 +320,8 @@ fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
 fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
     use crate::sandbox::lima::VM_PREFIX;
 
-    if !LimaInstance::is_lima_available() {
-        bail!("limactl is not installed or not in PATH");
-    }
-
+    let config = Config::load(None)?;
     let target = linux_target_triple()?;
-
-    // Check for running VMs first (before potentially slow compilation)
-    let instances = LimaInstance::list()?;
-    let running: Vec<_> = instances
-        .iter()
-        .filter(|i| i.name.starts_with(VM_PREFIX) && i.is_running())
-        .collect();
-
-    if running.is_empty() {
-        println!("No running workmux VMs found.");
-        return Ok(());
-    }
 
     // Cross-compile (or locate existing binary)
     let binary_path = if !skip_build {
@@ -354,36 +339,126 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
         path
     };
 
-    // Install into each running VM
-    println!(
-        "Installing workmux into {} running VM(s)...\n",
-        running.len()
-    );
-    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut did_something = false;
 
-    for vm in &running {
-        print!("  {} ... ", vm.name);
-        io::stdout().flush().ok();
-
-        match install_to_vm(&binary_path, &vm.name) {
-            Ok(()) => println!("ok"),
-            Err(e) => {
-                println!("failed");
-                failed.push((vm.name.clone(), e.to_string()));
-            }
+    // --- Container image patching ---
+    let image_name = config.sandbox.resolved_image();
+    match install_dev_container(&binary_path, image_name, &config) {
+        Ok(true) => {
+            did_something = true;
+        }
+        Ok(false) => {
+            // Image doesn't exist, skip silently
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to patch container image: {}", e);
         }
     }
 
-    if !failed.is_empty() {
-        eprintln!("\nFailed to install to {} VM(s):", failed.len());
-        for (name, error) in &failed {
-            eprintln!("  - {}: {}", name, error);
+    // --- Lima VM installation ---
+    if LimaInstance::is_lima_available() {
+        let instances = LimaInstance::list()?;
+        let running: Vec<_> = instances
+            .iter()
+            .filter(|i| i.name.starts_with(VM_PREFIX) && i.is_running())
+            .collect();
+
+        if !running.is_empty() {
+            println!(
+                "Installing workmux into {} running VM(s)...\n",
+                running.len()
+            );
+            let mut failed: Vec<(String, String)> = Vec::new();
+
+            for vm in &running {
+                print!("  {} ... ", vm.name);
+                io::stdout().flush().ok();
+
+                match install_to_vm(&binary_path, &vm.name) {
+                    Ok(()) => println!("ok"),
+                    Err(e) => {
+                        println!("failed");
+                        failed.push((vm.name.clone(), e.to_string()));
+                    }
+                }
+            }
+
+            if !failed.is_empty() {
+                eprintln!("\nFailed to install to {} VM(s):", failed.len());
+                for (name, error) in &failed {
+                    eprintln!("  - {}: {}", name, error);
+                }
+                bail!("Some installations failed");
+            }
+
+            did_something = true;
         }
-        bail!("Some installations failed");
+    }
+
+    if !did_something {
+        bail!(
+            "Nothing to do: no container image '{}' found and no running Lima VMs.",
+            image_name
+        );
     }
 
     println!("\nDone.");
     Ok(())
+}
+
+/// Build a thin overlay image to replace workmux in the container image.
+/// Returns Ok(true) if the image was patched, Ok(false) if the base image
+/// doesn't exist.
+fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) -> Result<bool> {
+    use crate::config::SandboxRuntime;
+
+    let runtime = match config.sandbox.runtime() {
+        SandboxRuntime::Podman => "podman",
+        SandboxRuntime::Docker => "docker",
+    };
+
+    // Check if the base image exists
+    let inspect = Command::new(runtime)
+        .args(["image", "inspect", image_name])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .context("Failed to run container runtime")?;
+
+    if !inspect.success() {
+        return Ok(false);
+    }
+
+    println!("Patching container image '{}'...", image_name);
+
+    let temp_dir = tempfile::Builder::new()
+        .prefix("workmux-install-dev-")
+        .tempdir()
+        .context("Failed to create temp directory")?;
+    let context_path = temp_dir.path();
+
+    // Copy binary to build context
+    let dest = context_path.join("workmux");
+    std::fs::copy(binary_path, &dest).context("Failed to copy binary")?;
+
+    // Write overlay Dockerfile
+    let dockerfile = format!("FROM {}\nCOPY workmux /usr/local/bin/workmux\n", image_name);
+    std::fs::write(context_path.join("Dockerfile"), &dockerfile)
+        .context("Failed to write Dockerfile")?;
+
+    // Build, tagging as the same image name (replaces it in-place)
+    let status = Command::new(runtime)
+        .args(["build", "-t", image_name, "."])
+        .current_dir(context_path)
+        .status()
+        .with_context(|| format!("Failed to run {} build", runtime))?;
+
+    if !status.success() {
+        bail!("Container image patch build failed");
+    }
+
+    println!("  {} ... ok", image_name);
+    Ok(true)
 }
 
 #[derive(Debug)]
