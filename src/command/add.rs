@@ -394,6 +394,9 @@ fn handle_rescue_flow(
         return Ok(false);
     }
 
+    // Capture target before options is moved
+    let is_session_mode = options.target == TmuxTarget::Session;
+
     let result = workflow::create_with_changes(
         branch_name,
         handle,
@@ -411,8 +414,12 @@ fn handle_rescue_flow(
     );
 
     if wait {
-        let full_window_name = prefixed(&context.prefix, handle);
-        context.mux.wait_until_windows_closed(&[full_window_name])?;
+        let full_name = prefixed(&context.prefix, handle);
+        if is_session_mode {
+            context.mux.wait_until_session_closed(&full_name)?;
+        } else {
+            context.mux.wait_until_windows_closed(&[full_name])?;
+        }
     }
 
     Ok(true)
@@ -633,7 +640,14 @@ impl<'a> CreationPlan<'a> {
         }
 
         if self.wait && !created_windows.is_empty() {
-            mux.wait_until_windows_closed(&created_windows)?;
+            if self.options.target == TmuxTarget::Session {
+                // For sessions, wait for each one to close
+                for session_name in &created_windows {
+                    mux.wait_until_session_closed(session_name)?;
+                }
+            } else {
+                mux.wait_until_windows_closed(&created_windows)?;
+            }
         }
 
         Ok(())
