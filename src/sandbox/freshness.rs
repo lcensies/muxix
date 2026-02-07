@@ -90,10 +90,19 @@ fn save_cache(image: &str, is_fresh: bool) -> Result<()> {
     Ok(())
 }
 
-/// Get local image digest.
-fn get_local_digest(runtime: &str, image: &str) -> Result<String> {
+/// Get the repo digests for a local image.
+///
+/// Returns digests like `["ghcr.io/raine/workmux-sandbox:claude@sha256:abc..."]`.
+/// These record the manifest digest the image was originally pulled with.
+fn get_local_repo_digests(runtime: &str, image: &str) -> Result<Vec<String>> {
     let output = Command::new(runtime)
-        .args(["image", "inspect", "--format", "{{.Id}}", image])
+        .args([
+            "image",
+            "inspect",
+            "--format",
+            "{{json .RepoDigests}}",
+            image,
+        ])
         .output()
         .with_context(|| format!("Failed to run {} image inspect", runtime))?;
 
@@ -102,51 +111,43 @@ fn get_local_digest(runtime: &str, image: &str) -> Result<String> {
         anyhow::bail!("Image inspect failed: {}", stderr.trim());
     }
 
-    let digest = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let digests: Vec<String> =
+        serde_json::from_str(stdout.trim()).context("Failed to parse RepoDigests JSON")?;
 
-    if digest.is_empty() {
-        anyhow::bail!("Empty digest from image inspect");
+    if digests.is_empty() {
+        anyhow::bail!("No RepoDigests found (locally built image?)");
     }
 
-    Ok(digest)
+    Ok(digests)
 }
 
-/// Get remote image digest by parsing manifest JSON.
-fn get_remote_digest(runtime: &str, image: &str) -> Result<String> {
-    let output = Command::new(runtime)
-        .args(["manifest", "inspect", image])
+/// Get the current remote manifest digest via `docker buildx imagetools inspect`.
+///
+/// Parses the `Digest: sha256:...` line from the text output.
+fn get_remote_digest(image: &str) -> Result<String> {
+    let output = Command::new("docker")
+        .args(["buildx", "imagetools", "inspect", image])
         .output()
-        .with_context(|| format!("Failed to run {} manifest inspect", runtime))?;
+        .context("Failed to run docker buildx imagetools inspect")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Manifest inspect failed: {}", stderr.trim());
+        anyhow::bail!("imagetools inspect failed: {}", stderr.trim());
     }
 
-    let json_str = String::from_utf8_lossy(&output.stdout);
-    let manifest: serde_json::Value =
-        serde_json::from_str(&json_str).context("Failed to parse manifest JSON")?;
-
-    // Try to extract digest from manifest
-    // For OCI manifests, the digest might be in different places:
-    // - config.digest for single-platform images
-    // - manifests[].digest for multi-platform images (we want the overall digest)
-
-    // First, try to get the overall manifest digest from the config
-    if let Some(config) = manifest.get("config")
-        && let Some(digest) = config.get("digest").and_then(|d| d.as_str())
-    {
-        return Ok(digest.to_string());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(digest) = line.strip_prefix("Digest:") {
+            let digest = digest.trim();
+            if digest.starts_with("sha256:") {
+                return Ok(digest.to_string());
+            }
+        }
     }
 
-    // Fallback: look for "digest" field at the top level
-    if let Some(digest) = manifest.get("digest").and_then(|d| d.as_str()) {
-        return Ok(digest.to_string());
-    }
-
-    // For multi-platform manifests, we can't easily get a single digest that matches
-    // the local image inspect output, so we'll consider this a format we can't handle
-    anyhow::bail!("Could not extract digest from manifest");
+    anyhow::bail!("Could not find Digest in imagetools output");
 }
 
 /// Perform the freshness check and print hint if stale.
@@ -156,19 +157,17 @@ fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
         SandboxRuntime::Podman => "podman",
     };
 
-    // Get local digest
-    let local_digest =
-        get_local_digest(runtime_bin, image).context("Failed to get local image digest")?;
+    // Get the digests the local image was pulled with (e.g. "registry/repo@sha256:abc...")
+    let local_digests =
+        get_local_repo_digests(runtime_bin, image).context("Failed to get local image digests")?;
 
-    // Get remote digest
-    let remote_digest =
-        get_remote_digest(runtime_bin, image).context("Failed to get remote image digest")?;
+    // Get the current remote manifest digest (e.g. "sha256:abc...")
+    let remote_digest = get_remote_digest(image).context("Failed to get remote image digest")?;
 
-    // Compare digests
-    let is_fresh = local_digest == remote_digest;
+    // Check if any local RepoDigest contains the current remote digest
+    let is_fresh = local_digests.iter().any(|d| d.contains(&remote_digest));
 
     if !is_fresh {
-        // Print hint to stderr (non-blocking, doesn't interfere with stdout)
         eprintln!(
             "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
         );
