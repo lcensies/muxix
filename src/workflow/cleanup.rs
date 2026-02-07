@@ -54,13 +54,20 @@ fn find_matching_windows(mux: &dyn Multiplexer, prefix: &str, handle: &str) -> R
     Ok(matching)
 }
 
-/// Check if the current window matches the base handle pattern (including duplicates).
-fn is_inside_matching_window(
+/// Check if the current window/session matches the base handle pattern (including duplicates).
+fn is_inside_matching_target(
     mux: &dyn Multiplexer,
     prefix: &str,
     handle: &str,
+    is_session_mode: bool,
 ) -> Result<Option<String>> {
-    let current_window = match mux.current_window_name()? {
+    let current_name = if is_session_mode {
+        mux.current_session()
+    } else {
+        mux.current_window_name()?
+    };
+
+    let current_name = match current_name {
         Some(name) => name,
         None => return Ok(None),
     };
@@ -70,8 +77,8 @@ fn is_inside_matching_window(
     let pattern = format!(r"^{}(-\d+)?$", escaped_base);
     let re = Regex::new(&pattern).expect("Invalid regex pattern");
 
-    if re.is_match(&current_window) {
-        Ok(Some(current_window))
+    if re.is_match(&current_name) {
+        Ok(Some(current_name))
     } else {
         Ok(None)
     }
@@ -109,9 +116,9 @@ pub fn cleanup(
 
     let mux_running = context.mux.is_running().unwrap_or(false);
 
-    // Check if we're running inside ANY matching window (original or duplicate)
+    // Check if we're running inside ANY matching target (original or duplicate)
     let current_matching_target = if mux_running {
-        is_inside_matching_window(context.mux.as_ref(), &context.prefix, handle)?
+        is_inside_matching_target(context.mux.as_ref(), &context.prefix, handle, is_session_mode)?
     } else {
         None
     };
