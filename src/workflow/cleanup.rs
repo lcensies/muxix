@@ -291,7 +291,8 @@ pub fn cleanup(
         );
 
         // Find and kill all OTHER matching windows (not the current one)
-        if mux_running {
+        // Note: Sessions don't have duplicates like windows, so skip for session mode
+        if mux_running && !is_session_mode {
             let matching_windows =
                 find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
             let mut killed_count = 0;
@@ -400,41 +401,65 @@ pub fn cleanup(
             );
         }
     } else {
-        // Not running inside any matching window, so kill ALL matching windows first
+        // Not running inside any matching target, so kill it first
         if mux_running {
-            let matching_windows =
-                find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
-            let mut killed_count = 0;
-            for window in &matching_windows {
-                if let Err(e) = context.mux.kill_window(window) {
-                    warn!(window = window, error = %e, "cleanup:failed to kill window");
-                } else {
-                    killed_count += 1;
-                    debug!(window = window, "cleanup:killed window");
-                }
-            }
-            if killed_count > 0 {
-                result.tmux_window_killed = true;
-                info!(
-                    count = killed_count,
-                    handle = handle,
-                    "cleanup:killed all matching windows"
-                );
+            if is_session_mode {
+                // For session mode, kill the session directly
+                let session_name = prefixed(&context.prefix, handle);
+                if context.mux.session_exists(&session_name)? {
+                    if let Err(e) = context.mux.kill_session(&session_name) {
+                        warn!(session = session_name, error = %e, "cleanup:failed to kill session");
+                    } else {
+                        result.tmux_window_killed = true;
+                        info!(session = session_name, "cleanup:killed session");
 
-                // Poll to confirm windows are gone before proceeding
-                const MAX_RETRIES: u32 = 20;
-                const RETRY_DELAY: Duration = Duration::from_millis(50);
-                for _ in 0..MAX_RETRIES {
-                    let remaining =
-                        find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
-                    if remaining.is_empty() {
-                        break;
+                        // Poll to confirm session is gone before proceeding
+                        const MAX_RETRIES: u32 = 20;
+                        const RETRY_DELAY: Duration = Duration::from_millis(50);
+                        for _ in 0..MAX_RETRIES {
+                            if !context.mux.session_exists(&session_name)? {
+                                break;
+                            }
+                            thread::sleep(RETRY_DELAY);
+                        }
                     }
-                    thread::sleep(RETRY_DELAY);
+                }
+            } else {
+                // For window mode, find and kill all matching windows (including duplicates)
+                let matching_windows =
+                    find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
+                let mut killed_count = 0;
+                for window in &matching_windows {
+                    if let Err(e) = context.mux.kill_window(window) {
+                        warn!(window = window, error = %e, "cleanup:failed to kill window");
+                    } else {
+                        killed_count += 1;
+                        debug!(window = window, "cleanup:killed window");
+                    }
+                }
+                if killed_count > 0 {
+                    result.tmux_window_killed = true;
+                    info!(
+                        count = killed_count,
+                        handle = handle,
+                        "cleanup:killed all matching windows"
+                    );
+
+                    // Poll to confirm windows are gone before proceeding
+                    const MAX_RETRIES: u32 = 20;
+                    const RETRY_DELAY: Duration = Duration::from_millis(50);
+                    for _ in 0..MAX_RETRIES {
+                        let remaining =
+                            find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
+                        if remaining.is_empty() {
+                            break;
+                        }
+                        thread::sleep(RETRY_DELAY);
+                    }
                 }
             }
         }
-        // Now that windows are gone, clean up filesystem and git state.
+        // Now that windows/sessions are gone, clean up filesystem and git state.
         perform_fs_git_cleanup(&mut result)?;
     }
 

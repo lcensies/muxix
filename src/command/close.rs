@@ -60,8 +60,11 @@ pub fn run(name: Option<&str>) -> Result<()> {
     let target_type = if is_session_mode { "session" } else { "window" };
 
     // Check if the window/session exists
-    // For now, we only check windows - session support requires trait extension
-    let target_exists = mux.window_exists_by_full_name(&full_target_name)?;
+    let target_exists = if is_session_mode {
+        mux.session_exists(&full_target_name)?
+    } else {
+        mux.window_exists_by_full_name(&full_target_name)?
+    };
 
     if !target_exists {
         return Err(anyhow!(
@@ -84,8 +87,13 @@ pub fn run(name: Option<&str>) -> Result<()> {
         mux.schedule_window_close(&full_target_name, std::time::Duration::from_millis(100))?;
     } else {
         // Kill the target directly
-        mux.kill_window(&full_target_name)
-            .context("Failed to close window")?;
+        if is_session_mode {
+            mux.kill_session(&full_target_name)
+                .context("Failed to close session")?;
+        } else {
+            mux.kill_window(&full_target_name)
+                .context("Failed to close window")?;
+        }
         println!(
             "✓ Closed {} '{}' (worktree kept)",
             target_type, full_target_name
