@@ -90,7 +90,7 @@ pub fn open(
 
     // Determine handle: use suffix if forcing new target and one exists
     let (handle, after_window) = if new_window && target_exists {
-        let unique_handle = resolve_unique_handle(context, &base_handle)?;
+        let unique_handle = resolve_unique_handle(context, &base_handle, is_session_mode)?;
         // Insert after the last window in the base handle group (base or -N suffixes)
         let after = context
             .mux
@@ -150,18 +150,26 @@ pub fn open(
 
 /// Find a unique handle by appending a suffix if necessary.
 ///
-/// If `base_handle` is "my-feature" and windows exist for:
-/// - wm:my-feature
-/// - wm:my-feature-2
+/// If `base_handle` is "my-feature" and targets exist for:
+/// - wm-my-feature
+/// - wm-my-feature-2
 ///
 /// This returns "my-feature-3".
-fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result<String> {
-    let all_windows = context.mux.get_all_window_names()?;
+fn resolve_unique_handle(
+    context: &WorkflowContext,
+    base_handle: &str,
+    is_session_mode: bool,
+) -> Result<String> {
+    let all_names = if is_session_mode {
+        context.mux.get_all_session_names()?
+    } else {
+        context.mux.get_all_window_names()?
+    };
     let prefix = &context.prefix;
     let full_base = prefixed(prefix, base_handle);
 
     // If base name doesn't exist, use it directly
-    if !all_windows.contains(&full_base) {
+    if !all_names.contains(&full_base) {
         return Ok(base_handle.to_string());
     }
 
@@ -173,8 +181,8 @@ fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result
 
     let mut max_suffix: u32 = 1; // Start at 1 so first duplicate is -2
 
-    for window_name in &all_windows {
-        if let Some(caps) = re.captures(window_name)
+    for name in &all_names {
+        if let Some(caps) = re.captures(name)
             && let Some(num_match) = caps.get(1)
             && let Ok(num) = num_match.as_str().parse::<u32>()
         {
