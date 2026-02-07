@@ -90,5 +90,6 @@ fn run_via_rpc(cmd: SetWindowStatusCommand) -> Result<()> {
             warn!(error = %message, "RPC SetStatus failed");
             Ok(()) // Fail silently like the host path does
         }
+        _ => Ok(()),
     }
 }

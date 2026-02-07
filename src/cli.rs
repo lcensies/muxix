@@ -472,6 +472,14 @@ enum Commands {
     #[command(hide = true, name = "last-agent")]
     LastAgent,
 
+    /// Execute a command on the host (used by guest shims)
+    #[command(hide = true, name = "host-exec")]
+    HostExec {
+        /// Command name and arguments
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        args: Vec<String>,
+    },
+
     /// Generate shell completions
     Completions {
         /// The shell to generate completions for
@@ -634,6 +642,13 @@ pub fn run() -> Result<()> {
         Commands::SetBase { base } => command::set_base::run(&base),
         Commands::LastDone => command::last_done::run(),
         Commands::LastAgent => command::last_agent::run(),
+        Commands::HostExec { args } => {
+            let (command, cmd_args) = args
+                .split_first()
+                .ok_or_else(|| anyhow::anyhow!("host-exec requires a command name"))?;
+            let code = command::host_exec::run(command, cmd_args)?;
+            std::process::exit(code);
+        }
         Commands::Completions { shell } => {
             generate_completions(shell);
             Ok(())

@@ -3130,6 +3130,7 @@ dependencies = [
  "ctrlc",
  "edit",
  "fs_extra",
+ "getrandom",
  "git-url-parse",
  "glob",
  "home",

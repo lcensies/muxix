@@ -6,6 +6,7 @@ pub mod close;
 pub mod dashboard;
 pub mod docs;
 pub mod exec;
+pub mod host_exec;
 pub mod last_agent;
 pub mod last_done;
 pub mod list;

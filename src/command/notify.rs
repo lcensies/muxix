@@ -34,5 +34,6 @@ fn run_via_rpc(args: &[String]) -> Result<()> {
         RpcResponse::Error { message } => {
             anyhow::bail!("Notification failed: {}", message);
         }
+        _ => Ok(()),
     }
 }

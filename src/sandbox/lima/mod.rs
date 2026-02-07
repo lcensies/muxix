@@ -6,6 +6,7 @@ mod config;
 mod instance;
 pub(crate) mod log_format;
 pub(crate) mod mounts;
+pub(crate) mod shims;
 pub(crate) mod toolchain;
 mod wrap;
 

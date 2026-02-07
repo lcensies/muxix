@@ -406,6 +406,12 @@ pub struct SandboxConfig {
     /// Default: auto (detect and wrap automatically)
     #[serde(default)]
     pub toolchain: Option<ToolchainMode>,
+
+    /// Commands to proxy from guest to host via host-exec RPC.
+    /// When set, shims are created in the guest VM that forward these
+    /// commands to the host's toolchain environment.
+    #[serde(default)]
+    pub host_commands: Option<Vec<String>>,
 }
 
 impl SandboxConfig {
@@ -470,6 +476,10 @@ impl SandboxConfig {
 
     pub fn toolchain(&self) -> ToolchainMode {
         self.toolchain.clone().unwrap_or_default()
+    }
+
+    pub fn host_commands(&self) -> &[String] {
+        self.host_commands.as_deref().unwrap_or(&[])
     }
 }
 
@@ -943,6 +953,11 @@ impl Config {
                 .toolchain
                 .clone()
                 .or(self.sandbox.toolchain.clone()),
+            host_commands: project
+                .sandbox
+                .host_commands
+                .clone()
+                .or(self.sandbox.host_commands.clone()),
         };
 
         merged
@@ -1177,6 +1192,9 @@ impl Config {
 #   # Use sudo for system commands.
 #   # provision: |
 #   #   sudo apt-get install -y ripgrep fd-find jq
+#   # Commands to proxy from guest to host (requires lima backend).
+#   # These commands run on the host in the project's toolchain environment.
+#   # host_commands: ["just", "cargo", "npm"]
 "#;
 
         fs::write(&config_path, example_config)?;
@@ -1622,5 +1640,48 @@ mod tests {
         let project = Config::default();
         let merged = global.merge(project);
         assert_eq!(merged.sandbox.toolchain(), ToolchainMode::Devbox);
+    }
+
+    #[test]
+    fn test_sandbox_host_commands_default_empty() {
+        let config = SandboxConfig::default();
+        assert!(config.host_commands().is_empty());
+    }
+
+    #[test]
+    fn test_sandbox_host_commands_merge() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                host_commands: Some(vec!["just".to_string(), "cargo".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                host_commands: Some(vec!["npm".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Project overrides global
+        assert_eq!(merged.sandbox.host_commands(), &["npm".to_string()]);
+    }
+
+    #[test]
+    fn test_sandbox_host_commands_fallback_to_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                host_commands: Some(vec!["just".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.host_commands(), &["just".to_string()]);
     }
 }

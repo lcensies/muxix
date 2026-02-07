@@ -35,6 +35,10 @@ pub enum RpcRequest {
         background: Option<bool>,
     },
     Notify(NotifyRequest),
+    Exec {
+        command: String,
+        args: Vec<String>,
+    },
 }
 
 /// Typed notification request sent from guest to host.
@@ -51,6 +55,9 @@ pub enum NotifyRequest {
 pub enum RpcResponse {
     Ok,
     Error { message: String },
+    ExecOutput { data: String },
+    ExecError { data: String },
+    ExecExit { code: i32 },
 }
 
 // ── Server ──────────────────────────────────────────────────────────────
@@ -65,6 +72,10 @@ pub struct RpcContext {
     pub mux: Arc<dyn Multiplexer>,
     /// Shared secret for authenticating RPC requests.
     pub token: String,
+    /// Commands allowed for host-exec.
+    pub allowed_commands: std::collections::HashSet<String>,
+    /// Resolved toolchain for host-exec command wrapping.
+    pub detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain,
 }
 
 /// TCP RPC server that accepts guest connections.
@@ -116,13 +127,9 @@ impl RpcServer {
 
 /// Generate a random token for RPC authentication.
 pub fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id();
-    format!("{:x}{:x}", nanos, pid)
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("failed to get random bytes");
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // ── Connection handler ──────────────────────────────────────────────────
@@ -164,7 +171,18 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
         let request: RpcRequest = serde_json::from_str(&line)
             .with_context(|| format!("Failed to parse RPC request: {}", line))?;
 
-        debug!(?request, "RPC request received");
+        info!(?request, "RPC request received");
+
+        // Exec requires streaming multiple responses, handle separately
+        if let RpcRequest::Exec {
+            ref command,
+            ref args,
+        } = request
+        {
+            handle_exec(command, args, ctx, &mut writer)?;
+            continue;
+        }
+
         let response = dispatch_request(&request, ctx);
         debug!(?response, "RPC response");
 
@@ -200,6 +218,10 @@ fn dispatch_request(request: &RpcRequest, ctx: &RpcContext) -> RpcResponse {
             &ctx.worktree_path,
         ),
         RpcRequest::Notify(req) => handle_notify(req),
+        RpcRequest::Exec { .. } => {
+            // Handled in handle_connection before dispatch
+            unreachable!("Exec is handled directly in handle_connection")
+        }
     }
 }
 
@@ -352,6 +374,134 @@ fn handle_notify(req: &NotifyRequest) -> RpcResponse {
     }
 }
 
+fn handle_exec(
+    command: &str,
+    args: &[String],
+    ctx: &RpcContext,
+    writer: &mut impl Write,
+) -> Result<()> {
+    use std::process::{Command, Stdio};
+
+    info!(command, ?args, "host-exec request");
+
+    // Validate command is in allowlist
+    if !ctx.allowed_commands.contains(command) {
+        let resp = RpcResponse::ExecExit { code: 127 };
+        write_response(writer, &resp)?;
+        return Ok(());
+    }
+
+    // Reject commands containing path separators
+    if command.contains('/') || command.contains('\\') {
+        let resp = RpcResponse::ExecExit { code: 127 };
+        write_response(writer, &resp)?;
+        return Ok(());
+    }
+
+    let mut child =
+        if ctx.detected_toolchain != crate::sandbox::lima::toolchain::DetectedToolchain::None {
+            // Wrap with toolchain: build a shell command that enters the env first
+            let full_cmd = std::iter::once(command.to_string())
+                .chain(args.iter().map(|a| shell_quote(a)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let wrapped =
+                crate::sandbox::lima::toolchain::wrap_command(&full_cmd, &ctx.detected_toolchain);
+            let mut cmd = Command::new("bash");
+            cmd.args(["-c", &wrapped]);
+            cmd.current_dir(&ctx.worktree_path);
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            cmd.spawn()
+                .with_context(|| format!("Failed to spawn wrapped command: {}", command))?
+        } else {
+            let mut cmd = Command::new(command);
+            cmd.args(args);
+            cmd.current_dir(&ctx.worktree_path);
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            cmd.spawn()
+                .with_context(|| format!("Failed to spawn command: {}", command))?
+        };
+
+    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+
+    // Read stdout and stderr in threads, collect chunks
+    let (tx, rx) = std::sync::mpsc::channel::<RpcResponse>();
+
+    let tx_out = tx.clone();
+    let stdout_thread = thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = [0u8; 8192];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let _ = tx_out.send(RpcResponse::ExecOutput { data });
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let tx_err = tx.clone();
+    let stderr_thread = thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = [0u8; 8192];
+        loop {
+            match stderr.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let _ = tx_err.send(RpcResponse::ExecError { data });
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Drop our sender so rx closes when threads finish
+    drop(tx);
+
+    // Stream responses as they arrive; kill child on write failure
+    let stream_result = (|| -> Result<()> {
+        for response in rx {
+            write_response(writer, &response)?;
+        }
+        Ok(())
+    })();
+
+    if stream_result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return stream_result;
+    }
+
+    stdout_thread.join().ok();
+    stderr_thread.join().ok();
+
+    let status = child.wait()?;
+    let code = status.code().unwrap_or(1);
+    info!(command, code, "host-exec finished");
+
+    write_response(writer, &RpcResponse::ExecExit { code })?;
+    Ok(())
+}
+
+fn shell_quote(s: &str) -> String {
+    if s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
+    {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
 // ── Client ──────────────────────────────────────────────────────────────
 
 /// RPC client for guest-side use. Connects to the host supervisor.
@@ -400,14 +550,23 @@ impl RpcClient {
 
     /// Send a request and receive a response.
     pub fn call(&mut self, request: &RpcRequest) -> Result<RpcResponse> {
+        self.send(request)?;
+        self.recv()
+    }
+
+    /// Send a request without waiting for a response.
+    pub fn send(&mut self, request: &RpcRequest) -> Result<()> {
         let mut req_json = serde_json::to_string(request)?;
         req_json.push('\n');
         (&self.writer).write_all(req_json.as_bytes())?;
         (&self.writer).flush()?;
+        Ok(())
+    }
 
+    /// Receive a single response line.
+    pub fn recv(&mut self) -> Result<RpcResponse> {
         let mut line = String::new();
         self.reader.read_line(&mut line)?;
-
         serde_json::from_str(&line)
             .with_context(|| format!("Failed to parse RPC response: {}", line))
     }
@@ -500,6 +659,7 @@ mod tests {
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Notify","kind":"Sound","args":["/tmp/beep.aiff"]}"#,
+            r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
@@ -513,6 +673,8 @@ mod tests {
     fn test_generate_token_is_nonempty() {
         let token = generate_token();
         assert!(!token.is_empty());
+        assert_eq!(token.len(), 64, "token should be 64 hex chars (32 bytes)");
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -533,6 +695,8 @@ mod tests {
             worktree_path: PathBuf::from("/tmp/test"),
             mux,
             token: token.clone(),
+            allowed_commands: std::collections::HashSet::new(),
+            detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain::None,
         });
 
         let _handle = server.spawn(ctx);
@@ -549,6 +713,50 @@ mod tests {
     }
 
     #[test]
+    fn test_request_serialization_exec() {
+        let req = RpcRequest::Exec {
+            command: "just".to_string(),
+            args: vec!["check".to_string()],
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"Exec\""));
+        assert!(json.contains("\"command\":\"just\""));
+
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::Exec { command, args } => {
+                assert_eq!(command, "just");
+                assert_eq!(args, vec!["check"]);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_response_serialization_exec_output() {
+        let resp = RpcResponse::ExecOutput {
+            data: "hello\n".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"ExecOutput\""));
+        assert!(json.contains("\"data\":\"hello\\n\""));
+    }
+
+    #[test]
+    fn test_response_serialization_exec_exit() {
+        let resp = RpcResponse::ExecExit { code: 42 };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"ExecExit\""));
+        assert!(json.contains("\"code\":42"));
+
+        let parsed: RpcResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcResponse::ExecExit { code } => assert_eq!(code, 42),
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
     fn test_client_server_invalid_token() {
         let server = RpcServer::bind().unwrap();
         let port = server.port();
@@ -560,6 +768,8 @@ mod tests {
             worktree_path: PathBuf::from("/tmp/test"),
             mux,
             token: token.clone(),
+            allowed_commands: std::collections::HashSet::new(),
+            detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain::None,
         });
 
         let _handle = server.spawn(ctx);

@@ -9,11 +9,14 @@ use std::process::Command;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+use std::collections::HashSet;
+
 use crate::config::{Config, SandboxBackend, SandboxRuntime};
 use crate::multiplexer;
 use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
 use crate::sandbox::lima;
+use crate::sandbox::lima::shims;
 use crate::sandbox::lima::toolchain;
 use crate::sandbox::rpc::{RpcContext, RpcServer, generate_token};
 use crate::state::StateStore;
@@ -80,7 +83,11 @@ pub fn run(worktree: PathBuf, worktree_root: Option<PathBuf>, command: Vec<Strin
 
 /// Start RPC server and return (server, port, token, context).
 /// Shared setup between Lima and Container backends.
-fn start_rpc(worktree: &Path) -> Result<(RpcServer, u16, String, Arc<RpcContext>)> {
+fn start_rpc(
+    worktree: &Path,
+    allowed_commands: HashSet<String>,
+    detected_toolchain: toolchain::DetectedToolchain,
+) -> Result<(RpcServer, u16, String, Arc<RpcContext>)> {
     let rpc_server = RpcServer::bind()?;
     let rpc_port = rpc_server.port();
     let rpc_token = generate_token();
@@ -94,6 +101,8 @@ fn start_rpc(worktree: &Path) -> Result<(RpcServer, u16, String, Arc<RpcContext>
         worktree_path: worktree.to_path_buf(),
         mux,
         token: rpc_token.clone(),
+        allowed_commands,
+        detected_toolchain,
     });
 
     Ok((rpc_server, rpc_port, rpc_token, ctx))
@@ -110,7 +119,24 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         tracing::warn!(vm_name = %vm_name, error = %e, "failed to seed ~/.claude.json; continuing");
     }
 
-    let (rpc_server, rpc_port, rpc_token, ctx) = start_rpc(worktree)?;
+    // Detect toolchain for both agent wrapping and host-exec
+    let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree);
+    if detected != toolchain::DetectedToolchain::None {
+        info!(toolchain = ?detected, "wrapping command with toolchain environment");
+    }
+
+    // Create host-exec shims for configured commands
+    let host_commands = config.sandbox.host_commands();
+    let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
+
+    if !host_commands.is_empty() {
+        let state_dir = lima::mounts::lima_state_dir_path(&vm_name)?;
+        shims::create_shim_directory(&state_dir, host_commands)?;
+        info!(commands = ?host_commands, "created host-exec shims");
+    }
+
+    let (rpc_server, rpc_port, rpc_token, ctx) =
+        start_rpc(worktree, allowed_commands, detected.clone())?;
     let _rpc_handle = rpc_server.spawn(ctx);
 
     // Build limactl shell command
@@ -121,7 +147,7 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         .arg(&vm_name);
 
     let mut env_exports = vec![
-        r#"PATH="$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
+        r#"PATH="$HOME/.workmux-state/shims/bin:$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
         "WM_SANDBOX_GUEST=1".to_string(),
         "WM_RPC_HOST=host.lima.internal".to_string(),
         format!("WM_RPC_PORT={}", rpc_port),
@@ -147,11 +173,6 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         .join("; ");
     let user_command = command.join(" ");
 
-    // Detect and wrap with toolchain environment if configured
-    let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree);
-    if detected != toolchain::DetectedToolchain::None {
-        info!(toolchain = ?detected, "wrapping command with toolchain environment");
-    }
     let final_command = toolchain::wrap_command(&user_command, &detected);
     let full_command = format!("{exports}; {final_command}");
 
@@ -194,7 +215,8 @@ fn run_container(
     // Ensure sandbox config dirs exist before building container args
     ensure_sandbox_config_dirs()?;
 
-    let (rpc_server, rpc_port, rpc_token, ctx) = start_rpc(pane_cwd)?;
+    let (rpc_server, rpc_port, rpc_token, ctx) =
+        start_rpc(pane_cwd, HashSet::new(), toolchain::DetectedToolchain::None)?;
     let _rpc_handle = rpc_server.spawn(ctx);
 
     // Compute RPC host BEFORE matching on runtime (SandboxRuntime is not Copy)
