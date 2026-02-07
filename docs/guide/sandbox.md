@@ -82,13 +82,14 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 
 ## Configuration
 
-| Option            | Default            | Description                              |
-| ----------------- | ------------------ | ---------------------------------------- |
-| `enabled`         | `false`            | Enable container sandboxing              |
-| `runtime`         | `docker`           | Container runtime: `docker` or `podman`  |
-| `target`          | `agent`            | Which panes to sandbox: `agent` or `all` |
-| `image`           | `workmux-sandbox`  | Container image name                     |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
+| Option            | Default            | Description                                                                         |
+| ----------------- | ------------------ | ----------------------------------------------------------------------------------- |
+| `enabled`         | `false`            | Enable container sandboxing                                                         |
+| `runtime`         | `docker`           | Container runtime: `docker` or `podman`                                             |
+| `target`          | `agent`            | Which panes to sandbox: `agent` or `all`                                            |
+| `image`           | `workmux-sandbox`  | Container image name                                                                |
+| `toolchain`       | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake` |
+| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through                                               |
 
 ### Example configurations
 
@@ -331,7 +332,7 @@ New VMs will now boot from the snapshot with everything pre-installed.
 
 ### Nix and Devbox toolchain
 
-The Lima backend has built-in support for [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) to provide declarative, cached toolchain management inside VMs.
+Both the Lima and container backends have built-in support for [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) to provide declarative, cached toolchain management. The container image ships with Nix and Devbox pre-installed, and a persistent Docker volume (`workmux-nix`) caches the Nix store across container runs.
 
 By default (`toolchain: auto`), workmux checks for `devbox.json` or `flake.nix` in the project root and wraps agent commands in the appropriate environment:
 
