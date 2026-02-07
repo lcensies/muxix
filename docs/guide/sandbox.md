@@ -54,13 +54,12 @@ workmux sandbox build
 ### Custom images
 
 To add tools or customize the sandbox environment, export the Dockerfile
-templates and modify them:
+and modify it:
 
 ```bash
-workmux sandbox init-dockerfile        # creates Dockerfile.base + Dockerfile.{agent}
-vim Dockerfile.claude                   # customize
-docker build -t my-sandbox-base -f Dockerfile.base .
-docker build --build-arg BASE=my-sandbox-base -t my-sandbox -f Dockerfile.claude .
+workmux sandbox init-dockerfile        # creates Dockerfile.sandbox
+vim Dockerfile.sandbox                  # customize
+docker build -t my-sandbox -f Dockerfile.sandbox .
 ```
 
 Then set the image in your config:

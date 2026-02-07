@@ -30,7 +30,7 @@ Pulls the pre-built image for the configured agent from `ghcr.io/raine/workmux-s
 
 ### sandbox init-dockerfile
 
-Export customizable Dockerfile templates for building your own sandbox image.
+Export a customizable Dockerfile for building your own sandbox image.
 
 ```bash
 workmux sandbox init-dockerfile [--force]
@@ -38,9 +38,9 @@ workmux sandbox init-dockerfile [--force]
 
 **Options:**
 
-- `--force` - Overwrite existing Dockerfiles
+- `--force` - Overwrite existing Dockerfile
 
-Creates `Dockerfile.base` and `Dockerfile.{agent}` (e.g., `Dockerfile.claude`) in the current directory. The base Dockerfile contains the common foundation (Debian, git, workmux), and the agent Dockerfile adds agent-specific installation on top.
+Creates a `Dockerfile.sandbox` in the current directory with the base system setup (Debian, git, workmux) and agent-specific installation (e.g., Claude Code) combined into a single file.
 
 ### sandbox auth
 
