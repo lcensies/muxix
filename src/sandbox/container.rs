@@ -297,6 +297,21 @@ pub fn build_docker_run_args(
         ));
     }
 
+    // Extra mounts from config
+    for mount in config.extra_mounts() {
+        let (host, guest, read_only) = mount.resolve()?;
+        let mut mount_arg = format!(
+            "type=bind,source={},target={}",
+            host.display(),
+            guest.display()
+        );
+        if read_only {
+            mount_arg.push_str(",readonly");
+        }
+        args.push("--mount".to_string());
+        args.push(mount_arg);
+    }
+
     args.push("--workdir".to_string());
     args.push(pane_cwd_str.to_string());
 
@@ -687,5 +702,63 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(config.resolved_image("claude"), "my-image:latest");
+    }
+
+    #[test]
+    fn test_build_args_extra_mounts_readonly() {
+        use crate::config::ExtraMount;
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            runtime: Some(SandboxRuntime::Docker),
+            image: Some("test-image:latest".to_string()),
+            extra_mounts: Some(vec![ExtraMount::Path("/tmp/notes".to_string())]),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        assert!(args_str.contains("type=bind,source=/tmp/notes,target=/tmp/notes,readonly"));
+    }
+
+    #[test]
+    fn test_build_args_extra_mounts_writable_with_guest_path() {
+        use crate::config::ExtraMount;
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            runtime: Some(SandboxRuntime::Docker),
+            image: Some("test-image:latest".to_string()),
+            extra_mounts: Some(vec![ExtraMount::Spec {
+                host_path: "/tmp/data".to_string(),
+                guest_path: Some("/mnt/data".to_string()),
+                writable: Some(true),
+            }]),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        assert!(args_str.contains("type=bind,source=/tmp/data,target=/mnt/data"));
+        // Should NOT contain readonly
+        assert!(!args_str.contains("/tmp/data,target=/mnt/data,readonly"));
     }
 }

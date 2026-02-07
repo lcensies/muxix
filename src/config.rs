@@ -335,6 +335,81 @@ pub enum ToolchainMode {
     Flake,
 }
 
+/// An extra mount point for the sandbox.
+///
+/// Supports two forms:
+/// - Simple string: `"~/my-notes"` (read-only, mirrored path)
+/// - Detailed spec: `{ host_path: "~/data", guest_path: "/mnt/data", writable: true }`
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ExtraMount {
+    /// Simple host path (read-only, guest path mirrors host path)
+    Path(String),
+    /// Detailed mount specification
+    Spec {
+        host_path: String,
+        #[serde(default)]
+        guest_path: Option<String>,
+        #[serde(default)]
+        writable: Option<bool>,
+    },
+}
+
+impl ExtraMount {
+    /// Resolve the mount to (host_path, guest_path, read_only).
+    /// Expands `~` in host_path to the user's home directory.
+    /// Returns an error if host_path or guest_path is not absolute after expansion.
+    pub fn resolve(&self) -> anyhow::Result<(PathBuf, PathBuf, bool)> {
+        let (host_str, guest_str, writable) = match self {
+            Self::Path(p) => (p.as_str(), None, false),
+            Self::Spec {
+                host_path,
+                guest_path,
+                writable,
+            } => (
+                host_path.as_str(),
+                guest_path.as_deref(),
+                writable.unwrap_or(false),
+            ),
+        };
+
+        let host_path = expand_tilde(host_str);
+        if !host_path.is_absolute() {
+            anyhow::bail!(
+                "extra_mounts: host path must be absolute (got '{}'). Use an absolute path or ~/.",
+                host_str
+            );
+        }
+
+        let guest_path = guest_str
+            .map(PathBuf::from)
+            .unwrap_or_else(|| host_path.clone());
+        if !guest_path.is_absolute() {
+            anyhow::bail!(
+                "extra_mounts: guest_path must be absolute (got '{}')",
+                guest_str.unwrap_or("")
+            );
+        }
+
+        let read_only = !writable;
+        Ok((host_path, guest_path, read_only))
+    }
+}
+
+/// Expand `~` or `~/...` to the user's home directory.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = home::home_dir() {
+            return home.join(rest);
+        }
+    } else if path == "~"
+        && let Some(home) = home::home_dir()
+    {
+        return home;
+    }
+    PathBuf::from(path)
+}
+
 /// Configuration for sandboxing (Container or Lima)
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SandboxConfig {
@@ -412,6 +487,12 @@ pub struct SandboxConfig {
     /// commands to the host's toolchain environment.
     #[serde(default)]
     pub host_commands: Option<Vec<String>>,
+
+    /// Extra mount points for the sandbox.
+    /// Paths are mounted read-only by default. Supports simple string paths
+    /// or detailed specs with guest_path and writable options.
+    #[serde(default)]
+    pub extra_mounts: Option<Vec<ExtraMount>>,
 }
 
 impl SandboxConfig {
@@ -486,6 +567,10 @@ impl SandboxConfig {
 
     pub fn host_commands(&self) -> &[String] {
         self.host_commands.as_deref().unwrap_or(&[])
+    }
+
+    pub fn extra_mounts(&self) -> &[ExtraMount] {
+        self.extra_mounts.as_deref().unwrap_or(&[])
     }
 }
 
@@ -964,6 +1049,11 @@ impl Config {
                 .host_commands
                 .clone()
                 .or(self.sandbox.host_commands.clone()),
+            extra_mounts: project
+                .sandbox
+                .extra_mounts
+                .clone()
+                .or(self.sandbox.extra_mounts.clone()),
         };
 
         merged
@@ -1201,6 +1291,13 @@ impl Config {
 #   # Commands to proxy from guest to host (requires lima backend).
 #   # These commands run on the host in the project's toolchain environment.
 #   # host_commands: ["just", "cargo", "npm"]
+#   # Extra mount points (read-only by default).
+#   # Supports simple paths or detailed specs with guest_path and writable.
+#   # extra_mounts:
+#   #   - ~/my-notes
+#   #   - host_path: ~/data
+#   #     guest_path: /mnt/data
+#   #     writable: true
 "#;
 
         fs::write(&config_path, example_config)?;
@@ -1304,8 +1401,8 @@ pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Config, SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode, is_agent_command,
-        split_first_token,
+        Config, ExtraMount, SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode,
+        is_agent_command, split_first_token,
     };
 
     #[test]
@@ -1689,5 +1786,148 @@ mod tests {
 
         let merged = global.merge(project);
         assert_eq!(merged.sandbox.host_commands(), &["just".to_string()]);
+    }
+
+    #[test]
+    fn test_extra_mount_parse_simple_string() {
+        let yaml = r#"extra_mounts: ["/tmp/notes"]"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.extra_mounts().len(), 1);
+        let (host, guest, read_only) = config.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host, std::path::PathBuf::from("/tmp/notes"));
+        assert_eq!(guest, std::path::PathBuf::from("/tmp/notes"));
+        assert!(read_only);
+    }
+
+    #[test]
+    fn test_extra_mount_parse_spec() {
+        let yaml = r#"
+extra_mounts:
+  - host_path: /tmp/data
+    guest_path: /mnt/data
+    writable: true
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.extra_mounts().len(), 1);
+        let (host, guest, read_only) = config.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host, std::path::PathBuf::from("/tmp/data"));
+        assert_eq!(guest, std::path::PathBuf::from("/mnt/data"));
+        assert!(!read_only);
+    }
+
+    #[test]
+    fn test_extra_mount_spec_defaults() {
+        let yaml = r#"
+extra_mounts:
+  - host_path: /tmp/data
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        let (host, guest, read_only) = config.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host, std::path::PathBuf::from("/tmp/data"));
+        // guest defaults to host path
+        assert_eq!(guest, std::path::PathBuf::from("/tmp/data"));
+        // writable defaults to false (read_only = true)
+        assert!(read_only);
+    }
+
+    #[test]
+    fn test_extra_mount_tilde_expansion() {
+        let mount = ExtraMount::Path("~/notes".to_string());
+        let (host, guest, _) = mount.resolve().unwrap();
+        // Should expand ~ to home dir
+        assert!(!host.to_string_lossy().starts_with('~'));
+        assert!(host.to_string_lossy().ends_with("/notes"));
+        // Guest should mirror expanded host
+        assert_eq!(host, guest);
+    }
+
+    #[test]
+    fn test_extra_mount_mixed_list() {
+        let yaml = r#"
+extra_mounts:
+  - /tmp/notes
+  - host_path: /tmp/data
+    guest_path: /mnt/data
+    writable: true
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.extra_mounts().len(), 2);
+
+        let (host0, _, ro0) = config.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host0, std::path::PathBuf::from("/tmp/notes"));
+        assert!(ro0);
+
+        let (host1, guest1, ro1) = config.extra_mounts()[1].resolve().unwrap();
+        assert_eq!(host1, std::path::PathBuf::from("/tmp/data"));
+        assert_eq!(guest1, std::path::PathBuf::from("/mnt/data"));
+        assert!(!ro1);
+    }
+
+    #[test]
+    fn test_extra_mounts_default_empty() {
+        let config = SandboxConfig::default();
+        assert!(config.extra_mounts().is_empty());
+    }
+
+    #[test]
+    fn test_extra_mounts_merge_project_overrides() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                extra_mounts: Some(vec![ExtraMount::Path("/global/path".to_string())]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                extra_mounts: Some(vec![ExtraMount::Path("/project/path".to_string())]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.extra_mounts().len(), 1);
+        let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host, std::path::PathBuf::from("/project/path"));
+    }
+
+    #[test]
+    fn test_extra_mounts_merge_fallback_to_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                extra_mounts: Some(vec![ExtraMount::Path("/global/path".to_string())]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.extra_mounts().len(), 1);
+        let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
+        assert_eq!(host, std::path::PathBuf::from("/global/path"));
+    }
+
+    #[test]
+    fn test_extra_mount_rejects_relative_host_path() {
+        let mount = ExtraMount::Path("relative/path".to_string());
+        let result = mount.resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("must be absolute"));
+    }
+
+    #[test]
+    fn test_extra_mount_rejects_relative_guest_path() {
+        let mount = ExtraMount::Spec {
+            host_path: "/tmp/data".to_string(),
+            guest_path: Some("relative/guest".to_string()),
+            writable: None,
+        };
+        let result = mount.resolve();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("guest_path must be absolute"));
     }
 }

@@ -91,6 +91,7 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 | `target`          | `agent`            | Which panes to sandbox: `agent` or `all` |
 | `image`           | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
+| `extra_mounts`    | `[]`               | Additional host paths to mount into the sandbox (read-only by default) |
 
 ### Example configurations
 
@@ -151,6 +152,9 @@ docker run --rm -it \
 | Main `.git`              | read-write | Git operations                       |
 | `~/.claude-sandbox.json` | read-write | Agent config                         |
 | `~/.claude/`             | read-write | Agent settings                       |
+| `extra_mounts` entries   | read-only* | User-configured paths                |
+
+\* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
 ### What's NOT accessible
 
@@ -232,6 +236,29 @@ sandbox:
 | `toolchain`              | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`  |
 | `host_commands`          | `[]`               | Commands to proxy from guest to host via RPC (e.g., `["just", "cargo"]`)             |
 | `env_passthrough`        | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                      |
+| `extra_mounts`           | `[]`               | Additional host paths to mount into the sandbox (read-only by default)               |
+
+### Extra mount points
+
+The `extra_mounts` option lets you mount additional host directories into the sandbox. This works with both container and Lima backends. Mounts are read-only by default for security.
+
+Each entry can be a simple path string (read-only, mirrored into the guest at the same path) or a detailed spec with `host_path`, optional `guest_path`, and optional `writable` flag.
+
+```yaml
+sandbox:
+  extra_mounts:
+    # Simple: read-only, same path in guest
+    - ~/notes
+
+    # Detailed: writable with custom guest path
+    - host_path: ~/shared-data
+      guest_path: /mnt/shared
+      writable: true
+```
+
+Paths starting with `~` are expanded to the user's home directory. When `guest_path` is omitted, the expanded host path is used as the guest mount point.
+
+**Note:** For the Lima backend, mount changes only take effect when the VM is created. To apply changes to an existing VM, recreate it with `workmux sandbox prune`.
 
 ### Host command proxying
 

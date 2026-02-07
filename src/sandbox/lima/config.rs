@@ -352,4 +352,36 @@ mod tests {
                 .contains("echo custom setup")
         );
     }
+
+    #[test]
+    fn test_generate_lima_config_extra_mounts() {
+        let mounts = vec![
+            Mount::rw(PathBuf::from("/tmp/project")),
+            // Simulate an extra mount: read-only with different guest path
+            Mount {
+                host_path: PathBuf::from("/tmp/notes"),
+                guest_path: PathBuf::from("/mnt/notes"),
+                read_only: true,
+            },
+        ];
+
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let mount_list = parsed["mounts"].as_sequence().unwrap();
+        assert_eq!(mount_list.len(), 2);
+
+        // First mount: read-write, same host/guest
+        let m0 = &mount_list[0];
+        assert_eq!(m0["location"].as_str().unwrap(), "/tmp/project");
+        assert_eq!(m0["writable"].as_bool().unwrap(), true);
+        assert!(m0["mountPoint"].is_null());
+
+        // Second mount: read-only, different guest path
+        let m1 = &mount_list[1];
+        assert_eq!(m1["location"].as_str().unwrap(), "/tmp/notes");
+        assert_eq!(m1["writable"].as_bool().unwrap(), false);
+        assert_eq!(m1["mountPoint"].as_str().unwrap(), "/mnt/notes");
+    }
 }

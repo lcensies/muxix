@@ -254,6 +254,16 @@ pub fn generate_mounts(
         });
     }
 
+    // Extra mounts from config
+    for extra in config.sandbox.extra_mounts() {
+        let (host_path, guest_path, read_only) = extra.resolve()?;
+        mounts.push(Mount {
+            host_path,
+            guest_path,
+            read_only,
+        });
+    }
+
     Ok(mounts)
 }
 
