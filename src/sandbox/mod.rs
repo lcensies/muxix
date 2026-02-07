@@ -4,6 +4,8 @@ mod container;
 pub mod guest;
 pub mod lima;
 pub mod rpc;
+pub(crate) mod shims;
+pub(crate) mod toolchain;
 
 pub use container::SANDBOX_DOCKERFILE;
 pub(crate) use container::build_docker_run_args;

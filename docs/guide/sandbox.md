@@ -233,19 +233,18 @@ sandbox:
 
 ### Host command proxying
 
-The `host_commands` option lets agents inside a Lima VM run specific commands on the host machine. This is useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the VM.
+The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. This works with both Lima and container backends. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox.
 
 ```yaml
 sandbox:
-  backend: lima
   host_commands: ["just", "cargo", "npm"]
 ```
 
-When configured, workmux creates shim scripts inside the guest VM that transparently forward these commands to the host. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the guest in real-time, and returns the exit code.
+When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
 Only commands explicitly listed in `host_commands` are allowed -- there is no wildcard or auto-discovery. Commands containing path separators are rejected, and execution is locked to the project's worktree directory.
 
-This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the *agent command* itself (e.g., `claude`), while `host_commands` lets the agent invoke *other* tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
+For Lima VMs: This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the *agent command* itself (e.g., `claude`), while `host_commands` lets the agent invoke *other* tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
 
 ### Custom provisioning
 

@@ -204,6 +204,7 @@ pub fn build_docker_run_args(
     worktree_root: &Path,
     pane_cwd: &Path,
     extra_envs: &[(&str, &str)],
+    shim_host_dir: Option<&Path>,
 ) -> Result<Vec<String>> {
     let image = config.resolved_image();
     let worktree_root_str = worktree_root.to_string_lossy();
@@ -273,6 +274,15 @@ pub fn build_docker_run_args(
         }
     }
 
+    // Bind-mount shim directory if host-exec is configured
+    if let Some(shim_dir) = shim_host_dir {
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source={},target=/tmp/.workmux-shims/bin,readonly",
+            shim_dir.display()
+        ));
+    }
+
     args.push("--workdir".to_string());
     args.push(pane_cwd_str.to_string());
 
@@ -325,8 +335,14 @@ pub fn build_docker_run_args(
 
     // PATH: include both /root/.local/bin (where Claude is installed) and
     // /tmp/.local/bin (symlink, but needed so Claude sees $HOME/.local/bin in PATH)
+    // Prepend shim directory when host-exec is configured
+    let path = if shim_host_dir.is_some() {
+        "/tmp/.workmux-shims/bin:/tmp/.local/bin:/root/.local/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin"
+    } else {
+        "/tmp/.local/bin:/root/.local/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin"
+    };
     args.push("--env".to_string());
-    args.push("PATH=/tmp/.local/bin:/root/.local/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin".to_string());
+    args.push(format!("PATH={}", path));
 
     // Image
     args.push(image.to_string());
@@ -439,6 +455,7 @@ mod tests {
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
+            None,
         )
         .unwrap();
 
@@ -460,6 +477,7 @@ mod tests {
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[("WM_SANDBOX_GUEST", "1"), ("WM_RPC_PORT", "12345")],
+            None,
         )
         .unwrap();
 
@@ -481,6 +499,7 @@ mod tests {
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
+            None,
         )
         .unwrap();
 
@@ -502,6 +521,7 @@ mod tests {
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
+            None,
         )
         .unwrap();
 
@@ -522,6 +542,7 @@ mod tests {
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
+            None,
         )
         .unwrap();
 
@@ -588,5 +609,30 @@ mod tests {
 
         assert!(result.contains("--worktree-root '/tmp/project'"));
         assert!(result.contains("'/tmp/project/backend'"));
+    }
+
+    #[test]
+    fn test_build_args_with_shims() {
+        let config = make_config();
+        let tmp = tempfile::tempdir().unwrap();
+        let shim_bin = tmp.path().join("shims/bin");
+        std::fs::create_dir_all(&shim_bin).unwrap();
+
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            Some(&shim_bin),
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        // Shim dir should be bind-mounted
+        assert!(args_str.contains(".workmux-shims/bin"));
+        // PATH should include shim dir first
+        let path_arg = args.iter().find(|a| a.starts_with("PATH=")).unwrap();
+        assert!(path_arg.starts_with("PATH=/tmp/.workmux-shims/bin:"));
     }
 }

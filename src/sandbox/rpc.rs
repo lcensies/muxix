@@ -75,7 +75,7 @@ pub struct RpcContext {
     /// Commands allowed for host-exec.
     pub allowed_commands: std::collections::HashSet<String>,
     /// Resolved toolchain for host-exec command wrapping.
-    pub detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain,
+    pub detected_toolchain: crate::sandbox::toolchain::DetectedToolchain,
 }
 
 /// TCP RPC server that accepts guest connections.
@@ -398,33 +398,32 @@ fn handle_exec(
         return Ok(());
     }
 
-    let mut child =
-        if ctx.detected_toolchain != crate::sandbox::lima::toolchain::DetectedToolchain::None {
-            // Wrap with toolchain: build a shell command that enters the env first
-            let full_cmd = std::iter::once(command.to_string())
-                .chain(args.iter().map(|a| shell_quote(a)))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let wrapped =
-                crate::sandbox::lima::toolchain::wrap_command(&full_cmd, &ctx.detected_toolchain);
-            let mut cmd = Command::new("bash");
-            cmd.args(["-c", &wrapped]);
-            cmd.current_dir(&ctx.worktree_path);
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            cmd.spawn()
-                .with_context(|| format!("Failed to spawn wrapped command: {}", command))?
-        } else {
-            let mut cmd = Command::new(command);
-            cmd.args(args);
-            cmd.current_dir(&ctx.worktree_path);
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            cmd.spawn()
-                .with_context(|| format!("Failed to spawn command: {}", command))?
-        };
+    let mut child = if ctx.detected_toolchain != crate::sandbox::toolchain::DetectedToolchain::None
+    {
+        // Wrap with toolchain: build a shell command that enters the env first
+        let full_cmd = std::iter::once(command.to_string())
+            .chain(args.iter().map(|a| shell_quote(a)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let wrapped = crate::sandbox::toolchain::wrap_command(&full_cmd, &ctx.detected_toolchain);
+        let mut cmd = Command::new("bash");
+        cmd.args(["-c", &wrapped]);
+        cmd.current_dir(&ctx.worktree_path);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd.spawn()
+            .with_context(|| format!("Failed to spawn wrapped command: {}", command))?
+    } else {
+        let mut cmd = Command::new(command);
+        cmd.args(args);
+        cmd.current_dir(&ctx.worktree_path);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd.spawn()
+            .with_context(|| format!("Failed to spawn command: {}", command))?
+    };
 
     let mut stdout = child.stdout.take().unwrap();
     let mut stderr = child.stderr.take().unwrap();
@@ -696,7 +695,7 @@ mod tests {
             mux,
             token: token.clone(),
             allowed_commands: std::collections::HashSet::new(),
-            detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain::None,
+            detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
         });
 
         let _handle = server.spawn(ctx);
@@ -769,7 +768,7 @@ mod tests {
             mux,
             token: token.clone(),
             allowed_commands: std::collections::HashSet::new(),
-            detected_toolchain: crate::sandbox::lima::toolchain::DetectedToolchain::None,
+            detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
         });
 
         let _handle = server.spawn(ctx);

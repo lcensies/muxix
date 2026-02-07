@@ -915,8 +915,14 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
         sandbox::ensure_sandbox_config_dirs()?;
 
         // Build docker run args (no RPC env vars needed for shell)
-        let mut docker_args =
-            sandbox::build_docker_run_args(&shell_cmd, &config.sandbox, &worktree_root, &cwd, &[])?;
+        let mut docker_args = sandbox::build_docker_run_args(
+            &shell_cmd,
+            &config.sandbox,
+            &worktree_root,
+            &cwd,
+            &[],
+            None,
+        )?;
 
         // Add container name for easier identification
         docker_args.insert(1, "--name".to_string());
