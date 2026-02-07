@@ -280,6 +280,18 @@ impl Multiplexer for WezTermBackend {
         Ok(())
     }
 
+    fn session_exists(&self, _full_name: &str) -> Result<bool> {
+        // WezTerm doesn't have persistent sessions like tmux.
+        // Workspaces are ephemeral and not queryable via CLI.
+        Ok(false)
+    }
+
+    fn kill_session(&self, _full_name: &str) -> Result<()> {
+        // WezTerm doesn't have persistent sessions to kill.
+        // Workspaces disappear when their last window closes.
+        Ok(())
+    }
+
     fn kill_window(&self, full_name: &str) -> Result<()> {
         let panes = self.list_panes()?;
         let current_ws = self.current_workspace();

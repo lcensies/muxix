@@ -265,6 +265,17 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["switch-client", "-t", &prefixed_name])
     }
 
+    fn session_exists(&self, full_name: &str) -> Result<bool> {
+        // has-session returns 0 if session exists, 1 if not
+        Cmd::new("tmux")
+            .args(&["has-session", "-t", full_name])
+            .run_as_check()
+    }
+
+    fn kill_session(&self, full_name: &str) -> Result<()> {
+        self.tmux_cmd(&["kill-session", "-t", full_name])
+    }
+
     fn kill_window(&self, full_name: &str) -> Result<()> {
         let target = format!("={}", full_name);
         self.tmux_cmd(&["kill-window", "-t", &target])

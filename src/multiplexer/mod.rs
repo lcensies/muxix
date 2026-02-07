@@ -61,6 +61,12 @@ pub trait Multiplexer: Send + Sync {
     /// For WezTerm, this may switch to a workspace.
     fn switch_to_session(&self, prefix: &str, name: &str) -> Result<()>;
 
+    /// Check if a session exists by its full name.
+    fn session_exists(&self, full_name: &str) -> Result<bool>;
+
+    /// Kill a session by its full name (including prefix).
+    fn kill_session(&self, full_name: &str) -> Result<()>;
+
     /// Kill a window by its full name (including prefix)
     fn kill_window(&self, full_name: &str) -> Result<()>;
 
