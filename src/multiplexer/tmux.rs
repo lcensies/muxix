@@ -294,6 +294,18 @@ impl Multiplexer for TmuxBackend {
         self.run_shell(&script)
     }
 
+    fn schedule_session_close(&self, full_name: &str, delay: Duration) -> Result<()> {
+        let delay_secs = format!("{:.3}", delay.as_secs_f64());
+        let escaped_name = format!("'{}'", full_name.replace('\'', r#"'\''"#));
+        let script = format!(
+            "sleep {delay}; tmux kill-session -t {name} >/dev/null 2>&1",
+            delay = delay_secs,
+            name = escaped_name
+        );
+
+        self.run_shell(&script)
+    }
+
     fn run_deferred_script(&self, script: &str) -> Result<()> {
         self.run_shell(script)
     }
@@ -359,6 +371,13 @@ impl Multiplexer for TmuxBackend {
             .tmux_query(&["list-windows", "-F", "#{window_name}"])
             .unwrap_or_default();
         Ok(windows.lines().map(String::from).collect())
+    }
+
+    fn get_all_session_names(&self) -> Result<HashSet<String>> {
+        let sessions = self
+            .tmux_query(&["list-sessions", "-F", "#{session_name}"])
+            .unwrap_or_default();
+        Ok(sessions.lines().map(String::from).collect())
     }
 
     fn filter_active_windows(&self, windows: &[String]) -> Result<Vec<String>> {
@@ -443,6 +462,22 @@ impl Multiplexer for TmuxBackend {
                 .any(|target| current_windows.contains(target));
 
             if !any_exists {
+                return Ok(());
+            }
+
+            thread::sleep(Duration::from_millis(500));
+        }
+    }
+
+    fn wait_until_session_closed(&self, full_session_name: &str) -> Result<()> {
+        println!("Waiting for session '{}' to close...", full_session_name);
+
+        loop {
+            if !self.is_running()? {
+                return Ok(());
+            }
+
+            if !self.session_exists(full_session_name)? {
                 return Ok(());
             }
 
