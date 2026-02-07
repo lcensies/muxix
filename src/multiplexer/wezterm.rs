@@ -329,6 +329,12 @@ impl Multiplexer for WezTermBackend {
         Ok(())
     }
 
+    fn schedule_session_close(&self, _full_name: &str, _delay: Duration) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "Session mode is not supported in WezTerm. Use window mode instead."
+        ))
+    }
+
     fn run_deferred_script(&self, script: &str) -> Result<()> {
         // Run the script in the background using nohup
         let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
@@ -444,6 +450,11 @@ impl Multiplexer for WezTermBackend {
         Ok(names)
     }
 
+    fn get_all_session_names(&self) -> Result<HashSet<String>> {
+        // WezTerm doesn't support session mode - return empty set
+        Ok(HashSet::new())
+    }
+
     fn filter_active_windows(&self, windows: &[String]) -> Result<Vec<String>> {
         let all_current = self.get_all_window_names()?;
 
@@ -499,6 +510,12 @@ impl Multiplexer for WezTermBackend {
 
             thread::sleep(Duration::from_millis(500));
         }
+    }
+
+    fn wait_until_session_closed(&self, _full_session_name: &str) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "Session mode is not supported in WezTerm. Use window mode instead."
+        ))
     }
 
     // === Pane Management ===
