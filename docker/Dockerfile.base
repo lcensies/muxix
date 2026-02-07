@@ -9,6 +9,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install workmux (needed for sandbox RPC)
 RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 
-# Install afplay shim that routes sound playback to host via RPC
-RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
-    chmod +x /usr/local/bin/afplay

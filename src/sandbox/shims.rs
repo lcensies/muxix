@@ -1,4 +1,4 @@
-//! Host-exec shim creation for Lima VMs.
+//! Host-exec shim creation for sandbox guests (Lima VMs and containers).
 //!
 //! Creates a directory of symlinks that intercept configured command names
 //! and route them to `workmux host-exec`.
@@ -7,6 +7,25 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+
+/// Commands that are always available as host-exec shims, regardless of
+/// user `host_commands` config. These are system-level commands that sandbox
+/// guests need to proxy to the host (e.g., `afplay` for macOS sound).
+pub const BUILTIN_HOST_COMMANDS: &[&str] = &["afplay"];
+
+/// Merge built-in host commands with user-configured ones, deduplicating.
+pub fn effective_host_commands(user_commands: &[String]) -> Vec<String> {
+    let mut commands: Vec<String> = BUILTIN_HOST_COMMANDS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    for cmd in user_commands {
+        if !commands.iter().any(|c| c == cmd) {
+            commands.push(cmd.clone());
+        }
+    }
+    commands
+}
 
 /// Create a shim directory with a dispatcher script and command symlinks.
 ///
@@ -93,6 +112,24 @@ mod tests {
         let shim_bin = create_shim_directory(tmp.path(), &commands).unwrap();
         assert!(shim_bin.join("valid").exists());
         assert!(!shim_bin.join("/bin/evil").exists());
+    }
+
+    #[test]
+    fn test_effective_host_commands_includes_builtins() {
+        let result = effective_host_commands(&[]);
+        assert!(result.contains(&"afplay".to_string()));
+    }
+
+    #[test]
+    fn test_effective_host_commands_merges_user() {
+        let result = effective_host_commands(&["just".to_string(), "cargo".to_string()]);
+        assert_eq!(result, vec!["afplay", "just", "cargo"]);
+    }
+
+    #[test]
+    fn test_effective_host_commands_deduplicates() {
+        let result = effective_host_commands(&["afplay".to_string(), "just".to_string()]);
+        assert_eq!(result, vec!["afplay", "just"]);
     }
 
     #[test]

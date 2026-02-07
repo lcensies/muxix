@@ -144,14 +144,6 @@ fi
 # Symlink Claude config from mounted state directory (seeded from host)
 # This preserves onboarding state, tips history, etc. across VM recreations
 ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
-
-# Install afplay shim that routes through workmux RPC to host
-cat > ~/.local/bin/afplay << 'SHIM'
-#!/bin/sh
-# Shim that forwards afplay calls to the host via workmux RPC
-exec workmux notify sound "$@"
-SHIM
-chmod +x ~/.local/bin/afplay
 "#;
 
         let mut system_provision = serde_yaml::Mapping::new();

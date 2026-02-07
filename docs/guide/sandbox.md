@@ -259,7 +259,7 @@ sandbox:
 
 When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
-Only commands explicitly listed in `host_commands` are allowed -- there is no wildcard or auto-discovery. Commands containing path separators are rejected, and execution is locked to the project's worktree directory.
+Some commands are built-in and always available as host-exec shims without configuration (e.g., `afplay` for sound notifications). Only commands listed in `host_commands` or built-in are allowed -- there is no wildcard or auto-discovery. Commands containing path separators are rejected, and execution is locked to the project's worktree directory.
 
 For Lima VMs: This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the *agent command* itself (e.g., `claude`), while `host_commands` lets the agent invoke *other* tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
 
@@ -305,7 +305,7 @@ When `image` is set, it replaces the default Debian 12 genericcloud image. The v
 When `skip_default_provision` is true, the built-in provisioning steps are skipped:
 
 - System provision (apt-get install of curl, ca-certificates, git)
-- User provision (Claude CLI, workmux, afplay shim)
+- User provision (Claude CLI, workmux, Nix/Devbox)
 
 Custom `provision` scripts still run even when `skip_default_provision` is true, so you can layer additional setup on top of a pre-built image.
 
@@ -420,16 +420,15 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `SetTitle` -- renames the tmux window
 - `Heartbeat` -- health check, returns Ok
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree and pane
-- `Notify` -- triggers host-side notifications (e.g., playing sounds via `afplay`)
-- `Exec` -- runs a command on the host and streams stdout/stderr back (used by `host_commands` shims)
+- `Exec` -- runs a command on the host and streams stdout/stderr back (used by host-exec shims, including built-in `afplay`)
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
 
 ### Sound notifications
 
-Claude Code hooks often use `afplay` to play notification sounds (e.g., when an agent finishes). Since `afplay` is a macOS-only binary, it doesn't exist inside the Linux guest VM. workmux solves this by installing an `afplay` shim in the guest that forwards sound playback to the host via RPC.
+Claude Code hooks often use `afplay` to play notification sounds (e.g., when an agent finishes). Since `afplay` is a macOS-only binary, it doesn't exist inside the Linux guest. workmux includes `afplay` as a built-in host-exec shim that forwards sound playback to the host. This works with both Lima and container backends.
 
-This is transparent -- when a hook runs `afplay /System/Library/Sounds/Glass.aiff` inside the VM, the shim sends a `Notify` RPC request and the host plays the sound. No configuration is needed.
+This is transparent -- when a hook runs `afplay /System/Library/Sounds/Glass.aiff` inside the sandbox, the shim runs `afplay` on the host via the host-exec RPC mechanism. No configuration is needed.
 
 ### Credentials
 

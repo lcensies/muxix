@@ -11,7 +11,6 @@ pub mod last_agent;
 pub mod last_done;
 pub mod list;
 pub mod merge;
-pub mod notify;
 pub mod open;
 pub mod path;
 pub mod remove;

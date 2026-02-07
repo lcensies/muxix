@@ -125,15 +125,13 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         info!(toolchain = ?detected, "wrapping command with toolchain environment");
     }
 
-    // Create host-exec shims for configured commands
-    let host_commands = config.sandbox.host_commands();
+    // Create host-exec shims (built-in commands like afplay + user-configured ones)
+    let host_commands = shims::effective_host_commands(config.sandbox.host_commands());
     let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
 
-    if !host_commands.is_empty() {
-        let state_dir = lima::mounts::lima_state_dir_path(&vm_name)?;
-        shims::create_shim_directory(&state_dir, host_commands)?;
-        info!(commands = ?host_commands, "created host-exec shims");
-    }
+    let state_dir = lima::mounts::lima_state_dir_path(&vm_name)?;
+    shims::create_shim_directory(&state_dir, &host_commands)?;
+    info!(commands = ?host_commands, "created host-exec shims");
 
     let (rpc_server, rpc_port, rpc_token, ctx) =
         start_rpc(worktree, allowed_commands, detected.clone())?;
@@ -215,7 +213,8 @@ fn run_container(
     // Ensure sandbox config dirs exist before building container args
     ensure_sandbox_config_dirs()?;
 
-    let host_commands = config.sandbox.host_commands();
+    // Merge built-in host commands (e.g. afplay) with user-configured ones
+    let host_commands = shims::effective_host_commands(config.sandbox.host_commands());
     let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
 
     // Resolve toolchain for host-exec command wrapping (runs on host, not in container)
@@ -225,13 +224,11 @@ fn run_container(
     }
 
     // Create shims directory for host-exec (on host, will be bind-mounted into container)
-    let _shim_dir = if !host_commands.is_empty() {
+    let _shim_dir = {
         let dir = tempfile::tempdir().context("Failed to create shim temp dir")?;
-        shims::create_shim_directory(dir.path(), host_commands)?;
+        shims::create_shim_directory(dir.path(), &host_commands)?;
         info!(commands = ?host_commands, "created host-exec shims");
         Some(dir)
-    } else {
-        None
     };
 
     let (rpc_server, rpc_port, rpc_token, ctx) =
