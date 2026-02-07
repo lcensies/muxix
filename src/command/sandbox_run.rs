@@ -270,11 +270,14 @@ fn run_container(
         ("WM_RPC_TOKEN", rpc_token.as_str()),
     ];
 
+    let agent = crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name();
+
     let user_command = command.join(" ");
     let shim_host_dir = _shim_dir.as_ref().map(|d| d.path().join("shims/bin"));
     let mut docker_args = build_docker_run_args(
         &user_command,
         &config.sandbox,
+        agent,
         worktree_root,
         pane_cwd,
         &extra_envs,
@@ -286,6 +289,10 @@ fn run_container(
     docker_args.insert(2, container_name.clone());
 
     debug!(runtime = runtime_bin, container = %container_name, args = ?docker_args, "spawning container");
+
+    // Background freshness check (non-blocking)
+    let freshness_image = config.sandbox.resolved_image(agent);
+    crate::sandbox::freshness::check_in_background(freshness_image, config.sandbox.runtime());
 
     // Create guard to stop container on exit (panic, SIGTERM, etc.)
     let _guard = ContainerGuard {

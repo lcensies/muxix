@@ -10,17 +10,27 @@ Commands for managing container sandbox functionality.
 
 ### sandbox build
 
-Build the sandbox container image with Claude Code and workmux pre-installed.
+Build the sandbox container image locally (two-stage: base + agent).
 
 ```bash
 workmux sandbox build
 ```
 
-This builds a Docker image named `workmux-sandbox` (or your configured image name) containing Claude Code and workmux. The image is built from an embedded Dockerfile that installs workmux via the GitHub releases install script -- no local binary or cross-compilation needed.
+Builds the image locally for the configured agent. This is an alternative to using the pre-built image from `ghcr.io/raine/workmux-sandbox`. Most users should use `workmux sandbox pull` instead.
+
+### sandbox pull
+
+Pull the latest sandbox image from the container registry.
+
+```bash
+workmux sandbox pull
+```
+
+Pulls the pre-built image for the configured agent from `ghcr.io/raine/workmux-sandbox:{agent}`. This is the recommended way to get and update the sandbox image.
 
 ### sandbox init-dockerfile
 
-Export a customizable Dockerfile template for building your own sandbox image.
+Export customizable Dockerfile templates for building your own sandbox image.
 
 ```bash
 workmux sandbox init-dockerfile [--force]
@@ -28,9 +38,9 @@ workmux sandbox init-dockerfile [--force]
 
 **Options:**
 
-- `--force` - Overwrite existing `Dockerfile.sandbox`
+- `--force` - Overwrite existing Dockerfiles
 
-Creates `Dockerfile.sandbox` in the current directory with the same content as the embedded Dockerfile, plus guide comments showing which sections are required and where to add custom packages.
+Creates `Dockerfile.base` and `Dockerfile.{agent}` (e.g., `Dockerfile.claude`) in the current directory. The base Dockerfile contains the common foundation (Debian, git, workmux), and the agent Dockerfile adds agent-specific installation on top.
 
 ### sandbox auth
 
@@ -135,33 +145,32 @@ This command helps you stop running Lima VMs created by workmux to free up syste
 ## Quick Setup
 
 ```bash
-# 1. Build the image
-workmux sandbox build
+# 1. Enable in config (~/.config/workmux/config.yaml or .workmux.yaml)
+#    sandbox:
+#      enabled: true
 
 # 2. Authenticate
 workmux sandbox auth
 
-# 3. Enable in config (~/.config/workmux/config.yaml or .workmux.yaml)
-#    sandbox:
-#      enabled: true
+# The pre-built image is pulled automatically on first run.
+# To pull it explicitly:
+workmux sandbox pull
 ```
 
 ## Example
 
 ```bash
-# Build the sandbox image
-workmux sandbox build
+# Pull the latest sandbox image
+workmux sandbox pull
 # Output:
-# Building sandbox image 'workmux-sandbox'...
-# Building image 'workmux-sandbox' using docker...
-# ...
-# Sandbox image built successfully!
+# Pulling image 'ghcr.io/raine/workmux-sandbox:claude'...
+# Image 'ghcr.io/raine/workmux-sandbox:claude' is up to date.
 
 # Then authenticate
 workmux sandbox auth
 # Output:
 # Starting sandbox auth flow...
-# This will open Claude in container 'workmux-sandbox' for authentication.
+# This will open Claude in container 'ghcr.io/raine/workmux-sandbox:claude' for authentication.
 # Your credentials will be saved to ~/.claude-sandbox.json
 #
 # [Interactive agent session]

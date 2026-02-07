@@ -27,27 +27,40 @@ brew install --cask docker
 brew install podman
 ```
 
-### 2. Build the sandbox image
+### 2. Enable sandbox in config
+
+Add to your global or project config:
+
+```yaml
+# ~/.config/workmux/config.yaml or .workmux.yaml
+sandbox:
+  enabled: true
+```
+
+The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed.
+
+To pull the latest image explicitly:
+
+```bash
+workmux sandbox pull
+```
+
+To build locally instead of pulling:
 
 ```bash
 workmux sandbox build
 ```
 
-This builds a Docker image named `workmux-sandbox` containing:
-
-- Claude Code CLI
-- workmux (installed from GitHub releases)
-- Git and other dependencies
-
 ### Custom images
 
 To add tools or customize the sandbox environment, export the Dockerfile
-template and modify it:
+templates and modify them:
 
 ```bash
-workmux sandbox init-dockerfile        # creates Dockerfile.sandbox
-vim Dockerfile.sandbox                  # customize
-docker build -t my-sandbox -f Dockerfile.sandbox .
+workmux sandbox init-dockerfile        # creates Dockerfile.base + Dockerfile.{agent}
+vim Dockerfile.claude                   # customize
+docker build -t my-sandbox-base -f Dockerfile.base .
+docker build --build-arg BASE=my-sandbox-base -t my-sandbox -f Dockerfile.claude .
 ```
 
 Then set the image in your config:
@@ -58,18 +71,9 @@ sandbox:
   image: my-sandbox
 ```
 
-### 3. Enable sandbox in config
+### 3. Authenticate once
 
-Add to your global or project config:
-
-```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
-sandbox:
-  enabled: true
-  # image defaults to 'workmux-sandbox' if not specified
-```
-
-### 4. Authenticate once
+### 3. Authenticate once
 
 The sandbox uses separate credentials from your host. Run this once to authenticate your agent inside the container:
 
@@ -86,7 +90,7 @@ This saves credentials to `~/.claude-sandbox.json`, which is mounted into contai
 | `enabled`         | `false`            | Enable container sandboxing              |
 | `runtime`         | `docker`           | Container runtime: `docker` or `podman`  |
 | `target`          | `agent`            | Which panes to sandbox: `agent` or `all` |
-| `image`           | `workmux-sandbox`  | Container image name                     |
+| `image`           | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
 
 ### Example configurations

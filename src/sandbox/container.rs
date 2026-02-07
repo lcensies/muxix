@@ -8,32 +8,29 @@ use anyhow::{Context, Result};
 use crate::config::{SandboxConfig, SandboxRuntime};
 use crate::state::StateStore;
 
-/// Embedded Dockerfile for building sandbox image.
-/// Also exported by `workmux sandbox init-dockerfile` as a customization starting point.
-pub const SANDBOX_DOCKERFILE: &str = r#"FROM debian:bookworm-slim
+/// Default image registry prefix.
+pub const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/raine/workmux-sandbox";
 
-# Install dependencies for Claude Code + git operations
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+/// Embedded Dockerfiles for each agent.
+pub const DOCKERFILE_BASE: &str = include_str!("../../docker/Dockerfile.base");
+pub const DOCKERFILE_CLAUDE: &str = include_str!("../../docker/Dockerfile.claude");
+pub const DOCKERFILE_CODEX: &str = include_str!("../../docker/Dockerfile.codex");
+pub const DOCKERFILE_GEMINI: &str = include_str!("../../docker/Dockerfile.gemini");
+pub const DOCKERFILE_OPENCODE: &str = include_str!("../../docker/Dockerfile.opencode");
 
-# Install Claude Code (runs as host UID with HOME=/tmp)
-RUN curl -fsSL https://claude.ai/install.sh | bash && \
-    mkdir -p /tmp/.local && \
-    ln -s /root/.local/bin /tmp/.local/bin && \
-    chmod 755 /root
+/// Known agents that have pre-built images.
+pub const KNOWN_AGENTS: &[&str] = &["claude", "codex", "gemini", "opencode"];
 
-# Install workmux (needed for sandbox RPC)
-RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
-
-# Install afplay shim that routes sound playback to host via RPC
-RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
-    chmod +x /usr/local/bin/afplay
-
-ENV PATH="/tmp/.local/bin:/root/.local/bin:${PATH}"
-"#;
+/// Get the agent-specific Dockerfile content, or None for unknown agents.
+pub fn dockerfile_for_agent(agent: &str) -> Option<&'static str> {
+    match agent {
+        "claude" => Some(DOCKERFILE_CLAUDE),
+        "codex" => Some(DOCKERFILE_CODEX),
+        "gemini" => Some(DOCKERFILE_GEMINI),
+        "opencode" => Some(DOCKERFILE_OPENCODE),
+        _ => None,
+    }
+}
 
 /// Sandbox-specific config paths on host.
 /// The config file (~/.claude-sandbox.json) is separate from host CLI config
@@ -67,13 +64,13 @@ pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
 
 /// Run interactive auth flow in container.
 /// Mounts sandbox config paths read-write so auth persists.
-pub fn run_auth(config: &SandboxConfig) -> Result<()> {
+pub fn run_auth(config: &SandboxConfig, agent: &str) -> Result<()> {
     let paths = ensure_sandbox_config_dirs()?;
     let runtime = match config.runtime() {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
     };
-    let image = config.resolved_image();
+    let image = config.resolved_image(agent);
 
     let mut args = vec![
         "run".to_string(),
@@ -123,41 +120,83 @@ pub fn run_auth(config: &SandboxConfig) -> Result<()> {
     Ok(())
 }
 
-/// Build the sandbox container image.
-///
-/// Writes the embedded Dockerfile to a temp directory and runs docker/podman
-/// build. The Dockerfile installs workmux via the install script (no local
-/// binary needed).
-pub fn build_image(config: &SandboxConfig) -> Result<()> {
+/// Build the sandbox Docker image locally (two-stage: base + agent).
+pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
     let runtime = match config.runtime() {
         SandboxRuntime::Podman => "podman",
         SandboxRuntime::Docker => "docker",
     };
 
-    let image_name = config.resolved_image();
+    let agent_dockerfile = dockerfile_for_agent(agent).ok_or_else(|| {
+        anyhow::anyhow!(
+            "No Dockerfile for agent '{}'. Known agents: {}",
+            agent,
+            KNOWN_AGENTS.join(", ")
+        )
+    })?;
 
-    // Create temporary build context
-    let temp_dir = tempfile::Builder::new()
-        .prefix("workmux-sandbox-build-")
-        .tempdir()
-        .context("Failed to create temporary build directory")?;
-    let context_path = temp_dir.path();
+    // Stage 1: Build base image (use localhost/ prefix for Podman compatibility)
+    let base_tag = "localhost/workmux-sandbox-base";
+    println!("Building base image...");
 
-    // Write Dockerfile
-    let dockerfile_path = context_path.join("Dockerfile");
-    std::fs::write(&dockerfile_path, SANDBOX_DOCKERFILE).context("Failed to write Dockerfile")?;
+    let tmp_dir = tempfile::tempdir().context("Failed to create temp dir")?;
+    std::fs::write(tmp_dir.path().join("Dockerfile"), DOCKERFILE_BASE)?;
 
-    println!("Building image '{}' using {}...", image_name, runtime);
-
-    // Run build
     let status = Command::new(runtime)
-        .args(["build", "-t", image_name, "."])
-        .current_dir(context_path)
+        .args(["build", "-t", base_tag, "-f", "Dockerfile", "."])
+        .current_dir(tmp_dir.path())
         .status()
-        .with_context(|| format!("Failed to run {} build", runtime))?;
+        .context("Failed to build base image")?;
 
     if !status.success() {
-        anyhow::bail!("{} build failed with exit code: {}", runtime, status);
+        anyhow::bail!("Failed to build base image");
+    }
+
+    // Stage 2: Build agent image on top of local base
+    let image = config.resolved_image(agent);
+    println!("Building {} image...", agent);
+
+    let agent_tmp = tempfile::tempdir().context("Failed to create temp dir")?;
+    std::fs::write(agent_tmp.path().join("Dockerfile"), agent_dockerfile)?;
+
+    let status = Command::new(runtime)
+        .args([
+            "build",
+            "--build-arg",
+            &format!("BASE={}", base_tag),
+            "-t",
+            &image,
+            "-f",
+            "Dockerfile",
+            ".",
+        ])
+        .current_dir(agent_tmp.path())
+        .status()
+        .context("Failed to build agent image")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to build image '{}'", image);
+    }
+
+    Ok(())
+}
+
+/// Pull the sandbox image from the registry.
+pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
+    let runtime = match config.runtime() {
+        SandboxRuntime::Podman => "podman",
+        SandboxRuntime::Docker => "docker",
+    };
+
+    println!("Pulling image '{}'...", image);
+
+    let status = Command::new(runtime)
+        .args(["pull", image])
+        .status()
+        .context("Failed to run container runtime")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to pull image '{}'", image);
     }
 
     Ok(())
@@ -175,12 +214,13 @@ pub fn build_image(config: &SandboxConfig) -> Result<()> {
 pub fn build_docker_run_args(
     command: &str,
     config: &SandboxConfig,
+    agent: &str,
     worktree_root: &Path,
     pane_cwd: &Path,
     extra_envs: &[(&str, &str)],
     shim_host_dir: Option<&Path>,
 ) -> Result<Vec<String>> {
-    let image = config.resolved_image();
+    let image = config.resolved_image(agent);
     let worktree_root_str = worktree_root.to_string_lossy();
     let pane_cwd_str = pane_cwd.to_string_lossy();
 
@@ -416,6 +456,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
@@ -438,6 +479,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[("WM_SANDBOX_GUEST", "1"), ("WM_RPC_PORT", "12345")],
@@ -460,6 +502,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
@@ -482,6 +525,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
@@ -503,6 +547,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
@@ -585,6 +630,7 @@ mod tests {
         let args = build_docker_run_args(
             "claude",
             &config,
+            "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
             &[],
@@ -598,5 +644,41 @@ mod tests {
         // PATH should include shim dir first
         let path_arg = args.iter().find(|a| a.starts_with("PATH=")).unwrap();
         assert!(path_arg.starts_with("PATH=/tmp/.workmux-shims/bin:"));
+    }
+
+    #[test]
+    fn test_dockerfile_for_known_agents() {
+        assert!(dockerfile_for_agent("claude").is_some());
+        assert!(dockerfile_for_agent("codex").is_some());
+        assert!(dockerfile_for_agent("gemini").is_some());
+        assert!(dockerfile_for_agent("opencode").is_some());
+    }
+
+    #[test]
+    fn test_dockerfile_for_unknown_agent() {
+        assert!(dockerfile_for_agent("unknown").is_none());
+        assert!(dockerfile_for_agent("default").is_none());
+    }
+
+    #[test]
+    fn test_default_image_resolution() {
+        let config = SandboxConfig::default();
+        assert_eq!(
+            config.resolved_image("claude"),
+            "ghcr.io/raine/workmux-sandbox:claude"
+        );
+        assert_eq!(
+            config.resolved_image("codex"),
+            "ghcr.io/raine/workmux-sandbox:codex"
+        );
+    }
+
+    #[test]
+    fn test_custom_image_resolution() {
+        let config = SandboxConfig {
+            image: Some("my-image:latest".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.resolved_image("claude"), "my-image:latest");
     }
 }

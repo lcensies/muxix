@@ -99,7 +99,6 @@ export default defineConfig({
       {
         text: "Guides",
         items: [
-          { text: "Container sandbox", link: "/guide/sandbox" },
           { text: "direnv", link: "/guide/direnv" },
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },

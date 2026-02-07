@@ -24,11 +24,14 @@ pub enum SandboxCommand {
     /// Authenticate with the agent inside the sandbox container.
     /// Run this once before using sandbox mode.
     Auth,
-    /// Build the sandbox container image with Claude Code and workmux.
+    /// Build the sandbox container image locally.
+    /// Note: a pre-built image is available via `workmux sandbox pull`.
     Build,
-    /// Export a customizable Dockerfile template for building your own sandbox image.
+    /// Pull the latest sandbox image from the container registry.
+    Pull,
+    /// Export customizable Dockerfile templates for building your own sandbox image.
     InitDockerfile {
-        /// Overwrite existing Dockerfile.sandbox
+        /// Overwrite existing Dockerfiles
         #[arg(long)]
         force: bool,
     },
@@ -83,10 +86,16 @@ pub enum SandboxCommand {
     },
 }
 
+/// Resolve the canonical agent name from config.
+fn resolve_agent(config: &Config) -> &'static str {
+    crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name()
+}
+
 pub fn run(args: SandboxArgs) -> Result<()> {
     match args.command {
         SandboxCommand::Auth => run_auth(),
         SandboxCommand::Build => run_build(),
+        SandboxCommand::Pull => run_pull(),
         SandboxCommand::InitDockerfile { force } => run_init_dockerfile(force),
         SandboxCommand::Run {
             worktree,
@@ -109,8 +118,8 @@ pub fn run(args: SandboxArgs) -> Result<()> {
 
 fn run_auth() -> Result<()> {
     let config = Config::load(None)?;
-
-    let image_name = config.sandbox.resolved_image();
+    let agent = resolve_agent(&config);
+    let image_name = config.sandbox.resolved_image(agent);
 
     println!("Starting sandbox auth flow...");
     println!(
@@ -119,7 +128,7 @@ fn run_auth() -> Result<()> {
     );
     println!("Your credentials will be saved to ~/.claude-sandbox.json\n");
 
-    sandbox::run_auth(&config.sandbox)?;
+    sandbox::run_auth(&config.sandbox, agent)?;
 
     println!("\nAuth complete. Sandbox credentials saved.");
     Ok(())
@@ -127,52 +136,73 @@ fn run_auth() -> Result<()> {
 
 fn run_build() -> Result<()> {
     let config = Config::load(None)?;
+    let agent = resolve_agent(&config);
 
-    let image_name = config.sandbox.resolved_image();
-    println!("Building sandbox image '{}'...\n", image_name);
-
-    sandbox::build_image(&config.sandbox)?;
-
+    println!(
+        "Building sandbox image '{}' for agent '{}'...",
+        config.sandbox.resolved_image(agent),
+        agent,
+    );
+    sandbox::build_image(&config.sandbox, agent)?;
     println!("\nSandbox image built successfully!");
     println!();
-    println!("Enable sandbox in your config:");
-    println!();
-    println!("  sandbox:");
-    println!("    enabled: true");
-    if config.sandbox.image.is_none() {
-        println!("    # image defaults to 'workmux-sandbox'");
-    }
-    println!();
-    println!("Then authenticate with: workmux sandbox auth");
+    println!(
+        "Tip: a pre-built image is available at {}:{}",
+        sandbox::DEFAULT_IMAGE_REGISTRY,
+        agent
+    );
+    println!("     Use `workmux sandbox pull` to pull it instead of building locally.");
 
     Ok(())
 }
 
+fn run_pull() -> Result<()> {
+    let config = Config::load(None)?;
+    let agent = resolve_agent(&config);
+    let image = config.sandbox.resolved_image(agent);
+
+    sandbox::pull_image(&config.sandbox, &image)?;
+
+    println!("Image '{}' is up to date.", image);
+    Ok(())
+}
+
 fn run_init_dockerfile(force: bool) -> Result<()> {
-    use console::style;
+    let config = Config::load(None)?;
+    let agent_name = resolve_agent(&config);
 
-    let path = PathBuf::from("Dockerfile.sandbox");
+    let base_path = PathBuf::from("Dockerfile.base");
+    let agent_filename = format!("Dockerfile.{}", agent_name);
+    let agent_path = PathBuf::from(&agent_filename);
 
-    if path.exists() && !force {
-        bail!("Dockerfile.sandbox already exists. Use --force to overwrite.");
+    if !force && (base_path.exists() || agent_path.exists()) {
+        bail!("Dockerfile already exists. Use --force to overwrite.");
     }
 
-    std::fs::write(&path, sandbox::SANDBOX_DOCKERFILE)
-        .context("Failed to write Dockerfile.sandbox")?;
+    let agent_dockerfile = sandbox::dockerfile_for_agent(agent_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "No Dockerfile for agent '{}'. Known agents: {}",
+            agent_name,
+            sandbox::KNOWN_AGENTS.join(", ")
+        )
+    })?;
 
-    println!("✓ Created {}", style("Dockerfile.sandbox").bold());
+    std::fs::write(&base_path, sandbox::DOCKERFILE_BASE)?;
+    std::fs::write(&agent_path, agent_dockerfile)?;
+
+    println!("Wrote {} and {}", base_path.display(), agent_path.display());
     println!();
-    println!("{}:", style("Next steps").bold());
-    println!("  1. Edit Dockerfile.sandbox to add your packages");
+    println!("Next steps:");
+    println!("  1. Edit the Dockerfiles to add your packages/tools");
+    println!("  2. Build:");
+    println!("     docker build -t my-sandbox-base -f Dockerfile.base .");
     println!(
-        "  2. Build: {}",
-        style("docker build -t my-sandbox -f Dockerfile.sandbox .").dim()
+        "     docker build --build-arg BASE=my-sandbox-base -t my-sandbox -f {} .",
+        agent_filename
     );
-    println!("  3. Configure {}:", style(".workmux.yaml").bold());
-    println!("       {}", style("sandbox:").dim());
-    println!("         {}", style("enabled: true").dim());
-    println!("         {}", style("image: my-sandbox").dim());
-
+    println!("  3. Update .workmux.yaml:");
+    println!("     sandbox:");
+    println!("       image: my-sandbox");
     Ok(())
 }
 
@@ -342,8 +372,9 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
     let mut did_something = false;
 
     // --- Container image patching ---
-    let image_name = config.sandbox.resolved_image();
-    match install_dev_container(&binary_path, image_name, &config) {
+    let agent = resolve_agent(&config);
+    let image_name = config.sandbox.resolved_image(agent);
+    match install_dev_container(&binary_path, &image_name, &config) {
         Ok(true) => {
             did_something = true;
         }
@@ -913,11 +944,13 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
     } else {
         // Start new container
         sandbox::ensure_sandbox_config_dirs()?;
+        let agent = resolve_agent(&config);
 
         // Build docker run args (no RPC env vars needed for shell)
         let mut docker_args = sandbox::build_docker_run_args(
             &shell_cmd,
             &config.sandbox,
+            agent,
             &worktree_root,
             &cwd,
             &[],

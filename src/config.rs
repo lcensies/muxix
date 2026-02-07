@@ -431,9 +431,15 @@ impl SandboxConfig {
         self.target.clone().unwrap_or_default()
     }
 
-    /// Get the image name, falling back to default "workmux-sandbox".
-    pub fn resolved_image(&self) -> &str {
-        self.image.as_deref().unwrap_or("workmux-sandbox")
+    /// Get the image name, falling back to the default ghcr.io image for the agent.
+    ///
+    /// `agent` must be a canonical agent name (e.g. "claude", "codex"), not a raw
+    /// command string. Use `resolve_profile().name()` to obtain it.
+    pub fn resolved_image(&self, agent: &str) -> String {
+        match &self.image {
+            Some(image) => image.clone(),
+            None => format!("{}:{}", crate::sandbox::DEFAULT_IMAGE_REGISTRY, agent),
+        }
     }
 
     pub fn env_passthrough(&self) -> Vec<&str> {
@@ -1466,7 +1472,7 @@ mod tests {
 
         let merged = global.merge(project);
         assert!(merged.sandbox.is_enabled()); // from global
-        assert_eq!(merged.sandbox.resolved_image(), "project-image"); // from project
+        assert_eq!(merged.sandbox.resolved_image("claude"), "project-image"); // from project
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
     }
 

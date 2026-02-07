@@ -1,0 +1,4 @@
+ARG BASE=ghcr.io/raine/workmux-sandbox:base
+FROM ${BASE}
+
+RUN curl -fsSL https://opencode.ai/install | bash
