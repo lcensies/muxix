@@ -40,8 +40,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     ln -s /root/.local/bin /tmp/.local/bin
 
 # Install workmux (needed for sandbox RPC)
-RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash && \
-    mv ~/.local/bin/workmux /usr/local/bin/workmux
+RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 
 # Install afplay shim that routes sound playback to host via RPC
 RUN printf '#!/bin/sh\nexec workmux notify sound "$@"\n' > /usr/local/bin/afplay && \
