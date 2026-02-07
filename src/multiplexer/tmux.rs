@@ -248,6 +248,10 @@ impl Multiplexer for TmuxBackend {
         self.run_shell(&script)
     }
 
+    fn run_deferred_script(&self, script: &str) -> Result<()> {
+        self.run_shell(script)
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let prefixed_name = util::prefixed(prefix, name);
         let target = format!("={}", prefixed_name);
@@ -611,15 +615,6 @@ impl Multiplexer for TmuxBackend {
 
         Ok(panes)
     }
-}
-
-/// Execute a shell script via tmux run-shell
-pub fn run_shell(script: &str) -> Result<()> {
-    Cmd::new("tmux")
-        .args(&["run-shell", script])
-        .run()
-        .context("Failed to run shell command via tmux")?;
-    Ok(())
 }
 
 /// Format string to inject into tmux window-status-format.

@@ -4,7 +4,6 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::{thread, time::Duration};
 
-use crate::multiplexer::tmux;
 use crate::multiplexer::{Multiplexer, util::prefixed};
 use crate::{cmd, git};
 use tracing::{debug, info, warn};
@@ -531,7 +530,7 @@ pub fn navigate_to_target_and_close(
                 script = script,
                 "navigate_to_target_and_close:kill_only_script"
             );
-            match tmux::run_shell(&script) {
+            match mux.run_deferred_script(&script) {
                 Ok(_) => info!(
                     window = window_to_close,
                     script = script,
@@ -575,7 +574,7 @@ pub fn navigate_to_target_and_close(
             "navigate_to_target_and_close:nav_and_kill_script"
         );
 
-        match tmux::run_shell(&script) {
+        match mux.run_deferred_script(&script) {
             Ok(_) => info!(
                 source = source_handle,
                 target = target_window_name,

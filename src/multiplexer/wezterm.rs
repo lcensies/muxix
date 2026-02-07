@@ -302,6 +302,13 @@ impl Multiplexer for WezTermBackend {
         Ok(())
     }
 
+    fn run_deferred_script(&self, script: &str) -> Result<()> {
+        // Run the script in the background using nohup
+        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        Cmd::new("sh").args(&["-c", &bg_script]).run()?;
+        Ok(())
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
         let panes = self.list_panes()?;

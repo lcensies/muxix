@@ -56,6 +56,10 @@ pub trait Multiplexer: Send + Sync {
     /// Schedule a window to close after a delay
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()>;
 
+    /// Run a deferred script in the background (for cleanup operations).
+    /// For tmux, this uses `run-shell`. For other backends, may use different mechanisms.
+    fn run_deferred_script(&self, script: &str) -> Result<()>;
+
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 
