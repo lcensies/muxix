@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 
 use crate::cmd::Cmd;
+use crate::config::TmuxTarget;
 
 use super::WorktreeNotFound;
 use super::branch::unset_branch_upstream;
@@ -146,6 +147,58 @@ pub fn list_worktrees() -> Result<Vec<(PathBuf, String)>> {
         .run_and_capture_stdout()
         .context("Failed to list worktrees")?;
     parse_worktree_list_porcelain(&list)
+}
+
+/// Store per-worktree metadata in git config.
+pub fn set_worktree_meta(handle: &str, key: &str, value: &str) -> Result<()> {
+    Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            &format!("workmux.worktree.{}.{}", handle, key),
+            value,
+        ])
+        .run()
+        .with_context(|| format!("Failed to set worktree metadata {}.{}", handle, key))?;
+    Ok(())
+}
+
+/// Retrieve per-worktree metadata from git config.
+/// Returns None if the key doesn't exist.
+pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
+    Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            "--get",
+            &format!("workmux.worktree.{}.{}", handle, key),
+        ])
+        .run_and_capture_stdout()
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+/// Determine the tmux target mode for a worktree from git metadata.
+/// Falls back to Window mode if no metadata is found (backward compatibility).
+pub fn get_worktree_target(handle: &str) -> TmuxTarget {
+    match get_worktree_meta(handle, "target") {
+        Some(target) if target == "session" => TmuxTarget::Session,
+        _ => TmuxTarget::Window,
+    }
+}
+
+/// Remove all metadata for a worktree handle.
+pub fn remove_worktree_meta(handle: &str) -> Result<()> {
+    // Use --remove-section to remove all keys under the handle's section
+    let _ = Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            "--remove-section",
+            &format!("workmux.worktree.{}", handle),
+        ])
+        .run();
+    Ok(())
 }
 
 /// Get the main worktree root directory (not a linked worktree)

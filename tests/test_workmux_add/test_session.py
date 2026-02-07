@@ -1,16 +1,11 @@
 """Tests for `workmux add --session` command - session mode worktree creation."""
 
-import pytest
-
 from ..conftest import (
     assert_session_exists,
     assert_session_not_exists,
-    assert_window_exists,
     assert_window_not_exists,
     get_session_name,
     get_window_name,
-    get_worktree_path,
-    poll_until,
     run_workmux_command,
     write_workmux_config,
 )
@@ -36,7 +31,11 @@ class TestSessionCreation:
         write_workmux_config(repo_path)
 
         add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name, extra_args="--session --background"
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args="--session --background",
         )
 
         assert_session_exists(env, session_name)
@@ -51,7 +50,11 @@ class TestSessionCreation:
         write_workmux_config(repo_path)
 
         worktree_path = add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name, extra_args="--session --background"
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args="--session --background",
         )
 
         # Verify worktree in git's state
@@ -72,7 +75,11 @@ class TestSessionCreation:
         write_workmux_config(repo_path)
 
         add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name, extra_args="--session --background"
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args="--session --background",
         )
 
         # The session should exist, but no window with that name in the original session
@@ -89,7 +96,11 @@ class TestSessionCreation:
         write_workmux_config(repo_path, window_prefix=custom_prefix)
 
         add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, branch_name, extra_args="--session --background"
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args="--session --background",
         )
 
         # Session should use custom prefix
@@ -132,9 +143,9 @@ class TestSessionBackground:
         assert worktree_path.is_dir()
 
         # Verify the session's pane is in the worktree directory
-        pane_path_result = env.tmux([
-            "display-message", "-t", f"={session_name}:", "-p", "#{pane_current_path}"
-        ])
+        pane_path_result = env.tmux(
+            ["display-message", "-t", f"={session_name}:", "-p", "#{pane_current_path}"]
+        )
         assert str(worktree_path) in pane_path_result.stdout
 
 
@@ -202,9 +213,7 @@ class TestSessionClose:
         assert_session_exists(env, session_name)
 
         # Close the worktree (from the main repo, not from inside the session)
-        run_workmux_command(
-            env, workmux_exe_path, repo_path, f"close {branch_name}"
-        )
+        run_workmux_command(env, workmux_exe_path, repo_path, f"close {branch_name}")
 
         # Verify session is gone
         assert_session_not_exists(env, session_name)
@@ -232,7 +241,7 @@ class TestSessionOpen:
         write_workmux_config(repo_path)
 
         # Create session-mode worktree in background
-        worktree_path = add_branch_and_get_worktree(
+        add_branch_and_get_worktree(
             env,
             workmux_exe_path,
             repo_path,
@@ -241,9 +250,7 @@ class TestSessionOpen:
         )
 
         # Close the session
-        run_workmux_command(
-            env, workmux_exe_path, repo_path, f"close {branch_name}"
-        )
+        run_workmux_command(env, workmux_exe_path, repo_path, f"close {branch_name}")
 
         # Verify session is gone
         assert_session_not_exists(env, session_name)
@@ -251,13 +258,18 @@ class TestSessionOpen:
         # Re-open the worktree (will try to switch but fail silently in test env)
         # The session should still be created
         result = run_workmux_command(
-            env, workmux_exe_path, repo_path, f"open {branch_name}",
+            env,
+            workmux_exe_path,
+            repo_path,
+            f"open {branch_name}",
             expect_fail=True,  # May fail due to switch-client, but session should exist
         )
 
         # Even if switch-client fails, the session should be recreated
         # Check if session exists OR if it was a switch-client error
-        sessions_result = env.tmux(["list-sessions", "-F", "#{session_name}"], check=False)
+        sessions_result = env.tmux(
+            ["list-sessions", "-F", "#{session_name}"], check=False
+        )
         existing_sessions = [s for s in sessions_result.stdout.strip().split("\n") if s]
 
         # The session should exist (even if switching to it failed)
@@ -288,7 +300,11 @@ class TestMixedMode:
 
         # Create session-mode worktree
         add_branch_and_get_worktree(
-            env, workmux_exe_path, repo_path, session_branch, extra_args="--session --background"
+            env,
+            workmux_exe_path,
+            repo_path,
+            session_branch,
+            extra_args="--session --background",
         )
 
         # Verify window exists for window-mode (specify test session explicitly)

@@ -88,6 +88,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             working_dir: options.working_dir.clone(),
             config_root: options.config_root.clone(),
             open_if_exists: false,
+            target: options.target,
         };
 
         return super::open::open(branch_name, context, open_options, false);
