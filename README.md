@@ -240,7 +240,8 @@ customize.
 | ---------------- | ---------------------------------------------------- | ----------------------- |
 | `main_branch`    | Branch to merge into                                 | Auto-detected           |
 | `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
-| `window_prefix`  | Prefix for tmux window names                         | `wm-`                   |
+| `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                   |
+| `target`         | Tmux target type (`window` or `session`)             | `window`                |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
 | `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
@@ -495,6 +496,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-o, --open-if-exists`: If a worktree for the branch already exists, open it
   instead of failing. Similar to `tmux new-session -A`. Useful when you don't
   know or care whether the worktree already exists.
+- `-S, --session`: Create a tmux session instead of a window. See
+  [Session mode](#session-mode) for details.
 
 #### Skip options
 
@@ -2133,6 +2136,43 @@ workmux auto-detects the backend from environment variables (`$TMUX`,
 `$WEZTERM_PANE`, or `$KITTY_WINDOW_ID`). Session-specific variables are checked
 first, so running tmux inside kitty correctly selects the tmux backend. Set
 `$WORKMUX_BACKEND` to override detection.
+
+### Session mode
+
+By default, workmux creates tmux **windows** within your current session. With
+session mode, each worktree gets its own **tmux session** instead. This allows
+each worktree to have multiple windows.
+
+#### Enabling session mode
+
+Add to your config:
+
+```yaml
+# ~/.config/workmux/config.yaml or .workmux.yaml
+target: session
+```
+
+Or use the `--session` flag:
+
+```bash
+workmux add feature-branch --session
+```
+
+#### How it works
+
+- **Session naming**: Sessions are prefixed like windows (e.g., `wm-feature`)
+- **Persistence**: The mode is stored per-worktree. If you create a worktree
+  with `--session`, subsequent `open`/`close`/`remove` commands automatically
+  use session mode for that worktree.
+- **Navigation**: After `merge` or `remove`, workmux switches you to the main
+  session using `tmux switch-client`
+
+#### Limitations
+
+- **tmux only**: Session mode is currently only supported for the tmux backend.
+- **No duplicates**: Unlike window mode which supports opening multiple windows
+  for the same worktree (`-2`, `-3` suffixes), session mode creates one session
+  per worktree.
 
 ## Inspiration and related tools
 
