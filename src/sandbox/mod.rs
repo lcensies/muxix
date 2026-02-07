@@ -16,7 +16,6 @@ pub use container::build_image;
 pub use container::dockerfile_for_agent;
 pub(crate) use container::ensure_sandbox_config_dirs;
 pub use container::pull_image;
-pub use container::run_auth;
 pub use container::stop_containers_for_handle;
 pub use container::wrap_for_container;
 pub use lima::ensure_vm_running as ensure_lima_vm;

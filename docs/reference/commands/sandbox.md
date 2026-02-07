@@ -42,16 +42,6 @@ workmux sandbox init-dockerfile [--force]
 
 Creates a `Dockerfile.sandbox` in the current directory with the base system setup (Debian, git, workmux) and agent-specific installation (e.g., Claude Code) combined into a single file.
 
-### sandbox auth
-
-Authenticate with the agent inside the sandbox container. Run this once before using sandbox mode.
-
-```bash
-workmux sandbox auth
-```
-
-This starts an interactive session inside your configured sandbox container, allowing you to authenticate your agent. Credentials are saved to `~/.claude-sandbox.json`, which is separate from your host agent credentials. The host `~/.claude/` directory is mounted for settings.
-
 ### sandbox run
 
 Run a command inside a Lima sandbox (internal, used by pane setup).
@@ -149,9 +139,6 @@ This command helps you stop running Lima VMs created by workmux to free up syste
 #    sandbox:
 #      enabled: true
 
-# 2. Authenticate
-workmux sandbox auth
-
 # The pre-built image is pulled automatically on first run.
 # To pull it explicitly:
 workmux sandbox pull
@@ -165,17 +152,6 @@ workmux sandbox pull
 # Output:
 # Pulling image 'ghcr.io/raine/workmux-sandbox:claude'...
 # Image 'ghcr.io/raine/workmux-sandbox:claude' is up to date.
-
-# Then authenticate
-workmux sandbox auth
-# Output:
-# Starting sandbox auth flow...
-# This will open Claude in container 'ghcr.io/raine/workmux-sandbox:claude' for authentication.
-# Your credentials will be saved to ~/.claude-sandbox.json
-#
-# [Interactive agent session]
-#
-# Auth complete. Sandbox credentials saved.
 ```
 
 ## See also

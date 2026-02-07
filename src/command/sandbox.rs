@@ -21,9 +21,6 @@ pub struct SandboxArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum SandboxCommand {
-    /// Authenticate with the agent inside the sandbox container.
-    /// Run this once before using sandbox mode.
-    Auth,
     /// Build the sandbox container image locally.
     /// Note: a pre-built image is available via `workmux sandbox pull`.
     Build,
@@ -93,7 +90,6 @@ fn resolve_agent(config: &Config) -> &'static str {
 
 pub fn run(args: SandboxArgs) -> Result<()> {
     match args.command {
-        SandboxCommand::Auth => run_auth(),
         SandboxCommand::Build => run_build(),
         SandboxCommand::Pull => run_pull(),
         SandboxCommand::InitDockerfile { force } => run_init_dockerfile(force),
@@ -114,24 +110,6 @@ pub fn run(args: SandboxArgs) -> Result<()> {
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
         SandboxCommand::Shell { exec, command } => run_shell(exec, command),
     }
-}
-
-fn run_auth() -> Result<()> {
-    let config = Config::load(None)?;
-    let agent = resolve_agent(&config);
-    let image_name = config.sandbox.resolved_image(agent);
-
-    println!("Starting sandbox auth flow...");
-    println!(
-        "This will open Claude in container '{}' for authentication.",
-        image_name
-    );
-    println!("Your credentials will be saved to ~/.claude-sandbox.json\n");
-
-    sandbox::run_auth(&config.sandbox, agent)?;
-
-    println!("\nAuth complete. Sandbox credentials saved.");
-    Ok(())
 }
 
 fn run_build() -> Result<()> {

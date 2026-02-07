@@ -62,69 +62,6 @@ pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
     Ok(paths)
 }
 
-/// Run interactive auth flow in container.
-/// Mounts sandbox config paths read-write so auth persists.
-pub fn run_auth(config: &SandboxConfig, agent: &str) -> Result<()> {
-    let paths = ensure_sandbox_config_dirs()?;
-    let runtime = match config.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
-    let image = config.resolved_image(agent);
-
-    let uid = unsafe { libc::getuid() };
-    let gid = unsafe { libc::getgid() };
-
-    let mut args = vec![
-        "run".to_string(),
-        "-it".to_string(),
-        "--rm".to_string(),
-        "--user".to_string(),
-        format!("{}:{}", uid, gid),
-        // Mount sandbox-specific config (read-write for auth)
-        "--mount".to_string(),
-        format!(
-            "type=bind,source={},target=/tmp/.claude.json",
-            paths.config_file.display()
-        ),
-    ];
-
-    // Mount host ~/.claude/ directory so credentials and settings are available
-    if let Some(home) = home::home_dir() {
-        let claude_dir = home.join(".claude");
-        if claude_dir.exists() {
-            args.push("--mount".to_string());
-            args.push(format!(
-                "type=bind,source={},target=/tmp/.claude",
-                claude_dir.display()
-            ));
-        }
-    }
-
-    args.extend([
-        // Set HOME to /tmp where config is mounted
-        "--env".to_string(),
-        "HOME=/tmp".to_string(),
-        // PATH: include both /root/.local/bin (where Claude is installed) and
-        // /tmp/.local/bin (symlink, so Claude sees $HOME/.local/bin in PATH)
-        "--env".to_string(),
-        "PATH=/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin".to_string(),
-        image.to_string(),
-        "claude".to_string(),
-    ]);
-
-    let status = Command::new(runtime)
-        .args(&args)
-        .status()
-        .context("Failed to run container")?;
-
-    if !status.success() {
-        anyhow::bail!("Auth container exited with status: {}", status);
-    }
-
-    Ok(())
-}
-
 /// Build the sandbox Docker image locally (two-stage: base + agent).
 pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
     let runtime = match config.runtime() {

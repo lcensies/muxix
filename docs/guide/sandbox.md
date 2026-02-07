@@ -70,18 +70,6 @@ sandbox:
   image: my-sandbox
 ```
 
-### 3. Authenticate once
-
-### 3. Authenticate once
-
-The sandbox uses separate credentials from your host. Run this once to authenticate your agent inside the container:
-
-```bash
-workmux sandbox auth
-```
-
-This saves credentials to `~/.claude-sandbox.json`, which is mounted into containers. The host `~/.claude/` directory is also mounted for settings.
-
 ## Configuration
 
 | Option            | Default            | Description                              |
@@ -189,7 +177,7 @@ The container runs as your host user (UID:GID). Ensure your image doesn't requir
 
 ### Agent can't find credentials
 
-Run `workmux sandbox auth` to authenticate inside the container. Credentials are separate from host credentials.
+Agents authenticate interactively on first use inside the container. If credentials are missing, start a shell in the container with `workmux sandbox shell` and run the agent to trigger authentication.
 
 ## Lima VM Backend
 
@@ -447,7 +435,7 @@ This is transparent -- when a hook runs `afplay /System/Library/Sounds/Glass.aif
 
 The container and Lima backends handle credentials differently:
 
-**Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Run `workmux sandbox auth` once to authenticate inside a container. The host `~/.claude/` directory is mounted for settings (project configs, MCP servers, etc.).
+**Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Agents authenticate interactively on first use inside the container. The host `~/.claude/` directory is mounted for settings (project configs, MCP servers, etc.).
 
 **Lima backend:** Mounts the host's `~/.claude/` directory into the guest VM at `$HOME/.claude/`. This means the VM shares your host credentials -- no separate auth step is needed. When you authenticate Claude Code on the host, the VM picks it up automatically, and vice versa.
 
@@ -461,7 +449,7 @@ the guest. These state directories are cleaned up automatically by
 | ------------------ | ----------------------------------- | ------------------------------------------------ |
 | Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
 | Settings directory | `~/.claude/` (shared with host)     | `~/.claude/` (shared with host)                  |
-| Auth setup         | `workmux sandbox auth` required     | None needed                                      |
+| Auth setup         | Agent authenticates on first use     | None needed                                      |
 
 ### Cleaning up unused VMs
 
