@@ -10,8 +10,9 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::multiplexer::{AgentStatus, Multiplexer};
@@ -95,15 +96,30 @@ impl RpcServer {
 
     /// Spawn a background thread that accepts connections and dispatches handlers.
     pub fn spawn(self, ctx: Arc<RpcContext>) -> thread::JoinHandle<()> {
+        /// Max concurrent RPC connections. One sandbox session typically uses a
+        /// single connection, so 16 is generous while still preventing thread
+        /// exhaustion from malicious connection floods.
+        const MAX_CONNECTIONS: usize = 16;
+
+        let active = Arc::new(AtomicUsize::new(0));
         thread::spawn(move || {
             for stream in self.listener.incoming() {
                 match stream {
                     Ok(stream) => {
+                        let current = active.load(Ordering::Relaxed);
+                        if current >= MAX_CONNECTIONS {
+                            warn!(current, "RPC connection limit reached, dropping");
+                            drop(stream);
+                            continue;
+                        }
+                        active.fetch_add(1, Ordering::Relaxed);
                         let ctx = Arc::clone(&ctx);
+                        let active = Arc::clone(&active);
                         thread::spawn(move || {
                             if let Err(e) = handle_connection(stream, &ctx) {
                                 debug!(error = %e, "RPC connection ended");
                             }
+                            active.fetch_sub(1, Ordering::Relaxed);
                         });
                     }
                     Err(e) => {
