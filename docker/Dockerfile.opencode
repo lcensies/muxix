@@ -1,4 +1,8 @@
 ARG BASE=ghcr.io/raine/workmux-sandbox:base
 FROM ${BASE}
 
-RUN curl -fsSL https://opencode.ai/install | bash
+# Install OpenCode, then move to a globally accessible path so the binary
+# is reachable when running as an arbitrary non-root UID (--user uid:gid).
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    mv /root/.opencode /opt/opencode && \
+    ln -s /opt/opencode/bin/opencode /usr/local/bin/opencode

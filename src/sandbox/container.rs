@@ -299,13 +299,12 @@ pub fn build_docker_run_args(
         args.push(format!("{}={}", key, value));
     }
 
-    // PATH: include both /root/.local/bin (where Claude is installed) and
-    // /tmp/.local/bin (symlink, but needed so Claude sees $HOME/.local/bin in PATH)
-    // Prepend shim directory when host-exec is configured
+    // Include $HOME/.local/bin so runtime-installed tools are found (HOME=/tmp).
+    // Prepend shim directory when host-exec is configured.
     let path = if shim_host_dir.is_some() {
-        "/tmp/.workmux-shims/bin:/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
+        "/tmp/.workmux-shims/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin"
     } else {
-        "/tmp/.local/bin:/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
+        "/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin"
     };
     args.push("--env".to_string());
     args.push(format!("PATH={}", path));
