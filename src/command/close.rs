@@ -84,7 +84,12 @@ pub fn run(name: Option<&str>) -> Result<()> {
 
     if is_current_target {
         // Schedule the close with a small delay so the command can complete
-        mux.schedule_window_close(&full_target_name, std::time::Duration::from_millis(100))?;
+        let delay = std::time::Duration::from_millis(100);
+        if is_session_mode {
+            mux.schedule_session_close(&full_target_name, delay)?;
+        } else {
+            mux.schedule_window_close(&full_target_name, delay)?;
+        }
     } else {
         // Kill the target directly
         if is_session_mode {
