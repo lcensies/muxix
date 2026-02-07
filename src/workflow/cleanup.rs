@@ -523,10 +523,15 @@ pub fn navigate_to_target_and_close(
         format!("; {}", cmds.join("; "))
     }
 
-    // Check if target window exists
+    // Check if target window/session exists
     let mux_running = mux.is_running()?;
+    let target_full = prefixed(prefix, target_window_name);
     let target_exists = if mux_running {
-        mux.window_exists(prefix, target_window_name)?
+        if is_session_mode {
+            mux.session_exists(&target_full)?
+        } else {
+            mux.window_exists(prefix, target_window_name)?
+        }
     } else {
         false
     };
@@ -539,7 +544,6 @@ pub fn navigate_to_target_and_close(
         .window_to_close_later
         .clone()
         .unwrap_or_else(|| prefixed(prefix, source_handle));
-    let target_full = prefixed(prefix, target_window_name);
 
     // Generate backend-specific shell commands for deferred scripts
     let kill_source_cmd = mux.shell_kill_window_cmd(&source_full).ok();
