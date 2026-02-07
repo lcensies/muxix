@@ -143,6 +143,7 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
     std::fs::write(tmp_dir.path().join("Dockerfile"), DOCKERFILE_BASE)?;
 
     let status = Command::new(runtime)
+        .env("DOCKER_BUILDKIT", "1")
         .args(["build", "-t", base_tag, "-f", "Dockerfile", "."])
         .current_dir(tmp_dir.path())
         .status()
@@ -160,6 +161,7 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
     std::fs::write(agent_tmp.path().join("Dockerfile"), agent_dockerfile)?;
 
     let status = Command::new(runtime)
+        .env("DOCKER_BUILDKIT", "1")
         .args([
             "build",
             "--build-arg",
