@@ -14,6 +14,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.108 (2026-02-07)
+
+- The `list` command now shows an AGENT column displaying the status of agents
+  running in each worktree (working, waiting, done icons)
+- Added positional arguments to `list` for filtering by worktree handle or
+  branch name
+- When piping output, agent status icons are replaced with text labels for
+  compatibility with scripts
+
 ## v0.1.107 (2026-02-04)
 
 - Shell autocompletion now suggests worktree names for the `close` command
