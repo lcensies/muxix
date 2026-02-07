@@ -53,6 +53,9 @@ pub fn merge(
             )
         })?;
 
+    // Capture session mode BEFORE cleanup (cleanup removes the metadata)
+    let is_session_mode = get_worktree_target(handle) == TmuxTarget::Session;
+
     debug!(
         name = name,
         handle = handle,
@@ -327,7 +330,6 @@ pub fn merge(
     )?;
 
     // Navigate to the target branch window/session and close the source
-    let is_session_mode = get_worktree_target(handle) == TmuxTarget::Session;
     cleanup::navigate_to_target_and_close(
         context.mux.as_ref(),
         &context.prefix,

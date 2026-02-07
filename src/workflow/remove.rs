@@ -37,6 +37,9 @@ pub fn remove(
 
     debug!(handle = actual_handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
 
+    // Capture session mode BEFORE cleanup (cleanup removes the metadata)
+    let is_session_mode = get_worktree_target(actual_handle) == TmuxTarget::Session;
+
     // Safety Check: Prevent deleting the main worktree itself, regardless of branch.
     let is_main_worktree = match (
         worktree_path.canonicalize(),
@@ -99,7 +102,6 @@ pub fn remove(
     )?;
 
     // Navigate to the main branch window/session and close the source
-    let is_session_mode = get_worktree_target(actual_handle) == TmuxTarget::Session;
     cleanup::navigate_to_target_and_close(
         context.mux.as_ref(),
         &context.prefix,
