@@ -178,7 +178,7 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
     lima_cmd.arg("eval");
     lima_cmd.arg(&full_command);
 
-    debug!(cmd = ?lima_cmd, "spawning limactl shell");
+    debug!(vm = %vm_name, command = %user_command, "spawning limactl shell");
 
     let status = lima_cmd
         .status()
@@ -285,7 +285,17 @@ fn run_container(
     docker_args.insert(1, "--name".to_string());
     docker_args.insert(2, container_name.clone());
 
-    debug!(runtime = runtime_bin, container = %container_name, args = ?docker_args, "spawning container");
+    let redacted_args: Vec<_> = docker_args
+        .iter()
+        .map(|a| {
+            if a.starts_with("WM_RPC_TOKEN=") {
+                "WM_RPC_TOKEN=<redacted>".to_string()
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+    debug!(runtime = runtime_bin, container = %container_name, args = ?redacted_args, "spawning container");
 
     // Background freshness check (non-blocking)
     let freshness_image = config.sandbox.resolved_image(agent);
