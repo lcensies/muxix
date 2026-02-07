@@ -122,7 +122,7 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
         );
     }
 
-    let isolation = config.sandbox.isolation();
+    let isolation = config.sandbox.lima.isolation();
     let vm_name = super::instance_name(worktree_path, isolation.clone(), config)?;
 
     debug!(vm_name = %vm_name, "checking Lima VM state");
@@ -131,13 +131,13 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
     match vm_state {
         VmState::Running => {
             debug!(vm_name = %vm_name, "Lima VM already running");
-            if config.sandbox.provision_script().is_some() {
+            if config.sandbox.lima.provision_script().is_some() {
                 info!(vm_name = %vm_name, "custom provision script only runs on first VM creation; recreate VM to apply changes");
             }
         }
         VmState::Stopped => {
             info!(vm_name = %vm_name, "starting stopped Lima VM");
-            if config.sandbox.provision_script().is_some() {
+            if config.sandbox.lima.provision_script().is_some() {
                 info!(vm_name = %vm_name, "custom provision script only runs on first VM creation; recreate VM to apply changes");
             }
             let msg = format!("Starting Lima VM {}", vm_name);

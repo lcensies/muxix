@@ -185,15 +185,16 @@ pub fn generate_mounts(
 
     match isolation {
         IsolationLevel::User => {
-            let projects_dir = config.sandbox.projects_dir.as_ref().ok_or_else(|| {
+            let projects_dir = config.sandbox.lima.projects_dir.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(
-                    "User isolation requires 'sandbox.projects_dir' in config.\n\
+                    "User isolation requires 'sandbox.lima.projects_dir' in config.\n\
                          All projects must be under a single root directory.\n\
                          \n\
                          Example config:\n\
                          sandbox:\n  \
-                           isolation: user\n  \
-                           projects_dir: /Users/me/code"
+                           lima:\n    \
+                             isolation: user\n    \
+                             projects_dir: /Users/me/code"
                 )
             })?;
 

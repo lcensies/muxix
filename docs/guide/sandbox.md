@@ -72,14 +72,14 @@ sandbox:
 
 ## Configuration
 
-| Option            | Default            | Description                              |
-| ----------------- | ------------------ | ---------------------------------------- |
-| `enabled`         | `false`            | Enable container sandboxing              |
-| `runtime`         | `docker`           | Container runtime: `docker` or `podman`  |
-| `target`          | `agent`            | Which panes to sandbox: `agent` or `all` |
-| `image`           | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
-| `extra_mounts`    | `[]`               | Additional host paths to mount into the sandbox (read-only by default) |
+| Option               | Default            | Description                              |
+| -------------------- | ------------------ | ---------------------------------------- |
+| `enabled`            | `false`            | Enable container sandboxing              |
+| `container.runtime`  | `docker`           | Container runtime: `docker` or `podman`  |
+| `target`             | `agent`            | Which panes to sandbox: `agent` or `all` |
+| `image`              | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
+| `env_passthrough`    | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
+| `extra_mounts`       | `[]`               | Additional host paths to mount into the sandbox (read-only by default) |
 
 ### Example configurations
 
@@ -95,11 +95,12 @@ sandbox:
 ```yaml
 sandbox:
   enabled: true
-  runtime: podman
   image: my-sandbox:latest
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
+  container:
+    runtime: podman
 ```
 
 **Sandbox all panes (not just agent):**
@@ -196,35 +197,40 @@ The guest VM connects back to the host via `host.lima.internal` (Lima's built-in
 
 ### Lima configuration
 
+Lima-specific settings are nested under `sandbox.lima`:
+
 ```yaml
 sandbox:
   enabled: true
   backend: lima
-  isolation: project # default: one VM per git repository
-  cpus: 8
-  memory: 8GiB
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
-  provision: |
-    sudo apt-get install -y ripgrep fd-find jq
+  lima:
+    isolation: project # default: one VM per git repository
+    cpus: 8
+    memory: 8GiB
+    provision: |
+      sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option                   | Default            | Description                                                                          |
-| ------------------------ | ------------------ | ------------------------------------------------------------------------------------ |
-| `backend`                | `container`        | Set to `lima` for VM sandboxing                                                      |
-| `isolation`              | `project`          | `project` (one VM per repo) or `user` (single global VM)                             |
-| `projects_dir`           | -                  | Required for `user` isolation: parent directory of all projects                      |
-| `image`                  | Debian 12          | Custom qcow2 image URL or `file://` path                                             |
-| `skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                              |
-| `cpus`                   | `4`                | Number of CPUs for Lima VMs                                                          |
-| `memory`                 | `4GiB`             | Memory for Lima VMs                                                                  |
-| `disk`                   | `100GiB`           | Disk size for Lima VMs                                                               |
-| `provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps           |
-| `toolchain`              | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`  |
-| `host_commands`          | `[]`               | Commands to proxy from guest to host via RPC (e.g., `["just", "cargo"]`)             |
-| `env_passthrough`        | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                      |
-| `extra_mounts`           | `[]`               | Additional host paths to mount into the sandbox (read-only by default)               |
+| Option                    | Default            | Description                                                                          |
+| ------------------------- | ------------------ | ------------------------------------------------------------------------------------ |
+| `backend`                 | `container`        | Set to `lima` for VM sandboxing                                                      |
+| `lima.isolation`          | `project`          | `project` (one VM per repo) or `user` (single global VM)                             |
+| `lima.projects_dir`       | -                  | Required for `user` isolation: parent directory of all projects                      |
+| `image`                   | Debian 12          | Custom qcow2 image URL or `file://` path                                             |
+| `lima.skip_default_provision` | `false`        | Skip built-in provisioning (system deps + tool install)                              |
+| `lima.cpus`               | `4`                | Number of CPUs for Lima VMs                                                          |
+| `lima.memory`             | `4GiB`             | Memory for Lima VMs                                                                  |
+| `lima.disk`               | `100GiB`           | Disk size for Lima VMs                                                               |
+| `lima.provision`          | -                  | Custom user-mode shell script run once at VM creation after built-in steps           |
+| `toolchain`               | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`  |
+| `host_commands`           | `[]`               | Commands to proxy from guest to host via RPC (e.g., `["just", "cargo"]`)             |
+| `env_passthrough`         | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                      |
+| `extra_mounts`            | `[]`               | Additional host paths to mount into the sandbox (read-only by default)               |
+
+VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `memory`, `disk`, `provision`, `skip_default_provision`) are nested under `lima`. Settings shared by both backends (`toolchain`, `host_commands`, `env_passthrough`, `image`, `target`) remain at the `sandbox` level. Container-specific settings (`runtime`) are nested under `container`.
 
 ### Extra mount points
 
@@ -272,21 +278,22 @@ The script runs in `user` mode. Use `sudo` for system-level commands.
 ```yaml
 sandbox:
   backend: lima
-  provision: |
-    # Install extra CLI tools
-    sudo apt-get install -y ripgrep fd-find jq
+  lima:
+    provision: |
+      # Install extra CLI tools
+      sudo apt-get install -y ripgrep fd-find jq
 
-    # Install Node.js via nvm
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
-    . "$NVM_DIR/nvm.sh"
-    nvm install 22
+      # Install Node.js via nvm
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      . "$NVM_DIR/nvm.sh"
+      nvm install 22
 ```
 
 **Important:**
 
 - Provisioning only runs when the VM is first created. Changing the script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
-- With `isolation: user` (shared VM), only the first project to create the VM gets its provision script run. Use `isolation: project` (default) if different projects need different provisioning.
+- With `lima.isolation: user` (shared VM), only the first project to create the VM gets its provision script run. Use `lima.isolation: project` (default) if different projects need different provisioning.
 - The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
 
 ### Custom images
@@ -297,7 +304,8 @@ You can use a pre-built qcow2 image to skip provisioning entirely, reducing VM c
 sandbox:
   backend: lima
   image: file:///Users/me/.lima/images/workmux-golden.qcow2
-  skip_default_provision: true
+  lima:
+    skip_default_provision: true
 ```
 
 When `image` is set, it replaces the default Debian 12 genericcloud image. The value can be a `file://` path to a local qcow2 image or an HTTP(S) URL.
@@ -316,8 +324,9 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    ```yaml
    sandbox:
      backend: lima
-     provision: |
-       sudo apt-get install -y ripgrep fd-find jq
+     lima:
+       provision: |
+         sudo apt-get install -y ripgrep fd-find jq
    ```
 
 2. After the VM is running, stop it:
@@ -341,7 +350,8 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    sandbox:
      backend: lima
      image: file:///Users/me/.lima/images/workmux-golden.qcow2
-     skip_default_provision: true
+     lima:
+       skip_default_provision: true
    ```
 
 New VMs will now boot from the snapshot with everything pre-installed.

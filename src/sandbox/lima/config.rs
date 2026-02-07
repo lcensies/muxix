@@ -65,9 +65,12 @@ pub fn generate_lima_config(
     }
 
     // Resource allocation
-    config.insert("cpus".into(), Value::Number(sandbox_config.cpus().into()));
-    config.insert("memory".into(), sandbox_config.memory().into());
-    config.insert("disk".into(), sandbox_config.disk().into());
+    config.insert(
+        "cpus".into(),
+        Value::Number(sandbox_config.lima.cpus().into()),
+    );
+    config.insert("memory".into(), sandbox_config.lima.memory().into());
+    config.insert("disk".into(), sandbox_config.lima.disk().into());
 
     // CRITICAL: Disable containerd (saves 30-40 seconds boot time)
     let mut containerd = serde_yaml::Mapping::new();
@@ -101,7 +104,7 @@ pub fn generate_lima_config(
     // Provision scripts (run on first VM creation only)
     let mut provisions = Vec::new();
 
-    if !sandbox_config.skip_default_provision() {
+    if !sandbox_config.lima.skip_default_provision() {
         let system_script = r#"#!/bin/bash
 set -eux
 apt-get update
@@ -158,7 +161,7 @@ ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
         provisions.push(Value::Mapping(user_provision));
     }
 
-    if let Some(script) = sandbox_config.provision_script() {
+    if let Some(script) = sandbox_config.lima.provision_script() {
         let mut custom_provision = serde_yaml::Mapping::new();
         custom_provision.insert("mode".into(), "user".into());
         custom_provision.insert("script".into(), script.into());
@@ -243,7 +246,10 @@ mod tests {
     fn test_generate_lima_config_custom_provision() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig {
-            provision: Some("sudo apt-get install -y ripgrep\necho done".to_string()),
+            lima: crate::config::LimaConfig {
+                provision: Some("sudo apt-get install -y ripgrep\necho done".to_string()),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
@@ -301,7 +307,10 @@ mod tests {
     fn test_generate_lima_config_skip_default_provision() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig {
-            skip_default_provision: Some(true),
+            lima: crate::config::LimaConfig {
+                skip_default_provision: Some(true),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
@@ -321,8 +330,11 @@ mod tests {
     fn test_generate_lima_config_skip_default_provision_with_custom() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig {
-            skip_default_provision: Some(true),
-            provision: Some("echo custom setup".to_string()),
+            lima: crate::config::LimaConfig {
+                skip_default_provision: Some(true),
+                provision: Some("echo custom setup".to_string()),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();

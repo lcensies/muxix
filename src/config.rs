@@ -410,41 +410,11 @@ fn expand_tilde(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-/// Configuration for sandboxing (Container or Lima)
+/// Lima-specific sandbox configuration.
+/// Nested under `sandbox.lima` in YAML.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
-pub struct SandboxConfig {
-    /// Enable sandboxing. Default: false
-    #[serde(default)]
-    pub enabled: Option<bool>,
-
-    /// Sandbox backend. Default: container
-    #[serde(default)]
-    pub backend: Option<SandboxBackend>,
-
-    /// Container runtime (for container backend). Default: docker
-    #[serde(default)]
-    pub runtime: Option<SandboxRuntime>,
-
-    /// Which panes to sandbox. Default: agent
-    #[serde(default)]
-    pub target: Option<SandboxTarget>,
-
-    /// Container image (for container backend). Default: "workmux-sandbox"
-    #[serde(default)]
-    pub image: Option<String>,
-
-    /// Environment variables to pass to container.
-    /// Default: ["GITHUB_TOKEN"]
-    #[serde(default)]
-    pub env_passthrough: Option<Vec<String>>,
-
-    /// Override the hostname used by containers to reach the host RPC server.
-    /// Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman).
-    /// Useful for non-standard Podman or custom networking setups.
-    #[serde(default)]
-    pub rpc_host: Option<String>,
-
-    /// Isolation level for Lima backend. Default: project
+pub struct LimaConfig {
+    /// Isolation level. Default: project
     #[serde(default)]
     pub isolation: Option<IsolationLevel>,
 
@@ -475,8 +445,103 @@ pub struct SandboxConfig {
     /// Custom `provision` script still runs if specified.
     #[serde(default)]
     pub skip_default_provision: Option<bool>,
+}
 
-    /// Toolchain integration mode for Lima sandboxes.
+impl LimaConfig {
+    pub fn isolation(&self) -> IsolationLevel {
+        self.isolation.clone().unwrap_or_default()
+    }
+
+    pub fn cpus(&self) -> u32 {
+        self.cpus.unwrap_or(4)
+    }
+
+    pub fn memory(&self) -> &str {
+        self.memory.as_deref().unwrap_or("4GiB")
+    }
+
+    pub fn disk(&self) -> &str {
+        self.disk.as_deref().unwrap_or("100GiB")
+    }
+
+    pub fn provision_script(&self) -> Option<&str> {
+        self.provision.as_deref().filter(|s| !s.trim().is_empty())
+    }
+
+    pub fn skip_default_provision(&self) -> bool {
+        self.skip_default_provision.unwrap_or(false)
+    }
+
+    /// Merge: project overrides global, per-field.
+    fn merge(global: Self, project: Self) -> Self {
+        Self {
+            isolation: project.isolation.or(global.isolation),
+            projects_dir: project.projects_dir.or(global.projects_dir),
+            cpus: project.cpus.or(global.cpus),
+            memory: project.memory.or(global.memory),
+            disk: project.disk.or(global.disk),
+            provision: project.provision.or(global.provision),
+            skip_default_provision: project
+                .skip_default_provision
+                .or(global.skip_default_provision),
+        }
+    }
+}
+
+/// Container-specific sandbox configuration.
+/// Nested under `sandbox.container` in YAML.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct ContainerConfig {
+    /// Container runtime. Default: docker
+    #[serde(default)]
+    pub runtime: Option<SandboxRuntime>,
+}
+
+impl ContainerConfig {
+    pub fn runtime(&self) -> SandboxRuntime {
+        self.runtime.clone().unwrap_or_default()
+    }
+
+    /// Merge: project overrides global, per-field.
+    fn merge(global: Self, project: Self) -> Self {
+        Self {
+            runtime: project.runtime.or(global.runtime),
+        }
+    }
+}
+
+/// Configuration for sandboxing (Container or Lima)
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SandboxConfig {
+    /// Enable sandboxing. Default: false
+    #[serde(default)]
+    pub enabled: Option<bool>,
+
+    /// Sandbox backend. Default: container
+    #[serde(default)]
+    pub backend: Option<SandboxBackend>,
+
+    /// Which panes to sandbox. Default: agent
+    #[serde(default)]
+    pub target: Option<SandboxTarget>,
+
+    /// Container/VM image. For containers: Docker image name.
+    /// For Lima: qcow2 image URL or file:// path.
+    #[serde(default)]
+    pub image: Option<String>,
+
+    /// Environment variables to pass to sandbox.
+    /// Default: ["GITHUB_TOKEN"]
+    #[serde(default)]
+    pub env_passthrough: Option<Vec<String>>,
+
+    /// Override the hostname used by containers to reach the host RPC server.
+    /// Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman).
+    /// Useful for non-standard Podman or custom networking setups.
+    #[serde(default)]
+    pub rpc_host: Option<String>,
+
+    /// Toolchain integration mode for sandboxes.
     /// Controls automatic detection and use of devbox.json/flake.nix.
     /// Default: auto (detect and wrap automatically)
     #[serde(default)]
@@ -493,6 +558,14 @@ pub struct SandboxConfig {
     /// or detailed specs with guest_path and writable options.
     #[serde(default)]
     pub extra_mounts: Option<Vec<ExtraMount>>,
+
+    /// Lima-specific configuration
+    #[serde(default)]
+    pub lima: LimaConfig,
+
+    /// Container-specific configuration
+    #[serde(default)]
+    pub container: ContainerConfig,
 }
 
 impl SandboxConfig {
@@ -505,7 +578,7 @@ impl SandboxConfig {
     }
 
     pub fn runtime(&self) -> SandboxRuntime {
-        self.runtime.clone().unwrap_or_default()
+        self.container.runtime()
     }
 
     pub fn target(&self) -> SandboxTarget {
@@ -535,30 +608,6 @@ impl SandboxConfig {
         self.rpc_host
             .clone()
             .unwrap_or_else(|| self.runtime().rpc_host_address().to_string())
-    }
-
-    pub fn isolation(&self) -> IsolationLevel {
-        self.isolation.clone().unwrap_or_default()
-    }
-
-    pub fn cpus(&self) -> u32 {
-        self.cpus.unwrap_or(4)
-    }
-
-    pub fn memory(&self) -> &str {
-        self.memory.as_deref().unwrap_or("4GiB")
-    }
-
-    pub fn disk(&self) -> &str {
-        self.disk.as_deref().unwrap_or("100GiB")
-    }
-
-    pub fn provision_script(&self) -> Option<&str> {
-        self.provision.as_deref().filter(|s| !s.trim().is_empty())
-    }
-
-    pub fn skip_default_provision(&self) -> bool {
-        self.skip_default_provision.unwrap_or(false)
     }
 
     pub fn toolchain(&self) -> ToolchainMode {
@@ -984,7 +1033,7 @@ impl Config {
                 .or(self.dashboard.show_check_counts),
         };
 
-        // Sandbox config: per-field override
+        // Sandbox config: per-field override with nested struct merging
         merged.sandbox = SandboxConfig {
             enabled: project.sandbox.enabled.or(self.sandbox.enabled),
             backend: project
@@ -992,11 +1041,6 @@ impl Config {
                 .backend
                 .clone()
                 .or(self.sandbox.backend.clone()),
-            runtime: project
-                .sandbox
-                .runtime
-                .clone()
-                .or(self.sandbox.runtime.clone()),
             target: project
                 .sandbox
                 .target
@@ -1013,32 +1057,6 @@ impl Config {
                 .rpc_host
                 .clone()
                 .or(self.sandbox.rpc_host.clone()),
-            isolation: project
-                .sandbox
-                .isolation
-                .clone()
-                .or(self.sandbox.isolation.clone()),
-            projects_dir: project
-                .sandbox
-                .projects_dir
-                .clone()
-                .or(self.sandbox.projects_dir.clone()),
-            cpus: project.sandbox.cpus.or(self.sandbox.cpus),
-            memory: project
-                .sandbox
-                .memory
-                .clone()
-                .or(self.sandbox.memory.clone()),
-            disk: project.sandbox.disk.clone().or(self.sandbox.disk.clone()),
-            provision: project
-                .sandbox
-                .provision
-                .clone()
-                .or(self.sandbox.provision.clone()),
-            skip_default_provision: project
-                .sandbox
-                .skip_default_provision
-                .or(self.sandbox.skip_default_provision),
             toolchain: project
                 .sandbox
                 .toolchain
@@ -1054,6 +1072,8 @@ impl Config {
                 .extra_mounts
                 .clone()
                 .or(self.sandbox.extra_mounts.clone()),
+            lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
+            container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
         };
 
         merged
@@ -1284,13 +1304,17 @@ impl Config {
 # sandbox:
 #   enabled: false
 #   backend: lima
-#   # Custom provision script (runs once on VM creation, as user).
-#   # Use sudo for system commands.
-#   # provision: |
-#   #   sudo apt-get install -y ripgrep fd-find jq
-#   # Commands to proxy from guest to host (requires lima backend).
-#   # These commands run on the host in the project's toolchain environment.
 #   # host_commands: ["just", "cargo", "npm"]
+#   # container:
+#   #   runtime: docker
+#   # lima:
+#   #   isolation: project
+#   #   cpus: 4
+#   #   memory: 4GiB
+#   #   # Custom provision script (runs once on VM creation, as user).
+#   #   # Use sudo for system commands.
+#   #   # provision: |
+#   #   #   sudo apt-get install -y ripgrep fd-find jq
 #   # Extra mount points (read-only by default).
 #   # Supports simple paths or detailed specs with guest_path and writable.
 #   # extra_mounts:
@@ -1401,8 +1425,8 @@ pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Config, ExtraMount, SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode,
-        is_agent_command, split_first_token,
+        Config, ContainerConfig, ExtraMount, LimaConfig, SandboxConfig, SandboxRuntime,
+        SandboxTarget, ToolchainMode, is_agent_command, split_first_token,
     };
 
     #[test]
@@ -1552,7 +1576,9 @@ mod tests {
         let global = Config {
             sandbox: SandboxConfig {
                 enabled: Some(true),
-                runtime: Some(SandboxRuntime::Docker),
+                container: ContainerConfig {
+                    runtime: Some(SandboxRuntime::Docker),
+                },
                 image: Some("global-image".to_string()),
                 ..Default::default()
             },
@@ -1561,7 +1587,9 @@ mod tests {
         let project = Config {
             sandbox: SandboxConfig {
                 image: Some("project-image".to_string()),
-                runtime: Some(SandboxRuntime::Podman),
+                container: ContainerConfig {
+                    runtime: Some(SandboxRuntime::Podman),
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -1577,28 +1605,37 @@ mod tests {
     fn sandbox_provision_merge_override() {
         let global = Config {
             sandbox: SandboxConfig {
-                provision: Some("echo global".to_string()),
+                lima: LimaConfig {
+                    provision: Some("echo global".to_string()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         };
         let project = Config {
             sandbox: SandboxConfig {
-                provision: Some("echo project".to_string()),
+                lima: LimaConfig {
+                    provision: Some("echo project".to_string()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        assert_eq!(merged.sandbox.provision_script(), Some("echo project"));
+        assert_eq!(merged.sandbox.lima.provision_script(), Some("echo project"));
     }
 
     #[test]
     fn sandbox_provision_merge_fallback() {
         let global = Config {
             sandbox: SandboxConfig {
-                provision: Some("echo global".to_string()),
+                lima: LimaConfig {
+                    provision: Some("echo global".to_string()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -1606,21 +1643,27 @@ mod tests {
         let project = Config::default();
 
         let merged = global.merge(project);
-        assert_eq!(merged.sandbox.provision_script(), Some("echo global"));
+        assert_eq!(merged.sandbox.lima.provision_script(), Some("echo global"));
     }
 
     #[test]
     fn sandbox_provision_empty_disables_global() {
         let global = Config {
             sandbox: SandboxConfig {
-                provision: Some("echo global".to_string()),
+                lima: LimaConfig {
+                    provision: Some("echo global".to_string()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         };
         let project = Config {
             sandbox: SandboxConfig {
-                provision: Some("".to_string()),
+                lima: LimaConfig {
+                    provision: Some("".to_string()),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -1628,14 +1671,14 @@ mod tests {
 
         let merged = global.merge(project);
         // Empty string wins over global (project explicitly set it)
-        assert_eq!(merged.sandbox.provision, Some("".to_string()));
+        assert_eq!(merged.sandbox.lima.provision, Some("".to_string()));
         // But provision_script() filters it out
-        assert_eq!(merged.sandbox.provision_script(), None);
+        assert_eq!(merged.sandbox.lima.provision_script(), None);
     }
 
     #[test]
     fn sandbox_skip_default_provision_defaults_false() {
-        let config = SandboxConfig::default();
+        let config = LimaConfig::default();
         assert!(!config.skip_default_provision());
     }
 
@@ -1643,7 +1686,10 @@ mod tests {
     fn sandbox_skip_default_provision_merge() {
         let global = Config {
             sandbox: SandboxConfig {
-                skip_default_provision: Some(true),
+                lima: LimaConfig {
+                    skip_default_provision: Some(true),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -1651,28 +1697,34 @@ mod tests {
         let project = Config::default();
 
         let merged = global.merge(project);
-        assert!(merged.sandbox.skip_default_provision());
+        assert!(merged.sandbox.lima.skip_default_provision());
     }
 
     #[test]
     fn sandbox_skip_default_provision_project_overrides() {
         let global = Config {
             sandbox: SandboxConfig {
-                skip_default_provision: Some(true),
+                lima: LimaConfig {
+                    skip_default_provision: Some(true),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         };
         let project = Config {
             sandbox: SandboxConfig {
-                skip_default_provision: Some(false),
+                lima: LimaConfig {
+                    skip_default_provision: Some(false),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        assert!(!merged.sandbox.skip_default_provision());
+        assert!(!merged.sandbox.lima.skip_default_provision());
     }
 
     #[test]
@@ -1699,7 +1751,9 @@ mod tests {
     #[test]
     fn test_resolved_rpc_host_falls_back_to_runtime() {
         let config = SandboxConfig {
-            runtime: Some(SandboxRuntime::Podman),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Podman),
+            },
             ..Default::default()
         };
         assert_eq!(config.resolved_rpc_host(), "host.containers.internal");
@@ -1929,5 +1983,62 @@ extra_mounts:
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("guest_path must be absolute"));
+    }
+
+    #[test]
+    fn sandbox_nested_yaml_format() {
+        let yaml = r#"
+enabled: true
+backend: lima
+lima:
+  isolation: user
+  cpus: 16
+  memory: 16GiB
+container:
+  runtime: podman
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+
+        assert!(config.is_enabled());
+        assert_eq!(config.lima.isolation(), super::IsolationLevel::User);
+        assert_eq!(config.lima.cpus(), 16);
+        assert_eq!(config.lima.memory(), "16GiB");
+        assert_eq!(config.container.runtime(), SandboxRuntime::Podman);
+    }
+
+    #[test]
+    fn sandbox_lima_config_merge() {
+        let global = LimaConfig {
+            isolation: Some(super::IsolationLevel::User),
+            cpus: Some(4),
+            memory: Some("4GiB".to_string()),
+            ..Default::default()
+        };
+        let project = LimaConfig {
+            cpus: Some(8),
+            provision: Some("echo project".to_string()),
+            ..Default::default()
+        };
+
+        let merged = LimaConfig::merge(global, project);
+        // Project overrides
+        assert_eq!(merged.cpus(), 8);
+        assert_eq!(merged.provision_script(), Some("echo project"));
+        // Global fallback
+        assert_eq!(merged.isolation(), super::IsolationLevel::User);
+        assert_eq!(merged.memory(), "4GiB");
+    }
+
+    #[test]
+    fn sandbox_container_config_merge() {
+        let global = ContainerConfig {
+            runtime: Some(SandboxRuntime::Docker),
+        };
+        let project = ContainerConfig {
+            runtime: Some(SandboxRuntime::Podman),
+        };
+
+        let merged = ContainerConfig::merge(global, project);
+        assert_eq!(merged.runtime(), SandboxRuntime::Podman);
     }
 }

@@ -397,12 +397,14 @@ pub fn stop_containers_for_handle(handle: &str, config: &SandboxConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{SandboxConfig, SandboxRuntime};
+    use crate::config::{ContainerConfig, SandboxConfig, SandboxRuntime};
 
     fn make_config() -> SandboxConfig {
         SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Docker),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+            },
             image: Some("test-image:latest".to_string()),
             env_passthrough: Some(vec!["TEST_KEY".to_string()]),
             ..Default::default()
@@ -454,7 +456,9 @@ mod tests {
     fn test_build_args_docker_includes_add_host() {
         let config = SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Docker),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+            },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
         };
@@ -477,7 +481,9 @@ mod tests {
     fn test_build_args_podman_omits_add_host() {
         let config = SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Podman),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Podman),
+            },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
         };
@@ -499,7 +505,9 @@ mod tests {
     fn test_build_args_runtime_not_in_args() {
         let config = SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Podman),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Podman),
+            },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
         };
@@ -647,7 +655,9 @@ mod tests {
 
         let config = SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Docker),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+            },
             image: Some("test-image:latest".to_string()),
             extra_mounts: Some(vec![ExtraMount::Path("/tmp/notes".to_string())]),
             ..Default::default()
@@ -673,7 +683,9 @@ mod tests {
 
         let config = SandboxConfig {
             enabled: Some(true),
-            runtime: Some(SandboxRuntime::Docker),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+            },
             image: Some("test-image:latest".to_string()),
             extra_mounts: Some(vec![ExtraMount::Spec {
                 host_path: "/tmp/data".to_string(),
