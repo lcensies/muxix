@@ -218,9 +218,10 @@ fn run_container(
     let host_commands = config.sandbox.host_commands();
     let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
 
+    // Resolve toolchain for host-exec command wrapping (runs on host, not in container)
     let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree_root);
     if detected != toolchain::DetectedToolchain::None {
-        info!(toolchain = ?detected, "wrapping commands with toolchain environment");
+        info!(toolchain = ?detected, "wrapping host-exec commands with toolchain environment");
     }
 
     // Create shims directory for host-exec (on host, will be bind-mounted into container)
@@ -270,10 +271,9 @@ fn run_container(
     ];
 
     let user_command = command.join(" ");
-    let final_command = toolchain::wrap_command(&user_command, &detected);
     let shim_host_dir = _shim_dir.as_ref().map(|d| d.path().join("shims/bin"));
     let mut docker_args = build_docker_run_args(
-        &final_command,
+        &user_command,
         &config.sandbox,
         worktree_root,
         pane_cwd,
