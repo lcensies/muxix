@@ -73,6 +73,9 @@ pub trait Multiplexer: Send + Sync {
     /// Schedule a window to close after a delay
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()>;
 
+    /// Schedule a session to close after a delay
+    fn schedule_session_close(&self, full_name: &str, delay: Duration) -> Result<()>;
+
     /// Run a deferred script in the background (for cleanup operations).
     /// For tmux, this uses `run-shell`. For other backends, may use different mechanisms.
     fn run_deferred_script(&self, script: &str) -> Result<()>;
@@ -100,6 +103,9 @@ pub trait Multiplexer: Send + Sync {
     /// Get all window names in the current session
     fn get_all_window_names(&self) -> Result<HashSet<String>>;
 
+    /// Get all session names
+    fn get_all_session_names(&self) -> Result<HashSet<String>>;
+
     /// Filter a list of window names, returning only those that still exist
     fn filter_active_windows(&self, windows: &[String]) -> Result<Vec<String>>;
 
@@ -115,6 +121,9 @@ pub trait Multiplexer: Send + Sync {
 
     /// Wait until all specified windows are closed
     fn wait_until_windows_closed(&self, full_window_names: &[String]) -> Result<()>;
+
+    /// Wait until the specified session is closed
+    fn wait_until_session_closed(&self, full_session_name: &str) -> Result<()>;
 
     // === Pane Management ===
 
