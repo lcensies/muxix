@@ -135,6 +135,9 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
     let peer = stream.peer_addr().ok();
     debug!(?peer, "RPC connection accepted");
 
+    // Require auth header within 5 seconds to prevent slowloris-style DoS.
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
+
     let mut reader = BufReader::new(&stream);
     let mut writer = stream.try_clone().context("Failed to clone TCP stream")?;
 
@@ -151,6 +154,10 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
         write_response(&mut writer, &resp)?;
         return Ok(());
     }
+
+    // Clear timeout for authenticated connections so long-running requests
+    // (e.g., Exec streaming) are not interrupted.
+    stream.set_read_timeout(None)?;
 
     // Process request lines
     for line in reader.lines() {
