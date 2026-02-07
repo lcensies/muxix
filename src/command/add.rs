@@ -143,7 +143,7 @@ pub fn run(
     let target = if session {
         TmuxTarget::Session
     } else {
-        initial_config.target
+        initial_config.target()
     };
 
     // Construct setup options from flags

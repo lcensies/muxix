@@ -118,7 +118,12 @@ pub fn cleanup(
 
     // Check if we're running inside ANY matching target (original or duplicate)
     let current_matching_target = if mux_running {
-        is_inside_matching_target(context.mux.as_ref(), &context.prefix, handle, is_session_mode)?
+        is_inside_matching_target(
+            context.mux.as_ref(),
+            &context.prefix,
+            handle,
+            is_session_mode,
+        )?
     } else {
         None
     };

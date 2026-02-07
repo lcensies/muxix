@@ -187,8 +187,9 @@ pub struct Config {
     pub theme: Theme,
 
     /// Target for tmux operations: window (default) or session
+    /// None means "use default" (Window), Some means explicitly set
     #[serde(default)]
-    pub target: TmuxTarget,
+    pub target: Option<TmuxTarget>,
 
     /// Container sandbox configuration
     #[serde(default)]
@@ -1169,12 +1170,8 @@ impl Config {
             self.theme
         };
 
-        // Special case: target (project wins if not default)
-        merged.target = if project.target != TmuxTarget::default() {
-            project.target
-        } else {
-            self.target
-        };
+        // Special case: target (project wins if explicitly set)
+        merged.target = project.target.or(self.target);
 
         // List values with "<global>" placeholder support
         merged.post_create = merge_vec_with_placeholder(self.post_create, project.post_create);
@@ -1377,6 +1374,12 @@ impl Config {
         } else {
             "wm-"
         }
+    }
+
+    /// Get the target mode (window or session).
+    /// Returns the configured value or defaults to Window.
+    pub fn target(&self) -> TmuxTarget {
+        self.target.unwrap_or(TmuxTarget::Window)
     }
 
     /// Create an example .workmux.yaml configuration file
