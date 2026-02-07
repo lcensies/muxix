@@ -139,6 +139,19 @@ pub fn generate_token() -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// Constant-time byte comparison to prevent timing side-channel attacks.
+/// Always compares every byte regardless of where the first difference is.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 // ── Connection handler ──────────────────────────────────────────────────
 
 /// Header line sent by client before requests. Contains the auth token.
@@ -164,7 +177,7 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
     let auth: AuthHeader =
         serde_json::from_str(auth_line.trim()).context("Failed to parse auth header")?;
 
-    if auth.token != ctx.token {
+    if !constant_time_eq(auth.token.as_bytes(), ctx.token.as_bytes()) {
         let resp = RpcResponse::Error {
             message: "Invalid token".to_string(),
         };
