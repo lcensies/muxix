@@ -99,7 +99,7 @@ pub fn remove(
     )?;
 
     // Navigate to the main branch window/session and close the source
-    let is_session_mode = get_worktree_target(handle) == TmuxTarget::Session;
+    let is_session_mode = get_worktree_target(actual_handle) == TmuxTarget::Session;
     cleanup::navigate_to_target_and_close(
         context.mux.as_ref(),
         &context.prefix,
