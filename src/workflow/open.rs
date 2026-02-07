@@ -55,12 +55,23 @@ pub fn open(
     let is_session_mode = stored_target == TmuxTarget::Session;
     let target_type = if is_session_mode { "session" } else { "window" };
 
-    // Determine if target exists
-    let target_exists = context.mux.window_exists(&context.prefix, &base_handle)?;
+    // Determine if target exists (check session or window based on mode)
+    let full_target_name = prefixed(&context.prefix, &base_handle);
+    let target_exists = if is_session_mode {
+        context.mux.session_exists(&full_target_name)?
+    } else {
+        context.mux.window_exists(&context.prefix, &base_handle)?
+    };
 
     // If target exists and we're not forcing new, switch to it
     if target_exists && !new_window {
-        context.mux.select_window(&context.prefix, &base_handle)?;
+        if is_session_mode {
+            context
+                .mux
+                .switch_to_session(&context.prefix, &base_handle)?;
+        } else {
+            context.mux.select_window(&context.prefix, &base_handle)?;
+        }
         info!(
             handle = base_handle,
             branch = branch_name,
