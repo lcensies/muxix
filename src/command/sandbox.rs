@@ -168,15 +168,15 @@ fn run_pull() -> Result<()> {
 }
 
 fn run_init_dockerfile(force: bool) -> Result<()> {
+    use console::style;
+
     let config = Config::load(None)?;
     let agent_name = resolve_agent(&config);
 
-    let base_path = PathBuf::from("Dockerfile.base");
-    let agent_filename = format!("Dockerfile.{}", agent_name);
-    let agent_path = PathBuf::from(&agent_filename);
+    let dockerfile_path = PathBuf::from("Dockerfile.sandbox");
 
-    if !force && (base_path.exists() || agent_path.exists()) {
-        bail!("Dockerfile already exists. Use --force to overwrite.");
+    if !force && dockerfile_path.exists() {
+        bail!("Dockerfile.sandbox already exists. Use --force to overwrite.");
     }
 
     let agent_dockerfile = sandbox::dockerfile_for_agent(agent_name).ok_or_else(|| {
@@ -187,22 +187,38 @@ fn run_init_dockerfile(force: bool) -> Result<()> {
         )
     })?;
 
-    std::fs::write(&base_path, sandbox::DOCKERFILE_BASE)?;
-    std::fs::write(&agent_path, agent_dockerfile)?;
+    // Merge base + agent into a single Dockerfile by stripping the ARG/FROM lines
+    // from the agent Dockerfile and appending the rest to the base
+    let agent_body: String = agent_dockerfile
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.starts_with("ARG BASE=") && !trimmed.starts_with("FROM ${BASE}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    println!("Wrote {} and {}", base_path.display(), agent_path.display());
-    println!();
-    println!("Next steps:");
-    println!("  1. Edit the Dockerfiles to add your packages/tools");
-    println!("  2. Build:");
-    println!("     docker build -t my-sandbox-base -f Dockerfile.base .");
-    println!(
-        "     docker build --build-arg BASE=my-sandbox-base -t my-sandbox -f {} .",
-        agent_filename
+    let combined = format!(
+        "{}\n\n# --- {} agent ---{}",
+        sandbox::DOCKERFILE_BASE.trim_end(),
+        agent_name,
+        agent_body.trim_end(),
     );
-    println!("  3. Update .workmux.yaml:");
-    println!("     sandbox:");
-    println!("       image: my-sandbox");
+
+    std::fs::write(&dockerfile_path, combined.as_bytes())?;
+
+    println!("✓ Created {}", style("Dockerfile.sandbox").bold());
+    println!();
+    println!("{}:", style("Next steps").bold());
+    println!("  1. Edit Dockerfile.sandbox to add your packages");
+    println!(
+        "  2. Build: {}",
+        style("docker build -t my-sandbox -f Dockerfile.sandbox .").dim()
+    );
+    println!("  3. Configure {}:", style(".workmux.yaml").bold());
+    println!("       {}", style("sandbox:").dim());
+    println!("         {}", style("enabled: true").dim());
+    println!("         {}", style("image: my-sandbox").dim());
     Ok(())
 }
 
