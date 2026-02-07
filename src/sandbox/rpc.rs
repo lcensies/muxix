@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -157,9 +157,10 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
     let mut reader = BufReader::new(&stream);
     let mut writer = stream.try_clone().context("Failed to clone TCP stream")?;
 
-    // First line must be auth header
+    // First line must be auth header (limit to 1024 bytes to prevent memory
+    // exhaustion from oversized payloads -- the real header is ~77 bytes).
     let mut auth_line = String::new();
-    reader.read_line(&mut auth_line)?;
+    reader.by_ref().take(1024).read_line(&mut auth_line)?;
     let auth: AuthHeader =
         serde_json::from_str(auth_line.trim()).context("Failed to parse auth header")?;
 
