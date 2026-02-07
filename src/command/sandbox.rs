@@ -50,7 +50,7 @@ pub enum SandboxCommand {
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
-    /// Cross-compile and install workmux into running Lima VMs for development.
+    /// Cross-compile and install workmux into containers and running Lima VMs for development.
     InstallDev {
         /// Skip cross-compilation and use existing binary
         #[arg(long)]
