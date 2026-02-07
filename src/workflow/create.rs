@@ -62,16 +62,22 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Pre-flight checks
     context.ensure_mux_running()?;
 
-    // Check if worktree or window already exists
-    let window_exists = context.mux.window_exists(&context.prefix, handle)?;
+    // Check if worktree or target (window/session) already exists
+    let is_session_mode = options.target == TmuxTarget::Session;
+    let full_target_name = crate::multiplexer::util::prefixed(&context.prefix, handle);
+    let target_exists = if is_session_mode {
+        context.mux.session_exists(&full_target_name)?
+    } else {
+        context.mux.window_exists(&context.prefix, handle)?
+    };
     let worktree_exists = git::worktree_exists(branch_name)?;
 
     // If open_if_exists is set and either exists, delegate to open workflow
-    if options.open_if_exists && (window_exists || worktree_exists) {
+    if options.open_if_exists && (target_exists || worktree_exists) {
         debug!(
             branch = branch_name,
             handle = handle,
-            window_exists,
+            target_exists,
             worktree_exists,
             "create:delegating to open (open_if_exists=true)"
         );
@@ -94,13 +100,14 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         return super::open::open(branch_name, context, open_options, false);
     }
 
-    // Check window using handle (the display name)
-    if window_exists {
+    // Check target using handle (the display name)
+    if target_exists {
+        let target_type = if is_session_mode { "session" } else { "window" };
         return Err(anyhow!(
-            "A {} window named '{}{}' already exists",
+            "A {} {} named '{}' already exists",
             context.mux.name(),
-            context.prefix,
-            handle
+            target_type,
+            full_target_name
         ));
     }
 
