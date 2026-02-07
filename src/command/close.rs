@@ -30,24 +30,25 @@ pub fn run(name: Option<&str>) -> Result<()> {
             })?;
             let prefixed = util::prefixed(prefix, handle);
             let is_current = if is_session_mode {
-                // For sessions, check current session
-                // TODO: Add current_session_name to Multiplexer trait
-                let current_window = mux.current_window_name()?;
-                current_window.as_deref() == Some(&prefixed)
+                mux.current_session().as_deref() == Some(&prefixed)
             } else {
-                let current_window = mux.current_window_name()?;
-                current_window.as_deref() == Some(&prefixed)
+                mux.current_window_name()?.as_deref() == Some(&prefixed)
             };
             (prefixed, is_current)
         }
         None => {
             // No name provided - check if we're in a workmux window/session
-            if let Some(current) = mux.current_window_name()? {
+            let current_name = if is_session_mode {
+                mux.current_session()
+            } else {
+                mux.current_window_name()?
+            };
+            if let Some(current) = current_name {
                 if current.starts_with(prefix) {
-                    // We're in a workmux window, use it directly
+                    // We're in a workmux target, use it directly
                     (current.clone(), true)
                 } else {
-                    // Not in a workmux window, fall back to resolved handle
+                    // Not in a workmux target, fall back to resolved handle
                     (util::prefixed(prefix, &resolved_handle), false)
                 }
             } else {
