@@ -50,7 +50,7 @@ api-work    -      ✓    -         ~/project__worktrees/api-work
 
 ## Key
 
-- AGENT column shows the current agent status using [status icons](/guide/status-tracking/):
+- AGENT column shows the current agent status using [status icons](/guide/status-tracking):
   - `🤖` = agent is working
   - `💬` = agent is waiting for user input
   - `✅` = agent finished
