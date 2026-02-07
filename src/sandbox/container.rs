@@ -356,10 +356,7 @@ pub fn build_docker_run_args(
     Ok(args)
 }
 
-/// Escape a string for use in a single-quoted shell string.
-fn shell_escape(s: &str) -> String {
-    s.replace('\'', "'\\''")
-}
+use crate::shell::shell_escape;
 
 /// Wrap a command to run inside a Docker/Podman container via the sandbox supervisor.
 ///

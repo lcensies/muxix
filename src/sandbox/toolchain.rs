@@ -34,9 +34,7 @@ pub fn resolve_toolchain(mode: &ToolchainMode, dir: &Path) -> DetectedToolchain 
     }
 }
 
-fn shell_escape(s: &str) -> String {
-    s.replace('\'', "'\\''")
-}
+use crate::shell::shell_escape;
 
 /// Wrap a command string to run inside the appropriate toolchain environment.
 /// Returns the original command unchanged if no toolchain is active.

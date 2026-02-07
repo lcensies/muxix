@@ -491,15 +491,7 @@ fn handle_exec(
     Ok(())
 }
 
-fn shell_quote(s: &str) -> String {
-    if s.chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
-    {
-        s.to_string()
-    } else {
-        format!("'{}'", s.replace('\'', "'\\''"))
-    }
-}
+use crate::shell::shell_quote;
 
 // ── Client ──────────────────────────────────────────────────────────────
 

@@ -5,10 +5,7 @@ use std::path::Path;
 
 use crate::config::Config;
 
-/// Escape a string for use in a single-quoted shell string.
-fn shell_escape(s: &str) -> String {
-    s.replace('\'', "'\\''")
-}
+use crate::shell::shell_escape;
 
 /// Wrap a command to run inside a Lima VM via the sandbox supervisor.
 ///
@@ -51,37 +48,6 @@ pub fn wrap_for_lima(
 mod tests {
     use super::*;
     use crate::sandbox::lima::LimaInstanceInfo;
-
-    #[test]
-    fn test_shell_escape_simple() {
-        assert_eq!(shell_escape("hello"), "hello");
-        assert_eq!(shell_escape("foo bar"), "foo bar");
-    }
-
-    #[test]
-    fn test_shell_escape_single_quotes() {
-        assert_eq!(
-            shell_escape("echo 'hello world'"),
-            "echo '\\''hello world'\\''"
-        );
-    }
-
-    #[test]
-    fn test_shell_escape_preserves_special_chars() {
-        // Single-quote escaping should not affect other shell metacharacters
-        // (they're safe inside single quotes)
-        assert_eq!(shell_escape("$HOME"), "$HOME");
-        assert_eq!(shell_escape("$(cmd)"), "$(cmd)");
-        assert_eq!(shell_escape("a & b"), "a & b");
-    }
-
-    #[test]
-    fn test_shell_escape_path_with_spaces() {
-        assert_eq!(
-            shell_escape("/Users/test user/my project"),
-            "/Users/test user/my project"
-        );
-    }
 
     #[test]
     fn test_check_vm_state_running() {

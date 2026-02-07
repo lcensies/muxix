@@ -433,10 +433,7 @@ pub fn navigate_to_target_and_close(
     source_handle: &str,
     cleanup_result: &CleanupResult,
 ) -> Result<()> {
-    /// Helper function to shell-escape strings for safe inclusion in shell commands
-    fn shell_escape(s: &str) -> String {
-        format!("'{}'", s.replace('\'', r#"'\''"#))
-    }
+    use crate::shell::shell_quote as shell_escape;
 
     /// Build the deferred cleanup script for rename, prune, branch delete, and trash removal.
     fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
