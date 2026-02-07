@@ -525,20 +525,27 @@ impl<'a> CreationPlan<'a> {
         // Create backend once for all specs
         let mux = create_backend(detect_backend());
 
-        // Track windows for --wait (all created windows)
+        // Track windows for --wait (all created windows/sessions)
         let mut created_windows = Vec::new();
-        // Track currently active windows for --max-concurrent
-        let mut active_windows: Vec<String> = Vec::new();
+        // Track currently active targets for --max-concurrent
+        let mut active_targets: Vec<String> = Vec::new();
+        let is_session_mode = self.options.target == TmuxTarget::Session;
 
         for (i, spec) in self.specs.iter().enumerate() {
             // Concurrency control: wait for a slot if at limit
             if let Some(limit) = self.max_concurrent {
                 let limit = limit as usize;
                 // Only enter polling loop if we're at capacity
-                if active_windows.len() >= limit {
+                if active_targets.len() >= limit {
                     loop {
-                        active_windows = mux.filter_active_windows(&active_windows)?;
-                        if active_windows.len() < limit {
+                        // Filter to only targets that still exist
+                        if is_session_mode {
+                            let live_sessions = mux.get_all_session_names()?;
+                            active_targets.retain(|t| live_sessions.contains(t));
+                        } else {
+                            active_targets = mux.filter_active_windows(&active_targets)?;
+                        }
+                        if active_targets.len() < limit {
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(WORKER_POOL_POLL_MS));
@@ -599,7 +606,7 @@ impl<'a> CreationPlan<'a> {
 
             // Track for concurrency control
             if self.max_concurrent.is_some() {
-                active_windows.push(full_window_name);
+                active_targets.push(full_window_name);
             }
 
             let result = workflow::create(
