@@ -21,10 +21,10 @@ class TestSessionCreation:
     """
 
     def test_add_session_creates_tmux_session(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies that `workmux add --session` creates a tmux session."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session"
         session_name = get_session_name(branch_name)
 
@@ -41,10 +41,10 @@ class TestSessionCreation:
         assert_session_exists(env, session_name)
 
     def test_add_session_creates_worktree(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies that `workmux add --session` creates a git worktree."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-worktree"
 
         write_workmux_config(repo_path)
@@ -65,10 +65,10 @@ class TestSessionCreation:
         assert worktree_path.is_dir()
 
     def test_add_session_does_not_create_window(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies that `workmux add --session` does NOT create a tmux window."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-no-window"
         window_name = get_window_name(branch_name)
 
@@ -86,10 +86,10 @@ class TestSessionCreation:
         assert_window_not_exists(env, window_name)
 
     def test_add_session_naming_follows_prefix(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies session naming follows the window_prefix convention."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-prefix-test"
         custom_prefix = "proj-"
 
@@ -112,7 +112,7 @@ class TestSessionBackground:
     """Tests for --session with --background flag."""
 
     def test_add_session_background_creates_detached_session(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies `workmux add --session --background` creates a detached session.
 
@@ -122,7 +122,7 @@ class TestSessionBackground:
         2. The worktree is created
         3. The session has the expected structure (panes in the right directory)
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-bg"
         session_name = get_session_name(branch_name)
 
@@ -152,11 +152,9 @@ class TestSessionBackground:
 class TestSessionRemove:
     """Tests for removing session-mode worktrees."""
 
-    def test_remove_cleans_up_session(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
-    ):
+    def test_remove_cleans_up_session(self, mux_server, workmux_exe_path, repo_path):
         """Verifies `workmux remove` cleans up session-mode worktrees."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-remove"
         session_name = get_session_name(branch_name)
 
@@ -190,11 +188,9 @@ class TestSessionRemove:
 class TestSessionClose:
     """Tests for closing session-mode worktrees."""
 
-    def test_close_closes_session(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
-    ):
+    def test_close_closes_session(self, mux_server, workmux_exe_path, repo_path):
         """Verifies `workmux close` closes the session for session-mode worktrees."""
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-close"
         session_name = get_session_name(branch_name)
 
@@ -226,7 +222,7 @@ class TestSessionOpen:
     """Tests for opening session-mode worktrees."""
 
     def test_open_respects_stored_session_mode(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies `workmux open` respects stored target mode and opens as session.
 
@@ -234,7 +230,7 @@ class TestSessionOpen:
         the session is created detached anyway, so we can verify it exists
         after the open command completes.
         """
-        env = isolated_tmux_server
+        env = mux_server
         branch_name = "feature-session-reopen"
         session_name = get_session_name(branch_name)
 
@@ -284,10 +280,10 @@ class TestMixedMode:
     """Tests for mixed-mode scenarios (some worktrees as windows, some as sessions)."""
 
     def test_mixed_mode_creates_correct_targets(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies mixed-mode worktrees create correct tmux targets."""
-        env = isolated_tmux_server
+        env = mux_server
         window_branch = "feature-window-mode"
         session_branch = "feature-session-mode"
 
@@ -319,10 +315,10 @@ class TestMixedMode:
         assert_session_exists(env, get_session_name(session_branch))
 
     def test_mixed_mode_remove_cleans_up_correctly(
-        self, isolated_tmux_server, workmux_exe_path, repo_path
+        self, mux_server, workmux_exe_path, repo_path
     ):
         """Verifies remove cleans up the correct target type in mixed-mode."""
-        env = isolated_tmux_server
+        env = mux_server
         window_branch = "feature-window-cleanup"
         session_branch = "feature-session-cleanup"
 
