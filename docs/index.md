@@ -3,8 +3,8 @@ layout: home
 description: The zero-friction workflow for git worktrees and tmux
 
 hero:
-  text: Parallel development in tmux with git worktrees
-  tagline: The zero-friction workflow for git worktrees and tmux. Isolate contexts, run parallel AI agents, and merge with a single command.
+  text: Parallel development, streamlined
+  tagline: Isolated workspaces powered by tmux and git worktrees. Run AI agents without conflicts.
   image:
     light: /logo.svg
     dark: /logo-dark.svg
@@ -142,7 +142,7 @@ onMounted(() => {
 
 <style>
 .demo-section {
-  max-width: 940px;
+  max-width: 1100px;
   margin: 0 auto 4rem;
   padding: 0 1.5rem;
 }
@@ -260,7 +260,6 @@ onMounted(() => {
 /* Terminal window showcase */
 .showcase-container {
   position: relative;
-  max-width: 880px;
   margin: 3rem auto;
   padding: 0 1.5rem;
 }
@@ -375,7 +374,7 @@ onMounted(() => {
 }
 
 .dashboard-section {
-  max-width: 940px;
+  max-width: 1100px;
   margin: 4rem auto 0;
   text-align: center;
   padding: 0 1.5rem;
