@@ -72,10 +72,15 @@ pub fn run_auth(config: &SandboxConfig, agent: &str) -> Result<()> {
     };
     let image = config.resolved_image(agent);
 
+    let uid = unsafe { libc::getuid() };
+    let gid = unsafe { libc::getgid() };
+
     let mut args = vec![
         "run".to_string(),
         "-it".to_string(),
         "--rm".to_string(),
+        "--user".to_string(),
+        format!("{}:{}", uid, gid),
         // Mount sandbox-specific config (read-write for auth)
         "--mount".to_string(),
         format!(
