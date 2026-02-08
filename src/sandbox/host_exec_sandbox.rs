@@ -25,10 +25,16 @@ const DENY_READ_DIRS: &[&str] = &[
     ".azure",
     ".config/gcloud",
     ".docker",
-    ".npmrc",  // can contain auth tokens
-    ".pypirc", // can contain auth tokens
-    ".netrc",  // network credentials
-    ".gem/credentials",
+];
+
+/// Files under $HOME that are denied read access.
+/// Separate from DENY_READ_DIRS because Linux bwrap needs different
+/// handling (bind /dev/null over files, tmpfs over directories).
+const DENY_READ_FILES: &[&str] = &[
+    ".npmrc",           // can contain auth tokens
+    ".pypirc",          // can contain auth tokens
+    ".netrc",           // network credentials
+    ".gem/credentials", // rubygems auth
 ];
 
 /// macOS-specific deny paths (absolute, not relative to HOME).
@@ -78,7 +84,7 @@ pub fn spawn_sandboxed(
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        warn!("host-exec sandboxing not supported on this OS, running unsandboxed");
+        tracing::warn!("host-exec sandboxing not supported on this OS, running unsandboxed");
         spawn_unsandboxed(program, args, worktree, envs)
     }
 }
@@ -144,13 +150,20 @@ fn spawn_macos(
 fn generate_macos_profile() -> String {
     let mut profile = String::from("(version 1)\n(allow default)\n\n");
 
-    // Deny reading sensitive directories under HOME
+    // Deny reading sensitive directories and files under HOME
     profile.push_str("; Deny reading credentials and secrets\n");
     profile.push_str("(deny file-read* (with no-report)\n");
     for dir in DENY_READ_DIRS {
         profile.push_str(&format!(
             "    (subpath (string-append (param \"HOME_DIR\") \"/{}\" ))\n",
             dir
+        ));
+    }
+    for file in DENY_READ_FILES {
+        // Use literal for files (subpath works for both files and dirs in Seatbelt)
+        profile.push_str(&format!(
+            "    (subpath (string-append (param \"HOME_DIR\") \"/{}\" ))\n",
+            file
         ));
     }
     for dir in DENY_READ_PATHS_MACOS {
@@ -217,7 +230,7 @@ fn spawn_linux(
     if which::which("bwrap").is_ok() {
         spawn_bwrap(program, args, worktree, envs)
     } else {
-        warn!(
+        tracing::warn!(
             "bwrap not found, running host-exec unsandboxed -- install bubblewrap for filesystem isolation"
         );
         spawn_unsandboxed(program, args, worktree, envs)
@@ -248,7 +261,7 @@ fn spawn_bwrap(
         .context("Worktree path is not valid UTF-8")?;
     cmd.args(["--bind", wt, wt]);
 
-    // Hide secrets behind tmpfs
+    // Hide secret directories behind tmpfs
     for dir in DENY_READ_DIRS {
         let path = home_path.join(dir);
         if path.exists() {
@@ -258,13 +271,28 @@ fn spawn_bwrap(
         }
     }
 
-    // Writable caches
+    // Hide secret files by binding /dev/null over them
+    for file in DENY_READ_FILES {
+        let path = home_path.join(file);
+        if path.is_file() {
+            if let Some(s) = path.to_str() {
+                cmd.args(["--ro-bind", "/dev/null", s]);
+            }
+        }
+    }
+
+    // Writable caches -- create dirs if needed so bwrap can bind-mount them
+    // (the root is read-only, so the process can't create them itself)
     for dir in ALLOW_WRITE_DIRS {
         let path = home_path.join(dir);
-        if path.exists() {
-            if let Some(s) = path.to_str() {
-                cmd.args(["--bind", s, s]);
+        if !path.exists() {
+            if let Err(e) = std::fs::create_dir_all(&path) {
+                debug!(?path, error = %e, "failed to create cache dir for bwrap binding");
+                continue;
             }
+        }
+        if let Some(s) = path.to_str() {
+            cmd.args(["--bind", s, s]);
         }
     }
 
@@ -293,11 +321,19 @@ mod tests {
 
     #[test]
     fn test_deny_read_dirs_are_valid() {
-        // No dir should contain path traversal or special characters
         for dir in DENY_READ_DIRS {
             assert!(!dir.starts_with('/'), "should be relative: {}", dir);
             assert!(!dir.contains(".."), "no traversal: {}", dir);
             assert!(!dir.is_empty(), "no empty entries");
+        }
+    }
+
+    #[test]
+    fn test_deny_read_files_are_valid() {
+        for file in DENY_READ_FILES {
+            assert!(!file.starts_with('/'), "should be relative: {}", file);
+            assert!(!file.contains(".."), "no traversal: {}", file);
+            assert!(!file.is_empty(), "no empty entries");
         }
     }
 
@@ -311,8 +347,8 @@ mod tests {
 
     #[test]
     fn test_deny_and_allow_dont_overlap() {
-        // No directory should be both denied for reading and allowed for writing
-        for deny in DENY_READ_DIRS {
+        // No entry should be both denied for reading and allowed for writing
+        for deny in DENY_READ_DIRS.iter().chain(DENY_READ_FILES.iter()) {
             for allow in ALLOW_WRITE_DIRS {
                 assert_ne!(
                     *deny, *allow,

@@ -1061,7 +1061,13 @@ mod tests {
     #[test]
     fn test_exec_sandbox_blocks_ssh_read() {
         // This test verifies the sandbox-exec integration on macOS.
-        // The exec'd process should not be able to read ~/.ssh/
+        // On Linux without bwrap, the sandbox falls back to unsandboxed,
+        // so we skip the test there.
+        #[cfg(target_os = "linux")]
+        if which::which("bwrap").is_err() {
+            return; // sandbox unavailable by design
+        }
+
         let (mut client, _tmp, _handle) = start_exec_server(&["ls"]);
         let home = std::env::var("HOME").unwrap();
         let ssh_dir = format!("{}/.ssh", home);
@@ -1072,7 +1078,7 @@ mod tests {
         }
 
         let (_stdout, stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
-        // sandbox-exec should deny access, causing ls to fail
+        // sandbox-exec/bwrap should deny access, causing ls to fail
         assert_ne!(
             code,
             0,
