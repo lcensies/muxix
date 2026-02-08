@@ -22,13 +22,13 @@ Container commands:
   build            Build the sandbox container image locally
   pull             Pull the latest sandbox image from the container registry
   init-dockerfile  Export customizable Dockerfile templates
-  shell            Start an interactive shell in a container sandbox
 
 Lima commands:
   stop             Stop Lima VMs to free resources
   prune            Delete unused Lima VMs to reclaim disk space
 
 General commands:
+  shell            Start an interactive shell in a sandbox
   install-dev      Cross-compile and install workmux into sandboxes
   help             Print this message or the help of the given subcommand(s)
 
@@ -90,10 +90,11 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         yes: bool,
     },
-    /// Start an interactive shell in a container sandbox.
+    /// Start an interactive shell in a sandbox.
     /// Uses the same mounts and environment as a normal worktree sandbox.
     Shell {
         /// Exec into an existing container for this worktree instead of starting a new one
+        /// (container backend only)
         #[arg(long, short)]
         exec: bool,
         /// Command to run instead of bash
@@ -891,10 +892,19 @@ fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
 }
 
 fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
-    use crate::config::SandboxRuntime;
-    use crate::state::StateStore;
+    use crate::config::SandboxBackend;
 
     let config = Config::load(None)?;
+
+    match config.sandbox.backend() {
+        SandboxBackend::Container => run_shell_container(exec, command, &config),
+        SandboxBackend::Lima => run_shell_lima(exec, command, &config),
+    }
+}
+
+fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Result<()> {
+    use crate::config::SandboxRuntime;
+    use crate::state::StateStore;
 
     // Get current directory as worktree
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
@@ -957,7 +967,7 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
     } else {
         // Start new container
         sandbox::ensure_sandbox_config_dirs()?;
-        let agent = resolve_agent(&config);
+        let agent = resolve_agent(config);
 
         // Build docker run args (no RPC env vars needed for shell)
         let mut docker_args = sandbox::build_docker_run_args(
@@ -983,6 +993,40 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
 
         std::process::exit(status.code().unwrap_or(1));
     }
+}
+
+fn run_shell_lima(exec: bool, command: Vec<String>, config: &Config) -> Result<()> {
+    if exec {
+        bail!(
+            "The --exec flag is only supported with the container backend.\n\
+             Lima VMs are persistent, so 'workmux sandbox shell' always connects to the existing VM."
+        );
+    }
+
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+
+    // Ensure VM is running (creates it if needed)
+    let vm_name = lima::ensure_vm_running(config, &cwd)?;
+
+    // Build shell command
+    let shell_cmd = if command.is_empty() {
+        "bash".to_string()
+    } else {
+        command.join(" ")
+    };
+
+    debug!(vm = %vm_name, cmd = %shell_cmd, "starting Lima shell");
+
+    let status = Command::new("limactl")
+        .arg("shell")
+        .args(["--workdir", &cwd.to_string_lossy()])
+        .arg(&vm_name)
+        .arg("--")
+        .args(["bash", "-c", &shell_cmd])
+        .status()
+        .context("Failed to execute limactl shell")?;
+
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 fn select_vms_interactive<'a>(

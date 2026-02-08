@@ -42,26 +42,6 @@ workmux sandbox init-dockerfile [--force]
 
 Creates a `Dockerfile.sandbox` in the current directory with the base system setup (Debian, git, workmux) and agent-specific installation (e.g., Claude Code) combined into a single file.
 
-### sandbox shell
-
-Start an interactive shell in a container sandbox. Uses the same mounts and environment as a normal worktree sandbox.
-
-```bash
-# Start a new shell container
-workmux sandbox shell
-
-# Exec into an existing container for the current worktree
-workmux sandbox shell --exec
-
-# Run a specific command instead of bash
-workmux sandbox shell -- <command...>
-```
-
-**Options:**
-
-- `-e, --exec` - Exec into an existing container for this worktree instead of starting a new one
-- `<command...>` - Command to run instead of bash
-
 ## Lima commands
 
 ### sandbox stop
@@ -119,6 +99,31 @@ workmux sandbox prune --force
 Lists all workmux Lima VMs (those starting with `wm-` prefix) with their size, age, and last accessed time, then prompts for confirmation before deleting them. Requires `limactl` to be installed.
 
 ## General commands
+
+### sandbox shell
+
+Start an interactive shell in a sandbox. Uses the same mounts and environment as a normal worktree sandbox. Works with both container and Lima backends.
+
+```bash
+# Start a new shell (container backend starts a new container, Lima connects to existing VM)
+workmux sandbox shell
+
+# Run a specific command instead of bash
+workmux sandbox shell -- <command...>
+
+# Exec into an existing container (container backend only)
+workmux sandbox shell --exec
+```
+
+**Options:**
+
+- `-e, --exec` - Exec into an existing container for this worktree instead of starting a new one (container backend only)
+- `<command...>` - Command to run instead of bash
+
+**Backend behavior:**
+
+- **Container:** Starts a fresh container with the same mounts and environment as a normal worktree sandbox. With `--exec`, attaches to an existing container instead.
+- **Lima:** Connects to the Lima VM for the current worktree (creating it if needed). The `--exec` flag is not supported since Lima VMs are persistent and `shell` always connects to the existing VM.
 
 ### sandbox install-dev
 
