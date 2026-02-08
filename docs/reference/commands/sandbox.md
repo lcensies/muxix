@@ -100,6 +100,33 @@ Lists all workmux Lima VMs (those starting with `wm-` prefix) with their size, a
 
 ## General commands
 
+### sandbox agent
+
+Run the configured agent inside a sandbox with full RPC support. Unlike `shell`, this starts an RPC server so the agent can call workmux commands (e.g., `workmux add` to spawn sub-agents).
+
+```bash
+# Run the configured agent (from config or defaults to claude)
+workmux sandbox agent
+
+# Run a specific command instead
+workmux sandbox agent -- claude -p "coordinate these tasks"
+```
+
+**Options:**
+
+- `<command...>` -- Command to run instead of the configured agent
+
+This command runs a sandboxed agent in the current directory. It delegates to the same supervisor process used by `workmux sandbox run`, which handles RPC server setup, sandbox dispatch (Lima or container), environment variables, and cleanup.
+
+The key difference from `sandbox shell` is that this starts an RPC server, enabling the guest to call `workmux add` from inside the sandbox. Guest-side `workmux add` detects the sandbox environment and routes through SpawnAgent RPC to the host, where sub-agents are created normally (and sandboxed if the project config says so).
+
+**Requirements:**
+
+- Must be run from inside a git repository (sandbox needs git directories for mounts)
+- Sandbox must be configured (image pulled or built)
+
+**Use case:** Running a coordinator agent inside a sandbox so it can spawn sub-agents via `workmux add` while still being isolated from the host.
+
 ### sandbox shell
 
 Start an interactive shell in a sandbox. Uses the same mounts and environment as a normal worktree sandbox. Works with both container and Lima backends.
@@ -178,6 +205,8 @@ The RPC server handles requests from the guest workmux binary:
 - `SetTitle` -- renames the tmux window
 - `Heartbeat` -- health check
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree
+
+**Guest-side `workmux add`:** When `workmux add` runs inside a sandbox, it automatically detects the sandbox environment and routes through SpawnAgent RPC instead of trying to create worktrees locally (which would fail due to missing tmux). This enables coordinator agents running in sandboxes to spawn sub-agents. Only a subset of `add` flags are supported over RPC -- unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are explicitly rejected with clear error messages.
 
 ## Quick Setup
 

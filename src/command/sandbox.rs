@@ -28,6 +28,7 @@ Lima commands:
   prune            Delete unused Lima VMs to reclaim disk space
 
 General commands:
+  agent            Run an agent inside a sandbox with RPC support
   shell            Start an interactive shell in a sandbox
   install-dev      Cross-compile and install workmux into sandboxes
   help             Print this message or the help of the given subcommand(s)
@@ -90,6 +91,14 @@ pub enum SandboxCommand {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Run the configured agent inside a sandbox with full RPC support.
+    /// Unlike `shell`, this starts an RPC server so the agent can call
+    /// workmux commands (e.g., `workmux add` to spawn sub-agents).
+    Agent {
+        /// Command to run instead of the configured agent
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     /// Start an interactive shell in a sandbox.
     /// Uses the same mounts and environment as a normal worktree sandbox.
     Shell {
@@ -106,6 +115,31 @@ pub enum SandboxCommand {
 /// Resolve the canonical agent name from config.
 fn resolve_agent(config: &Config) -> &'static str {
     crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name()
+}
+
+fn run_agent(command: Vec<String>) -> Result<()> {
+    let config = Config::load(None)?;
+
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+
+    // Validate git repo early -- sandbox needs git dirs for mounts
+    let worktree_root = crate::git::get_repo_root()
+        .context(
+            "Not inside a git repository. workmux sandbox agent requires a git repo for mounting.",
+        )?
+        .canonicalize()
+        .unwrap_or_else(|_| cwd.clone());
+
+    // Build agent command: explicit args or configured agent
+    let agent_command = if command.is_empty() {
+        let agent = config.agent.as_deref().unwrap_or("claude");
+        vec![agent.to_string()]
+    } else {
+        command
+    };
+
+    let exit_code = super::sandbox_run::run(cwd, Some(worktree_root), agent_command)?;
+    std::process::exit(exit_code);
 }
 
 pub fn run(args: SandboxArgs) -> Result<()> {
@@ -126,6 +160,7 @@ pub fn run(args: SandboxArgs) -> Result<()> {
             skip_build,
             release,
         } => run_install_dev(skip_build, release),
+        SandboxCommand::Agent { command } => run_agent(command),
         SandboxCommand::Prune { force } => run_prune(force),
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
         SandboxCommand::Shell { exec, command } => run_shell(exec, command),

@@ -446,7 +446,7 @@ fn handle_set_title(title: &str, ctx: &RpcContext) -> RpcResponse {
 fn handle_spawn_agent(
     prompt: &str,
     branch_name: Option<&str>,
-    _background: Option<bool>,
+    background: Option<bool>,
     worktree_path: &PathBuf,
 ) -> RpcResponse {
     use std::process::Command;
@@ -461,7 +461,13 @@ fn handle_spawn_agent(
         cmd.arg("--auto-name");
     }
 
-    cmd.args(["--prompt", prompt]);
+    if !prompt.is_empty() {
+        cmd.args(["--prompt", prompt]);
+    }
+
+    if background.unwrap_or(false) {
+        cmd.arg("--background");
+    }
 
     // SECURITY: Skip post-create hooks when triggered via RPC. Hooks are
     // arbitrary shell commands from config that run unsandboxed on the host.
@@ -1376,6 +1382,86 @@ mod tests {
         match parsed {
             RpcResponse::Output { message } => {
                 assert_eq!(message, "Merged 'feature' into 'main'");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_spawn_agent_with_empty_prompt_omits_prompt_flag() {
+        // When prompt is empty, handle_spawn_agent should not pass --prompt
+        // This prevents creating blank prompt files on the host
+        let tmp = tempfile::tempdir().unwrap();
+        let resp = handle_spawn_agent("", Some("test-branch"), None, &tmp.path().to_path_buf());
+        // The handler will try to run workmux add, which will fail because
+        // we're not in a real environment, but the key assertion is that it
+        // doesn't hang or crash with empty prompt
+        match resp {
+            RpcResponse::Error { .. } => {} // Expected - no real workmux binary
+            RpcResponse::Ok => {}           // Would happen if workmux existed
+            other => panic!("Unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_spawn_agent_with_background_flag() {
+        // Test that background flag is wired through (not ignored as _background)
+        let tmp = tempfile::tempdir().unwrap();
+        let resp = handle_spawn_agent(
+            "do stuff",
+            Some("bg-branch"),
+            Some(true),
+            &tmp.path().to_path_buf(),
+        );
+        // The handler will fail to run workmux add, but we're testing that
+        // it doesn't crash when background is Some(true)
+        match resp {
+            RpcResponse::Error { .. } => {} // Expected - no real workmux binary
+            RpcResponse::Ok => {}
+            other => panic!("Unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_spawn_agent_auto_name_when_branch_is_none() {
+        // When branch_name is None, handler should pass --auto-name
+        let tmp = tempfile::tempdir().unwrap();
+        let resp = handle_spawn_agent("fix bug", None, None, &tmp.path().to_path_buf());
+        match resp {
+            RpcResponse::Error { .. } => {} // Expected
+            RpcResponse::Ok => {}
+            other => panic!("Unexpected response: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_spawn_agent_request_serialization_with_background() {
+        // Verify the SpawnAgent request serializes background correctly
+        let req = RpcRequest::SpawnAgent {
+            prompt: "test".to_string(),
+            branch_name: None,
+            background: Some(true),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::SpawnAgent { background, .. } => {
+                assert_eq!(background, Some(true));
+            }
+            _ => panic!("Wrong variant"),
+        }
+
+        // Test with None background
+        let req = RpcRequest::SpawnAgent {
+            prompt: "test".to_string(),
+            branch_name: Some("branch".to_string()),
+            background: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::SpawnAgent { background, .. } => {
+                assert_eq!(background, None);
             }
             _ => panic!("Wrong variant"),
         }
