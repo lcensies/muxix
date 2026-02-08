@@ -448,16 +448,28 @@ const EXEC_ENV_ALLOWLIST: &[&str] = &[
     "LC_ALL",
 ];
 
-/// Clear the child process environment and re-add only allowed variables.
-/// Prevents host secrets (API keys, tokens, etc.) from leaking to commands
-/// executed on behalf of the sandboxed guest.
-fn apply_sanitized_env(cmd: &mut std::process::Command) {
-    cmd.env_clear();
+/// Build a sanitized environment map from the current process environment.
+/// Only variables in the allowlist are included. PATH is normalized to
+/// contain only absolute entries (prevents relative-path hijacking from
+/// the worktree's current directory).
+fn sanitized_env() -> std::collections::HashMap<String, String> {
+    let mut envs = std::collections::HashMap::new();
     for key in EXEC_ENV_ALLOWLIST {
         if let Ok(val) = std::env::var(key) {
-            cmd.env(key, val);
+            if *key == "PATH" {
+                // Strip relative/empty PATH entries to prevent hijacking
+                let normalized: String = val
+                    .split(':')
+                    .filter(|p| p.starts_with('/'))
+                    .collect::<Vec<_>>()
+                    .join(":");
+                envs.insert(key.to_string(), normalized);
+            } else {
+                envs.insert(key.to_string(), val);
+            }
         }
     }
+    envs
 }
 
 fn handle_exec(
@@ -466,8 +478,6 @@ fn handle_exec(
     ctx: &RpcContext,
     writer: &mut impl Write,
 ) -> Result<()> {
-    use std::process::{Command, Stdio};
-
     info!(command, ?args, "host-exec request");
 
     // Validate command name format (strict alphanumeric + dash/underscore/dot)
@@ -493,30 +503,31 @@ fn handle_exec(
         None
     };
 
-    let spawn_result = if let Some(script) = wrapper_script {
+    // Build the logical command (program + args), then delegate to sandbox
+    let (program, final_args) = if let Some(script) = wrapper_script {
         // Safe toolchain wrapping: command and args are passed as positional
         // parameters to bash, never interpolated into the shell string.
         // bash -c '<script>' -- <command> <arg1> <arg2> ...
-        let mut cmd = Command::new("bash");
-        cmd.args(["-c", &script, "--", command]);
-        cmd.args(args);
-        cmd.current_dir(&ctx.worktree_path);
-        apply_sanitized_env(&mut cmd);
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        cmd.spawn()
+        let mut script_args = vec![
+            "-c".to_string(),
+            script,
+            "--".to_string(),
+            command.to_string(),
+        ];
+        script_args.extend_from_slice(args);
+        ("bash".to_string(), script_args)
     } else {
         // Direct execution: no shell involved, args passed as argv
-        let mut cmd = Command::new(command);
-        cmd.args(args);
-        cmd.current_dir(&ctx.worktree_path);
-        apply_sanitized_env(&mut cmd);
-        cmd.stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        cmd.spawn()
+        (command.to_string(), args.to_vec())
     };
+
+    let envs = sanitized_env();
+    let spawn_result = crate::sandbox::host_exec_sandbox::spawn_sandboxed(
+        &program,
+        &final_args,
+        &ctx.worktree_path,
+        &envs,
+    );
 
     let mut child = match spawn_result {
         Ok(child) => child,
