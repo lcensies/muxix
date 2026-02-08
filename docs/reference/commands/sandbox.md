@@ -114,7 +114,7 @@ workmux sandbox agent -- claude -p "coordinate these tasks"
 
 **Options:**
 
-- `<command...>` -- Command to run instead of the configured agent
+- `<command...>` - Command to run instead of the configured agent
 
 This command runs a sandboxed agent in the current directory. It delegates to the same supervisor process used by `workmux sandbox run`, which handles RPC server setup, sandbox dispatch (Lima or container), environment variables, and cleanup.
 
@@ -206,7 +206,7 @@ The RPC server handles requests from the guest workmux binary:
 - `Heartbeat` -- health check
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree
 
-**Guest-side `workmux add`:** When `workmux add` runs inside a sandbox, it automatically detects the sandbox environment and routes through SpawnAgent RPC instead of trying to create worktrees locally (which would fail due to missing tmux). This enables coordinator agents running in sandboxes to spawn sub-agents. Only a subset of `add` flags are supported over RPC -- unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are explicitly rejected with clear error messages.
+**Guest-side `workmux add`:** When `workmux add` runs inside a sandbox, it automatically detects the sandbox environment and routes through SpawnAgent RPC instead of trying to create worktrees locally (which would fail due to missing tmux). This enables coordinator agents running in sandboxes to spawn sub-agents. Only a subset of `add` flags are supported over RPC; unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are explicitly rejected with clear error messages.
 
 ## Quick Setup
 
