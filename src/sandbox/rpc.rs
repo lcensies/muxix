@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -154,10 +154,57 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 // ── Connection handler ──────────────────────────────────────────────────
 
+/// Maximum size of a single RPC request line (1 MB).
+/// Prevents memory exhaustion from a malicious guest sending unbounded data.
+const MAX_REQUEST_LINE: usize = 1024 * 1024;
+
 /// Header line sent by client before requests. Contains the auth token.
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthHeader {
     token: String,
+}
+
+/// Read a single line from a buffered reader, enforcing a size limit.
+/// Returns `Ok(None)` on EOF, `Err` if the line exceeds the limit.
+///
+/// Accumulates raw bytes first, then validates UTF-8 once the line is
+/// complete. This avoids false rejections when multi-byte UTF-8 characters
+/// are split across buffer boundaries.
+fn read_bounded_line(reader: &mut impl BufRead, buf: &mut String) -> Result<Option<()>> {
+    buf.clear();
+    let mut bytes = Vec::new();
+    let mut total = 0usize;
+
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if total == 0 {
+                return Ok(None);
+            }
+            break;
+        }
+
+        let (take, done) = match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => (pos + 1, true),
+            None => (available.len(), false),
+        };
+
+        total += take;
+        if total > MAX_REQUEST_LINE {
+            anyhow::bail!("RPC request line exceeds {} byte limit", MAX_REQUEST_LINE);
+        }
+
+        bytes.extend_from_slice(&available[..take]);
+        reader.consume(take);
+
+        if done {
+            break;
+        }
+    }
+
+    let s = std::str::from_utf8(&bytes).context("Invalid UTF-8 in RPC request")?;
+    buf.push_str(s);
+    Ok(Some(()))
 }
 
 fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
@@ -170,10 +217,12 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
     let mut reader = BufReader::new(&stream);
     let mut writer = stream.try_clone().context("Failed to clone TCP stream")?;
 
-    // First line must be auth header (limit to 1024 bytes to prevent memory
-    // exhaustion from oversized payloads -- the real header is ~77 bytes).
+    // First line must be auth header (bounded read)
     let mut auth_line = String::new();
-    reader.by_ref().take(1024).read_line(&mut auth_line)?;
+    match read_bounded_line(&mut reader, &mut auth_line)? {
+        Some(()) => {}
+        None => return Ok(()),
+    }
     let auth: AuthHeader =
         serde_json::from_str(auth_line.trim()).context("Failed to parse auth header")?;
 
@@ -189,15 +238,20 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
     // (e.g., Exec streaming) are not interrupted.
     stream.set_read_timeout(None)?;
 
-    // Process request lines
-    for line in reader.lines() {
-        let line = line.context("Failed to read RPC request line")?;
+    // Process request lines (bounded reads)
+    let mut line = String::new();
+    loop {
+        match read_bounded_line(&mut reader, &mut line)? {
+            Some(()) => {}
+            None => break,
+        }
+
         if line.trim().is_empty() {
             continue;
         }
 
-        let request: RpcRequest = serde_json::from_str(&line)
-            .with_context(|| format!("Failed to parse RPC request: {}", line))?;
+        let request: RpcRequest = serde_json::from_str(line.trim())
+            .with_context(|| format!("Failed to parse RPC request: {}", line.trim()))?;
 
         info!(?request, "RPC request received");
 
@@ -735,6 +789,42 @@ mod tests {
             RpcResponse::ExecExit { code } => assert_eq!(code, 42),
             _ => panic!("Wrong variant"),
         }
+    }
+
+    #[test]
+    fn test_read_bounded_line_normal() {
+        let data = b"hello world\nsecond line\n";
+        let mut reader = std::io::BufReader::new(&data[..]);
+        let mut buf = String::new();
+
+        let result = read_bounded_line(&mut reader, &mut buf).unwrap();
+        assert!(result.is_some());
+        assert_eq!(buf, "hello world\n");
+
+        let result = read_bounded_line(&mut reader, &mut buf).unwrap();
+        assert!(result.is_some());
+        assert_eq!(buf, "second line\n");
+
+        let result = read_bounded_line(&mut reader, &mut buf).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_read_bounded_line_rejects_oversized() {
+        // Create a line that exceeds MAX_REQUEST_LINE
+        let huge = "x".repeat(MAX_REQUEST_LINE + 1);
+        let data = format!("{}\n", huge);
+        let mut reader = std::io::BufReader::new(data.as_bytes());
+        let mut buf = String::new();
+
+        let result = read_bounded_line(&mut reader, &mut buf);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("exceeds")
+        );
     }
 
     #[test]
