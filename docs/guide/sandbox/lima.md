@@ -1,10 +1,10 @@
 ---
-description: Run agents in isolated Lima virtual machines on macOS
+description: Run agents in isolated Lima virtual machines
 ---
 
 # Lima VM backend
 
-workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing on macOS, providing stronger isolation than containers with full VM-level separation.
+workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing, where each project runs in its own virtual machine with a separate kernel.
 
 ## Setup
 
@@ -248,7 +248,7 @@ The `/nix/store` persists inside the VM across sessions, so subsequent activatio
 
 ### Toolchain vs provisioning
 
-Use **toolchain** (`devbox.json`/`flake.nix`) for project-specific development tools like compilers, linters, and build tools. Changes take effect immediately without recreating the VM.
+Use **toolchain** (`devbox.json`/`flake.nix`) for project-specific development tools like compilers, linters, and build tools. Changes take effect on the next sandboxed session without recreating the VM.
 
 Use **provisioning** for one-time VM setup like system packages, shell configuration, or services that need to run as root. Provisioning only runs on VM creation.
 
