@@ -1,4 +1,4 @@
-"""Tests for pre_merge hooks in `workmux merge`."""
+"""Tests for pre_merge and pre_remove hooks in `workmux merge`."""
 
 from pathlib import Path
 
@@ -158,4 +158,39 @@ class TestPreMergeHooks:
 
         assert not worktree_path.exists(), (
             "Merge should complete successfully with --no-verify"
+        )
+
+    def test_no_hooks_skips_pre_merge_and_pre_remove(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Verifies that --no-hooks skips both pre_merge and pre_remove hooks."""
+        env = mux_server
+        branch_name = "feature-no-hooks"
+        pre_merge_marker = env.tmp_path / "pre_merge_ran.txt"
+        pre_remove_marker = env.tmp_path / "pre_remove_ran.txt"
+
+        write_workmux_config(
+            repo_path,
+            pre_merge=[f"touch {pre_merge_marker}"],
+            pre_remove=[f"touch {pre_remove_marker}"],
+            env=env,
+        )
+
+        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        worktree_path = get_worktree_path(repo_path, branch_name)
+        create_commit(env, worktree_path, "feat: test commit")
+
+        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, no_hooks=True)
+
+        assert not pre_merge_marker.exists(), (
+            "pre_merge hook should NOT have run with --no-hooks"
+        )
+        assert not pre_remove_marker.exists(), (
+            "pre_remove hook should NOT have run with --no-hooks"
+        )
+        assert not worktree_path.exists(), (
+            "Merge should still complete successfully with --no-hooks"
         )

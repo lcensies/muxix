@@ -1636,6 +1636,7 @@ def run_workmux_merge(
     keep: bool = False,
     into: Optional[str] = None,
     no_verify: bool = False,
+    no_hooks: bool = False,
     notification: bool = False,
     expect_fail: bool = False,
     from_window: Optional[str] = None,
@@ -1682,6 +1683,8 @@ def run_workmux_merge(
         flags.append(f"--into {into}")
     if no_verify:
         flags.append("--no-verify")
+    if no_hooks:
+        flags.append("--no-hooks")
     if notification:
         flags.append("--notification")
 

@@ -83,6 +83,7 @@ pub fn cleanup(
     worktree_path: &Path,
     force: bool,
     keep_branch: bool,
+    no_hooks: bool,
 ) -> Result<CleanupResult> {
     info!(
         branch = branch_name,
@@ -121,7 +122,8 @@ pub fn cleanup(
     let perform_fs_git_cleanup = |result: &mut CleanupResult| -> Result<()> {
         // Run pre-remove hooks before removing the worktree directory.
         // Skip if the worktree directory doesn't exist (e.g., user manually deleted it).
-        if worktree_path.exists() {
+        // Skip if --no-hooks is set (e.g., RPC-triggered merge).
+        if worktree_path.exists() && !no_hooks {
             if let Some(pre_remove_hooks) = &context.config.pre_remove {
                 info!(
                     branch = branch_name,
@@ -301,7 +303,9 @@ pub fn cleanup(
         result.window_to_close_later = Some(current_window);
 
         // Run pre-remove hooks synchronously (they need the worktree intact)
+        // Skip if --no-hooks is set (e.g., RPC-triggered merge).
         if worktree_path.exists()
+            && !no_hooks
             && let Some(pre_remove_hooks) = &context.config.pre_remove
         {
             info!(

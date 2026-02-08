@@ -13,6 +13,7 @@ pub fn run(
     mut squash: bool,
     keep: bool,
     no_verify: bool,
+    no_hooks: bool,
     notification: bool,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
@@ -26,6 +27,7 @@ pub fn run(
             ignore_uncommitted,
             keep,
             no_verify,
+            no_hooks,
             notification,
         );
     }
@@ -51,13 +53,15 @@ pub fn run(
     let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, None)?;
 
-    // Announce pre-merge hooks if any (unless --no-verify is passed)
-    if !no_verify {
+    let skip_hooks = no_verify || no_hooks;
+
+    // Announce pre-merge hooks if any (unless hooks are skipped)
+    if !skip_hooks {
         super::announce_hooks(&context.config, None, super::HookPhase::PreMerge);
     }
 
     // Only announce pre-remove hooks if we're actually going to run cleanup
-    if !keep {
+    if !keep && !no_hooks {
         super::announce_hooks(&context.config, None, super::HookPhase::PreRemove);
     }
 
@@ -69,6 +73,7 @@ pub fn run(
         squash,
         keep,
         no_verify,
+        no_hooks,
         notification,
         &context,
     )
@@ -106,6 +111,7 @@ fn run_via_rpc(
     ignore_uncommitted: bool,
     keep: bool,
     no_verify: bool,
+    no_hooks: bool,
     notification: bool,
 ) -> Result<()> {
     use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
@@ -120,6 +126,7 @@ fn run_via_rpc(
         ignore_uncommitted,
         keep,
         no_verify,
+        no_hooks,
         notification,
     })?;
 

@@ -162,9 +162,14 @@ If a coordinator agent spawns sub-agents via workmux, those sub-agents run outsi
 
 The `merge` command routes through RPC when run inside a sandbox. The host
 supervisor executes the full merge workflow, including tmux cleanup and worktree
-deletion. All merge flags (`--rebase`, `--squash`, `--keep`, `--no-verify`,
-`--notification`, `--ignore-uncommitted`, `--into`) are forwarded to the host.
-Output is streamed back in real-time so the agent sees hook and merge progress.
+deletion. All merge flags are forwarded to the host. Output is streamed back in
+real-time so the agent sees merge progress.
+
+**Security:** Pre-merge and pre-remove hooks are always skipped for RPC-triggered
+merges (`--no-verify --no-hooks` is forced by the host). This prevents a
+compromised guest from injecting malicious hooks via `.workmux.yaml` and
+triggering them on the host. Similarly, `SpawnAgent` RPC forces `--no-hooks` to
+skip post-create hooks.
 
 ### macOS tmux bridge
 

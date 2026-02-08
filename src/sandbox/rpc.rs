@@ -47,6 +47,7 @@ pub enum RpcRequest {
         ignore_uncommitted: bool,
         keep: bool,
         no_verify: bool,
+        no_hooks: bool,
         notification: bool,
     },
 }
@@ -283,10 +284,15 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
             squash,
             ignore_uncommitted,
             keep,
-            no_verify,
+            no_verify: _,
+            no_hooks: _,
             notification,
         } = request
         {
+            // SECURITY: Force --no-verify --no-hooks regardless of guest request.
+            // Hooks are user-configured shell commands that run unsandboxed on the
+            // host. A compromised guest could modify .workmux.yaml to inject
+            // malicious hooks, then trigger them via this RPC.
             handle_merge(
                 name,
                 into.as_deref(),
@@ -294,7 +300,6 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
                 squash,
                 ignore_uncommitted,
                 keep,
-                no_verify,
                 notification,
                 &ctx.worktree_path,
                 &mut writer,
@@ -458,6 +463,10 @@ fn handle_spawn_agent(
 
     cmd.args(["--prompt", prompt]);
 
+    // SECURITY: Skip post-create hooks when triggered via RPC. Hooks are
+    // arbitrary shell commands from config that run unsandboxed on the host.
+    cmd.arg("--no-hooks");
+
     // Run from the worktree directory so config is found
     cmd.current_dir(worktree_path);
 
@@ -483,7 +492,6 @@ fn handle_merge(
     squash: bool,
     ignore_uncommitted: bool,
     keep: bool,
-    no_verify: bool,
     notification: bool,
     worktree_path: &PathBuf,
     writer: &mut impl Write,
@@ -510,12 +518,13 @@ fn handle_merge(
     if keep {
         cmd.arg("--keep");
     }
-    if no_verify {
-        cmd.arg("--no-verify");
-    }
     if notification {
         cmd.arg("--notification");
     }
+
+    // SECURITY: Always skip hooks when triggered via RPC. Hooks are arbitrary
+    // shell commands from config that run unsandboxed on the host.
+    cmd.args(["--no-verify", "--no-hooks"]);
 
     // Run from the worktree directory so config is found
     cmd.current_dir(worktree_path);
@@ -577,8 +586,18 @@ fn handle_merge(
 
     drop(tx);
 
-    for chunk in rx {
-        write_response(writer, &RpcResponse::Output { message: chunk })?;
+    // Stream responses; kill child on write failure (mirrors handle_exec pattern)
+    let stream_result = (|| -> Result<()> {
+        for chunk in rx {
+            write_response(writer, &RpcResponse::Output { message: chunk })?;
+        }
+        Ok(())
+    })();
+
+    if stream_result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return stream_result;
     }
 
     stdout_thread.join().ok();
@@ -909,7 +928,7 @@ mod tests {
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
-            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"notification":false}"#,
+            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"no_hooks":false,"notification":false}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
@@ -1307,6 +1326,7 @@ mod tests {
             ignore_uncommitted: false,
             keep: true,
             no_verify: false,
+            no_hooks: true,
             notification: true,
         };
         let json = serde_json::to_string(&req).unwrap();
@@ -1314,6 +1334,7 @@ mod tests {
         assert!(json.contains("\"name\":\"feature-x\""));
         assert!(json.contains("\"rebase\":true"));
         assert!(json.contains("\"keep\":true"));
+        assert!(json.contains("\"no_hooks\":true"));
         assert!(json.contains("\"notification\":true"));
 
         // Roundtrip
@@ -1327,6 +1348,7 @@ mod tests {
                 ignore_uncommitted,
                 keep,
                 no_verify,
+                no_hooks,
                 notification,
             } => {
                 assert_eq!(name, "feature-x");
@@ -1336,6 +1358,7 @@ mod tests {
                 assert!(!ignore_uncommitted);
                 assert!(keep);
                 assert!(!no_verify);
+                assert!(no_hooks);
                 assert!(notification);
             }
             _ => panic!("Wrong variant"),

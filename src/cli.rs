@@ -274,6 +274,10 @@ enum Commands {
         #[arg(short = 'n', long)]
         no_verify: bool,
 
+        /// Skip running all hooks (pre-merge and pre-remove)
+        #[arg(long)]
+        no_hooks: bool,
+
         /// Show a system notification on successful merge
         #[arg(long)]
         notification: bool,
@@ -570,6 +574,7 @@ pub fn run() -> Result<()> {
             squash,
             keep,
             no_verify,
+            no_hooks,
             notification,
         } => command::merge::run(
             name.as_deref(),
@@ -579,6 +584,7 @@ pub fn run() -> Result<()> {
             squash,
             keep,
             no_verify,
+            no_hooks,
             notification,
         ),
         Commands::Remove {

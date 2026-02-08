@@ -94,6 +94,7 @@ pub fn remove(
         &worktree_path,
         force,
         keep_branch,
+        false, // no_hooks: run hooks normally for user-initiated remove
     )?;
 
     // Navigate to the main branch window and close the source window
