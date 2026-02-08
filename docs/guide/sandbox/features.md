@@ -30,7 +30,11 @@ Paths starting with `~` are expanded to the user's home directory. When `guest_p
 
 ## Host command proxying
 
-The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox.
+The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox. Running builds on the host is also faster since both backends use virtualization on macOS, and filesystem I/O through mount sharing adds overhead for build-heavy workloads.
+
+::: warning Evaluate your threat model
+Host command proxying is primarily a convenience feature that exists so you don't have to install your entire build toolchain inside each container or VM. It should not necessarily be expected to provide airtight confinement. While workmux applies multiple layers of protection, any allowlisted command is effectively a code interpreter: a compromised agent can write a malicious build file and then invoke the tool. The filesystem sandbox blocks access to host secrets and restricts writes, but child processes retain network access and run on the host. If your threat model requires strict isolation with no host execution, don't enable `host_commands`.
+:::
 
 ```yaml
 # ~/.config/workmux/config.yaml
@@ -38,7 +42,7 @@ sandbox:
   host_commands: ["just", "cargo", "npm"]
 ```
 
-`host_commands` is only read from your global config. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This prevents a cloned repository from granting itself host access.
+`host_commands` is only read from your global config. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This ensures that only you control which commands get host access, not the projects you clone.
 
 When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
@@ -48,7 +52,7 @@ For Lima VMs: This is complementary to the toolchain integration (`toolchain: au
 
 ### Security model
 
-Host-exec is designed to be secure against a compromised agent inside the sandbox:
+Host-exec applies several layers of defense to limit what a compromised agent inside the sandbox can do:
 
 - **Command allowlist**: Only commands explicitly listed in `host_commands` (or built-in) can be executed. The allowlist is enforced on the host side.
 - **Strict command names**: Command names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. No path separators, shell metacharacters, or special names (`.`, `..`) are accepted.
@@ -56,7 +60,6 @@ Host-exec is designed to be secure against a compromised agent inside the sandbo
 - **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through. Host secrets like API keys are not inherited. `PATH` is normalized to absolute entries only to prevent relative-path hijacking.
 - **Filesystem sandbox**: On macOS, child processes run under `sandbox-exec` (Seatbelt), which denies access to sensitive directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.docker`, keychains, browser data) and denies writes to `$HOME` except toolchain caches (`.cache`, `.cargo`, `.rustup`, `.npm`). On Linux, `bwrap` (Bubblewrap) provides similar isolation with a read-only root filesystem, tmpfs over secret directories, and a writable worktree bind mount. If `bwrap` is not installed on Linux, commands run without filesystem sandboxing (with a warning).
 - **Global-only allowlist**: `host_commands` is only read from global config (`~/.config/workmux/config.yaml`). Project-level `.workmux.yaml` cannot set it. A warning is logged if it tries.
-- **RPC authentication**: Each session uses a random 256-bit token. Requests exceeding 1MB are rejected to prevent memory exhaustion.
 - **Worktree-locked**: All commands execute with the project worktree as the working directory.
 
 **Known limitations**:
