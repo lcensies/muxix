@@ -1062,11 +1062,28 @@ impl Config {
                 .toolchain
                 .clone()
                 .or(self.sandbox.toolchain.clone()),
-            host_commands: project
-                .sandbox
-                .host_commands
-                .clone()
-                .or(self.sandbox.host_commands.clone()),
+            // Security: project config can only narrow host_commands, never
+            // widen beyond the global allowlist. This prevents a malicious
+            // repo's .workmux.yaml from granting itself host access.
+            host_commands: match (
+                self.sandbox.host_commands.clone(),
+                project.sandbox.host_commands.clone(),
+            ) {
+                (Some(global), Some(proj)) => {
+                    let global_set: std::collections::HashSet<_> =
+                        global.iter().collect();
+                    let filtered: Vec<String> = proj
+                        .into_iter()
+                        .filter(|cmd| global_set.contains(cmd))
+                        .collect();
+                    Some(filtered)
+                }
+                (global, None) => global,
+                (None, _proj) => {
+                    // No global allowlist: project cannot grant itself access
+                    None
+                }
+            },
             extra_mounts: project
                 .sandbox
                 .extra_mounts
@@ -1806,7 +1823,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sandbox_host_commands_merge() {
+    fn test_sandbox_host_commands_intersection() {
         let global = Config {
             sandbox: SandboxConfig {
                 host_commands: Some(vec!["just".to_string(), "cargo".to_string()]),
@@ -1816,15 +1833,31 @@ mod tests {
         };
         let project = Config {
             sandbox: SandboxConfig {
-                host_commands: Some(vec!["npm".to_string()]),
+                host_commands: Some(vec!["cargo".to_string(), "npm".to_string()]),
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        // Project overrides global
-        assert_eq!(merged.sandbox.host_commands(), &["npm".to_string()]);
+        // Project can only narrow: npm is not in global, so it's filtered out
+        assert_eq!(merged.sandbox.host_commands(), &["cargo".to_string()]);
+    }
+
+    #[test]
+    fn test_sandbox_host_commands_project_cannot_widen() {
+        let global = Config::default(); // no host_commands
+        let project = Config {
+            sandbox: SandboxConfig {
+                host_commands: Some(vec!["rm".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // No global allowlist: project cannot grant itself access
+        assert!(merged.sandbox.host_commands().is_empty());
     }
 
     #[test]
