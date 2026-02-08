@@ -434,6 +434,24 @@ fn handle_spawn_agent(
     }
 }
 
+/// Environment variables allowed to pass through to host-exec child processes.
+/// Everything else is cleared to prevent leaking host secrets.
+const EXEC_ENV_ALLOWLIST: &[&str] = &[
+    "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TERM", "COLORTERM", "LANG", "LC_ALL",
+];
+
+/// Clear the child process environment and re-add only allowed variables.
+/// Prevents host secrets (API keys, tokens, etc.) from leaking to commands
+/// executed on behalf of the sandboxed guest.
+fn apply_sanitized_env(cmd: &mut std::process::Command) {
+    cmd.env_clear();
+    for key in EXEC_ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(key) {
+            cmd.env(key, val);
+        }
+    }
+}
+
 fn handle_exec(
     command: &str,
     args: &[String],
@@ -475,6 +493,7 @@ fn handle_exec(
         cmd.args(["-c", &script, "--", command]);
         cmd.args(args);
         cmd.current_dir(&ctx.worktree_path);
+        apply_sanitized_env(&mut cmd);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -485,6 +504,7 @@ fn handle_exec(
         let mut cmd = Command::new(command);
         cmd.args(args);
         cmd.current_dir(&ctx.worktree_path);
+        apply_sanitized_env(&mut cmd);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
