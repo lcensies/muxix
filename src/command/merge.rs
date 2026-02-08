@@ -95,27 +95,29 @@ fn run_via_rpc(
     ignore_uncommitted: bool,
 ) -> Result<()> {
     use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
+    use std::io::Write;
 
     let mut client = RpcClient::from_env()?;
-    let response = client.call(&RpcRequest::Merge {
+    client.send(&RpcRequest::Merge {
         name: name.to_string(),
         into: into.map(|s| s.to_string()),
         rebase,
         ignore_uncommitted,
     })?;
 
-    match response {
-        RpcResponse::Ok => {
-            println!("Merge completed successfully");
-            Ok(())
+    // Read streaming responses until we get a terminal Ok or Error
+    loop {
+        let response = client.recv()?;
+        match response {
+            RpcResponse::Output { message } => {
+                print!("{}", message);
+                std::io::stdout().flush().ok();
+            }
+            RpcResponse::Ok => return Ok(()),
+            RpcResponse::Error { message } => {
+                anyhow::bail!("{}", message);
+            }
+            _ => {}
         }
-        RpcResponse::Output { message } => {
-            print!("{}", message);
-            Ok(())
-        }
-        RpcResponse::Error { message } => {
-            anyhow::bail!("{}", message);
-        }
-        _ => Ok(()),
     }
 }

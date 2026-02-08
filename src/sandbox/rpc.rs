@@ -262,13 +262,31 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
 
         info!(?request, "RPC request received");
 
-        // Exec requires streaming multiple responses, handle separately
+        // Exec and Merge require streaming multiple responses, handle separately
         if let RpcRequest::Exec {
             ref command,
             ref args,
         } = request
         {
             handle_exec(command, args, ctx, &mut writer)?;
+            continue;
+        }
+
+        if let RpcRequest::Merge {
+            ref name,
+            ref into,
+            rebase,
+            ignore_uncommitted,
+        } = request
+        {
+            handle_merge(
+                name,
+                into.as_deref(),
+                rebase,
+                ignore_uncommitted,
+                &ctx.worktree_path,
+                &mut writer,
+            )?;
             continue;
         }
 
@@ -310,18 +328,10 @@ fn dispatch_request(request: &RpcRequest, ctx: &RpcContext) -> RpcResponse {
             // Handled in handle_connection before dispatch
             unreachable!("Exec is handled directly in handle_connection")
         }
-        RpcRequest::Merge {
-            name,
-            into,
-            rebase,
-            ignore_uncommitted,
-        } => handle_merge(
-            name,
-            into.as_deref(),
-            *rebase,
-            *ignore_uncommitted,
-            &ctx.worktree_path,
-        ),
+        RpcRequest::Merge { .. } => {
+            // Handled in handle_connection before dispatch (needs streaming)
+            unreachable!("Merge is handled directly in handle_connection")
+        }
     }
 }
 
@@ -459,8 +469,9 @@ fn handle_merge(
     rebase: bool,
     ignore_uncommitted: bool,
     worktree_path: &PathBuf,
-) -> RpcResponse {
-    use std::process::Command;
+    writer: &mut impl Write,
+) -> Result<()> {
+    use std::process::{Command, Stdio};
 
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
     let mut cmd = Command::new(exe);
@@ -479,31 +490,87 @@ fn handle_merge(
 
     // Run from the worktree directory so config is found
     cmd.current_dir(worktree_path);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
 
-    match cmd.output() {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let combined = format!("{}{}", stdout, stderr);
-            if combined.trim().is_empty() {
-                RpcResponse::Ok
-            } else {
-                RpcResponse::Output {
-                    message: combined.trim().to_string(),
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            write_response(
+                writer,
+                &RpcResponse::Error {
+                    message: format!("Failed to run workmux merge: {}", e),
+                },
+            )?;
+            return Ok(());
+        }
+    };
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    // Stream stdout and stderr as Output responses
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+
+    let tx_out = tx.clone();
+    let stdout_thread = thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = [0u8; 8192];
+        let mut reader = std::io::BufReader::new(stdout);
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let _ = tx_out.send(data);
                 }
+                Err(_) => break,
             }
         }
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            RpcResponse::Error {
-                message: format!("{}{}", stdout, stderr).trim().to_string(),
+    });
+
+    let tx_err = tx.clone();
+    let stderr_thread = thread::spawn(move || {
+        use std::io::Read;
+        let mut buf = [0u8; 8192];
+        let mut reader = std::io::BufReader::new(stderr);
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let _ = tx_err.send(data);
+                }
+                Err(_) => break,
             }
         }
-        Err(e) => RpcResponse::Error {
-            message: format!("Failed to run workmux merge: {}", e),
-        },
+    });
+
+    drop(tx);
+
+    for chunk in rx {
+        write_response(writer, &RpcResponse::Output { message: chunk })?;
     }
+
+    stdout_thread.join().ok();
+    stderr_thread.join().ok();
+
+    let status = child.wait()?;
+    if status.success() {
+        write_response(writer, &RpcResponse::Ok)?;
+    } else {
+        write_response(
+            writer,
+            &RpcResponse::Error {
+                message: format!(
+                    "workmux merge exited with code {}",
+                    status.code().unwrap_or(1)
+                ),
+            },
+        )?;
+    }
+
+    Ok(())
 }
 
 /// Environment variables allowed to pass through to host-exec child processes.
