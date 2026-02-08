@@ -425,6 +425,7 @@ alias wm='workmux'
   worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
+- [`config edit`](#workmux-config-edit) - Edit the global configuration file
 - [`init`](#workmux-init) - Generate configuration file
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
@@ -1093,6 +1094,20 @@ api-work    -      ✓    -         ~/project__worktrees/api-work
 - `✓` in MUX column = multiplexer window exists for this worktree
 - `●` in UNMERGED column = branch has commits not merged into main
 - `-` = not applicable
+
+---
+
+### `workmux config edit`
+
+Opens the global configuration file (`~/.config/workmux/config.yaml`) in your
+preferred editor. Uses `$VISUAL`, `$EDITOR`, or falls back to `vi`. Creates the
+file with commented-out defaults if it doesn't exist yet.
+
+---
+
+### `workmux config path`
+
+Prints the path to the global configuration file. Useful for scripting.
 
 ---
 

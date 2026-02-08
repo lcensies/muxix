@@ -162,18 +162,8 @@ pub fn config_has_pua(config: &crate::config::Config) -> bool {
 }
 
 /// Get the path to the global config file.
-/// Prefers existing .yml file to avoid shadowing, otherwise defaults to .yaml.
 fn global_config_path() -> Option<PathBuf> {
-    let home = home::home_dir()?;
-    let yaml = home.join(".config/workmux/config.yaml");
-    let yml = home.join(".config/workmux/config.yml");
-
-    // Prefer existing .yml file to avoid shadowing user's config
-    if yml.exists() && !yaml.exists() {
-        Some(yml)
-    } else {
-        Some(yaml)
-    }
+    crate::config::global_config_path()
 }
 
 /// Prompt the user to indicate if they have nerdfonts installed.

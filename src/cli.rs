@@ -425,6 +425,9 @@ enum Commands {
         diff: bool,
     },
 
+    /// Manage global configuration
+    Config(command::config::ConfigArgs),
+
     /// Claude Code integration commands
     Claude {
         #[command(subcommand)]
@@ -614,6 +617,7 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Dashboard { preview_size, diff } => command::dashboard::run(preview_size, diff),
+        Commands::Config(args) => command::config::run(args),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },

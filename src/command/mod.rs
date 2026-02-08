@@ -3,6 +3,7 @@ pub mod args;
 pub mod capture;
 pub mod changelog;
 pub mod close;
+pub mod config;
 pub mod dashboard;
 pub mod docs;
 pub mod exec;

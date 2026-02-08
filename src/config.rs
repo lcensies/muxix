@@ -773,6 +773,21 @@ pub fn validate_panes_config(panes: &[PaneConfig]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Get the path to the global config file.
+/// Prefers existing .yml file to avoid shadowing, otherwise defaults to .yaml.
+pub fn global_config_path() -> Option<PathBuf> {
+    let home = home::home_dir()?;
+    let yaml = home.join(".config/workmux/config.yaml");
+    let yml = home.join(".config/workmux/config.yml");
+
+    // Prefer existing .yml file to avoid shadowing user's config
+    if yml.exists() && !yaml.exists() {
+        Some(yml)
+    } else {
+        Some(yaml)
+    }
+}
+
 impl Config {
     /// Load and merge global and project configurations.
     pub fn load(cli_agent: Option<&str>) -> anyhow::Result<Self> {

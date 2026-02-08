@@ -16,6 +16,7 @@ description: Complete reference for all workmux commands
 | [`close`](./close)             | Close a worktree's tmux window (keeps worktree) |
 | [`path`](./path)               | Get the filesystem path of a worktree           |
 | [`dashboard`](./dashboard)     | TUI dashboard for monitoring agents             |
+| [`config edit`](./config)      | Edit the global configuration file              |
 | [`init`](./init)               | Generate configuration file                     |
 | [`claude prune`](./claude)     | Clean up stale Claude Code entries              |
 | [`completions`](./completions) | Generate shell completions                      |

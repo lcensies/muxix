@@ -6,7 +6,7 @@ description: Configure workmux with global defaults and project-specific setting
 
 workmux uses a two-level configuration system:
 
-- **Global** (`~/.config/workmux/config.yaml`): Personal defaults for all projects
+- **Global** (`~/.config/workmux/config.yaml`): Personal defaults for all projects. Run `workmux config edit` to open it in your editor.
 - **Project** (`.workmux.yaml`): Project-specific overrides
 
 Project settings override global settings. When you run workmux from a subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing nested configs for monorepos. See [Monorepos](./monorepos.md#nested-configuration) for details. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
