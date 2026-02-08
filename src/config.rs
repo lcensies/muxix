@@ -1071,6 +1071,16 @@ impl Config {
             ) {
                 (Some(global), Some(proj)) => {
                     let global_set: std::collections::HashSet<_> = global.iter().collect();
+                    let rejected: Vec<&String> = proj
+                        .iter()
+                        .filter(|cmd| !global_set.contains(cmd))
+                        .collect();
+                    if !rejected.is_empty() {
+                        tracing::warn!(
+                            commands = ?rejected,
+                            "project requests host_commands not in global allowlist, ignoring"
+                        );
+                    }
                     let filtered: Vec<String> = proj
                         .into_iter()
                         .filter(|cmd| global_set.contains(cmd))
@@ -1078,8 +1088,15 @@ impl Config {
                     Some(filtered)
                 }
                 (global, None) => global,
-                (None, _proj) => {
+                (None, proj) => {
                     // No global allowlist: project cannot grant itself access
+                    if let Some(ref cmds) = proj {
+                        tracing::warn!(
+                            commands = ?cmds,
+                            "project requests host_commands but no global allowlist is configured, ignoring -- \
+                            add host_commands to your global config (~/.config/workmux/config.yaml) to enable"
+                        );
+                    }
                     None
                 }
             },
