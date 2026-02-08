@@ -276,14 +276,17 @@ Host-exec is designed to be secure against a compromised agent inside the sandbo
 - **Command allowlist**: Only commands explicitly listed in `host_commands` (or built-in) can be executed. The allowlist is enforced on the host side.
 - **Strict command names**: Command names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. No path separators, shell metacharacters, or special names (`.`, `..`) are accepted.
 - **No shell injection**: When toolchain wrapping is active (devbox/nix), command arguments are passed as positional parameters to bash (`"$@"`), never interpolated into a shell string. Without toolchain wrapping, commands are executed directly via the OS with no shell involved.
-- **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through -- host secrets like API keys are not inherited.
+- **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through -- host secrets like API keys are not inherited. `PATH` is normalized to absolute entries only to prevent relative-path hijacking.
+- **Filesystem sandbox**: On macOS, child processes run under `sandbox-exec` (Seatbelt), which denies access to sensitive directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.docker`, keychains, browser data) and denies writes to `$HOME` except toolchain caches (`.cache`, `.cargo`, `.rustup`, `.npm`). On Linux, `bwrap` (Bubblewrap) provides similar isolation with a read-only root filesystem, tmpfs over secret directories, and a writable worktree bind mount. If `bwrap` is not installed on Linux, commands run without filesystem sandboxing (with a warning).
+- **Config intersection**: Project-level `host_commands` can only narrow the global allowlist, never widen it. A malicious `.workmux.yaml` cannot grant itself host-exec access to commands not already in your global config.
 - **RPC authentication**: Each session uses a random 256-bit token. Requests exceeding 1MB are rejected to prevent memory exhaustion.
 - **Worktree-locked**: All commands execute with the project worktree as the working directory.
 
 **Known limitations**:
 
-- Allowlisted commands can be invoked with arbitrary arguments. If you allowlist `cargo`, the agent can run any cargo subcommand. Only allowlist commands you trust the agent to use freely.
-- The `host_commands` config is accepted from both global and project-level config. A malicious repository could include a `.workmux.yaml` that sets `host_commands`. Only clone and work in repositories you trust.
+- Allowlisted commands that read project files (build tools like `just`, `cargo`, `make`) effectively act as code interpreters. A compromised agent can write a malicious `justfile` and then invoke `just`. The filesystem sandbox mitigates this by blocking access to host secrets and restricting writes, but the child process still has network access (required for package managers).
+- `sandbox-exec` is deprecated on macOS but remains functional. Apple has not announced a replacement for CLI tools.
+- On Linux, `bwrap` must be installed separately (`apt install bubblewrap`). Without it, only environment sanitization is applied.
 
 ### Custom provisioning
 

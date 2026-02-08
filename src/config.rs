@@ -1070,8 +1070,7 @@ impl Config {
                 project.sandbox.host_commands.clone(),
             ) {
                 (Some(global), Some(proj)) => {
-                    let global_set: std::collections::HashSet<_> =
-                        global.iter().collect();
+                    let global_set: std::collections::HashSet<_> = global.iter().collect();
                     let filtered: Vec<String> = proj
                         .into_iter()
                         .filter(|cmd| global_set.contains(cmd))

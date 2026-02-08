@@ -3,9 +3,9 @@
 mod container;
 pub mod freshness;
 pub mod guest;
+pub(crate) mod host_exec_sandbox;
 pub mod lima;
 pub mod rpc;
-pub(crate) mod host_exec_sandbox;
 pub(crate) mod shims;
 pub(crate) mod toolchain;
 
