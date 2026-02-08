@@ -259,9 +259,18 @@ Paths starting with `~` are expanded to the user's home directory. When `guest_p
 The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. This works with both Lima and container backends. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox.
 
 ```yaml
+# Global config (~/.config/workmux/config.yaml) -- defines what's allowed
 sandbox:
   host_commands: ["just", "cargo", "npm"]
 ```
+
+```yaml
+# Project config (.workmux.yaml) -- can only narrow the global list
+sandbox:
+  host_commands: ["just"]  # only "just" is proxied for this project
+```
+
+The global config defines your trusted set of host commands. Project config can request a subset but cannot add commands not in the global list. This prevents a cloned repository from granting itself host access via its `.workmux.yaml`. If no global `host_commands` is configured, project-level settings are ignored. workmux logs a warning when project commands are rejected.
 
 When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
