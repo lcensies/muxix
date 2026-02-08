@@ -493,7 +493,7 @@ fn handle_exec(
         None
     };
 
-    let mut child = if let Some(script) = wrapper_script {
+    let spawn_result = if let Some(script) = wrapper_script {
         // Safe toolchain wrapping: command and args are passed as positional
         // parameters to bash, never interpolated into the shell string.
         // bash -c '<script>' -- <command> <arg1> <arg2> ...
@@ -506,7 +506,6 @@ fn handle_exec(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd.spawn()
-            .with_context(|| format!("Failed to spawn wrapped command: {}", command))?
     } else {
         // Direct execution: no shell involved, args passed as argv
         let mut cmd = Command::new(command);
@@ -517,7 +516,15 @@ fn handle_exec(
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd.spawn()
-            .with_context(|| format!("Failed to spawn command: {}", command))?
+    };
+
+    let mut child = match spawn_result {
+        Ok(child) => child,
+        Err(e) => {
+            warn!(command, error = %e, "failed to spawn command");
+            write_response(writer, &RpcResponse::ExecExit { code: 127 })?;
+            return Ok(());
+        }
     };
 
     let mut stdout = child.stdout.take().unwrap();
@@ -875,5 +882,165 @@ mod tests {
             RpcResponse::Error { message } => assert!(message.contains("Invalid token")),
             other => panic!("Expected Error, got {:?}", other),
         }
+    }
+
+    // ── Host-exec integration tests ─────────────────────────────────────
+
+    /// Start an RPC server with the given allowed commands and return a
+    /// connected client. Uses a temp dir as the worktree path.
+    fn start_exec_server(
+        allowed: &[&str],
+    ) -> (RpcClient, tempfile::TempDir, thread::JoinHandle<()>) {
+        let server = RpcServer::bind().unwrap();
+        let port = server.port();
+        let token = generate_token();
+        let tmp = tempfile::tempdir().unwrap();
+
+        let mux = multiplexer::create_backend(multiplexer::BackendType::Tmux);
+        let ctx = Arc::new(RpcContext {
+            pane_id: "%0".to_string(),
+            worktree_path: tmp.path().to_path_buf(),
+            mux,
+            token: token.clone(),
+            allowed_commands: allowed.iter().map(|s| s.to_string()).collect(),
+            detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
+        });
+
+        let handle = server.spawn(ctx);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let client = RpcClient::connect("127.0.0.1", port, &token).unwrap();
+        (client, tmp, handle)
+    }
+
+    /// Send an exec request and collect all streaming responses into
+    /// (stdout, stderr, exit_code).
+    fn exec_collect(client: &mut RpcClient, command: &str, args: &[&str]) -> (String, String, i32) {
+        client
+            .send(&RpcRequest::Exec {
+                command: command.to_string(),
+                args: args.iter().map(|s| s.to_string()).collect(),
+            })
+            .unwrap();
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        loop {
+            match client.recv().unwrap() {
+                RpcResponse::ExecOutput { data } => stdout.push_str(&data),
+                RpcResponse::ExecError { data } => stderr.push_str(&data),
+                RpcResponse::ExecExit { code } => return (stdout, stderr, code),
+                other => panic!("Unexpected response: {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn test_exec_allowed_command() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["hello", "world"]);
+        assert_eq!(code, 0);
+        assert_eq!(stdout.trim(), "hello world");
+    }
+
+    #[test]
+    fn test_exec_disallowed_command() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (_stdout, _stderr, code) = exec_collect(&mut client, "ls", &[]);
+        assert_eq!(code, 127, "disallowed command should return 127");
+    }
+
+    #[test]
+    fn test_exec_invalid_command_name() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+
+        // Shell metacharacters in command name
+        let (_stdout, _stderr, code) = exec_collect(&mut client, "echo;whoami", &[]);
+        assert_eq!(code, 127);
+
+        // Path traversal
+        let (_stdout, _stderr, code) = exec_collect(&mut client, "/bin/echo", &[]);
+        assert_eq!(code, 127);
+    }
+
+    #[test]
+    fn test_exec_shell_metacharacters_in_args_not_interpreted() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+
+        // $(whoami) should be printed literally, not expanded
+        let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["$(whoami)"]);
+        assert_eq!(code, 0);
+        assert_eq!(stdout.trim(), "$(whoami)");
+
+        // Backtick substitution should be literal
+        let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["`whoami`"]);
+        assert_eq!(code, 0);
+        assert_eq!(stdout.trim(), "`whoami`");
+
+        // Semicolons should be literal
+        let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["hello; whoami"]);
+        assert_eq!(code, 0);
+        assert_eq!(stdout.trim(), "hello; whoami");
+    }
+
+    #[test]
+    fn test_exec_env_sanitized() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["env"]);
+        let (stdout, _stderr, code) = exec_collect(&mut client, "env", &[]);
+        assert_eq!(code, 0);
+
+        // The RPC token is in our process env but should NOT leak to child
+        let env_lines: Vec<&str> = stdout.lines().collect();
+        assert!(
+            !env_lines.iter().any(|l| l.starts_with("WM_RPC_TOKEN=")),
+            "WM_RPC_TOKEN should not be in child environment"
+        );
+
+        // PATH should still be present (it's in the allowlist)
+        assert!(
+            env_lines.iter().any(|l| l.starts_with("PATH=")),
+            "PATH should be in child environment"
+        );
+    }
+
+    #[test]
+    fn test_exec_nonexistent_command() {
+        let (mut client, _tmp, _handle) =
+            start_exec_server(&["this-command-definitely-does-not-exist-xyz"]);
+        let (_stdout, _stderr, code) = exec_collect(
+            &mut client,
+            "this-command-definitely-does-not-exist-xyz",
+            &[],
+        );
+        // Should fail to spawn, not hang
+        assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn test_exec_exit_code_propagated() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["sh"]);
+        let (_stdout, _stderr, code) = exec_collect(&mut client, "sh", &["-c", "exit 42"]);
+        assert_eq!(code, 42, "exit code should be propagated from child");
+    }
+
+    #[test]
+    fn test_exec_stderr_captured() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["sh"]);
+        let (_stdout, stderr, code) = exec_collect(&mut client, "sh", &["-c", "echo oops >&2"]);
+        assert_eq!(code, 0);
+        assert_eq!(stderr.trim(), "oops");
+    }
+
+    #[test]
+    fn test_exec_multiple_commands_on_same_connection() {
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+
+        let (stdout1, _, code1) = exec_collect(&mut client, "echo", &["first"]);
+        assert_eq!(code1, 0);
+        assert_eq!(stdout1.trim(), "first");
+
+        let (stdout2, _, code2) = exec_collect(&mut client, "echo", &["second"]);
+        assert_eq!(code2, 0);
+        assert_eq!(stdout2.trim(), "second");
     }
 }
