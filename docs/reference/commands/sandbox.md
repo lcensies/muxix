@@ -1,10 +1,10 @@
 ---
-description: Manage container sandbox settings
+description: Manage sandbox backends and tooling
 ---
 
 # sandbox
 
-Commands for managing container sandbox functionality.
+Commands for managing sandbox functionality across container and Lima backends.
 
 ## Container commands
 
@@ -203,4 +203,4 @@ workmux sandbox pull
 
 ## See also
 
-- [Container sandbox guide](/guide/sandbox) for full setup instructions
+- [Sandbox guide](/guide/sandbox/) for full setup instructions

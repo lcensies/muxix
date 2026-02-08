@@ -81,6 +81,15 @@ export default defineConfig({
         ],
       },
       {
+        text: "Sandbox",
+        items: [
+          { text: "Overview", link: "/guide/sandbox/" },
+          { text: "Container backend", link: "/guide/sandbox/container" },
+          { text: "Lima VM backend", link: "/guide/sandbox/lima" },
+          { text: "Shared features", link: "/guide/sandbox/features" },
+        ],
+      },
+      {
         text: "Dashboard",
         items: [
           { text: "Overview", link: "/guide/dashboard/" },
