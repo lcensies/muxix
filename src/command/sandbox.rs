@@ -14,6 +14,25 @@ use crate::sandbox::lima;
 use crate::sandbox::lima::{LimaInstance, parse_lima_instances};
 
 #[derive(Debug, Args)]
+#[command(help_template = "\
+{about-with-newline}
+{usage-heading} {usage}
+
+Container commands:
+  build            Build the sandbox container image locally
+  pull             Pull the latest sandbox image from the container registry
+  init-dockerfile  Export customizable Dockerfile templates
+  shell            Start an interactive shell in a container sandbox
+
+Lima commands:
+  stop             Stop Lima VMs to free resources
+  prune            Delete unused Lima VMs to reclaim disk space
+
+General commands:
+  install-dev      Cross-compile and install workmux into sandboxes
+  help             Print this message or the help of the given subcommand(s)
+
+{options}")]
 pub struct SandboxArgs {
     #[command(subcommand)]
     pub command: SandboxCommand,
