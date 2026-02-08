@@ -265,9 +265,25 @@ sandbox:
 
 When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
-Some commands are built-in and always available as host-exec shims without configuration (e.g., `afplay` for sound notifications). Only commands listed in `host_commands` or built-in are allowed -- there is no wildcard or auto-discovery. Commands containing path separators are rejected, and execution is locked to the project's worktree directory.
+Some commands are built-in and always available as host-exec shims without configuration (e.g., `afplay` for sound notifications). Only commands listed in `host_commands` or built-in are allowed -- there is no wildcard or auto-discovery.
 
 For Lima VMs: This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the *agent command* itself (e.g., `claude`), while `host_commands` lets the agent invoke *other* tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
+
+#### Security model
+
+Host-exec is designed to be secure against a compromised agent inside the sandbox:
+
+- **Command allowlist**: Only commands explicitly listed in `host_commands` (or built-in) can be executed. The allowlist is enforced on the host side.
+- **Strict command names**: Command names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. No path separators, shell metacharacters, or special names (`.`, `..`) are accepted.
+- **No shell injection**: When toolchain wrapping is active (devbox/nix), command arguments are passed as positional parameters to bash (`"$@"`), never interpolated into a shell string. Without toolchain wrapping, commands are executed directly via the OS with no shell involved.
+- **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through -- host secrets like API keys are not inherited.
+- **RPC authentication**: Each session uses a random 256-bit token. Requests exceeding 1MB are rejected to prevent memory exhaustion.
+- **Worktree-locked**: All commands execute with the project worktree as the working directory.
+
+**Known limitations**:
+
+- Allowlisted commands can be invoked with arbitrary arguments. If you allowlist `cargo`, the agent can run any cargo subcommand. Only allowlist commands you trust the agent to use freely.
+- The `host_commands` config is accepted from both global and project-level config. A malicious repository could include a `.workmux.yaml` that sets `host_commands`. Only clone and work in repositories you trust.
 
 ### Custom provisioning
 
