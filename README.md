@@ -24,6 +24,10 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
+📚 **Want more?** Check out the
+[full documentation](https://workmux.raine.dev/guide/) for guides and
+configuration reference.
+
 📖 **New to workmux?** Read the
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
 quick overview.
