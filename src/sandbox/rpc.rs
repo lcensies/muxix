@@ -437,7 +437,15 @@ fn handle_spawn_agent(
 /// Environment variables allowed to pass through to host-exec child processes.
 /// Everything else is cleared to prevent leaking host secrets.
 const EXEC_ENV_ALLOWLIST: &[&str] = &[
-    "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TERM", "COLORTERM", "LANG", "LC_ALL",
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "TMPDIR",
+    "TERM",
+    "COLORTERM",
+    "LANG",
+    "LC_ALL",
 ];
 
 /// Clear the child process environment and re-add only allowed variables.
@@ -839,12 +847,7 @@ mod tests {
 
         let result = read_bounded_line(&mut reader, &mut buf);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("exceeds")
-        );
+        assert!(result.unwrap_err().to_string().contains("exceeds"));
     }
 
     #[test]
