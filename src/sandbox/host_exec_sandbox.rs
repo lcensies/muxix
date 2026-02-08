@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Directories under $HOME that are denied read access.
 /// These contain credentials, keys, and other secrets.
@@ -25,9 +25,9 @@ const DENY_READ_DIRS: &[&str] = &[
     ".azure",
     ".config/gcloud",
     ".docker",
-    ".npmrc",        // can contain auth tokens
-    ".pypirc",       // can contain auth tokens
-    ".netrc",        // network credentials
+    ".npmrc",  // can contain auth tokens
+    ".pypirc", // can contain auth tokens
+    ".netrc",  // network credentials
     ".gem/credentials",
 ];
 
@@ -83,6 +83,7 @@ pub fn spawn_sandboxed(
     }
 }
 
+#[allow(dead_code)] // used only on platforms without sandbox-exec/bwrap
 fn spawn_unsandboxed(
     program: &str,
     args: &[String],
@@ -216,7 +217,9 @@ fn spawn_linux(
     if which::which("bwrap").is_ok() {
         spawn_bwrap(program, args, worktree, envs)
     } else {
-        warn!("bwrap not found, running host-exec unsandboxed -- install bubblewrap for filesystem isolation");
+        warn!(
+            "bwrap not found, running host-exec unsandboxed -- install bubblewrap for filesystem isolation"
+        );
         spawn_unsandboxed(program, args, worktree, envs)
     }
 }

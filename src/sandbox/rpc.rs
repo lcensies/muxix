@@ -856,6 +856,39 @@ mod tests {
     }
 
     #[test]
+    fn test_sanitized_env_normalizes_path() {
+        // Test the normalization logic directly without modifying env
+        // (set_var is unsafe in Rust 2024 edition due to thread safety)
+        let envs = sanitized_env();
+        if let Some(path) = envs.get("PATH") {
+            for entry in path.split(':') {
+                assert!(
+                    entry.starts_with('/'),
+                    "PATH should only have absolute entries, found: '{}'",
+                    entry
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_sanitized_env_excludes_secrets() {
+        let envs = sanitized_env();
+        // Common secret env vars should never appear
+        assert!(!envs.contains_key("AWS_SECRET_ACCESS_KEY"));
+        assert!(!envs.contains_key("GITHUB_TOKEN"));
+        assert!(!envs.contains_key("WM_RPC_TOKEN"));
+        // Only allowlisted keys should be present
+        for key in envs.keys() {
+            assert!(
+                EXEC_ENV_ALLOWLIST.contains(&key.as_str()),
+                "unexpected env key in sanitized env: {}",
+                key
+            );
+        }
+    }
+
+    #[test]
     fn test_read_bounded_line_rejects_oversized() {
         // Create a line that exceeds MAX_REQUEST_LINE
         let huge = "x".repeat(MAX_REQUEST_LINE + 1);
@@ -1011,6 +1044,40 @@ mod tests {
         assert!(
             env_lines.iter().any(|l| l.starts_with("PATH=")),
             "PATH should be in child environment"
+        );
+
+        // PATH should contain only absolute entries (normalized)
+        let path_line = env_lines.iter().find(|l| l.starts_with("PATH=")).unwrap();
+        let path_val = &path_line["PATH=".len()..];
+        for entry in path_val.split(':') {
+            assert!(
+                entry.starts_with('/'),
+                "PATH entry should be absolute: {}",
+                entry
+            );
+        }
+    }
+
+    #[test]
+    fn test_exec_sandbox_blocks_ssh_read() {
+        // This test verifies the sandbox-exec integration on macOS.
+        // The exec'd process should not be able to read ~/.ssh/
+        let (mut client, _tmp, _handle) = start_exec_server(&["ls"]);
+        let home = std::env::var("HOME").unwrap();
+        let ssh_dir = format!("{}/.ssh", home);
+
+        // If ~/.ssh doesn't exist, skip (CI environments)
+        if !std::path::Path::new(&ssh_dir).exists() {
+            return;
+        }
+
+        let (_stdout, stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
+        // sandbox-exec should deny access, causing ls to fail
+        assert_ne!(
+            code,
+            0,
+            "ls ~/.ssh should fail under sandbox (stderr: {})",
+            stderr.trim()
         );
     }
 
