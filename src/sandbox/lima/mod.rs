@@ -63,14 +63,14 @@ fn hash_key(key: &str, len: usize) -> String {
 ///
 /// For project isolation, the name includes the project directory name for
 /// human readability: `wm-<project>-<hash8>`.
-/// For user isolation, the name is a hash of "global": `wm-<hash8>`.
+/// For shared isolation, the name is a hash of "global": `wm-<hash8>`.
 pub fn instance_name(
     worktree: &Path,
     isolation: IsolationLevel,
     _config: &Config,
 ) -> Result<String> {
     let name = match isolation {
-        IsolationLevel::User => {
+        IsolationLevel::Shared => {
             // Single global VM -- same format as legacy for compatibility
             let hash = hash_key("global", 8);
             format!("{}{}", VM_PREFIX, hash)

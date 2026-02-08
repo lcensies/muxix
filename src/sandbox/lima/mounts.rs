@@ -184,16 +184,16 @@ pub fn generate_mounts(
     let mut mounts = Vec::new();
 
     match isolation {
-        IsolationLevel::User => {
+        IsolationLevel::Shared => {
             let projects_dir = config.sandbox.lima.projects_dir.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(
-                    "User isolation requires 'sandbox.lima.projects_dir' in config.\n\
+                    "Shared isolation requires 'sandbox.lima.projects_dir' in config.\n\
                          All projects must be under a single root directory.\n\
                          \n\
                          Example config:\n\
                          sandbox:\n  \
                            lima:\n    \
-                             isolation: user\n    \
+                             isolation: shared\n    \
                              projects_dir: /Users/me/code"
                 )
             })?;

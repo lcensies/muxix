@@ -300,8 +300,8 @@ impl SandboxRuntime {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum IsolationLevel {
-    /// One VM for all projects (fastest)
-    User,
+    /// Single shared VM for all projects (fastest)
+    Shared,
     /// One VM per git repository (default, balanced)
     #[default]
     Project,
@@ -418,7 +418,7 @@ pub struct LimaConfig {
     #[serde(default)]
     pub isolation: Option<IsolationLevel>,
 
-    /// Projects directory for user isolation (required when isolation: user)
+    /// Projects directory for shared isolation (required when isolation: shared)
     #[serde(default)]
     pub projects_dir: Option<PathBuf>,
 
@@ -1991,7 +1991,7 @@ extra_mounts:
 enabled: true
 backend: lima
 lima:
-  isolation: user
+  isolation: shared
   cpus: 16
   memory: 16GiB
 container:
@@ -2000,7 +2000,7 @@ container:
         let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
 
         assert!(config.is_enabled());
-        assert_eq!(config.lima.isolation(), super::IsolationLevel::User);
+        assert_eq!(config.lima.isolation(), super::IsolationLevel::Shared);
         assert_eq!(config.lima.cpus(), 16);
         assert_eq!(config.lima.memory(), "16GiB");
         assert_eq!(config.container.runtime(), SandboxRuntime::Podman);
@@ -2009,7 +2009,7 @@ container:
     #[test]
     fn sandbox_lima_config_merge() {
         let global = LimaConfig {
-            isolation: Some(super::IsolationLevel::User),
+            isolation: Some(super::IsolationLevel::Shared),
             cpus: Some(4),
             memory: Some("4GiB".to_string()),
             ..Default::default()
@@ -2025,7 +2025,7 @@ container:
         assert_eq!(merged.cpus(), 8);
         assert_eq!(merged.provision_script(), Some("echo project"));
         // Global fallback
-        assert_eq!(merged.isolation(), super::IsolationLevel::User);
+        assert_eq!(merged.isolation(), super::IsolationLevel::Shared);
         assert_eq!(merged.memory(), "4GiB");
     }
 

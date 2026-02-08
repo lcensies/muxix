@@ -217,8 +217,8 @@ sandbox:
 | Option                    | Default            | Description                                                                          |
 | ------------------------- | ------------------ | ------------------------------------------------------------------------------------ |
 | `backend`                 | `container`        | Set to `lima` for VM sandboxing                                                      |
-| `lima.isolation`          | `project`          | `project` (one VM per repo) or `user` (single global VM)                             |
-| `lima.projects_dir`       | -                  | Required for `user` isolation: parent directory of all projects                      |
+| `lima.isolation`          | `project`          | `project` (one VM per repo) or `shared` (single global VM)                           |
+| `lima.projects_dir`       | -                  | Required for `shared` isolation: parent directory of all projects                    |
 | `image`                   | Debian 12          | Custom qcow2 image URL or `file://` path                                             |
 | `lima.skip_default_provision` | `false`        | Skip built-in provisioning (system deps + tool install)                              |
 | `lima.cpus`               | `4`                | Number of CPUs for Lima VMs                                                          |
@@ -293,7 +293,7 @@ sandbox:
 **Important:**
 
 - Provisioning only runs when the VM is first created. Changing the script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
-- With `lima.isolation: user` (shared VM), only the first project to create the VM gets its provision script run. Use `lima.isolation: project` (default) if different projects need different provisioning.
+- With `lima.isolation: shared`, only the first project to create the VM gets its provision script run. Use `lima.isolation: project` (default) if different projects need different provisioning.
 - The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
 
 ### Custom images
