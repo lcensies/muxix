@@ -12,8 +12,11 @@ pub fn shell_escape(s: &str) -> String {
 ///
 /// Returns the string unchanged if it contains only safe characters
 /// (alphanumeric, `-`, `_`, `.`, `/`). Otherwise wraps it in single quotes
-/// with internal single quotes escaped.
+/// with internal single quotes escaped. Empty strings return `''`.
 pub fn shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
     if s.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/')
     {
@@ -65,5 +68,10 @@ mod tests {
     #[test]
     fn test_shell_quote_escapes_single_quotes() {
         assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_shell_quote_empty_string() {
+        assert_eq!(shell_quote(""), "''");
     }
 }
