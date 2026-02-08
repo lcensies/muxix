@@ -33,7 +33,9 @@ Paths starting with `~` are expanded to the user's home directory. When `guest_p
 The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox. Running builds on the host is also faster since both backends use virtualization on macOS, and filesystem I/O through mount sharing adds overhead for build-heavy workloads.
 
 ::: warning Evaluate your threat model
-Host command proxying is primarily a convenience feature that exists so you don't have to install your entire build toolchain inside each container or VM. It should not necessarily be expected to provide airtight confinement. While workmux applies multiple layers of protection, any allowlisted command is effectively a code interpreter: a compromised agent can write a malicious build file and then invoke the tool. The filesystem sandbox blocks access to host secrets and restricts writes, but child processes retain network access and run on the host. If your threat model requires strict isolation with no host execution, don't enable `host_commands`.
+Host command proxying is primarily a convenience feature that exists so you don't have to install your entire build toolchain inside each container or VM. It should not necessarily be expected to provide airtight confinement.
+
+While workmux applies multiple layers of protection, any allowlisted command is effectively a code interpreter: a compromised agent can write a malicious build file and then invoke the tool. The filesystem sandbox blocks access to host secrets and restricts writes, but child processes retain network access and run on the host. If your threat model requires strict isolation with no host execution, don't enable `host_commands`.
 :::
 
 ```yaml
