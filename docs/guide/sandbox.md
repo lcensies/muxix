@@ -72,14 +72,14 @@ sandbox:
 
 ## Configuration
 
-| Option               | Default            | Description                              |
-| -------------------- | ------------------ | ---------------------------------------- |
-| `enabled`            | `false`            | Enable container sandboxing              |
-| `container.runtime`  | `docker`           | Container runtime: `docker` or `podman`  |
-| `target`             | `agent`            | Which panes to sandbox: `agent` or `all` |
-| `image`              | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
-| `env_passthrough`    | `["GITHUB_TOKEN"]` | Environment variables to pass through    |
-| `extra_mounts`       | `[]`               | Additional host paths to mount into the sandbox (read-only by default) |
+| Option              | Default                                 | Description                                                            |
+| ------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
+| `enabled`           | `false`                                 | Enable container sandboxing                                            |
+| `container.runtime` | `docker`                                | Container runtime: `docker` or `podman`                                |
+| `target`            | `agent`                                 | Which panes to sandbox: `agent` or `all`                               |
+| `image`             | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent)             |
+| `env_passthrough`   | `["GITHUB_TOKEN"]`                      | Environment variables to pass through                                  |
+| `extra_mounts`      | `[]`                                    | Additional host paths to mount into the sandbox (read-only by default) |
 
 ### Example configurations
 
@@ -134,14 +134,14 @@ docker run --rm -it \
 
 ### What's mounted
 
-| Mount                    | Access     | Purpose                              |
-| ------------------------ | ---------- | ------------------------------------ |
-| Worktree directory       | read-write | Source code                          |
-| Main worktree            | read-write | Symlink resolution (e.g., CLAUDE.md) |
-| Main `.git`              | read-write | Git operations                       |
-| `~/.claude-sandbox.json` | read-write | Agent config                         |
-| `~/.claude/`             | read-write | Agent settings                       |
-| `extra_mounts` entries   | read-only* | User-configured paths                |
+| Mount                    | Access      | Purpose                              |
+| ------------------------ | ----------- | ------------------------------------ |
+| Worktree directory       | read-write  | Source code                          |
+| Main worktree            | read-write  | Symlink resolution (e.g., CLAUDE.md) |
+| Main `.git`              | read-write  | Git operations                       |
+| `~/.claude-sandbox.json` | read-write  | Agent config                         |
+| `~/.claude/`             | read-write  | Agent settings                       |
+| `extra_mounts` entries   | read-only\* | User-configured paths                |
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
@@ -214,21 +214,21 @@ sandbox:
       sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option                    | Default            | Description                                                                          |
-| ------------------------- | ------------------ | ------------------------------------------------------------------------------------ |
-| `backend`                 | `container`        | Set to `lima` for VM sandboxing                                                      |
-| `lima.isolation`          | `project`          | `project` (one VM per repo) or `shared` (single global VM)                           |
-| `lima.projects_dir`       | -                  | Required for `shared` isolation: parent directory of all projects                    |
-| `image`                   | Debian 12          | Custom qcow2 image URL or `file://` path                                             |
-| `lima.skip_default_provision` | `false`        | Skip built-in provisioning (system deps + tool install)                              |
-| `lima.cpus`               | `4`                | Number of CPUs for Lima VMs                                                          |
-| `lima.memory`             | `4GiB`             | Memory for Lima VMs                                                                  |
-| `lima.disk`               | `100GiB`           | Disk size for Lima VMs                                                               |
-| `lima.provision`          | -                  | Custom user-mode shell script run once at VM creation after built-in steps           |
-| `toolchain`               | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`  |
-| `host_commands`           | `[]`               | Commands to proxy from guest to host via RPC (e.g., `["just", "cargo"]`)             |
-| `env_passthrough`         | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                      |
-| `extra_mounts`            | `[]`               | Additional host paths to mount into the sandbox (read-only by default)               |
+| Option                        | Default            | Description                                                                        |
+| ----------------------------- | ------------------ | ---------------------------------------------------------------------------------- |
+| `backend`                     | `container`        | Set to `lima` for VM sandboxing                                                    |
+| `lima.isolation`              | `project`          | `project` (one VM per repo) or `shared` (single global VM)                         |
+| `lima.projects_dir`           | -                  | Required for `shared` isolation: parent directory of all projects                  |
+| `image`                       | Debian 12          | Custom qcow2 image URL or `file://` path                                           |
+| `lima.skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                            |
+| `lima.cpus`                   | `4`                | Number of CPUs for Lima VMs                                                        |
+| `lima.memory`                 | `4GiB`             | Memory for Lima VMs                                                                |
+| `lima.disk`                   | `100GiB`           | Disk size for Lima VMs                                                             |
+| `lima.provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps         |
+| `toolchain`                   | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake` |
+| `host_commands`               | `[]`               | Commands to proxy from guest to host via RPC (e.g., `["just", "cargo"]`)           |
+| `env_passthrough`             | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM                                    |
+| `extra_mounts`                | `[]`               | Additional host paths to mount into the sandbox (read-only by default)             |
 
 VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `memory`, `disk`, `provision`, `skip_default_provision`) are nested under `lima`. Settings shared by both backends (`toolchain`, `host_commands`, `env_passthrough`, `image`, `target`) remain at the `sandbox` level. Container-specific settings (`runtime`) are nested under `container`.
 
@@ -270,7 +270,7 @@ When configured, workmux creates shim scripts inside the sandbox that transparen
 
 Some commands are built-in and always available as host-exec shims without configuration (e.g., `afplay` for sound notifications). Only commands listed in `host_commands` or built-in are allowed -- there is no wildcard or auto-discovery.
 
-For Lima VMs: This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the *agent command* itself (e.g., `claude`), while `host_commands` lets the agent invoke *other* tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
+For Lima VMs: This is complementary to the toolchain integration (`toolchain: auto`). The toolchain wraps the _agent command_ itself (e.g., `claude`), while `host_commands` lets the agent invoke _other_ tools that exist on the host. For example, an agent running inside the VM could run `just check` and the command would execute on the host with full access to the project's Devbox environment.
 
 #### Security model
 
@@ -427,7 +427,7 @@ To force a specific toolchain mode regardless of which config files exist:
 ```yaml
 sandbox:
   backend: lima
-  toolchain: devbox  # or: flake
+  toolchain: devbox # or: flake
 ```
 
 #### How it works
@@ -480,7 +480,7 @@ the guest. These state directories are cleaned up automatically by
 | ------------------ | ----------------------------------- | ------------------------------------------------ |
 | Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
 | Settings directory | `~/.claude/` (shared with host)     | `~/.claude/` (shared with host)                  |
-| Auth setup         | Agent authenticates on first use     | None needed                                      |
+| Auth setup         | Agent authenticates on first use    | None needed                                      |
 
 ### Cleaning up unused VMs
 
