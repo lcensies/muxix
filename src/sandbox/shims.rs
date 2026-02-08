@@ -13,6 +13,34 @@ use std::path::{Path, PathBuf};
 /// guests need to proxy to the host (e.g., `afplay` for macOS sound).
 pub const BUILTIN_HOST_COMMANDS: &[&str] = &["afplay"];
 
+/// Validate a command name for use in host-exec.
+///
+/// Rejects names that could cause security issues:
+/// - empty or whitespace-only
+/// - longer than 64 characters
+/// - doesn't start with an ASCII alphanumeric character
+/// - contains characters outside `[A-Za-z0-9._-]`
+/// - is `.` or `..` (directory traversal)
+/// - is `_shim` (reserved dispatcher name)
+pub fn validate_command_name(cmd: &str) -> bool {
+    if cmd.is_empty() || cmd.len() > 64 {
+        return false;
+    }
+    if !cmd.as_bytes()[0].is_ascii_alphanumeric() {
+        return false;
+    }
+    if !cmd
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    {
+        return false;
+    }
+    if matches!(cmd, "." | ".." | "_shim") {
+        return false;
+    }
+    true
+}
+
 /// Merge built-in host commands with user-configured ones, deduplicating.
 pub fn effective_host_commands(user_commands: &[String]) -> Vec<String> {
     let mut commands: Vec<String> = BUILTIN_HOST_COMMANDS
@@ -59,8 +87,7 @@ pub fn create_shim_directory(state_dir: &Path, commands: &[String]) -> Result<Pa
 
     // Create symlinks for each command
     for cmd in commands {
-        // Validate: no path separators allowed
-        if cmd.contains('/') || cmd.contains('\\') || cmd.is_empty() {
+        if !validate_command_name(cmd) {
             tracing::warn!(command = cmd, "skipping invalid host_command name");
             continue;
         }
@@ -142,5 +169,64 @@ mod tests {
         create_shim_directory(tmp.path(), &commands).unwrap();
 
         assert!(tmp.path().join("shims/bin/just").exists());
+    }
+
+    #[test]
+    fn test_validate_command_name_valid() {
+        assert!(validate_command_name("just"));
+        assert!(validate_command_name("cargo"));
+        assert!(validate_command_name("npm"));
+        assert!(validate_command_name("node-v20"));
+        assert!(validate_command_name("my_tool"));
+        assert!(validate_command_name("go1.21"));
+        assert!(validate_command_name("afplay"));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_empty() {
+        assert!(!validate_command_name(""));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_path_separators() {
+        assert!(!validate_command_name("/bin/rm"));
+        assert!(!validate_command_name("..\\cmd"));
+        assert!(!validate_command_name("foo/bar"));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_shell_metacharacters() {
+        assert!(!validate_command_name("cmd;rm -rf /"));
+        assert!(!validate_command_name("cmd$(whoami)"));
+        assert!(!validate_command_name("cmd`whoami`"));
+        assert!(!validate_command_name("cmd&bg"));
+        assert!(!validate_command_name("cmd|pipe"));
+        assert!(!validate_command_name("cmd>out"));
+        assert!(!validate_command_name("cmd<in"));
+        assert!(!validate_command_name("cmd name"));
+        assert!(!validate_command_name("cmd\ttab"));
+        assert!(!validate_command_name("cmd\nnewline"));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_reserved() {
+        assert!(!validate_command_name("."));
+        assert!(!validate_command_name(".."));
+        assert!(!validate_command_name("_shim"));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_leading_special() {
+        assert!(!validate_command_name("-flag"));
+        assert!(!validate_command_name("_underscore"));
+        assert!(!validate_command_name(".dotfile"));
+    }
+
+    #[test]
+    fn test_validate_command_name_rejects_too_long() {
+        let long = "a".repeat(65);
+        assert!(!validate_command_name(&long));
+        let ok = "a".repeat(64);
+        assert!(validate_command_name(&ok));
     }
 }

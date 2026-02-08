@@ -390,15 +390,15 @@ fn handle_exec(
 
     info!(command, ?args, "host-exec request");
 
-    // Validate command is in allowlist
-    if !ctx.allowed_commands.contains(command) {
+    // Validate command name format (strict alphanumeric + dash/underscore/dot)
+    if !crate::sandbox::shims::validate_command_name(command) {
         let resp = RpcResponse::ExecExit { code: 127 };
         write_response(writer, &resp)?;
         return Ok(());
     }
 
-    // Reject commands containing path separators
-    if command.contains('/') || command.contains('\\') {
+    // Validate command is in allowlist
+    if !ctx.allowed_commands.contains(command) {
         let resp = RpcResponse::ExecExit { code: 127 };
         write_response(writer, &resp)?;
         return Ok(());
