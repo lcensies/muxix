@@ -81,21 +81,21 @@ export default defineConfig({
         ],
       },
       {
-        text: "Sandbox",
-        items: [
-          { text: "Overview", link: "/guide/sandbox/" },
-          { text: "Container backend", link: "/guide/sandbox/container" },
-          { text: "Lima VM backend", link: "/guide/sandbox/lima" },
-          { text: "Shared features", link: "/guide/sandbox/features" },
-        ],
-      },
-      {
         text: "Dashboard",
         items: [
           { text: "Overview", link: "/guide/dashboard/" },
           { text: "Diff view", link: "/guide/dashboard/diff-view" },
           { text: "Patch mode", link: "/guide/dashboard/patch-mode" },
           { text: "Configuration", link: "/guide/dashboard/configuration" },
+        ],
+      },
+      {
+        text: "Sandbox",
+        items: [
+          { text: "Overview", link: "/guide/sandbox/" },
+          { text: "Container backend", link: "/guide/sandbox/container" },
+          { text: "Lima VM backend", link: "/guide/sandbox/lima" },
+          { text: "Shared features", link: "/guide/sandbox/features" },
         ],
       },
       {
