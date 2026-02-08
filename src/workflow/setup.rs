@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::multiplexer::{CreateWindowParams, Multiplexer, PaneSetupOptions};
 use crate::{cmd, config, git, prompt::Prompt};
@@ -218,6 +218,41 @@ pub fn resolve_pane_configuration(
     }]
 }
 
+/// Validates that a glob-matched source path is within the repository root.
+///
+/// Instead of canonicalizing (which resolves symlinks and would reject symlinks
+/// inside the repo that point outside), we check the logical path:
+/// 1. The path must start with repo_root (glob ensures this for non-traversal patterns)
+/// 2. The relative portion must not contain ".." components, which could escape
+///    the repo through symlink boundaries (e.g., `symlink_to_external/../secret`)
+fn validate_path_within_repo(
+    source_path: &Path,
+    repo_root: &Path,
+    op: &str,
+    pattern: &str,
+) -> Result<()> {
+    let relative = source_path.strip_prefix(repo_root).map_err(|_| {
+        anyhow!(
+            "Path traversal detected for {} pattern '{}'. The path '{}' is outside the repository root.",
+            op, pattern, source_path.display()
+        )
+    })?;
+
+    if relative
+        .components()
+        .any(|c| matches!(c, Component::ParentDir))
+    {
+        return Err(anyhow!(
+            "Path traversal detected for {} pattern '{}'. The path '{}' contains '..' components.",
+            op,
+            pattern,
+            source_path.display()
+        ));
+    }
+
+    Ok(())
+}
+
 /// Performs copy and symlink operations from the repo root to the worktree
 pub fn handle_file_operations(
     repo_root: &Path,
@@ -232,13 +267,6 @@ pub fn handle_file_operations(
         "file_operations:start"
     );
 
-    let canon_repo_root = repo_root.canonicalize().with_context(|| {
-        format!(
-            "Failed to canonicalize repository root path: {:?}",
-            repo_root
-        )
-    })?;
-
     let mut copy_count = 0;
     let mut symlink_count = 0;
 
@@ -249,25 +277,9 @@ pub fn handle_file_operations(
             for entry in glob::glob(&full_pattern)? {
                 let source_path = entry?;
 
-                // Validate that the resolved source path stays within the repository root
-                let canon_source_path = source_path.canonicalize().with_context(|| {
-                    format!("Failed to canonicalize source path: {:?}", source_path)
-                })?;
-                if !canon_source_path.starts_with(&canon_repo_root) {
-                    return Err(anyhow!(
-                        "Path traversal detected for copy pattern '{}'. The resolved path '{}' is outside the repository root.",
-                        pattern,
-                        source_path.display()
-                    ));
-                }
+                validate_path_within_repo(&source_path, repo_root, "copy", pattern)?;
 
-                let relative_path = source_path.strip_prefix(repo_root).with_context(|| {
-                    format!(
-                        "Path '{}' is outside the repository root '{}', which is not allowed.",
-                        source_path.display(),
-                        repo_root.display()
-                    )
-                })?;
+                let relative_path = source_path.strip_prefix(repo_root)?;
                 let dest_path = worktree_path.join(relative_path);
 
                 if source_path.is_dir() {
@@ -311,17 +323,7 @@ pub fn handle_file_operations(
             for entry in glob::glob(&full_pattern)? {
                 let source_path = entry?;
 
-                // Validate that the resolved source path is within the repository root
-                let canon_source_path = source_path.canonicalize().with_context(|| {
-                    format!("Failed to canonicalize source path: {:?}", source_path)
-                })?;
-                if !canon_source_path.starts_with(&canon_repo_root) {
-                    return Err(anyhow!(
-                        "Path traversal detected for symlink pattern '{}'. The resolved path '{}' is outside the repository root.",
-                        pattern,
-                        source_path.display()
-                    ));
-                }
+                validate_path_within_repo(&source_path, repo_root, "symlink", pattern)?;
 
                 let relative_path = source_path.strip_prefix(repo_root)?;
                 let dest_path = worktree_path.join(relative_path);

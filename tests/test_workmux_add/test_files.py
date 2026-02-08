@@ -472,3 +472,81 @@ class TestPathTraversal:
             or "No such file" in stderr
             or "pattern matched nothing" in stderr
         )
+
+    @pytest.mark.parametrize(
+        "file_op_type",
+        ["copy", "symlink"],
+    )
+    def test_add_allows_symlinks_pointing_outside_repo(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        file_op_type: str,
+    ):
+        """Symlinks inside the repo that point to targets outside the repo should work."""
+        branch_name = f"feature-{file_op_type}-external-symlink"
+
+        # Create a file outside the repository
+        external_dir = mux_repo_path.parent / "external_content"
+        external_dir.mkdir(exist_ok=True)
+        (external_dir / "data.txt").write_text("external data")
+
+        # Create a symlink inside the repo that points outside
+        link_path = mux_repo_path / "external_link"
+        link_path.symlink_to(external_dir)
+
+        write_workmux_config(
+            mux_repo_path, files={file_op_type: ["external_link"]}, env=mux_server
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            mux_server, workmux_exe_path, mux_repo_path, branch_name
+        )
+
+        dest = worktree_path / "external_link"
+        assert dest.exists(), "external_link should exist in worktree"
+        assert (dest / "data.txt").read_text() == "external data"
+
+    @pytest.mark.parametrize(
+        "file_op_type",
+        ["copy", "symlink"],
+    )
+    def test_add_rejects_symlink_parent_dir_escape(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        file_op_type: str,
+    ):
+        """Patterns like `symlink_to_external/../secret` must be rejected.
+
+        A symlink inside the repo pointing outside could be combined with ".."
+        to escape the repo boundary through the symlink target's parent.
+        """
+        branch_name = f"feature-{file_op_type}-symlink-escape"
+
+        # Create external directory with a sibling secret file
+        external_dir = mux_repo_path.parent / "external_target"
+        external_dir.mkdir(exist_ok=True)
+        (external_dir / "legit.txt").write_text("legit")
+
+        secret_file = mux_repo_path.parent / "secret.txt"
+        secret_file.write_text("secret data")
+
+        # Create a symlink inside the repo pointing to the external directory
+        link_path = mux_repo_path / "ext_link"
+        link_path.symlink_to(external_dir)
+
+        # Pattern uses the symlink + ".." to escape to the secret file
+        write_workmux_config(
+            mux_repo_path,
+            files={file_op_type: ["ext_link/../secret.txt"]},
+            env=mux_server,
+        )
+
+        with pytest.raises(AssertionError) as excinfo:
+            run_workmux_add(mux_server, workmux_exe_path, mux_repo_path, branch_name)
+
+        stderr = str(excinfo.value)
+        assert "Path traversal" in stderr or "'..' components" in stderr
