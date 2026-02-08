@@ -24,6 +24,7 @@ const DENY_READ_DIRS: &[&str] = &[
     ".kube",
     ".azure",
     ".config/gcloud",
+    ".config/workmux",
     ".docker",
 ];
 
