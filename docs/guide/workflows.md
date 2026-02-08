@@ -50,6 +50,8 @@ The main agent writes a prompt file with all the relevant context and runs `work
 - You want to parallelize work while continuing in the main window
 - You're delegating multiple related tasks from a plan
 
+This pattern naturally leads to a **coordinator agent** workflow: an agent on the main branch that plans work and delegates tasks to worktree agents via `/worktree`. The coordinator stays on main and doesn't write code itself; it breaks down a larger goal into parallel tasks and spins up worktree agents to handle each one.
+
 See [Skills](/guide/skills#-worktree) for the skill setup.
 
 ### Coordinating multiple agents
