@@ -15,6 +15,12 @@ pub fn run(
     no_verify: bool,
     notification: bool,
 ) -> Result<()> {
+    // Inside a sandbox guest, route through RPC to the host supervisor
+    if crate::sandbox::guest::is_sandbox_guest() {
+        let name_to_merge = super::resolve_name(name)?;
+        return run_via_rpc(&name_to_merge, into_branch, rebase, ignore_uncommitted);
+    }
+
     let config = config::Config::load(None)?;
 
     // Apply default strategy from config if no CLI flags are provided
@@ -79,4 +85,37 @@ pub fn run(
     }
 
     Ok(())
+}
+
+/// Run merge via RPC when inside a sandbox guest.
+fn run_via_rpc(
+    name: &str,
+    into: Option<&str>,
+    rebase: bool,
+    ignore_uncommitted: bool,
+) -> Result<()> {
+    use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
+
+    let mut client = RpcClient::from_env()?;
+    let response = client.call(&RpcRequest::Merge {
+        name: name.to_string(),
+        into: into.map(|s| s.to_string()),
+        rebase,
+        ignore_uncommitted,
+    })?;
+
+    match response {
+        RpcResponse::Ok => {
+            println!("Merge completed successfully");
+            Ok(())
+        }
+        RpcResponse::Output { message } => {
+            print!("{}", message);
+            Ok(())
+        }
+        RpcResponse::Error { message } => {
+            anyhow::bail!("{}", message);
+        }
+        _ => Ok(()),
+    }
 }

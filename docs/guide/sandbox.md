@@ -158,9 +158,13 @@ docker run --rm -it \
 
 If a coordinator agent spawns sub-agents via workmux, those sub-agents run outside the sandbox on the host. This is a fundamental limitation of the architecture. For fully sandboxed coordination, run coordinators on the host and only sandbox leaf agents.
 
-### `workmux merge` must run on host
+### `workmux merge` in sandbox
 
-The `merge` command requires access to multiple worktrees, which breaks the sandbox isolation model. Always run `workmux merge` from outside the sandbox (on the host terminal).
+The `merge` command routes through RPC when run inside a sandbox VM. The host
+supervisor executes the full merge workflow, including tmux cleanup and worktree
+deletion. Only `--rebase` is supported in sandbox mode. If a rebase has
+conflicts, the error is returned to the agent, which can resolve conflicts
+locally and retry.
 
 ### macOS tmux bridge
 
@@ -453,6 +457,7 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `Heartbeat` -- health check, returns Ok
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree and pane
 - `Exec` -- runs a command on the host and streams stdout/stderr back (used by host-exec shims, including built-in `afplay`)
+- `Merge` -- runs `workmux merge` on the host (rebase strategy only)
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
 

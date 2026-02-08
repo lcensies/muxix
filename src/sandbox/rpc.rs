@@ -39,6 +39,12 @@ pub enum RpcRequest {
         command: String,
         args: Vec<String>,
     },
+    Merge {
+        name: String,
+        into: Option<String>,
+        rebase: bool,
+        ignore_uncommitted: bool,
+    },
 }
 
 /// RPC response sent from host to guest.
@@ -47,6 +53,7 @@ pub enum RpcRequest {
 pub enum RpcResponse {
     Ok,
     Error { message: String },
+    Output { message: String },
     ExecOutput { data: String },
     ExecError { data: String },
     ExecExit { code: i32 },
@@ -303,6 +310,18 @@ fn dispatch_request(request: &RpcRequest, ctx: &RpcContext) -> RpcResponse {
             // Handled in handle_connection before dispatch
             unreachable!("Exec is handled directly in handle_connection")
         }
+        RpcRequest::Merge {
+            name,
+            into,
+            rebase,
+            ignore_uncommitted,
+        } => handle_merge(
+            name,
+            into.as_deref(),
+            *rebase,
+            *ignore_uncommitted,
+            &ctx.worktree_path,
+        ),
     }
 }
 
@@ -430,6 +449,59 @@ fn handle_spawn_agent(
         }
         Err(e) => RpcResponse::Error {
             message: format!("Failed to run workmux add: {}", e),
+        },
+    }
+}
+
+fn handle_merge(
+    name: &str,
+    into: Option<&str>,
+    rebase: bool,
+    ignore_uncommitted: bool,
+    worktree_path: &PathBuf,
+) -> RpcResponse {
+    use std::process::Command;
+
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+    let mut cmd = Command::new(exe);
+    cmd.arg("merge");
+    cmd.arg(name);
+
+    if let Some(target) = into {
+        cmd.args(["--into", target]);
+    }
+    if rebase {
+        cmd.arg("--rebase");
+    }
+    if ignore_uncommitted {
+        cmd.arg("--ignore-uncommitted");
+    }
+
+    // Run from the worktree directory so config is found
+    cmd.current_dir(worktree_path);
+
+    match cmd.output() {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let combined = format!("{}{}", stdout, stderr);
+            if combined.trim().is_empty() {
+                RpcResponse::Ok
+            } else {
+                RpcResponse::Output {
+                    message: combined.trim().to_string(),
+                }
+            }
+        }
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            RpcResponse::Error {
+                message: format!("{}{}", stdout, stderr).trim().to_string(),
+            }
+        }
+        Err(e) => RpcResponse::Error {
+            message: format!("Failed to run workmux merge: {}", e),
         },
     }
 }
@@ -741,6 +813,7 @@ mod tests {
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
+            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"ignore_uncommitted":false}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
@@ -1126,5 +1199,52 @@ mod tests {
         let (stdout2, _, code2) = exec_collect(&mut client, "echo", &["second"]);
         assert_eq!(code2, 0);
         assert_eq!(stdout2.trim(), "second");
+    }
+
+    #[test]
+    fn test_request_serialization_merge() {
+        let req = RpcRequest::Merge {
+            name: "feature-x".to_string(),
+            into: Some("main".to_string()),
+            rebase: true,
+            ignore_uncommitted: false,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"Merge\""));
+        assert!(json.contains("\"name\":\"feature-x\""));
+        assert!(json.contains("\"rebase\":true"));
+
+        // Roundtrip
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::Merge {
+                name,
+                into,
+                rebase,
+                ignore_uncommitted,
+            } => {
+                assert_eq!(name, "feature-x");
+                assert_eq!(into.as_deref(), Some("main"));
+                assert!(rebase);
+                assert!(!ignore_uncommitted);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_response_serialization_output() {
+        let resp = RpcResponse::Output {
+            message: "Merged 'feature' into 'main'".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"Output\""));
+        let parsed: RpcResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcResponse::Output { message } => {
+                assert_eq!(message, "Merged 'feature' into 'main'");
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 }
