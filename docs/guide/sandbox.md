@@ -259,18 +259,12 @@ Paths starting with `~` are expanded to the user's home directory. When `guest_p
 The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. This works with both Lima and container backends. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host via Devbox or Nix but would be slow or complex to install inside the sandbox.
 
 ```yaml
-# Global config (~/.config/workmux/config.yaml) -- defines what's allowed
+# ~/.config/workmux/config.yaml
 sandbox:
   host_commands: ["just", "cargo", "npm"]
 ```
 
-```yaml
-# Project config (.workmux.yaml) -- can only narrow the global list
-sandbox:
-  host_commands: ["just"]  # only "just" is proxied for this project
-```
-
-The global config defines your trusted set of host commands. Project config can request a subset but cannot add commands not in the global list. This prevents a cloned repository from granting itself host access via its `.workmux.yaml`. If no global `host_commands` is configured, project-level settings are ignored. workmux logs a warning when project commands are rejected.
+`host_commands` is only read from your global config. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This prevents a cloned repository from granting itself host access.
 
 When configured, workmux creates shim scripts inside the sandbox that transparently forward these commands to the host via RPC. The host runs them in the project's toolchain environment (Devbox/Nix), streams stdout/stderr back to the sandbox in real-time, and returns the exit code.
 
@@ -287,7 +281,7 @@ Host-exec is designed to be secure against a compromised agent inside the sandbo
 - **No shell injection**: When toolchain wrapping is active (devbox/nix), command arguments are passed as positional parameters to bash (`"$@"`), never interpolated into a shell string. Without toolchain wrapping, commands are executed directly via the OS with no shell involved.
 - **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through -- host secrets like API keys are not inherited. `PATH` is normalized to absolute entries only to prevent relative-path hijacking.
 - **Filesystem sandbox**: On macOS, child processes run under `sandbox-exec` (Seatbelt), which denies access to sensitive directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.docker`, keychains, browser data) and denies writes to `$HOME` except toolchain caches (`.cache`, `.cargo`, `.rustup`, `.npm`). On Linux, `bwrap` (Bubblewrap) provides similar isolation with a read-only root filesystem, tmpfs over secret directories, and a writable worktree bind mount. If `bwrap` is not installed on Linux, commands run without filesystem sandboxing (with a warning).
-- **Config intersection**: Project-level `host_commands` can only narrow the global allowlist, never widen it. A malicious `.workmux.yaml` cannot grant itself host-exec access to commands not already in your global config.
+- **Global-only allowlist**: `host_commands` is only read from global config (`~/.config/workmux/config.yaml`). Project-level `.workmux.yaml` cannot set it -- a warning is logged if it tries.
 - **RPC authentication**: Each session uses a random 256-bit token. Requests exceeding 1MB are rejected to prevent memory exhaustion.
 - **Worktree-locked**: All commands execute with the project worktree as the working directory.
 

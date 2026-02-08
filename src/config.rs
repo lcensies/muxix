@@ -1062,43 +1062,17 @@ impl Config {
                 .toolchain
                 .clone()
                 .or(self.sandbox.toolchain.clone()),
-            // Security: project config can only narrow host_commands, never
-            // widen beyond the global allowlist. This prevents a malicious
-            // repo's .workmux.yaml from granting itself host access.
-            host_commands: match (
-                self.sandbox.host_commands.clone(),
-                project.sandbox.host_commands.clone(),
-            ) {
-                (Some(global), Some(proj)) => {
-                    let global_set: std::collections::HashSet<_> = global.iter().collect();
-                    let rejected: Vec<&String> = proj
-                        .iter()
-                        .filter(|cmd| !global_set.contains(cmd))
-                        .collect();
-                    if !rejected.is_empty() {
-                        tracing::warn!(
-                            commands = ?rejected,
-                            "project requests host_commands not in global allowlist, ignoring"
-                        );
-                    }
-                    let filtered: Vec<String> = proj
-                        .into_iter()
-                        .filter(|cmd| global_set.contains(cmd))
-                        .collect();
-                    Some(filtered)
+            // Security: host_commands is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from granting itself
+            // host-exec access via .workmux.yaml.
+            host_commands: {
+                if project.sandbox.host_commands.is_some() {
+                    tracing::warn!(
+                        "host_commands in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
                 }
-                (global, None) => global,
-                (None, proj) => {
-                    // No global allowlist: project cannot grant itself access
-                    if let Some(ref cmds) = proj {
-                        tracing::warn!(
-                            commands = ?cmds,
-                            "project requests host_commands but no global allowlist is configured, ignoring -- \
-                            add host_commands to your global config (~/.config/workmux/config.yaml) to enable"
-                        );
-                    }
-                    None
-                }
+                self.sandbox.host_commands.clone()
             },
             extra_mounts: project
                 .sandbox
@@ -1839,7 +1813,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sandbox_host_commands_intersection() {
+    fn test_sandbox_host_commands_global_only() {
+        // Project config is ignored -- only global matters
         let global = Config {
             sandbox: SandboxConfig {
                 host_commands: Some(vec!["just".to_string(), "cargo".to_string()]),
@@ -1849,19 +1824,21 @@ mod tests {
         };
         let project = Config {
             sandbox: SandboxConfig {
-                host_commands: Some(vec!["cargo".to_string(), "npm".to_string()]),
+                host_commands: Some(vec!["npm".to_string()]),
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        // Project can only narrow: npm is not in global, so it's filtered out
-        assert_eq!(merged.sandbox.host_commands(), &["cargo".to_string()]);
+        assert_eq!(
+            merged.sandbox.host_commands(),
+            &["just".to_string(), "cargo".to_string()]
+        );
     }
 
     #[test]
-    fn test_sandbox_host_commands_project_cannot_widen() {
+    fn test_sandbox_host_commands_project_ignored_when_no_global() {
         let global = Config::default(); // no host_commands
         let project = Config {
             sandbox: SandboxConfig {
@@ -1872,12 +1849,11 @@ mod tests {
         };
 
         let merged = global.merge(project);
-        // No global allowlist: project cannot grant itself access
         assert!(merged.sandbox.host_commands().is_empty());
     }
 
     #[test]
-    fn test_sandbox_host_commands_fallback_to_global() {
+    fn test_sandbox_host_commands_uses_global() {
         let global = Config {
             sandbox: SandboxConfig {
                 host_commands: Some(vec!["just".to_string()]),
