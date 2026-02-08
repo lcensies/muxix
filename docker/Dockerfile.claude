@@ -6,4 +6,8 @@ FROM ${BASE}
 RUN curl -fsSL https://claude.ai/install.sh | bash && \
     target="$(readlink -f /root/.local/bin/claude)" && \
     mv /root/.local/share/claude /opt/claude && \
-    ln -s "/opt/claude/versions/$(basename "$target")" /usr/local/bin/claude
+    ln -s "/opt/claude/versions/$(basename "$target")" /usr/local/bin/claude && \
+    # Claude Code checks $HOME/.local/bin/claude when installMethod is "native".
+    # Container sets HOME=/tmp, so place a symlink to suppress the warning.
+    mkdir -p /tmp/.local/bin && \
+    ln -s /usr/local/bin/claude /tmp/.local/bin/claude
