@@ -160,11 +160,11 @@ If a coordinator agent spawns sub-agents via workmux, those sub-agents run outsi
 
 ### `workmux merge` in sandbox
 
-The `merge` command routes through RPC when run inside a sandbox VM. The host
+The `merge` command routes through RPC when run inside a sandbox. The host
 supervisor executes the full merge workflow, including tmux cleanup and worktree
-deletion. Only `--rebase` is supported in sandbox mode. If a rebase has
-conflicts, the error is returned to the agent, which can resolve conflicts
-locally and retry.
+deletion. All merge flags (`--rebase`, `--squash`, `--keep`, `--no-verify`,
+`--notification`, `--ignore-uncommitted`, `--into`) are forwarded to the host.
+Output is streamed back in real-time so the agent sees hook and merge progress.
 
 ### macOS tmux bridge
 
@@ -457,7 +457,7 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `Heartbeat` -- health check, returns Ok
 - `SpawnAgent` -- runs `workmux add` on the host to create a new worktree and pane
 - `Exec` -- runs a command on the host and streams stdout/stderr back (used by host-exec shims, including built-in `afplay`)
-- `Merge` -- runs `workmux merge` on the host (rebase strategy only)
+- `Merge` -- runs `workmux merge` on the host with all flags forwarded
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
 

@@ -43,7 +43,11 @@ pub enum RpcRequest {
         name: String,
         into: Option<String>,
         rebase: bool,
+        squash: bool,
         ignore_uncommitted: bool,
+        keep: bool,
+        no_verify: bool,
+        notification: bool,
     },
 }
 
@@ -276,14 +280,22 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
             ref name,
             ref into,
             rebase,
+            squash,
             ignore_uncommitted,
+            keep,
+            no_verify,
+            notification,
         } = request
         {
             handle_merge(
                 name,
                 into.as_deref(),
                 rebase,
+                squash,
                 ignore_uncommitted,
+                keep,
+                no_verify,
+                notification,
                 &ctx.worktree_path,
                 &mut writer,
             )?;
@@ -463,11 +475,16 @@ fn handle_spawn_agent(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_merge(
     name: &str,
     into: Option<&str>,
     rebase: bool,
+    squash: bool,
     ignore_uncommitted: bool,
+    keep: bool,
+    no_verify: bool,
+    notification: bool,
     worktree_path: &PathBuf,
     writer: &mut impl Write,
 ) -> Result<()> {
@@ -484,8 +501,20 @@ fn handle_merge(
     if rebase {
         cmd.arg("--rebase");
     }
+    if squash {
+        cmd.arg("--squash");
+    }
     if ignore_uncommitted {
         cmd.arg("--ignore-uncommitted");
+    }
+    if keep {
+        cmd.arg("--keep");
+    }
+    if no_verify {
+        cmd.arg("--no-verify");
+    }
+    if notification {
+        cmd.arg("--notification");
     }
 
     // Run from the worktree directory so config is found
@@ -880,7 +909,7 @@ mod tests {
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
-            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"ignore_uncommitted":false}"#,
+            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"notification":false}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
@@ -1274,12 +1303,18 @@ mod tests {
             name: "feature-x".to_string(),
             into: Some("main".to_string()),
             rebase: true,
+            squash: false,
             ignore_uncommitted: false,
+            keep: true,
+            no_verify: false,
+            notification: true,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"type\":\"Merge\""));
         assert!(json.contains("\"name\":\"feature-x\""));
         assert!(json.contains("\"rebase\":true"));
+        assert!(json.contains("\"keep\":true"));
+        assert!(json.contains("\"notification\":true"));
 
         // Roundtrip
         let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
@@ -1288,12 +1323,20 @@ mod tests {
                 name,
                 into,
                 rebase,
+                squash,
                 ignore_uncommitted,
+                keep,
+                no_verify,
+                notification,
             } => {
                 assert_eq!(name, "feature-x");
                 assert_eq!(into.as_deref(), Some("main"));
                 assert!(rebase);
+                assert!(!squash);
                 assert!(!ignore_uncommitted);
+                assert!(keep);
+                assert!(!no_verify);
+                assert!(notification);
             }
             _ => panic!("Wrong variant"),
         }

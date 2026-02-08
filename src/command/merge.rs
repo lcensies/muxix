@@ -18,7 +18,16 @@ pub fn run(
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
         let name_to_merge = super::resolve_name(name)?;
-        return run_via_rpc(&name_to_merge, into_branch, rebase, ignore_uncommitted);
+        return run_via_rpc(
+            &name_to_merge,
+            into_branch,
+            rebase,
+            squash,
+            ignore_uncommitted,
+            keep,
+            no_verify,
+            notification,
+        );
     }
 
     let config = config::Config::load(None)?;
@@ -88,11 +97,16 @@ pub fn run(
 }
 
 /// Run merge via RPC when inside a sandbox guest.
+#[allow(clippy::too_many_arguments)]
 fn run_via_rpc(
     name: &str,
     into: Option<&str>,
     rebase: bool,
+    squash: bool,
     ignore_uncommitted: bool,
+    keep: bool,
+    no_verify: bool,
+    notification: bool,
 ) -> Result<()> {
     use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
     use std::io::Write;
@@ -102,7 +116,11 @@ fn run_via_rpc(
         name: name.to_string(),
         into: into.map(|s| s.to_string()),
         rebase,
+        squash,
         ignore_uncommitted,
+        keep,
+        no_verify,
+        notification,
     })?;
 
     // Read streaming responses until we get a terminal Ok or Error
