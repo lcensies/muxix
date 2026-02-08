@@ -4,9 +4,9 @@ description: Run agents in isolated containers or VMs for enhanced security
 
 # Sandbox
 
-The sandbox runs agents in isolated environments, restricting their access to only the current worktree. This protects sensitive files like SSH keys, AWS credentials, and other secrets from agent access.
+Sandboxing isolates agents inside containers or VMs, restricting their access to the project worktree. Sensitive files like SSH keys, AWS credentials, and other secrets are not accessible. This lets you run agents in YOLO mode without worrying about what they might touch on your host.
 
-Sandboxing is designed to be transparent. Agents work the same way whether sandboxed or not: status indicators, the dashboard, spawning new agents, and merging all continue to work normally. A built-in RPC protocol bridges the sandbox boundary so that workmux features on the host stay in sync with what agents do inside the sandbox.
+Sandboxing is designed to be transparent. The multiplexer integration works the same way whether agents are sandboxed or not: status indicators, the dashboard, spawning new agents, and merging all continue to work normally. A built-in RPC protocol bridges the sandbox boundary so that workmux features on the host stay in sync with what agents do inside the sandbox.
 
 ## Security model
 
@@ -22,13 +22,15 @@ Host secrets like SSH keys, AWS credentials, and GPG keys are not accessible. Ad
 
 workmux supports two sandboxing backends:
 
-| | Container (Docker/Podman) | Lima VM |
-| --- | --- | --- |
-| **Isolation** | Process-level (namespaces) | Machine-level (virtual machine) |
-| **Persistence** | Ephemeral (new container per session) | Persistent (stateful VMs) |
-| **Toolchain** | Custom Dockerfile or [host commands](./features#host-command-proxying) | Built-in [Nix & Devbox](./lima#nix-and-devbox-toolchain) support |
-| **Credential model** | Separate auth (`~/.claude-sandbox.json`) | Shared with host (`~/.claude/`) |
-| **Platform** | macOS, Linux | macOS (Lima requirement) |
+|                      | Container (Docker/Podman)                                              | Lima VM                                                          |
+| -------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Isolation**        | Process-level (namespaces)                                             | Machine-level (virtual machine)                                  |
+| **Persistence**      | Ephemeral (new container per session)                                  | Persistent (stateful VMs)                                        |
+| **Toolchain**        | Custom Dockerfile or [host commands](./features#host-command-proxying) | Built-in [Nix & Devbox](./lima#nix-and-devbox-toolchain) support |
+| **Credential model** | Separate auth (`~/.claude-sandbox.json`)                               | Shared with host (`~/.claude/`)                                  |
+| **Platform**         | macOS, Linux                                                           | macOS, Linux                                                     |
+
+Container is a good default: it's simple to set up and ephemeral, so no state accumulates between sessions. Choose Lima if you want persistent VMs with built-in Nix/Devbox toolchain support.
 
 ## Adding tools to the sandbox
 
