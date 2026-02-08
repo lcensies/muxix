@@ -509,21 +509,17 @@ workmux sandbox prune --force
 Found 2 workmux Lima VM(s):
 
 1. wm-myproject-bbeb2cbf (Running)
-   Size: 100.87 GB
    Age: 2 hours ago
    Last accessed: 5 minutes ago
 
 2. wm-another-proj-d1370a2a (Stopped)
-   Size: 100.87 GB
    Age: 1 day ago
    Last accessed: 1 day ago
-
-Total disk space: 201.74 GB
 
 Delete all these VMs? [y/N]
 ```
 
-Lima VMs are stored in `~/.lima/<name>/`. Each VM typically uses 100GB of disk space by default.
+Lima VMs are stored in `~/.lima/<name>/`.
 
 ### Installing local builds into sandboxes
 

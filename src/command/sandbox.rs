@@ -510,7 +510,6 @@ fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) 
 struct VmInfo {
     name: String,
     status: String,
-    size_bytes: u64,
     created: Option<SystemTime>,
     last_accessed: Option<SystemTime>,
 }
@@ -553,20 +552,16 @@ fn run_prune(force: bool) -> Result<()> {
             .map(PathBuf::from)
             .unwrap_or_else(|| default_lima_dir.join(&instance.name));
 
-        let (size_bytes, created, last_accessed) = if vm_dir.exists() {
-            let size = calculate_dir_size(&vm_dir)?;
+        let (created, last_accessed) = if vm_dir.exists() {
             let metadata = std::fs::metadata(&vm_dir)?;
-            let created = metadata.created().ok();
-            let last_accessed = metadata.accessed().ok();
-            (size, created, last_accessed)
+            (metadata.created().ok(), metadata.accessed().ok())
         } else {
-            (0, None, None)
+            (None, None)
         };
 
         vm_infos.push(VmInfo {
             name: instance.name,
             status: instance.status,
-            size_bytes,
             created,
             last_accessed,
         });
@@ -580,12 +575,8 @@ fn run_prune(force: bool) -> Result<()> {
     // Display VM information
     println!("Found {} workmux Lima VM(s):\n", vm_infos.len());
 
-    let mut total_size: u64 = 0;
     for (i, vm) in vm_infos.iter().enumerate() {
-        total_size += vm.size_bytes;
-
         println!("{}. {} ({})", i + 1, vm.name, vm.status);
-        println!("   Size: {}", format_bytes(vm.size_bytes));
         if let Some(created) = vm.created {
             println!("   Age: {}", format_duration_since(created));
         }
@@ -594,8 +585,6 @@ fn run_prune(force: bool) -> Result<()> {
         }
         println!();
     }
-
-    println!("Total disk space: {}\n", format_bytes(total_size));
 
     // Confirm deletion unless --force
     if !force {
@@ -616,7 +605,6 @@ fn run_prune(force: bool) -> Result<()> {
     // Delete VMs
     println!("\nDeleting VMs...");
     let mut deleted_count: u64 = 0;
-    let mut reclaimed_bytes: u64 = 0;
     let mut failed: Vec<(String, String)> = Vec::new();
 
     for vm in vm_infos {
@@ -633,7 +621,6 @@ fn run_prune(force: bool) -> Result<()> {
             Ok(output) if output.status.success() => {
                 println!("done");
                 deleted_count += 1;
-                reclaimed_bytes += vm.size_bytes;
 
                 // Clean up per-VM state directory
                 if let Ok(state_dir) = lima::mounts::lima_state_dir_path(&vm.name)
@@ -658,11 +645,7 @@ fn run_prune(force: bool) -> Result<()> {
     // Report results
     println!();
     if deleted_count > 0 {
-        println!(
-            "Deleted {} VM(s), reclaimed approximately {}",
-            deleted_count,
-            format_bytes(reclaimed_bytes)
-        );
+        println!("Deleted {} VM(s).", deleted_count);
     }
 
     if !failed.is_empty() {
@@ -674,53 +657,6 @@ fn run_prune(force: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Calculate total size of a directory recursively, without following symlinks.
-fn calculate_dir_size(path: &Path) -> Result<u64> {
-    let meta = std::fs::symlink_metadata(path)?;
-
-    // Don't follow symlinks
-    if meta.file_type().is_symlink() {
-        return Ok(0);
-    }
-
-    if meta.is_file() {
-        return Ok(meta.len());
-    }
-
-    let mut total: u64 = 0;
-    if meta.is_dir() {
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            total += calculate_dir_size(&entry.path())?;
-        }
-    }
-
-    Ok(total)
-}
-
-/// Format bytes as human-readable string.
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let mut size = bytes as f64;
-    let mut unit_idx = 0;
-
-    while size >= 1024.0 && unit_idx < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_idx += 1;
-    }
-
-    if unit_idx == 0 {
-        format!("{} {}", size as u64, UNITS[unit_idx])
-    } else {
-        format!("{:.2} {}", size, UNITS[unit_idx])
-    }
 }
 
 /// Format duration since a timestamp as human-readable string.
