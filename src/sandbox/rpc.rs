@@ -407,17 +407,19 @@ fn handle_exec(
     // Skip toolchain wrapping for built-in host commands (e.g., afplay) since they
     // exist outside the project's devbox/nix environment
     let is_builtin = crate::sandbox::shims::BUILTIN_HOST_COMMANDS.contains(&command);
-    let mut child = if !is_builtin
-        && ctx.detected_toolchain != crate::sandbox::toolchain::DetectedToolchain::None
-    {
-        // Wrap with toolchain: build a shell command that enters the env first
-        let full_cmd = std::iter::once(command.to_string())
-            .chain(args.iter().map(|a| shell_quote(a)))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let wrapped = crate::sandbox::toolchain::wrap_command(&full_cmd, &ctx.detected_toolchain);
+    let wrapper_script = if !is_builtin {
+        crate::sandbox::toolchain::toolchain_wrapper_script(&ctx.detected_toolchain)
+    } else {
+        None
+    };
+
+    let mut child = if let Some(script) = wrapper_script {
+        // Safe toolchain wrapping: command and args are passed as positional
+        // parameters to bash, never interpolated into the shell string.
+        // bash -c '<script>' -- <command> <arg1> <arg2> ...
         let mut cmd = Command::new("bash");
-        cmd.args(["-c", &wrapped]);
+        cmd.args(["-c", &script, "--", command]);
+        cmd.args(args);
         cmd.current_dir(&ctx.worktree_path);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -425,6 +427,7 @@ fn handle_exec(
         cmd.spawn()
             .with_context(|| format!("Failed to spawn wrapped command: {}", command))?
     } else {
+        // Direct execution: no shell involved, args passed as argv
         let mut cmd = Command::new(command);
         cmd.args(args);
         cmd.current_dir(&ctx.worktree_path);
@@ -500,8 +503,6 @@ fn handle_exec(
     write_response(writer, &RpcResponse::ExecExit { code })?;
     Ok(())
 }
-
-use crate::shell::shell_quote;
 
 // ── Client ──────────────────────────────────────────────────────────────
 

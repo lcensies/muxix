@@ -36,8 +36,47 @@ pub fn resolve_toolchain(mode: &ToolchainMode, dir: &Path) -> DetectedToolchain 
 
 use crate::shell::shell_escape;
 
+/// Return a shell script that sets up the toolchain environment and executes
+/// arguments passed to it via positional parameters (`"$@"`).
+///
+/// Unlike `wrap_command`, this does NOT embed the user command in the script
+/// string. Instead, the command and arguments are passed as argv to bash,
+/// which forwards them via `exec "$@"`. This eliminates shell injection risk
+/// from command arguments.
+///
+/// Returns `None` if no toolchain wrapping is needed.
+///
+/// Usage: `Command::new("bash").args(["-c", &script, "--", command]).args(args)`
+pub fn toolchain_wrapper_script(toolchain: &DetectedToolchain) -> Option<String> {
+    match toolchain {
+        DetectedToolchain::Devbox => Some(
+            concat!(
+                "_WM_CWD=\"$PWD\"; ",
+                "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
+                "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
+                "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
+                "mkdir -p \"$_WM_CACHE\" && ",
+                "cp devbox.json \"$_WM_CACHE/\" && ",
+                "{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }; ",
+                "fi; ",
+                "export _WM_CWD; ",
+                "devbox run -c \"$_WM_CACHE\" -- bash -c 'cd \"$_WM_CWD\" && exec \"$@\"' -- \"$@\""
+            )
+            .to_string(),
+        ),
+        DetectedToolchain::Flake => {
+            Some("nix develop --command bash -c 'exec \"$@\"' -- \"$@\"".to_string())
+        }
+        DetectedToolchain::None => None,
+    }
+}
+
 /// Wrap a command string to run inside the appropriate toolchain environment.
 /// Returns the original command unchanged if no toolchain is active.
+///
+/// NOTE: This function is used for the agent startup command (sandbox_run.rs),
+/// NOT for host-exec. Host-exec uses `toolchain_wrapper_script` which avoids
+/// shell string construction for security.
 ///
 /// For Devbox, generates a shell wrapper that:
 /// 1. Hashes devbox.json + devbox.lock to compute a content-addressable cache key
@@ -206,5 +245,39 @@ mod tests {
             wrap_command("claude --help", &DetectedToolchain::None),
             "claude --help"
         );
+    }
+
+    // ── toolchain_wrapper_script tests ──────────────────────────────────
+
+    #[test]
+    fn test_wrapper_script_none_returns_none() {
+        assert!(toolchain_wrapper_script(&DetectedToolchain::None).is_none());
+    }
+
+    #[test]
+    fn test_wrapper_script_flake_uses_exec_at() {
+        let script = toolchain_wrapper_script(&DetectedToolchain::Flake).unwrap();
+        // Must use exec "$@" pattern, not embed any user command
+        assert!(script.contains(r#"exec "$@"'"#));
+        assert!(script.starts_with("nix develop --command bash -c"));
+    }
+
+    #[test]
+    fn test_wrapper_script_devbox_uses_exec_at() {
+        let script = toolchain_wrapper_script(&DetectedToolchain::Devbox).unwrap();
+        // Must use exec "$@" pattern
+        assert!(script.contains(r#"exec "$@"'"#));
+        // Must have the devbox cache logic
+        assert!(script.contains("devbox run -c"));
+        assert!(script.contains("_WM_CACHE"));
+    }
+
+    #[test]
+    fn test_wrapper_script_does_not_contain_user_input() {
+        // The wrapper script must be a static template with no user data embedded
+        let script = toolchain_wrapper_script(&DetectedToolchain::Devbox).unwrap();
+        // Should not contain any command-specific content
+        assert!(!script.contains("cargo"));
+        assert!(!script.contains("just"));
     }
 }
