@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_yaml::Value;
 
 use super::mounts::Mount;
-use crate::config::SandboxConfig;
+use crate::config::{SandboxConfig, ToolchainMode};
 
 /// Generate the shell commands to install a specific agent in a Lima VM.
 ///
@@ -162,14 +162,9 @@ apt-get install -y --no-install-recommends curl ca-certificates git xz-utils
 
         let agent_install = lima_install_script_for_agent(agent);
 
-        let user_script = format!(
-            r#"#!/bin/bash
-set -eux
-{agent_install}
-curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
-# Ensure ~/.local/bin is on PATH for non-interactive shells
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
-
+        // Only install Nix/Devbox when toolchain integration is enabled
+        let nix_devbox_install = if sandbox_config.toolchain() != ToolchainMode::Off {
+            r#"
 # Install Nix via Determinate Systems installer (needs root for /nix)
 if ! command -v nix >/dev/null 2>&1; then
     curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | \
@@ -196,6 +191,18 @@ if ! command -v devbox >/dev/null 2>&1; then
     devbox version
 fi
 "#
+        } else {
+            ""
+        };
+
+        let user_script = format!(
+            r#"#!/bin/bash
+set -eux
+{agent_install}
+curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+# Ensure ~/.local/bin is on PATH for non-interactive shells
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
+{nix_devbox_install}"#
         );
 
         let mut system_provision = serde_yaml::Mapping::new();

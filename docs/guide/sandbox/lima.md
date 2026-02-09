@@ -98,8 +98,7 @@ When a VM is first created, workmux runs two built-in provisioning steps:
 **User provision:**
 - Installs the configured agent CLI (based on the `agent` setting)
 - Installs [workmux](https://github.com/raine/workmux)
-- Installs [Nix](https://nixos.org/) (via Determinate Systems installer)
-- Installs [Devbox](https://www.jetify.com/devbox)
+- Installs [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) (skipped when `toolchain: off`)
 
 The agent CLI installed depends on your `agent` configuration:
 
@@ -263,6 +262,8 @@ sandbox:
   backend: lima
   toolchain: off
 ```
+
+This also skips Nix and Devbox installation during provisioning, making VM creation faster.
 
 To force a specific toolchain mode regardless of which config files exist:
 
