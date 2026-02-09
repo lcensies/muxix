@@ -382,6 +382,29 @@ enum Commands {
         any: bool,
     },
 
+    /// Run a command in a worktree's window
+    Run {
+        /// Worktree name
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: String,
+
+        /// Command to run (everything after --)
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+
+        /// Wait for command to complete and show output
+        #[arg(short = 'w', long)]
+        wait: bool,
+
+        /// Keep run artifacts after completion (for debugging)
+        #[arg(long)]
+        keep: bool,
+
+        /// Maximum wait time in seconds (only with --wait)
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+
     /// Generate example .workmux.yaml configuration file
     Init,
 
@@ -421,6 +444,14 @@ enum Commands {
         /// The new base branch
         #[arg(value_parser = GitBranchParser::new())]
         base: String,
+    },
+
+    /// Execute a run spec (internal use)
+    #[command(hide = true, name = "__exec")]
+    Exec {
+        /// Absolute path to run directory
+        #[arg(long)]
+        run_dir: std::path::PathBuf,
     },
 
     /// Switch to the agent that most recently completed its task
@@ -560,6 +591,14 @@ pub fn run() -> Result<()> {
             timeout,
             any,
         } => command::wait::run(&worktrees, &status, timeout, any),
+        Commands::Run {
+            name,
+            command,
+            wait,
+            keep,
+            timeout,
+        } => command::run::run(&name, command, wait, keep, timeout),
+        Commands::Exec { run_dir } => command::exec::run(&run_dir),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
