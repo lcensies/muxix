@@ -90,9 +90,21 @@ pub fn run(
                     }
                 }
             } else if seen_agent.contains(name) {
-                // Agent was previously running but disappeared (exited/crashed)
-                eprintln!("{}: agent exited unexpectedly", name);
-                std::process::exit(3);
+                // Agent was previously running but disappeared
+                // Check if worktree still exists - if not, it was merged (success)
+                if !wt_path.exists() {
+                    let elapsed = util::format_elapsed_duration(start.elapsed());
+                    eprintln!("{}: merged ({})", name, elapsed);
+                    reached.insert(name.clone());
+
+                    if any {
+                        return Ok(());
+                    }
+                } else {
+                    // Worktree exists but agent gone - crashed/exited unexpectedly
+                    eprintln!("{}: agent exited unexpectedly", name);
+                    std::process::exit(3);
+                }
             }
             // If we haven't seen an agent yet and it's been > 10s, still wait --
             // the agent may not have started yet. The timeout flag handles the
