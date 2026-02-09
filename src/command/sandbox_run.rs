@@ -87,6 +87,7 @@ fn start_rpc(
     worktree: &Path,
     allowed_commands: HashSet<String>,
     detected_toolchain: toolchain::DetectedToolchain,
+    allow_unsandboxed_host_exec: bool,
 ) -> Result<(RpcServer, u16, String, Arc<RpcContext>)> {
     let rpc_server = RpcServer::bind()?;
     let rpc_port = rpc_server.port();
@@ -103,6 +104,7 @@ fn start_rpc(
         token: rpc_token.clone(),
         allowed_commands,
         detected_toolchain,
+        allow_unsandboxed_host_exec,
     });
 
     Ok((rpc_server, rpc_port, rpc_token, ctx))
@@ -133,8 +135,12 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
     shims::create_shim_directory(&state_dir, &host_commands)?;
     info!(commands = ?host_commands, "created host-exec shims");
 
-    let (rpc_server, rpc_port, rpc_token, ctx) =
-        start_rpc(worktree, allowed_commands, detected.clone())?;
+    let (rpc_server, rpc_port, rpc_token, ctx) = start_rpc(
+        worktree,
+        allowed_commands,
+        detected.clone(),
+        config.sandbox.allow_unsandboxed_host_exec(),
+    )?;
     let _rpc_handle = rpc_server.spawn(ctx);
 
     // Build limactl shell command
@@ -231,8 +237,12 @@ fn run_container(
         Some(dir)
     };
 
-    let (rpc_server, rpc_port, rpc_token, ctx) =
-        start_rpc(pane_cwd, allowed_commands, detected.clone())?;
+    let (rpc_server, rpc_port, rpc_token, ctx) = start_rpc(
+        pane_cwd,
+        allowed_commands,
+        detected.clone(),
+        config.sandbox.allow_unsandboxed_host_exec(),
+    )?;
     let _rpc_handle = rpc_server.spawn(ctx);
 
     // Compute RPC host BEFORE matching on runtime (SandboxRuntime is not Copy)

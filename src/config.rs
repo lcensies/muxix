@@ -566,6 +566,12 @@ pub struct SandboxConfig {
     /// Container-specific configuration
     #[serde(default)]
     pub container: ContainerConfig,
+
+    /// Allow host-exec to run without bwrap sandboxing on Linux.
+    /// Default: false (fail closed -- refuse to run if bwrap is missing).
+    /// When true, falls back to unsandboxed execution with a warning.
+    #[serde(default)]
+    pub dangerously_allow_unsandboxed_host_exec: Option<bool>,
 }
 
 impl SandboxConfig {
@@ -620,6 +626,11 @@ impl SandboxConfig {
 
     pub fn extra_mounts(&self) -> &[ExtraMount] {
         self.extra_mounts.as_deref().unwrap_or(&[])
+    }
+
+    pub fn allow_unsandboxed_host_exec(&self) -> bool {
+        self.dangerously_allow_unsandboxed_host_exec
+            .unwrap_or(false)
     }
 }
 
@@ -1096,6 +1107,10 @@ impl Config {
                 .or(self.sandbox.extra_mounts.clone()),
             lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
             container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
+            // Security: global-only, same as host_commands.
+            dangerously_allow_unsandboxed_host_exec: self
+                .sandbox
+                .dangerously_allow_unsandboxed_host_exec,
         };
 
         merged
@@ -1880,6 +1895,50 @@ mod tests {
 
         let merged = global.merge(project);
         assert_eq!(merged.sandbox.host_commands(), &["just".to_string()]);
+    }
+
+    #[test]
+    fn test_allow_unsandboxed_host_exec_defaults_false() {
+        let config = SandboxConfig::default();
+        assert!(!config.allow_unsandboxed_host_exec());
+    }
+
+    #[test]
+    fn test_allow_unsandboxed_host_exec_global_only() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                dangerously_allow_unsandboxed_host_exec: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // Project tries to set it -- should be ignored
+        let project = Config {
+            sandbox: SandboxConfig {
+                dangerously_allow_unsandboxed_host_exec: Some(false),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.allow_unsandboxed_host_exec());
+    }
+
+    #[test]
+    fn test_allow_unsandboxed_host_exec_not_set_in_project() {
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                dangerously_allow_unsandboxed_host_exec: Some(true),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Project value should be ignored
+        assert!(!merged.sandbox.allow_unsandboxed_host_exec());
     }
 
     #[test]

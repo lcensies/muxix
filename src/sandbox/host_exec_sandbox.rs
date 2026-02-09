@@ -64,15 +64,23 @@ const ALLOW_WRITE_DIRS_MACOS: &[&str] = &["Library/Caches", "Library/Logs"];
 
 /// Spawn a command inside an OS-native sandbox.
 ///
-/// On macOS, uses `sandbox-exec` (always available).
-/// On Linux, uses `bwrap` if installed, otherwise falls back to unsandboxed
-/// execution with a warning.
+/// On macOS, uses `sandbox-exec`. On Linux, uses `bwrap` resolved from
+/// trusted system paths. When `allow_unsandboxed` is true, skips the
+/// filesystem sandbox on either platform.
 pub fn spawn_sandboxed(
     program: &str,
     args: &[String],
     worktree: &Path,
     envs: &HashMap<String, String>,
+    allow_unsandboxed: bool,
 ) -> Result<Child> {
+    if allow_unsandboxed {
+        tracing::warn!(
+            "dangerously_allow_unsandboxed_host_exec is set, skipping filesystem sandbox"
+        );
+        return spawn_unsandboxed(program, args, worktree, envs);
+    }
+
     #[cfg(target_os = "macos")]
     {
         spawn_macos(program, args, worktree, envs)
@@ -90,7 +98,6 @@ pub fn spawn_sandboxed(
     }
 }
 
-#[allow(dead_code)] // used only on platforms without sandbox-exec/bwrap
 fn spawn_unsandboxed(
     program: &str,
     args: &[String],
@@ -221,6 +228,26 @@ fn generate_macos_profile() -> String {
 
 // ── Linux: bwrap ────────────────────────────────────────────────────────
 
+/// Trusted system paths where bwrap may be installed.
+/// We avoid PATH resolution to prevent hijacking via writable directories.
+#[cfg(target_os = "linux")]
+const TRUSTED_BWRAP_PATHS: &[&str] = &[
+    "/usr/bin/bwrap",
+    "/usr/sbin/bwrap",
+    "/usr/local/bin/bwrap",
+    "/run/current-system/sw/bin/bwrap",     // NixOS
+    "/home/linuxbrew/.linuxbrew/bin/bwrap", // Homebrew on Linux
+];
+
+/// Find bwrap at a trusted absolute path. Returns the first match.
+#[cfg(target_os = "linux")]
+fn find_bwrap() -> Option<&'static str> {
+    TRUSTED_BWRAP_PATHS
+        .iter()
+        .find(|p| Path::new(p).is_file())
+        .copied()
+}
+
 #[cfg(target_os = "linux")]
 fn spawn_linux(
     program: &str,
@@ -228,18 +255,21 @@ fn spawn_linux(
     worktree: &Path,
     envs: &HashMap<String, String>,
 ) -> Result<Child> {
-    if which::which("bwrap").is_ok() {
-        spawn_bwrap(program, args, worktree, envs)
+    if let Some(bwrap_path) = find_bwrap() {
+        spawn_bwrap(bwrap_path, program, args, worktree, envs)
     } else {
-        tracing::warn!(
-            "bwrap not found, running host-exec unsandboxed -- install bubblewrap for filesystem isolation"
-        );
-        spawn_unsandboxed(program, args, worktree, envs)
+        anyhow::bail!(
+            "bwrap (bubblewrap) not found at any trusted path ({}). \
+            Install bubblewrap or set sandbox.dangerously_allow_unsandboxed_host_exec: true \
+            in your global config to run without filesystem isolation",
+            TRUSTED_BWRAP_PATHS.join(", ")
+        )
     }
 }
 
 #[cfg(target_os = "linux")]
 fn spawn_bwrap(
+    bwrap_path: &str,
     program: &str,
     args: &[String],
     worktree: &Path,
@@ -248,7 +278,7 @@ fn spawn_bwrap(
     let home = std::env::var("HOME").unwrap_or_else(|_| "/var/empty".to_string());
     let home_path = Path::new(&home);
 
-    let mut cmd = Command::new("bwrap");
+    let mut cmd = Command::new(bwrap_path);
 
     // Read-only root filesystem
     cmd.args(["--ro-bind", "/", "/"]);
@@ -388,5 +418,29 @@ mod tests {
         assert!(profile.contains("WORKTREE"));
         assert!(profile.contains(".cache"));
         assert!(profile.contains(".cargo"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_trusted_bwrap_paths_are_absolute() {
+        for path in TRUSTED_BWRAP_PATHS {
+            assert!(
+                path.starts_with('/'),
+                "trusted bwrap path must be absolute: {}",
+                path
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_trusted_bwrap_paths_end_with_bwrap() {
+        for path in TRUSTED_BWRAP_PATHS {
+            assert!(
+                path.ends_with("/bwrap"),
+                "trusted bwrap path must end with /bwrap: {}",
+                path
+            );
+        }
     }
 }

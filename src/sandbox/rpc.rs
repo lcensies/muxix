@@ -80,6 +80,8 @@ pub struct RpcContext {
     pub allowed_commands: std::collections::HashSet<String>,
     /// Resolved toolchain for host-exec command wrapping.
     pub detected_toolchain: crate::sandbox::toolchain::DetectedToolchain,
+    /// Whether to allow host-exec without bwrap on Linux.
+    pub allow_unsandboxed_host_exec: bool,
 }
 
 /// TCP RPC server that accepts guest connections.
@@ -720,13 +722,20 @@ fn handle_exec(
         &final_args,
         &ctx.worktree_path,
         &envs,
+        ctx.allow_unsandboxed_host_exec,
     );
 
     let mut child = match spawn_result {
         Ok(child) => child,
         Err(e) => {
             warn!(command, error = %e, "failed to spawn command");
-            write_response(writer, &RpcResponse::ExecExit { code: 127 })?;
+            write_response(
+                writer,
+                &RpcResponse::ExecError {
+                    data: format!("host-exec spawn failed: {e}\n"),
+                },
+            )?;
+            write_response(writer, &RpcResponse::ExecExit { code: 126 })?;
             return Ok(());
         }
     };
@@ -972,6 +981,7 @@ mod tests {
             token: token.clone(),
             allowed_commands: std::collections::HashSet::new(),
             detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
+            allow_unsandboxed_host_exec: false,
         });
 
         let _handle = server.spawn(ctx);
@@ -1109,6 +1119,7 @@ mod tests {
             token: token.clone(),
             allowed_commands: std::collections::HashSet::new(),
             detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
+            allow_unsandboxed_host_exec: false,
         });
 
         let _handle = server.spawn(ctx);
@@ -1142,6 +1153,7 @@ mod tests {
             token: token.clone(),
             allowed_commands: allowed.iter().map(|s| s.to_string()).collect(),
             detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
+            allow_unsandboxed_host_exec: false,
         });
 
         let handle = server.spawn(ctx);
@@ -1255,11 +1267,10 @@ mod tests {
     #[test]
     fn test_exec_sandbox_blocks_ssh_read() {
         // This test verifies the sandbox-exec integration on macOS.
-        // On Linux without bwrap, the sandbox falls back to unsandboxed,
-        // so we skip the test there.
+        // On Linux without bwrap, host-exec fails closed, so skip the test.
         #[cfg(target_os = "linux")]
         if which::which("bwrap").is_err() {
-            return; // sandbox unavailable by design
+            return; // bwrap not installed, sandbox tests can't run
         }
 
         let (mut client, _tmp, _handle) = start_exec_server(&["ls"]);
