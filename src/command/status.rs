@@ -1,0 +1,173 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anyhow::Result;
+use serde::Serialize;
+use tabled::{
+    Table, Tabled,
+    settings::{Padding, Style, object::Columns},
+};
+
+use crate::git;
+use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
+use crate::state::StateStore;
+use crate::util;
+use crate::workflow;
+
+#[derive(Serialize)]
+struct StatusEntry {
+    worktree: String,
+    branch: String,
+    status: String,
+    elapsed_secs: Option<u64>,
+    title: Option<String>,
+    pane_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git: Option<GitInfo>,
+}
+
+#[derive(Serialize, Clone)]
+struct GitInfo {
+    has_staged: bool,
+    has_unstaged: bool,
+    has_unmerged_commits: bool,
+}
+
+#[derive(Tabled)]
+struct StatusRow {
+    #[tabled(rename = "WORKTREE")]
+    worktree: String,
+    #[tabled(rename = "BRANCH")]
+    branch: String,
+    #[tabled(rename = "STATUS")]
+    status: String,
+    #[tabled(rename = "ELAPSED")]
+    elapsed: String,
+    #[tabled(rename = "TITLE")]
+    title: String,
+}
+
+fn status_label(status: Option<AgentStatus>) -> String {
+    match status {
+        Some(AgentStatus::Working) => "working".to_string(),
+        Some(AgentStatus::Waiting) => "waiting".to_string(),
+        Some(AgentStatus::Done) => "done".to_string(),
+        None => "-".to_string(),
+    }
+}
+
+pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
+    let mux = create_backend(detect_backend());
+
+    let agent_panes =
+        StateStore::new().and_then(|store| store.load_reconciled_agents(mux.as_ref()))?;
+
+    if agent_panes.is_empty() {
+        if json {
+            println!("[]");
+        } else {
+            println!("No active agents");
+        }
+        return Ok(());
+    }
+
+    // Get all worktrees for mapping (propagate errors)
+    let all_worktrees = git::list_worktrees()?;
+
+    // Get unmerged info if --git flag
+    let main_branch = if show_git {
+        git::get_default_branch().ok()
+    } else {
+        None
+    };
+    let unmerged_branches = if show_git {
+        main_branch
+            .as_deref()
+            .and_then(|main| git::get_merge_base(main).ok())
+            .and_then(|base| git::get_unmerged_branches(&base).ok())
+            .unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Build entries: match each agent pane to its worktree using shared helper
+    let mut entries: Vec<StatusEntry> = Vec::new();
+
+    for (wt_path, branch) in &all_worktrees {
+        let matching = workflow::match_agents_to_worktree(&agent_panes, wt_path);
+        if matching.is_empty() {
+            continue;
+        }
+
+        let worktree_name = wt_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let git_info = if show_git {
+            Some(GitInfo {
+                has_staged: git::has_staged_changes(wt_path).unwrap_or(false),
+                has_unstaged: git::has_unstaged_changes(wt_path).unwrap_or(false),
+                has_unmerged_commits: unmerged_branches.contains(branch),
+            })
+        } else {
+            None
+        };
+
+        // Each agent pane in the worktree gets its own entry
+        for agent in matching {
+            let elapsed_secs = agent.status_ts.map(|ts| now.saturating_sub(ts));
+
+            entries.push(StatusEntry {
+                worktree: worktree_name.clone(),
+                branch: branch.clone(),
+                status: status_label(agent.status),
+                elapsed_secs,
+                title: agent.pane_title.clone(),
+                pane_id: agent.pane_id.clone(),
+                git: git_info.clone(),
+            });
+        }
+    }
+
+    // Filter to requested worktrees if specified (handle-first, then branch fallback)
+    if !worktrees.is_empty() {
+        entries.retain(|e| worktrees.iter().any(|w| w == &e.worktree || w == &e.branch));
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&entries)?);
+    } else {
+        if entries.is_empty() {
+            println!("No active agents");
+            return Ok(());
+        }
+
+        let rows: Vec<StatusRow> = entries
+            .iter()
+            .map(|e| StatusRow {
+                worktree: e.worktree.clone(),
+                branch: e.branch.clone(),
+                status: e.status.clone(),
+                elapsed: e
+                    .elapsed_secs
+                    .map(util::format_elapsed_secs)
+                    .unwrap_or("-".to_string()),
+                title: e.title.clone().unwrap_or("-".to_string()),
+            })
+            .collect();
+
+        let mut table = Table::new(rows);
+        table
+            .with(Style::blank())
+            .modify(Columns::new(0..5), Padding::new(0, 1, 0, 0));
+        println!("{table}");
+    }
+
+    Ok(())
+}

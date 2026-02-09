@@ -1,17 +1,13 @@
 use anyhow::{Result, anyhow};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::multiplexer::{Multiplexer, util};
 use crate::state::StateStore;
+use crate::util::canon_or_self;
 use crate::{config, git, github, spinner};
 
 use super::types::{AgentStatusSummary, WorktreeInfo};
-
-/// Canonicalize a path, falling back to the original if canonicalization fails.
-fn canon_or_self(p: &Path) -> PathBuf {
-    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
-}
 
 /// Filter worktrees by handle (directory name) or branch name.
 /// Uses handle-first precedence: if a filter token matches a handle, that takes

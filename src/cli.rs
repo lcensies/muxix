@@ -322,6 +322,66 @@ enum Commands {
         name: String,
     },
 
+    /// Send a prompt or instruction to a running agent
+    Send {
+        /// Worktree name
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: String,
+
+        /// Text to send (reads from --file or stdin if omitted)
+        #[arg(conflicts_with = "file")]
+        text: Option<String>,
+
+        /// Read prompt from file
+        #[arg(short, long, conflicts_with = "text")]
+        file: Option<String>,
+    },
+
+    /// Capture terminal output from a running agent
+    Capture {
+        /// Worktree name
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        name: String,
+
+        /// Number of lines to capture
+        #[arg(short = 'n', long, default_value = "200")]
+        lines: u16,
+    },
+
+    /// Query agent status for worktrees
+    Status {
+        /// Worktree names (default: all with active agents)
+        #[arg(value_parser = WorktreeHandleParser::new())]
+        worktrees: Vec<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Include git info (staged/unstaged changes, unmerged commits)
+        #[arg(long)]
+        git: bool,
+    },
+
+    /// Wait for agents to reach a target status
+    Wait {
+        /// Worktree names to wait on
+        #[arg(required = true, value_parser = WorktreeHandleParser::new())]
+        worktrees: Vec<String>,
+
+        /// Target status to wait for
+        #[arg(long, default_value = "done")]
+        status: String,
+
+        /// Maximum wait time in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
+
+        /// Return when ANY worktree reaches target (default: wait for ALL)
+        #[arg(long)]
+        any: bool,
+    },
+
     /// Generate example .workmux.yaml configuration file
     Init,
 
@@ -485,6 +545,21 @@ pub fn run() -> Result<()> {
         } => command::remove::run(names, gone, all, force, keep_branch),
         Commands::List { pr, filter } => command::list::run(pr, &filter),
         Commands::Path { name } => command::path::run(&name),
+        Commands::Send { name, text, file } => {
+            command::send::run(&name, text.as_deref(), file.as_deref())
+        }
+        Commands::Capture { name, lines } => command::capture::run(&name, lines),
+        Commands::Status {
+            worktrees,
+            json,
+            git,
+        } => command::status::run(&worktrees, json, git),
+        Commands::Wait {
+            worktrees,
+            status,
+            timeout,
+            any,
+        } => command::wait::run(&worktrees, &status, timeout, any),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),

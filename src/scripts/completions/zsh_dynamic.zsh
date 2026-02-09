@@ -67,7 +67,7 @@ _workmux_dynamic() {
 
     # Only handle commands that need dynamic completion
     case "$cmd" in
-        open|remove|rm|path|merge|close)
+        open|remove|rm|path|merge|close|send|capture|status|wait)
             # Offer handles mixed with any remaining flags
             _workmux "$@"
             _workmux_handles

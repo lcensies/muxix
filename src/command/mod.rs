@@ -1,5 +1,6 @@
 pub mod add;
 pub mod args;
+pub mod capture;
 pub mod changelog;
 pub mod close;
 pub mod dashboard;
@@ -11,8 +12,11 @@ pub mod merge;
 pub mod open;
 pub mod path;
 pub mod remove;
+pub mod send;
 pub mod set_base;
 pub mod set_window_status;
+pub mod status;
+pub mod wait;
 
 use anyhow::{Context, Result, anyhow};
 
