@@ -4,6 +4,7 @@ mod dashboard;
 mod diff;
 mod format;
 mod help;
+pub mod theme;
 
 use ratatui::Frame;
 
@@ -18,7 +19,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     // Render either dashboard or diff view based on view mode
     match &mut app.view_mode {
         ViewMode::Dashboard => render_dashboard(f, app),
-        ViewMode::Diff(diff_view) => render_diff_view(f, diff_view),
+        ViewMode::Diff(diff_view) => render_diff_view(f, diff_view, &app.palette),
     }
 
     // Render help overlay on top if active

@@ -7,11 +7,16 @@ use crate::github::{CheckState, PrSummary};
 use crate::nerdfont;
 
 use super::super::spinner::SPINNER_FRAMES;
+use super::theme::ThemePalette;
 
 /// Format git status for the Git column: base branch, diff stats, then indicators
 /// Format: "→branch +N -M 󰏫 +X -Y 󰀪 ↑A ↓B"
 /// When there are uncommitted changes that differ from total, branch totals are dimmed
-pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(String, Style)> {
+pub fn format_git_status(
+    status: Option<&GitStatus>,
+    spinner_frame: u8,
+    palette: &ThemePalette,
+) -> Vec<(String, Style)> {
     let icons = nerdfont::git_icons();
 
     if let Some(status) = status {
@@ -30,7 +35,7 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
         {
             spans.push((
                 format!("→{}", status.base_branch),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(palette.dimmed),
             ));
         }
 
@@ -135,30 +140,34 @@ pub fn format_git_status(status: Option<&GitStatus>, spinner_frame: u8) -> Vec<(
         }
 
         if spans.is_empty() {
-            vec![("-".to_string(), Style::default().fg(Color::DarkGray))]
+            vec![("-".to_string(), Style::default().fg(palette.dimmed))]
         } else {
             spans
         }
     } else {
         // No status yet - show spinner
         let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
-        vec![(frame.to_string(), Style::default().fg(Color::DarkGray))]
+        vec![(frame.to_string(), Style::default().fg(palette.dimmed))]
     }
 }
 
 /// Format PR status as styled spans for dashboard display
-pub fn format_pr_status(pr: Option<&PrSummary>, show_check_counts: bool) -> Vec<(String, Style)> {
+pub fn format_pr_status(
+    pr: Option<&PrSummary>,
+    show_check_counts: bool,
+    palette: &ThemePalette,
+) -> Vec<(String, Style)> {
     match pr {
         Some(pr) => {
             let icons = nerdfont::pr_icons();
             let (icon, color) = if pr.is_draft {
-                (icons.draft, Color::DarkGray)
+                (icons.draft, palette.dimmed)
             } else {
                 match pr.state.as_str() {
                     "OPEN" => (icons.open, Color::Green),
                     "MERGED" => (icons.merged, Color::Magenta),
                     "CLOSED" => (icons.closed, Color::Red),
-                    _ => ("?", Color::DarkGray),
+                    _ => ("?", palette.dimmed),
                 }
             };
             let mut spans = vec![
@@ -192,6 +201,6 @@ pub fn format_pr_status(pr: Option<&PrSummary>, show_check_counts: bool) -> Vec<
 
             spans
         }
-        None => vec![("-".to_string(), Style::default().fg(Color::DarkGray))],
+        None => vec![("-".to_string(), Style::default().fg(palette.dimmed))],
     }
 }

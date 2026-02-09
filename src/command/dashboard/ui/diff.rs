@@ -9,9 +9,10 @@ use ratatui::{
 };
 
 use super::super::diff::DiffView;
+use super::theme::ThemePalette;
 
 /// Render the diff view (replaces the entire dashboard).
-pub fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
+pub fn render_diff_view(f: &mut Frame, diff: &mut DiffView, palette: &ThemePalette) {
     let area = f.area();
 
     // Layout: content area + footer
@@ -47,15 +48,15 @@ pub fn render_diff_view(f: &mut Frame, diff: &mut DiffView) {
 
     if diff.patch_mode {
         // Patch mode with optional file list sidebar
-        render_patch_mode(f, diff, diff_area, chunks[1]);
+        render_patch_mode(f, diff, diff_area, chunks[1], palette);
         if let Some(file_area) = file_list_area {
-            render_file_list(f, diff, file_area);
+            render_file_list(f, diff, file_area, palette);
         }
     } else {
         // Normal diff mode with optional file list
-        render_normal_diff(f, diff, diff_area, chunks[1]);
+        render_normal_diff(f, diff, diff_area, chunks[1], palette);
         if let Some(file_area) = file_list_area {
-            render_file_list(f, diff, file_area);
+            render_file_list(f, diff, file_area, palette);
         }
     }
 }
@@ -88,13 +89,13 @@ fn get_current_file_index(diff: &DiffView) -> Option<usize> {
 }
 
 /// Render the file list sidebar (full paths, directory dimmed, left-truncate if needed).
-fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
+fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemePalette) {
     let current_file_idx = get_current_file_index(diff);
 
     let block = Block::bordered()
         .title(format!(" Files ({}) ", diff.file_list.len()))
         .title_style(Style::default().fg(Color::Cyan))
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(palette.dimmed));
 
     // Calculate available width (subtract borders)
     let inner_width = area.width.saturating_sub(2) as usize;
@@ -187,7 +188,7 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
         // Path with directory dimmed
         let basename_style = if is_current {
             Style::default()
-                .fg(Color::White)
+                .fg(palette.text)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
@@ -196,7 +197,7 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
         if let Some(d) = display_dir {
             spans.push(Span::styled(
                 format!("{}/", d),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(palette.dimmed),
             ));
         }
         spans.push(Span::styled(display_basename, basename_style));
@@ -230,7 +231,13 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect) {
 }
 
 /// Render normal diff view (full diff with scroll).
-fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_area: Rect) {
+fn render_normal_diff(
+    f: &mut Frame,
+    diff: &DiffView,
+    content_area: Rect,
+    footer_area: Rect,
+    palette: &ThemePalette,
+) {
     // Create block with title including diff stats
     let title = Line::from(vec![
         Span::styled(
@@ -252,7 +259,7 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
     ]);
     let block = Block::bordered()
         .title(title)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(palette.dimmed));
 
     // Calculate inner area (content area minus borders)
     let inner_height = content_area.height.saturating_sub(2) as usize;
@@ -272,13 +279,13 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
     // Footer with keybindings - show which diff type is active (toggle with d)
     let (wip_style, review_style) = if diff.is_branch_diff {
         (
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(palette.dimmed),
             Style::default().fg(Color::Green),
         )
     } else {
         (
             Style::default().fg(Color::Green),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(palette.dimmed),
         )
     };
 
@@ -287,7 +294,7 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
         Span::styled("[Tab]", Style::default().fg(Color::Yellow)),
         Span::raw(" "),
         Span::styled("WIP", wip_style),
-        Span::styled(" | ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" | ", Style::default().fg(palette.dimmed)),
         Span::styled("review", review_style),
         Span::raw("  "),
     ];
@@ -314,7 +321,13 @@ fn render_normal_diff(f: &mut Frame, diff: &DiffView, content_area: Rect, footer
 }
 
 /// Render patch mode (hunk-by-hunk staging like git add -p).
-fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_area: Rect) {
+fn render_patch_mode(
+    f: &mut Frame,
+    diff: &DiffView,
+    content_area: Rect,
+    footer_area: Rect,
+    palette: &ThemePalette,
+) {
     let hunk = &diff.hunks[diff.current_hunk];
 
     // Title shows filename and hunk progress
@@ -382,19 +395,19 @@ fn render_patch_mode(f: &mut Frame, diff: &DiffView, content_area: Rect, footer_
             Span::raw(" send  "),
             Span::styled("[Esc]", Style::default().fg(Color::Red)),
             Span::raw(" cancel  "),
-            Span::styled("| ", Style::default().fg(Color::DarkGray)),
+            Span::styled("| ", Style::default().fg(palette.dimmed)),
         ];
 
         if input.is_empty() {
             // Show cursor then placeholder when empty
-            spans.push(Span::styled("|", Style::default().fg(Color::White)));
+            spans.push(Span::styled("|", Style::default().fg(palette.text)));
             spans.push(Span::styled(
                 "Type your comment...",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(palette.dimmed),
             ));
         } else {
             spans.push(Span::raw(input));
-            spans.push(Span::styled("|", Style::default().fg(Color::White)));
+            spans.push(Span::styled("|", Style::default().fg(palette.text)));
         }
 
         let footer = Paragraph::new(Line::from(spans));

@@ -230,6 +230,7 @@ customize.
 | `window_prefix`  | Prefix for tmux window names                         | `wm-`                   |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
+| `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
 
 #### Naming options
 

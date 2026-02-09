@@ -15,6 +15,8 @@ use crate::github::PrSummary;
 use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
 
+use super::ui::theme::ThemePalette;
+
 const PR_FETCH_INTERVAL: Duration = Duration::from_secs(30);
 
 use super::monitor::AgentMonitor;
@@ -101,6 +103,8 @@ pub struct App {
     agent_monitor: AgentMonitor,
     /// Last jumped-to pane_id for quick toggle (cached from settings)
     last_pane_id: Option<String>,
+    /// Color palette based on the configured theme
+    pub palette: ThemePalette,
 }
 
 impl App {
@@ -122,6 +126,7 @@ impl App {
             .unwrap_or_else(|| config.dashboard.preview_size())
             .clamp(10, 90);
 
+        let palette = ThemePalette::from_theme(config.theme);
         let sort_mode = SortMode::load();
         let git_statuses = git::load_status_cache();
         let pr_statuses = crate::github::load_pr_cache();
@@ -165,6 +170,7 @@ impl App {
             preview_size,
             agent_monitor: AgentMonitor::new(),
             last_pane_id,
+            palette,
         };
 
         app.refresh();
@@ -688,13 +694,13 @@ impl App {
                 (self.config.status_icons.waiting(), Color::Magenta, false)
             }
             Some(AgentStatus::Done) => (self.config.status_icons.done(), Color::Green, false),
-            None => ("", Color::White, false),
+            None => ("", self.palette.text, false),
         };
 
         // If stale, dim the color and add timer-off indicator
         if is_stale {
             let display_text = format!("{} \u{f051b}", icon);
-            (display_text, Color::DarkGray)
+            (display_text, self.palette.dimmed)
         } else if is_working {
             // Add animated spinner when agent is working
             let spinner = SPINNER_FRAMES[self.spinner_frame as usize];

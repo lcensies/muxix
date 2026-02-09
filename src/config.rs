@@ -181,6 +181,10 @@ pub struct Config {
     /// Whether to use nerdfont icons (None = prompt user on first run)
     #[serde(default)]
     pub nerdfont: Option<bool>,
+
+    /// Color theme for the dashboard (dark or light)
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 /// Configuration for a single tmux pane
@@ -231,6 +235,15 @@ pub enum MergeStrategy {
     Merge,
     Rebase,
     Squash,
+}
+
+/// Color theme for the dashboard
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
 }
 
 /// Strategy for deriving worktree/window names from branch names
@@ -615,6 +628,13 @@ impl Config {
             self.worktree_naming
         };
 
+        // Special case: theme (project wins if not default)
+        merged.theme = if project.theme != Theme::default() {
+            project.theme
+        } else {
+            self.theme
+        };
+
         // List values with "<global>" placeholder support
         merged.post_create = merge_vec_with_placeholder(self.post_create, project.post_create);
         merged.pre_merge = merge_vec_with_placeholder(self.pre_merge, project.pre_merge);
@@ -721,6 +741,14 @@ impl Config {
         let example_config = r#"# workmux project configuration
 # For global settings, edit ~/.config/workmux/config.yaml
 # All options below are commented out - uncomment to override defaults.
+
+#-------------------------------------------------------------------------------
+# Appearance
+#-------------------------------------------------------------------------------
+
+# Color theme for the dashboard.
+# Options: dark (default), light
+# theme: dark
 
 #-------------------------------------------------------------------------------
 # Git

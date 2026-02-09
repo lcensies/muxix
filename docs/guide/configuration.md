@@ -65,6 +65,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | `window_prefix`  | Override tmux window prefix                          | Icon or `wm-`           |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
+| `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
 
 ### Naming options
 

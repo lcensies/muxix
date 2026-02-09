@@ -71,7 +71,7 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
                 Style::default().fg(Color::Yellow),
             ));
         } else {
-            spans.push(Span::styled("all", Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled("all", Style::default().fg(app.palette.dimmed)));
         }
 
         spans.extend(vec![
@@ -106,7 +106,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
         Line::from(vec![
             Span::styled("Git ", Style::default().fg(Color::Cyan).bold()),
-            Span::styled(spinner.to_string(), Style::default().fg(Color::DarkGray)),
+            Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
         ])
     } else {
         Line::from(Span::styled("Git", Style::default().fg(Color::Cyan).bold()))
@@ -117,7 +117,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
         Line::from(vec![
             Span::styled("PR ", Style::default().fg(Color::Cyan).bold()),
-            Span::styled(spinner.to_string(), Style::default().fg(Color::DarkGray)),
+            Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
         ])
     } else {
         Line::from(Span::styled("PR", Style::default().fg(Color::Cyan).bold()))
@@ -212,12 +212,12 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             // Get git status for this worktree (may be None if not yet fetched)
             let git_status = app.git_statuses.get(&agent.path);
-            let git_spans = format_git_status(git_status, app.spinner_frame);
+            let git_spans = format_git_status(git_status, app.spinner_frame, &app.palette);
 
             // Get PR status for this agent (only if column is shown)
             let pr_spans = if show_pr_column {
                 let pr = app.get_pr_for_agent(agent);
-                Some(format_pr_status(pr, show_check_counts))
+                Some(format_pr_status(pr, show_check_counts, &app.palette))
             } else {
                 None
             };
@@ -308,9 +308,9 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 title,
             )| {
                 let worktree_style = if is_current {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(app.palette.current_worktree_fg)
                 } else if is_main {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(app.palette.dimmed)
                 } else {
                     Style::default()
                 };
@@ -349,7 +349,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 let row = Row::new(cells);
                 // Subtle background for the active worktree row
                 if is_current {
-                    row.style(Style::default().bg(Color::Rgb(35, 40, 35)))
+                    row.style(Style::default().bg(app.palette.current_row_bg))
                 } else {
                     row
                 }
@@ -378,7 +378,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let table = Table::new(rows, constraints)
         .header(header)
         .block(Block::default())
-        .row_highlight_style(Style::default().bg(Color::Rgb(50, 50, 55)))
+        .row_highlight_style(Style::default().bg(app.palette.highlight_row_bg))
         .highlight_symbol("> ");
 
     f.render_stateful_widget(table, area, &mut app.table_state);
@@ -407,13 +407,13 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
         (
             format!(" Preview: {} ", worktree_name),
             Style::default().fg(Color::Cyan),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(app.palette.dimmed),
         )
     } else {
         (
             " Preview ".to_string(),
             Style::default().fg(Color::Cyan),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(app.palette.dimmed),
         )
     };
 

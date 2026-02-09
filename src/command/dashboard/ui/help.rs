@@ -66,10 +66,12 @@ pub fn render_help(f: &mut Frame, app: &App) {
         height: height.min(area.height),
     };
 
+    let palette = &app.palette;
+
     // Create styled block with rounded corners
     let block = Block::bordered()
         .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Rgb(100, 100, 120)))
+        .border_style(Style::default().fg(palette.help_border))
         .title(Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled(
@@ -82,8 +84,8 @@ pub fn render_help(f: &mut Frame, app: &App) {
         ]))
         .title_bottom(Line::from(vec![
             Span::styled(" ", Style::default()),
-            Span::styled("any key", Style::default().fg(Color::DarkGray)),
-            Span::styled(" to close ", Style::default().fg(Color::Rgb(70, 70, 80))),
+            Span::styled("any key", Style::default().fg(palette.dimmed)),
+            Span::styled(" to close ", Style::default().fg(palette.help_muted)),
         ]));
 
     // Build styled rows with empty line at top for padding
@@ -100,8 +102,8 @@ pub fn render_help(f: &mut Frame, app: &App) {
                 ),
             ])),
             Cell::from(Line::from(vec![
-                Span::styled(" · ", Style::default().fg(Color::Rgb(70, 70, 80))),
-                Span::styled(desc, Style::default().fg(Color::White)),
+                Span::styled(" · ", Style::default().fg(palette.help_muted)),
+                Span::styled(desc, Style::default().fg(palette.text)),
             ])),
         ])
     }));
