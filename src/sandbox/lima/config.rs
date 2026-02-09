@@ -21,12 +21,13 @@ ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
 "#
         .to_string(),
 
-        "codex" => r#"# Install Codex CLI from GitHub releases
+        "codex" => r#"# Install Codex CLI from GitHub releases (use musl for glibc compatibility)
 mkdir -p "$HOME/.local/bin"
 ARCH=$(uname -m)
 if [ "$ARCH" != "aarch64" ]; then ARCH="x86_64"; fi
-curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-gnu.tar.gz" | \
+curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-musl.tar.gz" | \
   tar xz -C "$HOME/.local/bin/"
+mv "$HOME/.local/bin/codex-${ARCH}-unknown-linux-musl" "$HOME/.local/bin/codex"
 "#
         .to_string(),
 
