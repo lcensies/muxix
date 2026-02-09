@@ -120,7 +120,7 @@ workmux mounts agent-specific credential directories from the host into the VM. 
 | `claude` | `~/.claude/` | No. Claude stores auth in macOS Keychain, which is not accessible from the VM. You need to authenticate separately inside the VM. |
 | `gemini` | `~/.gemini/` | Yes. If you have already authenticated with Gemini on your host, the VM automatically has access to those credentials. |
 | `codex` | `~/.codex/` | Yes. If you have already authenticated with Codex on your host, the VM automatically has access to those credentials. |
-| `opencode` | - | Not mounted |
+| `opencode` | `~/.local/share/opencode/` | Yes. If you have already authenticated with OpenCode on your host, the VM automatically has access to those credentials. |
 
 For agents with mounted credential directories, authentication done inside the VM is written back to the host directory. This means credentials persist across VM recreations (`workmux sandbox prune`) and you only need to authenticate once.
 

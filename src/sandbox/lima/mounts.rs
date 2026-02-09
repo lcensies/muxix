@@ -279,6 +279,22 @@ pub fn generate_mounts(
         });
     }
 
+    // Mount host ~/.local/share/opencode/ to guest $HOME/.local/share/opencode/
+    // so OpenCode CLI finds OAuth credentials (auth.json)
+    if agent == "opencode"
+        && let Some(home) = home::home_dir()
+    {
+        let auth_dir = home.join(".local/share/opencode");
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".local/share/opencode"))
+            .unwrap_or_else(|| auth_dir.clone());
+        mounts.push(Mount {
+            host_path: auth_dir,
+            guest_path,
+            read_only: false,
+        });
+    }
+
     // Mount per-VM state directory for workmux state
     if let Ok(state_dir) = lima_state_dir(vm_name) {
         let guest_path = lima_guest_home()
