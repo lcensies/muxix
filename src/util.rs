@@ -19,7 +19,7 @@ pub fn format_elapsed_secs(secs: u64) -> String {
         if m == 0 {
             format!("{}h", h)
         } else {
-            format!("{}h{}m", h, m)
+            format!("{}h {}m", h, m)
         }
     }
 }
@@ -33,10 +33,10 @@ pub fn format_elapsed_duration(d: Duration) -> String {
     } else if secs < 3600 {
         let m = secs / 60;
         let s = secs % 60;
-        format!("{}m{:02}s", m, s)
+        format!("{}m {:02}s", m, s)
     } else {
         let h = secs / 3600;
         let m = (secs % 3600) / 60;
-        format!("{}h{:02}m", h, m)
+        format!("{}h {:02}m", h, m)
     }
 }
