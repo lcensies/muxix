@@ -392,15 +392,15 @@ enum Commands {
         #[arg(last = true, required = true)]
         command: Vec<String>,
 
-        /// Wait for command to complete and show output
-        #[arg(short = 'w', long)]
-        wait: bool,
+        /// Run in background without waiting (default: wait and stream output)
+        #[arg(short = 'b', long)]
+        background: bool,
 
         /// Keep run artifacts after completion (for debugging)
         #[arg(long)]
         keep: bool,
 
-        /// Maximum wait time in seconds (only with --wait)
+        /// Maximum wait time in seconds
         #[arg(long)]
         timeout: Option<u64>,
     },
@@ -594,10 +594,10 @@ pub fn run() -> Result<()> {
         Commands::Run {
             name,
             command,
-            wait,
+            background,
             keep,
             timeout,
-        } => command::run::run(&name, command, wait, keep, timeout),
+        } => command::run::run(&name, command, background, keep, timeout),
         Commands::Exec { run_dir } => command::exec::run(&run_dir),
         Commands::Init => crate::config::Config::init(),
         Commands::Docs => command::docs::run(),

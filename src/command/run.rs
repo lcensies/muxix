@@ -1,5 +1,7 @@
 //! Run a command in a worktree's tmux/wezterm window.
 
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,7 +28,7 @@ fn shell_escape(s: &str) -> String {
 pub fn run(
     worktree_name: &str,
     command_parts: Vec<String>,
-    wait: bool,
+    background: bool,
     keep: bool,
     timeout: Option<u64>,
 ) -> Result<()> {
@@ -74,40 +76,57 @@ pub fn run(
         Some(&exec_cmd),
     )?;
 
-    if !wait {
+    if background {
         eprintln!("Started: {} (run_id: {})", command, run_id);
         eprintln!("Pane: {}", new_pane_id);
         return Ok(());
     }
 
-    // Poll for completion with optional timeout
-    eprintln!("Running: {}", command);
+    // Wait for completion, streaming output in real-time
     let start = Instant::now();
     let timeout_duration = timeout.map(Duration::from_secs);
+
+    // Open files for streaming
+    let stdout_path = run_dir.join("stdout");
+    let stderr_path = run_dir.join("stderr");
+
+    // Wait briefly for files to be created
+    thread::sleep(Duration::from_millis(100));
+
+    let mut stdout_file = File::open(&stdout_path).ok();
+    let mut stderr_file = File::open(&stderr_path).ok();
+    let mut stdout_pos: u64 = 0;
+    let mut stderr_pos: u64 = 0;
 
     loop {
         // Check timeout
         if let Some(max_duration) = timeout_duration
-            && start.elapsed() > max_duration
-        {
-            eprintln!("Timeout after {}s", timeout.unwrap());
-            if !keep {
-                let _ = cleanup_run(&run_dir);
+            && start.elapsed() > max_duration {
+                eprintln!("\nTimeout after {}s", timeout.unwrap());
+                if !keep {
+                    let _ = cleanup_run(&run_dir);
+                }
+                std::process::exit(124); // Standard timeout exit code
             }
-            std::process::exit(124); // Standard timeout exit code
+
+        // Stream new stdout content
+        if let Some(ref mut file) = stdout_file {
+            stdout_pos = stream_new_content(file, stdout_pos, &mut io::stdout());
         }
 
-        if let Some(result) = read_result(&run_dir)? {
-            // Read output files
-            let stdout = std::fs::read_to_string(run_dir.join("stdout")).unwrap_or_default();
-            let stderr = std::fs::read_to_string(run_dir.join("stderr")).unwrap_or_default();
+        // Stream new stderr content
+        if let Some(ref mut file) = stderr_file {
+            stderr_pos = stream_new_content(file, stderr_pos, &mut io::stderr());
+        }
 
-            // Print captured output (already shown in pane, but useful if redirected)
-            if !stdout.is_empty() {
-                print!("{}", stdout);
+        // Check if complete
+        if let Some(result) = read_result(&run_dir)? {
+            // Final flush of any remaining output
+            if let Some(ref mut file) = stdout_file {
+                stream_new_content(file, stdout_pos, &mut io::stdout());
             }
-            if !stderr.is_empty() {
-                eprint!("{}", stderr);
+            if let Some(ref mut file) = stderr_file {
+                stream_new_content(file, stderr_pos, &mut io::stderr());
             }
 
             // Cleanup unless --keep
@@ -122,6 +141,32 @@ pub fn run(
             }
             return Ok(());
         }
-        thread::sleep(Duration::from_millis(200));
+
+        thread::sleep(Duration::from_millis(50));
     }
+}
+
+/// Stream new content from file starting at given position, return new position.
+fn stream_new_content<W: Write>(file: &mut File, pos: u64, out: &mut W) -> u64 {
+    if file.seek(SeekFrom::Start(pos)).is_err() {
+        return pos;
+    }
+
+    let mut reader = BufReader::new(file);
+    let mut new_pos = pos;
+
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break, // EOF
+            Ok(n) => {
+                let _ = out.write_all(line.as_bytes());
+                let _ = out.flush();
+                new_pos += n as u64;
+            }
+            Err(_) => break,
+        }
+    }
+
+    new_pos
 }
