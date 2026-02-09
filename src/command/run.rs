@@ -79,6 +79,7 @@ pub fn run(
     if background {
         eprintln!("Started: {} (run_id: {})", command, run_id);
         eprintln!("Pane: {}", new_pane_id);
+        eprintln!("Artifacts: {}", run_dir.display());
         return Ok(());
     }
 
@@ -101,13 +102,16 @@ pub fn run(
     loop {
         // Check timeout
         if let Some(max_duration) = timeout_duration
-            && start.elapsed() > max_duration {
-                eprintln!("\nTimeout after {}s", timeout.unwrap());
-                if !keep {
-                    let _ = cleanup_run(&run_dir);
-                }
-                std::process::exit(124); // Standard timeout exit code
+            && start.elapsed() > max_duration
+        {
+            eprintln!("\nTimeout after {}s", timeout.unwrap());
+            if keep {
+                eprintln!("Artifacts kept at: {}", run_dir.display());
+            } else {
+                let _ = cleanup_run(&run_dir);
             }
+            std::process::exit(124); // Standard timeout exit code
+        }
 
         // Stream new stdout content
         if let Some(ref mut file) = stdout_file {
@@ -130,7 +134,9 @@ pub fn run(
             }
 
             // Cleanup unless --keep
-            if !keep {
+            if keep {
+                eprintln!("Artifacts kept at: {}", run_dir.display());
+            } else {
                 let _ = cleanup_run(&run_dir);
             }
 
