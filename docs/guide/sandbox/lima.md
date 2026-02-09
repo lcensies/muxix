@@ -111,24 +111,18 @@ The agent CLI installed depends on your `agent` configuration:
 
 Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to provision with a different agent.
 
-### Credential caching
+### Authentication
 
-For supported agents, workmux automatically mounts the host credential directory into the VM so authentication persists across VM recreations:
+workmux mounts agent-specific credential directories from the host into the VM. How this works depends on the agent:
 
-| Agent | Host directory | Cached |
+| Agent | Host directory | Reuses host auth? |
 | --- | --- | --- |
-| `claude` | `~/.claude/` | Yes |
-| `gemini` | `~/.gemini/` | Yes |
-| `codex` | - | No |
-| `opencode` | - | No |
+| `claude` | `~/.claude/` | No. Claude stores auth in macOS Keychain, which is not accessible from the VM. You need to authenticate separately inside the VM. |
+| `gemini` | `~/.gemini/` | Yes. If you have already authenticated with Gemini on your host, the VM automatically has access to those credentials. |
+| `codex` | - | Not mounted |
+| `opencode` | - | Not mounted |
 
-When you authenticate inside the VM, credentials are written to the mounted host directory. This means:
-
-- Authentication survives `workmux sandbox prune`
-- New VMs automatically have access to existing credentials
-- You only need to log in once per agent
-
-For agents without credential caching, you'll need to re-authenticate after recreating the VM.
+For agents with mounted credential directories, authentication done inside the VM is written back to the host directory. This means credentials persist across VM recreations (`workmux sandbox prune`) and you only need to authenticate once.
 
 The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `workmux sandbox prune` to get the correct credential mount.
 
