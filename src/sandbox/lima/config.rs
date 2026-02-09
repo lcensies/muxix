@@ -22,6 +22,7 @@ ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
         .to_string(),
 
         "codex" => r#"# Install Codex CLI from GitHub releases
+mkdir -p "$HOME/.local/bin"
 ARCH=$(uname -m)
 if [ "$ARCH" != "aarch64" ]; then ARCH="x86_64"; fi
 curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-gnu.tar.gz" | \
@@ -40,6 +41,8 @@ sudo npm install -g @google/gemini-cli
 
         "opencode" => r#"# Install OpenCode
 curl -fsSL https://opencode.ai/install | bash
+mkdir -p "$HOME/.local/bin"
+[ -x "$HOME/.opencode/bin/opencode" ] && ln -sfn "$HOME/.opencode/bin/opencode" "$HOME/.local/bin/opencode"
 "#
         .to_string(),
 
