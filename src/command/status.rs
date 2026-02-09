@@ -42,8 +42,31 @@ struct StatusRow {
     status: String,
     #[tabled(rename = "ELAPSED")]
     elapsed: String,
+    #[tabled(rename = "GIT")]
+    git: String,
     #[tabled(rename = "TITLE")]
     title: String,
+}
+
+fn git_label(git: &Option<GitInfo>) -> String {
+    let Some(g) = git else {
+        return "-".to_string();
+    };
+    let mut parts = Vec::new();
+    if g.has_staged {
+        parts.push("staged");
+    }
+    if g.has_unstaged {
+        parts.push("unstaged");
+    }
+    if g.has_unmerged_commits {
+        parts.push("unmerged");
+    }
+    if parts.is_empty() {
+        "clean".to_string()
+    } else {
+        parts.join(",")
+    }
 }
 
 fn status_label(status: Option<AgentStatus>) -> String {
@@ -158,6 +181,7 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
                     .elapsed_secs
                     .map(util::format_elapsed_secs)
                     .unwrap_or("-".to_string()),
+                git: git_label(&e.git),
                 title: e.title.clone().unwrap_or("-".to_string()),
             })
             .collect();
@@ -165,7 +189,12 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
         let mut table = Table::new(rows);
         table
             .with(Style::blank())
-            .modify(Columns::new(0..5), Padding::new(0, 1, 0, 0));
+            .modify(Columns::new(..), Padding::new(0, 1, 0, 0));
+        if !show_git {
+            table.with(tabled::settings::Remove::column(
+                tabled::settings::location::ByColumnName::new("GIT"),
+            ));
+        }
         println!("{table}");
     }
 
