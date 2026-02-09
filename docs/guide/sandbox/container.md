@@ -50,7 +50,7 @@ workmux sandbox build
 | `container.runtime` | `docker` | Container runtime: `docker` or `podman` |
 | `target` | `agent` | Which panes to sandbox: `agent` or `all` |
 | `image` | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
-| `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. |
+| `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only** -- ignored in project config for security. |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through |
 | `extra_mounts` | `[]` | Additional host paths to mount (see [shared features](./features#extra-mounts)) |
 
@@ -133,9 +133,10 @@ Docker and Podman handle host resolution differently:
 - **Docker Engine** (Linux): workmux automatically adds `--add-host host.docker.internal:host-gateway` so the container can reach the host. This is a no-op on Docker Desktop.
 - **Podman**: Uses `host.containers.internal` as the built-in hostname for host access.
 
-If you have a non-standard networking setup (e.g., remote Docker context), override the hostname the guest uses to reach the host RPC server:
+If you have a non-standard networking setup (e.g., remote Docker context), override the hostname the guest uses to reach the host RPC server. This setting must be in your global config (`~/.config/workmux/config.yaml`) -- project-level values are ignored for security to prevent RPC traffic redirection:
 
 ```yaml
+# ~/.config/workmux/config.yaml
 sandbox:
   rpc_host: 192.168.1.5
 ```

@@ -1078,11 +1078,18 @@ impl Config {
                 .env_passthrough
                 .clone()
                 .or(self.sandbox.env_passthrough.clone()),
-            rpc_host: project
-                .sandbox
-                .rpc_host
-                .clone()
-                .or(self.sandbox.rpc_host.clone()),
+            // Security: rpc_host is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from redirecting
+            // RPC traffic to attacker infrastructure via .workmux.yaml.
+            rpc_host: {
+                if project.sandbox.rpc_host.is_some() {
+                    tracing::warn!(
+                        "rpc_host in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.rpc_host.clone()
+            },
             toolchain: project
                 .sandbox
                 .toolchain
@@ -1939,6 +1946,58 @@ mod tests {
         let merged = global.merge(project);
         // Project value should be ignored
         assert!(!merged.sandbox.allow_unsandboxed_host_exec());
+    }
+
+    #[test]
+    fn test_sandbox_rpc_host_global_only() {
+        // Project config is ignored -- only global matters
+        let global = Config {
+            sandbox: SandboxConfig {
+                rpc_host: Some("trusted.host".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                rpc_host: Some("evil.attacker.com".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.rpc_host, Some("trusted.host".to_string()));
+    }
+
+    #[test]
+    fn test_sandbox_rpc_host_project_ignored_when_no_global() {
+        let global = Config::default(); // no rpc_host
+        let project = Config {
+            sandbox: SandboxConfig {
+                rpc_host: Some("evil.attacker.com".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.rpc_host.is_none());
+    }
+
+    #[test]
+    fn test_sandbox_rpc_host_uses_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                rpc_host: Some("custom.host".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.rpc_host, Some("custom.host".to_string()));
     }
 
     #[test]

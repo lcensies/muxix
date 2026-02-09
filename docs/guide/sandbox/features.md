@@ -62,6 +62,7 @@ Host-exec applies several layers of defense to limit what a compromised agent in
 - **Environment isolation**: Child processes run with a sanitized environment. Only essential variables (`PATH`, `HOME`, `TERM`, etc.) are passed through. Host secrets like API keys are not inherited. `PATH` is normalized to absolute entries only to prevent relative-path hijacking.
 - **Filesystem sandbox**: On macOS, child processes run under `sandbox-exec` (Seatbelt), which denies access to sensitive directories (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.docker`, keychains, browser data) and denies writes to `$HOME` except toolchain caches (`.cache`, `.cargo`, `.rustup`, `.npm`). On Linux, `bwrap` (Bubblewrap) provides similar isolation with a read-only root filesystem, tmpfs over secret directories, and a writable worktree bind mount. If `bwrap` is not installed on Linux, host-exec commands are refused (fail closed).
 - **Global-only allowlist**: `host_commands` is only read from global config (`~/.config/workmux/config.yaml`). Project-level `.workmux.yaml` cannot set it. A warning is logged if it tries.
+- **Global-only RPC host**: `rpc_host` is only read from global config. A malicious project config cannot redirect RPC traffic to attacker infrastructure.
 - **Worktree-locked**: All commands execute with the project worktree as the working directory.
 
 **Known limitations**:
