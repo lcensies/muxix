@@ -74,6 +74,10 @@ impl AgentProfile for GeminiProfile {
         "gemini"
     }
 
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        Some("--yolo")
+    }
+
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("-i \"$(cat {})\"", prompt_path)
     }
@@ -101,7 +105,10 @@ impl AgentProfile for CodexProfile {
     fn name(&self) -> &'static str {
         "codex"
     }
-    // Uses default -- separator
+
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        Some("--yolo")
+    }
 }
 
 pub struct DefaultProfile;
@@ -190,7 +197,7 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "-i \"$(cat PROMPT.md)\""
         );
-        assert_eq!(profile.skip_permissions_flag(), None);
+        assert_eq!(profile.skip_permissions_flag(), Some("--yolo"));
     }
 
     #[test]
@@ -215,6 +222,7 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "-- \"$(cat PROMPT.md)\""
         );
+        assert_eq!(profile.skip_permissions_flag(), Some("--yolo"));
     }
 
     #[test]
