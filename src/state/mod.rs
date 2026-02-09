@@ -84,6 +84,7 @@ pub fn persist_agent_update(
         updated_ts: now,
         window_name: live_info.window,
         session_name: live_info.session,
+        last_heartbeat: Some(now),
     };
 
     if let Ok(store) = StateStore::new()

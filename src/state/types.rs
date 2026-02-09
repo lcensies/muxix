@@ -23,7 +23,10 @@ pub struct PaneKey {
     /// Backend instance identifier (e.g., tmux socket path, wezterm mux ID)
     pub instance: String,
 
-    /// Pane identifier within the backend
+    /// Pane identifier within the backend.
+    /// - tmux: pane ID (e.g., "%42")
+    /// - WezTerm: numeric pane ID
+    /// - Zellij: tab name (e.g., "wm-feature") since pane IDs are not reliably queryable
     pub pane_id: String,
 }
 
@@ -105,6 +108,12 @@ pub struct AgentState {
     /// Stored here for consistency with window_name.
     #[serde(default)]
     pub session_name: Option<String>,
+
+    /// Unix timestamp of last heartbeat (dashboard refresh).
+    /// Used by Zellij to detect dead agents faster than staleness timeout.
+    /// Backends with reliable PID validation (tmux/WezTerm) don't need this.
+    #[serde(default)]
+    pub last_heartbeat: Option<u64>,
 }
 
 impl AgentState {

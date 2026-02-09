@@ -2,6 +2,7 @@
 //!
 //! Limitations:
 //! - No pane targeting (commands go to focused pane, not specific pane ID)
+//! - Pane IDs are actually tab names (one agent per tab recommended)
 //! - No percentage-based pane size control (can resize with +/- but not set exact %)
 //! - No window insertion order (tabs always append)
 //! - One status per tab (state tracked by tab name, not pane ID)
@@ -167,6 +168,8 @@ impl Multiplexer for ZellijBackend {
 
     // === Window/Tab Management ===
 
+    /// Create a new tab in Zellij.
+    /// Returns: Tab name (used as "pane_id" for Zellij operations)
     fn create_window(&self, params: CreateWindowParams) -> Result<String> {
         let full_name = format!("{}{}", params.prefix, params.name);
         let cwd_str = params
@@ -669,6 +672,9 @@ impl Multiplexer for ZellijBackend {
         })
     }
 
+    /// Split a pane in Zellij.
+    /// Note: Returns the parent tab name, not an actual pane ID.
+    /// Zellij doesn't expose new pane IDs via CLI.
     fn split_pane(
         &self,
         _target_pane_id: &str,
@@ -770,7 +776,8 @@ impl Multiplexer for ZellijBackend {
         // For Zellij, we can't validate PID or command for unfocused panes.
         // Instead, we use tab-level validation:
         // 1. Check if the tab (window) still exists
-        // 2. Check if the state is stale (no updates in > 1 hour)
+        // 2. Check heartbeat (if available) with 5-minute timeout
+        // 3. Fall back to staleness check (no updates in > 1 hour) for old states
 
         // Check 1: Does the tab still exist?
         if let Some(window_name) = &state.window_name {
@@ -783,12 +790,26 @@ impl Multiplexer for ZellijBackend {
             return Ok(true);
         }
 
-        // Check 2: Is the state stale? (no updates in > 1 hour)
-        let stale_threshold = Duration::from_secs(3600);
-        if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-            let state_age_secs = now.as_secs().saturating_sub(state.updated_ts);
-            if state_age_secs > stale_threshold.as_secs() {
-                return Ok(false); // Stale agent
+        // Check 2: Heartbeat validation (if available)
+        // Dashboard updates heartbeat every refresh, so 5 minutes without heartbeat
+        // means the pane is likely dead (dashboard would have updated it)
+        if let Some(last_heartbeat) = state.last_heartbeat {
+            let heartbeat_timeout = Duration::from_secs(300); // 5 minutes
+            if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                let heartbeat_age_secs = now.as_secs().saturating_sub(last_heartbeat);
+                if heartbeat_age_secs > heartbeat_timeout.as_secs() {
+                    return Ok(false); // No heartbeat for > 5 minutes
+                }
+            }
+        } else {
+            // Check 3: Fall back to staleness check for old states without heartbeat
+            // This maintains backward compatibility with existing state files
+            let stale_threshold = Duration::from_secs(3600); // 1 hour
+            if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                let state_age_secs = now.as_secs().saturating_sub(state.updated_ts);
+                if state_age_secs > stale_threshold.as_secs() {
+                    return Ok(false); // Stale agent (old validation logic)
+                }
             }
         }
 
@@ -930,5 +951,9 @@ impl Multiplexer for ZellijBackend {
             .context("Failed to spawn cleanup process")?;
 
         Ok(())
+    }
+
+    fn should_exit_on_jump(&self) -> bool {
+        false // Keep dashboard open after jumping (Zellij limitation - can't target unfocused panes)
     }
 }

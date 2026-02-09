@@ -503,25 +503,45 @@ impl DiffOps for App {
     /// Send commit action to the agent pane and close diff modal
     fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
+            // Switch to agent's tab first (required for Zellij)
+            let _ = self.mux.switch_to_pane(&diff.pane_id);
+
             let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
             );
         }
-        self.close_diff();
+
+        // For Zellij, keep dashboard in background (don't exit)
+        // For tmux/WezTerm, exit dashboard after jump
+        if self.mux.should_exit_on_jump() {
+            self.should_quit = true;
+        } else {
+            self.close_diff();
+        }
     }
 
     /// Send merge action to the agent pane and close diff modal
     fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
+            // Switch to agent's tab first (required for Zellij)
+            let _ = self.mux.switch_to_pane(&diff.pane_id);
+
             let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),
             );
         }
-        self.close_diff();
+
+        // For Zellij, keep dashboard in background (don't exit)
+        // For tmux/WezTerm, exit dashboard after jump
+        if self.mux.should_exit_on_jump() {
+            self.should_quit = true;
+        } else {
+            self.close_diff();
+        }
     }
 
     /// Send commit action to the currently selected agent's pane (from dashboard view)
@@ -529,11 +549,20 @@ impl DiffOps for App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
+            // Switch to agent's tab first (required for Zellij)
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
+
             let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.commit(),
                 self.config.agent.as_deref(),
             );
+
+            // For Zellij, keep dashboard in background (don't exit)
+            // For tmux/WezTerm, exit dashboard after jump
+            if self.mux.should_exit_on_jump() {
+                self.should_quit = true;
+            }
         }
     }
 
@@ -542,11 +571,20 @@ impl DiffOps for App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
+            // Switch to agent's tab first (required for Zellij)
+            let _ = self.mux.switch_to_pane(&agent.pane_id);
+
             let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
                 self.config.dashboard.merge(),
                 self.config.agent.as_deref(),
             );
+
+            // For Zellij, keep dashboard in background (don't exit)
+            // For tmux/WezTerm, exit dashboard after jump
+            if self.mux.should_exit_on_jump() {
+                self.should_quit = true;
+            }
         }
     }
 }

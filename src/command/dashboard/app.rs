@@ -257,6 +257,27 @@ impl App {
             self.spawn_pr_status_fetch();
         }
 
+        // Update heartbeat for loaded agents (Zellij validation)
+        if self.mux.name() == "zellij" {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            use crate::state::PaneKey;
+
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs());
+            if let (Some(now), Ok(store)) = (now, crate::state::StateStore::new()) {
+                for agent in &self.agents {
+                    let pane_key = PaneKey {
+                        backend: self.mux.name().to_string(),
+                        instance: self.mux.instance_id(),
+                        pane_id: agent.pane_id.clone(),
+                    };
+                    if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
+                        state.last_heartbeat = Some(now);
+                        let _ = store.upsert_agent(&state);
+                    }
+                }
+            }
+        }
+
         // Restore selection by pane_id to follow the item across reorders
         if let Some(ref pane_id) = self.selected_pane_id {
             // Find the new index of the previously selected item

@@ -51,7 +51,8 @@ pub trait Multiplexer: Send + Sync {
 
     // === Window/Tab Management ===
 
-    /// Create a new window/tab with the given parameters
+    /// Create a new window/tab with the given parameters.
+    /// Returns: Window identifier (pane ID for tmux/WezTerm, tab name for Zellij)
     fn create_window(&self, params: CreateWindowParams) -> Result<String>;
 
     /// Create a new session with the given parameters.
@@ -221,6 +222,7 @@ pub trait Multiplexer: Send + Sync {
     // === Pane Setup ===
 
     /// Split a pane, returning the new pane ID.
+    /// Returns: Pane identifier (accurate for tmux/WezTerm, tab name for Zellij)
     fn split_pane(
         &self,
         target_pane_id: &str,
