@@ -264,6 +264,21 @@ pub fn generate_mounts(
         });
     }
 
+    // Mount host ~/.codex/ to guest $HOME/.codex/ so Codex CLI finds credentials
+    if agent == "codex"
+        && let Some(home) = home::home_dir()
+    {
+        let auth_dir = home.join(".codex");
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".codex"))
+            .unwrap_or_else(|| auth_dir.clone());
+        mounts.push(Mount {
+            host_path: auth_dir,
+            guest_path,
+            read_only: false,
+        });
+    }
+
     // Mount per-VM state directory for workmux state
     if let Ok(state_dir) = lima_state_dir(vm_name) {
         let guest_path = lima_guest_home()
