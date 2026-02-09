@@ -237,16 +237,32 @@ pub fn generate_mounts(
 
     // Mount host ~/.claude/ to guest $HOME/.claude/ so Claude finds credentials
     if agent == "claude"
-        && let Some(auth_dir) = sandbox_auth_dir() {
-            let guest_path = lima_guest_home()
-                .map(|h| h.join(".claude"))
-                .unwrap_or_else(|| auth_dir.clone());
-            mounts.push(Mount {
-                host_path: auth_dir,
-                guest_path,
-                read_only: false,
-            });
-        }
+        && let Some(auth_dir) = sandbox_auth_dir()
+    {
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".claude"))
+            .unwrap_or_else(|| auth_dir.clone());
+        mounts.push(Mount {
+            host_path: auth_dir,
+            guest_path,
+            read_only: false,
+        });
+    }
+
+    // Mount host ~/.gemini/ to guest $HOME/.gemini/ so Gemini CLI finds credentials
+    if agent == "gemini"
+        && let Some(home) = home::home_dir()
+    {
+        let auth_dir = home.join(".gemini");
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".gemini"))
+            .unwrap_or_else(|| auth_dir.clone());
+        mounts.push(Mount {
+            host_path: auth_dir,
+            guest_path,
+            read_only: false,
+        });
+    }
 
     // Mount per-VM state directory for workmux state
     if let Ok(state_dir) = lima_state_dir(vm_name) {

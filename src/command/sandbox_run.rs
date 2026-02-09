@@ -120,9 +120,10 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
     let agent = crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name();
 
     if agent == "claude"
-        && let Err(e) = lima::mounts::seed_claude_json(&vm_name) {
-            tracing::warn!(vm_name = %vm_name, error = %e, "failed to seed ~/.claude.json; continuing");
-        }
+        && let Err(e) = lima::mounts::seed_claude_json(&vm_name)
+    {
+        tracing::warn!(vm_name = %vm_name, error = %e, "failed to seed ~/.claude.json; continuing");
+    }
 
     // Detect toolchain for both agent wrapping and host-exec
     let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree);
