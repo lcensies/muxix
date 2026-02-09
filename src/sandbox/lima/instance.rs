@@ -181,8 +181,16 @@ pub fn ensure_vm_running(config: &Config, worktree_path: &Path) -> Result<String
                 }
             }
 
+            // Resolve toolchain: only install Nix/Devbox if the project has
+            // devbox.json or flake.nix (or the user explicitly set devbox/flake)
+            let needs_nix = {
+                use crate::sandbox::toolchain::{DetectedToolchain, resolve_toolchain};
+                resolve_toolchain(&config.sandbox.toolchain(), worktree_path)
+                    != DetectedToolchain::None
+            };
+
             let lima_config =
-                super::generate_lima_config(&vm_name, &mounts, &config.sandbox, agent)?;
+                super::generate_lima_config(&vm_name, &mounts, &config.sandbox, agent, needs_nix)?;
 
             let config_path = std::env::temp_dir().join(format!("workmux-lima-{}.yaml", vm_name));
             std::fs::write(&config_path, &lima_config).with_context(|| {

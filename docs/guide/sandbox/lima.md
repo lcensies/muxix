@@ -98,7 +98,7 @@ When a VM is first created, workmux runs two built-in provisioning steps:
 **User provision:**
 - Installs the configured agent CLI (based on the `agent` setting)
 - Installs [workmux](https://github.com/raine/workmux)
-- Installs [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) (skipped when `toolchain: off`)
+- Installs [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) (only when the project has `devbox.json` or `flake.nix`, or `toolchain` is explicitly set to `devbox` or `flake`)
 
 The agent CLI installed depends on your `agent` configuration:
 
@@ -257,7 +257,7 @@ sandbox:
   toolchain: off
 ```
 
-This also skips Nix and Devbox installation during provisioning, making VM creation faster.
+This skips Nix and Devbox installation during provisioning and disables runtime toolchain wrapping.
 
 To force a specific toolchain mode regardless of which config files exist:
 
@@ -269,7 +269,7 @@ sandbox:
 
 ### How it works
 
-Nix and Devbox are pre-installed during VM provisioning. Tools declared in `devbox.json` or `flake.nix` are downloaded as pre-built binaries from the Nix binary cache, so no compilation is needed.
+Nix and Devbox are installed during VM provisioning only when needed (when `devbox.json` or `flake.nix` exists in the project, or `toolchain` is explicitly set). Tools declared in these files are downloaded as pre-built binaries from the Nix binary cache, so no compilation is needed.
 
 The `/nix/store` persists inside the VM across sessions, so subsequent activations are instant. If the VM is pruned with `workmux sandbox prune`, packages will be re-downloaded on next use.
 
