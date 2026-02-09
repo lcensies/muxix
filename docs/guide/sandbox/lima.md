@@ -112,6 +112,27 @@ The agent CLI installed depends on your `agent` configuration:
 
 Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to provision with a different agent.
 
+### Credential caching
+
+For supported agents, workmux automatically mounts the host credential directory into the VM so authentication persists across VM recreations:
+
+| Agent | Host directory | Cached |
+| --- | --- | --- |
+| `claude` | `~/.claude/` | Yes |
+| `gemini` | `~/.gemini/` | Yes |
+| `codex` | - | No |
+| `opencode` | - | No |
+
+When you authenticate inside the VM, credentials are written to the mounted host directory. This means:
+
+- Authentication survives `workmux sandbox prune`
+- New VMs automatically have access to existing credentials
+- You only need to log in once per agent
+
+For agents without credential caching, you'll need to re-authenticate after recreating the VM.
+
+The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `workmux sandbox prune` to get the correct credential mount.
+
 ### Custom provisioning
 
 The `provision` field accepts a shell script that runs as a third provisioning step during VM creation, after the built-in steps. Use it to customize the VM environment for your project.
