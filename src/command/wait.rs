@@ -47,21 +47,22 @@ pub fn run(
     loop {
         // Check timeout
         if let Some(timeout) = timeout_secs
-            && start.elapsed() > Duration::from_secs(timeout) {
-                let remaining: Vec<_> = worktree_names
+            && start.elapsed() > Duration::from_secs(timeout)
+        {
+            let remaining: Vec<_> = worktree_names
+                .iter()
+                .filter(|n| !reached.contains(n.as_str()))
+                .collect();
+            eprintln!(
+                "Timeout waiting for: {}",
+                remaining
                     .iter()
-                    .filter(|n| !reached.contains(n.as_str()))
-                    .collect();
-                eprintln!(
-                    "Timeout waiting for: {}",
-                    remaining
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                std::process::exit(1);
-            }
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            std::process::exit(1);
+        }
 
         // Load current agent state
         let agent_panes =
