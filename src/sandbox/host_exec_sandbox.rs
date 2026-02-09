@@ -26,25 +26,36 @@ const DENY_READ_DIRS: &[&str] = &[
     ".config/gcloud",
     ".config/workmux",
     ".docker",
+    ".claude",         // agent credentials
+    ".config/gh",      // GitHub CLI credentials
+    ".config/op",      // 1Password CLI config
+    ".password-store", // pass password manager
 ];
 
 /// Files under $HOME that are denied read access.
 /// Separate from DENY_READ_DIRS because Linux bwrap needs different
 /// handling (bind /dev/null over files, tmpfs over directories).
 const DENY_READ_FILES: &[&str] = &[
-    ".npmrc",           // can contain auth tokens
-    ".pypirc",          // can contain auth tokens
-    ".netrc",           // network credentials
-    ".gem/credentials", // rubygems auth
+    ".npmrc",               // can contain auth tokens
+    ".pypirc",              // can contain auth tokens
+    ".netrc",               // network credentials
+    ".gem/credentials",     // rubygems auth
+    ".claude-sandbox.json", // sandbox credentials
+    ".gitconfig",           // can contain credentials
+    ".bash_history",        // shell history
+    ".zsh_history",         // shell history
+    ".vault-token",         // HashiCorp Vault token
 ];
 
-/// macOS-specific deny paths (absolute, not relative to HOME).
+/// macOS-specific deny paths (relative to HOME).
 #[cfg(target_os = "macos")]
 const DENY_READ_PATHS_MACOS: &[&str] = &[
     "Library/Keychains",
     "Library/Cookies",
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Firefox",
+    "Library/Application Support/Arc", // Arc browser data
+    ".zsh_sessions",                   // macOS zsh session data
 ];
 
 /// Directories under $HOME that are allowed write access (caches, toolchain state).
@@ -404,11 +415,15 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn test_macos_profile_denies_ssh() {
+    fn test_macos_profile_contains_all_deny_paths() {
         let profile = generate_macos_profile();
-        assert!(profile.contains(".ssh"));
-        assert!(profile.contains(".aws"));
-        assert!(profile.contains(".gnupg"));
+        for p in DENY_READ_DIRS
+            .iter()
+            .chain(DENY_READ_FILES.iter())
+            .chain(DENY_READ_PATHS_MACOS.iter())
+        {
+            assert!(profile.contains(p), "missing deny path in profile: {p}");
+        }
     }
 
     #[cfg(target_os = "macos")]
