@@ -14,6 +14,20 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.109 (2026-02-09)
+
+<!-- summary: run command, coordinator commands, light theme -->
+
+- Added coordinator commands for scripting multi-agent workflows:
+  - `send` sends text or file contents to a worktree's agent pane
+  - `capture` reads the last N lines from a worktree's pane output
+  - `status` shows the current state of worktree agents with elapsed time and
+    git info (use `--git` for staged/unstaged indicators)
+  - `wait` blocks until agents reach a target status (working, waiting, or done)
+  - `run` executes a command in a worktree's pane and streams the output in real
+    time.
+- Dashboard now supports light theme via `theme: light` in config
+
 ## v0.1.108 (2026-02-07)
 
 - The `list` command now shows an AGENT column displaying the status of agents
