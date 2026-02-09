@@ -6,11 +6,57 @@ use serde_yaml::Value;
 use super::mounts::Mount;
 use crate::config::SandboxConfig;
 
+/// Generate the shell commands to install a specific agent in a Lima VM.
+///
+/// Each agent has different install requirements mirroring the container
+/// Dockerfiles. Unknown agents get a no-op comment.
+fn lima_install_script_for_agent(agent: &str) -> String {
+    match agent {
+        "claude" => r#"# Install Claude Code CLI
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Symlink Claude config from mounted state directory (seeded from host)
+# This preserves onboarding state, tips history, etc. across VM recreations
+ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
+"#
+        .to_string(),
+
+        "codex" => r#"# Install Codex CLI from GitHub releases
+ARCH=$(uname -m)
+if [ "$ARCH" != "aarch64" ]; then ARCH="x86_64"; fi
+curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-gnu.tar.gz" | \
+  tar xz -C "$HOME/.local/bin/"
+"#
+        .to_string(),
+
+        "gemini" => r#"# Install Node.js (required for Gemini CLI)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y --no-install-recommends nodejs
+
+# Install Gemini CLI
+sudo npm install -g @google/gemini-cli
+"#
+        .to_string(),
+
+        "opencode" => r#"# Install OpenCode
+curl -fsSL https://opencode.ai/install | bash
+"#
+        .to_string(),
+
+        other => format!("# No built-in install script for agent: {other}\n\
+                          # Use sandbox.lima.provision to install it manually.\n"),
+    }
+}
+
 /// Generate Lima configuration YAML.
+///
+/// The `agent` parameter determines which CLI tool is installed during
+/// provisioning (e.g. "claude", "codex", "gemini", "opencode").
 pub fn generate_lima_config(
     _instance_name: &str,
     mounts: &[Mount],
     sandbox_config: &SandboxConfig,
+    agent: &str,
 ) -> Result<String> {
     let mut config = serde_yaml::Mapping::new();
 
@@ -111,9 +157,12 @@ apt-get update
 apt-get install -y --no-install-recommends curl ca-certificates git xz-utils
 "#;
 
-        let user_script = r#"#!/bin/bash
+        let agent_install = lima_install_script_for_agent(agent);
+
+        let user_script = format!(
+            r#"#!/bin/bash
 set -eux
-curl -fsSL https://claude.ai/install.sh | bash
+{agent_install}
 curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
 # Ensure ~/.local/bin is on PATH for non-interactive shells
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
@@ -143,11 +192,8 @@ if ! command -v devbox >/dev/null 2>&1; then
     # Trigger download of the real binary during provisioning
     devbox version
 fi
-
-# Symlink Claude config from mounted state directory (seeded from host)
-# This preserves onboarding state, tips history, etc. across VM recreations
-ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json"
-"#;
+"#
+        );
 
         let mut system_provision = serde_yaml::Mapping::new();
         system_provision.insert("mode".into(), "system".into());
@@ -190,7 +236,7 @@ mod tests {
         ];
 
         let sandbox_config = SandboxConfig::default();
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         // Basic sanity checks
         assert!(yaml.contains("images:"));
@@ -207,7 +253,7 @@ mod tests {
     fn test_generate_lima_config_provision_scripts() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig::default();
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         // System provision installs dependencies
         assert!(yaml.contains("mode: system"));
@@ -235,7 +281,7 @@ mod tests {
     fn test_generate_lima_config_default_provision_count() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig::default();
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let provisions = parsed["provision"].as_sequence().unwrap();
@@ -252,7 +298,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let provisions = parsed["provision"].as_sequence().unwrap();
@@ -276,7 +322,7 @@ mod tests {
             image: Some("file:///Users/me/.lima/images/workmux-golden.qcow2".to_string()),
             ..Default::default()
         };
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let images = parsed["images"].as_sequence().unwrap();
@@ -293,7 +339,7 @@ mod tests {
     fn test_generate_lima_config_default_image() {
         let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
         let sandbox_config = SandboxConfig::default();
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let images = parsed["images"].as_sequence().unwrap();
@@ -313,7 +359,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let provisions = parsed["provision"].as_sequence().unwrap();
@@ -337,7 +383,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let provisions = parsed["provision"].as_sequence().unwrap();
@@ -370,7 +416,7 @@ mod tests {
         ];
 
         let sandbox_config = SandboxConfig::default();
-        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config).unwrap();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
 
         let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
         let mount_list = parsed["mounts"].as_sequence().unwrap();
@@ -387,5 +433,108 @@ mod tests {
         assert_eq!(m1["location"].as_str().unwrap(), "/tmp/notes");
         assert_eq!(m1["writable"].as_bool().unwrap(), false);
         assert_eq!(m1["mountPoint"].as_str().unwrap(), "/mnt/notes");
+    }
+
+    #[test]
+    fn test_generate_lima_config_codex_agent() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "codex").unwrap();
+
+        // Should install codex, not claude
+        assert!(yaml.contains("codex"));
+        assert!(yaml.contains("openai/codex/releases"));
+        assert!(!yaml.contains("claude.ai/install.sh"));
+        assert!(!yaml.contains(".claude.json"));
+
+        // Common infrastructure should still be present
+        assert!(yaml.contains("workmux/main/scripts/install.sh"));
+        assert!(yaml.contains("install.determinate.systems/nix"));
+        assert!(yaml.contains("get.jetify.com/devbox"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_gemini_agent() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "gemini").unwrap();
+
+        // Should install Node.js and Gemini CLI
+        assert!(yaml.contains("nodesource.com"));
+        assert!(yaml.contains("@google/gemini-cli"));
+        assert!(!yaml.contains("claude.ai/install.sh"));
+        assert!(!yaml.contains(".claude.json"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_opencode_agent() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "opencode").unwrap();
+
+        assert!(yaml.contains("opencode.ai/install"));
+        assert!(!yaml.contains("claude.ai/install.sh"));
+        assert!(!yaml.contains(".claude.json"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_unknown_agent() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml =
+            generate_lima_config("test-vm", &mounts, &sandbox_config, "custom-agent").unwrap();
+
+        // Should have a comment about no built-in script
+        assert!(yaml.contains("No built-in install script for agent: custom-agent"));
+        assert!(!yaml.contains("claude.ai/install.sh"));
+
+        // Common infrastructure should still be present
+        assert!(yaml.contains("workmux/main/scripts/install.sh"));
+    }
+
+    #[test]
+    fn test_generate_lima_config_claude_includes_config_symlink() {
+        let mounts = vec![Mount::rw(PathBuf::from("/tmp/test"))];
+        let sandbox_config = SandboxConfig::default();
+        let yaml = generate_lima_config("test-vm", &mounts, &sandbox_config, "claude").unwrap();
+
+        // Claude agent should include config symlink
+        assert!(
+            yaml.contains(r#"ln -sfn "$HOME/.workmux-state/.claude.json" "$HOME/.claude.json""#)
+        );
+    }
+
+    #[test]
+    fn test_lima_install_script_for_agent_claude() {
+        let script = lima_install_script_for_agent("claude");
+        assert!(script.contains("claude.ai/install.sh"));
+        assert!(script.contains(".claude.json"));
+    }
+
+    #[test]
+    fn test_lima_install_script_for_agent_codex() {
+        let script = lima_install_script_for_agent("codex");
+        assert!(script.contains("openai/codex/releases"));
+        assert!(script.contains("tar xz"));
+    }
+
+    #[test]
+    fn test_lima_install_script_for_agent_gemini() {
+        let script = lima_install_script_for_agent("gemini");
+        assert!(script.contains("nodesource.com"));
+        assert!(script.contains("@google/gemini-cli"));
+    }
+
+    #[test]
+    fn test_lima_install_script_for_agent_opencode() {
+        let script = lima_install_script_for_agent("opencode");
+        assert!(script.contains("opencode.ai/install"));
+    }
+
+    #[test]
+    fn test_lima_install_script_for_agent_unknown() {
+        let script = lima_install_script_for_agent("my-custom-agent");
+        assert!(script.contains("No built-in install script"));
+        assert!(script.contains("my-custom-agent"));
     }
 }

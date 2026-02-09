@@ -175,11 +175,15 @@ pub(crate) fn seed_claude_json(vm_name: &str) -> Result<()> {
 }
 
 /// Generate mount points for Lima VM based on isolation level and config.
+///
+/// The `agent` parameter controls agent-specific mounts (e.g. `~/.claude`
+/// is only mounted when the active agent is "claude").
 pub fn generate_mounts(
     worktree: &Path,
     isolation: IsolationLevel,
     config: &Config,
     vm_name: &str,
+    agent: &str,
 ) -> Result<Vec<Mount>> {
     let mut mounts = Vec::new();
 
@@ -232,18 +236,19 @@ pub fn generate_mounts(
     }
 
     // Mount host ~/.claude/ to guest $HOME/.claude/ so Claude finds credentials
-    if let Some(auth_dir) = sandbox_auth_dir() {
-        let guest_path = lima_guest_home()
-            .map(|h| h.join(".claude"))
-            .unwrap_or_else(|| auth_dir.clone());
-        mounts.push(Mount {
-            host_path: auth_dir,
-            guest_path,
-            read_only: false,
-        });
-    }
+    if agent == "claude"
+        && let Some(auth_dir) = sandbox_auth_dir() {
+            let guest_path = lima_guest_home()
+                .map(|h| h.join(".claude"))
+                .unwrap_or_else(|| auth_dir.clone());
+            mounts.push(Mount {
+                host_path: auth_dir,
+                guest_path,
+                read_only: false,
+            });
+        }
 
-    // Mount per-VM state directory so Claude finds ~/.claude.json
+    // Mount per-VM state directory for workmux state
     if let Ok(state_dir) = lima_state_dir(vm_name) {
         let guest_path = lima_guest_home()
             .map(|h| h.join(".workmux-state"))

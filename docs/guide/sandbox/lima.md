@@ -96,10 +96,21 @@ When a VM is first created, workmux runs two built-in provisioning steps:
 - Installs `curl`, `ca-certificates`, `git`, `xz-utils`
 
 **User provision:**
-- Installs [Claude Code](https://claude.ai/) CLI
+- Installs the configured agent CLI (based on the `agent` setting)
 - Installs [workmux](https://github.com/raine/workmux)
 - Installs [Nix](https://nixos.org/) (via Determinate Systems installer)
 - Installs [Devbox](https://www.jetify.com/devbox)
+
+The agent CLI installed depends on your `agent` configuration:
+
+| Agent | What gets installed |
+| --- | --- |
+| `claude` (default) | Claude Code CLI via `claude.ai/install.sh` |
+| `codex` | Codex CLI binary from GitHub releases |
+| `gemini` | Node.js + Gemini CLI via npm |
+| `opencode` | OpenCode binary via `opencode.ai/install` |
+
+Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to provision with a different agent.
 
 ### Custom provisioning
 
@@ -124,8 +135,8 @@ sandbox:
 
 **Important:**
 
-- Provisioning only runs when the VM is first created. Changing the script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
-- With `lima.isolation: shared`, only the first project to create the VM gets its provision script run. Use `lima.isolation: project` (default) if different projects need different provisioning.
+- Provisioning only runs when the VM is first created. Changing the `agent` setting or provision script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
+- With `lima.isolation: shared`, only the first project to create the VM gets its agent installed and provision script run. Use `lima.isolation: project` (default) if different projects use different agents or need different provisioning.
 - The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
 
 ### Custom images
@@ -145,7 +156,7 @@ When `image` is set, it replaces the default Debian 12 genericcloud image. The v
 When `skip_default_provision` is true, the built-in provisioning steps are skipped:
 
 - System provision (apt-get install of curl, ca-certificates, git)
-- User provision (Claude CLI, workmux, Nix/Devbox)
+- User provision (agent CLI, workmux, Nix/Devbox)
 
 Custom `provision` scripts still run even when `skip_default_provision` is true, so you can layer additional setup on top of a pre-built image.
 
