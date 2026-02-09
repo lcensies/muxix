@@ -82,10 +82,6 @@ VMs are named deterministically based on the isolation level:
 
 VMs are created on first use and started automatically when needed. If a VM already exists but is stopped, workmux restarts it. You don't need to manage VM lifecycle manually during normal use.
 
-### Rosetta on ARM64
-
-On Apple Silicon (ARM64) macOS, workmux automatically enables Rosetta in the Linux VM. This allows x86_64 binaries to run transparently inside the ARM64 VM, providing compatibility with tools that don't have native ARM builds. Rosetta is configured with binfmt support so x86_64 executables are handled automatically.
-
 ## Provisioning
 
 ### Default provisioning
