@@ -58,10 +58,11 @@ pub fn run() -> Result<()> {
         let idx = (start_idx + i) % done_agents.len();
         let pane_id = &done_agents[idx].pane_key.pane_id;
 
-        if mux.switch_to_pane(pane_id).is_ok() {
+        if let Err(e) = mux.switch_to_pane(pane_id) {
+            debug!(pane_id, error = %e, "pane dead, trying next");
+        } else {
             return Ok(());
         }
-        debug!(pane_id, "pane dead, trying next");
     }
 
     println!("No active completed agents found");

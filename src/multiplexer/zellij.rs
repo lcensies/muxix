@@ -49,6 +49,11 @@ impl ZellijBackend {
         std::env::var("ZELLIJ").is_ok()
     }
 
+    /// Check if window exists using cached tab list (avoids repeated query-tab-names calls)
+    fn window_exists_by_full_name_cached(full_name: &str, cached_tabs: &[String]) -> bool {
+        cached_tabs.iter().any(|t| t == full_name)
+    }
+
     /// Check if content contains dashboard UI patterns
     fn contains_dashboard_ui(content: &str) -> bool {
         // Check for distinctive dashboard UI elements
@@ -349,7 +354,7 @@ impl Multiplexer for ZellijBackend {
                 "Available pane_ids: {:?}",
                 agents.iter().map(|a| &a.pane_id).collect::<Vec<_>>()
             );
-            Ok(())
+            Err(anyhow!("Pane '{}' not found in state store", pane_id))
         }
     }
 
@@ -680,19 +685,27 @@ impl Multiplexer for ZellijBackend {
     }
 
     /// Split a pane in Zellij.
-    /// Note: Returns the parent tab name, not an actual pane ID.
-    /// Zellij doesn't expose new pane IDs via CLI.
+    ///
+    /// **Zellij CLI Limitations:**
+    /// - `target_pane_id` is ignored - Zellij's `new-pane` command always splits
+    ///   the currently focused pane, not an arbitrary target pane.
+    /// - `size`/`percentage` are ignored - all splits are 50/50.
+    /// - Returns the parent tab name, not an actual pane ID (Zellij doesn't
+    ///   expose new pane IDs via CLI).
     fn split_pane(
         &self,
-        _target_pane_id: &str,
+        target_pane_id: &str,
         direction: &SplitDirection,
         cwd: &Path,
         _size: Option<u16>,
         _percentage: Option<u8>,
         command: Option<&str>,
     ) -> Result<String> {
-        // Note: size/percentage ignored - zellij doesn't support percentage-based
-        // sizing via CLI. All splits are 50/50.
+        // Log the limitation for troubleshooting
+        debug!(
+            "split_pane: target_pane_id '{}' ignored (Zellij CLI limitation - can only split focused pane)",
+            target_pane_id
+        );
 
         let dir_arg = match direction {
             SplitDirection::Horizontal => "right", // panes side-by-side (left/right)
@@ -777,7 +790,7 @@ impl Multiplexer for ZellijBackend {
         }))
     }
 
-    fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
+    fn validate_agent_alive(&self, state: &crate::state::AgentState, cached_tabs: Option<&[String]>) -> Result<bool> {
         use std::time::{Duration, SystemTime};
 
         // For Zellij, we can't validate PID or command for unfocused panes.
@@ -788,7 +801,15 @@ impl Multiplexer for ZellijBackend {
 
         // Check 1: Does the tab still exist?
         if let Some(window_name) = &state.window_name {
-            if !self.window_exists_by_full_name(window_name)? {
+            let tab_exists = if let Some(tabs) = cached_tabs {
+                // Use cached tab list to avoid repeated query-tab-names calls
+                Self::window_exists_by_full_name_cached(window_name, tabs)
+            } else {
+                // Fall back to direct query if no cache provided
+                self.window_exists_by_full_name(window_name)?
+            };
+
+            if !tab_exists {
                 return Ok(false); // Tab was closed
             }
         } else {
@@ -962,5 +983,9 @@ impl Multiplexer for ZellijBackend {
 
     fn should_exit_on_jump(&self) -> bool {
         false // Keep dashboard open after jumping (Zellij limitation - can't target unfocused panes)
+    }
+
+    fn supports_preview(&self) -> bool {
+        false // Zellij preview requires expensive dump-screen process spawning
     }
 }

@@ -425,6 +425,9 @@ impl App {
 
     /// Force refresh the preview (used on periodic refresh)
     pub fn refresh_preview(&mut self) {
+        if !self.mux.supports_preview() {
+            return;
+        }
         self.preview = self
             .preview_pane_id
             .as_ref()

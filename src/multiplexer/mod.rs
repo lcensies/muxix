@@ -178,6 +178,13 @@ pub trait Multiplexer: Send + Sync {
     /// Capture the content of a pane
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String>;
 
+    /// Whether this backend supports preview capture efficiently.
+    /// Returns false for backends like Zellij where preview capture requires
+    /// expensive operations (process spawning, temp files) even when disabled.
+    fn supports_preview(&self) -> bool {
+        true // default: support preview
+    }
+
     // === Text I/O ===
 
     /// Send keys (command + Enter) to a pane
@@ -480,8 +487,11 @@ pub trait Multiplexer: Send + Sync {
     /// - tmux/WezTerm: Check if PID is still running (default implementation)
     /// - Zellij: Check if tab exists and state isn't stale
     ///
+    /// The `cached_data` parameter allows backends to accept pre-fetched information
+    /// to avoid repeated queries. For Zellij, this is a cached list of tab names.
+    ///
     /// Default implementation uses `get_live_pane_info()` and validates PID/command.
-    fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
+    fn validate_agent_alive(&self, state: &crate::state::AgentState, _cached_data: Option<&[String]>) -> Result<bool> {
         let live_pane = self.get_live_pane_info(&state.pane_key.pane_id)?;
 
         match live_pane {
