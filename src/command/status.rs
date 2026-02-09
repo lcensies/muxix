@@ -36,8 +36,6 @@ struct GitInfo {
 struct StatusRow {
     #[tabled(rename = "WORKTREE")]
     worktree: String,
-    #[tabled(rename = "BRANCH")]
-    branch: String,
     #[tabled(rename = "STATUS")]
     status: String,
     #[tabled(rename = "ELAPSED")]
@@ -173,16 +171,22 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
 
         let rows: Vec<StatusRow> = entries
             .iter()
-            .map(|e| StatusRow {
-                worktree: e.worktree.clone(),
-                branch: e.branch.clone(),
-                status: e.status.clone(),
-                elapsed: e
-                    .elapsed_secs
-                    .map(util::format_elapsed_secs)
-                    .unwrap_or("-".to_string()),
-                git: git_label(&e.git),
-                title: e.title.clone().unwrap_or("-".to_string()),
+            .map(|e| {
+                let worktree = if e.branch != e.worktree {
+                    format!("{} ({})", e.worktree, e.branch)
+                } else {
+                    e.worktree.clone()
+                };
+                StatusRow {
+                    worktree,
+                    status: e.status.clone(),
+                    elapsed: e
+                        .elapsed_secs
+                        .map(util::format_elapsed_secs)
+                        .unwrap_or("-".to_string()),
+                    git: git_label(&e.git),
+                    title: e.title.clone().unwrap_or("-".to_string()),
+                }
             })
             .collect();
 
