@@ -92,7 +92,7 @@ When you run `workmux add feature-x`, the agent command is wrapped:
 # Without sandbox:
 claude -- "$(cat .workmux/PROMPT-feature-x.md)"
 
-# With sandbox:
+# With sandbox (example for Claude agent):
 docker run --rm -it \
   --user 501:20 \
   --mount type=bind,source=/path/to/worktree,target=/path/to/worktree \
@@ -101,7 +101,7 @@ docker run --rm -it \
   --mount type=bind,source=~/.claude-sandbox.json,target=/tmp/.claude.json \
   --mount type=bind,source=~/.claude,target=/tmp/.claude \
   --workdir /path/to/worktree \
-  workmux-sandbox \
+  workmux-sandbox:claude \
   sh -c 'claude -- "$(cat .workmux/PROMPT-feature-x.md)"'
 ```
 
@@ -112,11 +112,12 @@ docker run --rm -it \
 | Worktree directory | read-write | Source code |
 | Main worktree | read-write | Symlink resolution (e.g., CLAUDE.md) |
 | Main `.git` | read-write | Git operations |
-| `~/.claude-sandbox.json` | read-write | Agent config |
-| `~/.claude/` | read-write | Agent settings |
+| Agent credentials | read-write | Auth and settings (see [Credentials](./features#credentials)) |
 | `extra_mounts` entries | read-only\* | User-configured paths |
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
+
+For Claude specifically, `~/.claude-sandbox.json` is also mounted to `/tmp/.claude.json` as a separate config file.
 
 ### What's NOT accessible
 

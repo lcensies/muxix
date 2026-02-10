@@ -42,7 +42,7 @@ workmux supports two sandboxing backends:
 | **Isolation**        | Process-level (namespaces)                                             | Machine-level (virtual machine)                                  |
 | **Persistence**      | Ephemeral (new container per session)                                  | Persistent (stateful VMs)                                        |
 | **Toolchain**        | Custom Dockerfile or [host commands](./features#host-command-proxying) | Built-in [Nix & Devbox](./lima#nix-and-devbox-toolchain) support |
-| **Credential model** | Separate auth (`~/.claude-sandbox.json`)                               | Agent-dependent (see [credentials](./features#credentials))      |
+| **Credential model** | Shared with host (see [credentials](./features#credentials))           | Shared with host (see [credentials](./features#credentials))     |
 | **Platform**         | macOS, Linux                                                           | macOS, Linux                                                     |
 
 Container is a good default: it's simple to set up and ephemeral, so no state accumulates between sessions. Choose Lima if you want persistent VMs with built-in Nix/Devbox toolchain support.

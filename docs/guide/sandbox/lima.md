@@ -109,18 +109,14 @@ Changing the `agent` setting after VM creation has no effect on existing VMs. Re
 
 ### Authentication
 
-workmux mounts agent-specific credential directories from the host into the VM. How this works depends on the agent:
+Agent credentials are shared between the host and VM. See [Credentials](./features#credentials) for the per-agent mount table.
 
-| Agent | Host directory | Reuses host auth? |
-| --- | --- | --- |
-| `claude` | `~/.claude/` | No. Claude stores auth in macOS Keychain, which is not accessible from the VM. You need to authenticate separately inside the VM. |
-| `gemini` | `~/.gemini/` | Yes. If you have already authenticated with Gemini on your host, the VM automatically has access to those credentials. |
-| `codex` | `~/.codex/` | Yes. If you have already authenticated with Codex on your host, the VM automatically has access to those credentials. |
-| `opencode` | `~/.local/share/opencode/` | Yes. If you have already authenticated with OpenCode on your host, the VM automatically has access to those credentials. |
+**Lima-specific notes:**
 
-For agents with mounted credential directories, authentication done inside the VM is written back to the host directory. This means credentials persist across VM recreations (`workmux sandbox prune`) and you only need to authenticate once.
-
-The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `workmux sandbox prune` to get the correct credential mount.
+- Claude stores auth in macOS Keychain, which is not accessible from the Linux VM. You need to authenticate Claude separately inside the VM.
+- Gemini, Codex, and OpenCode use file-based credentials that work automatically if you've authenticated on the host.
+- workmux seeds a minimal `~/.claude.json` inside the VM with onboarding marked as complete. This is stored per-VM in `~/.local/state/workmux/lima/<vm-name>/` and prevents the onboarding flow from triggering on each VM creation.
+- The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `workmux sandbox prune` to get the correct mount.
 
 ### Custom provisioning
 
