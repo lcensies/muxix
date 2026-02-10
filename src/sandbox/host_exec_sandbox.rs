@@ -26,10 +26,13 @@ const DENY_READ_DIRS: &[&str] = &[
     ".config/gcloud",
     ".config/workmux",
     ".docker",
-    ".claude",         // agent credentials
-    ".config/gh",      // GitHub CLI credentials
-    ".config/op",      // 1Password CLI config
-    ".password-store", // pass password manager
+    ".claude",               // Claude credentials
+    ".gemini",               // Gemini credentials
+    ".codex",                // Codex credentials
+    ".local/share/opencode", // OpenCode credentials
+    ".config/gh",            // GitHub CLI credentials
+    ".config/op",            // 1Password CLI config
+    ".password-store",       // pass password manager
 ];
 
 /// Files under $HOME that are denied read access.
