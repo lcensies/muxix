@@ -96,6 +96,7 @@ export default defineConfig({
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
           { text: "Nix", link: "/guide/nix" },
+          { text: "kitty", link: "/guide/kitty" },
           { text: "WezTerm", link: "/guide/wezterm" },
         ],
       },
