@@ -47,7 +47,7 @@ workmux sandbox build
 | Option | Default | Description |
 | --- | --- | --- |
 | `enabled` | `false` | Enable container sandboxing |
-| `container.runtime` | `docker` | Container runtime: `docker` or `podman` |
+| `container.runtime` | auto-detect | Container runtime: `docker` or `podman`. Auto-detected from PATH when not set (prefers docker). |
 | `target` | `agent` | Which panes to sandbox: `agent` or `all` |
 | `image` | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent) |
 | `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only** -- ignored in project config for security. |

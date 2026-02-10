@@ -276,7 +276,7 @@ pub enum SandboxBackend {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxRuntime {
-    /// Docker (default)
+    /// Docker (default fallback when neither runtime is found in PATH)
     #[default]
     Docker,
     /// Podman
@@ -284,6 +284,22 @@ pub enum SandboxRuntime {
 }
 
 impl SandboxRuntime {
+    /// Auto-detect container runtime by checking PATH.
+    ///
+    /// Returns the first available runtime found in PATH, preferring docker over
+    /// podman. Falls back to Docker if neither is found (will fail later with a
+    /// clear "command not found" error).
+    pub fn detect() -> Self {
+        if which("docker").is_ok() {
+            SandboxRuntime::Docker
+        } else if which("podman").is_ok() {
+            SandboxRuntime::Podman
+        } else {
+            debug!("neither docker nor podman found in PATH, defaulting to docker");
+            SandboxRuntime::Docker
+        }
+    }
+
     /// Returns the default hostname that a container guest should use to reach the host.
     ///
     /// - Docker: `host.docker.internal` (Docker Desktop built-in)
@@ -492,14 +508,14 @@ impl LimaConfig {
 /// Nested under `sandbox.container` in YAML.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct ContainerConfig {
-    /// Container runtime. Default: docker
+    /// Container runtime. Auto-detected from PATH if not set.
     #[serde(default)]
     pub runtime: Option<SandboxRuntime>,
 }
 
 impl ContainerConfig {
     pub fn runtime(&self) -> SandboxRuntime {
-        self.runtime.clone().unwrap_or_default()
+        self.runtime.clone().unwrap_or_else(SandboxRuntime::detect)
     }
 
     /// Merge: project overrides global, per-field.
@@ -1610,9 +1626,29 @@ mod tests {
     fn sandbox_config_defaults() {
         let config = SandboxConfig::default();
         assert!(!config.is_enabled());
-        assert_eq!(config.runtime(), SandboxRuntime::Docker);
         assert_eq!(config.target(), SandboxTarget::Agent);
         assert!(config.env_passthrough().contains(&"GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn sandbox_runtime_explicit_overrides_detect() {
+        let config = ContainerConfig {
+            runtime: Some(SandboxRuntime::Podman),
+        };
+        assert_eq!(config.runtime(), SandboxRuntime::Podman);
+
+        let config = ContainerConfig {
+            runtime: Some(SandboxRuntime::Docker),
+        };
+        assert_eq!(config.runtime(), SandboxRuntime::Docker);
+    }
+
+    #[test]
+    fn sandbox_runtime_detect_when_unset() {
+        let config = ContainerConfig { runtime: None };
+        // Should auto-detect from PATH; result depends on environment
+        // but should not panic
+        let _runtime = config.runtime();
     }
 
     #[test]
