@@ -2016,9 +2016,11 @@ alternative terminal multiplexers:
 - **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer
   WezTerm's features. Thanks to [@JeremyBYU](https://github.com/JeremyBYU) for
   contributing this backend.
+- **[kitty](docs/guide/kitty.md)** (experimental) - For users who prefer kitty
+  terminal. Requires `allow_remote_control` and `listen_on` configuration.
 
-workmux auto-detects the backend from environment variables (`$WEZTERM_PANE` or
-`$TMUX`).
+workmux auto-detects the backend from environment variables (`$WEZTERM_PANE`,
+`$KITTY_WINDOW_ID`, or `$TMUX`).
 
 ## Inspiration and related tools
 

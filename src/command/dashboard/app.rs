@@ -425,12 +425,15 @@ impl App {
             .and_then(|pane_id| self.mux.capture_pane(pane_id, PREVIEW_LINES));
     }
 
-    /// Parse pane_id (e.g., "%0", "%10") to a number for proper ordering
-    fn parse_pane_id(pane_id: &str) -> u32 {
+    /// Parse pane_id to a number for proper ordering.
+    /// Handles tmux format (%0, %10) and numeric formats (WezTerm, kitty).
+    /// Uses u64 since kitty pane IDs can exceed u32 range.
+    fn parse_pane_id(pane_id: &str) -> u64 {
         pane_id
             .strip_prefix('%')
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(u32::MAX)
+            .unwrap_or(pane_id)
+            .parse()
+            .unwrap_or(u64::MAX)
     }
 
     /// Sort agents based on the current sort mode

@@ -183,7 +183,7 @@ In a standard Git setup, switching branches disrupts your flow by requiring a cl
 ## Requirements
 
 - Git 2.5+ (for worktree support)
-- tmux (or [WezTerm](/guide/wezterm))
+- tmux (or [WezTerm](/guide/wezterm) or [kitty](/guide/kitty))
 
 ## Inspiration and related tools
 

@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod handshake;
+pub mod kitty;
 pub mod tmux;
 pub mod types;
 pub mod util;
@@ -320,12 +321,17 @@ pub trait Multiplexer: Send + Sync {
 ///
 /// Auto-detects from multiplexer environment variables:
 /// - `$WEZTERM_PANE` set → WezTerm
+/// - `$KITTY_WINDOW_ID` set → Kitty
 /// - `$TMUX` set → tmux
-/// - Neither → defaults to tmux (for backward compatibility)
+/// - None → defaults to tmux (for backward compatibility)
 pub fn detect_backend() -> BackendType {
     // Auto-detect from environment
     if std::env::var("WEZTERM_PANE").is_ok() {
         return BackendType::WezTerm;
+    }
+
+    if std::env::var("KITTY_WINDOW_ID").is_ok() {
+        return BackendType::Kitty;
     }
 
     if std::env::var("TMUX").is_ok() {
@@ -341,5 +347,6 @@ pub fn create_backend(backend_type: BackendType) -> Arc<dyn Multiplexer> {
     match backend_type {
         BackendType::Tmux => Arc::new(TmuxBackend::new()),
         BackendType::WezTerm => Arc::new(wezterm::WezTermBackend::new()),
+        BackendType::Kitty => Arc::new(kitty::KittyBackend::new()),
     }
 }
