@@ -47,21 +47,6 @@ listen_on unix:/tmp/kitty-{kitty_pid}
 enabled_layouts splits,stack
 ```
 
-### Alternative: Password-based remote control
-
-For more security, you can use password-based remote control instead of `allow_remote_control yes`:
-
-```conf
-# More secure: Only allow specific commands
-allow_remote_control password
-remote_control_password "workmux" launch close-window close-tab focus-window focus-tab ls send-text send-key get-text set-tab-title set-window-title set-user-vars signal-child resize-window
-
-listen_on unix:/tmp/kitty-{kitty_pid}
-enabled_layouts splits,stack
-```
-
-With password-based control, you may need to pass `--password workmux` to kitten commands. workmux does not currently support this, so `allow_remote_control yes` is recommended for now.
-
 ## Verify remote control works
 
 After configuring kitty, verify that remote control is working:
