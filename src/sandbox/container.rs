@@ -255,25 +255,63 @@ pub fn build_docker_run_args(
     args.push("--env".to_string());
     args.push("HOME=/tmp".to_string());
 
-    // Config mounts (caller must ensure dirs exist via ensure_sandbox_config_dirs)
-    if let Some(paths) = SandboxPaths::new()
-        && paths.config_file.exists()
-    {
-        args.push("--mount".to_string());
-        args.push(format!(
-            "type=bind,source={},target=/tmp/.claude.json",
-            paths.config_file.display()
-        ));
-    }
-
+    // Agent-specific credential mounts
+    // For file-based agents, create the directory if it doesn't exist so credentials
+    // written inside the container persist to the host.
     if let Some(home) = home::home_dir() {
-        let claude_dir = home.join(".claude");
-        if claude_dir.exists() {
-            args.push("--mount".to_string());
-            args.push(format!(
-                "type=bind,source={},target=/tmp/.claude",
-                claude_dir.display()
-            ));
+        match agent {
+            "claude" => {
+                // Claude uses ~/.claude-sandbox.json for container-specific config
+                if let Some(paths) = SandboxPaths::new()
+                    && paths.config_file.exists()
+                {
+                    args.push("--mount".to_string());
+                    args.push(format!(
+                        "type=bind,source={},target=/tmp/.claude.json",
+                        paths.config_file.display()
+                    ));
+                }
+                // Mount ~/.claude/ for settings (MCP servers, project configs, etc.)
+                let claude_dir = home.join(".claude");
+                if claude_dir.exists() {
+                    args.push("--mount".to_string());
+                    args.push(format!(
+                        "type=bind,source={},target=/tmp/.claude",
+                        claude_dir.display()
+                    ));
+                }
+            }
+            "gemini" => {
+                let gemini_dir = home.join(".gemini");
+                // Create if missing so first-run auth persists to host
+                let _ = std::fs::create_dir_all(&gemini_dir);
+                args.push("--mount".to_string());
+                args.push(format!(
+                    "type=bind,source={},target=/tmp/.gemini",
+                    gemini_dir.display()
+                ));
+            }
+            "codex" => {
+                let codex_dir = home.join(".codex");
+                // Create if missing so first-run auth persists to host
+                let _ = std::fs::create_dir_all(&codex_dir);
+                args.push("--mount".to_string());
+                args.push(format!(
+                    "type=bind,source={},target=/tmp/.codex",
+                    codex_dir.display()
+                ));
+            }
+            "opencode" => {
+                let opencode_dir = home.join(".local/share/opencode");
+                // Create if missing so first-run auth persists to host
+                let _ = std::fs::create_dir_all(&opencode_dir);
+                args.push("--mount".to_string());
+                args.push(format!(
+                    "type=bind,source={},target=/tmp/.local/share/opencode",
+                    opencode_dir.display()
+                ));
+            }
+            _ => {}
         }
     }
 
@@ -708,5 +746,94 @@ mod tests {
         assert!(args_str.contains("type=bind,source=/tmp/data,target=/mnt/data"));
         // Should NOT contain readonly
         assert!(!args_str.contains("/tmp/data,target=/mnt/data,readonly"));
+    }
+
+    #[test]
+    fn test_build_args_gemini_agent_credential_mount() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "gemini",
+            &config,
+            "gemini",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        // Gemini agent should mount ~/.gemini to /tmp/.gemini
+        assert!(args_str.contains("target=/tmp/.gemini"));
+        // Gemini agent should NOT have Claude-specific mounts
+        assert!(!args_str.contains("target=/tmp/.claude.json"));
+        assert!(!args_str.contains("target=/tmp/.claude,"));
+        assert!(!args_str.contains("target=/tmp/.codex"));
+    }
+
+    #[test]
+    fn test_build_args_codex_agent_credential_mount() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "codex",
+            &config,
+            "codex",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        // Codex agent should mount ~/.codex to /tmp/.codex
+        assert!(args_str.contains("target=/tmp/.codex"));
+        // Codex agent should NOT have Claude-specific mounts
+        assert!(!args_str.contains("target=/tmp/.claude.json"));
+        assert!(!args_str.contains("target=/tmp/.gemini"));
+    }
+
+    #[test]
+    fn test_build_args_opencode_agent_credential_mount() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "opencode",
+            &config,
+            "opencode",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        // OpenCode agent should mount ~/.local/share/opencode to /tmp/.local/share/opencode
+        assert!(args_str.contains("target=/tmp/.local/share/opencode"));
+        // OpenCode agent should NOT have Claude-specific mounts
+        assert!(!args_str.contains("target=/tmp/.claude.json"));
+        assert!(!args_str.contains("target=/tmp/.gemini"));
+    }
+
+    #[test]
+    fn test_build_args_unknown_agent_no_credential_mount() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "unknown-agent",
+            &config,
+            "unknown-agent",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        // Unknown agent should NOT have any agent credential mounts
+        assert!(!args_str.contains("target=/tmp/.claude"));
+        assert!(!args_str.contains("target=/tmp/.gemini"));
+        assert!(!args_str.contains("target=/tmp/.codex"));
+        assert!(!args_str.contains("target=/tmp/.local/share/opencode"));
     }
 }
