@@ -282,6 +282,39 @@ fn find_cargo_workspace() -> Result<PathBuf> {
         .context("Failed to determine workspace root from Cargo.toml path")
 }
 
+/// Returns true if the host is already Linux (no cross-compilation needed).
+fn is_native_linux() -> bool {
+    cfg!(target_os = "linux")
+}
+
+fn native_build(release: bool) -> Result<PathBuf> {
+    let workspace = find_cargo_workspace()?;
+    let profile = if release { "release" } else { "debug" };
+    let profile_dir = if release { "release" } else { "debug" };
+
+    println!("Building workmux ({})...\n", profile);
+
+    let mut cmd = Command::new("cargo");
+    cmd.arg("build");
+    if release {
+        cmd.arg("--release");
+    }
+    cmd.current_dir(&workspace);
+
+    let status = cmd.status().context("Failed to run cargo build")?;
+    if !status.success() {
+        bail!("Build failed");
+    }
+
+    let binary = workspace.join(format!("target/{}/workmux", profile_dir));
+    if !binary.exists() {
+        bail!("Expected binary not found at {}", binary.display());
+    }
+
+    println!();
+    Ok(binary)
+}
+
 fn cross_compile(target: &str, release: bool) -> Result<PathBuf> {
     // Check if target is installed
     let output = Command::new("rustup")
@@ -400,18 +433,28 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
     use crate::sandbox::lima::VM_PREFIX;
 
     let config = Config::load(None)?;
-    let target = linux_target_triple()?;
+    let native = is_native_linux();
 
-    // Cross-compile (or locate existing binary)
+    // Build (or locate existing binary)
     let binary_path = if !skip_build {
-        cross_compile(target, release)?
+        if native {
+            native_build(release)?
+        } else {
+            let target = linux_target_triple()?;
+            cross_compile(target, release)?
+        }
     } else {
         let workspace = find_cargo_workspace()?;
         let profile_dir = if release { "release" } else { "debug" };
-        let path = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
+        let path = if native {
+            workspace.join(format!("target/{}/workmux", profile_dir))
+        } else {
+            let target = linux_target_triple()?;
+            workspace.join(format!("target/{}/{}/workmux", target, profile_dir))
+        };
         if !path.exists() {
             bail!(
-                "No cross-compiled binary found at {}\nRun without --skip-build first.",
+                "No binary found at {}\nRun without --skip-build first.",
                 path.display()
             );
         }
