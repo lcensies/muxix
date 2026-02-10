@@ -41,7 +41,6 @@ const DENY_READ_FILES: &[&str] = &[
     ".netrc",               // network credentials
     ".gem/credentials",     // rubygems auth
     ".claude-sandbox.json", // sandbox credentials
-    ".gitconfig",           // can contain credentials
     ".bash_history",        // shell history
     ".zsh_history",         // shell history
     ".vault-token",         // HashiCorp Vault token
