@@ -56,14 +56,14 @@ pub fn run(
     };
     let run_dir = create_run(&run_id, &spec)?;
 
-    // Get path to current executable for __exec
+    // Get path to current executable for _exec
     let exe_path = std::env::current_exe()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "workmux".to_string());
 
-    // Split pane with __exec command (pass absolute run_dir path)
+    // Split pane with _exec command (pass absolute run_dir path)
     let exec_cmd = format!(
-        "{} __exec --run-dir {}",
+        "{} _exec --run-dir {}",
         shell_escape(&exe_path),
         shell_escape(&run_dir.to_string_lossy())
     );

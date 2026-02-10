@@ -447,7 +447,7 @@ enum Commands {
     },
 
     /// Execute a run spec (internal use)
-    #[command(hide = true, name = "__exec")]
+    #[command(hide = true, name = "_exec")]
     Exec {
         /// Absolute path to run directory
         #[arg(long)]

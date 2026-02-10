@@ -1,4 +1,4 @@
-//! Hidden `__exec` subcommand for running commands in worktree panes.
+//! Hidden `_exec` subcommand for running commands in worktree panes.
 //!
 //! This is invoked by `workmux run` in a split pane to execute the command
 //! while capturing output to files.
