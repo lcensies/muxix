@@ -266,6 +266,14 @@ fn linux_target_triple() -> Result<&'static str> {
     }
 }
 
+fn linux_musl_target_triple() -> Result<&'static str> {
+    match std::env::consts::ARCH {
+        "aarch64" => Ok("aarch64-unknown-linux-musl"),
+        "x86_64" => Ok("x86_64-unknown-linux-musl"),
+        arch => bail!("unsupported host architecture: {}", arch),
+    }
+}
+
 fn find_cargo_workspace() -> Result<PathBuf> {
     let output = Command::new("cargo")
         .args(["locate-project", "--workspace", "--message-format=plain"])
@@ -289,13 +297,14 @@ fn is_native_linux() -> bool {
 
 fn native_build(release: bool) -> Result<PathBuf> {
     let workspace = find_cargo_workspace()?;
+    let target = linux_musl_target_triple()?;
     let profile = if release { "release" } else { "debug" };
     let profile_dir = if release { "release" } else { "debug" };
 
-    println!("Building workmux ({})...\n", profile);
+    println!("Building workmux ({}, {})...\n", profile, target);
 
     let mut cmd = Command::new("cargo");
-    cmd.arg("build");
+    cmd.args(["build", "--target", target]);
     if release {
         cmd.arg("--release");
     }
@@ -306,7 +315,7 @@ fn native_build(release: bool) -> Result<PathBuf> {
         bail!("Build failed");
     }
 
-    let binary = workspace.join(format!("target/{}/workmux", profile_dir));
+    let binary = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
     if !binary.exists() {
         bail!("Expected binary not found at {}", binary.display());
     }
@@ -447,7 +456,8 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
         let workspace = find_cargo_workspace()?;
         let profile_dir = if release { "release" } else { "debug" };
         let path = if native {
-            workspace.join(format!("target/{}/workmux", profile_dir))
+            let target = linux_musl_target_triple()?;
+            workspace.join(format!("target/{}/{}/workmux", target, profile_dir))
         } else {
             let target = linux_target_triple()?;
             workspace.join(format!("target/{}/{}/workmux", target, profile_dir))
