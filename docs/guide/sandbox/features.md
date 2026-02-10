@@ -84,15 +84,15 @@ The container and Lima backends handle credentials differently:
 
 **Container backend:** Uses separate credentials stored in `~/.claude-sandbox.json` on the host. Agents authenticate interactively on first use inside the container. The host `~/.claude/` directory is mounted for settings (project configs, MCP servers, etc.).
 
-**Lima backend:** Mounts the host's `~/.claude/` directory into the guest VM at `$HOME/.claude/`. This means the VM shares your host credentials, so no separate auth step is needed. When you authenticate Claude Code on the host, the VM picks it up automatically, and vice versa.
+**Lima backend:** Mounts the host's agent credential directory (e.g., `~/.claude/`, `~/.gemini/`) into the guest VM. Whether this shares authentication depends on the agent: agents that store credentials in files (Gemini, Codex, OpenCode) share auth automatically, while Claude Code stores auth in macOS Keychain which is not accessible from the VM. See the [Lima authentication table](./lima#authentication) for details.
 
 The Lima backend also seeds a minimal `~/.claude.json` with onboarding marked as complete, so agents don't trigger the onboarding flow on every VM creation. This is stored per-VM in `~/.local/state/workmux/lima/<vm-name>/` and symlinked into the guest. These state directories are cleaned up automatically by `workmux sandbox prune`.
 
 | | Container | Lima |
 | --- | --- | --- |
-| Credential storage | `~/.claude-sandbox.json` (separate) | `~/.claude/.credentials.json` (shared with host) |
+| Credential storage | `~/.claude-sandbox.json` (separate) | Agent-dependent (see [Lima authentication](./lima#authentication)) |
 | Settings directory | `~/.claude/` (shared with host) | `~/.claude/` (shared with host) |
-| Auth setup | Agent authenticates on first use | None needed |
+| Auth setup | Agent authenticates on first use | Agent-dependent (Claude requires separate auth, others share host auth) |
 
 ## Coordinator agents
 
