@@ -35,7 +35,7 @@ workmux automatically uses kitty when it detects the `$KITTY_WINDOW_ID` environm
 
 workmux relies on kitty's remote control API. Add these settings to your `kitty.conf`:
 
-```conf
+```bash
 # REQUIRED: Enable remote control
 allow_remote_control yes
 
@@ -86,7 +86,7 @@ def draw_tab(
 
 Then enable it in `kitty.conf`:
 
-```conf
+```bash
 tab_bar_style custom
 tab_bar_custom draw_tab
 ```
