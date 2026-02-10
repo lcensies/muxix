@@ -186,6 +186,13 @@ pub fn build_docker_run_args(
         args.push("host.docker.internal:host-gateway".to_string());
     }
 
+    // Rootless Podman uses a user namespace that remaps UIDs. Without --userns=keep-id,
+    // the host UID appears as root inside the container, making bind-mounted files
+    // (credentials, config) inaccessible to the --user process.
+    if matches!(config.runtime(), SandboxRuntime::Podman) {
+        args.push("--userns=keep-id".to_string());
+    }
+
     args.push("--user".to_string());
     args.push(format!("{}:{}", uid, gid));
 
