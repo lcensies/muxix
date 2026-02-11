@@ -122,8 +122,14 @@ impl KittyBackend {
         for os_win in os_windows {
             for tab in os_win.tabs {
                 for win in tab.windows {
-                    // Get foreground process info if available
-                    let fg = win.foreground_processes.first();
+                    // Get foreground process info. Use the process with the lowest
+                    // PID, which is the most stable (the original user command like
+                    // "claude"), not transient children (like "kitten" or "node").
+                    // This matters because set-window-status calls kitten @ ls to
+                    // capture foreground info, and without min_by we'd capture the
+                    // kitten subprocess itself, causing reconciliation to delete the
+                    // agent on the next check.
+                    let fg = win.foreground_processes.iter().min_by_key(|p| p.pid);
                     let foreground_command = fg.and_then(|p| {
                         p.cmdline.first().map(|c| {
                             Path::new(c)
