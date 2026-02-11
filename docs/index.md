@@ -1,10 +1,10 @@
 ---
 layout: home
-description: The zero-friction workflow for git worktrees and tmux
+description: The zero-friction workflow for git worktrees and tmux, kitty, or WezTerm
 
 hero:
-  text: Parallel development, streamlined
-  tagline: Isolated workspaces powered by tmux and git worktrees. Run AI agents without conflicts.
+  text: Parallel development for terminal
+  tagline: Isolated workspaces with git worktrees and tmux. Run AI agents in parallel without conflicts.
   image:
     light: /logo.svg
     dark: /logo-dark.svg

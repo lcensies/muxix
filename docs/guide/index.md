@@ -4,7 +4,7 @@ description: A workflow tool for managing git worktrees and tmux windows as isol
 
 # What is workmux?
 
-workmux is a giga opinionated zero-friction workflow tool for managing [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated development environments. Perfect for running multiple AI agents in parallel without conflict.
+workmux is a giga opinionated zero-friction workflow tool for managing [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated development environments. Also supports [kitty](/guide/kitty) and [WezTerm](/guide/wezterm) (experimental). Perfect for running multiple AI agents in parallel without conflict.
 
 ::: tip New to workmux?
 Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
@@ -19,7 +19,7 @@ each with its own AI agent. No stashing, no branch switching, no conflicts.
 state, editor session, dev server, and AI agent. Context switching is switching tabs.
 
 **tmux is the interface.** For existing and new tmux users. If you already live
-in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/).
+in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/). Also supports [kitty](/guide/kitty) and [WezTerm](/guide/wezterm) as experimental alternatives.
 
 <div class="terminal-window">
   <div class="terminal-header">
@@ -117,7 +117,7 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
 
 ## Features
 
-- Create git worktrees with matching tmux windows in a single command (`add`)
+- Create git worktrees with matching tmux windows (or kitty/WezTerm tabs) in a single command (`add`)
 - Merge branches and clean up everything (worktree, tmux window, branches) in one command (`merge`)
 - [Dashboard](/guide/dashboard/) for monitoring agents, reviewing changes, and sending commands
 - [Delegate tasks to worktree agents](/guide/skills#-worktree) with a `/worktree` skill

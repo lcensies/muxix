@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>Parallel development in tmux with git worktrees</strong>
+  <strong>Parallel development in tmux* with git worktrees</strong>
 </p>
 
 <p align="center">
@@ -23,6 +23,9 @@ Giga opinionated zero-friction workflow tool for managing
 [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
+
+\*Also supports [kitty](docs/guide/kitty.md) and
+[WezTerm](docs/guide/wezterm.md) as experimental alternative backends.
 
 📚 **Want more?** Check out the
 [full documentation](https://workmux.raine.dev/guide/) for guides and

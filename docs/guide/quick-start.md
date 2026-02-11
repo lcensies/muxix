@@ -71,7 +71,7 @@ Here's a complete workflow:
 workmux add user-auth
 
 # Work on your feature...
-# (tmux automatically sets up your configured panes and environment)
+# (workmux automatically sets up your configured panes and environment)
 
 # When ready, merge and clean up
 workmux merge user-auth
