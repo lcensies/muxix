@@ -90,14 +90,19 @@ export default defineConfig({
         ],
       },
       {
+        text: "Alternative backends",
+        items: [
+          { text: "kitty", link: "/guide/kitty" },
+          { text: "WezTerm", link: "/guide/wezterm" },
+        ],
+      },
+      {
         text: "Guides",
         items: [
           { text: "direnv", link: "/guide/direnv" },
           { text: "Monorepos", link: "/guide/monorepos" },
           { text: "Git worktree caveats", link: "/guide/git-worktree-caveats" },
           { text: "Nix", link: "/guide/nix" },
-          { text: "kitty", link: "/guide/kitty" },
-          { text: "WezTerm", link: "/guide/wezterm" },
         ],
       },
       {
