@@ -24,8 +24,8 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
-\*Also supports [kitty](docs/guide/kitty.md) and
-[WezTerm](docs/guide/wezterm.md) as experimental alternative backends.
+\*Also supports [kitty](https://workmux.raine.dev/guide/kitty) and
+[WezTerm](https://workmux.raine.dev/guide/wezterm) as alternative backends.
 
 📚 **Want more?** Check out the
 [full documentation](https://workmux.raine.dev/guide/) for guides and
@@ -2016,11 +2016,12 @@ workmux completions fish | source
 While tmux is the primary and recommended backend, workmux also supports
 alternative terminal multiplexers:
 
-- **[WezTerm](docs/guide/wezterm.md)** (experimental) - For users who prefer
-  WezTerm's features. Thanks to [@JeremyBYU](https://github.com/JeremyBYU) for
-  contributing this backend.
-- **[kitty](docs/guide/kitty.md)** (experimental) - For users who prefer kitty
-  terminal. Requires `allow_remote_control` and `listen_on` configuration.
+- **[WezTerm](https://workmux.raine.dev/guide/wezterm)** (experimental) - For
+  users who prefer WezTerm's features. Thanks to
+  [@JeremyBYU](https://github.com/JeremyBYU) for contributing this backend.
+- **[kitty](https://workmux.raine.dev/guide/kitty)** (experimental) - For users
+  who prefer kitty terminal. Requires `allow_remote_control` and `listen_on`
+  configuration.
 
 workmux auto-detects the backend from environment variables (`$WEZTERM_PANE`,
 `$KITTY_WINDOW_ID`, or `$TMUX`).
