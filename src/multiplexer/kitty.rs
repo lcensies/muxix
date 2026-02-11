@@ -632,8 +632,26 @@ impl Multiplexer for KittyBackend {
     }
 
     fn send_key(&self, pane_id: &str, key: &str) -> Result<()> {
+        // Translate tmux key names to ANSI escape sequences for kitty.
+        // The dashboard sends tmux-style names like "BSpace", "Enter", etc.
+        let translated = match key {
+            "BSpace" => "\x7f",
+            "Enter" => "\r",
+            "Tab" => "\t",
+            "Up" => "\x1b[A",
+            "Down" => "\x1b[B",
+            "Right" => "\x1b[C",
+            "Left" => "\x1b[D",
+            "Escape" => "\x1b",
+            _ => key,
+        };
         self.kitten_cmd()
-            .args(&["send-text", "--match", &format!("id:{}", pane_id), key])
+            .args(&[
+                "send-text",
+                "--match",
+                &format!("id:{}", pane_id),
+                translated,
+            ])
             .run()
             .context("Failed to send key to pane")?;
         Ok(())
