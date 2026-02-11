@@ -2,7 +2,7 @@
 description: Use WezTerm as an alternative multiplexer backend
 ---
 
-# WezTerm backend
+# WezTerm
 
 ::: warning Experimental
 The WezTerm backend is new and experimental. Expect rough edges and potential issues.

@@ -2,7 +2,7 @@
 description: Use kitty as an alternative multiplexer backend
 ---
 
-# Kitty backend
+# Kitty
 
 ::: warning Experimental
 The kitty backend is new and experimental. Expect rough edges and potential issues.
