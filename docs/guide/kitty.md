@@ -14,11 +14,11 @@ workmux automatically uses kitty when it detects the `$KITTY_WINDOW_ID` environm
 
 ## Differences from tmux
 
-| Feature              | tmux                 | kitty             |
-| -------------------- | -------------------- | ----------------- |
-| Agent status in tabs | Yes (window names)   | Dashboard only    |
-| Tab ordering         | Insert after current | Appends to end    |
-| Scope                | tmux session         | OS window         |
+| Feature              | tmux                 | kitty                  |
+| -------------------- | -------------------- | ---------------------- |
+| Agent status in tabs | Yes (window names)   | Yes (custom tab title) |
+| Tab ordering         | Insert after current | Appends to end         |
+| Scope                | tmux session         | OS window              |
 
 - **Tab ordering**: New tabs appear at the end of the tab bar (no "insert after" support like tmux)
 - **OS window isolation**: workmux operates within the current OS window. Tabs in other OS windows are not affected.
@@ -59,42 +59,37 @@ This should output JSON describing your kitty windows and tabs. If you get an er
 
 ## Agent status display
 
-Unlike tmux, kitty does not have built-in support for displaying status icons in tab titles. workmux stores agent status in kitty user variables (`workmux_status`), which can be read by custom tab bar scripts.
+workmux stores agent status in kitty [user variables](https://sw.kovidgoyal.net/kitty/remote-control/#kitten-set-user-vars) (`workmux_status`), which can be displayed in tab titles using kitty's `{custom}` template placeholder.
 
-To display status icons in your tab bar, you can create a custom `tab_bar.py`:
+### Setup
+
+1. Create `~/.config/kitty/tab_bar.py`:
 
 ```python
-# ~/.config/kitty/tab_bar.py
-from kitty.tab_bar import DrawData, ExtraData, TabBarData, as_rgb, draw_title
+from kitty.fast_data_types import get_boss
 
-def draw_tab(
-    draw_data: DrawData, screen: DrawData.screen_class, tab: TabBarData,
-    before: int, max_title_length: int, index: int, is_last: bool,
-    extra_data: ExtraData
-) -> int:
-    # Check for workmux status in any window
-    status = ''
-    for window in tab.windows:
-        if hasattr(window, 'user_vars') and 'workmux_status' in window.user_vars:
-            status = window.user_vars['workmux_status'] + ' '
-            break
-
-    # Draw status + title
-    title = status + tab.title
-    return draw_title(draw_data, screen, tab, title, max_title_length, index, is_last, extra_data)
+def draw_title(data):
+    tab = get_boss().tab_for_id(data['tab'].tab_id)
+    if tab:
+        for window in tab:
+            status = window.user_vars.get('workmux_status', '')
+            if status:
+                return ' ' + status
+    return ''
 ```
 
-Then enable it in `kitty.conf`:
+2. Add to your `kitty.conf`:
 
 ```bash
-tab_bar_style custom
-tab_bar_custom draw_tab
+tab_title_template "{title}{custom}"
 ```
+
+The `{custom}` placeholder calls the `draw_title` function above, which checks each window in the tab for a `workmux_status` user variable and appends it to the title.
 
 ## Known limitations
 
 - Windows is not supported (requires Unix-specific features)
-- Agent status icons require custom tab bar configuration (see above)
+- Agent status icons require a small config change (see above)
 - Cross-OS-window operations are not supported
 - Some edge cases may not be as thoroughly tested as the tmux backend
 - Tab insertion ordering is not supported (new tabs always appear at the end)
