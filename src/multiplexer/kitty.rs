@@ -203,9 +203,12 @@ impl KittyBackend {
         _percentage: Option<u8>,
         command: Option<&str>,
     ) -> Result<String> {
+        // kitty's naming refers to the split line orientation, opposite of tmux:
+        //   hsplit = horizontal divider = top/bottom panes
+        //   vsplit = vertical divider   = left/right panes
         let location_arg = match direction {
-            SplitDirection::Horizontal => "hsplit",
-            SplitDirection::Vertical => "vsplit",
+            SplitDirection::Horizontal => "vsplit",
+            SplitDirection::Vertical => "hsplit",
         };
 
         let cwd_str = cwd.to_string_lossy();
