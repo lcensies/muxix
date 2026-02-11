@@ -693,18 +693,32 @@ impl Multiplexer for KittyBackend {
 
     // === Status ===
 
-    fn set_status(&self, pane_id: &str, icon: &str, _auto_clear_on_focus: bool) -> Result<()> {
+    fn set_status(&self, pane_id: &str, icon: &str, auto_clear_on_focus: bool) -> Result<()> {
         // Use kitty user variables for status
         // This stores the status per-window, which can be read by custom tab bar scripts
+        let match_arg = format!("id:{}", pane_id);
         let _ = self
             .kitten_cmd()
             .args(&[
                 "set-user-vars",
                 "--match",
-                &format!("id:{}", pane_id),
+                &match_arg,
                 &format!("workmux_status={}", icon),
             ])
             .run();
+
+        // Set auto-clear flag so the watcher can clear status on focus
+        let auto_clear_val = if auto_clear_on_focus { "1" } else { "" };
+        let _ = self
+            .kitten_cmd()
+            .args(&[
+                "set-user-vars",
+                "--match",
+                &match_arg,
+                &format!("workmux_auto_clear={}", auto_clear_val),
+            ])
+            .run();
+
         Ok(())
     }
 

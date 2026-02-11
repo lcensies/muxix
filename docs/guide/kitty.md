@@ -8,7 +8,7 @@ description: Use kitty as an alternative multiplexer backend
 The kitty backend is new and experimental. Expect rough edges and potential issues.
 :::
 
-workmux supports [kitty](https://sw.kovidgoyal.net/kitty/) as an alternative to tmux. This is useful if you prefer kitty's features or already use kitty as your terminal.
+workmux supports [kitty](https://sw.kovidgoyal.net/kitty/) as an alternative to tmux.
 
 workmux automatically uses kitty when it detects the `$KITTY_WINDOW_ID` environment variable.
 
@@ -78,13 +78,39 @@ def draw_title(data):
     return ''
 ```
 
-2. Add to your `kitty.conf`:
+2. Create `~/.config/kitty/workmux_watcher.py` for live status updates and auto-clear on focus:
+
+```python
+from kitty.boss import Boss
+from kitty.window import Window
+
+
+def on_focus_change(boss: Boss, window: Window, data: dict) -> None:
+    if not data.get('focused'):
+        return
+    if window.user_vars.get('workmux_auto_clear') == '1':
+        boss.call_remote_control(window, (
+            'set-user-vars', f'--match=id:{window.id}',
+            'workmux_status=', 'workmux_auto_clear=',
+        ))
+
+
+def on_set_user_var(boss: Boss, window: Window, data: dict) -> None:
+    if data.get('key') == 'workmux_status':
+        tm = boss.os_window_map.get(window.os_window_id)
+        if tm is not None:
+            tm.update_tab_bar_data()
+            tm.mark_tab_bar_dirty()
+```
+
+3. Add to your `kitty.conf`:
 
 ```bash
 tab_title_template "{title}{custom}"
+watcher workmux_watcher.py
 ```
 
-The `{custom}` placeholder calls the `draw_title` function above, which checks each window in the tab for a `workmux_status` user variable and appends it to the title.
+The `{custom}` placeholder calls the `draw_title` function, which checks each window in the tab for a `workmux_status` user variable and appends it to the title. The watcher refreshes the tab bar when status changes and auto-clears "waiting" and "done" statuses when the tab receives focus.
 
 ## Known limitations
 
