@@ -569,7 +569,7 @@ impl Multiplexer for KittyBackend {
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String> {
         let output = self
             .kitten_cmd()
-            .args(&["get-text", "--match", &format!("id:{}", pane_id)])
+            .args(&["get-text", "--match", &format!("id:{}", pane_id), "--ansi"])
             .run_and_capture_stdout()
             .ok()?;
 
