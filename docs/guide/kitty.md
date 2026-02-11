@@ -47,16 +47,6 @@ listen_on unix:/tmp/kitty-{kitty_pid}
 enabled_layouts splits,stack
 ```
 
-## Verify remote control works
-
-After configuring kitty, verify that remote control is working:
-
-```bash
-kitten @ ls
-```
-
-This should output JSON describing your kitty windows and tabs. If you get an error about remote control being disabled, check your `kitty.conf` configuration.
-
 ## Agent status display
 
 workmux stores agent status in kitty [user variables](https://sw.kovidgoyal.net/kitty/remote-control/#kitten-set-user-vars) (`workmux_status`), which can be displayed in tab titles using kitty's `{custom}` template placeholder.
