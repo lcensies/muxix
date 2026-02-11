@@ -252,6 +252,30 @@ impl Multiplexer for TmuxBackend {
         self.run_shell(script)
     }
 
+    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String> {
+        let session = self.current_session().unwrap_or_default();
+        let session_prefix = if session.is_empty() {
+            String::new()
+        } else {
+            format!("{}:", session)
+        };
+        let target = format!("{}={}", session_prefix, full_name);
+        let escaped = format!("'{}'", target.replace('\'', r#"'\''"#));
+        Ok(format!("tmux select-window -t {} >/dev/null 2>&1", escaped))
+    }
+
+    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String> {
+        let session = self.current_session().unwrap_or_default();
+        let session_prefix = if session.is_empty() {
+            String::new()
+        } else {
+            format!("{}:", session)
+        };
+        let target = format!("{}={}", session_prefix, full_name);
+        let escaped = format!("'{}'", target.replace('\'', r#"'\''"#));
+        Ok(format!("tmux kill-window -t {} >/dev/null 2>&1", escaped))
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let prefixed_name = util::prefixed(prefix, name);
         let target = format!("={}", prefixed_name);

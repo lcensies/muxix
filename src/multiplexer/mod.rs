@@ -61,6 +61,14 @@ pub trait Multiplexer: Send + Sync {
     /// For tmux, this uses `run-shell`. For other backends, may use different mechanisms.
     fn run_deferred_script(&self, script: &str) -> Result<()>;
 
+    /// Generate a shell command string to select/focus a window by full name.
+    /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
+    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String>;
+
+    /// Generate a shell command string to close/kill a window by full name.
+    /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
+    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String>;
+
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 

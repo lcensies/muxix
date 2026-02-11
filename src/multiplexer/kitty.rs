@@ -307,6 +307,19 @@ impl Multiplexer for KittyBackend {
             .context("Failed to create kitty tab")?;
 
         let window_id = output.trim().to_string();
+
+        // Persistently set the tab title. The --tab-title flag on launch gets
+        // overridden by kitty's dynamic title updates, but set-tab-title locks it.
+        let _ = self
+            .kitten_cmd()
+            .args(&[
+                "set-tab-title",
+                "--match",
+                &format!("id:{}", window_id),
+                &full_name,
+            ])
+            .run();
+
         Ok(window_id)
     }
 
@@ -314,22 +327,25 @@ impl Multiplexer for KittyBackend {
         let panes = self.list_panes()?;
         let scoped_panes = self.panes_in_current_scope(&panes);
 
-        // Find all windows in tabs matching this tab_title
-        let tab_ids: HashSet<u64> = scoped_panes
+        // Use window_id (not tab_id) because kitty's --match id:N resolves
+        // window IDs, not tab IDs. One window per tab is enough since
+        // close-tab closes the entire tab containing the matched window.
+        let mut seen_tabs = HashSet::new();
+        let window_ids: Vec<u64> = scoped_panes
             .iter()
             .filter(|p| p.tab_title == full_name)
-            .map(|p| p.tab_id)
+            .filter(|p| seen_tabs.insert(p.tab_id))
+            .map(|p| p.window_id)
             .collect();
 
-        if tab_ids.is_empty() {
+        if window_ids.is_empty() {
             return Ok(()); // Already gone
         }
 
-        // Close each matching tab
-        for tab_id in tab_ids {
+        for window_id in window_ids {
             let _ = self
                 .kitten_cmd()
-                .args(&["close-tab", "--match", &format!("id:{}", tab_id)])
+                .args(&["close-tab", "--match", &format!("id:{}", window_id)])
                 .run();
         }
         Ok(())
@@ -339,18 +355,22 @@ impl Multiplexer for KittyBackend {
         let panes = self.list_panes()?;
         let scoped_panes = self.panes_in_current_scope(&panes);
 
-        let tab_ids: HashSet<u64> = scoped_panes
+        // Use window_id (not tab_id) because kitty's --match id:N resolves
+        // window IDs, not tab IDs.
+        let mut seen_tabs = HashSet::new();
+        let window_ids: Vec<u64> = scoped_panes
             .iter()
             .filter(|p| p.tab_title == full_name)
-            .map(|p| p.tab_id)
+            .filter(|p| seen_tabs.insert(p.tab_id))
+            .map(|p| p.window_id)
             .collect();
 
-        if tab_ids.is_empty() {
+        if window_ids.is_empty() {
             return Ok(());
         }
 
         // Build close commands for all tabs
-        let close_cmds: String = tab_ids
+        let close_cmds: String = window_ids
             .iter()
             .map(|id| format!("kitten @ close-tab --match 'id:{}'", id))
             .collect::<Vec<_>>()
@@ -374,6 +394,32 @@ impl Multiplexer for KittyBackend {
         Ok(())
     }
 
+    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String> {
+        let panes = self.list_panes()?;
+        let scoped_panes = self.panes_in_current_scope(&panes);
+        let target = scoped_panes
+            .iter()
+            .find(|p| p.tab_title == full_name)
+            .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+        Ok(format!(
+            "kitten @ focus-tab --match 'id:{}' >/dev/null 2>&1",
+            target.window_id
+        ))
+    }
+
+    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String> {
+        let panes = self.list_panes()?;
+        let scoped_panes = self.panes_in_current_scope(&panes);
+        let target = scoped_panes
+            .iter()
+            .find(|p| p.tab_title == full_name)
+            .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+        Ok(format!(
+            "kitten @ close-tab --match 'id:{}' >/dev/null 2>&1",
+            target.window_id
+        ))
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
         let panes = self.list_panes()?;
@@ -385,8 +431,10 @@ impl Multiplexer for KittyBackend {
             .find(|p| p.tab_title == full_name)
             .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
 
+        // Use window_id (not tab_id) because kitty's --match id:N resolves
+        // window IDs, not tab IDs.
         self.kitten_cmd()
-            .args(&["focus-tab", "--match", &format!("id:{}", target.tab_id)])
+            .args(&["focus-tab", "--match", &format!("id:{}", target.window_id)])
             .run()
             .context("Failed to focus tab")?;
         Ok(())

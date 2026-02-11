@@ -481,7 +481,7 @@ pub fn navigate_to_target_and_close(
         "navigate_to_target_and_close:entry"
     );
 
-    // Prepare escaped window names for tmux commands
+    // Prepare window names for shell commands
     // Use the actual window name from window_to_close_later when available (includes -N suffix),
     // otherwise fall back to the base prefixed name
     let source_full = cleanup_result
@@ -490,18 +490,9 @@ pub fn navigate_to_target_and_close(
         .unwrap_or_else(|| prefixed(prefix, source_handle));
     let target_full = prefixed(prefix, target_window_name);
 
-    // Get current session name for tmux targeting.
-    // tmux run-shell doesn't inherit the session context, so we must include
-    // the session name explicitly in targets: "session:=window_name"
-    let session = mux.current_session().unwrap_or_default();
-    let session_prefix = if session.is_empty() {
-        String::new()
-    } else {
-        format!("{}:", session)
-    };
-
-    let source_escaped = shell_escape(&format!("{}={}", session_prefix, source_full));
-    let target_escaped = shell_escape(&format!("{}={}", session_prefix, target_full));
+    // Generate backend-specific shell commands for deferred scripts
+    let kill_source_cmd = mux.shell_kill_window_cmd(&source_full).ok();
+    let select_target_cmd = mux.shell_select_window_cmd(&target_full).ok();
 
     if !mux_running || !target_exists {
         // If target window doesn't exist, still need to close source window if running inside it
@@ -520,11 +511,16 @@ pub fn navigate_to_target_and_close(
                     .unwrap_or_default()
             };
 
+            let kill_part = kill_source_cmd
+                .as_ref()
+                .map(|cmd| format!("{}; ", cmd))
+                .unwrap_or_default();
+
             let script = format!(
-                "sleep {delay}; tmux kill-window -t {source} >/dev/null 2>&1{cleanup}",
+                "sleep {delay}; {kill}{cleanup}",
                 delay = delay_secs,
-                source = source_escaped,
-                cleanup = cleanup_script,
+                kill = kill_part,
+                cleanup = cleanup_script.strip_prefix("; ").unwrap_or(&cleanup_script),
             );
             debug!(
                 script = script,
@@ -562,12 +558,22 @@ pub fn navigate_to_target_and_close(
                 .unwrap_or_default()
         };
 
+        let select_part = select_target_cmd
+            .as_ref()
+            .map(|cmd| format!("{}; ", cmd))
+            .unwrap_or_default();
+
+        let kill_part = kill_source_cmd
+            .as_ref()
+            .map(|cmd| format!("{}; ", cmd))
+            .unwrap_or_default();
+
         let script = format!(
-            "sleep {delay}; tmux select-window -t {target} >/dev/null 2>&1; tmux kill-window -t {source} >/dev/null 2>&1{cleanup}",
+            "sleep {delay}; {select}{kill}{cleanup}",
             delay = delay_secs,
-            target = target_escaped,
-            source = source_escaped,
-            cleanup = cleanup_script,
+            select = select_part,
+            kill = kill_part,
+            cleanup = cleanup_script.strip_prefix("; ").unwrap_or(&cleanup_script),
         );
         debug!(
             script = script,

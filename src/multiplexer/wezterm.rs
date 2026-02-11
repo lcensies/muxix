@@ -309,6 +309,49 @@ impl Multiplexer for WezTermBackend {
         Ok(())
     }
 
+    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String> {
+        let panes = self.list_panes()?;
+        let current_ws = self.current_workspace();
+        let target = panes
+            .iter()
+            .find(|p| {
+                p.tab_title == full_name && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
+            })
+            .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+        Ok(format!(
+            "wezterm cli activate-tab --tab-id {} >/dev/null 2>&1",
+            target.tab_id
+        ))
+    }
+
+    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String> {
+        let panes = self.list_panes()?;
+        let current_ws = self.current_workspace();
+        let tab_panes: Vec<_> = panes
+            .iter()
+            .filter(|p| {
+                p.tab_title == full_name && current_ws.as_ref().is_none_or(|ws| &p.workspace == ws)
+            })
+            .collect();
+
+        if tab_panes.is_empty() {
+            return Err(anyhow!("Window '{}' not found", full_name));
+        }
+
+        let kill_cmds: String = tab_panes
+            .iter()
+            .rev()
+            .map(|p| {
+                format!(
+                    "wezterm cli kill-pane --pane-id {} >/dev/null 2>&1",
+                    p.pane_id
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        Ok(kill_cmds)
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
         let panes = self.list_panes()?;
