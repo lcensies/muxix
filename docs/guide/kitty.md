@@ -61,6 +61,10 @@ This should output JSON describing your kitty windows and tabs. If you get an er
 
 workmux stores agent status in kitty [user variables](https://sw.kovidgoyal.net/kitty/remote-control/#kitten-set-user-vars) (`workmux_status`), which can be displayed in tab titles using kitty's `{custom}` template placeholder.
 
+::: tip Agent setup
+Copy this page as markdown and paste it to your coding agent to have it set up the configuration files for you.
+:::
+
 ### Setup
 
 1. Create `~/.config/kitty/tab_bar.py`:
