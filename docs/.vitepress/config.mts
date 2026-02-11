@@ -96,6 +96,7 @@ export default defineConfig({
           { text: "Container backend", link: "/guide/sandbox/container" },
           { text: "Lima VM backend", link: "/guide/sandbox/lima" },
           { text: "Shared features", link: "/guide/sandbox/features" },
+          { text: "Alternatives", link: "/guide/sandbox/alternatives" },
         ],
       },
       {

@@ -84,3 +84,4 @@ sandbox:
 ```
 
 The VM is created and provisioned automatically on first run. See the [Lima VM backend](./lima) page for details.
+
