@@ -14,6 +14,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.110 (2026-02-11)
+
+- Added kitty as an alternative terminal backend -- detected automatically when
+  running inside kitty
+- Improved window cleanup handling for non-tmux backends
+
 ## v0.1.109 (2026-02-09)
 
 <!-- summary: run command, coordinator commands, light theme -->
