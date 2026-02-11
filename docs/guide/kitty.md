@@ -8,9 +8,7 @@ description: Use kitty as an alternative multiplexer backend
 The kitty backend is new and experimental. Expect rough edges and potential issues.
 :::
 
-workmux supports [kitty](https://sw.kovidgoyal.net/kitty/) as an alternative to tmux.
-
-workmux automatically uses kitty when it detects the `$KITTY_WINDOW_ID` environment variable.
+[kitty](https://sw.kovidgoyal.net/kitty/) can be used as an alternative to tmux. Detected automatically via `$KITTY_WINDOW_ID`.
 
 ## Differences from tmux
 

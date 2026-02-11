@@ -8,9 +8,7 @@ description: Use WezTerm as an alternative multiplexer backend
 The WezTerm backend is new and experimental. Expect rough edges and potential issues.
 :::
 
-workmux supports WezTerm as an alternative to tmux.
-
-workmux automatically uses WezTerm when it detects the `$WEZTERM_PANE` environment variable.
+[WezTerm](https://wezterm.org/) can be used as an alternative to tmux. Detected automatically via `$WEZTERM_PANE`.
 
 ## Differences from tmux
 
