@@ -292,9 +292,10 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
         } = request
         {
             // SECURITY: Force --no-verify --no-hooks regardless of guest request.
-            // Hooks are user-configured shell commands that run unsandboxed on the
-            // host. A compromised guest could modify .workmux.yaml to inject
-            // malicious hooks, then trigger them via this RPC.
+            // Workmux hooks are user-configured shell commands that run unsandboxed
+            // on the host. Git native hooks are also disabled in handle_merge via
+            // core.hooksPath=/dev/null to prevent a compromised guest from planting
+            // hooks in the bind-mounted .git/hooks/ directory.
             handle_merge(
                 name,
                 into.as_deref(),
@@ -445,6 +446,24 @@ fn handle_set_title(title: &str, ctx: &RpcContext) -> RpcResponse {
     }
 }
 
+/// Disable git native hooks for a spawned command and all its children.
+///
+/// Sets `core.hooksPath=/dev/null` via git's `GIT_CONFIG_*` environment
+/// variables. This prevents git from executing hooks (post-merge, post-rewrite,
+/// post-checkout, etc.) that a sandboxed guest could have planted in the
+/// bind-mounted `.git/hooks/` directory.
+///
+/// Intentionally hard-sets `GIT_CONFIG_COUNT=1` rather than appending to any
+/// existing value. RPC-spawned commands should run in a minimal, known-safe
+/// configuration -- inheriting arbitrary env-injected git config from the host
+/// is not needed and could weaken the security boundary.
+fn disable_git_hooks(cmd: &mut std::process::Command) {
+    cmd.env_remove("GIT_CONFIG_PARAMETERS")
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.hooksPath")
+        .env("GIT_CONFIG_VALUE_0", "/dev/null");
+}
+
 fn handle_spawn_agent(
     prompt: &str,
     branch_name: Option<&str>,
@@ -471,9 +490,12 @@ fn handle_spawn_agent(
         cmd.arg("--background");
     }
 
-    // SECURITY: Skip post-create hooks when triggered via RPC. Hooks are
-    // arbitrary shell commands from config that run unsandboxed on the host.
+    // SECURITY: Skip workmux hooks AND git native hooks when triggered via RPC.
+    // Workmux hooks are arbitrary shell commands from config that run unsandboxed
+    // on the host. Git native hooks (e.g. post-checkout from `git worktree add`)
+    // could be planted by a compromised guest in the bind-mounted .git/hooks/.
     cmd.arg("--no-hooks");
+    disable_git_hooks(&mut cmd);
 
     // Run from the worktree directory so config is found
     cmd.current_dir(worktree_path);
@@ -530,9 +552,13 @@ fn handle_merge(
         cmd.arg("--notification");
     }
 
-    // SECURITY: Always skip hooks when triggered via RPC. Hooks are arbitrary
-    // shell commands from config that run unsandboxed on the host.
+    // SECURITY: Skip workmux hooks AND git native hooks when triggered via RPC.
+    // --no-verify/--no-hooks skip workmux's own pre_merge hooks (arbitrary shell
+    // commands from config). disable_git_hooks() sets core.hooksPath=/dev/null to
+    // prevent git native hooks (post-merge, post-rewrite, post-checkout) that a
+    // compromised guest could plant in the bind-mounted .git/hooks/ directory.
     cmd.args(["--no-verify", "--no-hooks"]);
+    disable_git_hooks(&mut cmd);
 
     // Run from the worktree directory so config is found
     cmd.current_dir(worktree_path);
@@ -1505,5 +1531,94 @@ mod tests {
             }
             _ => panic!("Wrong variant"),
         }
+    }
+
+    // ── Git hook suppression tests ──────────────────────────────────────
+
+    #[test]
+    fn test_disable_git_hooks_sets_env_vars() {
+        use std::ffi::OsStr;
+        use std::process::Command;
+
+        let mut cmd = Command::new("true");
+        disable_git_hooks(&mut cmd);
+
+        let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_COUNT")),
+            Some(&Some(OsStr::new("1"))),
+            "GIT_CONFIG_COUNT should be set to 1"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_KEY_0")),
+            Some(&Some(OsStr::new("core.hooksPath"))),
+            "GIT_CONFIG_KEY_0 should be core.hooksPath"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_VALUE_0")),
+            Some(&Some(OsStr::new("/dev/null"))),
+            "GIT_CONFIG_VALUE_0 should be /dev/null"
+        );
+        // GIT_CONFIG_PARAMETERS must be removed to prevent it from overriding
+        // the GIT_CONFIG_COUNT-based settings
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_PARAMETERS")),
+            Some(&None),
+            "GIT_CONFIG_PARAMETERS should be explicitly removed"
+        );
+    }
+
+    #[test]
+    fn test_merge_command_disables_git_hooks() {
+        // Verify that a merge triggered via RPC would have git hooks disabled.
+        // We can't inspect the Command directly from handle_merge (it spawns
+        // internally), so instead we replicate the command-building logic and
+        // assert the env vars are present via the shared disable_git_hooks helper.
+        use std::ffi::OsStr;
+        use std::process::Command;
+
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+        let mut cmd = Command::new(exe);
+        cmd.arg("merge").arg("test-branch");
+        cmd.args(["--no-verify", "--no-hooks"]);
+        disable_git_hooks(&mut cmd);
+
+        let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+        assert!(
+            envs.contains_key(OsStr::new("GIT_CONFIG_COUNT")),
+            "merge command should have GIT_CONFIG_COUNT set"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_VALUE_0")),
+            Some(&Some(OsStr::new("/dev/null"))),
+            "merge command should point core.hooksPath to /dev/null"
+        );
+    }
+
+    #[test]
+    fn test_spawn_agent_command_disables_git_hooks() {
+        // Verify that a spawn-agent triggered via RPC would have git hooks
+        // disabled, preventing post-checkout hooks from firing during
+        // git worktree add.
+        use std::ffi::OsStr;
+        use std::process::Command;
+
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+        let mut cmd = Command::new(exe);
+        cmd.arg("add").arg("--auto-name");
+        cmd.arg("--no-hooks");
+        disable_git_hooks(&mut cmd);
+
+        let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+        assert!(
+            envs.contains_key(OsStr::new("GIT_CONFIG_COUNT")),
+            "spawn-agent command should have GIT_CONFIG_COUNT set"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("GIT_CONFIG_KEY_0")),
+            Some(&Some(OsStr::new("core.hooksPath"))),
+            "spawn-agent command should set core.hooksPath"
+        );
     }
 }
