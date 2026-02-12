@@ -30,6 +30,10 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('?') => Some(Action::ShowHelp),
         KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
+        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Next),
+        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(Action::Previous)
+        }
         KeyCode::Char('j') | KeyCode::Down => Some(Action::Next),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::Previous),
         KeyCode::Enter => Some(Action::JumpToSelected),
@@ -132,7 +136,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
         Context::DashboardNormal => vec![
             ("?", "Show help"),
             ("q/Esc", "Quit"),
-            ("j/k", "Navigate up/down"),
+            ("j/k/C-n/C-p", "Navigate up/down"),
             ("Enter", "Jump to agent"),
             ("Tab", "Toggle last agent"),
             ("p", "Peek agent (keep popup)"),
