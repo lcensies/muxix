@@ -359,10 +359,11 @@ pub fn build_docker_run_args(
 
     // Include $HOME/.local/bin so runtime-installed tools are found (HOME=/tmp).
     // Prepend shim directory when host-exec is configured.
+    let sbin = if network_deny { ":/usr/sbin:/sbin" } else { "" };
     let path = if shim_host_dir.is_some() {
-        "/tmp/.workmux-shims/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin"
+        format!("/tmp/.workmux-shims/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin{sbin}")
     } else {
-        "/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin"
+        format!("/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin{sbin}")
     };
     args.push("--env".to_string());
     args.push(format!("PATH={}", path));
@@ -976,6 +977,52 @@ mod tests {
         assert_eq!(args[image_idx + 2], "sh");
         assert_eq!(args[image_idx + 3], "-c");
         assert_eq!(args[image_idx + 4], "claude");
+    }
+
+    #[test]
+    fn test_build_args_network_deny_path_includes_sbin() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let path_arg = args.iter().find(|a| a.starts_with("PATH=")).unwrap();
+        assert!(
+            path_arg.contains("/usr/sbin"),
+            "deny mode PATH must include /usr/sbin for iptables: {}",
+            path_arg
+        );
+    }
+
+    #[test]
+    fn test_build_args_allow_mode_path_no_sbin() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let path_arg = args.iter().find(|a| a.starts_with("PATH=")).unwrap();
+        assert!(
+            !path_arg.contains("/usr/sbin"),
+            "allow mode PATH should not include /usr/sbin: {}",
+            path_arg
+        );
     }
 
     #[test]
