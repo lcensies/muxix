@@ -1173,12 +1173,30 @@ impl Config {
                 .target
                 .clone()
                 .or(self.sandbox.target.clone()),
-            image: project.sandbox.image.clone().or(self.sandbox.image.clone()),
-            env_passthrough: project
-                .sandbox
-                .env_passthrough
-                .clone()
-                .or(self.sandbox.env_passthrough.clone()),
+            // Security: image is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from using an
+            // untrusted image via .workmux.yaml.
+            image: {
+                if project.sandbox.image.is_some() {
+                    tracing::warn!(
+                        "image in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.image.clone()
+            },
+            // Security: env_passthrough is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from requesting
+            // passthrough of host env secrets via .workmux.yaml.
+            env_passthrough: {
+                if project.sandbox.env_passthrough.is_some() {
+                    tracing::warn!(
+                        "env_passthrough in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.env_passthrough.clone()
+            },
             // Security: rpc_host is global-only. Project config cannot
             // set it -- this prevents a malicious repo from redirecting
             // RPC traffic to attacker infrastructure via .workmux.yaml.
@@ -1208,11 +1226,18 @@ impl Config {
                 }
                 self.sandbox.host_commands.clone()
             },
-            extra_mounts: project
-                .sandbox
-                .extra_mounts
-                .clone()
-                .or(self.sandbox.extra_mounts.clone()),
+            // Security: extra_mounts is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from mounting over
+            // host paths via .workmux.yaml.
+            extra_mounts: {
+                if project.sandbox.extra_mounts.is_some() {
+                    tracing::warn!(
+                        "extra_mounts in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.extra_mounts.clone()
+            },
             lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
             container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
             // Security: network is global-only. Project config cannot
@@ -1777,7 +1802,7 @@ mod tests {
 
         let merged = global.merge(project);
         assert!(merged.sandbox.is_enabled()); // from global
-        assert_eq!(merged.sandbox.resolved_image("claude"), "project-image"); // from project
+        assert_eq!(merged.sandbox.resolved_image("claude"), "global-image"); // image is global-only
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
     }
 
@@ -2137,6 +2162,116 @@ mod tests {
     }
 
     #[test]
+    fn test_sandbox_image_global_only() {
+        // Project config is ignored -- only global matters
+        let global = Config {
+            sandbox: SandboxConfig {
+                image: Some("trusted:latest".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                image: Some("evil:latest".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.image, Some("trusted:latest".to_string()));
+    }
+
+    #[test]
+    fn test_sandbox_image_project_ignored_when_no_global() {
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                image: Some("evil:latest".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.image.is_none());
+    }
+
+    #[test]
+    fn test_sandbox_image_uses_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                image: Some("trusted:latest".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.image, Some("trusted:latest".to_string()));
+    }
+
+    #[test]
+    fn test_sandbox_env_passthrough_global_only() {
+        // Project config is ignored -- only global matters
+        let global = Config {
+            sandbox: SandboxConfig {
+                env_passthrough: Some(vec!["GITHUB_TOKEN".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                env_passthrough: Some(vec!["AWS_SECRET_ACCESS_KEY".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.sandbox.env_passthrough,
+            Some(vec!["GITHUB_TOKEN".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_sandbox_env_passthrough_project_ignored_when_no_global() {
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                env_passthrough: Some(vec!["AWS_SECRET_ACCESS_KEY".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.env_passthrough.is_none());
+    }
+
+    #[test]
+    fn test_sandbox_env_passthrough_uses_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                env_passthrough: Some(vec!["GITHUB_TOKEN".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.sandbox.env_passthrough,
+            Some(vec!["GITHUB_TOKEN".to_string()])
+        );
+    }
+
+    #[test]
     fn test_extra_mount_parse_simple_string() {
         let yaml = r#"extra_mounts: ["/tmp/notes"]"#;
         let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
@@ -2218,7 +2353,8 @@ extra_mounts:
     }
 
     #[test]
-    fn test_extra_mounts_merge_project_overrides() {
+    fn test_extra_mounts_global_only() {
+        // Project config is ignored -- only global matters
         let global = Config {
             sandbox: SandboxConfig {
                 extra_mounts: Some(vec![ExtraMount::Path("/global/path".to_string())]),
@@ -2237,11 +2373,26 @@ extra_mounts:
         let merged = global.merge(project);
         assert_eq!(merged.sandbox.extra_mounts().len(), 1);
         let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
-        assert_eq!(host, std::path::PathBuf::from("/project/path"));
+        assert_eq!(host, std::path::PathBuf::from("/global/path"));
     }
 
     #[test]
-    fn test_extra_mounts_merge_fallback_to_global() {
+    fn test_extra_mounts_project_ignored_when_no_global() {
+        let global = Config::default(); // no extra_mounts
+        let project = Config {
+            sandbox: SandboxConfig {
+                extra_mounts: Some(vec![ExtraMount::Path("/project/path".to_string())]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.extra_mounts().is_empty());
+    }
+
+    #[test]
+    fn test_extra_mounts_uses_global() {
         let global = Config {
             sandbox: SandboxConfig {
                 extra_mounts: Some(vec![ExtraMount::Path("/global/path".to_string())]),

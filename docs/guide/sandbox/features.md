@@ -10,9 +10,12 @@ These features work with both the container and Lima sandbox backends.
 
 The `extra_mounts` option lets you mount additional host directories into the sandbox. Mounts are read-only by default for security.
 
+`extra_mounts` is a **global-only** setting. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This prevents a malicious repository from mounting arbitrary host paths into the sandbox.
+
 Each entry can be a simple path string (read-only, mirrored into the guest at the same path) or a detailed spec with `host_path`, optional `guest_path`, and optional `writable` flag.
 
 ```yaml
+# ~/.config/workmux/config.yaml
 sandbox:
   extra_mounts:
     # Simple: read-only, same path in guest
