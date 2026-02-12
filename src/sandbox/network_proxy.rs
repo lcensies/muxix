@@ -264,7 +264,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
 
     // Reject non-443 ports
     if port != ALLOWED_PORT {
-        debug!(hostname, port, "rejected: non-443 port");
+        warn!(hostname, port, "rejected: non-443 port");
         write_error(&mut writer, 403, "Only port 443 is allowed")?;
         return Ok(());
     }
@@ -275,7 +275,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
 
     // Reject IP literal hostnames
     if hostname.parse::<IpAddr>().is_ok() {
-        debug!(hostname, "rejected: IP literal hostname");
+        warn!(hostname, "rejected: IP literal hostname");
         write_error(&mut writer, 403, "IP literal hostnames not allowed")?;
         return Ok(());
     }
@@ -286,7 +286,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
         .iter()
         .any(|pattern| domain_matches(hostname, pattern));
     if !allowed {
-        debug!(hostname, "rejected: domain not in allowlist");
+        warn!(hostname, "rejected: domain not in allowlist");
         write_error(&mut writer, 403, "Domain not allowed")?;
         return Ok(());
     }
@@ -295,7 +295,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
     let addrs: Vec<SocketAddr> = match format!("{}:{}", hostname, port).to_socket_addrs() {
         Ok(addrs) => addrs.collect(),
         Err(e) => {
-            debug!(hostname, error = %e, "DNS resolution failed");
+            warn!(hostname, error = %e, "DNS resolution failed");
             write_error(&mut writer, 502, "DNS resolution failed")?;
             return Ok(());
         }
@@ -305,7 +305,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
     let public_addrs: Vec<&SocketAddr> = addrs.iter().filter(|a| !is_private_ip(&a.ip())).collect();
 
     if public_addrs.is_empty() {
-        debug!(hostname, "rejected: all resolved IPs are private");
+        warn!(hostname, "rejected: all resolved IPs are private");
         write_error(&mut writer, 403, "All resolved IPs are private")?;
         return Ok(());
     }
