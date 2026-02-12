@@ -1137,8 +1137,14 @@ mod tests {
 
     /// Start an RPC server with the given allowed commands and return a
     /// connected client. Uses a temp dir as the worktree path.
+    ///
+    /// When `allow_unsandboxed` is true, commands run without OS sandbox
+    /// (no bwrap/sandbox-exec). Use this for tests that verify RPC pipeline
+    /// behavior (streaming, exit codes, env sanitization) rather than
+    /// sandbox enforcement.
     fn start_exec_server(
         allowed: &[&str],
+        allow_unsandboxed: bool,
     ) -> (RpcClient, tempfile::TempDir, thread::JoinHandle<()>) {
         let server = RpcServer::bind().unwrap();
         let port = server.port();
@@ -1153,7 +1159,7 @@ mod tests {
             token: token.clone(),
             allowed_commands: allowed.iter().map(|s| s.to_string()).collect(),
             detected_toolchain: crate::sandbox::toolchain::DetectedToolchain::None,
-            allow_unsandboxed_host_exec: false,
+            allow_unsandboxed_host_exec: allow_unsandboxed,
         });
 
         let handle = server.spawn(ctx);
@@ -1187,7 +1193,7 @@ mod tests {
 
     #[test]
     fn test_exec_allowed_command() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"], true);
         let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["hello", "world"]);
         assert_eq!(code, 0);
         assert_eq!(stdout.trim(), "hello world");
@@ -1195,14 +1201,14 @@ mod tests {
 
     #[test]
     fn test_exec_disallowed_command() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"], true);
         let (_stdout, _stderr, code) = exec_collect(&mut client, "ls", &[]);
         assert_eq!(code, 127, "disallowed command should return 127");
     }
 
     #[test]
     fn test_exec_invalid_command_name() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"], true);
 
         // Shell metacharacters in command name
         let (_stdout, _stderr, code) = exec_collect(&mut client, "echo;whoami", &[]);
@@ -1215,7 +1221,7 @@ mod tests {
 
     #[test]
     fn test_exec_shell_metacharacters_in_args_not_interpreted() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"], true);
 
         // $(whoami) should be printed literally, not expanded
         let (stdout, _stderr, code) = exec_collect(&mut client, "echo", &["$(whoami)"]);
@@ -1235,7 +1241,7 @@ mod tests {
 
     #[test]
     fn test_exec_env_sanitized() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["env"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["env"], true);
         let (stdout, _stderr, code) = exec_collect(&mut client, "env", &[]);
         assert_eq!(code, 0);
 
@@ -1266,14 +1272,21 @@ mod tests {
 
     #[test]
     fn test_exec_sandbox_blocks_ssh_read() {
-        // This test verifies the sandbox-exec integration on macOS.
-        // On Linux without bwrap, host-exec fails closed, so skip the test.
         #[cfg(target_os = "linux")]
-        if which::which("bwrap").is_err() {
-            return; // bwrap not installed, sandbox tests can't run
+        {
+            // Probe bwrap usability, not just existence. bwrap requires user
+            // namespaces which are unavailable inside nested sandboxes (Nix
+            // build sandbox, Docker without --privileged, etc.).
+            let probe = std::process::Command::new("bwrap")
+                .args(["--ro-bind", "/", "/", "--", "true"])
+                .status();
+            match probe {
+                Ok(s) if s.success() => {}
+                _ => return, // bwrap not usable in this environment
+            }
         }
 
-        let (mut client, _tmp, _handle) = start_exec_server(&["ls"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["ls"], false);
         let home = std::env::var("HOME").unwrap();
         let ssh_dir = format!("{}/.ssh", home);
 
@@ -1282,20 +1295,36 @@ mod tests {
             return;
         }
 
-        let (_stdout, stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
-        // sandbox-exec/bwrap should deny access, causing ls to fail
-        assert_ne!(
-            code,
-            0,
-            "ls ~/.ssh should fail under sandbox (stderr: {})",
-            stderr.trim()
-        );
+        let (stdout, stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
+        let _ = &stdout; // used conditionally per platform
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS sandbox-exec denies the read entirely
+            assert_ne!(
+                code,
+                0,
+                "ls ~/.ssh should fail under sandbox-exec (stderr: {})",
+                stderr.trim()
+            );
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // bwrap masks ~/.ssh with tmpfs so ls succeeds but sees nothing
+            assert_eq!(code, 0);
+            assert!(
+                stdout.trim().is_empty(),
+                "~/.ssh should appear empty under bwrap, got: {}",
+                stdout.trim()
+            );
+        }
     }
 
     #[test]
     fn test_exec_nonexistent_command() {
         let (mut client, _tmp, _handle) =
-            start_exec_server(&["this-command-definitely-does-not-exist-xyz"]);
+            start_exec_server(&["this-command-definitely-does-not-exist-xyz"], true);
         let (_stdout, _stderr, code) = exec_collect(
             &mut client,
             "this-command-definitely-does-not-exist-xyz",
@@ -1307,14 +1336,14 @@ mod tests {
 
     #[test]
     fn test_exec_exit_code_propagated() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["sh"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["sh"], true);
         let (_stdout, _stderr, code) = exec_collect(&mut client, "sh", &["-c", "exit 42"]);
         assert_eq!(code, 42, "exit code should be propagated from child");
     }
 
     #[test]
     fn test_exec_stderr_captured() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["sh"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["sh"], true);
         let (_stdout, stderr, code) = exec_collect(&mut client, "sh", &["-c", "echo oops >&2"]);
         assert_eq!(code, 0);
         assert_eq!(stderr.trim(), "oops");
@@ -1322,7 +1351,7 @@ mod tests {
 
     #[test]
     fn test_exec_multiple_commands_on_same_connection() {
-        let (mut client, _tmp, _handle) = start_exec_server(&["echo"]);
+        let (mut client, _tmp, _handle) = start_exec_server(&["echo"], true);
 
         let (stdout1, _, code1) = exec_collect(&mut client, "echo", &["first"]);
         assert_eq!(code1, 0);

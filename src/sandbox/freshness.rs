@@ -28,9 +28,11 @@ struct FreshnessCache {
     is_fresh: bool,
 }
 
-/// Get the cache file path.
-fn cache_file_path() -> Result<PathBuf> {
-    let state_dir = if let Ok(xdg_state) = std::env::var("XDG_STATE_HOME") {
+/// Get the cache file path, optionally rooted at `base` (for testing).
+fn cache_file_path_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
+    let state_dir = if let Some(base) = base {
+        base.join("workmux")
+    } else if let Ok(xdg_state) = std::env::var("XDG_STATE_HOME") {
         PathBuf::from(xdg_state).join("workmux")
     } else if let Some(home) = home::home_dir() {
         home.join(".local/state/workmux")
@@ -42,6 +44,11 @@ fn cache_file_path() -> Result<PathBuf> {
         .with_context(|| format!("Failed to create state directory: {}", state_dir.display()))?;
 
     Ok(state_dir.join("image-freshness.json"))
+}
+
+/// Get the cache file path.
+fn cache_file_path() -> Result<PathBuf> {
+    cache_file_path_in(None)
 }
 
 /// Load cached freshness check result.
@@ -225,9 +232,12 @@ mod tests {
 
     #[test]
     fn test_cache_file_path() {
-        let path = cache_file_path().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = cache_file_path_in(Some(tmp.path())).unwrap();
         assert!(path.to_string_lossy().contains("workmux"));
         assert!(path.to_string_lossy().ends_with("image-freshness.json"));
+        // Verify the directory was actually created
+        assert!(path.parent().unwrap().is_dir());
     }
 
     #[test]
