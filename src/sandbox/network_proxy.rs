@@ -327,6 +327,16 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
     writer.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")?;
     writer.flush()?;
 
+    // Drain any bytes the BufReader consumed from the socket but hasn't yielded
+    // (e.g. a TLS ClientHello pipelined in the same TCP segment as the CONNECT).
+    let buffered = reader.buffer();
+    if !buffered.is_empty() {
+        let mut target_ref = &target_stream;
+        target_ref
+            .write_all(buffered)
+            .context("Failed to forward buffered data to target")?;
+    }
+
     // Bidirectional tunnel
     tunnel(reader.into_inner(), &target_stream)?;
 
@@ -692,6 +702,73 @@ mod tests {
         let mut reader = BufReader::new(&stream);
         reader.read_line(&mut response).unwrap();
         assert!(response.contains("403"));
+    }
+
+    /// Verify that bytes pipelined after CONNECT headers (e.g. a TLS
+    /// ClientHello in the same TCP segment) are forwarded to the target
+    /// rather than silently dropped by BufReader::into_inner().
+    #[test]
+    fn pipelined_data_forwarded_through_tunnel() {
+        use std::io::Read;
+
+        // "Target" server that will receive forwarded data
+        let target_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let target_addr = target_listener.local_addr().unwrap();
+
+        // Accept target connection in background and read the forwarded bytes
+        let target_handle = thread::spawn(move || {
+            let (mut conn, _) = target_listener.accept().unwrap();
+            conn.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut buf = vec![0u8; 26];
+            conn.read_exact(&mut buf).unwrap();
+            buf
+        });
+
+        // Simulated proxy listener
+        let proxy_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let proxy_addr = proxy_listener.local_addr().unwrap();
+
+        // Build pipelined payload: CONNECT headers + extra data in one write
+        let extra_data = b"SIMULATED_TLS_CLIENT_HELLO";
+        let mut pipelined = Vec::new();
+        pipelined
+            .extend_from_slice(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com\r\n\r\n");
+        pipelined.extend_from_slice(extra_data);
+
+        // Client sends everything at once (simulates pipelining)
+        let mut client = TcpStream::connect(proxy_addr).unwrap();
+        client.write_all(&pipelined).unwrap();
+        client.flush().unwrap();
+
+        // Proxy accepts and reads with BufReader (mirrors handle_proxy_connection)
+        let (proxy_stream, _) = proxy_listener.accept().unwrap();
+        // Ensure all data is in kernel buffer before BufReader reads
+        thread::sleep(Duration::from_millis(50));
+        let mut reader = BufReader::new(&proxy_stream);
+
+        // Parse headers
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+        }
+
+        // Connect to target and drain buffered bytes (the fix under test)
+        let mut target_stream = TcpStream::connect(target_addr).unwrap();
+        let buffer = reader.buffer();
+        assert!(
+            !buffer.is_empty(),
+            "BufReader should have buffered the pipelined data"
+        );
+        target_stream.write_all(buffer).unwrap();
+        target_stream.flush().unwrap();
+        drop(target_stream);
+
+        // Verify target received exactly the pipelined data
+        let received = target_handle.join().unwrap();
+        assert_eq!(received, extra_data);
     }
 
     #[test]
