@@ -10,6 +10,8 @@ The kitty backend is new and experimental. Expect rough edges and potential issu
 
 [kitty](https://sw.kovidgoyal.net/kitty/) can be used as an alternative to tmux. Detected automatically via `$KITTY_WINDOW_ID`.
 
+<img src="/kitty-screenshot.webp" alt="workmux running in kitty with multiple agents" style="border-radius: 4px;">
+
 ## Differences from tmux
 
 | Feature              | tmux                 | kitty                  |
