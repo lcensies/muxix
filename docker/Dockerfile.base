@@ -68,8 +68,17 @@ if [ -n "${WM_PROXY_HOST:-}" ] && [ -n "${WM_PROXY_PORT:-}" ]; then
     fi
 fi
 
-# Drop privileges and exec the user command
-exec gosu "${WM_TARGET_UID}:${WM_TARGET_GID}" "$@"
+# Fix PTY ownership so the unprivileged user can read/write the terminal.
+# Docker allocates the PTY as root; after gosu drops privileges, the user
+# has no access to /dev/pts/0 unless we transfer ownership.
+if [ -t 0 ]; then
+    chown "${WM_TARGET_UID}:${WM_TARGET_GID}" "$(tty)"
+fi
+
+# Drop privileges and exec the user command.
+# gosu resets HOME via getpwuid() which returns "/" for UIDs not in /etc/passwd.
+# Preserve the container's HOME=/tmp so agents find their config dirs.
+exec gosu "${WM_TARGET_UID}:${WM_TARGET_GID}" env HOME=/tmp "$@"
 SCRIPT
 RUN chmod +x /usr/local/bin/network-init.sh
 
