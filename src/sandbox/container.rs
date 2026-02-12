@@ -155,6 +155,7 @@ pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
 /// - Prepend the runtime binary name (docker/podman)
 /// - Call `ensure_sandbox_config_dirs()` before this function if config mounts are needed
 /// - Use `Command::args()` (not string joining) since args are not shell-quoted
+#[allow(clippy::too_many_arguments)]
 pub fn build_docker_run_args(
     command: &str,
     config: &SandboxConfig,
@@ -163,6 +164,7 @@ pub fn build_docker_run_args(
     pane_cwd: &Path,
     extra_envs: &[(&str, &str)],
     shim_host_dir: Option<&Path>,
+    network_deny: bool,
 ) -> Result<Vec<String>> {
     let image = config.resolved_image(agent);
     let worktree_root_str = worktree_root.to_string_lossy();
@@ -186,15 +188,26 @@ pub fn build_docker_run_args(
         args.push("host.docker.internal:host-gateway".to_string());
     }
 
-    // Rootless Podman uses a user namespace that remaps UIDs. Without --userns=keep-id,
-    // the host UID appears as root inside the container, making bind-mounted files
-    // (credentials, config) inaccessible to the --user process.
-    if matches!(config.runtime(), SandboxRuntime::Podman) {
-        args.push("--userns=keep-id".to_string());
+    if network_deny {
+        // Deny mode: start as root for iptables setup, drop privileges via gosu.
+        // Do NOT use --userns=keep-id (Podman) in deny mode since the container
+        // starts as root and drops privileges via gosu after iptables setup.
+        args.extend(deny_mode_run_flags());
+        args.push("--env".to_string());
+        args.push(format!("WM_TARGET_UID={}", uid));
+        args.push("--env".to_string());
+        args.push(format!("WM_TARGET_GID={}", gid));
+    } else {
+        // Normal mode: run as user directly.
+        // Rootless Podman uses a user namespace that remaps UIDs. Without --userns=keep-id,
+        // the host UID appears as root inside the container, making bind-mounted files
+        // (credentials, config) inaccessible to the --user process.
+        if matches!(config.runtime(), SandboxRuntime::Podman) {
+            args.push("--userns=keep-id".to_string());
+        }
+        args.push("--user".to_string());
+        args.push(format!("{}:{}", uid, gid));
     }
-
-    args.push("--user".to_string());
-    args.push(format!("{}:{}", uid, gid));
 
     // Mirror mount worktree
     args.push("--mount".to_string());
@@ -357,13 +370,38 @@ pub fn build_docker_run_args(
     // Image
     args.push(image.to_string());
 
-    // Command: sh -c <command>
+    // Command
     // No shell quoting needed -- callers use Command::args() which handles escaping
-    args.push("sh".to_string());
-    args.push("-c".to_string());
-    args.push(command.to_string());
+    if network_deny {
+        // In deny mode, wrap command with network-init.sh which sets up
+        // iptables firewall rules and then drops privileges via gosu.
+        args.push("network-init.sh".to_string());
+        args.push("sh".to_string());
+        args.push("-c".to_string());
+        args.push(command.to_string());
+    } else {
+        args.push("sh".to_string());
+        args.push("-c".to_string());
+        args.push(command.to_string());
+    }
 
     Ok(args)
+}
+
+/// Docker/Podman run flags specific to network deny mode.
+///
+/// Returns flags needed to run a container with iptables support: CAP_NET_ADMIN
+/// for firewall setup and no-new-privileges to prevent privilege escalation
+/// after the init script drops to the target user.
+///
+/// Used by BOTH the preflight probe and the actual container launch to ensure
+/// they always match.
+pub fn deny_mode_run_flags() -> Vec<String> {
+    vec![
+        "--cap-add=NET_ADMIN".into(),
+        "--security-opt".into(),
+        "no-new-privileges".into(),
+    ]
 }
 
 use crate::shell::shell_escape;
@@ -466,6 +504,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -489,6 +528,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[("WM_SANDBOX_GUEST", "1"), ("WM_RPC_PORT", "12345")],
             None,
+            false,
         )
         .unwrap();
 
@@ -514,6 +554,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -539,6 +580,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -563,6 +605,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -646,6 +689,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             Some(&shim_bin),
+            false,
         )
         .unwrap();
 
@@ -714,6 +758,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -746,6 +791,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -766,6 +812,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -789,6 +836,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -811,6 +859,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -833,6 +882,7 @@ mod tests {
             Path::new("/tmp/project"),
             &[],
             None,
+            false,
         )
         .unwrap();
 
@@ -842,5 +892,146 @@ mod tests {
         assert!(!args_str.contains("target=/tmp/.gemini"));
         assert!(!args_str.contains("target=/tmp/.codex"));
         assert!(!args_str.contains("target=/tmp/.local/share/opencode"));
+    }
+
+    // --- Network deny mode tests ---
+
+    #[test]
+    fn test_build_args_network_deny_has_cap_net_admin() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true, // network_deny
+        )
+        .unwrap();
+
+        assert!(args.contains(&"--cap-add=NET_ADMIN".to_string()));
+        assert!(args.contains(&"--security-opt".to_string()));
+        assert!(args.contains(&"no-new-privileges".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_network_deny_no_user_flag() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        // Deny mode should NOT have --user (container starts as root)
+        assert!(!args.contains(&"--user".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_network_deny_has_target_uid_gid() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        assert!(args_str.contains("WM_TARGET_UID="));
+        assert!(args_str.contains("WM_TARGET_GID="));
+    }
+
+    #[test]
+    fn test_build_args_network_deny_wraps_with_network_init() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        // Command should be: image network-init.sh sh -c <command>
+        let image_idx = args.iter().position(|a| a == "test-image:latest").unwrap();
+        assert_eq!(args[image_idx + 1], "network-init.sh");
+        assert_eq!(args[image_idx + 2], "sh");
+        assert_eq!(args[image_idx + 3], "-c");
+        assert_eq!(args[image_idx + 4], "claude");
+    }
+
+    #[test]
+    fn test_build_args_network_deny_podman_no_keep_id() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Podman),
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        // Deny mode should NOT use --userns=keep-id
+        assert!(!args.contains(&"--userns=keep-id".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_allow_mode_no_cap_net_admin() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        // Allow mode should have --user and no --cap-add
+        assert!(args.contains(&"--user".to_string()));
+        assert!(!args.contains(&"--cap-add=NET_ADMIN".to_string()));
+        // Command should not include network-init.sh
+        let image_idx = args.iter().position(|a| a == "test-image:latest").unwrap();
+        assert_eq!(args[image_idx + 1], "sh");
+    }
+
+    #[test]
+    fn test_deny_mode_run_flags() {
+        let flags = deny_mode_run_flags();
+        assert!(flags.contains(&"--cap-add=NET_ADMIN".to_string()));
+        assert!(flags.contains(&"--security-opt".to_string()));
+        assert!(flags.contains(&"no-new-privileges".to_string()));
     }
 }

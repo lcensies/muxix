@@ -5,6 +5,7 @@ pub mod freshness;
 pub mod guest;
 pub(crate) mod host_exec_sandbox;
 pub mod lima;
+pub mod network_proxy;
 pub mod rpc;
 pub(crate) mod shims;
 pub(crate) mod toolchain;

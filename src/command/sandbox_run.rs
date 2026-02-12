@@ -16,6 +16,7 @@ use crate::multiplexer;
 use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
 use crate::sandbox::lima;
+use crate::sandbox::network_proxy::NetworkProxy;
 use crate::sandbox::rpc::{RpcContext, RpcServer, generate_token};
 use crate::sandbox::shims;
 use crate::sandbox::toolchain;
@@ -249,6 +250,20 @@ fn run_container(
     )?;
     let _rpc_handle = rpc_server.spawn(ctx);
 
+    // Start network proxy when policy is deny
+    let network_deny = config.sandbox.network_policy_is_deny();
+    let proxy = if network_deny {
+        let allowed = config.sandbox.network.allowed_domains();
+        let proxy = NetworkProxy::bind(allowed)?;
+        let proxy_port = proxy.port();
+        let proxy_token = proxy.token().to_string();
+        let handle = proxy.spawn();
+        info!(port = proxy_port, "network proxy started");
+        Some((proxy_port, proxy_token, handle))
+    } else {
+        None
+    };
+
     // Compute RPC host BEFORE matching on runtime (SandboxRuntime is not Copy)
     let rpc_host = config.sandbox.resolved_rpc_host();
     let runtime = config.sandbox.runtime();
@@ -273,13 +288,37 @@ fn run_container(
         warn!(error = %e, "failed to register container state");
     }
 
+    // Build owned env pairs first, then borrow at call site.
+    // Proxy URL is a local String so we can't use &str slices directly.
     let rpc_port_str = rpc_port.to_string();
-    let extra_envs = [
-        ("WM_SANDBOX_GUEST", "1"),
-        ("WM_RPC_HOST", rpc_host.as_str()),
-        ("WM_RPC_PORT", rpc_port_str.as_str()),
-        ("WM_RPC_TOKEN", rpc_token.as_str()),
+    let mut owned_envs: Vec<(String, String)> = vec![
+        ("WM_SANDBOX_GUEST".into(), "1".into()),
+        ("WM_RPC_HOST".into(), rpc_host.clone()),
+        ("WM_RPC_PORT".into(), rpc_port_str.clone()),
+        ("WM_RPC_TOKEN".into(), rpc_token.clone()),
     ];
+
+    if let Some((proxy_port, ref proxy_token, _)) = proxy {
+        let proxy_url = format!("http://workmux:{}@{}:{}", proxy_token, rpc_host, proxy_port);
+        let no_proxy = format!("localhost,127.0.0.1,{}", rpc_host);
+
+        owned_envs.push(("HTTPS_PROXY".into(), proxy_url.clone()));
+        owned_envs.push(("HTTP_PROXY".into(), proxy_url.clone()));
+        owned_envs.push(("https_proxy".into(), proxy_url.clone()));
+        owned_envs.push(("http_proxy".into(), proxy_url));
+        owned_envs.push(("NO_PROXY".into(), no_proxy.clone()));
+        owned_envs.push(("no_proxy".into(), no_proxy));
+        // Pass hostname (not IP literal) so the init script can resolve ALL
+        // IPs and whitelist them all in iptables.
+        owned_envs.push(("WM_PROXY_HOST".into(), rpc_host.clone()));
+        owned_envs.push(("WM_PROXY_PORT".into(), proxy_port.to_string()));
+    }
+
+    // Borrow owned envs for call site
+    let env_refs: Vec<(&str, &str)> = owned_envs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
 
     let agent = crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name();
 
@@ -291,24 +330,16 @@ fn run_container(
         agent,
         worktree_root,
         pane_cwd,
-        &extra_envs,
+        &env_refs,
         shim_host_dir.as_deref(),
+        network_deny,
     )?;
 
     // Insert --name after "run" (index 0 is "run")
     docker_args.insert(1, "--name".to_string());
     docker_args.insert(2, container_name.clone());
 
-    let redacted_args: Vec<_> = docker_args
-        .iter()
-        .map(|a| {
-            if a.starts_with("WM_RPC_TOKEN=") {
-                "WM_RPC_TOKEN=<redacted>".to_string()
-            } else {
-                a.clone()
-            }
-        })
-        .collect();
+    let redacted_args: Vec<_> = docker_args.iter().map(|a| redact_env_arg(a)).collect();
     debug!(runtime = runtime_bin, container = %container_name, args = ?redacted_args, "spawning container");
 
     // Background freshness check (non-blocking)
@@ -330,4 +361,62 @@ fn run_container(
     let exit_code = status.code().unwrap_or(1);
     info!(exit_code, "container command exited");
     Ok(exit_code)
+}
+
+/// Redact sensitive values in docker run args for debug logging.
+/// Covers RPC token and proxy URLs (which embed the proxy auth token).
+pub(super) fn redact_env_arg(arg: &str) -> String {
+    if (arg.starts_with("WM_RPC_TOKEN=") || arg.to_uppercase().contains("PROXY="))
+        && let Some((key, _)) = arg.split_once('=')
+    {
+        return format!("{}=<redacted>", key);
+    }
+    arg.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_rpc_token() {
+        assert_eq!(
+            redact_env_arg("WM_RPC_TOKEN=abc123"),
+            "WM_RPC_TOKEN=<redacted>"
+        );
+    }
+
+    #[test]
+    fn redact_proxy_env_vars() {
+        let cases = [
+            "HTTPS_PROXY=http://workmux:secret@host:1234",
+            "HTTP_PROXY=http://workmux:secret@host:1234",
+            "https_proxy=http://workmux:secret@host:1234",
+            "http_proxy=http://workmux:secret@host:1234",
+        ];
+        for arg in &cases {
+            let redacted = redact_env_arg(arg);
+            assert!(
+                redacted.ends_with("=<redacted>"),
+                "expected redacted for {}, got {}",
+                arg,
+                redacted
+            );
+            assert!(!redacted.contains("secret"), "token leaked in {}", redacted);
+        }
+    }
+
+    #[test]
+    fn redact_no_proxy_env_var() {
+        // NO_PROXY contains "PROXY" so it gets redacted too (safe default)
+        let redacted = redact_env_arg("NO_PROXY=localhost,127.0.0.1");
+        assert_eq!(redacted, "NO_PROXY=<redacted>");
+    }
+
+    #[test]
+    fn no_redact_normal_args() {
+        assert_eq!(redact_env_arg("HOME=/tmp"), "HOME=/tmp");
+        assert_eq!(redact_env_arg("--rm"), "--rm");
+        assert_eq!(redact_env_arg("WM_SANDBOX_GUEST=1"), "WM_SANDBOX_GUEST=1");
+    }
 }

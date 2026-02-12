@@ -928,6 +928,7 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
 
 fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Result<()> {
     use crate::config::SandboxRuntime;
+    use crate::sandbox::network_proxy::NetworkProxy;
     use crate::state::StateStore;
 
     // Get current directory as worktree
@@ -953,7 +954,8 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
     };
 
     if exec {
-        // Find existing container for this worktree
+        // --exec attaches to an existing container which already has iptables
+        // rules and proxy env vars in place -- no additional proxy needed.
         let store = StateStore::new().context("Failed to access state store")?;
         let containers = store.list_containers(handle);
 
@@ -993,22 +995,63 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         sandbox::ensure_sandbox_config_dirs()?;
         let agent = resolve_agent(config);
 
-        // Build docker run args (no RPC env vars needed for shell)
+        let network_deny = config.sandbox.network_policy_is_deny();
+
+        // Start proxy if network deny mode is active
+        let proxy = if network_deny {
+            let allowed = config.sandbox.network.allowed_domains();
+            let proxy = NetworkProxy::bind(allowed)?;
+            let proxy_port = proxy.port();
+            let proxy_token = proxy.token().to_string();
+            let handle = proxy.spawn();
+            Some((proxy_port, proxy_token, handle))
+        } else {
+            None
+        };
+
+        // Build env vars (owned, then borrowed -- same pattern as sandbox_run)
+        let rpc_host = config.sandbox.resolved_rpc_host();
+        let mut owned_envs: Vec<(String, String)> = Vec::new();
+
+        if let Some((proxy_port, ref proxy_token, _)) = proxy {
+            let proxy_url = format!("http://workmux:{}@{}:{}", proxy_token, rpc_host, proxy_port);
+            let no_proxy = format!("localhost,127.0.0.1,{}", rpc_host);
+
+            owned_envs.push(("HTTPS_PROXY".into(), proxy_url.clone()));
+            owned_envs.push(("HTTP_PROXY".into(), proxy_url.clone()));
+            owned_envs.push(("https_proxy".into(), proxy_url.clone()));
+            owned_envs.push(("http_proxy".into(), proxy_url));
+            owned_envs.push(("NO_PROXY".into(), no_proxy.clone()));
+            owned_envs.push(("no_proxy".into(), no_proxy));
+            owned_envs.push(("WM_PROXY_HOST".into(), rpc_host.clone()));
+            owned_envs.push(("WM_PROXY_PORT".into(), proxy_port.to_string()));
+        }
+
+        let env_refs: Vec<(&str, &str)> = owned_envs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+
         let mut docker_args = sandbox::build_docker_run_args(
             &shell_cmd,
             &config.sandbox,
             agent,
             &worktree_root,
             &cwd,
-            &[],
+            &env_refs,
             None,
+            network_deny,
         )?;
 
         // Add container name for easier identification
         docker_args.insert(1, "--name".to_string());
         docker_args.insert(2, format!("wm-shell-{}", std::process::id()));
 
-        debug!(runtime, args = ?docker_args, "starting shell container");
+        let redacted_args: Vec<_> = docker_args
+            .iter()
+            .map(|a| super::sandbox_run::redact_env_arg(a))
+            .collect();
+        debug!(runtime, args = ?redacted_args, "starting shell container");
 
         let status = Command::new(runtime)
             .args(&docker_args)

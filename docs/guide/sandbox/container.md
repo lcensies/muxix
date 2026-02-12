@@ -53,6 +53,8 @@ workmux sandbox build
 | `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only** -- ignored in project config for security. |
 | `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through |
 | `extra_mounts` | `[]` | Additional host paths to mount (see [shared features](./features#extra-mounts)) |
+| `network.policy` | `allow` | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](./features#network-restrictions). **Global config only.** |
+| `network.allowed_domains` | `[]` | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.** |
 
 ### Example configurations
 
@@ -141,6 +143,8 @@ If you have a non-standard networking setup (e.g., remote Docker context), overr
 sandbox:
   rpc_host: 192.168.1.5
 ```
+
+By default, containers have unrestricted network access. To restrict outbound connections to only approved domains, configure [network restrictions](./features#network-restrictions). When enabled, all outbound HTTPS is routed through a host-resident proxy that enforces a domain allowlist, and iptables rules inside the container block any direct connections.
 
 ### Debugging with `sandbox shell`
 

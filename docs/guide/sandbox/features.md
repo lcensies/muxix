@@ -72,6 +72,72 @@ Host-exec applies several layers of defense to limit what a compromised agent in
 - On Linux, `bwrap` must be installed separately (`apt install bubblewrap`). Without it, host-exec commands are refused.
 - Setting `sandbox.dangerously_allow_unsandboxed_host_exec: true` in your global config skips the filesystem sandbox entirely on both macOS and Linux. Only environment sanitization is applied. This is a global-only setting; project config cannot enable it.
 
+## Network restrictions
+
+Network restrictions block outbound connections from sandboxed containers, only allowing traffic to domains you explicitly whitelist. This prevents agents from accessing your local network, exfiltrating data to unauthorized services, or making unintended API calls.
+
+::: info Container backend only
+Network restrictions currently require the container backend (Docker or Podman). Lima VM support is planned for a future release.
+:::
+
+### Configuration
+
+Add to your **global** config (`~/.config/workmux/config.yaml`):
+
+```yaml
+sandbox:
+  enabled: true
+  network:
+    policy: deny
+    allowed_domains:
+      # AI provider APIs
+      - "*.anthropic.com"
+      - "*.openai.com"
+      - "*.googleapis.com"
+      # Code hosting
+      - "github.com"
+      - "*.github.com"
+      - "*.githubusercontent.com"
+      # Package registries
+      - "registry.npmjs.org"
+      - "*.crates.io"
+      - "pypi.org"
+      - "*.pypi.org"
+```
+
+`network` is a **global-only** setting. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This ensures that project config cannot weaken network restrictions set by the user.
+
+Domain entries support exact matches (`github.com`) and wildcard prefixes (`*.github.com`). Wildcards match any subdomain including the base domain itself (e.g., `*.github.com` matches both `api.github.com` and `github.com`).
+
+### How it works
+
+Network restrictions use two enforcement layers:
+
+1. **CONNECT proxy** (host-resident): All outbound HTTPS from the container routes through a proxy running on the host. The proxy checks the target domain against the allowlist, resolves DNS on the host side (rejecting private/internal IPs), and only then establishes the tunnel.
+
+2. **iptables firewall** (in-container): Default-deny egress rules inside the container ensure that only the proxy and RPC ports are reachable. Even if an agent ignores the `HTTPS_PROXY` env vars, direct connections are blocked.
+
+### What is blocked
+
+- All direct outbound connections (iptables drops them)
+- Domains not in the allowlist
+- Access to private/internal IP ranges (RFC1918, link-local, loopback, CGNAT)
+- Non-HTTPS protocols like git+ssh (only port 443 is allowed through the proxy)
+- IPv6 traffic (blocked entirely to prevent leaks)
+
+### What is allowed
+
+- Whitelisted domains via the CONNECT proxy (HTTPS only, port 443)
+- Host RPC communication (for workmux features like status updates and host commands)
+- WebSocket connections (`wss://`) to allowed domains (tunneled through CONNECT)
+
+### Known limitations
+
+- **Host commands bypass network policy**: Commands proxied via `host_commands` run on the host with full network access. This is by design since they need access to package registries and other services.
+- **Shared CDN IPs**: The domain allowlist filters by hostname in the CONNECT request, not by destination IP. If two services share the same CDN IP, allowing one domain does not block the other at the IP level. This is sufficient for preventing accidental access but not for adversarial TLS-level evasion.
+- **Non-HTTP protocols**: Protocols like `git+ssh` are blocked. Use HTTPS git remotes (`git clone https://...`) instead of SSH (`git clone git@...`).
+- **Podman rootless**: Network restrictions require `CAP_NET_ADMIN` for iptables. On rootless Podman, this may require additional configuration depending on your setup.
+
 ## Sound notifications
 
 Claude Code hooks often use `afplay` to play notification sounds (e.g., when an agent finishes). Since `afplay` is a macOS-only binary, it doesn't exist inside the Linux guest. workmux includes `afplay` as a built-in host-exec shim that forwards sound playback to the host. This works with both Lima and container backends.

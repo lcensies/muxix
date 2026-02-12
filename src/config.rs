@@ -526,6 +526,78 @@ impl ContainerConfig {
     }
 }
 
+/// Network restriction policy for sandboxed containers.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkPolicy {
+    /// No network restrictions (default).
+    Allow,
+    /// Block all outbound except whitelisted domains via CONNECT proxy.
+    Deny,
+}
+
+/// Network restriction configuration for the container sandbox.
+///
+/// When `policy` is `deny`, all outbound connections are blocked except those
+/// to whitelisted domains via an HTTP CONNECT proxy. An iptables firewall
+/// inside the container enforces that only the proxy and RPC ports are
+/// reachable, preventing bypass via direct connections.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct NetworkConfig {
+    /// Network restriction policy. Default: allow (no restrictions).
+    /// Set to "deny" to block all outbound except whitelisted domains.
+    #[serde(default)]
+    pub policy: Option<NetworkPolicy>,
+
+    /// Allowed outbound HTTPS domains when policy is "deny".
+    /// Supports exact matches and wildcard prefixes (e.g., "*.googleapis.com").
+    /// The host RPC endpoint is always allowed regardless of this list.
+    #[serde(default)]
+    pub allowed_domains: Option<Vec<String>>,
+}
+
+impl NetworkConfig {
+    /// Get the effective network policy. Default: Allow.
+    pub fn policy(&self) -> NetworkPolicy {
+        self.policy.clone().unwrap_or(NetworkPolicy::Allow)
+    }
+
+    /// Get the allowed domains list (empty if not set).
+    pub fn allowed_domains(&self) -> &[String] {
+        self.allowed_domains.as_deref().unwrap_or(&[])
+    }
+
+    /// Validate all domain entries. Called at config load time.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        for domain in self.allowed_domains() {
+            validate_domain(domain)?;
+        }
+        Ok(())
+    }
+}
+
+/// Validate a single domain entry for the allowed_domains list.
+fn validate_domain(domain: &str) -> anyhow::Result<()> {
+    use std::net::IpAddr;
+    // Reject IP literals
+    if domain.parse::<IpAddr>().is_ok() {
+        anyhow::bail!("IP literals not allowed in allowed_domains: {}", domain);
+    }
+    // Reject trailing dots
+    if domain.ends_with('.') {
+        anyhow::bail!("trailing dot not allowed in domain: {}", domain);
+    }
+    // Wildcard must be *.suffix form only
+    if domain.contains('*') && !domain.starts_with("*.") {
+        anyhow::bail!("invalid wildcard pattern (must be *.suffix): {}", domain);
+    }
+    // Empty domains
+    if domain.is_empty() {
+        anyhow::bail!("empty domain not allowed in allowed_domains");
+    }
+    Ok(())
+}
+
 /// Configuration for sandboxing (Container or Lima)
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SandboxConfig {
@@ -582,6 +654,10 @@ pub struct SandboxConfig {
     /// Container-specific configuration
     #[serde(default)]
     pub container: ContainerConfig,
+
+    /// Network restriction configuration (container backend only).
+    #[serde(default)]
+    pub network: NetworkConfig,
 
     /// Allow host-exec to run without bwrap sandboxing on Linux.
     /// Default: false (fail closed -- refuse to run if bwrap is missing).
@@ -647,6 +723,11 @@ impl SandboxConfig {
     pub fn allow_unsandboxed_host_exec(&self) -> bool {
         self.dangerously_allow_unsandboxed_host_exec
             .unwrap_or(false)
+    }
+
+    /// Returns true if network policy is deny (restrictions active).
+    pub fn network_policy_is_deny(&self) -> bool {
+        self.network.policy() == NetworkPolicy::Deny
     }
 }
 
@@ -858,6 +939,8 @@ impl Config {
             }
         }
 
+        config.sandbox.network.validate()?;
+
         debug!(
             agent = ?config.agent,
             panes = config.panes.as_ref().map_or(0, |p| p.len()),
@@ -911,6 +994,8 @@ impl Config {
         } else if config.panes.is_none() {
             config.panes = Some(Self::default_panes());
         }
+
+        config.sandbox.network.validate()?;
 
         debug!(
             agent = ?config.agent,
@@ -1130,6 +1215,20 @@ impl Config {
                 .or(self.sandbox.extra_mounts.clone()),
             lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
             container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
+            // Security: network is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from weakening
+            // network restrictions via .workmux.yaml.
+            network: {
+                if project.sandbox.network.policy.is_some()
+                    || project.sandbox.network.allowed_domains.is_some()
+                {
+                    tracing::warn!(
+                        "network in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.network.clone()
+            },
             // Security: global-only, same as host_commands.
             dangerously_allow_unsandboxed_host_exec: self
                 .sandbox
@@ -1485,8 +1584,9 @@ pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Config, ContainerConfig, ExtraMount, LimaConfig, SandboxConfig, SandboxRuntime,
-        SandboxTarget, ToolchainMode, is_agent_command, split_first_token,
+        Config, ContainerConfig, ExtraMount, LimaConfig, NetworkConfig, NetworkPolicy,
+        SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode, is_agent_command,
+        split_first_token, validate_domain,
     };
 
     #[test]
@@ -2234,5 +2334,173 @@ container:
 
         let merged = ContainerConfig::merge(global, project);
         assert_eq!(merged.runtime(), SandboxRuntime::Podman);
+    }
+
+    // --- Network config tests ---
+
+    #[test]
+    fn network_policy_defaults_to_allow() {
+        let config = SandboxConfig::default();
+        assert_eq!(config.network.policy(), NetworkPolicy::Allow);
+        assert!(!config.network_policy_is_deny());
+    }
+
+    #[test]
+    fn network_policy_deny() {
+        let config = SandboxConfig {
+            network: NetworkConfig {
+                policy: Some(NetworkPolicy::Deny),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(config.network.policy(), NetworkPolicy::Deny);
+        assert!(config.network_policy_is_deny());
+    }
+
+    #[test]
+    fn network_allowed_domains_default_empty() {
+        let config = NetworkConfig::default();
+        assert!(config.allowed_domains().is_empty());
+    }
+
+    #[test]
+    fn network_config_global_only() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                network: NetworkConfig {
+                    policy: Some(NetworkPolicy::Deny),
+                    allowed_domains: Some(vec!["api.anthropic.com".to_string()]),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                network: NetworkConfig {
+                    policy: Some(NetworkPolicy::Allow),
+                    allowed_domains: Some(vec!["evil.com".to_string()]),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Global value should win
+        assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
+        assert_eq!(
+            merged.sandbox.network.allowed_domains(),
+            &["api.anthropic.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn network_config_project_ignored_when_no_global() {
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                network: NetworkConfig {
+                    policy: Some(NetworkPolicy::Deny),
+                    allowed_domains: Some(vec!["evil.com".to_string()]),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Allow);
+        assert!(merged.sandbox.network.allowed_domains().is_empty());
+    }
+
+    #[test]
+    fn network_config_uses_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                network: NetworkConfig {
+                    policy: Some(NetworkPolicy::Deny),
+                    allowed_domains: Some(vec!["github.com".to_string()]),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
+        assert_eq!(
+            merged.sandbox.network.allowed_domains(),
+            &["github.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn validate_domain_rejects_ip_literal() {
+        assert!(validate_domain("192.168.1.1").is_err());
+        assert!(validate_domain("127.0.0.1").is_err());
+        assert!(validate_domain("::1").is_err());
+    }
+
+    #[test]
+    fn validate_domain_rejects_trailing_dot() {
+        assert!(validate_domain("example.com.").is_err());
+    }
+
+    #[test]
+    fn validate_domain_rejects_malformed_wildcard() {
+        assert!(validate_domain("foo.*.com").is_err());
+        assert!(validate_domain("*foo.com").is_err());
+    }
+
+    #[test]
+    fn validate_domain_rejects_empty() {
+        assert!(validate_domain("").is_err());
+    }
+
+    #[test]
+    fn validate_domain_accepts_valid() {
+        assert!(validate_domain("example.com").is_ok());
+        assert!(validate_domain("api.anthropic.com").is_ok());
+        assert!(validate_domain("*.googleapis.com").is_ok());
+        assert!(validate_domain("*.github.com").is_ok());
+    }
+
+    #[test]
+    fn network_config_validate_catches_bad_domains() {
+        let config = NetworkConfig {
+            policy: Some(NetworkPolicy::Deny),
+            allowed_domains: Some(vec!["good.com".to_string(), "192.168.1.1".to_string()]),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn network_config_validate_passes_good_domains() {
+        let config = NetworkConfig {
+            policy: Some(NetworkPolicy::Deny),
+            allowed_domains: Some(vec![
+                "api.anthropic.com".to_string(),
+                "*.github.com".to_string(),
+                "registry.npmjs.org".to_string(),
+            ]),
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn network_config_yaml_roundtrip() {
+        let yaml = r#"
+network:
+  policy: deny
+  allowed_domains:
+    - api.anthropic.com
+    - "*.github.com"
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.network.policy(), NetworkPolicy::Deny);
+        assert_eq!(config.network.allowed_domains().len(), 2);
     }
 }

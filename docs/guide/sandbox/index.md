@@ -33,6 +33,8 @@ When sandbox is enabled, agents have access to:
 
 Host secrets like SSH keys, AWS credentials, and GPG keys are not accessible. Additional directories can be mounted via [`extra_mounts`](./features#extra-mounts).
 
+Outbound network access can be restricted to only approved domains using [network restrictions](./features#network-restrictions) (container backend). When enabled, a CONNECT proxy and iptables firewall work together to block unauthorized connections and prevent access to internal networks.
+
 ## Choosing a backend
 
 workmux supports two sandboxing backends:
