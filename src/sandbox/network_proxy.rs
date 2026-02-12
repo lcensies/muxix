@@ -195,6 +195,12 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
 
     // Read request line
     let n = reader.read_line(&mut request_line)?;
+    debug!(
+        ?peer,
+        request_line = request_line.trim(),
+        bytes = n,
+        "proxy request line"
+    );
     total_read += n;
     if total_read > MAX_REQUEST_SIZE {
         write_error(&mut writer, 400, "Request too large")?;
@@ -216,8 +222,10 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
             break;
         }
 
-        // Parse Proxy-Authorization header
-        if let Some(value) = trimmed.strip_prefix("Proxy-Authorization:") {
+        // Parse Proxy-Authorization header (case-insensitive per HTTP spec)
+        if let Some((name, value)) = trimmed.split_once(':')
+            && name.trim().eq_ignore_ascii_case("Proxy-Authorization")
+        {
             proxy_auth = Some(value.trim().to_string());
         }
     }
@@ -603,6 +611,37 @@ mod tests {
         let mut reader = BufReader::new(&stream);
         reader.read_line(&mut response).unwrap();
         assert!(response.contains("407"));
+    }
+
+    #[test]
+    fn proxy_accepts_lowercase_auth_header() {
+        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let port = proxy.port();
+        let token = proxy.token().to_string();
+        let _handle = proxy.spawn();
+
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Use lowercase "proxy-authorization" like hyper/reqwest do
+        let auth = format!("Basic {}", base64_encode(&format!("workmux:{}", token)));
+        let request = format!(
+            "CONNECT example.com:443 HTTP/1.1\r\nproxy-authorization: {}\r\n\r\n",
+            auth
+        );
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        stream.flush().unwrap();
+
+        let mut response = String::new();
+        let mut reader = BufReader::new(&stream);
+        reader.read_line(&mut response).unwrap();
+        // Should NOT be 407 -- lowercase header must be accepted
+        assert!(
+            !response.contains("407"),
+            "lowercase proxy-authorization should be accepted, got: {}",
+            response.trim()
+        );
     }
 
     #[test]
