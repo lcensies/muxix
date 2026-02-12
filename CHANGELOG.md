@@ -2,17 +2,14 @@
 description: Release notes and version history for workmux
 ---
 
-<!-- skipped: v0.1.89 -->
-<!-- skipped: v0.1.82 -->
-<!-- skipped: v0.1.73 -->
-<!-- skipped: v0.1.64 -->
-<!-- skipped: v0.1.58 -->
-<!-- skipped: v0.1.56 -->
-<!-- skipped: v0.1.27 -->
-<!-- skipped: v0.1.25 -->
-<!-- skipped: v0.1.8 -->
-
 # Changelog
+
+## v0.1.111 (2026-02-12)
+
+- Dashboard: Added Ctrl+N/Ctrl+P as alternative keybindings for navigating
+  between rows
+- Fixed bash completion panic when generating completions
+  ([#51](https://github.com/raine/workmux/pull/51))
 
 ## v0.1.110 (2026-02-11)
 
