@@ -29,6 +29,15 @@ if [ -n "${WM_PROXY_HOST:-}" ] && [ -n "${WM_PROXY_PORT:-}" ]; then
     iptables -A OUTPUT -o lo -j ACCEPT
     iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
+    # Allow DNS (UDP/TCP 53) to configured nameservers.
+    # Without this, any hostname resolution hangs until timeout.
+    if [ -f /etc/resolv.conf ]; then
+        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | while read -r ns; do
+            iptables -A OUTPUT -d "$ns" -p udp --dport 53 -j ACCEPT
+            iptables -A OUTPUT -d "$ns" -p tcp --dport 53 -j ACCEPT
+        done
+    fi
+
     # Allow ALL resolved proxy IPs (handles multi-A DNS)
     for ip in $PROXY_IPS; do
         iptables -A OUTPUT -d "$ip" -p tcp --dport "$WM_PROXY_PORT" -j ACCEPT
@@ -41,11 +50,15 @@ if [ -n "${WM_PROXY_HOST:-}" ] && [ -n "${WM_PROXY_PORT:-}" ]; then
         done
     fi
 
+    # Reject (not drop) everything else to fail fast instead of hanging
+    iptables -A OUTPUT -j REJECT
+
     # IPv6: block entirely to prevent leaks (fail closed)
     if ip6tables -L -n >/dev/null 2>&1; then
         ip6tables -P OUTPUT DROP
         ip6tables -A OUTPUT -o lo -j ACCEPT
         ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        ip6tables -A OUTPUT -j REJECT
     else
         # If ip6tables unavailable, disable IPv6 via sysctl as fallback
         if ! sysctl -w net.ipv6.conf.all.disable_ipv6=1 2>/dev/null; then
