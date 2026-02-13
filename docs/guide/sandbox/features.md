@@ -101,6 +101,20 @@ Key behaviors:
 
 The container backend also uses `~/.claude-sandbox.json` as a separate config file for Claude, mounted to `/tmp/.claude.json`.
 
+### Custom config directory
+
+By default, each agent's standard config directory is mounted into the sandbox (see table above). To use a separate directory, keeping sandbox config isolated from the host:
+
+```yaml
+# ~/.config/workmux/config.yaml
+sandbox:
+  agent_config_dir: ~/sandbox-config/{agent}
+```
+
+The `{agent}` placeholder is replaced with the active agent name (e.g. `claude`, `gemini`). The directory is auto-created if it doesn't exist.
+
+This is useful when you want different MCP servers, project configs, or settings for sandboxed sessions without affecting your host configuration. `agent_config_dir` is a **global-only** setting.
+
 ## Coordinator agents
 
 ::: info What is a coordinator agent?

@@ -281,63 +281,34 @@ pub fn build_docker_run_args(
     args.push("HOME=/tmp".to_string());
 
     // Agent-specific credential mounts
-    // For file-based agents, create the directory if it doesn't exist so credentials
-    // written inside the container persist to the host.
-    if let Some(home) = home::home_dir() {
-        match agent {
-            "claude" => {
-                // Claude uses ~/.claude-sandbox.json for container-specific config
-                if let Some(paths) = SandboxPaths::new()
-                    && paths.config_file.exists()
-                {
-                    args.push("--mount".to_string());
-                    args.push(format!(
-                        "type=bind,source={},target=/tmp/.claude.json",
-                        paths.config_file.display()
-                    ));
-                }
-                // Mount ~/.claude/ for settings (MCP servers, project configs, etc.)
-                let claude_dir = home.join(".claude");
-                if claude_dir.exists() {
-                    args.push("--mount".to_string());
-                    args.push(format!(
-                        "type=bind,source={},target=/tmp/.claude",
-                        claude_dir.display()
-                    ));
-                }
-            }
-            "gemini" => {
-                let gemini_dir = home.join(".gemini");
-                // Create if missing so first-run auth persists to host
-                let _ = std::fs::create_dir_all(&gemini_dir);
-                args.push("--mount".to_string());
-                args.push(format!(
-                    "type=bind,source={},target=/tmp/.gemini",
-                    gemini_dir.display()
-                ));
-            }
-            "codex" => {
-                let codex_dir = home.join(".codex");
-                // Create if missing so first-run auth persists to host
-                let _ = std::fs::create_dir_all(&codex_dir);
-                args.push("--mount".to_string());
-                args.push(format!(
-                    "type=bind,source={},target=/tmp/.codex",
-                    codex_dir.display()
-                ));
-            }
-            "opencode" => {
-                let opencode_dir = home.join(".local/share/opencode");
-                // Create if missing so first-run auth persists to host
-                let _ = std::fs::create_dir_all(&opencode_dir);
-                args.push("--mount".to_string());
-                args.push(format!(
-                    "type=bind,source={},target=/tmp/.local/share/opencode",
-                    opencode_dir.display()
-                ));
-            }
-            _ => {}
-        }
+    // Claude uses ~/.claude-sandbox.json for container-specific config
+    if agent == "claude"
+        && let Some(paths) = SandboxPaths::new()
+        && paths.config_file.exists()
+    {
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source={},target=/tmp/.claude.json",
+            paths.config_file.display()
+        ));
+    }
+
+    // Mount agent config directory
+    if let Some(config_dir) = config.resolved_agent_config_dir(agent) {
+        let target = match agent {
+            "claude" => "/tmp/.claude",
+            "gemini" => "/tmp/.gemini",
+            "codex" => "/tmp/.codex",
+            "opencode" => "/tmp/.local/share/opencode",
+            _ => unreachable!(), // resolved_agent_config_dir returns None for unknown agents
+        };
+        let _ = std::fs::create_dir_all(&config_dir);
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source={},target={}",
+            config_dir.display(),
+            target
+        ));
     }
 
     // Terminal vars
@@ -898,6 +869,35 @@ mod tests {
         assert!(!args_str.contains("target=/tmp/.gemini"));
         assert!(!args_str.contains("target=/tmp/.codex"));
         assert!(!args_str.contains("target=/tmp/.local/share/opencode"));
+    }
+
+    #[test]
+    fn test_build_args_custom_agent_config_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let claude_dir = tmp.path().join("claude");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+
+        let config = SandboxConfig {
+            agent_config_dir: Some(tmp.path().join("{agent}").to_string_lossy().to_string()),
+            ..make_config()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let args_str = args.join(" ");
+        assert!(args_str.contains(&format!(
+            "type=bind,source={},target=/tmp/.claude",
+            claude_dir.display()
+        )));
     }
 
     // --- Network deny mode tests ---

@@ -647,6 +647,13 @@ pub struct SandboxConfig {
     #[serde(default)]
     pub extra_mounts: Option<Vec<ExtraMount>>,
 
+    /// Custom host directory for agent config (mounted instead of the default).
+    /// Supports `{agent}` placeholder, e.g. `~/sandbox-config/{agent}`.
+    /// When not set, defaults to the agent's standard config directory
+    /// (e.g. `~/.claude/`, `~/.gemini/`).
+    #[serde(default)]
+    pub agent_config_dir: Option<String>,
+
     /// Lima-specific configuration
     #[serde(default)]
     pub lima: LimaConfig,
@@ -728,6 +735,25 @@ impl SandboxConfig {
     /// Returns true if network policy is deny (restrictions active).
     pub fn network_policy_is_deny(&self) -> bool {
         self.network.policy() == NetworkPolicy::Deny
+    }
+
+    /// Returns the resolved agent config directory path for the given agent.
+    /// Performs `{agent}` substitution and tilde expansion on the configured path.
+    /// Falls back to the agent's default config directory when not configured.
+    pub fn resolved_agent_config_dir(&self, agent: &str) -> Option<PathBuf> {
+        if let Some(ref dir) = self.agent_config_dir {
+            let expanded = dir.replace("{agent}", agent);
+            Some(expand_tilde(&expanded))
+        } else {
+            let home = home::home_dir()?;
+            match agent {
+                "claude" => Some(home.join(".claude")),
+                "gemini" => Some(home.join(".gemini")),
+                "codex" => Some(home.join(".codex")),
+                "opencode" => Some(home.join(".local/share/opencode")),
+                _ => None,
+            }
+        }
     }
 }
 
@@ -1237,6 +1263,18 @@ impl Config {
                     );
                 }
                 self.sandbox.extra_mounts.clone()
+            },
+            // Security: agent_config_dir is global-only. Project config cannot
+            // set it -- this prevents a malicious repo from redirecting agent
+            // config mounts via .workmux.yaml.
+            agent_config_dir: {
+                if project.sandbox.agent_config_dir.is_some() {
+                    tracing::warn!(
+                        "agent_config_dir in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                self.sandbox.agent_config_dir.clone()
             },
             lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
             container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
@@ -2406,6 +2444,90 @@ extra_mounts:
         assert_eq!(merged.sandbox.extra_mounts().len(), 1);
         let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
         assert_eq!(host, std::path::PathBuf::from("/global/path"));
+    }
+
+    #[test]
+    fn test_resolved_agent_config_dir_with_placeholder() {
+        let config = SandboxConfig {
+            agent_config_dir: Some("~/sandbox/{agent}".to_string()),
+            ..Default::default()
+        };
+        let dir = config.resolved_agent_config_dir("claude").unwrap();
+        let home = home::home_dir().unwrap();
+        assert_eq!(dir, home.join("sandbox/claude"));
+    }
+
+    #[test]
+    fn test_resolved_agent_config_dir_without_placeholder() {
+        let config = SandboxConfig {
+            agent_config_dir: Some("~/my-config".to_string()),
+            ..Default::default()
+        };
+        let dir = config.resolved_agent_config_dir("claude").unwrap();
+        let home = home::home_dir().unwrap();
+        assert_eq!(dir, home.join("my-config"));
+    }
+
+    #[test]
+    fn test_resolved_agent_config_dir_default() {
+        let config = SandboxConfig::default();
+        let dir = config.resolved_agent_config_dir("claude").unwrap();
+        let home = home::home_dir().unwrap();
+        assert_eq!(dir, home.join(".claude"));
+    }
+
+    #[test]
+    fn test_resolved_agent_config_dir_unknown_agent_default() {
+        let config = SandboxConfig::default();
+        assert!(config.resolved_agent_config_dir("unknown").is_none());
+    }
+
+    #[test]
+    fn test_resolved_agent_config_dir_unknown_agent_custom() {
+        let config = SandboxConfig {
+            agent_config_dir: Some("/custom/{agent}".to_string()),
+            ..Default::default()
+        };
+        // Custom dir always returns Some, even for unknown agents
+        let dir = config.resolved_agent_config_dir("unknown").unwrap();
+        assert_eq!(dir, std::path::PathBuf::from("/custom/unknown"));
+    }
+
+    #[test]
+    fn test_agent_config_dir_global_only() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                agent_config_dir: Some("~/global/{agent}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                agent_config_dir: Some("~/project/{agent}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.sandbox.agent_config_dir,
+            Some("~/global/{agent}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_agent_config_dir_project_ignored_when_no_global() {
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                agent_config_dir: Some("~/project/{agent}".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        assert!(merged.sandbox.agent_config_dir.is_none());
     }
 
     #[test]

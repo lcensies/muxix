@@ -89,11 +89,6 @@ pub fn determine_git_common_dir(worktree: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-/// Get the sandbox auth directory (Claude Code config).
-fn sandbox_auth_dir() -> Option<PathBuf> {
-    home::home_dir().map(|h| h.join(".claude"))
-}
-
 /// Get the Lima guest home directory.
 ///
 /// Lima creates a user named `<host-username>.linux` with home at
@@ -235,58 +230,17 @@ pub fn generate_mounts(
         }
     }
 
-    // Mount host ~/.claude/ to guest $HOME/.claude/ so Claude finds credentials
-    if agent == "claude"
-        && let Some(auth_dir) = sandbox_auth_dir()
-    {
+    // Mount agent config directory
+    if let Some(auth_dir) = config.sandbox.resolved_agent_config_dir(agent) {
+        let guest_subpath = match agent {
+            "claude" => ".claude",
+            "gemini" => ".gemini",
+            "codex" => ".codex",
+            "opencode" => ".local/share/opencode",
+            _ => unreachable!(),
+        };
         let guest_path = lima_guest_home()
-            .map(|h| h.join(".claude"))
-            .unwrap_or_else(|| auth_dir.clone());
-        mounts.push(Mount {
-            host_path: auth_dir,
-            guest_path,
-            read_only: false,
-        });
-    }
-
-    // Mount host ~/.gemini/ to guest $HOME/.gemini/ so Gemini CLI finds credentials
-    if agent == "gemini"
-        && let Some(home) = home::home_dir()
-    {
-        let auth_dir = home.join(".gemini");
-        let guest_path = lima_guest_home()
-            .map(|h| h.join(".gemini"))
-            .unwrap_or_else(|| auth_dir.clone());
-        mounts.push(Mount {
-            host_path: auth_dir,
-            guest_path,
-            read_only: false,
-        });
-    }
-
-    // Mount host ~/.codex/ to guest $HOME/.codex/ so Codex CLI finds credentials
-    if agent == "codex"
-        && let Some(home) = home::home_dir()
-    {
-        let auth_dir = home.join(".codex");
-        let guest_path = lima_guest_home()
-            .map(|h| h.join(".codex"))
-            .unwrap_or_else(|| auth_dir.clone());
-        mounts.push(Mount {
-            host_path: auth_dir,
-            guest_path,
-            read_only: false,
-        });
-    }
-
-    // Mount host ~/.local/share/opencode/ to guest $HOME/.local/share/opencode/
-    // so OpenCode CLI finds OAuth credentials (auth.json)
-    if agent == "opencode"
-        && let Some(home) = home::home_dir()
-    {
-        let auth_dir = home.join(".local/share/opencode");
-        let guest_path = lima_guest_home()
-            .map(|h| h.join(".local/share/opencode"))
+            .map(|h| h.join(guest_subpath))
             .unwrap_or_else(|| auth_dir.clone());
         mounts.push(Mount {
             host_path: auth_dir,
