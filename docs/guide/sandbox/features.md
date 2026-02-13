@@ -123,8 +123,6 @@ A coordinator agent sits on the main branch, plans work, and delegates tasks to 
 
 Coordinator agents can run inside a sandbox using `workmux sandbox agent`. When the coordinator calls `workmux add` from inside the sandbox, the command is automatically routed through RPC to the host, where sub-agents are created normally (and sandboxed if the project config enables it).
 
-Only a subset of `workmux add` flags are supported from inside a sandbox. Unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are rejected with clear error messages. Supported flags include `-p`/`-P` (prompt), `--auto-name`, and `--background`.
-
 Alternatively, coordinators can run on the host (unsandboxed) and only sandbox leaf agents.
 
 ## RPC protocol
