@@ -7,16 +7,25 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# Run format, clippy-fix, build, and unit tests
-check: parallel-checks clippy
-
-# Run format, clippy-fix, build, unit tests, ruff, pyright, and docs checks in parallel
+# Run all checks via three parallel pipelines
 [parallel]
-parallel-checks: format clippy-fix build unit-tests ruff-check pyright docs-check
+check: _rust-pipeline _python-pipeline docs-check
+
+# Rust: format → clippy-fix → clippy → test (sequential)
+_rust-pipeline: format-rust clippy-fix clippy unit-tests
+
+# Python: format → lint → typecheck (sequential)
+_python-pipeline: format-python ruff-check pyright
 
 # Format Rust and Python files
-format:
+format: format-rust format-python
+
+# Format Rust files
+format-rust:
     cargo fmt --all
+
+# Format Python test files
+format-python:
     ruff format tests --quiet
 
 # Run clippy and fail on any warnings
