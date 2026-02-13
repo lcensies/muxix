@@ -124,13 +124,13 @@ struct ProxyContext {
 /// Check if a domain matches a pattern (case-insensitive).
 ///
 /// Supports exact match and wildcard prefix (`*.example.com` matches
-/// `foo.example.com` and `example.com` itself).
+/// `foo.example.com` but not `example.com` itself).
 fn domain_matches(domain: &str, pattern: &str) -> bool {
     let domain = domain.to_ascii_lowercase();
     let pattern = pattern.to_ascii_lowercase();
     if let Some(suffix) = pattern.strip_prefix('*') {
         // suffix is ".example.com"
-        domain.ends_with(&suffix) || domain == suffix.strip_prefix('.').unwrap_or(suffix)
+        domain.ends_with(&suffix)
     } else {
         domain == pattern
     }
@@ -454,9 +454,9 @@ mod tests {
     }
 
     #[test]
-    fn domain_wildcard_matches_base() {
-        // *.example.com should also match example.com itself
-        assert!(domain_matches("example.com", "*.example.com"));
+    fn domain_wildcard_does_not_match_base() {
+        // *.example.com should NOT match example.com itself (standard behavior)
+        assert!(!domain_matches("example.com", "*.example.com"));
     }
 
     #[test]
