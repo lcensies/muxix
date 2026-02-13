@@ -125,6 +125,7 @@ in tmux, it fits your workflow. If you don't, [it's worth picking up](https://ra
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers, etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new worktrees
+- [Sandbox agents](/guide/sandbox/) in containers or VMs for enhanced security
 - [Automatic branch name generation](/reference/commands/add#automatic-branch-name-generation) from prompts using LLM
 - Shell completions
 
