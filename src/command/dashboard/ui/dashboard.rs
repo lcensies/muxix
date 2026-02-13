@@ -18,11 +18,11 @@ use super::format::{format_git_status, format_pr_status};
 pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
-    // Check if we're using Zellij (which doesn't support preview)
-    let is_zellij = app.mux.name() == "zellij";
+    // Check if backend supports preview
+    let supports_preview = app.mux.capabilities().supports_preview;
 
-    // Layout: table (top), preview (bottom, only if not Zellij), footer
-    let chunks = if is_zellij {
+    // Layout: table (top), preview (bottom, only if supported), footer
+    let chunks = if !supports_preview {
         // Zellij: no preview section
         Layout::vertical([
             Constraint::Min(5),    // Table (takes all space except footer)
@@ -43,8 +43,8 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Table
     render_table(f, app, chunks[0]);
 
-    // Preview (only for non-Zellij multiplexers)
-    let footer_index = if !is_zellij {
+    // Preview (only for backends that support it)
+    let footer_index = if supports_preview {
         render_preview(f, app, chunks[1]);
         2 // Footer is at index 2 when preview is shown
     } else {
@@ -74,8 +74,8 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" jump  "),
         ];
 
-        // Only show peek command if not using Zellij (no preview support)
-        if !is_zellij {
+        // Only show peek command if backend supports preview
+        if supports_preview {
             spans.extend(vec![
                 Span::styled("[p]", Style::default().fg(Color::Cyan)),
                 Span::raw(" peek  "),

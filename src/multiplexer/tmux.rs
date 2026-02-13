@@ -163,6 +163,15 @@ impl Multiplexer for TmuxBackend {
         "tmux"
     }
 
+    fn capabilities(&self) -> super::MultiplexerCaps {
+        super::MultiplexerCaps {
+            pane_targeting: true,     // Full pane targeting support
+            supports_preview: true,   // Efficient preview capture
+            stable_pane_ids: true,    // Stable pane IDs (e.g., %0, %1)
+            exit_on_jump: true,       // Exit dashboard after jumping
+        }
+    }
+
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {

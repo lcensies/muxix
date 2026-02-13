@@ -187,6 +187,15 @@ impl Multiplexer for WezTermBackend {
         "wezterm"
     }
 
+    fn capabilities(&self) -> super::MultiplexerCaps {
+        super::MultiplexerCaps {
+            pane_targeting: true,     // Full pane targeting support
+            supports_preview: true,   // Efficient preview capture
+            stable_pane_ids: true,    // Stable pane IDs (numeric)
+            exit_on_jump: true,       // Exit dashboard after jumping
+        }
+    }
+
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {

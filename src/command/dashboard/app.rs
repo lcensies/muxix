@@ -257,8 +257,8 @@ impl App {
             self.spawn_pr_status_fetch();
         }
 
-        // Update heartbeat for loaded agents (Zellij validation)
-        if self.mux.name() == "zellij" {
+        // Update heartbeat for loaded agents (needed for backends without stable pane IDs)
+        if !self.mux.capabilities().stable_pane_ids {
             use std::time::{SystemTime, UNIX_EPOCH};
             use crate::state::PaneKey;
 

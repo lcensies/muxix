@@ -26,12 +26,36 @@ pub use types::*;
 
 use crate::config::{Config, PaneConfig, SplitDirection};
 
+/// Capability flags for multiplexer backends.
+///
+/// This abstraction allows backends to declare their actual feature support
+/// instead of relying on name-based logic, making the system more maintainable
+/// and extensible for future multiplexer implementations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MultiplexerCaps {
+    /// Whether the backend supports targeting specific panes with commands
+    pub pane_targeting: bool,
+    /// Whether the backend supports efficient preview capture
+    pub supports_preview: bool,
+    /// Whether pane IDs remain stable across the pane's lifetime
+    pub stable_pane_ids: bool,
+    /// Whether jumping to a pane should exit the dashboard
+    pub exit_on_jump: bool,
+}
+
 /// Main trait for terminal multiplexer backends.
 ///
 /// Implementations must be Send + Sync to allow sharing via Arc<dyn Multiplexer>.
 pub trait Multiplexer: Send + Sync {
     /// Returns the name of this backend (e.g., "tmux", "wezterm")
     fn name(&self) -> &'static str;
+
+    /// Returns the capabilities of this backend.
+    ///
+    /// Prefer using this method over string comparisons on `name()` for
+    /// feature detection, as it allows backends to declare their actual
+    /// capabilities independent of their name.
+    fn capabilities(&self) -> MultiplexerCaps;
 
     // === Server/Session ===
 
@@ -169,7 +193,7 @@ pub trait Multiplexer: Send + Sync {
     /// Whether jumping to a pane should exit the dashboard.
     /// Returns true for tmux/WezTerm (exit after jump), false for Zellij (keep dashboard open).
     fn should_exit_on_jump(&self) -> bool {
-        true // default: exit after jump
+        self.capabilities().exit_on_jump
     }
 
     /// Respawn a pane with optional command. Returns the (possibly new) pane ID.
@@ -182,7 +206,7 @@ pub trait Multiplexer: Send + Sync {
     /// Returns false for backends like Zellij where preview capture requires
     /// expensive operations (process spawning, temp files) even when disabled.
     fn supports_preview(&self) -> bool {
-        true // default: support preview
+        self.capabilities().supports_preview
     }
 
     // === Text I/O ===

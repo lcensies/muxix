@@ -138,6 +138,15 @@ impl Multiplexer for ZellijBackend {
         "zellij"
     }
 
+    fn capabilities(&self) -> super::MultiplexerCaps {
+        super::MultiplexerCaps {
+            pane_targeting: false,    // No pane targeting (commands go to focused pane)
+            supports_preview: false,  // Preview requires expensive process spawning
+            stable_pane_ids: false,   // Pane IDs are actually tab names
+            exit_on_jump: false,      // Keep dashboard open after jumping
+        }
+    }
+
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {
@@ -391,7 +400,18 @@ impl Multiplexer for ZellijBackend {
         // it captures itself, creating a recursive loop. We detect this and
         // return None to prevent the recursion.
 
-        let temp_path = std::env::temp_dir().join(format!("zellij_capture_{}", std::process::id()));
+        // Use PID + thread ID + timestamp for thread-safe temp file naming
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let thread_id = std::thread::current().id();
+        let temp_path = std::env::temp_dir().join(format!(
+            "zellij_capture_{}_{:?}_{}",
+            std::process::id(),
+            thread_id,
+            timestamp
+        ));
         let temp_str = temp_path.to_string_lossy();
 
         if Cmd::new("zellij")
@@ -979,13 +999,5 @@ impl Multiplexer for ZellijBackend {
             .context("Failed to spawn cleanup process")?;
 
         Ok(())
-    }
-
-    fn should_exit_on_jump(&self) -> bool {
-        false // Keep dashboard open after jumping (Zellij limitation - can't target unfocused panes)
-    }
-
-    fn supports_preview(&self) -> bool {
-        false // Zellij preview requires expensive dump-screen process spawning
     }
 }

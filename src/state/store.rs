@@ -200,9 +200,10 @@ impl StateStore {
         // Fetch all live pane info in a single batched query
         let live_panes = mux.get_all_live_pane_info()?;
 
-        // For Zellij: Query tab names once for the entire reconciliation pass
-        // to avoid N process spawns (one per agent). Other backends ignore this.
-        let cached_tabs = if mux.name() == "zellij" {
+        // For backends without stable pane IDs: Query tab names once for the entire
+        // reconciliation pass to avoid N process spawns (one per agent).
+        // Other backends ignore this.
+        let cached_tabs = if !mux.capabilities().stable_pane_ids {
             mux.get_all_window_names().ok().map(|set| set.into_iter().collect::<Vec<_>>())
         } else {
             None
