@@ -581,6 +581,7 @@ fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) 
 
     // Build, tagging as the same image name (replaces it in-place)
     let status = Command::new(runtime)
+        .env("DOCKER_CLI_HINTS", "false")
         .args(["build", "-t", image_name, "."])
         .current_dir(context_path)
         .status()
