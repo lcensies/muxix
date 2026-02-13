@@ -28,7 +28,7 @@ sandbox:
   enabled: true
 ```
 
-The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed, but possible if required (see below).
+The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed, but possible if required (see [custom images](#custom-images)).
 
 To pull the latest image explicitly:
 
@@ -47,7 +47,7 @@ workmux sandbox pull
 | `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only.** |
 | `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                  |
 | `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                        |
-| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](./features#network-restrictions). **Global config only.**        |
+| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**        |
 | `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                                |
 
 ### Example configurations
@@ -88,9 +88,10 @@ When you run `workmux add feature-x`, the agent command is wrapped:
 # Without sandbox:
 claude -- "$(cat .workmux/PROMPT-feature-x.md)"
 
-# With sandbox (example for Claude agent):
+# With sandbox:
 docker run --rm -it \
   --user 501:20 \
+  --env HOME=/tmp \
   --mount type=bind,source=/path/to/worktree,target=/path/to/worktree \
   --mount type=bind,source=/path/to/main/.git,target=/path/to/main/.git \
   --mount type=bind,source=/path/to/main,target=/path/to/main \
@@ -115,30 +116,9 @@ docker run --rm -it \
 
 For Claude specifically, `~/.claude-sandbox.json` is also mounted to `/tmp/.claude.json` as a separate config file.
 
-### What's NOT accessible
-
-- `~/.ssh/` (SSH keys)
-- `~/.aws/` (AWS credentials)
-- `~/.config/` (other app configs)
-- Other worktrees
-
 ### Networking
 
-Docker and Podman handle host resolution differently:
-
-- **Docker Desktop** (macOS/Windows): `host.docker.internal` resolves to the host automatically.
-- **Docker Engine** (Linux): workmux automatically adds `--add-host host.docker.internal:host-gateway` so the container can reach the host. This is a no-op on Docker Desktop.
-- **Podman**: Uses `host.containers.internal` as the built-in hostname for host access.
-
-If you have a non-standard networking setup (e.g., remote Docker context), override the hostname the guest uses to reach the host RPC server. This setting must be in your global config (`~/.config/workmux/config.yaml`) -- project-level values are ignored for security to prevent RPC traffic redirection:
-
-```yaml
-# ~/.config/workmux/config.yaml
-sandbox:
-  rpc_host: 192.168.1.5
-```
-
-By default, containers have unrestricted network access. To restrict outbound connections to only approved domains, configure [network restrictions](./features#network-restrictions). When enabled, all outbound HTTPS is routed through a host-resident proxy that enforces a domain allowlist, and iptables rules inside the container block any direct connections.
+By default, containers have unrestricted network access. To restrict outbound connections to only approved domains, configure [network restrictions](#network-restrictions). When enabled, all outbound HTTPS is routed through a host-resident proxy that enforces a domain allowlist, and iptables rules inside the container block any direct connections.
 
 ### Debugging with `sandbox shell`
 
@@ -153,6 +133,45 @@ workmux sandbox shell --exec
 ```
 
 The `--exec` flag attaches to an existing running container instead of starting a new one. This is useful for inspecting the state of a running agent's environment.
+
+## Network restrictions
+
+Network restrictions block outbound connections from sandboxed containers, only allowing traffic to domains you explicitly whitelist. This prevents agents from accessing your local network, exfiltrating data to unauthorized services, or making unintended API calls.
+
+### Configuration
+
+Add to global config (`~/.config/workmux/config.yaml`):
+
+```yaml
+sandbox:
+  enabled: true
+  network:
+    policy: deny
+    allowed_domains:
+      # Claude Code (adjust for your agent)
+      - "api.anthropic.com"
+      - "platform.claude.com"
+```
+
+`network` is a global-only setting. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This ensures that project config cannot weaken network restrictions set by the user.
+
+Domain entries support exact matches (`github.com`) and wildcard prefixes (`*.github.com`). Wildcards match subdomains only, not the base domain itself (e.g., `*.github.com` matches `api.github.com` but not `github.com`).
+
+### How it works
+
+Two layers enforce the restrictions:
+
+1. **iptables firewall** inside the container blocks all direct outbound connections, forcing traffic through a host-resident proxy.
+2. **CONNECT proxy** on the host checks each domain against the allowlist and rejects connections to private/internal IPs.
+
+This means agents cannot bypass restrictions by ignoring proxy environment variables.
+
+Only HTTPS (port 443) to allowed domains gets through. The proxy also rejects connections to private/internal IP ranges (RFC1918, link-local, loopback), so allowed domains cannot be used to reach local network services. Non-HTTPS protocols like `git+ssh` are blocked; use HTTPS git remotes instead. IPv6 is blocked to prevent bypassing the IPv4 firewall.
+
+### Known limitations
+
+- **Non-HTTP protocols**: Protocols like `git+ssh` are blocked. Use HTTPS git remotes (`git clone https://...`) instead of SSH (`git clone git@...`).
+- **Podman rootless**: Network restrictions require `CAP_NET_ADMIN` for iptables. On rootless Podman, this may require additional configuration depending on your setup.
 
 ## Custom images
 

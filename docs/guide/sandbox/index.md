@@ -33,7 +33,7 @@ When sandbox is enabled, agents have access to:
 
 Host secrets like SSH keys, AWS credentials, and GPG keys are not accessible. Additional directories can be mounted via [`extra_mounts`](./features#extra-mounts).
 
-Outbound network access can be restricted to only approved domains using [network restrictions](./features#network-restrictions) (container backend). When enabled, a CONNECT proxy and iptables firewall work together to block unauthorized connections and prevent access to internal networks.
+Outbound network access can be restricted to only approved domains using [network restrictions](./container#network-restrictions) (container backend). When enabled, a CONNECT proxy and iptables firewall work together to block unauthorized connections and prevent access to internal networks.
 
 ## Choosing a backend
 
@@ -45,7 +45,7 @@ workmux supports two sandboxing backends:
 | **Persistence**      | Ephemeral (new container per session)                                  | Persistent (stateful VMs)                                        |
 | **Toolchain**        | Custom Dockerfile or [host commands](./features#host-command-proxying) | Built-in [Nix & Devbox](./lima#nix-and-devbox-toolchain) support |
 | **Credential model** | Shared with host (see [credentials](./features#credentials))           | Shared with host (see [credentials](./features#credentials))     |
-| **Network**          | Optional [restrictions](./features#network-restrictions) (domain allowlist) | Unrestricted                                                |
+| **Network**          | Optional [restrictions](./container#network-restrictions) (domain allowlist) | Unrestricted                                                |
 | **Platform**         | macOS, Linux                                                           | macOS, Linux                                                     |
 
 Container is a good default: it's simple to set up and ephemeral, so no state accumulates between sessions. Choose Lima if you want persistent VMs with built-in Nix/Devbox toolchain support.
