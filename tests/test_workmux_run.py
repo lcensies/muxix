@@ -16,6 +16,7 @@ from pathlib import Path
 from .conftest import (
     MuxEnvironment,
     WorkmuxCommandResult,
+    get_scripts_dir,
     get_window_name,
     poll_until,
     poll_until_file_has_content,
@@ -79,36 +80,33 @@ def run_workmux_run(
     The `run` command involves splitting a pane, starting the `_exec` process,
     and streaming output -- more latency than simple coordinator commands.
     Uses a 10s timeout instead of the default 5s.
+
+    Writes the command to a script file to avoid tmux send-keys line length
+    limits (long PATH values cause silent truncation).
     """
-    stdout_file = env.tmp_path / "workmux_run_stdout.txt"
-    stderr_file = env.tmp_path / "workmux_run_stderr.txt"
-    exit_code_file = env.tmp_path / "workmux_run_exit_code.txt"
+    scripts_dir = get_scripts_dir(env)
+    stdout_file = scripts_dir / "workmux_run_stdout.txt"
+    stderr_file = scripts_dir / "workmux_run_stderr.txt"
+    exit_code_file = scripts_dir / "workmux_run_exit_code.txt"
+    script_file = scripts_dir / "workmux_run.sh"
 
     for f in [stdout_file, stderr_file, exit_code_file]:
         if f.exists():
             f.unlink()
 
-    workdir_str = shlex.quote(str(repo_path))
-    exe_str = shlex.quote(str(workmux_exe_path))
-    stdout_str = shlex.quote(str(stdout_file))
-    stderr_str = shlex.quote(str(stderr_file))
-    exit_code_str = shlex.quote(str(exit_code_file))
+    script_content = f"""#!/bin/sh
+trap 'echo $? > {shlex.quote(str(exit_code_file))}' EXIT
+export PATH={shlex.quote(env.env["PATH"])}
+export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
+export HOME={shlex.quote(env.env.get("HOME", ""))}
+export WORKMUX_TEST=1
+cd {shlex.quote(str(repo_path))}
+{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
+"""
+    script_file.write_text(script_content)
+    script_file.chmod(0o755)
 
-    env_vars = [f"PATH={shlex.quote(env.env['PATH'])}"]
-    if "TMPDIR" in env.env:
-        env_vars.append(f"TMPDIR={shlex.quote(env.env['TMPDIR'])}")
-    if "HOME" in env.env:
-        env_vars.append(f"HOME={shlex.quote(env.env['HOME'])}")
-    env_str = " ".join(env_vars)
-
-    workmux_cmd = (
-        f"cd {workdir_str} && "
-        f"env {env_str} WORKMUX_TEST=1 {exe_str} {command} "
-        f"> {stdout_str} 2> {stderr_str}; "
-        f"echo $? > {exit_code_str}"
-    )
-
-    env.send_keys("test:", workmux_cmd, enter=True)
+    env.send_keys("test:", str(script_file), enter=True)
 
     if not poll_until_file_has_content(exit_code_file, timeout=10.0):
         pane_content = env.capture_pane("test") or "(empty)"
