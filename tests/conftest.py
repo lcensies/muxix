@@ -1434,15 +1434,13 @@ def run_workmux_command(
     # Write the command to a script file to avoid tmux send-keys line length limits.
     # The PATH can be very long in test environments, causing command truncation.
     script_content = f"""#!/bin/sh
-set -e
+trap 'echo $? > {shlex.quote(str(exit_code_file))}' EXIT
 export PATH={shlex.quote(env.env["PATH"])}
 export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
 export HOME={shlex.quote(env.env.get("HOME", ""))}
 export WORKMUX_TEST=1
-cd {shlex.quote(str(workdir))} || exit 1
-set +e
+cd {shlex.quote(str(workdir))}
 {pipe_cmd}{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
-echo $? > {shlex.quote(str(exit_code_file))}
 """
     script_file.write_text(script_content)
     script_file.chmod(0o755)
