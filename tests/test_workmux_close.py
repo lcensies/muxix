@@ -3,6 +3,7 @@ from pathlib import Path
 from .conftest import (
     MuxEnvironment,
     WorkmuxCommandResult,
+    get_scripts_dir,
     get_window_name,
     get_worktree_path,
     poll_until,
@@ -25,9 +26,10 @@ def run_workmux_close(
 
     Uses run_shell_background to avoid hanging when close kills the current window.
     """
-    stdout_file = env.tmp_path / "workmux_close_stdout.txt"
-    stderr_file = env.tmp_path / "workmux_close_stderr.txt"
-    exit_code_file = env.tmp_path / "workmux_close_exit_code.txt"
+    scripts_dir = get_scripts_dir(env)
+    stdout_file = scripts_dir / "workmux_close_stdout.txt"
+    stderr_file = scripts_dir / "workmux_close_stderr.txt"
+    exit_code_file = scripts_dir / "workmux_close_exit_code.txt"
 
     for f in [stdout_file, stderr_file, exit_code_file]:
         if f.exists():

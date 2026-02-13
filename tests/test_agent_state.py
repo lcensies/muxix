@@ -20,6 +20,7 @@ from pathlib import Path
 from .conftest import (
     MuxEnvironment,
     get_window_name,
+    make_env_script,
     poll_until,
     run_workmux_add,
     write_workmux_config,
@@ -55,9 +56,11 @@ def build_status_cmd(env: MuxEnvironment, workmux_exe: Path, status: str) -> str
     The command runs inside a pane's shell, which doesn't inherit the test's
     XDG_STATE_HOME. We need to explicitly pass it so state files go to the
     test's isolated directory.
+
+    Returns a path to a script file (to avoid tmux send-keys line length limits).
     """
-    xdg_state = env.env["XDG_STATE_HOME"]
-    return f"XDG_STATE_HOME={xdg_state} {workmux_exe} set-window-status {status}"
+    command = f"{workmux_exe} set-window-status {status}"
+    return make_env_script(env, command, {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]})
 
 
 # -----------------------------------------------------------------------------
@@ -246,14 +249,23 @@ def test_status_update_overwrites_state(
     time.sleep(0.5)
     status_cmd = build_status_cmd(env, workmux_exe_path, "done")
     env.send_keys(window_name, status_cmd)
-    time.sleep(1.0)
+
+    # Poll for status to be updated (more reliable than fixed sleep under load)
+    def status_is_done():
+        files = list_agent_state_files(env)
+        if not files:
+            return False
+        try:
+            state = read_agent_state(files[0])
+            return state.get("status") == "done"
+        except json.JSONDecodeError:
+            # File might be partially written, keep polling
+            return False
+
+    assert poll_until(status_is_done, timeout=5.0), "Status was not updated to 'done'"
 
     # Should still be exactly 1 state file (updated, not duplicated)
     state_files = list_agent_state_files(env)
     assert len(state_files) == 1, (
         f"Expected 1 state file after update, got {len(state_files)}"
     )
-
-    # Verify status was updated
-    state = read_agent_state(state_files[0])
-    assert state["status"] == "done", f"Expected 'done', got '{state['status']}'"

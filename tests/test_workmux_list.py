@@ -25,9 +25,8 @@ def run_workmux_list(
     Runs `workmux list` inside the multiplexer session and returns the output.
     """
     command = f"list {args}".strip()
-    run_workmux_command(env, workmux_exe_path, repo_path, command)
-    stdout_file = env.tmp_path / "workmux_stdout.txt"
-    return stdout_file.read_text()
+    result = run_workmux_command(env, workmux_exe_path, repo_path, command)
+    return result.stdout
 
 
 def parse_list_output(output: str) -> List[Dict[str, str]]:
@@ -240,9 +239,8 @@ def test_list_alias_ls_works(
     env = mux_server
 
     # Run `ls` and verify it produces expected output
-    run_workmux_command(env, workmux_exe_path, mux_repo_path, "ls")
-    stdout_file = env.tmp_path / "workmux_stdout.txt"
-    ls_output = stdout_file.read_text()
+    result = run_workmux_command(env, workmux_exe_path, mux_repo_path, "ls")
+    ls_output = result.stdout
 
     parsed_output = parse_list_output(ls_output)
     assert len(parsed_output) == 1
