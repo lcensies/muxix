@@ -53,10 +53,13 @@ impl SandboxPaths {
 pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
     let paths = SandboxPaths::new().context("Could not determine home directory")?;
 
-    // Create empty config file if it doesn't exist
+    // Seed config file with onboarding defaults if it doesn't exist
     if !paths.config_file.exists() {
-        std::fs::write(&paths.config_file, "{}")
-            .with_context(|| format!("Failed to create {}", paths.config_file.display()))?;
+        std::fs::write(
+            &paths.config_file,
+            r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#,
+        )
+        .with_context(|| format!("Failed to create {}", paths.config_file.display()))?;
     }
 
     Ok(paths)
