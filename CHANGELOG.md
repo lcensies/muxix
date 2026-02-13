@@ -4,6 +4,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.112 (2026-02-13)
+
+- Added sandbox support for running agents in isolated environments. Two
+  backends: containers (Docker/Podman) for ephemeral sessions, and Lima VMs for
+  persistent machines with built-in Nix/Devbox toolchain support. See the
+  [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for setup.
+
 ## v0.1.111 (2026-02-12)
 
 - Dashboard: Added Ctrl+N/Ctrl+P as alternative keybindings for navigating
