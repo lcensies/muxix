@@ -28,7 +28,7 @@ sandbox:
   enabled: true
 ```
 
-The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed.
+The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed, but possible if required (see below).
 
 To pull the latest image explicitly:
 
@@ -36,25 +36,19 @@ To pull the latest image explicitly:
 workmux sandbox pull
 ```
 
-To build locally instead of pulling:
-
-```bash
-workmux sandbox build
-```
-
 ## Configuration
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `enabled` | `false` | Enable container sandboxing |
-| `container.runtime` | auto-detect | Container runtime: `docker` or `podman`. Auto-detected from PATH when not set (prefers docker). |
-| `target` | `agent` | Which panes to sandbox: `agent` or `all` |
-| `image` | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.** |
-| `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only.** |
-| `env_passthrough` | `[]` | Environment variables to pass through. **Global config only.** |
-| `extra_mounts` | `[]` | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.** |
-| `network.policy` | `allow` | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](./features#network-restrictions). **Global config only.** |
-| `network.allowed_domains` | `[]` | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.** |
+| Option                    | Default                                 | Description                                                                                                                                                                                     |
+| ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                                     |
+| `container.runtime`       | auto-detect                             | Container runtime: `docker` or `podman`. Auto-detected from PATH when not set (prefers docker).                                                                                                 |
+| `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                        |
+| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                             |
+| `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only.** |
+| `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                  |
+| `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                        |
+| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](./features#network-restrictions). **Global config only.**        |
+| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                                |
 
 ### Example configurations
 
@@ -109,13 +103,13 @@ docker run --rm -it \
 
 ### What's mounted
 
-| Mount | Access | Purpose |
-| --- | --- | --- |
-| Worktree directory | read-write | Source code |
-| Main worktree | read-write | Symlink resolution (e.g., CLAUDE.md) |
-| Main `.git` | read-write | Git operations |
-| Agent credentials | read-write | Auth and settings (see [Credentials](./features#credentials)) |
-| `extra_mounts` entries | read-only\* | User-configured paths |
+| Mount                  | Access      | Purpose                                                       |
+| ---------------------- | ----------- | ------------------------------------------------------------- |
+| Worktree directory     | read-write  | Source code                                                   |
+| Main worktree          | read-write  | Symlink resolution (e.g., CLAUDE.md)                          |
+| Main `.git`            | read-write  | Git operations                                                |
+| Agent credentials      | read-write  | Auth and settings (see [Credentials](./features#credentials)) |
+| `extra_mounts` entries | read-only\* | User-configured paths                                         |
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
@@ -166,8 +160,14 @@ To add tools or customize the sandbox environment, export the Dockerfile and mod
 
 ```bash
 workmux sandbox init-dockerfile        # creates Dockerfile.sandbox
-vim Dockerfile.sandbox                  # customize
+vim Dockerfile.sandbox                 # customize
 docker build -t my-sandbox -f Dockerfile.sandbox .
+```
+
+To build the default image locally instead of pulling from the registry:
+
+```bash
+workmux sandbox build
 ```
 
 Then set the image in your config:
