@@ -4,7 +4,15 @@ description: Get started with workmux in minutes
 
 # Quick start
 
-## 1. Initialize configuration (optional)
+## 1. Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+```
+
+See [Installation](/guide/installation) for other methods (Homebrew, Cargo, Nix).
+
+## 2. Initialize configuration (optional)
 
 ```bash
 workmux init
@@ -12,7 +20,7 @@ workmux init
 
 This creates a `.workmux.yaml` file to customize your workflow (pane layouts, setup commands, file operations, etc.). workmux works out of the box with sensible defaults, so this step is optional.
 
-## 2. Create a new worktree and tmux window
+## 3. Create a new worktree and tmux window
 
 ```bash
 workmux add new-feature
@@ -25,11 +33,11 @@ This will:
 - Set up your configured or the default tmux pane layout
 - Automatically switch your tmux client to the new window
 
-## 3. Do your thing
+## 4. Do your thing
 
 Work on your feature, fix a bug, or let an AI agent handle it.
 
-## 4. Finish and clean up
+## 5. Finish and clean up
 
 **Local merge:** Run `workmux merge` to merge into the base branch and clean up in one step.
 
