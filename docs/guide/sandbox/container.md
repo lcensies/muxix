@@ -8,14 +8,15 @@ The container sandbox runs agents in isolated Docker or Podman containers, provi
 
 ## Setup
 
-### 1. Install Docker or Podman
+### 1. Install a container runtime
 
 ```bash
 # macOS
-brew install --cask docker
-
-# Or for Podman
-brew install podman
+brew install --cask docker          # Docker Desktop
+# or
+brew install --cask orbstack        # OrbStack (Docker-compatible)
+# or
+brew install podman                 # Podman
 ```
 
 ### 2. Enable sandbox in config
