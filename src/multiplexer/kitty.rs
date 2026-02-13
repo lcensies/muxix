@@ -254,6 +254,15 @@ impl Multiplexer for KittyBackend {
         "kitty"
     }
 
+    fn capabilities(&self) -> super::MultiplexerCaps {
+        super::MultiplexerCaps {
+            pane_targeting: true,     // Full pane targeting support
+            supports_preview: true,   // Efficient preview capture
+            stable_pane_ids: true,    // Stable pane IDs (numeric window_id)
+            exit_on_jump: true,       // Exit dashboard after jumping
+        }
+    }
+
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {
@@ -480,6 +489,7 @@ impl Multiplexer for KittyBackend {
         ))
     }
 
+
     fn schedule_cleanup_and_close(
         &self,
         source_window: &str,
@@ -492,15 +502,43 @@ impl Multiplexer for KittyBackend {
         // Build script with sleep, navigation, kill, and cleanup
         let mut script = format!("sleep {}", delay_secs);
 
+        // Helper to build shell command for selecting a window
+        let build_select_cmd = |full_name: &str| -> Result<String> {
+            let panes = self.list_panes()?;
+            let scoped_panes = self.panes_in_current_scope(&panes);
+            let target = scoped_panes
+                .iter()
+                .find(|p| p.tab_title == full_name)
+                .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+            Ok(format!(
+                "kitten @ focus-tab --match 'id:{}' >/dev/null 2>&1",
+                target.window_id
+            ))
+        };
+
+        // Helper to build shell command for killing a window
+        let build_kill_cmd = |full_name: &str| -> Result<String> {
+            let panes = self.list_panes()?;
+            let scoped_panes = self.panes_in_current_scope(&panes);
+            let target = scoped_panes
+                .iter()
+                .find(|p| p.tab_title == full_name)
+                .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+            Ok(format!(
+                "kitten @ close-tab --match 'id:{}' >/dev/null 2>&1",
+                target.window_id
+            ))
+        };
+
         // 1. Navigate to target (if exists)
         if let Some(target) = target_window {
-            if let Ok(cmd) = self.shell_select_window_cmd(target) {
+            if let Ok(cmd) = build_select_cmd(target) {
                 script.push_str(&format!("; {}", cmd));
             }
         }
 
         // 2. Close source window
-        if let Ok(cmd) = self.shell_kill_window_cmd(source_window) {
+        if let Ok(cmd) = build_kill_cmd(source_window) {
             script.push_str(&format!("; {}", cmd));
         }
 
@@ -511,8 +549,9 @@ impl Multiplexer for KittyBackend {
 
         debug!(script = script, "kitty:scheduling cleanup and close");
 
-        // Run in background
-        self.run_deferred_script(&script)?;
+        // Run in background using nohup
+        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        Cmd::new("sh").args(&["-c", &bg_script]).run()?;
 
         Ok(())
     }

@@ -145,6 +145,7 @@ pub trait Multiplexer: Send + Sync {
         ))
     }
 
+
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 

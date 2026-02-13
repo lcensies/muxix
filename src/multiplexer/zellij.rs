@@ -238,13 +238,6 @@ impl Multiplexer for ZellijBackend {
         Ok(())
     }
 
-    fn run_deferred_script(&self, script: &str) -> Result<()> {
-        // Run the script in the background using nohup
-        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
-        Cmd::new("sh").args(&["-c", &bg_script]).run()?;
-        Ok(())
-    }
-
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = format!("{}{}", prefix, name);
         Cmd::new("zellij")
@@ -895,49 +888,6 @@ impl Multiplexer for ZellijBackend {
         }
 
         Ok(result)
-    }
-
-    fn run_deferred_script(&self, script: &str) -> Result<()> {
-        fn shell_escape(s: &str) -> String {
-            format!("'{}'", s.replace('\'', r#"'\''"#))
-        }
-
-        let full_cmd = format!(
-            "nohup sh -c {} </dev/null >/dev/null 2>&1 &",
-            shell_escape(script)
-        );
-
-        std::process::Command::new("sh")
-            .args(["-c", &full_cmd])
-            .current_dir("/")
-            .env_remove("ZELLIJ_PANE_ID")
-            .spawn()
-            .context("Failed to spawn deferred script")?;
-
-        Ok(())
-    }
-
-    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String> {
-        fn shell_escape(s: &str) -> String {
-            format!("'{}'", s.replace('\'', r#"'\''"#))
-        }
-
-        Ok(format!(
-            "zellij action go-to-tab-name {} >/dev/null 2>&1",
-            shell_escape(full_name)
-        ))
-    }
-
-    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String> {
-        fn shell_escape(s: &str) -> String {
-            format!("'{}'", s.replace('\'', r#"'\''"#))
-        }
-
-        // Zellij requires focusing a tab before closing it
-        Ok(format!(
-            "zellij action go-to-tab-name {} >/dev/null 2>&1; zellij action close-tab >/dev/null 2>&1",
-            shell_escape(full_name)
-        ))
     }
 
     fn schedule_cleanup_and_close(

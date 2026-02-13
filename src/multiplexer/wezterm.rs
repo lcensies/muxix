@@ -406,6 +406,7 @@ impl Multiplexer for WezTermBackend {
         ))
     }
 
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
         let panes = self.list_panes()?;

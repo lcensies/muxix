@@ -414,6 +414,7 @@ impl Multiplexer for TmuxBackend {
         Ok("tmux switch-client -l >/dev/null 2>&1".to_string())
     }
 
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let prefixed_name = util::prefixed(prefix, name);
         let target = format!("={}", prefixed_name);
