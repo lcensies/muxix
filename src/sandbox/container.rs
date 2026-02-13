@@ -469,7 +469,7 @@ pub fn stop_containers_for_handle(handle: &str, config: &SandboxConfig) {
     let _ = Command::new(runtime)
         .arg("stop")
         .arg("-t")
-        .arg("2")
+        .arg("0")
         .args(&containers)
         .output();
 
