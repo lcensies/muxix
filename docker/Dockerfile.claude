@@ -10,4 +10,5 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
     # Claude Code checks $HOME/.local/bin/claude when installMethod is "native".
     # Container sets HOME=/tmp, so place a symlink to suppress the warning.
     mkdir -p /tmp/.local/bin && \
-    ln -s /usr/local/bin/claude /tmp/.local/bin/claude
+    ln -s /usr/local/bin/claude /tmp/.local/bin/claude && \
+    chmod 777 /tmp/.local
