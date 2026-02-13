@@ -248,10 +248,10 @@ pub trait Multiplexer: Send + Sync {
                         // Use worktree_root for mounting, working_dir for cwd
                         let wt_root = options.worktree_root.unwrap_or(working_dir);
 
-                        // Inject skip-permissions flag for agents that support it
+                        // Inject skip-permissions flag for agent panes only
                         // (sandbox provides the security boundary, so permission
                         // prompts are unnecessary and break autonomous workflow)
-                        let command_to_wrap = {
+                        let command_to_wrap = if is_agent_pane {
                             let profile =
                                 crate::multiplexer::agent::resolve_profile(effective_agent);
                             if let Some(flag) = profile.skip_permissions_flag() {
@@ -259,6 +259,8 @@ pub trait Multiplexer: Send + Sync {
                             } else {
                                 resolved.command.clone()
                             }
+                        } else {
+                            resolved.command.clone()
                         };
 
                         // Choose backend based on config
