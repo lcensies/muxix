@@ -27,8 +27,7 @@ parallel without conflict.
 \*Also supports [kitty](https://workmux.raine.dev/guide/kitty) and
 [WezTerm](https://workmux.raine.dev/guide/wezterm) as alternative backends.
 
-📚 **Want more?** Check out the
-[full documentation](https://workmux.raine.dev/guide/) for guides and
+📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
 configuration reference.
 
 📖 **New to workmux?** Read the
@@ -70,6 +69,7 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 - Run post-creation hooks (install dependencies, setup database, etc.)
 - Copy or symlink configuration files (`.env`, `node_modules`) into new
   worktrees
+- [Sandbox agents](#sandbox) in containers or VMs for enhanced security
 - [Automatic branch name generation](#automatic-branch-name-generation) from
   prompts using LLM
 - Shell completions
@@ -427,6 +427,7 @@ alias wm='workmux'
 - [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
 - [`config edit`](#workmux-config-edit) - Edit the global configuration file
 - [`init`](#workmux-init) - Generate configuration file
+- [`sandbox`](#workmux-sandbox) - Manage sandbox backends (container/Lima)
 - [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
 - [`completions`](#workmux-completions-shell) - Generate shell completions
 - [`docs`](#workmux-docs) - Show detailed documentation
@@ -1357,6 +1358,24 @@ Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 ---
 
+### `workmux sandbox`
+
+Commands for managing sandbox functionality. See the
+[sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
+documentation.
+
+| Command             | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `sandbox pull`      | Pull the latest container image from the registry        |
+| `sandbox build`     | Build the container image locally                        |
+| `sandbox shell`     | Start an interactive shell inside a sandbox              |
+| `sandbox agent`     | Run the configured agent in a sandbox with RPC support   |
+| `sandbox stop`      | Stop running Lima VMs                                    |
+| `sandbox prune`     | Delete unused Lima VMs to reclaim disk space             |
+| `sandbox install-dev` | Cross-compile and install workmux into sandboxes (dev) |
+
+---
+
 ### `workmux claude prune`
 
 Removes stale entries from Claude config (`~/.claude.json`) that point to
@@ -1556,6 +1575,57 @@ bind Tab run-shell "workmux last-agent"
 ```
 
 Then press `prefix + Tab` to toggle between your two most recent agents.
+
+## Sandbox
+
+workmux can run agents inside containers (Docker/Podman) or Lima VMs, isolating
+them from your host. Agents are restricted to the project worktree; sensitive
+files like SSH keys, AWS credentials, and other secrets are not accessible. This
+lets you run agents with `--dangerously-skip-permissions` without worrying about
+what they might touch on your host.
+
+Sandboxing is transparent: status indicators, the dashboard, spawning new
+agents, and merging all continue to work normally across the sandbox boundary.
+
+### Backends
+
+|                      | Container (Docker/Podman)                 | Lima VM                              |
+| -------------------- | ----------------------------------------- | ------------------------------------ |
+| **Isolation**        | Process-level (namespaces)                | Machine-level (virtual machine)      |
+| **Persistence**      | Ephemeral (new container per session)     | Persistent (stateful VMs)            |
+| **Toolchain**        | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support       |
+| **Network**          | Optional restrictions (domain allowlist)  | Unrestricted                         |
+
+Container is a good default: simple to set up and ephemeral, so no state
+accumulates between sessions. Choose Lima if you want persistent VMs with
+built-in Nix/Devbox toolchain support.
+
+### Quick start
+
+```yaml
+# ~/.config/workmux/config.yaml or .workmux.yaml
+sandbox:
+  enabled: true
+  # backend: lima  # uncomment for Lima VMs (default: container)
+```
+
+The pre-built container image is pulled automatically on first run. For Lima, the
+VM is created and provisioned on first use.
+
+### Shared features
+
+Both backends support:
+
+- **Host command proxying**: Run specific commands (build tools, linters) on the
+  host from inside the sandbox via `host_commands` config
+- **Extra mounts**: Mount additional host directories into the sandbox
+  (read-only by default)
+- **Credential sharing**: Agent credentials are shared between host and sandbox
+- **Network restrictions** (container only): Block outbound connections except to
+  approved domains
+
+See the [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
+setup, configuration, and security details.
 
 ## Workflow example
 
