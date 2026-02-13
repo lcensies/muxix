@@ -17,6 +17,7 @@ Skills unlock the full potential of workmux. While you can run workmux commands 
 - [**`/merge`**](#-merge) - Commit, rebase, and merge the current branch
 - [**`/rebase`**](#-rebase) - Rebase with flexible target and smart conflict resolution
 - [**`/worktree`**](#-worktree) - Delegate tasks to parallel worktree agents
+- [**`/coordinator`**](#-coordinator) - Orchestrate multiple agents with full lifecycle control
 - [**`/open-pr`**](#-open-pr) - Write a PR description using conversation context
 
 You can trigger `/merge` from the [dashboard](/guide/dashboard/configuration) using the `m` keybinding:
@@ -77,6 +78,41 @@ Usage:
 ### Customization
 
 You can customize the skill to add additional instructions for worktree agents. For example, to have agents review their changes with a subagent before finishing, or run `workmux merge` after completing their task.
+
+## `/coordinator`
+
+Orchestrates the full lifecycle of multiple worktree agents: spawning, monitoring, communicating, and merging. Unlike `/worktree` which dispatches tasks and returns, `/coordinator` turns the agent into a persistent orchestrator that manages agents through completion.
+
+[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/coordinator/SKILL.md)
+
+The coordinator agent does not implement tasks itself. It writes prompt files, spawns worktree agents, monitors their status, sends follow-up instructions, and triggers merges.
+
+### Key commands used
+
+| Command                    | Purpose                                         |
+| -------------------------- | ----------------------------------------------- |
+| `workmux add -b -P <file>` | Spawn an agent in the background                |
+| `workmux status`           | Check agent statuses                            |
+| `workmux wait`             | Block until agents reach a target status        |
+| `workmux capture`          | Read terminal output from an agent              |
+| `workmux send`             | Send instructions or skill commands to an agent |
+| `workmux run`              | Run shell commands in an agent's worktree       |
+
+### Fan-out / fan-in pattern
+
+The typical coordinator workflow:
+
+1. Write prompt files with full context for each task
+2. Spawn all agents in the background
+3. Confirm agents started with `workmux wait --status working`
+4. Wait for completion with `workmux wait`
+5. Review results with `workmux capture`
+6. Merge one at a time by sending `/merge` to each agent sequentially
+
+### When to use `/coordinator` vs `/worktree`
+
+- **`/worktree`**: fire and forget. Spawn agents and return control to you. Good for delegating tasks you will review later yourself.
+- **`/coordinator`**: full automation. The agent manages the entire lifecycle, including waiting, reviewing output, sending follow-ups, and merging. Good for multi-step plans where tasks depend on each other.
 
 ## `/open-pr`
 

@@ -52,6 +52,28 @@ The main agent writes a prompt file with all the relevant context and runs `work
 
 See [Skills](/guide/skills#-worktree) for the skill setup.
 
+### Coordinating multiple agents
+
+For multi-step plans where you want the agent to manage the full lifecycle (spawning, monitoring, and merging), use the [`/coordinator` skill](/guide/skills#-coordinator).
+
+```
+> /coordinator Break down the auth refactor into parallel tasks:
+  1. Extract session logic into its own module
+  2. Add OAuth provider support
+  3. Write integration tests for the new auth flow
+```
+
+The coordinator agent writes prompt files for each task, spawns worktree agents in the background, waits for them to finish, reviews their output, and merges results sequentially. You stay hands-off while it runs.
+
+This is useful when:
+
+- You have a plan with multiple independent tasks
+- Tasks should be merged in a specific order
+- You want the agent to send follow-up instructions based on results
+- You want full automation without checking in on each agent manually
+
+See [Skills](/guide/skills#-coordinator) for more details on the coordinator pattern.
+
 ## Finishing work
 
 How you finish depends on whether you merge locally or use pull requests.
