@@ -619,7 +619,7 @@ pub struct SandboxConfig {
     pub image: Option<String>,
 
     /// Environment variables to pass to sandbox.
-    /// Default: ["GITHUB_TOKEN"]
+    /// Default: []
     #[serde(default)]
     pub env_passthrough: Option<Vec<String>>,
 
@@ -698,7 +698,7 @@ impl SandboxConfig {
         self.env_passthrough
             .as_ref()
             .map(|v| v.iter().map(|s| s.as_str()).collect())
-            .unwrap_or_else(|| vec!["GITHUB_TOKEN"])
+            .unwrap_or_default()
     }
 
     /// Get the RPC host address, using config override or runtime default.
@@ -1752,7 +1752,7 @@ mod tests {
         let config = SandboxConfig::default();
         assert!(!config.is_enabled());
         assert_eq!(config.target(), SandboxTarget::Agent);
-        assert!(config.env_passthrough().contains(&"GITHUB_TOKEN"));
+        assert!(config.env_passthrough().is_empty());
     }
 
     #[test]

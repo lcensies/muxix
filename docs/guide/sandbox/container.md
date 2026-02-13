@@ -51,7 +51,7 @@ workmux sandbox build
 | `target` | `agent` | Which panes to sandbox: `agent` or `all` |
 | `image` | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.** |
 | `rpc_host` | auto | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only.** |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through. **Global config only.** |
+| `env_passthrough` | `[]` | Environment variables to pass through. **Global config only.** |
 | `extra_mounts` | `[]` | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.** |
 | `network.policy` | `allow` | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](./features#network-restrictions). **Global config only.** |
 | `network.allowed_domains` | `[]` | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.** |
