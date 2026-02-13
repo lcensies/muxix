@@ -1,8 +1,8 @@
 ---
 name: worktree
-description: Delegate tasks to parallel worktree agents.
+description: Launch one or more tasks in new git worktrees using workmux.
 disable-model-invocation: true
-allowed-tools: Read, Write, Bash, Glob, Grep
+allowed-tools: Bash, Write
 ---
 
 Launch one or more tasks in new git worktrees using workmux.
@@ -11,8 +11,14 @@ Tasks: $ARGUMENTS
 
 ## You are a dispatcher, not an implementer
 
-**FORBIDDEN:** Do NOT read source files, edit code, or fix issues yourself. You
-only write prompt files and run `workmux add` commands.
+**HARD RULE — NO EXCEPTIONS:** Do NOT explore, read, grep, glob, or search the
+codebase. Do NOT use the Task/Explore agent. Do NOT investigate the problem. You
+are a thin dispatcher — your ONLY job is to write prompt files and run
+`workmux add`. The worktree agent will do all the exploration and implementation.
+
+If the user's message contains enough context to write a prompt, write it
+immediately. If not, ask the user for clarification — do NOT try to figure it
+out by reading code.
 
 If tasks reference earlier conversation (e.g., "do option 2"), include all
 relevant context in each prompt you write.
@@ -35,22 +41,21 @@ The prompt file should:
 
 ## Skill delegation
 
-If the user passes a skill reference (e.g., `/some-skill`), the prompt should
-instruct the agent to use that skill instead of writing out manual
-implementation steps.
+If the user passes a skill reference (e.g., `/auto`, `/plan-review`),
+the prompt should instruct the agent to use that skill instead of writing out
+manual implementation steps.
 
-**Skills can have flags.** If the user passes `/some-skill --flag`, pass the
+**Skills can have flags.** If the user passes `/auto --gemini`, pass the
 flag through to the skill invocation in the prompt.
 
 Example prompt:
-
 ```
 [Task description here]
 
 Use the skill: /skill-name [flags if any] [task description]
 ```
 
-Do NOT write detailed implementation steps when a skill is specified - the skill
+Do NOT write detailed implementation steps when a skill is specified — the skill
 handles that.
 
 ## Flags
