@@ -10,6 +10,7 @@ homepage = "https://github.com/raine/workmux"
 repository = "https://github.com/raine/workmux"
 include = [
     "/src/**/*",
+    "/docker/**/*",
     "/Cargo.toml",
     "/Cargo.lock",
     "/CHANGELOG.md",
