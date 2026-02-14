@@ -88,10 +88,6 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
     <span class="ed-section-label">Sandbox</span>
     <h2 class="ed-sandbox-headline">Run agents in YOLO mode.</h2>
     <p class="ed-sandbox-desc">Enable sandboxing to run agents in isolated containers or Lima VMs scoped to the worktree. Host keys, creds, and files stay isolated while agents operate inside the worktree.</p>
-    <ul class="ed-sandbox-points">
-      <li>Docker, Podman, or Lima VM backends</li>
-      <li>Optional network restrictions to approved domains only</li>
-    </ul>
     <a href="/guide/sandbox/" class="ed-sandbox-link">Learn more →</a>
   </div>
 </section>
