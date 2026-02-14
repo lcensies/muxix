@@ -2,6 +2,17 @@
 description: Release notes and version history for workmux
 ---
 
+<!-- skipped: v0.1.113 -->
+<!-- skipped: v0.1.89 -->
+<!-- skipped: v0.1.82 -->
+<!-- skipped: v0.1.73 -->
+<!-- skipped: v0.1.64 -->
+<!-- skipped: v0.1.58 -->
+<!-- skipped: v0.1.56 -->
+<!-- skipped: v0.1.27 -->
+<!-- skipped: v0.1.25 -->
+<!-- skipped: v0.1.8 -->
+
 # Changelog
 
 ## v0.1.112 (2026-02-13)
