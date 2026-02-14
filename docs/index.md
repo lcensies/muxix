@@ -127,7 +127,7 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
       <div class="ed-mode">
         <h3 class="ed-mode-title">Solo</h3>
         <p class="ed-mode-cmd">workmux add -A "Add cursor-based pagination to /api/users"</p>
-        <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt.</p>
+        <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt in a new tab.</p>
       </div>
       <div class="ed-mode">
         <h3 class="ed-mode-title">Delegated</h3>
