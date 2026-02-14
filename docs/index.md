@@ -49,8 +49,8 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
 </section>
 
 <section class="ed-demo">
-  <div class="ed-container">
-    <div class="ed-accent-rule"></div>
+  <div class="ed-container ed-align-right">
+    <div class="ed-accent-rule ed-accent-rule-right"></div>
     <span class="ed-section-label">See it in action</span>
     <p class="ed-section-desc">Spin up worktrees, develop in parallel, merge and clean up.</p>
   </div>
@@ -70,55 +70,6 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
         <button type="button" class="video-play-button" aria-label="Play video"></button>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="ed-code">
-  <div class="ed-container">
-    <div class="ed-accent-rule"></div>
-    <span class="ed-section-label">The core workflow</span>
-    <div class="ed-code-split">
-      <div class="ed-code-caption">
-        <h3 class="ed-code-heading">Two commands.</h3>
-        <p class="ed-code-desc">Create a worktree, do your work, then merge and clean up.</p>
-      </div>
-      <div class="ed-code-commands">
-        <div class="ed-command-block">
-          <span class="ed-cmd-comment"># Start working on a feature</span>
-          <span class="ed-cmd-text">workmux add my-feature</span>
-        </div>
-        <div class="ed-command-block">
-          <span class="ed-cmd-comment"># Done? Merge and clean up everything</span>
-          <span class="ed-cmd-text">workmux merge</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="ed-workflows">
-  <div class="ed-container">
-    <div class="ed-accent-rule"></div>
-    <span class="ed-section-label">Workflows</span>
-    <h2 class="ed-workflows-headline">From a single command to agent orchestration skills.</h2>
-    <div class="ed-modes">
-      <div class="ed-mode">
-        <h3 class="ed-mode-title">Solo</h3>
-        <p class="ed-mode-cmd">workmux add -A "Add cursor-based pagination to /api/users"</p>
-        <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt.</p>
-      </div>
-      <div class="ed-mode">
-        <h3 class="ed-mode-title">Delegated</h3>
-        <p class="ed-mode-cmd"><code>/worktree</code> Implement the caching layer</p>
-        <p class="ed-mode-benefit">From inside an agent, spin off a subtask to a new worktree with full context.</p>
-      </div>
-      <div class="ed-mode">
-        <h3 class="ed-mode-title">Coordinated</h3>
-        <p class="ed-mode-cmd"><code>/coordinator</code> Break down the auth refactor into parallel tasks</p>
-        <p class="ed-mode-benefit">One agent spawns, monitors, and merges multiple worktree agents.</p>
-      </div>
-    </div>
-    <a href="/guide/workflows" class="ed-workflows-link">Learn more →</a>
   </div>
 </section>
 
@@ -155,6 +106,32 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
       </div>
       <img src="/dashboard.webp" alt="workmux dashboard" class="dashboard-img">
     </div>
+  </div>
+</section>
+
+<section class="ed-workflows">
+  <div class="ed-container">
+    <div class="ed-accent-rule"></div>
+    <span class="ed-section-label">Workflows</span>
+    <h2 class="ed-workflows-headline">From a single command to agent orchestration skills.</h2>
+    <div class="ed-modes">
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Solo</h3>
+        <p class="ed-mode-cmd">workmux add -A "Add cursor-based pagination to /api/users"</p>
+        <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt.</p>
+      </div>
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Delegated</h3>
+        <p class="ed-mode-cmd"><code>/worktree</code> Implement the caching layer</p>
+        <p class="ed-mode-benefit">From inside an agent, spin off a subtask to a new worktree with full context.</p>
+      </div>
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Coordinated</h3>
+        <p class="ed-mode-cmd"><code>/coordinator</code> Break down the auth refactor into parallel tasks</p>
+        <p class="ed-mode-benefit">One agent spawns, monitors, and merges multiple worktree agents.</p>
+      </div>
+    </div>
+    <a href="/guide/workflows" class="ed-workflows-link">Learn more →</a>
   </div>
 </section>
 
@@ -316,7 +293,7 @@ onMounted(() => {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--vp-c-text-3);
+  color: var(--vp-c-text-2);
   margin-bottom: 2.5rem;
 }
 
@@ -516,7 +493,7 @@ onMounted(() => {
 .ed-why-item p {
   font-size: 0.875rem;
   line-height: 1.7;
-  color: var(--vp-c-text-3);
+  color: var(--vp-c-text-2);
 }
 
 /* ===== Demo section ===== */
@@ -525,59 +502,6 @@ onMounted(() => {
 }
 
 /* ===== Code section ===== */
-.ed-code {
-  padding: 4rem 0 5rem;
-}
-
-.ed-code-split {
-  display: grid;
-  grid-template-columns: 2fr 3fr;
-  gap: 3rem;
-  align-items: start;
-}
-
-.ed-code-heading {
-  font-family: var(--ed-font-display);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  color: var(--vp-c-text-1);
-  margin-bottom: 0.75rem !important;
-}
-
-.ed-code-desc {
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  color: var(--vp-c-text-3);
-}
-
-.ed-code-commands {
-  border-left: 1px solid var(--ed-accent);
-  padding-left: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.ed-command-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.ed-cmd-comment {
-  font-family: var(--ed-font-mono);
-  font-size: 0.875rem;
-  color: var(--vp-c-text-3);
-}
-
-.ed-cmd-text {
-  font-family: var(--ed-font-mono);
-  font-size: 1.0625rem;
-  color: var(--vp-c-text-1);
-}
-
 /* ===== Workflows section ===== */
 .ed-workflows {
   padding: 0 0 8rem;
@@ -688,7 +612,7 @@ onMounted(() => {
 .ed-sandbox-points li {
   font-family: var(--ed-font-mono);
   font-size: 0.8125rem;
-  color: var(--vp-c-text-3);
+  color: var(--vp-c-text-2);
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--vp-c-divider);
 }
@@ -855,7 +779,7 @@ onMounted(() => {
   font-family: var(--ed-font-mono);
   font-style: normal;
   font-size: 0.8125rem;
-  color: var(--vp-c-text-3);
+  color: var(--vp-c-text-2);
 }
 
 .ed-testimonial cite a {
@@ -915,10 +839,6 @@ onMounted(() => {
     padding-bottom: 6rem;
   }
 
-  .ed-code-split {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-  }
 }
 
 @media (max-width: 640px) {
@@ -952,10 +872,6 @@ onMounted(() => {
   .ed-dashboard,
   .ed-testimonials {
     padding-bottom: 4rem;
-  }
-
-  .ed-code {
-    padding: 3rem 0;
   }
 
   .ed-workflows {
