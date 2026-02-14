@@ -38,7 +38,7 @@ The `host_commands` option lets agents inside the sandbox run specific commands 
 ::: warning Evaluate your threat model
 Host command proxying is primarily a convenience feature that exists so you don't have to install your entire build toolchain inside each container or VM. It should not necessarily be expected to provide airtight confinement.
 
-While workmux applies multiple layers of protection, any allowed command is effectively a code interpreter: a compromised agent can write a malicious build file and then invoke the tool. The filesystem sandbox blocks access to host secrets and restricts writes, but child processes retain network access and run on the host. If your threat model requires strict isolation with no host execution, don't enable `host_commands`.
+Any allowed command can execute code from project files. For example, an agent could write a malicious `justfile` and run `just`. The filesystem sandbox blocks access to host secrets and restricts writes, but proxied commands still have network access and run on the host. If your threat model requires strict isolation with no host execution, don't enable `host_commands`.
 :::
 
 ```yaml
