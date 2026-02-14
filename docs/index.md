@@ -54,7 +54,7 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
     <span class="ed-section-label">See it in action</span>
     <p class="ed-section-desc">Spin up worktrees, develop in parallel, merge and clean up.</p>
   </div>
-  <div class="ed-wide ed-showcase">
+  <div class="ed-container ed-showcase">
     <div class="ed-window-glow"></div>
     <div class="terminal-window">
       <div class="terminal-header">
@@ -119,7 +119,7 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
     <span class="ed-section-label">Monitor your agents</span>
     <p class="ed-section-desc">A tmux popup dashboard to track progress across all agents.</p>
   </div>
-  <div class="ed-wide ed-showcase">
+  <div class="ed-container ed-showcase">
     <div class="ed-window-glow"></div>
     <div class="terminal-window">
       <div class="terminal-header">
