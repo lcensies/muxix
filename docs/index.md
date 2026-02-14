@@ -109,7 +109,7 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
       <li>Docker, Podman, or Lima VM backends</li>
       <li>Optional network restrictions to approved domains only</li>
     </ul>
-    <a href="/guide/sandbox/" class="ed-sandbox-link">Learn more</a>
+    <a href="/guide/sandbox/" class="ed-sandbox-link">Learn more →</a>
   </div>
 </section>
 
@@ -565,7 +565,9 @@ onMounted(() => {
   display: inline-block;
   margin-top: 1.5rem;
   font-family: var(--ed-font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--ed-accent) !important;
   text-decoration: none !important;
   transition: opacity 0.2s;
@@ -620,8 +622,9 @@ onMounted(() => {
 
 .ed-sandbox-link {
   font-family: var(--ed-font-mono);
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--ed-accent) !important;
   text-decoration: none !important;
 }
