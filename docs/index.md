@@ -85,6 +85,20 @@ workmux merge
 
 </section>
 
+<section class="ed-sandbox">
+  <div class="ed-container">
+    <div class="ed-accent-rule"></div>
+    <span class="ed-section-label">Sandbox</span>
+    <h2 class="ed-sandbox-headline">Run agents in YOLO mode.</h2>
+    <p class="ed-sandbox-desc">Enable sandboxing to run agents in isolated containers or Lima VMs scoped to the worktree. Host keys, creds, and files stay isolated while agents operate inside the worktree.</p>
+    <ul class="ed-sandbox-points">
+      <li>Docker, Podman, or Lima VM backends</li>
+      <li>Optional network restrictions to approved domains only</li>
+    </ul>
+    <a href="/guide/sandbox/" class="ed-sandbox-link">Learn more</a>
+  </div>
+</section>
+
 <section class="ed-dashboard">
   <div class="ed-container ed-align-right">
     <div class="ed-accent-rule ed-accent-rule-right"></div>
@@ -489,6 +503,61 @@ onMounted(() => {
   font-size: 0.9375rem;
 }
 
+/* ===== Sandbox section ===== */
+.ed-sandbox {
+  padding: 0 0 8rem;
+}
+
+.ed-sandbox-headline {
+  font-family: var(--ed-font-display);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: var(--vp-c-text-1);
+  margin-bottom: 1.25rem !important;
+  max-width: 480px;
+}
+
+.ed-sandbox-desc {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--vp-c-text-2);
+  margin-bottom: 1.5rem !important;
+  max-width: 520px;
+}
+
+.ed-sandbox-points {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  max-width: 520px;
+}
+
+.ed-sandbox-points li {
+  font-family: var(--ed-font-mono);
+  font-size: 0.8125rem;
+  color: var(--vp-c-text-3);
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.ed-sandbox-points li:first-child {
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.ed-sandbox-link {
+  font-family: var(--ed-font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ed-accent) !important;
+  text-decoration: none !important;
+}
+
+.ed-sandbox-link:hover {
+  text-decoration: underline !important;
+}
+
 /* ===== Dashboard section ===== */
 .ed-dashboard {
   padding: 0 0 8rem;
@@ -687,6 +756,7 @@ onMounted(() => {
 
   .ed-why,
   .ed-demo,
+  .ed-sandbox,
   .ed-dashboard,
   .ed-testimonials {
     padding-bottom: 6rem;
@@ -720,6 +790,7 @@ onMounted(() => {
 
   .ed-why,
   .ed-demo,
+  .ed-sandbox,
   .ed-dashboard,
   .ed-testimonials {
     padding-bottom: 4rem;
