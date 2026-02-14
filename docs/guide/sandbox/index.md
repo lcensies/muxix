@@ -27,7 +27,7 @@ Sandboxing is designed to be transparent. The multiplexer integration should wor
 When sandbox is enabled, agents have access to:
 
 - The current worktree directory (read-write)
-- The main worktree directory (read-write, for symlink resolution like `CLAUDE.md`)
+- The main worktree directory (read-write, for symlink resolution like `CLAUDE.local.md`)
 - The shared `.git` directory (read-write, for git operations)
 - Agent settings and credentials (see [credentials](./features#credentials))
 

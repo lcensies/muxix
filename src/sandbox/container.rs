@@ -238,7 +238,7 @@ pub fn build_docker_run_args(
             ));
 
             // Mount the main worktree to resolve symlinks pointing there
-            // (e.g., CLAUDE.md -> ../../main-worktree/CLAUDE.md)
+            // (e.g., CLAUDE.local.md -> ../../main-worktree/CLAUDE.local.md)
             if let Some(main_worktree) = main_git.parent() {
                 args.push("--mount".to_string());
                 args.push(format!(
