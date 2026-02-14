@@ -37,8 +37,9 @@ pub fn wrap_for_lima(
     // Pass the command as a single quoted argument. The sandbox supervisor
     // (sandbox_run.rs) handles wrapping it in `sh -lc '...'` for limactl,
     // which is necessary because limactl/SSH flattens separate args.
+    // Prefix with space to prevent shell history entry (same as rewrite_agent_command)
     Ok(format!(
-        "workmux sandbox run '{}' -- '{}'",
+        " workmux sandbox run '{}' -- '{}'",
         shell_escape(&working_dir.to_string_lossy()),
         shell_escape(command)
     ))
@@ -81,7 +82,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(result.starts_with("workmux sandbox run"));
+        assert!(result.starts_with(" workmux sandbox run"));
         assert!(result.contains("/Users/test/project"));
         // Command is passed as a single quoted arg (no sh -lc at this level)
         assert!(result.contains("-- 'claude'"));

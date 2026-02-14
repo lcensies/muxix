@@ -412,7 +412,8 @@ pub fn wrap_for_container(
 
     parts.push_str(&format!(" -- '{}'", shell_escape(command)));
 
-    Ok(parts)
+    // Prefix with space to prevent shell history entry (same as rewrite_agent_command)
+    Ok(format!(" {}", parts))
 }
 
 /// Stop any running containers associated with a worktree handle.
@@ -601,7 +602,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(result.starts_with("workmux sandbox run"));
+        assert!(result.starts_with(" workmux sandbox run"));
         assert!(result.contains("'/tmp/project'"));
         assert!(result.contains("-- 'claude'"));
         // Should NOT contain --worktree-root when paths are equal
