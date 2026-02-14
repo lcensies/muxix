@@ -13,8 +13,8 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
   <div class="ed-container ed-hero-inner">
     <div class="ed-hero-text">
       <span class="ed-hero-name">workmux</span>
-      <h1 class="ed-hero-headline">Parallel development for terminal</h1>
-      <p class="ed-hero-tagline">Isolated workspaces with git worktrees and tmux. Run AI agents in parallel without conflicts.</p>
+      <h1 class="ed-hero-headline">Ship features in parallel from terminal.</h1>
+      <p class="ed-hero-tagline">workmux creates an isolated worktree and tmux tab per task. Run multiple agents in parallel without conflicts.</p>
       <div class="ed-hero-actions">
         <a href="/guide/quick-start" class="ed-btn-primary">Get started</a>
         <a href="https://github.com/raine/workmux" class="ed-btn-github">GitHub</a>
