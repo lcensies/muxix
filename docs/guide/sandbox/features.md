@@ -81,6 +81,14 @@ Claude Code hooks often use `afplay` to play notification sounds (e.g., when an 
 
 This is transparent: when a hook runs `afplay /System/Library/Sounds/Glass.aiff` inside the sandbox, the shim runs `afplay` on the host via the host-exec RPC mechanism. No configuration is needed.
 
+## Git identity
+
+The sandbox does not mount your `~/.gitconfig` because it may contain credential helpers, shell aliases, or other sensitive configuration. Instead, workmux automatically extracts your `user.name` and `user.email` from the host's git config and injects them into the sandbox via environment variables (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*`).
+
+This means git commits inside the sandbox use your identity without exposing the rest of your git config. The extraction respects all git config scopes (system, global, conditional includes) by running from the worktree directory, so directory-specific identities work correctly.
+
+No configuration is needed. If the host has no `user.name` or `user.email` configured, the injection is silently skipped.
+
 ## Credentials
 
 Both sandbox backends mount agent-specific credential directories from the host. The mounted directory depends on the configured `agent`:

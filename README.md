@@ -1620,6 +1620,8 @@ Both backends support:
   host from inside the sandbox via `host_commands` config
 - **Extra mounts**: Mount additional host directories into the sandbox
   (read-only by default)
+- **Git identity**: Your `user.name` and `user.email` are automatically injected
+  so git commits work without exposing your full `~/.gitconfig`
 - **Credential sharing**: Agent credentials are shared between host and sandbox
 - **Network restrictions** (container only): Block outbound connections except to
   approved domains

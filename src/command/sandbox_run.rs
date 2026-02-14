@@ -111,6 +111,42 @@ fn start_rpc(
     Ok((rpc_server, rpc_port, rpc_token, ctx))
 }
 
+/// Extract git `user.name` and `user.email` from the host's git config and
+/// return `GIT_CONFIG_*` environment variable pairs to inject into the sandbox.
+///
+/// Runs `git config user.name` and `git config user.email` from `worktree_dir`
+/// to respect all config scopes (system, global, conditional includes).
+/// Returns an empty vec if neither value is configured (graceful no-op).
+fn git_user_config_envs(worktree_dir: &Path) -> Vec<(String, String)> {
+    let mut entries = Vec::new();
+
+    for key in &["user.name", "user.email"] {
+        if let Ok(output) = Command::new("git")
+            .args(["config", key])
+            .current_dir(worktree_dir)
+            .output()
+            && output.status.success()
+        {
+            let val = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !val.is_empty() {
+                entries.push((key.to_string(), val));
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    let mut envs = Vec::with_capacity(1 + entries.len() * 2);
+    envs.push(("GIT_CONFIG_COUNT".into(), entries.len().to_string()));
+    for (i, (key, val)) in entries.iter().enumerate() {
+        envs.push((format!("GIT_CONFIG_KEY_{}", i), key.clone()));
+        envs.push((format!("GIT_CONFIG_VALUE_{}", i), val.clone()));
+    }
+    envs
+}
+
 fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32> {
     info!(worktree = %worktree.display(), "sandbox supervisor starting (lima)");
 
@@ -173,6 +209,11 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         if let Ok(val) = std::env::var(env_var) {
             env_exports.push(format!("{}={}", env_var, val));
         }
+    }
+
+    // Inject host git user config (user.name, user.email) for commits
+    for (key, val) in git_user_config_envs(worktree) {
+        env_exports.push(format!("{}='{}'", key, crate::shell::shell_escape(&val)));
     }
 
     let exports: String = env_exports
@@ -314,6 +355,9 @@ fn run_container(
         owned_envs.push(("WM_PROXY_PORT".into(), proxy_port.to_string()));
     }
 
+    // Inject host git user config (user.name, user.email) for commits
+    owned_envs.extend(git_user_config_envs(worktree_root));
+
     // Borrow owned envs for call site
     let env_refs: Vec<(&str, &str)> = owned_envs
         .iter()
@@ -418,5 +462,85 @@ mod tests {
         assert_eq!(redact_env_arg("HOME=/tmp"), "HOME=/tmp");
         assert_eq!(redact_env_arg("--rm"), "--rm");
         assert_eq!(redact_env_arg("WM_SANDBOX_GUEST=1"), "WM_SANDBOX_GUEST=1");
+    }
+
+    // ── git_user_config_envs tests ──────────────────────────────────────
+
+    /// Create a temp directory with a git repo and local user config.
+    fn git_repo_with_user(name: &str, email: &str) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", name])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", email])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        tmp
+    }
+
+    #[test]
+    fn test_git_user_config_envs_with_both_values() {
+        let tmp = git_repo_with_user("Test User", "test@example.com");
+        let envs = git_user_config_envs(tmp.path());
+
+        assert_eq!(envs.len(), 5); // COUNT + 2*(KEY + VALUE)
+        assert_eq!(envs[0], ("GIT_CONFIG_COUNT".into(), "2".into()));
+        assert_eq!(envs[1], ("GIT_CONFIG_KEY_0".into(), "user.name".into()));
+        assert_eq!(envs[2], ("GIT_CONFIG_VALUE_0".into(), "Test User".into()));
+        assert_eq!(envs[3], ("GIT_CONFIG_KEY_1".into(), "user.email".into()));
+        assert_eq!(
+            envs[4],
+            ("GIT_CONFIG_VALUE_1".into(), "test@example.com".into())
+        );
+    }
+
+    #[test]
+    fn test_git_user_config_envs_with_no_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Init repo but don't set user config
+        Command::new("git")
+            .args(["init"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        let envs = git_user_config_envs(tmp.path());
+        // May return values from global/system config or empty vec
+        // We can't assert empty because the test runner's global git config may have user.*
+        // Instead, verify the structure is correct if any values are returned
+        if !envs.is_empty() {
+            assert!(envs[0].0 == "GIT_CONFIG_COUNT");
+        }
+    }
+
+    #[test]
+    fn test_git_user_config_envs_not_a_git_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No git init -- not a git repo
+        let envs = git_user_config_envs(tmp.path());
+        // Should not crash, returns empty or global config values
+        for (key, _) in &envs {
+            assert!(key.starts_with("GIT_CONFIG_"), "unexpected key: {}", key);
+        }
+    }
+
+    #[test]
+    fn test_git_user_config_envs_special_characters() {
+        let tmp = git_repo_with_user("John O'Brien", "john@example.com");
+        let envs = git_user_config_envs(tmp.path());
+
+        let name_val = envs
+            .iter()
+            .find(|(k, _)| k == "GIT_CONFIG_VALUE_0")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(name_val, Some("John O'Brien"));
     }
 }
