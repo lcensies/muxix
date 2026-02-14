@@ -73,16 +73,30 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
   </div>
 </section>
 
-<section class="ed-code">
-
-```bash
-# Start working on a feature
-workmux add my-feature
-
-# Done? Merge and clean up everything
-workmux merge
-```
-
+<section class="ed-workflows">
+  <div class="ed-container">
+    <div class="ed-accent-rule"></div>
+    <span class="ed-section-label">Workflows</span>
+    <h2 class="ed-workflows-headline">From a single command to agent orchestration skills.</h2>
+    <div class="ed-modes">
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Solo</h3>
+        <p class="ed-mode-cmd">workmux add -A "Add cursor-based pagination to /api/users"</p>
+        <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt.</p>
+      </div>
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Delegated</h3>
+        <p class="ed-mode-cmd"><code>/worktree</code> Implement the caching layer</p>
+        <p class="ed-mode-benefit">From inside an agent, spin off a subtask to a new worktree with full context.</p>
+      </div>
+      <div class="ed-mode">
+        <h3 class="ed-mode-title">Coordinated</h3>
+        <p class="ed-mode-cmd"><code>/coordinator</code> Break down the auth refactor into parallel tasks</p>
+        <p class="ed-mode-benefit">One agent spawns, monitors, and merges multiple worktree agents.</p>
+      </div>
+    </div>
+    <a href="/guide/workflows" class="ed-workflows-link">Learn more →</a>
+  </div>
 </section>
 
 <section class="ed-sandbox">
@@ -487,20 +501,78 @@ onMounted(() => {
   padding: 0 0 8rem;
 }
 
-/* ===== Code section ===== */
-.ed-code {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 4rem 2rem 5rem;
+/* ===== Workflows section ===== */
+.ed-workflows {
+  padding: 0 0 8rem;
 }
 
-.ed-code div[class*="language-"] {
-  margin: 0 !important;
-  border-radius: 0 !important;
+.ed-workflows-headline {
+  font-family: var(--ed-font-display);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--vp-c-text-1);
+  margin-bottom: 3rem !important;
 }
 
-.ed-code .line {
-  font-size: 0.9375rem;
+.ed-modes {
+  display: flex;
+  flex-direction: column;
+}
+
+.ed-mode {
+  padding: 1.75rem 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.ed-mode:last-child {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.ed-mode-title {
+  font-family: var(--ed-font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--vp-c-text-1);
+  margin-bottom: 0.5rem !important;
+}
+
+.ed-mode-cmd {
+  font-family: var(--ed-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin-bottom: 0.375rem !important;
+}
+
+.ed-mode-cmd code {
+  font-family: var(--ed-font-mono);
+  font-size: 0.8125rem;
+  background: var(--vp-c-bg-soft);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+}
+
+.ed-mode-benefit {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-3);
+}
+
+.ed-workflows-link {
+  display: inline-block;
+  margin-top: 1.5rem;
+  font-family: var(--ed-font-mono);
+  font-size: 0.8125rem;
+  color: var(--ed-accent) !important;
+  text-decoration: none !important;
+  transition: opacity 0.2s;
+}
+
+.ed-workflows-link:hover {
+  opacity: 0.75;
 }
 
 /* ===== Sandbox section ===== */
@@ -756,6 +828,7 @@ onMounted(() => {
 
   .ed-why,
   .ed-demo,
+  .ed-workflows,
   .ed-sandbox,
   .ed-dashboard,
   .ed-testimonials {
@@ -796,8 +869,8 @@ onMounted(() => {
     padding-bottom: 4rem;
   }
 
-  .ed-code {
-    padding: 3rem 1.25rem;
+  .ed-workflows {
+    padding-bottom: 4rem;
   }
 
   .ed-testimonial blockquote {
