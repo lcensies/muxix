@@ -33,15 +33,24 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
     <span class="ed-section-label">Why workmux?</span>
     <div class="ed-why-grid">
       <div class="ed-why-item">
-        <h3>Parallel workflows</h3>
+        <div class="ed-why-header">
+          <span class="ed-why-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg></span>
+          <h3>Parallel workflows</h3>
+        </div>
         <p>Work on multiple features, hotfixes, or AI agents at the same time. No stashing, no branch switching, no conflicts.</p>
       </div>
       <div class="ed-why-item">
-        <h3>One window per task</h3>
+        <div class="ed-why-header">
+          <span class="ed-why-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 16 16"><path fill="currentColor" d="M1.75 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h5.5v-13zm7 0v5.75h5.75v-5.5a.25.25 0 0 0-.25-.25zm5.75 7.25H8.75v5.75h5.5a.25.25 0 0 0 .25-.25zM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25z"/></svg></span>
+          <h3>One window per task</h3>
+        </div>
         <p>A natural mental model. Each has its own terminal state, editor session, and dev server. Context switching is switching tabs.</p>
       </div>
       <div class="ed-why-item">
-        <h3>tmux is the interface</h3>
+        <div class="ed-why-header">
+          <span class="ed-why-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></span>
+          <h3>tmux is the interface</h3>
+        </div>
         <p>For existing and new tmux users. If you already live in tmux, it fits your workflow. If you don't, it's worth picking up.</p>
       </div>
     </div>
@@ -479,6 +488,21 @@ onMounted(() => {
   gap: 3rem;
 }
 
+.ed-why-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.ed-why-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ed-accent);
+}
+
 .ed-why-item h3 {
   font-family: var(--ed-font-display);
   font-size: 1.375rem;
@@ -487,7 +511,6 @@ onMounted(() => {
   letter-spacing: -0.02em;
   line-height: 1.15;
   color: var(--vp-c-text-1);
-  margin-bottom: 0.75rem !important;
 }
 
 .ed-why-item p {
