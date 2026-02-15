@@ -2,6 +2,7 @@
 description: Release notes and version history for workmux
 ---
 
+<!-- skipped: v0.1.115 -->
 <!-- skipped: v0.1.113 -->
 <!-- skipped: v0.1.89 -->
 <!-- skipped: v0.1.82 -->
