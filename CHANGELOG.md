@@ -15,6 +15,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.114 (2026-02-15)
+
+- Sandbox: Host git identity (user.name, user.email) is now automatically
+  available inside sandbox environments, so git commits from sandboxed agents
+  use the correct author
+
 ## v0.1.112 (2026-02-13)
 
 - Added sandbox support for running agents in isolated environments. Two
