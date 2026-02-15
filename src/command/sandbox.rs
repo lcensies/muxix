@@ -195,6 +195,7 @@ fn run_pull() -> Result<()> {
     let image = config.sandbox.resolved_image(agent);
 
     sandbox::pull_image(&config.sandbox, &image)?;
+    sandbox::freshness::mark_fresh(&image, config.sandbox.runtime());
 
     println!("Image '{}' is up to date.", image);
     Ok(())

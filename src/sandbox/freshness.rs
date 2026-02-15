@@ -26,6 +26,10 @@ struct FreshnessCache {
     checked_at: u64,
     /// Whether the image is fresh (local matches remote).
     is_fresh: bool,
+    /// Local image ID when the check was performed.
+    /// Used to invalidate stale cache when the local image changes (e.g. via `docker pull`).
+    #[serde(default)]
+    local_image_id: Option<String>,
 }
 
 /// Get the cache file path, optionally rooted at `base` (for testing).
@@ -76,7 +80,7 @@ fn load_cache(image: &str) -> Option<FreshnessCache> {
 }
 
 /// Save freshness check result to cache.
-fn save_cache(image: &str, is_fresh: bool) -> Result<()> {
+fn save_cache(image: &str, is_fresh: bool, local_image_id: Option<String>) -> Result<()> {
     let cache_path = cache_file_path()?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -87,6 +91,7 @@ fn save_cache(image: &str, is_fresh: bool) -> Result<()> {
         image: image.to_string(),
         checked_at: now,
         is_fresh,
+        local_image_id,
     };
 
     let json = serde_json::to_string_pretty(&cache).context("Failed to serialize cache")?;
@@ -95,6 +100,24 @@ fn save_cache(image: &str, is_fresh: bool) -> Result<()> {
         .with_context(|| format!("Failed to write cache file: {}", cache_path.display()))?;
 
     Ok(())
+}
+
+/// Get the local image ID (e.g. `sha256:...`).
+///
+/// This is a cheap local-only operation used to detect when the local image
+/// has changed since the last freshness check.
+fn get_local_image_id(runtime: &str, image: &str) -> Result<String> {
+    let output = Command::new(runtime)
+        .args(["image", "inspect", "--format", "{{.Id}}", image])
+        .output()
+        .with_context(|| format!("Failed to run {} image inspect", runtime))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Image inspect failed: {}", stderr.trim());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// Get the repo digests for a local image.
@@ -183,6 +206,19 @@ fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
     Ok(is_fresh)
 }
 
+/// Mark an image as fresh in the cache.
+///
+/// Call this after a successful `sandbox pull` so the staleness hint
+/// is not shown until the next TTL window.
+pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
+    let runtime_bin = match runtime {
+        SandboxRuntime::Docker => "docker",
+        SandboxRuntime::Podman => "podman",
+    };
+    let local_id = get_local_image_id(runtime_bin, image).ok();
+    let _ = save_cache(image, true, local_id);
+}
+
 /// Check image freshness in background (non-blocking).
 ///
 /// Spawns a detached thread that:
@@ -200,22 +236,37 @@ pub fn check_in_background(image: String, runtime: SandboxRuntime) {
             return;
         }
 
-        // Check cache first - if recently checked, skip
+        let runtime_bin = match runtime {
+            SandboxRuntime::Docker => "docker",
+            SandboxRuntime::Podman => "podman",
+        };
+
+        // Check cache first
         if let Some(cache) = load_cache(&image) {
-            // If cached result shows staleness, print hint again
-            if !cache.is_fresh {
-                eprintln!(
-                    "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
-                );
+            if cache.is_fresh {
+                return;
             }
-            return;
+
+            // Cached as stale: check if the local image has changed since then
+            // (e.g. user ran `docker pull` directly). This is a cheap local check.
+            if let Ok(current_id) = get_local_image_id(runtime_bin, &image) {
+                if cache.local_image_id.as_deref() == Some(&current_id) {
+                    // Same local image, still stale
+                    eprintln!(
+                        "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
+                    );
+                    return;
+                }
+            }
+            // Local image changed or couldn't be checked - fall through to re-check
         }
 
         // Perform freshness check
+        let local_id = get_local_image_id(runtime_bin, &image).ok();
         match check_freshness(&image, runtime) {
             Ok(is_fresh) => {
                 // Save result to cache (ignore errors)
-                let _ = save_cache(&image, is_fresh);
+                let _ = save_cache(&image, is_fresh, local_id);
             }
             Err(_e) => {
                 // Silent on failure - don't bother users with network/command issues
@@ -252,6 +303,7 @@ mod tests {
             image: "ghcr.io/raine/workmux-sandbox:claude".to_string(),
             checked_at: 1707350400,
             is_fresh: true,
+            local_image_id: Some("sha256:abc123".to_string()),
         };
 
         let json = serde_json::to_string(&cache).unwrap();
@@ -260,5 +312,15 @@ mod tests {
         assert_eq!(cache.image, parsed.image);
         assert_eq!(cache.checked_at, parsed.checked_at);
         assert_eq!(cache.is_fresh, parsed.is_fresh);
+        assert_eq!(cache.local_image_id, parsed.local_image_id);
+    }
+
+    #[test]
+    fn test_freshness_cache_without_local_image_id() {
+        // Old cache format without local_image_id should deserialize with None
+        let json = r#"{"image":"ghcr.io/raine/workmux-sandbox:claude","checked_at":1707350400,"is_fresh":false}"#;
+        let parsed: FreshnessCache = serde_json::from_str(json).unwrap();
+        assert!(!parsed.is_fresh);
+        assert_eq!(parsed.local_image_id, None);
     }
 }
