@@ -19,7 +19,7 @@ Each entry can be a simple path string (read-only, mirrored into the guest at th
 sandbox:
   extra_mounts:
     # Simple: read-only, same path in guest
-    - ~/notes
+    - ~/Screenshots
 
     # Detailed: writable with custom guest path
     - host_path: ~/shared-data
