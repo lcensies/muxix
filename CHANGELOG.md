@@ -16,6 +16,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.116 (2026-02-15)
+
+- Fixed hooks and run commands failing when they use bash-specific syntax (e.g.,
+  arrays, process substitution), by using bash instead of sh for execution
+  ([#52](https://github.com/raine/workmux/pull/52)
+
 ## v0.1.114 (2026-02-15)
 
 - Sandbox: Host git identity (user.name, user.email) is now automatically
