@@ -19,8 +19,6 @@ use super::ui::theme::ThemePalette;
 
 const PR_FETCH_INTERVAL: Duration = Duration::from_secs(30);
 
-use super::monitor::AgentMonitor;
-
 use super::agent;
 use super::diff::DiffView;
 use super::settings::{
@@ -99,8 +97,6 @@ pub struct App {
     pub show_help: bool,
     /// Preview pane size as percentage (1-90). Higher = larger preview.
     pub preview_size: u8,
-    /// Monitors agents for stalls and interrupts
-    agent_monitor: AgentMonitor,
     /// Last jumped-to pane_id for quick toggle (cached from settings)
     last_pane_id: Option<String>,
     /// Color palette based on the configured theme
@@ -168,7 +164,6 @@ impl App {
             hide_stale,
             show_help: false,
             preview_size,
-            agent_monitor: AgentMonitor::new(),
             last_pane_id,
             palette,
         };
@@ -192,12 +187,6 @@ impl App {
         self.agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
-
-        // Detect and handle stalled agents
-        let working_icon = self.config.status_icons.working();
-        self.agents =
-            self.agent_monitor
-                .process_stalls(self.agents.clone(), working_icon, self.mux.as_ref());
 
         self.sort_agents();
 
