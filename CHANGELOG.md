@@ -16,6 +16,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.117 (2026-02-16)
+
+- Fixed backend detection for nested multiplexers (e.g., tmux inside kitty or
+  wezterm) so workmux correctly targets the innermost multiplexer
+  ([#53](https://github.com/raine/workmux/issues/53))
+- Added `WORKMUX_BACKEND` environment variable to explicitly override backend
+  auto-detection (accepts `tmux`, `wezterm`, or `kitty`)
+
 ## v0.1.116 (2026-02-15)
 
 - Fixed hooks and run commands failing when they use bash-specific syntax (e.g.,
