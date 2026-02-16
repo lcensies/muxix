@@ -249,14 +249,14 @@ pub fn check_in_background(image: String, runtime: SandboxRuntime) {
 
             // Cached as stale: check if the local image has changed since then
             // (e.g. user ran `docker pull` directly). This is a cheap local check.
-            if let Ok(current_id) = get_local_image_id(runtime_bin, &image) {
-                if cache.local_image_id.as_deref() == Some(&current_id) {
-                    // Same local image, still stale
-                    eprintln!(
-                        "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
-                    );
-                    return;
-                }
+            if let Ok(current_id) = get_local_image_id(runtime_bin, &image)
+                && cache.local_image_id.as_deref() == Some(&current_id)
+            {
+                // Same local image, still stale
+                eprintln!(
+                    "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
+                );
+                return;
             }
             // Local image changed or couldn't be checked - fall through to re-check
         }

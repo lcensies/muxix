@@ -403,26 +403,50 @@ pub trait Multiplexer: Send + Sync {
 
 /// Detect which backend to use based on environment.
 ///
-/// Auto-detects from multiplexer environment variables:
-/// - `$WEZTERM_PANE` set → WezTerm
-/// - `$KITTY_WINDOW_ID` set → Kitty
-/// - `$TMUX` set → tmux
-/// - None → defaults to tmux (for backward compatibility)
+/// Checks `$WORKMUX_BACKEND` first for an explicit override, then auto-detects
+/// from multiplexer environment variables. Session-specific variables (set only
+/// when inside the multiplexer) are checked before ambient variables (inherited
+/// from the parent terminal):
+///
+/// 1. `$WORKMUX_BACKEND` set → use that backend
+/// 2. `$TMUX` set → tmux
+/// 3. `$WEZTERM_PANE` set → WezTerm
+/// 4. `$KITTY_WINDOW_ID` set → Kitty
+/// 5. None → defaults to tmux (for backward compatibility)
+///
+/// This ordering ensures that running tmux inside kitty (or wezterm) correctly
+/// selects the innermost multiplexer.
 pub fn detect_backend() -> BackendType {
-    // Auto-detect from environment
-    if std::env::var("WEZTERM_PANE").is_ok() {
-        return BackendType::WezTerm;
+    if let Ok(val) = std::env::var("WORKMUX_BACKEND") {
+        match val.parse() {
+            Ok(bt) => return bt,
+            Err(_) => {
+                eprintln!("workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty");
+            }
+        }
     }
 
-    if std::env::var("KITTY_WINDOW_ID").is_ok() {
-        return BackendType::Kitty;
-    }
+    resolve_backend(
+        std::env::var("TMUX").is_ok(),
+        std::env::var("WEZTERM_PANE").is_ok(),
+        std::env::var("KITTY_WINDOW_ID").is_ok(),
+    )
+}
 
-    if std::env::var("TMUX").is_ok() {
+/// Pure auto-detection logic, separated for testability.
+fn resolve_backend(tmux: bool, wezterm: bool, kitty: bool) -> BackendType {
+    if tmux {
         return BackendType::Tmux;
     }
 
-    // Default to tmux for backward compatibility
+    if wezterm {
+        return BackendType::WezTerm;
+    }
+
+    if kitty {
+        return BackendType::Kitty;
+    }
+
     BackendType::Tmux
 }
 
@@ -432,5 +456,50 @@ pub fn create_backend(backend_type: BackendType) -> Arc<dyn Multiplexer> {
         BackendType::Tmux => Arc::new(TmuxBackend::new()),
         BackendType::WezTerm => Arc::new(wezterm::WezTermBackend::new()),
         BackendType::Kitty => Arc::new(kitty::KittyBackend::new()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_env_defaults_to_tmux() {
+        assert_eq!(resolve_backend(false, false, false), BackendType::Tmux);
+    }
+
+    #[test]
+    fn tmux_only() {
+        assert_eq!(resolve_backend(true, false, false), BackendType::Tmux);
+    }
+
+    #[test]
+    fn wezterm_only() {
+        assert_eq!(resolve_backend(false, true, false), BackendType::WezTerm);
+    }
+
+    #[test]
+    fn kitty_only() {
+        assert_eq!(resolve_backend(false, false, true), BackendType::Kitty);
+    }
+
+    #[test]
+    fn tmux_inside_kitty() {
+        assert_eq!(resolve_backend(true, false, true), BackendType::Tmux);
+    }
+
+    #[test]
+    fn tmux_inside_wezterm() {
+        assert_eq!(resolve_backend(true, true, false), BackendType::Tmux);
+    }
+
+    #[test]
+    fn wezterm_inside_kitty() {
+        assert_eq!(resolve_backend(false, true, true), BackendType::WezTerm);
+    }
+
+    #[test]
+    fn all_env_vars_set() {
+        assert_eq!(resolve_backend(true, true, true), BackendType::Tmux);
     }
 }
