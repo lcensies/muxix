@@ -1,11 +1,8 @@
 //! Zellij multiplexer backend.
 //!
 //! Limitations:
-//! - No pane targeting (commands go to focused pane, not specific pane ID)
-//! - Pane IDs are actually tab names (one agent per tab recommended)
 //! - No percentage-based pane size control (can resize with +/- but not set exact %)
 //! - No window insertion order (tabs always append)
-//! - One status per tab (state tracked by tab name, not pane ID)
 //! - No visual status indicator (set_status is a no-op)
 
 use anyhow::{Context, Result, anyhow};
@@ -26,11 +23,33 @@ pub struct ZellijBackend {
     _private: (),
 }
 
-/// Info about a client/pane from `zellij action list-clients`
-#[derive(Debug)]
-struct ClientInfo {
-    pane_id: String,         // e.g., "terminal_1", "plugin_2"
-    running_command: String, // e.g., "vim /tmp/file.txt", "zsh"
+/// Info about a pane from `zellij action list-panes --json`
+#[derive(Debug, serde::Deserialize)]
+struct PaneInfo {
+    id: u32,
+    is_plugin: bool,
+    is_focused: bool,
+    terminal_command: Option<String>,
+    #[serde(default)]
+    tab_name: String,
+    #[serde(default)]
+    title: String,
+}
+
+/// Info about a tab from `zellij action list-tabs --json`
+#[derive(Debug, serde::Deserialize)]
+struct TabInfo {
+    position: u32,
+    name: String,
+    #[allow(dead_code)]
+    active: bool,
+}
+
+impl TabInfo {
+    /// Get tab ID (position is used as tab ID)
+    fn tab_id(&self) -> u32 {
+        self.position
+    }
 }
 
 impl Default for ZellijBackend {
@@ -47,11 +66,6 @@ impl ZellijBackend {
     /// Check if inside a zellij session
     fn is_inside_session() -> bool {
         std::env::var("ZELLIJ").is_ok()
-    }
-
-    /// Check if window exists using cached tab list (avoids repeated query-tab-names calls)
-    fn window_exists_by_full_name_cached(full_name: &str, cached_tabs: &[String]) -> bool {
-        cached_tabs.iter().any(|t| t == full_name)
     }
 
     /// Check if content contains dashboard UI patterns
@@ -75,12 +89,13 @@ impl ZellijBackend {
     }
 
     /// Query tab names from zellij
+    ///
+    /// **Deprecated:** Use `list_tabs()` for richer metadata.
+    /// Kept for backward compatibility.
     fn query_tab_names() -> Result<Vec<String>> {
-        let output = Cmd::new("zellij")
-            .args(&["action", "query-tab-names"])
-            .run_and_capture_stdout()?;
-
-        Ok(output.lines().map(|s| s.trim().to_string()).collect())
+        // Use list_tabs() internally for better efficiency
+        let tabs = Self::list_tabs()?;
+        Ok(tabs.into_iter().map(|t| t.name).collect())
     }
 
     /// Get the name of the currently focused tab by parsing dump-layout output.
@@ -108,28 +123,41 @@ impl ZellijBackend {
         None
     }
 
-    /// Parse `zellij action list-clients` output
-    /// Format: "CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND\n1 terminal_3 vim file.txt"
-    fn list_clients() -> Result<Vec<ClientInfo>> {
+    /// Query all panes using `zellij action list-panes --json`
+    fn list_panes() -> Result<Vec<PaneInfo>> {
         let output = Cmd::new("zellij")
-            .args(&["action", "list-clients"])
-            .run_and_capture_stdout()?;
+            .args(&["action", "list-panes", "--json"])
+            .run_and_capture_stdout()
+            .context("Failed to list panes")?;
 
-        let mut clients = Vec::new();
-        for line in output.lines().skip(1) {
-            // skip header
-            // Use split_whitespace to handle variable spacing in output
-            let mut parts = line.split_whitespace();
-            let _client_id = parts.next(); // skip client ID
-            if let Some(pane_id) = parts.next() {
-                let running_command: String = parts.collect::<Vec<_>>().join(" ");
-                clients.push(ClientInfo {
-                    pane_id: pane_id.to_string(),
-                    running_command,
-                });
-            }
-        }
-        Ok(clients)
+        serde_json::from_str(&output).context("Failed to parse list-panes JSON output")
+    }
+
+    /// Query all tabs using `zellij action list-tabs --json`
+    fn list_tabs() -> Result<Vec<TabInfo>> {
+        let output = Cmd::new("zellij")
+            .args(&["action", "list-tabs", "--json"])
+            .run_and_capture_stdout()
+            .context("Failed to list tabs")?;
+
+        serde_json::from_str(&output).context("Failed to parse list-tabs JSON output")
+    }
+
+    /// Get focused pane ID from list-panes output
+    fn focused_pane_id() -> Result<u32> {
+        let panes = Self::list_panes()?;
+        panes
+            .iter()
+            .find(|p| p.is_focused && !p.is_plugin)
+            .map(|p| p.id)
+            .ok_or_else(|| anyhow!("No focused terminal pane found"))
+    }
+
+    /// Get tab ID by tab name (for future use)
+    #[allow(dead_code)]
+    fn get_tab_id_by_name(name: &str) -> Result<Option<u32>> {
+        let tabs = Self::list_tabs()?;
+        Ok(tabs.into_iter().find(|t| t.name == name).map(|t| t.tab_id()))
     }
 }
 
@@ -140,9 +168,9 @@ impl Multiplexer for ZellijBackend {
 
     fn capabilities(&self) -> super::MultiplexerCaps {
         super::MultiplexerCaps {
-            pane_targeting: false,    // No pane targeting (commands go to focused pane)
+            pane_targeting: false,    // Not reliable with --pane-id, using focus instead
             supports_preview: false,  // Preview requires expensive process spawning
-            stable_pane_ids: false,   // Pane IDs are actually tab names
+            stable_pane_ids: true,    // Real numeric pane IDs are stable
             exit_on_jump: false,      // Keep dashboard open after jumping
         }
     }
@@ -160,14 +188,15 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn current_pane_id(&self) -> Option<String> {
-        // ZELLIJ_PANE_ID contains the numeric ID, we prefix with "terminal_"
+        // Fast path: Try environment variable first
         Self::pane_id_from_env()
     }
 
     fn active_pane_id(&self) -> Option<String> {
-        // In zellij, we can also try to get this from list-clients
-        // but the env var is more reliable in most contexts
-        self.current_pane_id()
+        // Reliable path: Query focused pane ID
+        Self::focused_pane_id()
+            .ok()
+            .map(|id| format!("terminal_{}", id))
     }
 
     fn get_client_active_pane_path(&self) -> Result<PathBuf> {
@@ -202,9 +231,20 @@ impl Multiplexer for ZellijBackend {
             .run()
             .with_context(|| format!("Failed to create zellij tab '{}'", full_name))?;
 
-        // Stay on the new tab - pane setup expects focus on the new window
+        // Explicitly switch to the new tab to ensure focus (avoid race conditions)
+        Cmd::new("zellij")
+            .args(&["action", "go-to-tab-name", &full_name])
+            .run()
+            .context("Failed to switch to newly created tab")?;
 
-        Ok(full_name)
+        // Small delay to ensure tab is fully ready and focused
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Query the focused pane ID (the new tab's initial pane)
+        let pane_id = Self::focused_pane_id()
+            .with_context(|| format!("Failed to get pane ID for new tab '{}'", full_name))?;
+
+        Ok(format!("terminal_{}", pane_id))
     }
 
     fn kill_window(&self, full_name: &str) -> Result<()> {
@@ -270,8 +310,9 @@ impl Multiplexer for ZellijBackend {
             return Ok(HashSet::new());
         }
 
-        let tabs = Self::query_tab_names()?;
-        Ok(tabs.into_iter().collect())
+        // Use list_tabs() for richer metadata and better efficiency
+        let tabs = Self::list_tabs()?;
+        Ok(tabs.into_iter().map(|t| t.name).collect())
     }
 
     fn filter_active_windows(&self, windows: &[String]) -> Result<Vec<String>> {
@@ -360,8 +401,10 @@ impl Multiplexer for ZellijBackend {
         }
     }
 
-    fn respawn_pane(&self, _pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
-        // Zellij doesn't have respawn-pane; send cd + command to current pane
+    fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
+        // Zellij doesn't have respawn-pane; send cd + command to currently focused pane
+        // Note: respawn_pane is always called on a newly created/focused pane, so we don't
+        // need --pane-id here (commands go to focused pane)
         let cwd_str = cwd
             .to_str()
             .ok_or_else(|| anyhow!("Path contains non-UTF8 characters"))?;
@@ -383,8 +426,8 @@ impl Multiplexer for ZellijBackend {
             Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
         }
 
-        // Return current pane ID (respawn keeps the same pane)
-        Ok(Self::pane_id_from_env().unwrap_or_else(|| "terminal_0".to_string()))
+        // Return the same pane ID (respawn keeps the same pane)
+        Ok(pane_id.to_string())
     }
 
     fn capture_pane(&self, _pane_id: &str, _lines: u16) -> Option<String> {
@@ -434,6 +477,7 @@ impl Multiplexer for ZellijBackend {
 
     fn send_keys(&self, _pane_id: &str, command: &str) -> Result<()> {
         // write-chars sends to currently focused pane
+        // Note: Zellij's --pane-id flag seems unreliable during setup, so we rely on focus
         Cmd::new("zellij")
             .args(&["action", "write-chars", command])
             .run()
@@ -508,6 +552,7 @@ impl Multiplexer for ZellijBackend {
 
     fn clear_pane(&self, _pane_id: &str) -> Result<()> {
         // Clear the focused pane to hide handshake setup commands
+        // Note: This is typically called right after respawn_pane, so the pane is focused
         Cmd::new("zellij")
             .args(&["action", "clear"])
             .run()
@@ -700,11 +745,11 @@ impl Multiplexer for ZellijBackend {
     /// Split a pane in Zellij.
     ///
     /// **Zellij CLI Limitations:**
-    /// - `target_pane_id` is ignored - Zellij's `new-pane` command always splits
-    ///   the currently focused pane, not an arbitrary target pane.
+    /// - `target_pane_id` is ignored - Zellij's `new-pane` command doesn't support
+    ///   targeting specific panes for splitting (always splits the focused pane).
     /// - `size`/`percentage` are ignored - all splits are 50/50.
-    /// - Returns the parent tab name, not an actual pane ID (Zellij doesn't
-    ///   expose new pane IDs via CLI).
+    ///
+    /// **Returns:** The real pane ID of the newly created pane.
     fn split_pane(
         &self,
         target_pane_id: &str,
@@ -714,9 +759,8 @@ impl Multiplexer for ZellijBackend {
         _percentage: Option<u8>,
         command: Option<&str>,
     ) -> Result<String> {
-        // Log the limitation for troubleshooting
         debug!(
-            "split_pane: target_pane_id '{}' ignored (Zellij CLI limitation - can only split focused pane)",
+            "split_pane: target_pane_id '{}' (note: new-pane splits focused pane only)",
             target_pane_id
         );
 
@@ -756,101 +800,90 @@ impl Multiplexer for ZellijBackend {
             Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
         }
 
-        // The new pane is now focused, get its ID from env
-        // Note: This requires the shell to have set ZELLIJ_PANE_ID
-        // For now, return a placeholder - the actual ID will be available
-        // once the shell initializes
-        Ok(Self::pane_id_from_env().unwrap_or_else(|| format!("terminal_{}", std::process::id())))
+        // The new pane is now focused, query its real pane ID
+        let pane_id = Self::focused_pane_id()
+            .context("Failed to get pane ID for new split pane")?;
+
+        Ok(format!("terminal_{}", pane_id))
     }
 
     // === State Reconciliation ===
 
     fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>> {
-        // list-clients only shows the focused pane, not arbitrary pane IDs.
-        // For focused panes, return accurate info. For unfocused panes,
-        // return fallback data to allow state persistence.
-        let clients = Self::list_clients()?;
+        let panes = Self::list_panes()?;
 
-        for client in clients {
-            if client.pane_id == pane_id {
-                let current_command = client
-                    .running_command
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("")
-                    .to_string();
+        // Extract numeric ID from "terminal_X"
+        let numeric_id: u32 = pane_id
+            .strip_prefix("terminal_")
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
 
-                return Ok(Some(LivePaneInfo {
-                    pid: 0, // Zellij doesn't expose PID
-                    current_command,
-                    working_dir: std::env::current_dir().unwrap_or_default(),
-                    title: None,
-                    session: Self::session_name(),
-                    window: Self::focused_tab_name(),
-                }));
-            }
-        }
+        // Find pane by ID
+        let pane = match panes.iter().find(|p| p.id == numeric_id && !p.is_plugin) {
+            Some(p) => p,
+            None => return Ok(None), // Pane doesn't exist
+        };
 
-        // For unfocused panes: return fallback data to allow state persistence.
-        // Validation is handled by validate_agent_alive() instead.
+        // Extract command from terminal_command (e.g., "zsh" from "/bin/zsh")
+        let current_command = pane
+            .terminal_command
+            .as_deref()
+            .and_then(|cmd| cmd.split_whitespace().next())
+            .unwrap_or("")
+            .split('/')
+            .last()
+            .unwrap_or("")
+            .to_string();
+
         Ok(Some(LivePaneInfo {
-            pid: 0,
-            current_command: String::new(),
+            pid: 0, // Zellij doesn't expose PID
+            current_command,
             working_dir: std::env::current_dir().unwrap_or_default(),
-            title: None,
+            title: Some(pane.title.clone()).filter(|t| !t.is_empty()),
             session: Self::session_name(),
-            window: None, // Can't determine for unfocused panes
+            window: Some(pane.tab_name.clone()).filter(|t| !t.is_empty()),
         }))
     }
 
-    fn validate_agent_alive(&self, state: &crate::state::AgentState, cached_tabs: Option<&[String]>) -> Result<bool> {
+    fn validate_agent_alive(&self, state: &crate::state::AgentState, _cached_tabs: Option<&[String]>) -> Result<bool> {
         use std::time::{Duration, SystemTime};
 
-        // For Zellij, we can't validate PID or command for unfocused panes.
-        // Instead, we use tab-level validation:
-        // 1. Check if the tab (window) still exists
-        // 2. Check heartbeat (if available) with 5-minute timeout
-        // 3. Fall back to staleness check (no updates in > 1 hour) for old states
-
-        // Check 1: Does the tab still exist?
-        if let Some(window_name) = &state.window_name {
-            let tab_exists = if let Some(tabs) = cached_tabs {
-                // Use cached tab list to avoid repeated query-tab-names calls
-                Self::window_exists_by_full_name_cached(window_name, tabs)
-            } else {
-                // Fall back to direct query if no cache provided
-                self.window_exists_by_full_name(window_name)?
-            };
-
-            if !tab_exists {
-                return Ok(false); // Tab was closed
-            }
-        } else {
-            // No window name stored - this is an old state file or error.
-            // Be conservative and keep it (don't delete valid agents)
-            return Ok(true);
-        }
-
-        // Check 2: Heartbeat validation (if available)
-        // Dashboard updates heartbeat every refresh, so 5 minutes without heartbeat
-        // means the pane is likely dead (dashboard would have updated it)
+        // Performance optimization: Check heartbeat first (fast path)
+        // If heartbeat is recent, skip expensive pane query
         if let Some(last_heartbeat) = state.last_heartbeat {
-            let heartbeat_timeout = Duration::from_secs(300); // 5 minutes
+            let heartbeat_fresh_threshold = Duration::from_secs(60); // 1 minute
             if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
                 let heartbeat_age_secs = now.as_secs().saturating_sub(last_heartbeat);
-                if heartbeat_age_secs > heartbeat_timeout.as_secs() {
-                    return Ok(false); // No heartbeat for > 5 minutes
+                if heartbeat_age_secs < heartbeat_fresh_threshold.as_secs() {
+                    return Ok(true); // Recent heartbeat - agent is alive
+                }
+                // If heartbeat is stale (> 5 minutes), agent is likely dead
+                if heartbeat_age_secs > 300 {
+                    return Ok(false);
                 }
             }
-        } else {
-            // Check 3: Fall back to staleness check for old states without heartbeat
-            // This maintains backward compatibility with existing state files
-            let stale_threshold = Duration::from_secs(3600); // 1 hour
-            if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-                let state_age_secs = now.as_secs().saturating_sub(state.updated_ts);
-                if state_age_secs > stale_threshold.as_secs() {
-                    return Ok(false); // Stale agent (old validation logic)
-                }
+        }
+
+        // Primary validation: Check if pane exists
+        let pane_info = self.get_live_pane_info(&state.pane_key.pane_id)?;
+        let pane_info = match pane_info {
+            Some(info) => info,
+            None => return Ok(false), // Pane doesn't exist
+        };
+
+        // Secondary validation: Check if command matches stored command
+        // This detects if the agent process was killed and replaced with something else
+        if !state.command.is_empty() && !pane_info.current_command.is_empty() {
+            // Extract base command name for comparison
+            let expected_base = state.command.split('/').last().unwrap_or(&state.command);
+            let actual_base = pane_info.current_command.split('/').last().unwrap_or(&pane_info.current_command);
+
+            if expected_base != actual_base {
+                debug!(
+                    "Agent validation: command mismatch - expected '{}', got '{}'",
+                    expected_base, actual_base
+                );
+                return Ok(false); // Different command running
             }
         }
 
@@ -862,27 +895,37 @@ impl Multiplexer for ZellijBackend {
 
         let mut result = HashMap::new();
 
-        // Zellij's list-clients only shows info for currently visible clients
-        // This is a limitation of zellij's CLI - we can't query all panes
-        let clients = Self::list_clients()?;
+        // Use list-panes to get all panes (not just focused ones)
+        let panes = Self::list_panes()?;
 
-        for client in clients {
-            let current_command = client
-                .running_command
-                .split_whitespace()
-                .next()
+        for pane in panes {
+            // Skip plugin panes, only include terminal panes
+            if pane.is_plugin {
+                continue;
+            }
+
+            let pane_id = format!("terminal_{}", pane.id);
+
+            // Extract command from terminal_command (e.g., "zsh" from "/bin/zsh")
+            let current_command = pane
+                .terminal_command
+                .as_deref()
+                .and_then(|cmd| cmd.split_whitespace().next())
+                .unwrap_or("")
+                .split('/')
+                .last()
                 .unwrap_or("")
                 .to_string();
 
             result.insert(
-                client.pane_id,
+                pane_id,
                 LivePaneInfo {
                     pid: 0, // Zellij doesn't expose PID
                     current_command,
                     working_dir: std::env::current_dir().unwrap_or_default(),
-                    title: None,
+                    title: Some(pane.title.clone()).filter(|t| !t.is_empty()),
                     session: Self::session_name(),
-                    window: Self::focused_tab_name(),
+                    window: Some(pane.tab_name.clone()).filter(|t| !t.is_empty()),
                 },
             );
         }
