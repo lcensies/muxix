@@ -521,12 +521,18 @@ pub fn run() -> Result<()> {
 
     // Always initialize nerdfont setting for prefix consistency across commands.
     // Only prompt interactively for commands that display icons.
-    let cfg = config::Config::load(None).unwrap_or_default();
+    // If config fails to load, skip the nerdfont wizard -- it will be shown on
+    // the next successful run and the real error surfaces when the command loads
+    // config with `?`.
+    let (cfg, config_ok) = match config::Config::load(None) {
+        Ok(cfg) => (cfg, true),
+        Err(_) => (config::Config::default(), false),
+    };
     let has_pua = nerdfont::config_has_pua(&cfg);
     let nerdfont_enabled = if cfg.nerdfont.is_some() || has_pua {
         // Already configured or PUA detected
         cfg.nerdfont.unwrap_or(has_pua)
-    } else if should_prompt_nerdfont(&cli.command) {
+    } else if config_ok && should_prompt_nerdfont(&cli.command) {
         // Prompt user (returns None in non-interactive mode)
         nerdfont::check_and_prompt(&cfg)?.unwrap_or(false)
     } else {
