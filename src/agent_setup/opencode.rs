@@ -1,6 +1,10 @@
 //! OpenCode status tracking setup.
 //!
-//! Detects OpenCode via the `~/.config/opencode/` directory.
+//! Detects OpenCode via its config directory. Resolution order:
+//! 1. `OPENCODE_CONFIG` env var (explicit override)
+//! 2. `XDG_CONFIG_HOME/opencode`
+//! 3. `~/.config/opencode`
+//!
 //! Installs plugin by writing `workmux-status.ts` to the plugin directory.
 
 use anyhow::{Context, Result};
@@ -13,6 +17,9 @@ use super::StatusCheck;
 const PLUGIN_SOURCE: &str = include_str!("../../.opencode/plugin/workmux-status.ts");
 
 fn opencode_config_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("OPENCODE_CONFIG") {
+        return Some(PathBuf::from(dir));
+    }
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         return Some(PathBuf::from(xdg).join("opencode"));
     }
@@ -26,6 +33,9 @@ fn plugin_path() -> Option<PathBuf> {
 /// Detect if OpenCode is present via filesystem.
 /// Returns the reason string if detected, None otherwise.
 pub fn detect() -> Option<&'static str> {
+    if std::env::var("OPENCODE_CONFIG").is_ok_and(|d| PathBuf::from(d).is_dir()) {
+        return Some("found $OPENCODE_CONFIG");
+    }
     if opencode_config_dir().is_some_and(|d| d.is_dir()) {
         return Some("found ~/.config/opencode/");
     }
