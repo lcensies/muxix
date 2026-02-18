@@ -21,6 +21,7 @@ pub mod sandbox_run;
 pub mod send;
 pub mod set_base;
 pub mod set_window_status;
+pub mod setup;
 pub mod status;
 pub mod wait;
 

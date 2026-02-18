@@ -25,9 +25,21 @@ Workmux can display the status of the agent in your tmux window list, giving you
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
 
+## Automated setup
+
+Run `workmux setup` to automatically detect your agent CLIs and install status tracking hooks:
+
+```bash
+workmux setup
+```
+
+This detects Claude Code and OpenCode by checking for their configuration directories, then offers to install the appropriate hooks. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
+
+Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
+
 ## Claude Code setup
 
-Install the workmux status plugin:
+If you prefer manual setup, install the workmux status plugin:
 
 ```bash
 claude plugin marketplace add raine/workmux
@@ -36,11 +48,9 @@ claude plugin install workmux-status
 
 Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See [.claude-plugin/plugin.json](https://github.com/raine/workmux/blob/main/.claude-plugin/plugin.json) for the hook configuration.
 
-Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
-
 ## OpenCode setup
 
-Download the workmux status plugin to your global OpenCode plugin directory:
+If you prefer manual setup, download the workmux status plugin to your global OpenCode plugin directory:
 
 ```bash
 mkdir -p ~/.config/opencode/plugin

@@ -412,6 +412,9 @@ enum Commands {
     /// Generate example .workmux.yaml configuration file
     Init,
 
+    /// Set up agent status tracking hooks
+    Setup,
+
     /// Show detailed documentation (renders README.md)
     Docs,
 
@@ -515,6 +518,15 @@ fn should_prompt_nerdfont(cmd: &Commands) -> bool {
     )
 }
 
+/// Check if the command should show the status tracking setup wizard.
+/// Excludes `Setup` to avoid double-prompting (the setup command handles its own flow).
+fn should_prompt_status_setup(cmd: &Commands) -> bool {
+    matches!(
+        cmd,
+        Commands::Add { .. } | Commands::Init | Commands::Dashboard { .. } | Commands::List { .. }
+    )
+}
+
 // --- Public Entry Point ---
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -539,6 +551,15 @@ pub fn run() -> Result<()> {
         false
     };
     nerdfont::init(Some(nerdfont_enabled), has_pua);
+
+    // Check agent status tracking setup after nerdfont.
+    // Uses a separate gate to avoid double-prompting when running `workmux setup`.
+    if config_ok
+        && should_prompt_status_setup(&cli.command)
+        && let Err(e) = crate::agent_setup::prompt_wizard()
+    {
+        tracing::debug!(?e, "status setup wizard failed");
+    }
 
     match cli.command {
         Commands::Add {
@@ -626,6 +647,7 @@ pub fn run() -> Result<()> {
         } => command::run::run(&name, command, background, keep, timeout),
         Commands::Exec { run_dir } => command::exec::run(&run_dir),
         Commands::Init => crate::config::Config::init(),
+        Commands::Setup => command::setup::run(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Dashboard { preview_size, diff } => command::dashboard::run(preview_size, diff),

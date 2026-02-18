@@ -1,3 +1,4 @@
+mod agent_setup;
 mod claude;
 mod cli;
 mod cmd;

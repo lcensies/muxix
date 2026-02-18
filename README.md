@@ -1485,22 +1485,36 @@ support can be tracked in
 
 ### Setup
 
-#### Claude Code
+Run `workmux setup` to automatically detect your agent CLIs and install status
+tracking hooks:
 
-Install the workmux status plugin in Claude Code:
+```bash
+workmux setup
+```
+
+Workmux will also prompt you on first run if it detects an agent without status
+tracking configured.
+
+Workmux automatically modifies your tmux `window-status-format` to display the
+status icons. This happens once per session and only affects the current tmux
+session (not your global config).
+
+#### Manual setup
+
+If you prefer manual setup:
+
+**Claude Code** -- install the workmux status plugin:
 
 ```
 claude plugin marketplace add raine/workmux
 claude plugin install workmux-status
 ```
 
-Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See
+Or manually add the hooks to `~/.claude/settings.json`. See
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
 configuration.
 
-#### OpenCode
-
-Download the workmux status plugin to your global OpenCode plugin directory:
+**OpenCode** -- download the workmux status plugin:
 
 ```bash
 mkdir -p ~/.config/opencode/plugin
@@ -1509,12 +1523,6 @@ curl -o ~/.config/opencode/plugin/workmux-status.ts \
 ```
 
 Restart OpenCode for the plugin to take effect.
-
----
-
-Workmux automatically modifies your tmux `window-status-format` to display the
-status icons. This happens once per session and only affects the current tmux
-session (not your global config).
 
 ### Customization
 
