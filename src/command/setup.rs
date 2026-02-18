@@ -57,6 +57,9 @@ pub fn run() -> Result<()> {
         .filter(|c| matches!(c.status, StatusCheck::NotInstalled | StatusCheck::Error(_)))
         .collect();
 
+    agent_setup::print_description("");
+    println!();
+
     if confirm_install()? {
         let mut any_failed = false;
         for check in &needs_setup {

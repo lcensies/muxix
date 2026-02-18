@@ -141,6 +141,24 @@ fn mark_declined(agents: &[Agent]) -> Result<()> {
 
 // --- Shared prompt UI ---
 
+/// Print the status tracking description with a mock tmux status bar.
+/// `prefix` is printed before each line (e.g. "│ " for the wizard, "" for the command).
+pub(crate) fn print_description(prefix: &str) {
+    println!("{prefix}  Status tracking shows agent activity in your tmux window list:");
+    println!("{prefix}");
+    println!(
+        "{prefix}    {}  2:user-auth 🤖  3:refactor 💬  {}",
+        style("1:main*").reverse(),
+        style("4:dark-mode ✅").dim(),
+    );
+    println!("{prefix}");
+    println!("{prefix}  🤖 = working  💬 = waiting for input  ✅ = done");
+    println!(
+        "{prefix}  {}",
+        style("https://workmux.raine.dev/guide/status-tracking").dim()
+    );
+}
+
 fn confirm_install() -> Result<bool> {
     let prompt = format!(
         "  Install status tracking hooks? {}{}{} ",
@@ -221,6 +239,9 @@ pub fn prompt_wizard() -> Result<()> {
         );
     }
 
+    println!("{}", dim);
+    let dim_str = format!("{}", dim);
+    print_description(&dim_str);
     println!("{}", dim);
 
     if confirm_install()? {
