@@ -39,16 +39,18 @@ struct PaneInfo {
 /// Info about a tab from `zellij action list-tabs --json`
 #[derive(Debug, serde::Deserialize)]
 struct TabInfo {
-    position: u32,
+    tab_id: u32,    // Stable tab ID (available in zellij 0.44.0+)
+    #[allow(dead_code)]
+    position: u32,  // Tab position (can change when tabs are reordered)
     name: String,
     #[allow(dead_code)]
     active: bool,
 }
 
 impl TabInfo {
-    /// Get tab ID (position is used as tab ID)
+    /// Get stable tab ID
     fn tab_id(&self) -> u32 {
-        self.position
+        self.tab_id
     }
 }
 
@@ -168,7 +170,7 @@ impl Multiplexer for ZellijBackend {
 
     fn capabilities(&self) -> super::MultiplexerCaps {
         super::MultiplexerCaps {
-            pane_targeting: false,    // Not reliable with --pane-id, using focus instead
+            pane_targeting: true,     // Reliable with --pane-id since zellij PR #4691
             supports_preview: false,  // Preview requires expensive process spawning
             stable_pane_ids: true,    // Real numeric pane IDs are stable
             exit_on_jump: false,      // Keep dashboard open after jumping
@@ -248,27 +250,51 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn kill_window(&self, full_name: &str) -> Result<()> {
-        // Must switch to tab first, then close it
-        Cmd::new("zellij")
-            .args(&["action", "go-to-tab-name", full_name])
-            .run()
-            .context("Failed to switch to tab for closing")?;
+        // Try to find the tab by name and close it by ID (zellij PR #4695)
+        let tabs = Self::list_tabs()?;
+        if let Some(tab) = tabs.iter().find(|t| t.name == full_name) {
+            let tab_id = tab.tab_id().to_string();
+            Cmd::new("zellij")
+                .args(&["action", "close-tab-by-id", &tab_id])
+                .run()
+                .context("Failed to close zellij tab by ID")?;
+        } else {
+            // Fallback to old method if tab not found
+            warn!("Tab '{}' not found, using fallback close method", full_name);
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-name", full_name])
+                .run()
+                .context("Failed to switch to tab for closing")?;
 
-        Cmd::new("zellij")
-            .args(&["action", "close-tab"])
-            .run()
-            .context("Failed to close zellij tab")?;
+            Cmd::new("zellij")
+                .args(&["action", "close-tab"])
+                .run()
+                .context("Failed to close zellij tab")?;
+        }
         Ok(())
     }
 
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()> {
-        // Zellij doesn't have run-shell, spawn a background process
+        // Try to find the tab ID for more reliable closing (zellij PR #4695)
+        let tabs = Self::list_tabs()?;
+        let tab_id = tabs
+            .iter()
+            .find(|t| t.name == full_name)
+            .map(|t| t.tab_id().to_string());
+
         let delay_secs = delay.as_secs();
-        let cmd = format!(
-            "sleep {} && zellij action go-to-tab-name '{}' && zellij action close-tab",
-            delay_secs,
-            full_name.replace('\'', "'\\''")
-        );
+
+        let cmd = if let Some(id) = tab_id {
+            // Use ID-based close (no need to focus the tab first)
+            format!("sleep {} && zellij action close-tab-by-id {}", delay_secs, id)
+        } else {
+            // Fallback to name-based close
+            format!(
+                "sleep {} && zellij action go-to-tab-name '{}' && zellij action close-tab",
+                delay_secs,
+                full_name.replace('\'', "'\\''")
+            )
+        };
 
         std::process::Command::new("sh")
             .args(["-c", &cmd])
@@ -280,10 +306,23 @@ impl Multiplexer for ZellijBackend {
 
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = format!("{}{}", prefix, name);
-        Cmd::new("zellij")
-            .args(&["action", "go-to-tab-name", &full_name])
-            .run()
-            .context("Failed to select zellij tab")?;
+
+        // Try to find the tab by name and switch by ID (zellij PR #4695)
+        let tabs = Self::list_tabs()?;
+        if let Some(tab) = tabs.iter().find(|t| t.name == full_name) {
+            let tab_id = tab.tab_id().to_string();
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-by-id", &tab_id])
+                .run()
+                .context("Failed to select zellij tab by ID")?;
+        } else {
+            // Fallback to old method
+            warn!("Tab '{}' not found, using fallback select method", full_name);
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-name", &full_name])
+                .run()
+                .context("Failed to select zellij tab")?;
+        }
         Ok(())
     }
 
@@ -353,7 +392,7 @@ impl Multiplexer for ZellijBackend {
 
     fn select_pane(&self, _pane_id: &str) -> Result<()> {
         // Zellij doesn't support selecting panes by arbitrary IDs.
-        // This is handled in our setup_panes override using focus navigation.
+        // Pane targeting is handled via --pane-id flags on write operations instead.
         Ok(())
     }
 
@@ -378,11 +417,23 @@ impl Multiplexer for ZellijBackend {
                 "switch_to_pane: found agent, switching to tab '{}'",
                 agent.window_name
             );
-            // Switch to the tab using go-to-tab-name
-            Cmd::new("zellij")
-                .args(&["action", "go-to-tab-name", &agent.window_name])
-                .run()
-                .with_context(|| format!("Failed to switch to tab '{}'", agent.window_name))?;
+
+            // Try to switch by tab ID for more reliability (zellij PR #4695)
+            let tabs = Self::list_tabs()?;
+            if let Some(tab) = tabs.iter().find(|t| t.name == agent.window_name) {
+                let tab_id = tab.tab_id().to_string();
+                Cmd::new("zellij")
+                    .args(&["action", "go-to-tab-by-id", &tab_id])
+                    .run()
+                    .with_context(|| format!("Failed to switch to tab '{}' by ID", agent.window_name))?;
+            } else {
+                // Fallback to name-based switch
+                Cmd::new("zellij")
+                    .args(&["action", "go-to-tab-name", &agent.window_name])
+                    .run()
+                    .with_context(|| format!("Failed to switch to tab '{}'", agent.window_name))?;
+            }
+
             debug!(
                 "switch_to_pane: successfully switched to tab '{}'",
                 agent.window_name
@@ -402,28 +453,28 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
-        // Zellij doesn't have respawn-pane; send cd + command to currently focused pane
-        // Note: respawn_pane is always called on a newly created/focused pane, so we don't
-        // need --pane-id here (commands go to focused pane)
+        // Zellij doesn't have respawn-pane; send cd + command to the target pane
         let cwd_str = cwd
             .to_str()
             .ok_or_else(|| anyhow!("Path contains non-UTF8 characters"))?;
 
-        // Send cd command
+        // Send cd command with pane targeting
         let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
         Cmd::new("zellij")
-            .args(&["action", "write-chars", &cd_cmd])
+            .args(&["action", "write-chars", "--pane-id", pane_id, &cd_cmd])
             .run()?;
         Cmd::new("zellij")
-            .args(&["action", "write", "13"]) // Enter
+            .args(&["action", "write", "--pane-id", pane_id, "13"]) // Enter
             .run()?;
 
         // Send actual command if provided
         if let Some(command) = cmd {
             Cmd::new("zellij")
-                .args(&["action", "write-chars", command])
+                .args(&["action", "write-chars", "--pane-id", pane_id, command])
                 .run()?;
-            Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+            Cmd::new("zellij")
+                .args(&["action", "write", "--pane-id", pane_id, "13"])
+                .run()?;
         }
 
         // Return the same pane ID (respawn keeps the same pane)
@@ -475,17 +526,16 @@ impl Multiplexer for ZellijBackend {
 
     // === Text I/O ===
 
-    fn send_keys(&self, _pane_id: &str, command: &str) -> Result<()> {
-        // write-chars sends to currently focused pane
-        // Note: Zellij's --pane-id flag seems unreliable during setup, so we rely on focus
+    fn send_keys(&self, pane_id: &str, command: &str) -> Result<()> {
+        // Use --pane-id for reliable pane targeting (zellij PR #4691)
         Cmd::new("zellij")
-            .args(&["action", "write-chars", command])
+            .args(&["action", "write-chars", "--pane-id", pane_id, command])
             .run()
             .context("Failed to send keys")?;
 
         // Send Enter (ASCII 13)
         Cmd::new("zellij")
-            .args(&["action", "write", "13"])
+            .args(&["action", "write", "--pane-id", pane_id, "13"])
             .run()
             .context("Failed to send Enter")?;
         Ok(())
@@ -499,16 +549,18 @@ impl Multiplexer for ZellijBackend {
         if profile.needs_bang_delay() && command.starts_with('!') {
             // Send ! first, wait, then rest of command
             Cmd::new("zellij")
-                .args(&["action", "write-chars", "!"])
+                .args(&["action", "write-chars", "--pane-id", pane_id, "!"])
                 .run()?;
 
             std::thread::sleep(std::time::Duration::from_millis(50));
 
             Cmd::new("zellij")
-                .args(&["action", "write-chars", &command[1..]])
+                .args(&["action", "write-chars", "--pane-id", pane_id, &command[1..]])
                 .run()?;
 
-            Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+            Cmd::new("zellij")
+                .args(&["action", "write", "--pane-id", pane_id, "13"])
+                .run()?;
 
             Ok(())
         } else {
@@ -516,16 +568,16 @@ impl Multiplexer for ZellijBackend {
         }
     }
 
-    fn send_key(&self, _pane_id: &str, key: &str) -> Result<()> {
+    fn send_key(&self, pane_id: &str, key: &str) -> Result<()> {
         // Map common key names to ASCII codes
         let code = match key {
             "Enter" => "13",
             "Escape" => "27",
             "Tab" => "9",
             _ => {
-                // For single chars, use write-chars
+                // For single chars, use write-chars with pane targeting
                 Cmd::new("zellij")
-                    .args(&["action", "write-chars", key])
+                    .args(&["action", "write-chars", "--pane-id", pane_id, key])
                     .run()
                     .context("Failed to send key")?;
                 return Ok(());
@@ -533,30 +585,39 @@ impl Multiplexer for ZellijBackend {
         };
 
         Cmd::new("zellij")
-            .args(&["action", "write", code])
+            .args(&["action", "write", "--pane-id", pane_id, code])
             .run()
             .context("Failed to send key")?;
         Ok(())
     }
 
-    fn paste_multiline(&self, _pane_id: &str, content: &str) -> Result<()> {
-        // Send line by line
+    fn paste_multiline(&self, pane_id: &str, content: &str) -> Result<()> {
+        // Send line by line with pane targeting
         for line in content.lines() {
             Cmd::new("zellij")
-                .args(&["action", "write-chars", line])
+                .args(&["action", "write-chars", "--pane-id", pane_id, line])
                 .run()?;
-            Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+            Cmd::new("zellij")
+                .args(&["action", "write", "--pane-id", pane_id, "13"])
+                .run()?;
         }
         Ok(())
     }
 
-    fn clear_pane(&self, _pane_id: &str) -> Result<()> {
-        // Clear the focused pane to hide handshake setup commands
-        // Note: This is typically called right after respawn_pane, so the pane is focused
-        Cmd::new("zellij")
-            .args(&["action", "clear"])
-            .run()
-            .context("Failed to clear pane")?;
+    fn clear_pane(&self, pane_id: &str) -> Result<()> {
+        // Clear the pane to hide handshake setup commands
+        // Try with --pane-id first, fall back to focused pane if not supported
+        let result = Cmd::new("zellij")
+            .args(&["action", "clear", "--pane-id", pane_id])
+            .run();
+
+        if result.is_err() {
+            // Fallback for older zellij versions without --pane-id support for clear
+            Cmd::new("zellij")
+                .args(&["action", "clear"])
+                .run()
+                .context("Failed to clear pane")?;
+        }
         Ok(())
     }
 
@@ -591,156 +652,8 @@ impl Multiplexer for ZellijBackend {
 
     // === Pane Setup ===
 
-    fn setup_panes(
-        &self,
-        initial_pane_id: &str,
-        panes: &[crate::config::PaneConfig],
-        working_dir: &Path,
-        options: super::types::PaneSetupOptions<'_>,
-        config: &crate::config::Config,
-        task_agent: Option<&str>,
-    ) -> Result<super::types::PaneSetupResult> {
-        use super::{agent, util};
-
-        // Zellij-specific implementation with focus navigation support
-        if panes.is_empty() {
-            return Ok(super::types::PaneSetupResult {
-                focus_pane_id: initial_pane_id.to_string(),
-            });
-        }
-
-        let mut focus_pane_id: Option<String> = None;
-        let mut focus_pane_index: Option<usize> = None;
-        let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
-        let effective_agent = task_agent.or(config.agent.as_deref());
-        let shell = self.get_default_shell()?;
-
-        for (i, pane_config) in panes.iter().enumerate() {
-            let is_first = i == 0;
-
-            // Skip non-first panes that have no split direction
-            if !is_first && pane_config.split.is_none() {
-                continue;
-            }
-
-            // Resolve command: handle <agent> placeholder and prompt injection
-            let adjusted_command = util::resolve_pane_command(
-                pane_config.command.as_deref(),
-                options.run_commands,
-                options.prompt_file_path,
-                working_dir,
-                effective_agent,
-                &shell,
-            );
-
-            let pane_id = if let Some(resolved) = adjusted_command {
-                // Spawn with handshake so we can send the command after shell is ready
-                let handshake = self.create_handshake()?;
-                let script = handshake.script_content(&shell);
-
-                let spawned_id = if is_first {
-                    self.respawn_pane(&pane_ids[0], working_dir, Some(&script))?
-                } else {
-                    let direction = pane_config.split.as_ref().unwrap();
-                    let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
-                    let target = pane_ids
-                        .get(target_idx)
-                        .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
-                    self.split_pane(
-                        target,
-                        direction,
-                        working_dir,
-                        pane_config.size,
-                        pane_config.percentage,
-                        Some(&script),
-                    )?
-                };
-
-                handshake.wait()?;
-                let _ = self.clear_pane(&spawned_id);
-                self.send_keys(&spawned_id, &resolved.command)?;
-
-                // Set working status for agent panes with injected prompts
-                if resolved.prompt_injected
-                    && agent::resolve_profile(effective_agent).needs_auto_status()
-                {
-                    let icon = config.status_icons.working();
-                    if config.status_format.unwrap_or(true) {
-                        let _ = self.ensure_status_format(&spawned_id);
-                    }
-                    let _ = self.set_status(&spawned_id, icon, false);
-                }
-
-                spawned_id
-            } else if is_first {
-                // No command for first pane - keep as-is
-                pane_ids[0].clone()
-            } else {
-                // No command - just split
-                let direction = pane_config.split.as_ref().unwrap();
-                let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
-                let target = pane_ids
-                    .get(target_idx)
-                    .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
-                self.split_pane(
-                    target,
-                    direction,
-                    working_dir,
-                    pane_config.size,
-                    pane_config.percentage,
-                    None,
-                )?
-            };
-
-            if is_first {
-                pane_ids[0] = pane_id.clone();
-            } else {
-                pane_ids.push(pane_id.clone());
-            }
-
-            if pane_config.focus {
-                focus_pane_id = Some(pane_id);
-                focus_pane_index = Some(i);
-            }
-        }
-
-        // Zellij-specific: navigate to the focused pane
-        // After pane creation, the last created pane has focus
-        if let Some(target_index) = focus_pane_index {
-            let current_index = pane_ids.len() - 1;
-            if target_index < current_index {
-                // Navigate backwards
-                let steps = current_index - target_index;
-                for _ in 0..steps {
-                    Cmd::new("zellij")
-                        .args(&["action", "focus-previous-pane"])
-                        .run()
-                        .context("Failed to navigate to previous pane")?;
-                }
-                debug!(
-                    target_index,
-                    current_index, steps, "Navigated backwards to focused pane"
-                );
-            } else if target_index > current_index {
-                // Navigate forwards
-                let steps = target_index - current_index;
-                for _ in 0..steps {
-                    Cmd::new("zellij")
-                        .args(&["action", "focus-next-pane"])
-                        .run()
-                        .context("Failed to navigate to next pane")?;
-                }
-                debug!(
-                    target_index,
-                    current_index, steps, "Navigated forwards to focused pane"
-                );
-            }
-        }
-
-        Ok(super::types::PaneSetupResult {
-            focus_pane_id: focus_pane_id.unwrap_or_else(|| pane_ids[0].clone()),
-        })
-    }
+    // Use default implementation from trait - no need for Zellij-specific workarounds
+    // now that pane targeting is reliable with --pane-id (zellij PR #4691)
 
     /// Split a pane in Zellij.
     ///
@@ -785,26 +698,32 @@ impl Multiplexer for ZellijBackend {
             .run()
             .context("Failed to split pane")?;
 
+        // The new pane is now focused, query its real pane ID
+        let pane_id = Self::focused_pane_id()
+            .context("Failed to get pane ID for new split pane")?;
+        let pane_id_str = format!("terminal_{}", pane_id);
+
         // zellij's --cwd doesn't always work, so send cd command as fallback
+        // Now we can target the specific pane instead of relying on focus
         let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
         Cmd::new("zellij")
-            .args(&["action", "write-chars", &cd_cmd])
+            .args(&["action", "write-chars", "--pane-id", &pane_id_str, &cd_cmd])
             .run()?;
-        Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+        Cmd::new("zellij")
+            .args(&["action", "write", "--pane-id", &pane_id_str, "13"])
+            .run()?;
 
         // Send command if provided
         if let Some(cmd) = command {
             Cmd::new("zellij")
-                .args(&["action", "write-chars", cmd])
+                .args(&["action", "write-chars", "--pane-id", &pane_id_str, cmd])
                 .run()?;
-            Cmd::new("zellij").args(&["action", "write", "13"]).run()?;
+            Cmd::new("zellij")
+                .args(&["action", "write", "--pane-id", &pane_id_str, "13"])
+                .run()?;
         }
 
-        // The new pane is now focused, query its real pane ID
-        let pane_id = Self::focused_pane_id()
-            .context("Failed to get pane ID for new split pane")?;
-
-        Ok(format!("terminal_{}", pane_id))
+        Ok(pane_id_str)
     }
 
     // === State Reconciliation ===
@@ -945,27 +864,52 @@ impl Multiplexer for ZellijBackend {
             format!("'{}'", s.replace('\'', r#"'\''"#))
         }
 
+        // Resolve tab IDs upfront for more reliable targeting (zellij PR #4695)
+        let tabs = Self::list_tabs()?;
+        let source_tab_id = tabs
+            .iter()
+            .find(|t| t.name == source_window)
+            .map(|t| t.tab_id().to_string());
+        let target_tab_id = target_window.and_then(|name| {
+            tabs.iter()
+                .find(|t| t.name == name)
+                .map(|t| t.tab_id().to_string())
+        });
+
         let delay_secs = delay.as_secs_f64();
 
         // Build a robust shell script that survives the window closing
         // trap '' HUP ensures the script continues even when the PTY is destroyed
         let mut script = format!("trap '' HUP; sleep {:.1};", delay_secs);
 
-        // 1. Navigate to target (if exists)
-        if let Some(target) = target_window {
+        // 1. Navigate to target (if exists) using tab ID for reliability
+        if let Some(target_id) = target_tab_id {
+            script.push_str(&format!(
+                " zellij action go-to-tab-by-id {} >/dev/null 2>&1;",
+                target_id
+            ));
+        } else if let Some(target) = target_window {
+            // Fallback to name-based if ID not found
             script.push_str(&format!(
                 " zellij action go-to-tab-name {} >/dev/null 2>&1;",
                 shell_escape(target)
             ));
         }
 
-        // 2. Close source tab
-        // In Zellij, we must focus the tab to close it
-        script.push_str(&format!(
-            " zellij action go-to-tab-name {} >/dev/null 2>&1;",
-            shell_escape(source_window)
-        ));
-        script.push_str(" zellij action close-tab >/dev/null 2>&1;");
+        // 2. Close source tab by ID (no need to focus first with close-tab-by-id)
+        if let Some(src_id) = source_tab_id {
+            script.push_str(&format!(
+                " zellij action close-tab-by-id {} >/dev/null 2>&1;",
+                src_id
+            ));
+        } else {
+            // Fallback to old method if tab ID not found
+            script.push_str(&format!(
+                " zellij action go-to-tab-name {} >/dev/null 2>&1;",
+                shell_escape(source_window)
+            ));
+            script.push_str(" zellij action close-tab >/dev/null 2>&1;");
+        }
 
         // 3. Run cleanup script
         if !cleanup_script.is_empty() {
