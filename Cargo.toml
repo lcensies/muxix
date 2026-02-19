@@ -11,6 +11,8 @@ repository = "https://github.com/raine/workmux"
 include = [
     "/src/**/*",
     "/docker/**/*",
+    "/.claude-plugin/**/*",
+    "/.opencode/plugin/**/*",
     "/Cargo.toml",
     "/Cargo.lock",
     "/CHANGELOG.md",
