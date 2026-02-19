@@ -275,9 +275,18 @@ fn run_container(
         info!(toolchain = ?detected, "wrapping host-exec commands with toolchain environment");
     }
 
-    // Create shims directory for host-exec (on host, will be bind-mounted into container)
+    // Create shims directory for host-exec (on host, will be bind-mounted into container).
+    // Use ~/.cache/workmux/shims/ instead of system temp (/var/folders/... on macOS)
+    // so the path is inside ~ and accessible to VM-based runtimes like Colima.
     let _shim_dir = {
-        let dir = tempfile::tempdir().context("Failed to create shim temp dir")?;
+        let home = home::home_dir().context("Could not determine home directory")?;
+        let shims_base = home.join(".cache/workmux/shims");
+        std::fs::create_dir_all(&shims_base)
+            .with_context(|| format!("Failed to create {}", shims_base.display()))?;
+        let dir = tempfile::Builder::new()
+            .prefix("shims-")
+            .tempdir_in(&shims_base)
+            .context("Failed to create shim temp dir")?;
         shims::create_shim_directory(dir.path(), &host_commands)?;
         info!(commands = ?host_commands, "created host-exec shims");
         Some(dir)
