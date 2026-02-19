@@ -146,13 +146,27 @@ impl ZellijBackend {
     }
 
     /// Get focused pane ID from list-panes output
+    ///
+    /// Returns the focused pane in the currently active tab.
     fn focused_pane_id() -> Result<u32> {
         let panes = Self::list_panes()?;
-        panes
-            .iter()
-            .find(|p| p.is_focused && !p.is_plugin)
-            .map(|p| p.id)
-            .ok_or_else(|| anyhow!("No focused terminal pane found"))
+        let focused_tab = Self::focused_tab_name();
+
+        // Filter by focused tab if we know which tab is focused
+        if let Some(tab_name) = focused_tab {
+            panes
+                .iter()
+                .find(|p| p.is_focused && !p.is_plugin && p.tab_name == tab_name)
+                .map(|p| p.id)
+                .ok_or_else(|| anyhow!("No focused terminal pane found in tab '{}'", tab_name))
+        } else {
+            // Fallback: just find any focused terminal pane
+            panes
+                .iter()
+                .find(|p| p.is_focused && !p.is_plugin)
+                .map(|p| p.id)
+                .ok_or_else(|| anyhow!("No focused terminal pane found"))
+        }
     }
 
     /// Get tab ID by tab name (for future use)
@@ -390,9 +404,72 @@ impl Multiplexer for ZellijBackend {
 
     // === Pane Management ===
 
-    fn select_pane(&self, _pane_id: &str) -> Result<()> {
-        // Zellij doesn't support selecting panes by arbitrary IDs.
-        // Pane targeting is handled via --pane-id flags on write operations instead.
+    fn select_pane(&self, pane_id: &str) -> Result<()> {
+        // Zellij doesn't have a focus-pane-by-id action, so we need to navigate
+        // using focus-next-pane or focus-previous-pane
+
+        // Extract numeric ID from pane_id
+        let target_id: u32 = pane_id
+            .strip_prefix("terminal_")
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
+
+        // Get focused tab name to filter panes
+        let focused_tab = Self::focused_tab_name()
+            .ok_or_else(|| anyhow!("Could not determine focused tab"))?;
+
+        // Get all panes in the current tab
+        let all_panes = Self::list_panes()?;
+        let tab_panes: Vec<_> = all_panes
+            .iter()
+            .filter(|p| !p.is_plugin && p.tab_name == focused_tab)
+            .collect();
+
+        // Find current and target indices
+        let current_idx = tab_panes
+            .iter()
+            .position(|p| p.is_focused)
+            .ok_or_else(|| anyhow!("No focused pane found in current tab"))?;
+
+        let target_idx = tab_panes
+            .iter()
+            .position(|p| p.id == target_id)
+            .ok_or_else(|| anyhow!("Target pane {} not found in current tab", pane_id))?;
+
+        if current_idx == target_idx {
+            // Already focused
+            return Ok(());
+        }
+
+        // Navigate to target pane
+        if target_idx < current_idx {
+            // Navigate backwards
+            let steps = current_idx - target_idx;
+            debug!(
+                current_idx,
+                target_idx, steps, "Navigating backwards to focused pane"
+            );
+            for _ in 0..steps {
+                Cmd::new("zellij")
+                    .args(&["action", "focus-previous-pane"])
+                    .run()
+                    .context("Failed to navigate to previous pane")?;
+            }
+        } else {
+            // Navigate forwards
+            let steps = target_idx - current_idx;
+            debug!(
+                current_idx,
+                target_idx, steps, "Navigating forwards to focused pane"
+            );
+            for _ in 0..steps {
+                Cmd::new("zellij")
+                    .args(&["action", "focus-next-pane"])
+                    .run()
+                    .context("Failed to navigate to next pane")?;
+            }
+        }
+
         Ok(())
     }
 
@@ -453,6 +530,28 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
+        use tracing::{debug, warn};
+
+        debug!(pane_id, "respawn_pane: starting");
+
+        // Verify the pane exists
+        let panes = Self::list_panes().context("Failed to list panes in respawn_pane")?;
+        let numeric_id: u32 = pane_id
+            .strip_prefix("terminal_")
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
+
+        let pane_exists = panes.iter().any(|p| p.id == numeric_id && !p.is_plugin);
+        if !pane_exists {
+            warn!(pane_id, "respawn_pane: pane not found, available panes: {:?}",
+                panes.iter().map(|p| format!("terminal_{}", p.id)).collect::<Vec<_>>());
+            return Err(anyhow!("Pane {} not found", pane_id));
+        }
+
+        // Small delay to ensure pane is ready to receive commands with --pane-id
+        // Zellij's --pane-id targeting requires the pane to be fully initialized
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
         // Zellij doesn't have respawn-pane; send cd + command to the target pane
         let cwd_str = cwd
             .to_str()
@@ -460,6 +559,7 @@ impl Multiplexer for ZellijBackend {
 
         // Send cd command with pane targeting
         let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
+        debug!(pane_id, cd_cmd, "respawn_pane: sending cd command");
         Cmd::new("zellij")
             .args(&["action", "write-chars", "--pane-id", pane_id, &cd_cmd])
             .run()?;
@@ -469,6 +569,7 @@ impl Multiplexer for ZellijBackend {
 
         // Send actual command if provided
         if let Some(command) = cmd {
+            debug!(pane_id, command = &command[..command.len().min(100)], "respawn_pane: sending handshake script");
             Cmd::new("zellij")
                 .args(&["action", "write-chars", "--pane-id", pane_id, command])
                 .run()?;
@@ -477,6 +578,7 @@ impl Multiplexer for ZellijBackend {
                 .run()?;
         }
 
+        debug!(pane_id, "respawn_pane: completed");
         // Return the same pane ID (respawn keeps the same pane)
         Ok(pane_id.to_string())
     }
