@@ -253,10 +253,8 @@ impl Multiplexer for ZellijBackend {
             .run()
             .context("Failed to switch to newly created tab")?;
 
-        // Small delay to ensure tab is fully ready and focused
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
         // Query the focused pane ID (the new tab's initial pane)
+        // If this succeeds, the tab is fully ready
         let pane_id = Self::focused_pane_id()
             .with_context(|| format!("Failed to get pane ID for new tab '{}'", full_name))?;
 
@@ -530,27 +528,24 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
-        use tracing::{debug, warn};
+        use tracing::debug;
 
         debug!(pane_id, "respawn_pane: starting");
 
-        // Verify the pane exists
+        // Verify the pane exists - if list-panes returns it, it's ready for --pane-id targeting
         let panes = Self::list_panes().context("Failed to list panes in respawn_pane")?;
         let numeric_id: u32 = pane_id
             .strip_prefix("terminal_")
             .and_then(|s| s.parse().ok())
             .ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
 
-        let pane_exists = panes.iter().any(|p| p.id == numeric_id && !p.is_plugin);
-        if !pane_exists {
-            warn!(pane_id, "respawn_pane: pane not found, available panes: {:?}",
-                panes.iter().map(|p| format!("terminal_{}", p.id)).collect::<Vec<_>>());
-            return Err(anyhow!("Pane {} not found", pane_id));
+        if !panes.iter().any(|p| p.id == numeric_id && !p.is_plugin) {
+            return Err(anyhow!(
+                "Pane {} not found. Available panes: {:?}",
+                pane_id,
+                panes.iter().map(|p| format!("terminal_{}", p.id)).collect::<Vec<_>>()
+            ));
         }
-
-        // Small delay to ensure pane is ready to receive commands with --pane-id
-        // Zellij's --pane-id targeting requires the pane to be fully initialized
-        std::thread::sleep(std::time::Duration::from_millis(100));
 
         // Zellij doesn't have respawn-pane; send cd + command to the target pane
         let cwd_str = cwd
