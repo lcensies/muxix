@@ -16,6 +16,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.118 (2026-02-19)
+
+- Added `workmux setup` command to automatically detect installed agents and
+  configure status tracking hooks, with a guided install prompt and a tmux
+  status bar preview showing what the icons look like
+- Fixed sandbox failing to start with Colima (Docker Desktop alternative for
+  macOS) due to shim directories being created in system temp paths that
+  Colima's VM cannot access
+
 ## v0.1.117 (2026-02-16)
 
 - Fixed backend detection for nested multiplexers (e.g., tmux inside kitty or
