@@ -23,13 +23,22 @@ pub struct ZellijBackend {
     _private: (),
 }
 
-/// Info about a pane from `zellij action list-panes --json`
+/// Info about a pane from `zellij action list-panes --json --tab --command`
 #[derive(Debug, serde::Deserialize)]
 struct PaneInfo {
     id: u32,
     is_plugin: bool,
     is_focused: bool,
     terminal_command: Option<String>,
+    /// Running command (more reliable than terminal_command, available with --command flag)
+    #[serde(default)]
+    pane_command: Option<String>,
+    /// Pane's current working directory (available with --command flag)
+    #[serde(default)]
+    pane_cwd: Option<String>,
+    /// Stable tab ID (available with --tab flag)
+    #[serde(default)]
+    tab_id: Option<u32>,
     #[serde(default)]
     tab_name: String,
     #[serde(default)]
@@ -90,45 +99,27 @@ impl ZellijBackend {
             .map(|id| format!("terminal_{}", id))
     }
 
-    /// Query tab names from zellij
-    ///
-    /// **Deprecated:** Use `list_tabs()` for richer metadata.
-    /// Kept for backward compatibility.
-    fn query_tab_names() -> Result<Vec<String>> {
-        // Use list_tabs() internally for better efficiency
-        let tabs = Self::list_tabs()?;
-        Ok(tabs.into_iter().map(|t| t.name).collect())
-    }
-
-    /// Get the name of the currently focused tab by parsing dump-layout output.
+    /// Get the name of the currently focused tab using `current-tab-info`.
     fn focused_tab_name() -> Option<String> {
         let output = Cmd::new("zellij")
-            .args(&["action", "dump-layout"])
+            .args(&["action", "current-tab-info"])
             .run_and_capture_stdout()
             .ok()?;
 
-        // Parse: tab name="TabName" focus=true
-        // The focused tab has focus=true in its attributes
-        for line in output.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("tab ") && trimmed.contains("focus=true") {
-                // Extract name="..." from the line
-                if let Some(name_start) = trimmed.find("name=\"") {
-                    let after_name = &trimmed[name_start + 6..];
-                    if let Some(name_end) = after_name.find('"') {
-                        return Some(after_name[..name_end].to_string());
-                    }
-                }
-            }
-        }
-
-        None
+        // Output format: "name: Tab #1\nid: 0\nposition: 0"
+        output
+            .lines()
+            .find(|l| l.starts_with("name: "))
+            .map(|l| l["name: ".len()..].to_string())
     }
 
-    /// Query all panes using `zellij action list-panes --json`
+    /// Query all panes using `zellij action list-panes --json --tab --command`
+    ///
+    /// The `--tab` flag includes `tab_id`, `tab_name`, `tab_position`.
+    /// The `--command` flag includes `pane_command`, `pane_cwd`.
     fn list_panes() -> Result<Vec<PaneInfo>> {
         let output = Cmd::new("zellij")
-            .args(&["action", "list-panes", "--json"])
+            .args(&["action", "list-panes", "--json", "--tab", "--command"])
             .run_and_capture_stdout()
             .context("Failed to list panes")?;
 
@@ -228,7 +219,7 @@ impl Multiplexer for ZellijBackend {
     // === Window/Tab Management ===
 
     /// Create a new tab in Zellij.
-    /// Returns: Tab name (used as "pane_id" for Zellij operations)
+    /// Returns: Pane ID of the initial pane (e.g., "terminal_5")
     fn create_window(&self, params: CreateWindowParams) -> Result<String> {
         let full_name = format!("{}{}", params.prefix, params.name);
         let cwd_str = params
@@ -240,25 +231,27 @@ impl Multiplexer for ZellijBackend {
             debug!("Zellij does not support window insertion order - ignoring after_window");
         }
 
-        Cmd::new("zellij")
+        // new-tab returns tab_id on stdout and auto-focuses the new tab
+        let tab_id_str = Cmd::new("zellij")
             .args(&[
-                "action", "new-tab", "--layout", "default", "--name", &full_name, "--cwd", cwd_str,
+                "action", "new-tab", "--name", &full_name, "--cwd", cwd_str,
             ])
-            .run()
+            .run_and_capture_stdout()
             .with_context(|| format!("Failed to create zellij tab '{}'", full_name))?;
 
-        // Explicitly switch to the new tab to ensure focus (avoid race conditions)
-        Cmd::new("zellij")
-            .args(&["action", "go-to-tab-name", &full_name])
-            .run()
-            .context("Failed to switch to newly created tab")?;
+        let tab_id: u32 = tab_id_str
+            .trim()
+            .parse()
+            .with_context(|| format!("Invalid tab ID from new-tab: '{}'", tab_id_str.trim()))?;
 
-        // Query the focused pane ID (the new tab's initial pane)
-        // If this succeeds, the tab is fully ready
-        let pane_id = Self::focused_pane_id()
-            .with_context(|| format!("Failed to get pane ID for new tab '{}'", full_name))?;
+        // Find the initial pane in the new tab by tab_id
+        let panes = Self::list_panes()?;
+        let pane = panes
+            .iter()
+            .find(|p| !p.is_plugin && p.tab_id == Some(tab_id))
+            .ok_or_else(|| anyhow!("No terminal pane found in new tab {}", tab_id))?;
 
-        Ok(format!("terminal_{}", pane_id))
+        Ok(format!("terminal_{}", pane.id))
     }
 
     fn kill_window(&self, full_name: &str) -> Result<()> {
@@ -348,8 +341,8 @@ impl Multiplexer for ZellijBackend {
             return Ok(false);
         }
 
-        let tabs = Self::query_tab_names()?;
-        Ok(tabs.iter().any(|t| t == full_name))
+        let tabs = Self::list_tabs()?;
+        Ok(tabs.iter().any(|t| t.name == full_name))
     }
 
     fn current_window_name(&self) -> Result<Option<String>> {
@@ -528,8 +521,6 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
-        use tracing::debug;
-
         debug!(pane_id, "respawn_pane: starting");
 
         // Verify the pane exists - if list-panes returns it, it's ready for --pane-id targeting
@@ -552,29 +543,23 @@ impl Multiplexer for ZellijBackend {
             .to_str()
             .ok_or_else(|| anyhow!("Path contains non-UTF8 characters"))?;
 
-        // Send cd command with pane targeting
-        let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
-        debug!(pane_id, cd_cmd, "respawn_pane: sending cd command");
-        Cmd::new("zellij")
-            .args(&["action", "write-chars", "--pane-id", pane_id, &cd_cmd])
-            .run()?;
-        Cmd::new("zellij")
-            .args(&["action", "write", "--pane-id", pane_id, "13"]) // Enter
-            .run()?;
+        // Combine cd + command into a single write-chars call to reduce subprocess spawns
+        let combined = if let Some(command) = cmd {
+            debug!(pane_id, command = &command[..command.len().min(100)], "respawn_pane: sending cd + command");
+            format!("cd '{}' && {}", cwd_str.replace('\'', "'\\''"), command)
+        } else {
+            debug!(pane_id, "respawn_pane: sending cd command");
+            format!("cd '{}'", cwd_str.replace('\'', "'\\''"))
+        };
 
-        // Send actual command if provided
-        if let Some(command) = cmd {
-            debug!(pane_id, command = &command[..command.len().min(100)], "respawn_pane: sending handshake script");
-            Cmd::new("zellij")
-                .args(&["action", "write-chars", "--pane-id", pane_id, command])
-                .run()?;
-            Cmd::new("zellij")
-                .args(&["action", "write", "--pane-id", pane_id, "13"])
-                .run()?;
-        }
+        Cmd::new("zellij")
+            .args(&["action", "write-chars", "--pane-id", pane_id, &combined])
+            .run()?;
+        Cmd::new("zellij")
+            .args(&["action", "write", "--pane-id", pane_id, "13"])
+            .run()?;
 
         debug!(pane_id, "respawn_pane: completed");
-        // Return the same pane ID (respawn keeps the same pane)
         Ok(pane_id.to_string())
     }
 
@@ -759,7 +744,7 @@ impl Multiplexer for ZellijBackend {
     ///   targeting specific panes for splitting (always splits the focused pane).
     /// - `size`/`percentage` are ignored - all splits are 50/50.
     ///
-    /// **Returns:** The real pane ID of the newly created pane.
+    /// **Returns:** The pane ID from `new-pane` stdout (e.g., "terminal_5").
     fn split_pane(
         &self,
         target_pane_id: &str,
@@ -783,44 +768,26 @@ impl Multiplexer for ZellijBackend {
             .to_str()
             .ok_or_else(|| anyhow!("Path contains non-UTF8 characters"))?;
 
-        Cmd::new("zellij")
-            .args(&[
-                "action",
-                "new-pane",
-                "--direction",
-                dir_arg,
-                "--cwd",
-                cwd_str,
-            ])
-            .run()
-            .context("Failed to split pane")?;
+        let mut cmd = Cmd::new("zellij").args(&[
+            "action",
+            "new-pane",
+            "--direction",
+            dir_arg,
+            "--cwd",
+            cwd_str,
+        ]);
 
-        // The new pane is now focused, query its real pane ID
-        let pane_id = Self::focused_pane_id()
-            .context("Failed to get pane ID for new split pane")?;
-        let pane_id_str = format!("terminal_{}", pane_id);
-
-        // zellij's --cwd doesn't always work, so send cd command as fallback
-        // Now we can target the specific pane instead of relying on focus
-        let cd_cmd = format!("cd '{}'", cwd_str.replace('\'', "'\\''"));
-        Cmd::new("zellij")
-            .args(&["action", "write-chars", "--pane-id", &pane_id_str, &cd_cmd])
-            .run()?;
-        Cmd::new("zellij")
-            .args(&["action", "write", "--pane-id", &pane_id_str, "13"])
-            .run()?;
-
-        // Send command if provided
-        if let Some(cmd) = command {
-            Cmd::new("zellij")
-                .args(&["action", "write-chars", "--pane-id", &pane_id_str, cmd])
-                .run()?;
-            Cmd::new("zellij")
-                .args(&["action", "write", "--pane-id", &pane_id_str, "13"])
-                .run()?;
+        // Pass command inline via -- syntax (runs as `sh -c 'script'`)
+        if let Some(script) = command {
+            cmd = cmd.args(&["--", "sh", "-c", script]);
         }
 
-        Ok(pane_id_str)
+        // new-pane returns pane ID on stdout (e.g., "terminal_5")
+        let pane_id = cmd
+            .run_and_capture_stdout()
+            .context("Failed to split pane")?;
+
+        Ok(pane_id.trim().to_string())
     }
 
     // === State Reconciliation ===
@@ -840,10 +807,11 @@ impl Multiplexer for ZellijBackend {
             None => return Ok(None), // Pane doesn't exist
         };
 
-        // Extract command from terminal_command (e.g., "zsh" from "/bin/zsh")
+        // Use pane_command (more reliable) with terminal_command as fallback
         let current_command = pane
-            .terminal_command
+            .pane_command
             .as_deref()
+            .or(pane.terminal_command.as_deref())
             .and_then(|cmd| cmd.split_whitespace().next())
             .unwrap_or("")
             .split('/')
@@ -851,10 +819,17 @@ impl Multiplexer for ZellijBackend {
             .unwrap_or("")
             .to_string();
 
+        // Use actual pane_cwd instead of process cwd
+        let working_dir = pane
+            .pane_cwd
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
         Ok(Some(LivePaneInfo {
             pid: 0, // Zellij doesn't expose PID
             current_command,
-            working_dir: std::env::current_dir().unwrap_or_default(),
+            working_dir,
             title: Some(pane.title.clone()).filter(|t| !t.is_empty()),
             session: Self::session_name(),
             window: Some(pane.tab_name.clone()).filter(|t| !t.is_empty()),
@@ -922,10 +897,11 @@ impl Multiplexer for ZellijBackend {
 
             let pane_id = format!("terminal_{}", pane.id);
 
-            // Extract command from terminal_command (e.g., "zsh" from "/bin/zsh")
+            // Use pane_command (more reliable) with terminal_command as fallback
             let current_command = pane
-                .terminal_command
+                .pane_command
                 .as_deref()
+                .or(pane.terminal_command.as_deref())
                 .and_then(|cmd| cmd.split_whitespace().next())
                 .unwrap_or("")
                 .split('/')
@@ -933,12 +909,19 @@ impl Multiplexer for ZellijBackend {
                 .unwrap_or("")
                 .to_string();
 
+            // Use actual pane_cwd instead of process cwd
+            let working_dir = pane
+                .pane_cwd
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
             result.insert(
                 pane_id,
                 LivePaneInfo {
                     pid: 0, // Zellij doesn't expose PID
                     current_command,
-                    working_dir: std::env::current_dir().unwrap_or_default(),
+                    working_dir,
                     title: Some(pane.title.clone()).filter(|t| !t.is_empty()),
                     session: Self::session_name(),
                     window: Some(pane.tab_name.clone()).filter(|t| !t.is_empty()),
