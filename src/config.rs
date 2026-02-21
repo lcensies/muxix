@@ -109,6 +109,18 @@ impl DashboardConfig {
     }
 }
 
+/// Configuration for a single window within a session (session mode only)
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct WindowConfig {
+    /// Optional window name. If omitted, tmux auto-names based on running command.
+    #[serde(default)]
+    pub name: Option<String>,
+
+    /// Panes within this window. Same schema as top-level `panes`.
+    #[serde(default)]
+    pub panes: Option<Vec<PaneConfig>>,
+}
+
 /// Configuration for the workmux tool, read from .workmux.yaml
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Config {
@@ -125,9 +137,13 @@ pub struct Config {
     #[serde(default)]
     pub window_prefix: Option<String>,
 
-    /// Tmux pane configuration
+    /// Tmux pane configuration (single window layout, mutually exclusive with `windows`)
     #[serde(default)]
     pub panes: Option<Vec<PaneConfig>>,
+
+    /// Multiple window configuration (session mode only, mutually exclusive with `panes`)
+    #[serde(default)]
+    pub windows: Option<Vec<WindowConfig>>,
 
     /// Commands to run after creating the worktree
     #[serde(default)]
@@ -871,6 +887,26 @@ impl WorktreeNaming {
     }
 }
 
+/// Validate windows configuration
+pub fn validate_windows_config(windows: &[WindowConfig]) -> anyhow::Result<()> {
+    if windows.is_empty() {
+        anyhow::bail!("'windows' list must not be empty.");
+    }
+    for (i, window) in windows.iter().enumerate() {
+        if let Some(panes) = &window.panes {
+            validate_panes_config(panes).map_err(|e| {
+                anyhow::anyhow!(
+                    "Window {} ({}): {}",
+                    i,
+                    window.name.as_deref().unwrap_or("unnamed"),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 /// Validate pane configuration
 pub fn validate_panes_config(panes: &[PaneConfig]) -> anyhow::Result<()> {
     for (i, pane) in panes.iter().enumerate() {
@@ -961,8 +997,8 @@ impl Config {
                 || repo_root.join("package-lock.json").exists()
                 || repo_root.join("yarn.lock").exists();
 
-            // Default panes based on project type
-            if config.panes.is_none() {
+            // Default panes based on project type (only when windows is not set)
+            if config.panes.is_none() && config.windows.is_none() {
                 if repo_root.join("CLAUDE.md").exists() {
                     config.panes = Some(Self::claude_default_panes());
                 } else {
@@ -976,7 +1012,7 @@ impl Config {
             }
         } else {
             // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
-            if config.panes.is_none() {
+            if config.panes.is_none() && config.windows.is_none() {
                 config.panes = Some(Self::default_panes());
             }
         }
@@ -986,6 +1022,7 @@ impl Config {
         debug!(
             agent = ?config.agent,
             panes = config.panes.as_ref().map_or(0, |p| p.len()),
+            windows = config.windows.as_ref().map_or(0, |w| w.len()),
             "config:loaded"
         );
         Ok(config)
@@ -1022,7 +1059,7 @@ impl Config {
                 || defaults_root.join("package-lock.json").exists()
                 || defaults_root.join("yarn.lock").exists();
 
-            if config.panes.is_none() {
+            if config.panes.is_none() && config.windows.is_none() {
                 if defaults_root.join("CLAUDE.md").exists() {
                     config.panes = Some(Self::claude_default_panes());
                 } else {
@@ -1033,7 +1070,7 @@ impl Config {
             if config.pre_remove.is_none() && has_node_modules {
                 config.pre_remove = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
             }
-        } else if config.panes.is_none() {
+        } else if config.panes.is_none() && config.windows.is_none() {
             config.panes = Some(Self::default_panes());
         }
 
@@ -1042,6 +1079,7 @@ impl Config {
         debug!(
             agent = ?config.agent,
             panes = config.panes.as_ref().map_or(0, |p| p.len()),
+            windows = config.windows.as_ref().map_or(0, |w| w.len()),
             has_location = location.is_some(),
             "config:loaded with location"
         );
@@ -1129,6 +1167,9 @@ impl Config {
             }
         }
 
+        // Track which layout type the project config specified
+        let project_has_windows = project.windows.is_some();
+
         /// Macro to merge Option fields where project overrides global.
         /// Reduces boilerplate for simple `project.field.or(self.field)` patterns.
         macro_rules! merge_options {
@@ -1151,10 +1192,22 @@ impl Config {
             merge_strategy,
             worktree_prefix,
             panes,
+            windows,
             status_format,
             auto_name,
             nerdfont,
         );
+
+        // windows and panes are mutually exclusive: project layout choice wins entirely
+        if merged.windows.is_some() && merged.panes.is_some() {
+            // If project set windows, clear panes (project intended multi-window)
+            // If project set panes, clear windows (project intended single-window)
+            if project_has_windows {
+                merged.panes = None;
+            } else {
+                merged.windows = None;
+            }
+        }
 
         // Special case: worktree_naming (project wins if not default)
         merged.worktree_naming = if project.worktree_naming != WorktreeNaming::default() {
@@ -1443,12 +1496,12 @@ impl Config {
 # Tmux
 #-------------------------------------------------------------------------------
 
-# Target for tmux operations: window (default) or session.
+# Mode for tmux operations: window (default) or session.
 # - window: Create windows within the current tmux session
 # - session: Create new tmux sessions for each worktree (useful for session-per-project workflows)
-# target: session
+# mode: session
 
-# Custom tmux pane layout.
+# Custom tmux pane layout (mutually exclusive with 'windows').
 # Default: Two-pane layout with shell and clear command.
 # panes:
 #   - command: pnpm install
@@ -1457,6 +1510,22 @@ impl Config {
 #   - command: clear
 #     split: vertical
 #     size: 5
+
+# Multiple windows per session (session mode only, mutually exclusive with 'panes').
+# Each window can have its own pane layout. Unnamed windows get tmux's
+# automatic naming based on the running command.
+# windows:
+#   - name: editor
+#     panes:
+#       - command: <agent>
+#         focus: true
+#       - split: horizontal
+#         size: 20
+#   - name: tests
+#     panes:
+#       - command: just test --watch
+#   - panes:
+#       - command: tail -f app.log
 
 # Auto-apply agent status icons to tmux window format.
 # Default: true
