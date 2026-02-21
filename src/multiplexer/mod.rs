@@ -88,6 +88,14 @@ pub trait Multiplexer: Send + Sync {
     /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
     fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String>;
 
+    /// Generate a shell command string to switch to a session by full name.
+    /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
+    fn shell_switch_session_cmd(&self, full_name: &str) -> Result<String>;
+
+    /// Generate a shell command string to kill a session by full name.
+    /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
+    fn shell_kill_session_cmd(&self, full_name: &str) -> Result<String>;
+
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 

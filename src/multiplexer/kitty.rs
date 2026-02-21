@@ -467,6 +467,18 @@ impl Multiplexer for KittyBackend {
         ))
     }
 
+    fn shell_switch_session_cmd(&self, _full_name: &str) -> Result<String> {
+        Err(anyhow!(
+            "Session mode is not supported in Kitty. Use window mode instead."
+        ))
+    }
+
+    fn shell_kill_session_cmd(&self, _full_name: &str) -> Result<String> {
+        Err(anyhow!(
+            "Session mode is not supported in Kitty. Use window mode instead."
+        ))
+    }
+
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
         let panes = self.list_panes()?;
