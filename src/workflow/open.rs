@@ -34,7 +34,7 @@ pub fn open(
         if options.mode != crate::config::MuxMode::Session {
             anyhow::bail!(
                 "'windows' configuration requires 'mode: session'. \
-                 Either add 'mode: session' to your config or use --session flag."
+                 Add 'mode: session' to your config."
             );
         }
         crate::config::validate_windows_config(windows)?;
