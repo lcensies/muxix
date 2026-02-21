@@ -261,7 +261,9 @@ customize.
 
 #### Panes
 
-Define your tmux pane layout with the `panes` array:
+Define your tmux pane layout with the `panes` array. For multiple windows in
+session mode, use [`windows`](#multiple-windows-per-session) instead (they are
+mutually exclusive).
 
 ```yaml
 panes:
@@ -2166,6 +2168,38 @@ workmux add feature-branch --session
   use session mode for that worktree.
 - **Navigation**: After `merge` or `remove`, workmux switches you to the main
   session using `tmux switch-client`
+
+#### Multiple windows per session
+
+Use the `windows` config to launch multiple windows in each session. Each window
+can have its own pane layout. This is mutually exclusive with the top-level
+`panes` config.
+
+```yaml
+mode: session
+windows:
+  - name: editor
+    panes:
+      - command: <agent>
+        focus: true
+      - split: horizontal
+        size: 20
+  - name: tests
+    panes:
+      - command: just test --watch
+  - panes:
+      - command: tail -f app.log
+```
+
+Each window supports:
+
+| Option  | Description                                            | Default      |
+| ------- | ------------------------------------------------------ | ------------ |
+| `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
+| `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
+
+`focus: true` works across windows -- the last pane with focus set determines
+which window is selected when the session opens.
 
 #### Limitations
 

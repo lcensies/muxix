@@ -82,7 +82,7 @@ Most options have sensible defaults. You only need to configure what you want to
 
 ### Panes
 
-Define your tmux pane layout with the `panes` array:
+Define your tmux pane layout with the `panes` array. For multiple windows in session mode, use [windows](#windows) instead (they are mutually exclusive).
 
 ```yaml
 panes:
@@ -99,13 +99,44 @@ Each pane supports:
 | ------------ | --------------------------------------------------- | ------- |
 | `command`    | Command to run (use `<agent>` for configured agent) | Shell   |
 | `focus`      | Whether this pane receives focus                    | `false` |
-| `split`      | Split direction (`horizontal` or `vertical`)        | —       |
+| `split`      | Split direction (`horizontal` or `vertical`)        | ---     |
 | `size`       | Absolute size in lines/cells                        | 50%     |
 | `percentage` | Size as percentage (1-100)                          | 50%     |
 
 ::: tip
 The `<agent>` placeholder must be the entire command value to be substituted. To add extra flags, either include them in the `agent` config (e.g., `agent: "claude --verbose"`) or use the literal command name (e.g., `command: "claude --verbose"`).
 :::
+
+### Windows
+
+When using session mode (`mode: session`), you can configure multiple windows per session using the `windows` array. This is mutually exclusive with the top-level `panes` config.
+
+```yaml
+mode: session
+windows:
+  - name: editor
+    panes:
+      - command: <agent>
+        focus: true
+      - split: horizontal
+        size: 20
+  - name: tests
+    panes:
+      - command: just test --watch
+  - panes:
+      - command: tail -f app.log
+```
+
+Each window supports:
+
+| Option  | Description                                            | Default      |
+| ------- | ------------------------------------------------------ | ------------ |
+| `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
+| `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
+
+Named windows keep their name permanently. Unnamed windows use tmux's automatic naming based on the currently running command.
+
+`focus: true` works across windows -- the last pane with focus determines which window is active when the session opens.
 
 ### File operations
 

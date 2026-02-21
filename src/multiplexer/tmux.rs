@@ -287,14 +287,8 @@ impl Multiplexer for TmuxBackend {
         // Target the specific session with trailing colon (creates window at next index)
         let target = format!("{}:", params.session_name);
 
-        let mut cmd = Cmd::new("tmux").args(&[
-            "new-window",
-            "-d",
-            "-t",
-            &target,
-            "-c",
-            working_dir_str,
-        ]);
+        let mut cmd =
+            Cmd::new("tmux").args(&["new-window", "-d", "-t", &target, "-c", working_dir_str]);
 
         // Optionally name the window
         if let Some(window_name) = params.name {
