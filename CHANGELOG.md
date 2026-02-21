@@ -16,6 +16,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.119 (2026-02-21)
+
+- Added session mode: worktrees can now be created as their own tmux sessions
+  instead of windows, giving each worktree a separate window list, history, and
+  layout. Enable with `--session` flag or `mode: session` in config.
+- Added multi-window sessions: use the `windows` config to create multiple
+  windows per session, each with its own pane layout - useful for setups like an
+  editor window alongside a test runner
+
 ## v0.1.118 (2026-02-19)
 
 - Added `workmux setup` command to automatically detect installed agents and
