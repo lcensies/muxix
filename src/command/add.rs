@@ -522,8 +522,8 @@ impl<'a> CreationPlan<'a> {
         // Create backend once for all specs
         let mux = create_backend(detect_backend());
 
-        // Track windows for --wait (all created windows/sessions)
-        let mut created_windows = Vec::new();
+        // Track targets for --wait (all created windows/sessions)
+        let mut created_targets = Vec::new();
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
         let mode = self.options.mode;
@@ -598,7 +598,7 @@ impl<'a> CreationPlan<'a> {
             let full_window_name = prefixed(&context.prefix, &handle);
 
             if self.wait {
-                created_windows.push(full_window_name.clone());
+                created_targets.push(full_window_name.clone());
             }
 
             // Track for concurrency control
@@ -640,14 +640,14 @@ impl<'a> CreationPlan<'a> {
             println!("  Worktree: {}", result.worktree_path.display());
         }
 
-        if self.wait && !created_windows.is_empty() {
+        if self.wait && !created_targets.is_empty() {
             if mode == MuxMode::Session {
                 // For sessions, wait for each one to close
-                for session_name in &created_windows {
+                for session_name in &created_targets {
                     mux.wait_until_session_closed(session_name)?;
                 }
             } else {
-                mux.wait_until_windows_closed(&created_windows)?;
+                mux.wait_until_windows_closed(&created_targets)?;
             }
         }
 
