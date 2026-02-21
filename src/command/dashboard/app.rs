@@ -702,7 +702,11 @@ impl App {
     /// Extract the worktree name from an agent.
     /// Returns (worktree_name, is_main) where is_main indicates if this is the main worktree.
     pub fn extract_worktree_name(&self, agent_pane: &AgentPane) -> (String, bool) {
-        agent::extract_worktree_name(&agent_pane.window_name, self.config.window_prefix())
+        agent::extract_worktree_name(
+            &agent_pane.session,
+            &agent_pane.window_name,
+            self.config.window_prefix(),
+        )
     }
 
     pub fn extract_project_name(agent_pane: &AgentPane) -> String {

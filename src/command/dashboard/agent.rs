@@ -2,11 +2,19 @@
 
 use std::path::Path;
 
-/// Extract the worktree name from a window name.
+/// Extract the worktree name from a window or session name.
+/// Checks window_name first (window mode), then session_name (session mode).
 /// Returns (worktree_name, is_main) where is_main indicates if this is the main worktree.
-pub fn extract_worktree_name(window_name: &str, window_prefix: &str) -> (String, bool) {
+pub fn extract_worktree_name(
+    session_name: &str,
+    window_name: &str,
+    window_prefix: &str,
+) -> (String, bool) {
     if let Some(stripped) = window_name.strip_prefix(window_prefix) {
-        // Workmux-created worktree agent
+        // Window mode: worktree name is in the window name
+        (stripped.to_string(), false)
+    } else if let Some(stripped) = session_name.strip_prefix(window_prefix) {
+        // Session mode: worktree name is in the session name
         (stripped.to_string(), false)
     } else {
         // Non-workmux agent - running in main worktree
@@ -71,15 +79,30 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_extract_worktree_name_with_prefix() {
-        let (name, is_main) = extract_worktree_name("workmux:fix-bug", "workmux:");
+    fn test_extract_worktree_name_window_mode() {
+        let (name, is_main) = extract_worktree_name("main-session", "workmux:fix-bug", "workmux:");
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
 
     #[test]
+    fn test_extract_worktree_name_session_mode() {
+        let (name, is_main) = extract_worktree_name("workmux:feature-auth", "zsh", "workmux:");
+        assert_eq!(name, "feature-auth");
+        assert!(!is_main);
+    }
+
+    #[test]
+    fn test_extract_worktree_name_window_preferred_over_session() {
+        let (name, is_main) =
+            extract_worktree_name("workmux:from-session", "workmux:from-window", "workmux:");
+        assert_eq!(name, "from-window");
+        assert!(!is_main);
+    }
+
+    #[test]
     fn test_extract_worktree_name_main() {
-        let (name, is_main) = extract_worktree_name("some-window", "workmux:");
+        let (name, is_main) = extract_worktree_name("other-session", "some-window", "workmux:");
         assert_eq!(name, "main");
         assert!(is_main);
     }
