@@ -61,6 +61,7 @@ pub fn run(
 
     // Construct setup options (pane commands always run on open)
     let mut options = SetupOptions::new(run_hooks, force_files, true);
+    options.mode = stored_mode;
     options.prompt_file_path = prompt_file_path;
 
     // Only announce hooks if we're forcing a new target (otherwise we might just switch)
