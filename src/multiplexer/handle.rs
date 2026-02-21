@@ -11,6 +11,14 @@ use crate::config::MuxMode;
 use super::util;
 use super::Multiplexer;
 
+/// Returns "window" or "session" for a given mode.
+pub fn mode_label(mode: MuxMode) -> &'static str {
+    match mode {
+        MuxMode::Window => "window",
+        MuxMode::Session => "session",
+    }
+}
+
 /// A unified handle for a multiplexer target (window or session).
 ///
 /// Wraps a reference to the backend, the mode, prefix, and handle name,
@@ -107,6 +115,19 @@ impl<'a> MuxHandle<'a> {
         match self.mode {
             MuxMode::Session => self.mux.schedule_session_close(&full, delay),
             MuxMode::Window => self.mux.schedule_window_close(&full, delay),
+        }
+    }
+
+    /// Schedule a target to close after a delay, by full name.
+    pub fn schedule_close_full(
+        mux: &dyn Multiplexer,
+        mode: MuxMode,
+        full_name: &str,
+        delay: Duration,
+    ) -> Result<()> {
+        match mode {
+            MuxMode::Session => mux.schedule_session_close(full_name, delay),
+            MuxMode::Window => mux.schedule_window_close(full_name, delay),
         }
     }
 

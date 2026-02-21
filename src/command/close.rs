@@ -1,5 +1,5 @@
-use crate::config::MuxMode;
-use crate::multiplexer::{create_backend, detect_backend, util};
+use crate::multiplexer::handle::mode_label;
+use crate::multiplexer::{MuxHandle, create_backend, detect_backend};
 use crate::{config, git, sandbox};
 use anyhow::{Context, Result, anyhow};
 
@@ -15,7 +15,7 @@ pub fn run(name: Option<&str>) -> Result<()> {
     };
 
     // Determine if this worktree was created as a session or window
-    let is_session_mode = git::get_worktree_mode(&resolved_handle) == MuxMode::Session;
+    let mode = git::get_worktree_mode(&resolved_handle);
 
     // When no name is provided, prefer the current window/session name
     // This handles duplicate windows/sessions (e.g., wm:feature-2) correctly
@@ -28,82 +28,55 @@ pub fn run(name: Option<&str>) -> Result<()> {
                     handle
                 )
             })?;
-            let prefixed = util::prefixed(prefix, handle);
-            let is_current = if is_session_mode {
-                mux.current_session().as_deref() == Some(&prefixed)
-            } else {
-                mux.current_window_name()?.as_deref() == Some(&prefixed)
-            };
-            (prefixed, is_current)
+            let target = MuxHandle::new(mux.as_ref(), mode, prefix, handle);
+            let full = target.full_name();
+            let current = target.current_name()?;
+            let is_current = current.as_deref() == Some(full.as_str());
+            (full, is_current)
         }
         None => {
             // No name provided - check if we're in a workmux window/session
-            let current_name = if is_session_mode {
-                mux.current_session()
-            } else {
-                mux.current_window_name()?
-            };
+            let target = MuxHandle::new(mux.as_ref(), mode, prefix, &resolved_handle);
+            let current_name = target.current_name()?;
             if let Some(current) = current_name {
                 if current.starts_with(prefix) {
                     // We're in a workmux target, use it directly
                     (current.clone(), true)
                 } else {
                     // Not in a workmux target, fall back to resolved handle
-                    (util::prefixed(prefix, &resolved_handle), false)
+                    (target.full_name(), false)
                 }
             } else {
                 // Not in multiplexer, use resolved handle
-                (util::prefixed(prefix, &resolved_handle), false)
+                (target.full_name(), false)
             }
         }
     };
 
-    let target_type = if is_session_mode { "session" } else { "window" };
-
-    // Check if the window/session exists
-    let target_exists = if is_session_mode {
-        mux.session_exists(&full_target_name)?
-    } else {
-        mux.window_exists_by_full_name(&full_target_name)?
-    };
+    let kind = mode_label(mode);
+    let target_exists = MuxHandle::exists_full(mux.as_ref(), mode, &full_target_name)?;
 
     if !target_exists {
         return Err(anyhow!(
             "No active {} found for '{}'. The worktree exists but has no open {}.",
-            target_type,
+            kind,
             full_target_name,
-            target_type
+            kind
         ));
     }
 
-    // Stop any running containers for this worktree before killing the window.
-    // We try unconditionally since sandbox may have been enabled via --sandbox flag.
-    // Extract handle from full target name (e.g., "wm:feature-auth" -> "feature-auth")
+    // Stop any running containers for this worktree before killing the target.
     if let Some(handle) = full_target_name.strip_prefix(prefix) {
         sandbox::stop_containers_for_handle(handle, &config.sandbox);
     }
 
     if is_current_target {
-        // Schedule the close with a small delay so the command can complete
         let delay = std::time::Duration::from_millis(100);
-        if is_session_mode {
-            mux.schedule_session_close(&full_target_name, delay)?;
-        } else {
-            mux.schedule_window_close(&full_target_name, delay)?;
-        }
+        MuxHandle::schedule_close_full(mux.as_ref(), mode, &full_target_name, delay)?;
     } else {
-        // Kill the target directly
-        if is_session_mode {
-            mux.kill_session(&full_target_name)
-                .context("Failed to close session")?;
-        } else {
-            mux.kill_window(&full_target_name)
-                .context("Failed to close window")?;
-        }
-        println!(
-            "✓ Closed {} '{}' (worktree kept)",
-            target_type, full_target_name
-        );
+        MuxHandle::kill_full(mux.as_ref(), mode, &full_target_name)
+            .context("Failed to close target")?;
+        println!("✓ Closed {} '{}' (worktree kept)", kind, full_target_name);
     }
 
     Ok(())
