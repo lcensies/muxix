@@ -545,9 +545,18 @@ pub fn navigate_to_target_and_close(
         .clone()
         .unwrap_or_else(|| prefixed(prefix, source_handle));
 
-    // Generate backend-specific shell commands for deferred scripts
-    let kill_source_cmd = mux.shell_kill_window_cmd(&source_full).ok();
-    let select_target_cmd = mux.shell_select_window_cmd(&target_full).ok();
+    // Generate backend-specific shell commands for deferred scripts.
+    // Use session commands in session mode, window commands in window mode.
+    let kill_source_cmd = if is_session_mode {
+        mux.shell_kill_session_cmd(&source_full).ok()
+    } else {
+        mux.shell_kill_window_cmd(&source_full).ok()
+    };
+    let select_target_cmd = if is_session_mode {
+        mux.shell_switch_session_cmd(&target_full).ok()
+    } else {
+        mux.shell_select_window_cmd(&target_full).ok()
+    };
 
     debug!(
         prefix = prefix,
