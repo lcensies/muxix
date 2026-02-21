@@ -68,17 +68,6 @@ Named windows keep their name permanently. Unnamed windows use tmux's automatic 
 
 `focus: true` works across windows -- the last pane with focus set determines which window is active when the session opens.
 
-## Mixed mode
-
-You can mix window-mode and session-mode worktrees in the same project. For example, use `mode: window` (the default) globally but create specific worktrees with `--session`:
-
-```bash
-workmux add quick-fix              # window in current session
-workmux add big-feature --session  # its own session
-```
-
-Both show up in `workmux list` and all commands (`close`, `open`, `remove`, `merge`) work correctly regardless of mode.
-
 ## Limitations
 
 - **tmux only**: Session mode is only supported for the tmux backend. WezTerm and kitty do not support sessions.
