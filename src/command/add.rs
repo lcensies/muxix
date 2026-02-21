@@ -130,6 +130,7 @@ pub fn run(
             pr,
             name.as_deref(),
             wait,
+            session,
         );
     }
 
@@ -670,6 +671,7 @@ fn run_add_via_rpc(
     pr: Option<u32>,
     name: Option<&str>,
     wait: bool,
+    session: bool,
 ) -> Result<()> {
     use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
     use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
@@ -701,9 +703,11 @@ fn run_add_via_rpc(
     if multi.foreach.is_some() {
         bail!("--foreach is not supported from inside a sandbox");
     }
-
-    // Note: --session flag is not passed to RPC; host uses its own config.
-    // The flag is silently ignored because the host determines the mode.
+    if session {
+        bail!(
+            "--session is not supported from inside a sandbox (host controls mode via its config)"
+        );
+    }
 
     // --- Resolve prompt via existing loader (handles -p, -P, -e) ---
     let prompt_content = load_prompt(&PromptLoadArgs {
