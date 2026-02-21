@@ -4,6 +4,7 @@
 //! with different terminal multiplexers (tmux, WezTerm) interchangeably.
 
 pub mod agent;
+pub mod handle;
 pub mod handshake;
 pub mod kitty;
 pub mod tmux;
@@ -17,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+pub use handle::MuxHandle;
 pub use handshake::PaneHandshake;
 pub use tmux::TmuxBackend;
 pub use types::*;
