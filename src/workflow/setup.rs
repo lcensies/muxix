@@ -2,8 +2,11 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::config::MuxMode;
-use crate::multiplexer::{CreateSessionParams, CreateWindowParams, Multiplexer, PaneSetupOptions};
+use crate::config::{MuxMode, WindowConfig};
+use crate::multiplexer::{
+    CreateSessionParams, CreateWindowInSessionParams, CreateWindowParams, Multiplexer,
+    PaneSetupOptions,
+};
 use crate::{cmd, config, git, prompt::Prompt};
 use tracing::{debug, info};
 
@@ -111,14 +114,29 @@ pub fn setup_environment(
         );
     }
 
-    // Resolve pane configuration early -- needed for Lima pre-boot check
-    // and prompt validation, both of which must happen before window creation.
-    let panes = config.panes.as_deref().unwrap_or(&[]);
-    let resolved_panes = resolve_pane_configuration(panes, agent);
+    // Build window plans: normalize windows/panes config into a list of window configs.
+    // In window mode, we always use a single window from panes config.
+    // In session mode, we can use multiple windows from windows config.
+    let window_plans: Vec<WindowConfig> = if let Some(windows) = &config.windows {
+        // windows config is session-mode only (validated at config load time)
+        windows.clone()
+    } else {
+        // Legacy: wrap panes in a single window plan
+        let panes = config.panes.clone();
+        vec![WindowConfig { name: None, panes }]
+    };
+
+    // Flatten all panes across all windows for prechecks.
+    // This ensures Lima pre-boot and prompt validation consider ALL panes.
+    let all_panes: Vec<config::PaneConfig> = window_plans
+        .iter()
+        .flat_map(|w| w.panes.as_deref().unwrap_or(&[]).iter().cloned())
+        .collect();
+    let all_resolved_panes = resolve_pane_configuration(&all_panes, agent);
 
     // Validate that prompt will be consumed if one was provided
     if options.prompt_file_path.is_some() {
-        validate_prompt_consumption(&resolved_panes, agent, config, options)?;
+        validate_prompt_consumption(&all_resolved_panes, agent, config, options)?;
     }
 
     // Pre-boot Lima VM if needed BEFORE creating the tmux window.
@@ -127,26 +145,33 @@ pub fn setup_environment(
     let lima_vm_name = pre_boot_lima_vm(
         mux,
         config,
-        &resolved_panes,
+        &all_resolved_panes,
         effective_working_dir,
         worktree_path,
         options,
         agent,
     )?;
 
-    // Create window or session based on mode
-    let initial_pane_id = match options.mode {
+    let pane_setup_options = PaneSetupOptions {
+        run_commands: options.run_pane_commands,
+        prompt_file_path: options.prompt_file_path.as_deref(),
+        worktree_root: Some(worktree_path),
+        lima_vm_name: lima_vm_name.as_deref(),
+    };
+
+    // Track the focus pane across all windows
+    let mut focus_pane_id: Option<String> = None;
+
+    match options.mode {
         MuxMode::Window => {
-            // Find the last workmux-managed window to insert the new one after.
-            // If after_window is provided (for duplicate windows), use that to group with base handle.
-            // Otherwise, use prefix-based lookup to group workmux windows together.
-            // If not found (or error), falls back to default append behavior.
+            // Window mode: single window, use panes config (window_plans always has 1 entry)
+            let panes = window_plans[0].panes.as_deref().unwrap_or(&[]);
+            let resolved_panes = resolve_pane_configuration(panes, agent);
+
             let last_wm_window =
                 after_window.or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
 
-            // Create window and get the initial pane's ID
-            // Use handle for the window name (not branch_name)
-            let pane_id = mux
+            let initial_pane_id = mux
                 .create_window(CreateWindowParams {
                     prefix,
                     name: handle,
@@ -157,68 +182,108 @@ pub fn setup_environment(
             info!(
                 branch = branch_name,
                 handle = handle,
-                pane_id = %pane_id,
+                pane_id = %initial_pane_id,
                 "setup_environment:window created"
             );
-            pane_id
+
+            let result = mux
+                .setup_panes(
+                    &initial_pane_id,
+                    &resolved_panes,
+                    effective_working_dir,
+                    pane_setup_options,
+                    config,
+                    agent,
+                )
+                .context("Failed to setup panes")?;
+
+            focus_pane_id = Some(result.focus_pane_id);
         }
         MuxMode::Session => {
-            // Create session and get the initial pane's ID
-            let pane_id = mux
-                .create_session(CreateSessionParams {
-                    prefix,
-                    name: handle,
-                    cwd: effective_working_dir,
-                    initial_window_name: None,
-                })
-                .context("Failed to create session")?;
-            info!(
-                branch = branch_name,
-                handle = handle,
-                pane_id = %pane_id,
-                "setup_environment:session created"
-            );
-            pane_id
-        }
-    };
+            let session_full_name = crate::multiplexer::util::prefixed(prefix, handle);
 
-    let pane_setup_result = mux
-        .setup_panes(
-            &initial_pane_id,
-            &resolved_panes,
-            effective_working_dir,
-            PaneSetupOptions {
-                run_commands: options.run_pane_commands,
-                prompt_file_path: options.prompt_file_path.as_deref(),
-                worktree_root: Some(worktree_path),
-                lima_vm_name: lima_vm_name.as_deref(),
-            },
-            config,
-            agent,
-        )
-        .context("Failed to setup panes")?;
+            for (i, window_plan) in window_plans.iter().enumerate() {
+                let panes = window_plan.panes.as_deref().unwrap_or(&[]);
+                let resolved_panes = resolve_pane_configuration(panes, agent);
+
+                let initial_pane_id = if i == 0 {
+                    // First window: create the session
+                    let pane_id = mux
+                        .create_session(CreateSessionParams {
+                            prefix,
+                            name: handle,
+                            cwd: effective_working_dir,
+                            initial_window_name: window_plan.name.as_deref(),
+                        })
+                        .context("Failed to create session")?;
+                    info!(
+                        branch = branch_name,
+                        handle = handle,
+                        window = ?window_plan.name,
+                        pane_id = %pane_id,
+                        "setup_environment:session created (window 0)"
+                    );
+                    pane_id
+                } else {
+                    // Subsequent windows: create within the existing session
+                    let pane_id = mux
+                        .create_window_in_session(CreateWindowInSessionParams {
+                            session_name: &session_full_name,
+                            name: window_plan.name.as_deref(),
+                            cwd: effective_working_dir,
+                        })
+                        .context("Failed to create window in session")?;
+                    info!(
+                        branch = branch_name,
+                        handle = handle,
+                        window = ?window_plan.name,
+                        window_index = i,
+                        pane_id = %pane_id,
+                        "setup_environment:window created in session"
+                    );
+                    pane_id
+                };
+
+                let result = mux
+                    .setup_panes(
+                        &initial_pane_id,
+                        &resolved_panes,
+                        effective_working_dir,
+                        pane_setup_options.clone(),
+                        config,
+                        agent,
+                    )
+                    .context("Failed to setup panes")?;
+
+                // Track focus: last window with a focus: true pane wins.
+                // If no pane has focus: true, use the first window's default.
+                let has_explicit_focus = resolved_panes.iter().any(|p| p.focus);
+                if i == 0 || has_explicit_focus {
+                    focus_pane_id = Some(result.focus_pane_id);
+                }
+            }
+        }
+    }
+
+    let focus_pane_id = focus_pane_id.expect("at least one window must be created");
     debug!(
         branch = branch_name,
-        focus_id = %pane_setup_result.focus_pane_id,
+        focus_id = %focus_pane_id,
         "setup_environment:panes configured"
     );
 
-    // Focus the configured pane and optionally switch to the window/session
+    // Focus the configured pane and optionally switch to the window/session.
+    // select_pane automatically selects the containing window in tmux.
     if options.focus_window {
-        mux.select_pane(&pane_setup_result.focus_pane_id)?;
+        mux.select_pane(&focus_pane_id)?;
         match options.mode {
             MuxMode::Window => {
-                // Use handle for window selection (not branch_name)
                 mux.select_window(prefix, handle)?;
             }
             MuxMode::Session => {
-                // Switch to the new session
                 mux.switch_to_session(prefix, handle)?;
             }
         }
-    } else {
-        // Background mode: do not steal focus from the current window/session.
-        // We intentionally skip select_window/switch_to_session to keep the user's current context.
     }
 
     Ok(CreateResult {

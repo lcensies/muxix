@@ -55,7 +55,19 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         "create:start"
     );
 
-    // Validate pane config before any other operations
+    // Validate layout config before any other operations
+    if context.config.panes.is_some() && context.config.windows.is_some() {
+        anyhow::bail!("Cannot specify both 'panes' and 'windows' in configuration.");
+    }
+    if let Some(windows) = &context.config.windows {
+        if options.mode != MuxMode::Session {
+            anyhow::bail!(
+                "'windows' configuration requires 'mode: session'. \
+                 Either add 'mode: session' to your config or use --session flag."
+            );
+        }
+        crate::config::validate_windows_config(windows)?;
+    }
     if let Some(panes) = &context.config.panes {
         crate::config::validate_panes_config(panes)?;
     }
