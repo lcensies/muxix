@@ -49,6 +49,13 @@ each with its own AI agent. No stashing, no branch switching, no conflicts.
 state, editor session, dev server, and AI agent. Context switching is switching
 tabs.
 
+**Automated setup.** New worktrees start broken (no `.env`, no `node_modules`,
+no dev server). workmux can copy config files, symlink dependencies, and run
+install commands on creation. Configure once, reuse everywhere.
+
+**One-command cleanup.** `workmux merge` handles the full lifecycle: merge the
+branch, delete the worktree, close the tmux window, remove the local branch.
+
 **tmux is the interface.** For existing and new tmux users. If you already live
 in tmux, it fits your workflow. If you don't, it's worth picking up.
 
@@ -147,6 +154,9 @@ For manual installation, see
    This will:
    - Create a git worktree at
      `<project_root>/../<project_name>__worktrees/new-feature`
+   - Copy config files and symlink dependencies (if
+     [configured](#file-operations))
+   - Run any [`post_create`](#lifecycle-hooks) setup commands
    - Create a tmux window named `wm-new-feature` (the prefix is configurable)
    - Set up your configured or the default tmux pane layout
    - Automatically switch your tmux client to the new window
@@ -278,24 +288,25 @@ substituted. To add extra flags, either include them in the `agent` config
 
 #### File operations
 
-Copy or symlink files into new worktrees:
+New worktrees are clean checkouts with no gitignored files (`.env`,
+`node_modules`, etc.). Use `files` to automatically copy or symlink what each
+worktree needs:
 
 ```yaml
 files:
   copy:
     - .env
   symlink:
-    - node_modules
-    - .pnpm-store
+    - .next/cache # Share build cache across worktrees
 ```
 
 Both `copy` and `symlink` accept glob patterns.
 
 #### Lifecycle hooks
 
-Run commands at specific points in the worktree lifecycle. All hooks run with
-the **worktree directory** as the working directory (or the nested config
-directory for
+Run commands at specific points in the worktree lifecycle, such as installing
+dependencies or running database migrations. All hooks run with the **worktree
+directory** as the working directory (or the nested config directory for
 [nested configs](https://workmux.raine.dev/guide/monorepos#nested-configuration))
 and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`,
 `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
