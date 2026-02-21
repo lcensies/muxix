@@ -18,6 +18,10 @@ each with its own AI agent. No stashing, no branch switching, no conflicts.
 **One window per task.** A natural mental model. Each has its own terminal
 state, editor session, dev server, and AI agent. Context switching is switching tabs.
 
+**Automated setup.** New worktrees start broken (no `.env`, no `node_modules`, no dev server). workmux copies config files, symlinks dependencies, and runs install commands automatically on creation.
+
+**One-command cleanup.** `workmux merge` handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. Or go next level and use the [`/merge` skill](/guide/skills#merge) to let your agent commit, rebase, and merge autonomously.
+
 **tmux is the interface.** For existing and new tmux users. If you already live
 in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/). Also supports [kitty](/guide/kitty) and [WezTerm](/guide/wezterm) as experimental alternatives.
 
