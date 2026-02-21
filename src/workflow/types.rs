@@ -44,6 +44,7 @@ pub struct DeferredCleanup {
     pub worktree_path: PathBuf,
     pub trash_path: PathBuf,
     pub branch_name: String,
+    pub handle: String,
     pub keep_branch: bool,
     pub force: bool,
     pub git_common_dir: PathBuf,

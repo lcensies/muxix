@@ -397,6 +397,7 @@ pub fn cleanup(
                 worktree_path: worktree_path.to_path_buf(),
                 trash_path,
                 branch_name: branch_name.to_string(),
+                handle: handle.to_string(),
                 keep_branch,
                 force,
                 git_common_dir: context.git_common_dir.clone(),
@@ -470,10 +471,13 @@ pub fn cleanup(
         perform_fs_git_cleanup(&mut result)?;
     }
 
-    // Clean up worktree metadata from git config
-    if let Err(e) = git::remove_worktree_meta(handle) {
-        warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
-    }
+    // Clean up worktree metadata from git config.
+    // Only remove immediately when not deferring -- deferred cleanup includes this
+    // in the shell script so metadata survives if the deferred script fails.
+    if result.deferred_cleanup.is_none()
+        && let Err(e) = git::remove_worktree_meta(handle) {
+            warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
+        }
 
     Ok(result)
 }
@@ -513,7 +517,13 @@ pub fn navigate_to_target_and_close(
                 git_dir, force_flag, branch
             ));
         }
-        // 4. Delete trash
+        // 4. Remove worktree metadata from git config
+        let handle = shell_escape(&dc.handle);
+        cmds.push(format!(
+            "git -C {} config --local --remove-section workmux.worktree.{} >/dev/null 2>&1",
+            git_dir, handle
+        ));
+        // 5. Delete trash
         cmds.push(format!("rm -rf {} >/dev/null 2>&1", trash));
 
         format!("; {}", cmds.join("; "))
