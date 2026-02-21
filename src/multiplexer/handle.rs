@@ -43,10 +43,7 @@ impl<'a> MuxHandle<'a> {
 
     /// Returns "window" or "session".
     pub fn kind(&self) -> &'static str {
-        match self.mode {
-            MuxMode::Window => "window",
-            MuxMode::Session => "session",
-        }
+        mode_label(self.mode)
     }
 
     pub fn is_session(&self) -> bool {

@@ -1,5 +1,6 @@
 use crate::config::MuxMode;
-use crate::multiplexer::{create_backend, detect_backend, util::prefixed};
+use crate::multiplexer::handle::mode_label;
+use crate::multiplexer::{MuxHandle, create_backend, detect_backend, util::prefixed};
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
 use crate::template::{
@@ -414,8 +415,7 @@ fn handle_rescue_flow(
     );
 
     if wait {
-        crate::multiplexer::MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, handle)
-            .wait_until_closed()?;
+        MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, handle).wait_until_closed()?;
     }
 
     Ok(true)
@@ -630,7 +630,7 @@ impl<'a> CreationPlan<'a> {
 
             println!(
                 "✓ Successfully created worktree and tmux {} for '{}'",
-                crate::multiplexer::handle::mode_label(mode),
+                mode_label(mode),
                 result.branch_name
             );
             if let Some(ref base) = result.base_branch {

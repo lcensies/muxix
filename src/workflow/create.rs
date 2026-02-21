@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
 use crate::config::MuxMode;
+use crate::multiplexer::MuxHandle;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
@@ -72,12 +73,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Check if worktree or target (window/session) already exists
-    let target = crate::multiplexer::MuxHandle::new(
-        context.mux.as_ref(),
-        options.mode,
-        &context.prefix,
-        handle,
-    );
+    let target = MuxHandle::new(context.mux.as_ref(), options.mode, &context.prefix, handle);
     let full_target_name = target.full_name();
     let target_exists = target.exists()?;
     let worktree_exists = git::worktree_exists(branch_name)?;
