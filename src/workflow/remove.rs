@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::git;
 use crate::sandbox;
 use tracing::{debug, info};
@@ -38,7 +38,7 @@ pub fn remove(
     debug!(handle = actual_handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
 
     // Capture session mode BEFORE cleanup (cleanup removes the metadata)
-    let is_session_mode = get_worktree_mode(actual_handle) == TmuxTarget::Session;
+    let is_session_mode = get_worktree_mode(actual_handle) == MuxMode::Session;
 
     // Safety Check: Prevent deleting the main worktree itself, regardless of branch.
     let is_main_worktree = match (

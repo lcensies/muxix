@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 
 use crate::cmd::Cmd;
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 
 use super::WorktreeNotFound;
 use super::branch::unset_branch_upstream;
@@ -180,10 +180,10 @@ pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
 
 /// Determine the tmux mode for a worktree from git metadata.
 /// Falls back to Window mode if no metadata is found (backward compatibility).
-pub fn get_worktree_mode(handle: &str) -> TmuxTarget {
+pub fn get_worktree_mode(handle: &str) -> MuxMode {
     match get_worktree_meta(handle, "mode") {
-        Some(mode) if mode == "session" => TmuxTarget::Session,
-        _ => TmuxTarget::Window,
+        Some(mode) if mode == "session" => MuxMode::Session,
+        _ => MuxMode::Window,
     }
 }
 

@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::multiplexer::{Multiplexer, util};
 use crate::state::StateStore;
 use crate::util::canon_or_self;
@@ -137,7 +137,7 @@ pub fn list(
 
             // Check if mux target exists (window or session based on stored mode)
             let prefixed_name = util::prefixed(prefix, &handle);
-            let is_session_mode = get_worktree_mode(&handle) == TmuxTarget::Session;
+            let is_session_mode = get_worktree_mode(&handle) == MuxMode::Session;
             let has_mux_window = if is_session_mode {
                 mux_sessions.contains(&prefixed_name)
             } else {

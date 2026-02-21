@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::{thread, time::Duration};
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::multiplexer::{Multiplexer, util::prefixed};
 use crate::{cmd, git};
 use tracing::{debug, info, warn};
@@ -98,7 +98,7 @@ pub fn cleanup(
 ) -> Result<CleanupResult> {
     // Determine if this worktree was created as a session or window
     let mode = get_worktree_mode(handle);
-    let is_session_mode = mode == TmuxTarget::Session;
+    let is_session_mode = mode == MuxMode::Session;
 
     info!(
         branch = branch_name,

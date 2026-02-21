@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
@@ -62,7 +62,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Pre-flight checks
     context.ensure_mux_running()?;
 
-    let is_session_mode = options.mode == TmuxTarget::Session;
+    let is_session_mode = options.mode == MuxMode::Session;
 
     // Validate backend supports session mode before creating any git state
     if is_session_mode && context.mux.name() != "tmux" {
@@ -295,7 +295,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Store the tmux mode in git config for cleanup operations
     // This allows remove/close/merge to know whether to kill a window or session
-    if options.mode == TmuxTarget::Session {
+    if options.mode == MuxMode::Session {
         git::set_worktree_meta(handle, "mode", "session")
             .with_context(|| format!("Failed to store tmux mode for worktree '{}'", handle))?;
         debug!(
@@ -411,7 +411,7 @@ pub fn create_with_changes(
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
     // Capture mode before moving options (needed for rollback cleanup)
-    let is_session_mode = options.mode == TmuxTarget::Session;
+    let is_session_mode = options.mode == MuxMode::Session;
 
     // 2. Create new worktree
     let create_result = match create(

@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::multiplexer::{CreateSessionParams, CreateWindowParams, Multiplexer, PaneSetupOptions};
 use crate::{cmd, config, git, prompt::Prompt};
 use tracing::{debug, info};
@@ -136,7 +136,7 @@ pub fn setup_environment(
 
     // Create window or session based on mode
     let initial_pane_id = match options.mode {
-        TmuxTarget::Window => {
+        MuxMode::Window => {
             // Find the last workmux-managed window to insert the new one after.
             // If after_window is provided (for duplicate windows), use that to group with base handle.
             // Otherwise, use prefix-based lookup to group workmux windows together.
@@ -162,7 +162,7 @@ pub fn setup_environment(
             );
             pane_id
         }
-        TmuxTarget::Session => {
+        MuxMode::Session => {
             // Create session and get the initial pane's ID
             let pane_id = mux
                 .create_session(CreateSessionParams {
@@ -206,11 +206,11 @@ pub fn setup_environment(
     if options.focus_window {
         mux.select_pane(&pane_setup_result.focus_pane_id)?;
         match options.mode {
-            TmuxTarget::Window => {
+            MuxMode::Window => {
                 // Use handle for window selection (not branch_name)
                 mux.select_window(prefix, handle)?;
             }
-            TmuxTarget::Session => {
+            MuxMode::Session => {
                 // Switch to the new session
                 mux.switch_to_session(prefix, handle)?;
             }
@@ -687,7 +687,7 @@ mod tests {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            mode: crate::config::TmuxTarget::default(),
+            mode: crate::config::MuxMode::default(),
         }
     }
 

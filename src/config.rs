@@ -189,7 +189,7 @@ pub struct Config {
     /// Mode for tmux operations: window (default) or session
     /// None means "use default" (Window), Some means explicitly set
     #[serde(default)]
-    pub mode: Option<TmuxTarget>,
+    pub mode: Option<MuxMode>,
 
     /// Container sandbox configuration
     #[serde(default)]
@@ -255,10 +255,10 @@ pub enum Theme {
     Light,
 }
 
-/// Target for tmux operations: create windows within the current session or create new sessions
+/// Mode for multiplexer operations: create windows within the current session or create new sessions
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum TmuxTarget {
+pub enum MuxMode {
     /// Create windows within the current tmux session (default)
     #[default]
     Window,
@@ -1378,8 +1378,8 @@ impl Config {
 
     /// Get the mode (window or session).
     /// Returns the configured value or defaults to Window.
-    pub fn mode(&self) -> TmuxTarget {
-        self.mode.unwrap_or(TmuxTarget::Window)
+    pub fn mode(&self) -> MuxMode {
+        self.mode.unwrap_or(MuxMode::Window)
     }
 
     /// Create an example .workmux.yaml configuration file

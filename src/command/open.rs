@@ -1,5 +1,5 @@
 use crate::command::args::PromptArgs;
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
@@ -29,8 +29,8 @@ pub fn run(
     // Determine the target mode from stored metadata
     let stored_mode = git::get_worktree_mode(&resolved_name);
     let target_type = match stored_mode {
-        TmuxTarget::Session => "session",
-        TmuxTarget::Window => "window",
+        MuxMode::Session => "session",
+        MuxMode::Window => "window",
     };
 
     // Load prompt if any prompt argument is provided

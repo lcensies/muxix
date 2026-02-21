@@ -1,4 +1,4 @@
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::multiplexer::{create_backend, detect_backend, util::prefixed};
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
@@ -141,7 +141,7 @@ pub fn run(
     // Load config early to determine mode (CLI flag overrides config)
     let initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
     let mode = if session {
-        TmuxTarget::Session
+        MuxMode::Session
     } else {
         initial_config.mode()
     };
@@ -395,7 +395,7 @@ fn handle_rescue_flow(
     }
 
     // Capture mode before options is moved
-    let is_session_mode = options.mode == TmuxTarget::Session;
+    let is_session_mode = options.mode == MuxMode::Session;
 
     let result = workflow::create_with_changes(
         branch_name,
@@ -529,7 +529,7 @@ impl<'a> CreationPlan<'a> {
         let mut created_windows = Vec::new();
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
-        let is_session_mode = self.options.mode == TmuxTarget::Session;
+        let is_session_mode = self.options.mode == MuxMode::Session;
 
         for (i, spec) in self.specs.iter().enumerate() {
             // Concurrency control: wait for a slot if at limit
@@ -633,8 +633,8 @@ impl<'a> CreationPlan<'a> {
             }
 
             let tmux_type = match self.options.mode {
-                TmuxTarget::Session => "session",
-                TmuxTarget::Window => "window",
+                MuxMode::Session => "session",
+                MuxMode::Window => "window",
             };
             println!(
                 "✓ Successfully created worktree and tmux {} for '{}'",
@@ -647,7 +647,7 @@ impl<'a> CreationPlan<'a> {
         }
 
         if self.wait && !created_windows.is_empty() {
-            if self.options.mode == TmuxTarget::Session {
+            if self.options.mode == MuxMode::Session {
                 // For sessions, wait for each one to close
                 for session_name in &created_windows {
                     mux.wait_until_session_closed(session_name)?;

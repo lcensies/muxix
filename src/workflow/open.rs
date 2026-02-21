@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 
-use crate::config::TmuxTarget;
+use crate::config::MuxMode;
 use crate::git;
 use crate::multiplexer::util::prefixed;
 use tracing::info;
@@ -52,7 +52,7 @@ pub fn open(
 
     // Determine the target mode from stored metadata (or default to Window)
     let stored_mode = get_worktree_mode(&base_handle);
-    let is_session_mode = stored_mode == TmuxTarget::Session;
+    let is_session_mode = stored_mode == MuxMode::Session;
     let target_type = if is_session_mode { "session" } else { "window" };
 
     // Determine if target exists (check session or window based on mode)
