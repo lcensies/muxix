@@ -290,6 +290,47 @@ impl Multiplexer for KittyBackend {
         Ok(current.cwd.clone())
     }
 
+    // === Session Management (not supported in Kitty) ===
+
+    fn create_session(&self, _params: CreateSessionParams) -> Result<String> {
+        Err(anyhow!(
+            "Session mode (--session) is not supported in Kitty.\n\
+             Kitty does not have a session concept like tmux.\n\
+             Use the default window mode instead (omit --session flag)."
+        ))
+    }
+
+    fn switch_to_session(&self, _prefix: &str, _name: &str) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Kitty.\n\
+             Use the default window mode instead."
+        ))
+    }
+
+    fn session_exists(&self, _full_name: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn kill_session(&self, _full_name: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn schedule_session_close(&self, _full_name: &str, _delay: Duration) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Kitty. Use window mode instead."
+        ))
+    }
+
+    fn get_all_session_names(&self) -> Result<HashSet<String>> {
+        Ok(HashSet::new())
+    }
+
+    fn wait_until_session_closed(&self, _full_session_name: &str) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Kitty. Use window mode instead."
+        ))
+    }
+
     // === Window/Tab Management ===
 
     fn create_window(&self, params: CreateWindowParams) -> Result<String> {
