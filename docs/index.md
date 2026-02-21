@@ -57,6 +57,28 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
   </div>
 </section>
 
+<section class="ed-pain-points">
+  <div class="ed-container">
+    <div class="ed-accent-rule"></div>
+    <span class="ed-section-label">Worktree pain points, solved</span>
+    <p class="ed-section-desc">Git worktrees are powerful, but managing them manually is painful. workmux automates the rough edges.</p>
+    <div class="ed-pain-points-list">
+      <div class="ed-pain-point">
+        <h3>"You need to reinstall everything"</h3>
+        <p>New worktrees are clean checkouts with no <code>.env</code>, no <code>node_modules</code>, no dev server. workmux <a href="/guide/configuration#file-operations">copies config files, symlinks dependencies</a>, and <a href="/guide/configuration#lifecycle-hooks">runs setup commands</a> automatically. Configure once, reuse everywhere.</p>
+      </div>
+      <div class="ed-pain-point">
+        <h3>"You need to clean up after"</h3>
+        <p><code>workmux merge</code> handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. One command. Or go next level and use the <a href="/guide/skills#merge"><code>/merge</code> skill</a> to let your agent commit, rebase, and merge autonomously.</p>
+      </div>
+      <div class="ed-pain-point">
+        <h3>"Conflicts arise on merge"</h3>
+        <p>Conflicts are inherent to git when changes overlap, and worktrees don't change that. But your agent can handle them. The <a href="/guide/skills#merge"><code>/merge</code></a> skill tells your agent to rebase onto the base branch, review the upstream changes, and resolve conflicts by understanding both sides. No manual conflict resolution needed in most cases. See <a href="/guide/workflows#finishing-work">finishing work</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="ed-demo">
   <div class="ed-container ed-align-right">
     <div class="ed-accent-rule ed-accent-rule-right"></div>
@@ -515,6 +537,47 @@ onMounted(() => {
   color: var(--vp-c-text-2);
 }
 
+/* ===== Pain points section ===== */
+.ed-pain-points {
+  padding: 0 0 8rem;
+}
+
+.ed-pain-points-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ed-pain-point {
+  padding: 1.75rem 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.ed-pain-point:last-child {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.ed-pain-point h3 {
+  font-family: var(--ed-font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  margin-bottom: 0.5rem !important;
+}
+
+.ed-pain-point p {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--vp-c-text-2);
+}
+
+.ed-pain-point code {
+  font-family: var(--ed-font-mono);
+  font-size: 0.8125rem;
+  background: var(--vp-c-bg-soft);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+}
+
 /* ===== Demo section ===== */
 .ed-demo {
   padding: 0 0 8rem;
@@ -850,6 +913,7 @@ onMounted(() => {
   }
 
   .ed-why,
+  .ed-pain-points,
   .ed-demo,
   .ed-workflows,
   .ed-sandbox,
@@ -886,6 +950,7 @@ onMounted(() => {
   }
 
   .ed-why,
+  .ed-pain-points,
   .ed-demo,
   .ed-sandbox,
   .ed-dashboard,
