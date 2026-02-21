@@ -8,7 +8,6 @@ use crate::state::StateStore;
 use crate::util::canon_or_self;
 use crate::{config, git, github, spinner};
 
-use super::cleanup::get_worktree_mode;
 use super::types::{AgentStatusSummary, WorktreeInfo};
 
 /// Filter worktrees by handle (directory name) or branch name.
@@ -124,6 +123,9 @@ pub fn list(
         .map(|a| (canon_or_self(&a.path), a.status))
         .collect();
 
+    // Batch-load all worktree modes in a single git config call
+    let worktree_modes = git::get_all_worktree_modes();
+
     let prefix = config.window_prefix();
     let worktrees: Vec<WorktreeInfo> = worktrees_data
         .into_iter()
@@ -137,7 +139,10 @@ pub fn list(
 
             // Check if mux target exists (window or session based on stored mode)
             let prefixed_name = util::prefixed(prefix, &handle);
-            let mode = get_worktree_mode(&handle);
+            let mode = worktree_modes
+                .get(&handle)
+                .copied()
+                .unwrap_or(MuxMode::Window);
             let has_mux_window = if mode == MuxMode::Session {
                 mux_sessions.contains(&prefixed_name)
             } else {

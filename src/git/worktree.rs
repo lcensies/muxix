@@ -187,6 +187,42 @@ pub fn get_worktree_mode(handle: &str) -> MuxMode {
     }
 }
 
+/// Batch-load all worktree modes from git config in a single subprocess call.
+/// Returns a map from handle to MuxMode. Handles not in the map default to Window.
+pub fn get_all_worktree_modes() -> std::collections::HashMap<String, MuxMode> {
+    let output = Cmd::new("git")
+        .args(&[
+            "config",
+            "--local",
+            "--get-regexp",
+            r"^workmux\.worktree\..*\.mode$",
+        ])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let mut modes = std::collections::HashMap::new();
+    for line in output.lines() {
+        // Format: "workmux.worktree.<handle>.mode <value>"
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() == 2 {
+            let key = parts[0];
+            let value = parts[1].trim();
+            // Extract handle from "workmux.worktree.<handle>.mode"
+            if let Some(rest) = key.strip_prefix("workmux.worktree.")
+                && let Some(handle) = rest.strip_suffix(".mode")
+            {
+                let mode = if value == "session" {
+                    MuxMode::Session
+                } else {
+                    MuxMode::Window
+                };
+                modes.insert(handle.to_string(), mode);
+            }
+        }
+    }
+    modes
+}
+
 /// Remove all metadata for a worktree handle.
 pub fn remove_worktree_meta(handle: &str) -> Result<()> {
     // Use --remove-section to remove all keys under the handle's section
