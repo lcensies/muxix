@@ -109,6 +109,16 @@ pub trait Multiplexer: Send + Sync {
     /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
     fn shell_kill_session_cmd(&self, full_name: &str) -> Result<String>;
 
+    /// Generate a shell command string to switch to the last/previous session.
+    /// Used in deferred scripts before killing the current session so the client
+    /// returns to the session the user was on previously.
+    fn shell_switch_to_last_session_cmd(&self) -> Result<String> {
+        Err(anyhow!(
+            "shell_switch_to_last_session_cmd not supported by {} backend",
+            self.name()
+        ))
+    }
+
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 

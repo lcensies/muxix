@@ -475,9 +475,10 @@ pub fn cleanup(
     // Only remove immediately when not deferring -- deferred cleanup includes this
     // in the shell script so metadata survives if the deferred script fails.
     if result.deferred_cleanup.is_none()
-        && let Err(e) = git::remove_worktree_meta(handle) {
-            warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
-        }
+        && let Err(e) = git::remove_worktree_meta(handle)
+    {
+        warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
+    }
 
     Ok(result)
 }
@@ -591,14 +592,27 @@ pub fn navigate_to_target_and_close(
                     .unwrap_or_default()
             };
 
+            // For session mode, switch to the last session before killing so
+            // the client returns to where the user was previously instead of
+            // tmux picking an arbitrary session.
+            let switch_last_part = if mode == MuxMode::Session {
+                mux.shell_switch_to_last_session_cmd()
+                    .ok()
+                    .map(|cmd| format!("{}; ", cmd))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
             let kill_part = kill_source_cmd
                 .as_ref()
                 .map(|cmd| format!("{}; ", cmd))
                 .unwrap_or_default();
 
             let script = format!(
-                "sleep {delay}; {kill}{cleanup}",
+                "sleep {delay}; {switch}{kill}{cleanup}",
                 delay = delay_secs,
+                switch = switch_last_part,
                 kill = kill_part,
                 cleanup = cleanup_script.strip_prefix("; ").unwrap_or(&cleanup_script),
             );
