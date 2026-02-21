@@ -8,7 +8,7 @@ use crate::state::StateStore;
 use crate::util::canon_or_self;
 use crate::{config, git, github, spinner};
 
-use super::cleanup::get_worktree_target;
+use super::cleanup::get_worktree_mode;
 use super::types::{AgentStatusSummary, WorktreeInfo};
 
 /// Filter worktrees by handle (directory name) or branch name.
@@ -137,7 +137,7 @@ pub fn list(
 
             // Check if mux target exists (window or session based on stored mode)
             let prefixed_name = util::prefixed(prefix, &handle);
-            let is_session_mode = get_worktree_target(&handle) == TmuxTarget::Session;
+            let is_session_mode = get_worktree_mode(&handle) == TmuxTarget::Session;
             let has_mux_window = if is_session_mode {
                 mux_sessions.contains(&prefixed_name)
             } else {

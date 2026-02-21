@@ -10,7 +10,7 @@ use crate::{cmd, git};
 use tracing::{debug, info, warn};
 
 // Re-export for use by other modules in the workflow
-pub use git::get_worktree_target;
+pub use git::get_worktree_mode;
 
 use super::context::WorkflowContext;
 use super::types::{CleanupResult, DeferredCleanup};
@@ -97,8 +97,8 @@ pub fn cleanup(
     no_hooks: bool,
 ) -> Result<CleanupResult> {
     // Determine if this worktree was created as a session or window
-    let target = get_worktree_target(handle);
-    let is_session_mode = target == TmuxTarget::Session;
+    let mode = get_worktree_mode(handle);
+    let is_session_mode = mode == TmuxTarget::Session;
 
     info!(
         branch = branch_name,

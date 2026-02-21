@@ -27,8 +27,8 @@ pub fn run(
     let context = WorkflowContext::new(config, mux, config_location)?;
 
     // Determine the target mode from stored metadata
-    let stored_target = git::get_worktree_target(&resolved_name);
-    let target_type = match stored_target {
+    let stored_mode = git::get_worktree_mode(&resolved_name);
+    let target_type = match stored_mode {
         TmuxTarget::Session => "session",
         TmuxTarget::Window => "window",
     };

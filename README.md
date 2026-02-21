@@ -241,7 +241,7 @@ customize.
 | `main_branch`    | Branch to merge into                                 | Auto-detected           |
 | `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
 | `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                   |
-| `target`         | Tmux target type (`window` or `session`)             | `window`                |
+| `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
 | `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
@@ -2149,7 +2149,7 @@ Add to your config:
 
 ```yaml
 # ~/.config/workmux/config.yaml or .workmux.yaml
-target: session
+mode: session
 ```
 
 Or use the `--session` flag:

@@ -66,7 +66,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
 | `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
-| `target`         | Tmux target type (`window` or `session`)             | `window`                |
+| `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
 
 ### Naming options
 

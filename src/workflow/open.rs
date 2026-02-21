@@ -6,7 +6,7 @@ use crate::git;
 use crate::multiplexer::util::prefixed;
 use tracing::info;
 
-use super::cleanup::get_worktree_target;
+use super::cleanup::get_worktree_mode;
 use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
@@ -51,8 +51,8 @@ pub fn open(
         .to_string();
 
     // Determine the target mode from stored metadata (or default to Window)
-    let stored_target = get_worktree_target(&base_handle);
-    let is_session_mode = stored_target == TmuxTarget::Session;
+    let stored_mode = get_worktree_mode(&base_handle);
+    let is_session_mode = stored_mode == TmuxTarget::Session;
     let target_type = if is_session_mode { "session" } else { "window" };
 
     // Determine if target exists (check session or window based on mode)
@@ -123,7 +123,7 @@ pub fn open(
     let options_with_workdir = SetupOptions {
         working_dir,
         config_root,
-        target: stored_target,
+        mode: stored_mode,
         ..options
     };
 

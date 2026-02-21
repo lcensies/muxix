@@ -134,8 +134,8 @@ pub fn setup_environment(
         agent,
     )?;
 
-    // Create window or session based on target mode
-    let initial_pane_id = match options.target {
+    // Create window or session based on mode
+    let initial_pane_id = match options.mode {
         TmuxTarget::Window => {
             // Find the last workmux-managed window to insert the new one after.
             // If after_window is provided (for duplicate windows), use that to group with base handle.
@@ -205,7 +205,7 @@ pub fn setup_environment(
     // Focus the configured pane and optionally switch to the window/session
     if options.focus_window {
         mux.select_pane(&pane_setup_result.focus_pane_id)?;
-        match options.target {
+        match options.mode {
             TmuxTarget::Window => {
                 // Use handle for window selection (not branch_name)
                 mux.select_window(prefix, handle)?;
@@ -687,7 +687,7 @@ mod tests {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            target: crate::config::TmuxTarget::default(),
+            mode: crate::config::TmuxTarget::default(),
         }
     }
 

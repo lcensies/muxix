@@ -224,7 +224,7 @@ class TestSessionOpen:
     def test_open_respects_stored_session_mode(
         self, mux_server, workmux_exe_path, repo_path
     ):
-        """Verifies `workmux open` respects stored target mode and opens as session.
+        """Verifies `workmux open` respects stored session mode and opens as session.
 
         Note: workmux open doesn't have --background, but for session mode
         the session is created detached anyway, so we can verify it exists
@@ -282,7 +282,7 @@ class TestMixedMode:
     def test_mixed_mode_creates_correct_targets(
         self, mux_server, workmux_exe_path, repo_path
     ):
-        """Verifies mixed-mode worktrees create correct tmux targets."""
+        """Verifies mixed-mode worktrees create correct tmux types."""
         env = mux_server
         window_branch = "feature-window-mode"
         session_branch = "feature-session-mode"
@@ -317,7 +317,7 @@ class TestMixedMode:
     def test_mixed_mode_remove_cleans_up_correctly(
         self, mux_server, workmux_exe_path, repo_path
     ):
-        """Verifies remove cleans up the correct target type in mixed-mode."""
+        """Verifies remove cleans up the correct type in mixed-mode."""
         env = mux_server
         window_branch = "feature-window-cleanup"
         session_branch = "feature-session-cleanup"

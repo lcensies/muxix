@@ -4,7 +4,7 @@ use crate::config::TmuxTarget;
 use crate::{cmd, git};
 use tracing::{debug, info};
 
-use super::cleanup::{self, get_worktree_target};
+use super::cleanup::{self, get_worktree_mode};
 use super::context::WorkflowContext;
 use super::types::MergeResult;
 
@@ -54,7 +54,7 @@ pub fn merge(
         })?;
 
     // Capture session mode BEFORE cleanup (cleanup removes the metadata)
-    let is_session_mode = get_worktree_target(handle) == TmuxTarget::Session;
+    let is_session_mode = get_worktree_mode(handle) == TmuxTarget::Session;
 
     debug!(
         name = name,

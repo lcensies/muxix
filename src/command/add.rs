@@ -138,19 +138,19 @@ pub fn run(
     // Extract sandbox override before consuming setup flags
     let sandbox_override = setup.sandbox;
 
-    // Load config early to determine target (CLI flag overrides config)
+    // Load config early to determine mode (CLI flag overrides config)
     let initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
-    let target = if session {
+    let mode = if session {
         TmuxTarget::Session
     } else {
-        initial_config.target()
+        initial_config.mode()
     };
 
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
     options.open_if_exists = setup.open_if_exists;
-    options.target = target;
+    options.mode = mode;
 
     // If using --auto-name and config has auto_name.background = true, run in background
     if auto_name && options.focus_window {
@@ -394,8 +394,8 @@ fn handle_rescue_flow(
         return Ok(false);
     }
 
-    // Capture target before options is moved
-    let is_session_mode = options.target == TmuxTarget::Session;
+    // Capture mode before options is moved
+    let is_session_mode = options.mode == TmuxTarget::Session;
 
     let result = workflow::create_with_changes(
         branch_name,
@@ -529,7 +529,7 @@ impl<'a> CreationPlan<'a> {
         let mut created_windows = Vec::new();
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
-        let is_session_mode = self.options.target == TmuxTarget::Session;
+        let is_session_mode = self.options.mode == TmuxTarget::Session;
 
         for (i, spec) in self.specs.iter().enumerate() {
             // Concurrency control: wait for a slot if at limit
@@ -632,7 +632,7 @@ impl<'a> CreationPlan<'a> {
                 println!("✓ Setup complete");
             }
 
-            let tmux_type = match self.options.target {
+            let tmux_type = match self.options.mode {
                 TmuxTarget::Session => "session",
                 TmuxTarget::Window => "window",
             };
@@ -647,7 +647,7 @@ impl<'a> CreationPlan<'a> {
         }
 
         if self.wait && !created_windows.is_empty() {
-            if self.options.target == TmuxTarget::Session {
+            if self.options.mode == TmuxTarget::Session {
                 // For sessions, wait for each one to close
                 for session_name in &created_windows {
                     mux.wait_until_session_closed(session_name)?;

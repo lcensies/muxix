@@ -63,7 +63,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     context.ensure_mux_running()?;
 
     // Check if worktree or target (window/session) already exists
-    let is_session_mode = options.target == TmuxTarget::Session;
+    let is_session_mode = options.mode == TmuxTarget::Session;
     let full_target_name = crate::multiplexer::util::prefixed(&context.prefix, handle);
     let target_exists = if is_session_mode {
         context.mux.session_exists(&full_target_name)?
@@ -94,7 +94,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             working_dir: options.working_dir.clone(),
             config_root: options.config_root.clone(),
             open_if_exists: false,
-            target: options.target,
+            mode: options.mode,
         };
 
         return super::open::open(branch_name, context, open_options, false);
@@ -283,16 +283,15 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
     }
 
-    // Store the tmux target mode in git config for cleanup operations
+    // Store the tmux mode in git config for cleanup operations
     // This allows remove/close/merge to know whether to kill a window or session
-    if options.target == TmuxTarget::Session {
-        git::set_worktree_meta(handle, "target", "session").with_context(|| {
-            format!("Failed to store tmux target mode for worktree '{}'", handle)
-        })?;
+    if options.mode == TmuxTarget::Session {
+        git::set_worktree_meta(handle, "mode", "session")
+            .with_context(|| format!("Failed to store tmux mode for worktree '{}'", handle))?;
         debug!(
             handle = handle,
-            target = "session",
-            "create:stored tmux target in git config"
+            mode = "session",
+            "create:stored tmux mode in git config"
         );
     }
 
@@ -401,8 +400,8 @@ pub fn create_with_changes(
         .context("Failed to stash current changes")?;
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
-    // Capture target mode before moving options (needed for rollback cleanup)
-    let is_session_mode = options.target == TmuxTarget::Session;
+    // Capture mode before moving options (needed for rollback cleanup)
+    let is_session_mode = options.mode == TmuxTarget::Session;
 
     // 2. Create new worktree
     let create_result = match create(
