@@ -519,13 +519,24 @@ pub fn navigate_to_target_and_close(
         format!("; {}", cmds.join("; "))
     }
 
-    // Check if target window/session exists
+    // Check if target window/session exists (probe both modes since target
+    // may be a different mode than source, e.g. session worktree -> window main)
     let mux_running = mux.is_running()?;
     let target_full = prefixed(prefix, target_window_name);
-    let target_exists = if mux_running {
-        MuxHandle::exists_full(mux, mode, &target_full)?
+    let (target_exists, target_mode) = if mux_running {
+        let is_session = mux.session_exists(&target_full).unwrap_or(false);
+        let is_window = mux
+            .window_exists_by_full_name(&target_full)
+            .unwrap_or(false);
+        if is_session {
+            (true, MuxMode::Session)
+        } else if is_window {
+            (true, MuxMode::Window)
+        } else {
+            (false, mode) // doesn't matter, target doesn't exist
+        }
     } else {
-        false
+        (false, mode)
     };
     let kind = crate::multiplexer::handle::mode_label(mode);
 
@@ -538,8 +549,9 @@ pub fn navigate_to_target_and_close(
         .unwrap_or_else(|| prefixed(prefix, source_handle));
 
     // Generate backend-specific shell commands for deferred scripts.
+    // Kill uses source mode, select uses target's detected mode.
     let kill_source_cmd = MuxHandle::shell_kill_cmd_full(mux, mode, &source_full).ok();
-    let select_target_cmd = MuxHandle::shell_select_cmd_full(mux, mode, &target_full).ok();
+    let select_target_cmd = MuxHandle::shell_select_cmd_full(mux, target_mode, &target_full).ok();
 
     debug!(
         prefix = prefix,
@@ -657,7 +669,7 @@ pub fn navigate_to_target_and_close(
     } else if !cleanup_result.tmux_window_killed {
         // Running outside and targets weren't killed yet (shouldn't happen normally)
         // but handle it for completeness
-        let target = MuxHandle::new(mux, mode, prefix, target_window_name);
+        let target = MuxHandle::new(mux, target_mode, prefix, target_window_name);
         target.select()?;
         info!(
             handle = source_handle,
