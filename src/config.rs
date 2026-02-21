@@ -2875,4 +2875,198 @@ network:
         assert_eq!(config.network.policy(), NetworkPolicy::Deny);
         assert_eq!(config.network.allowed_domains().len(), 2);
     }
+
+    // --- WindowConfig tests ---
+
+    use super::{WindowConfig, validate_windows_config};
+
+    #[test]
+    fn parse_windows_config_named() {
+        let yaml = r#"
+windows:
+  - name: editor
+    panes:
+      - command: <agent>
+        focus: true
+      - split: horizontal
+        size: 20
+  - name: tests
+    panes:
+      - command: just test --watch
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let windows = config.windows.unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].name.as_deref(), Some("editor"));
+        assert_eq!(windows[0].panes.as_ref().unwrap().len(), 2);
+        assert_eq!(windows[1].name.as_deref(), Some("tests"));
+        assert_eq!(windows[1].panes.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn parse_windows_config_unnamed() {
+        let yaml = r#"
+windows:
+  - panes:
+      - command: tail -f app.log
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let windows = config.windows.unwrap();
+        assert_eq!(windows.len(), 1);
+        assert!(windows[0].name.is_none());
+    }
+
+    #[test]
+    fn parse_windows_config_mixed() {
+        let yaml = r#"
+windows:
+  - name: editor
+    panes:
+      - command: <agent>
+        focus: true
+  - panes:
+      - command: tail -f app.log
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let windows = config.windows.unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].name.as_deref(), Some("editor"));
+        assert!(windows[1].name.is_none());
+    }
+
+    #[test]
+    fn validate_windows_config_empty_errors() {
+        let result = validate_windows_config(&[]);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("must not be empty")
+        );
+    }
+
+    #[test]
+    fn validate_windows_config_valid() {
+        let windows = vec![
+            WindowConfig {
+                name: Some("editor".to_string()),
+                panes: Some(vec![super::PaneConfig {
+                    command: Some("<agent>".to_string()),
+                    focus: true,
+                    split: None,
+                    size: None,
+                    percentage: None,
+                    target: None,
+                }]),
+            },
+            WindowConfig {
+                name: None,
+                panes: Some(vec![super::PaneConfig {
+                    command: Some("tail -f app.log".to_string()),
+                    focus: false,
+                    split: None,
+                    size: None,
+                    percentage: None,
+                    target: None,
+                }]),
+            },
+        ];
+        assert!(validate_windows_config(&windows).is_ok());
+    }
+
+    #[test]
+    fn validate_windows_config_bad_pane_errors() {
+        let windows = vec![WindowConfig {
+            name: Some("bad".to_string()),
+            panes: Some(vec![super::PaneConfig {
+                command: None,
+                focus: false,
+                split: Some(super::SplitDirection::Horizontal), // first pane cannot have split
+                size: None,
+                percentage: None,
+                target: None,
+            }]),
+        }];
+        let result = validate_windows_config(&windows);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Window 0"));
+    }
+
+    #[test]
+    fn merge_project_windows_overrides_global_panes() {
+        let global = Config {
+            panes: Some(vec![super::PaneConfig {
+                command: Some("vim".to_string()),
+                focus: true,
+                split: None,
+                size: None,
+                percentage: None,
+                target: None,
+            }]),
+            ..Default::default()
+        };
+        let project = Config {
+            windows: Some(vec![
+                WindowConfig {
+                    name: Some("editor".to_string()),
+                    panes: None,
+                },
+                WindowConfig {
+                    name: Some("tests".to_string()),
+                    panes: None,
+                },
+            ]),
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Project windows should win, panes should be cleared
+        assert!(merged.windows.is_some());
+        assert!(merged.panes.is_none());
+        assert_eq!(merged.windows.unwrap().len(), 2);
+    }
+
+    #[test]
+    fn merge_project_panes_overrides_global_windows() {
+        let global = Config {
+            windows: Some(vec![WindowConfig {
+                name: Some("global-window".to_string()),
+                panes: None,
+            }]),
+            ..Default::default()
+        };
+        let project = Config {
+            panes: Some(vec![super::PaneConfig {
+                command: Some("vim".to_string()),
+                focus: true,
+                split: None,
+                size: None,
+                percentage: None,
+                target: None,
+            }]),
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        // Project panes should win, windows should be cleared
+        assert!(merged.panes.is_some());
+        assert!(merged.windows.is_none());
+    }
+
+    #[test]
+    fn merge_global_windows_inherited_when_no_project_layout() {
+        let global = Config {
+            windows: Some(vec![WindowConfig {
+                name: Some("global-window".to_string()),
+                panes: None,
+            }]),
+            ..Default::default()
+        };
+        let project = Config::default(); // no panes or windows
+
+        let merged = global.merge(project);
+        assert!(merged.windows.is_some());
+        assert!(merged.panes.is_none());
+    }
 }
