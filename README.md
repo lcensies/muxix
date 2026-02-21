@@ -1364,14 +1364,14 @@ Commands for managing sandbox functionality. See the
 [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
 documentation.
 
-| Command             | Description                                              |
-| ------------------- | -------------------------------------------------------- |
-| `sandbox pull`      | Pull the latest container image from the registry        |
-| `sandbox build`     | Build the container image locally                        |
-| `sandbox shell`     | Start an interactive shell inside a sandbox              |
-| `sandbox agent`     | Run the configured agent in a sandbox with RPC support   |
-| `sandbox stop`      | Stop running Lima VMs                                    |
-| `sandbox prune`     | Delete unused Lima VMs to reclaim disk space             |
+| Command               | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `sandbox pull`        | Pull the latest container image from the registry      |
+| `sandbox build`       | Build the container image locally                      |
+| `sandbox shell`       | Start an interactive shell inside a sandbox            |
+| `sandbox agent`       | Run the configured agent in a sandbox with RPC support |
+| `sandbox stop`        | Stop running Lima VMs                                  |
+| `sandbox prune`       | Delete unused Lima VMs to reclaim disk space           |
 | `sandbox install-dev` | Cross-compile and install workmux into sandboxes (dev) |
 
 ---
@@ -1597,12 +1597,12 @@ agents, and merging all continue to work normally across the sandbox boundary.
 
 ### Backends
 
-|                      | Container (Docker/Podman)                 | Lima VM                              |
-| -------------------- | ----------------------------------------- | ------------------------------------ |
-| **Isolation**        | Process-level (namespaces)                | Machine-level (virtual machine)      |
-| **Persistence**      | Ephemeral (new container per session)     | Persistent (stateful VMs)            |
-| **Toolchain**        | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support       |
-| **Network**          | Optional restrictions (domain allowlist)  | Unrestricted                         |
+|                 | Container (Docker/Podman)                  | Lima VM                         |
+| --------------- | ------------------------------------------ | ------------------------------- |
+| **Isolation**   | Process-level (namespaces)                 | Machine-level (virtual machine) |
+| **Persistence** | Ephemeral (new container per session)      | Persistent (stateful VMs)       |
+| **Toolchain**   | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support   |
+| **Network**     | Optional restrictions (domain allowlist)   | Unrestricted                    |
 
 Container is a good default: simple to set up and ephemeral, so no state
 accumulates between sessions. Choose Lima if you want persistent VMs with
@@ -1617,8 +1617,8 @@ sandbox:
   # backend: lima  # uncomment for Lima VMs (default: container)
 ```
 
-The pre-built container image is pulled automatically on first run. For Lima, the
-VM is created and provisioned on first use.
+The pre-built container image is pulled automatically on first run. For Lima,
+the VM is created and provisioned on first use.
 
 ### Shared features
 
@@ -1631,8 +1631,8 @@ Both backends support:
 - **Git identity**: Your `user.name` and `user.email` are automatically injected
   so git commits work without exposing your full `~/.gitconfig`
 - **Credential sharing**: Agent credentials are shared between host and sandbox
-- **Network restrictions** (container only): Block outbound connections except to
-  approved domains
+- **Network restrictions** (container only): Block outbound connections except
+  to approved domains
 
 See the [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
 setup, configuration, and security details.
