@@ -101,7 +101,8 @@ pub fn rewrite_agent_command(
     }
 }
 
-/// Resolve a pane's command: handle `<agent>` placeholder and adjust for prompt injection.
+/// Resolve a pane's command: handle `<agent>` placeholder, auto-detect known
+/// agents, and adjust for prompt injection.
 ///
 /// Returns the final command to send to the pane, or None if no command should be sent.
 /// This consolidates the duplicated command resolution logic from both backends' setup_panes.
@@ -111,6 +112,8 @@ pub struct ResolvedCommand {
     pub command: String,
     /// Whether the command was rewritten to inject a prompt (needs auto-status).
     pub prompt_injected: bool,
+    /// The effective agent for this pane (may differ from window-level agent for auto-detected agents).
+    pub effective_agent: Option<String>,
 }
 
 pub fn resolve_pane_command(
@@ -121,10 +124,19 @@ pub fn resolve_pane_command(
     effective_agent: Option<&str>,
     shell: &str,
 ) -> Option<ResolvedCommand> {
-    let command = if pane_command == Some("<agent>") {
-        effective_agent?
+    let raw_command = pane_command?;
+
+    let (command, pane_effective_agent) = if raw_command == "<agent>" {
+        // Bare <agent> - use window-level effective agent
+        let agent = effective_agent?;
+        (agent, effective_agent)
+    } else if super::agent::is_known_agent(raw_command) {
+        // Known agent command (e.g., "codex --flags") - use itself as effective
+        // agent so prompt injection works even when it's not the configured agent
+        (raw_command, Some(raw_command))
     } else {
-        pane_command?
+        // Regular command - use window-level effective agent for prompt injection matching
+        (raw_command, effective_agent)
     };
 
     if !run_commands {
@@ -135,13 +147,14 @@ pub fn resolve_pane_command(
         command,
         prompt_file_path,
         working_dir,
-        effective_agent,
+        pane_effective_agent,
         shell,
     );
     let prompt_injected = matches!(result, Cow::Owned(_));
     Some(ResolvedCommand {
         command: result.into_owned(),
         prompt_injected,
+        effective_agent: pane_effective_agent.map(|s| s.to_string()),
     })
 }
 
@@ -636,5 +649,94 @@ mod tests {
         let resolved = result.unwrap();
         assert!(!resolved.prompt_injected);
         assert_eq!(resolved.command, "vim");
+    }
+
+    #[test]
+    fn test_resolve_pane_command_bare_agent_effective_agent_field() {
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("claude"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "claude");
+        assert_eq!(resolved.effective_agent.as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn test_resolve_pane_command_regular_command_effective_agent_field() {
+        let result = resolve_pane_command(
+            Some("vim"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("claude"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "vim");
+        // Regular commands still carry the window-level agent
+        assert_eq!(resolved.effective_agent.as_deref(), Some("claude"));
+    }
+
+    // --- auto-detection of known agent commands ---
+
+    #[test]
+    fn test_resolve_pane_command_known_agent_auto_detected() {
+        // "codex --flags" is a known agent, should auto-detect even when
+        // the window-level agent is different
+        let result = resolve_pane_command(
+            Some("codex --yolo"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("claude"), // window-level agent is claude
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "codex --yolo");
+        // effective_agent should be the command itself, not the window-level agent
+        assert_eq!(resolved.effective_agent.as_deref(), Some("codex --yolo"));
+    }
+
+    #[test]
+    fn test_resolve_pane_command_known_agent_prompt_injection() {
+        let prompt = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+        let result = resolve_pane_command(
+            Some("codex"),
+            true,
+            Some(&prompt),
+            &working_dir,
+            Some("claude"), // window-level is claude, pane is codex
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert!(resolved.prompt_injected);
+        assert!(resolved.command.contains("PROMPT.md"));
+        assert_eq!(resolved.effective_agent.as_deref(), Some("codex"));
+    }
+
+    #[test]
+    fn test_resolve_pane_command_known_agent_no_window_agent() {
+        // Known agent should work even without any window-level agent
+        let prompt = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+        let result = resolve_pane_command(
+            Some("gemini"),
+            true,
+            Some(&prompt),
+            &working_dir,
+            None, // no window-level agent at all
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert!(resolved.prompt_injected);
+        // Should use gemini's profile (-i flag)
+        assert!(resolved.command.contains("-i"));
+        assert_eq!(resolved.effective_agent.as_deref(), Some("gemini"));
     }
 }

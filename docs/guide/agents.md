@@ -41,6 +41,22 @@ workmux add -A
 The `-A` (`--auto-name`) flag uses an LLM to [generate a branch name](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
 :::
 
+## Per-pane agents
+
+workmux automatically recognizes built-in agent commands (`claude`, `gemini`, `codex`, `opencode`) in pane commands. This means prompt injection works without the `<agent>` placeholder or a matching `agent` config:
+
+```yaml
+panes:
+  - command: "claude --dangerously-skip-permissions"
+    focus: true
+  - command: "codex --yolo"
+    split: vertical
+```
+
+Each agent receives the prompt using its native format (e.g., Claude uses `--`, Gemini uses `-i`). Auto-detection matches the executable name regardless of flags or path. Just provide a prompt via `-p`, `-P`, or `-e`.
+
+See [pane configuration](/guide/configuration#agent-placeholders) for details.
+
 ## Parallel workflows
 
 workmux can generate multiple worktrees from a single `add` command, which is ideal for running parallel experiments or delegating tasks to multiple AI agents.

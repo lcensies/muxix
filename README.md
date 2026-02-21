@@ -276,18 +276,34 @@ panes:
 
 Each pane supports:
 
-| Option       | Description                                         | Default |
-| ------------ | --------------------------------------------------- | ------- |
-| `command`    | Command to run (use `<agent>` for configured agent) | Shell   |
-| `focus`      | Whether this pane receives focus                    | `false` |
-| `split`      | Split direction (`horizontal` or `vertical`)        | —       |
-| `size`       | Absolute size in lines/cells                        | 50%     |
-| `percentage` | Size as percentage (1-100)                          | 50%     |
+| Option       | Description                                                    | Default |
+| ------------ | -------------------------------------------------------------- | ------- |
+| `command`    | Command to run (see [agent placeholders](#agent-placeholders)) | Shell   |
+| `focus`      | Whether this pane receives focus                               | `false` |
+| `split`      | Split direction (`horizontal` or `vertical`)                   | —       |
+| `size`       | Absolute size in lines/cells                                   | 50%     |
+| `percentage` | Size as percentage (1-100)                                     | 50%     |
 
-**Note**: The `<agent>` placeholder must be the entire command value to be
-substituted. To add extra flags, either include them in the `agent` config
-(e.g., `agent: "claude --verbose"`) or use the literal command name (e.g.,
-`command: "claude --verbose"`).
+##### Agent placeholders
+
+- `<agent>` -- resolves to the configured agent (from `agent` config or
+  `--agent` flag)
+
+Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are auto-detected when
+used as literal commands and receive prompt injection automatically, without
+needing the `<agent>` placeholder or a matching `agent` config:
+
+```yaml
+panes:
+  - command: 'claude --dangerously-skip-permissions'
+    focus: true
+  - command: 'codex --yolo'
+    split: vertical
+```
+
+Each agent receives the prompt (via `-p`/`-P`/`-e`) using the correct format for
+that agent. Auto-detection matches the executable name regardless of flags or
+path.
 
 #### File operations
 

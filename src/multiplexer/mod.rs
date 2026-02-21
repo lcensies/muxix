@@ -264,6 +264,9 @@ pub trait Multiplexer: Send + Sync {
             );
 
             let pane_id = if let Some(resolved) = adjusted_command {
+                // Use per-pane agent if set, otherwise fall back to window-level agent
+                let pane_agent = resolved.effective_agent.as_deref().or(effective_agent);
+
                 // Spawn with handshake so we can send the command after shell is ready
                 let handshake = self.create_handshake()?;
                 let script = handshake.script_content(&shell);
@@ -291,6 +294,7 @@ pub trait Multiplexer: Send + Sync {
                 // Detect if this is an agent pane for sandbox targeting
                 let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
                     cmd == "<agent>"
+                        || agent::is_known_agent(cmd)
                         || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
                 });
 
@@ -308,8 +312,7 @@ pub trait Multiplexer: Send + Sync {
                         // (sandbox provides the security boundary, so permission
                         // prompts are unnecessary and break autonomous workflow)
                         let command_to_wrap = if is_agent_pane {
-                            let profile =
-                                crate::multiplexer::agent::resolve_profile(effective_agent);
+                            let profile = crate::multiplexer::agent::resolve_profile(pane_agent);
                             if let Some(flag) = profile.skip_permissions_flag() {
                                 util::inject_skip_permissions_flag(&resolved.command, flag)
                             } else {
@@ -367,7 +370,7 @@ pub trait Multiplexer: Send + Sync {
 
                 // Set working status for agent panes with injected prompts
                 if resolved.prompt_injected
-                    && agent::resolve_profile(effective_agent).needs_auto_status()
+                    && agent::resolve_profile(pane_agent).needs_auto_status()
                 {
                     let icon = config.status_icons.working();
                     if config.status_format.unwrap_or(true) {

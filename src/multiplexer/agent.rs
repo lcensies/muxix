@@ -128,6 +128,16 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &CodexProfile,
 ];
 
+/// Check if a command matches a known agent profile.
+///
+/// Returns true for commands whose executable stem matches a built-in agent
+/// (claude, gemini, codex, opencode). Used for auto-detecting agent panes
+/// without requiring the `<agent>` placeholder.
+pub fn is_known_agent(command: &str) -> bool {
+    let stem = extract_executable_stem(command);
+    PROFILES.iter().any(|p| p.name() == stem)
+}
+
 /// Resolve an agent command to its profile.
 ///
 /// Returns `DefaultProfile` if no specific profile matches.
@@ -279,5 +289,30 @@ mod tests {
     fn test_resolve_profile_unknown() {
         let profile = resolve_profile(Some("unknown-agent"));
         assert_eq!(profile.name(), "default");
+    }
+
+    // === is_known_agent tests ===
+
+    #[test]
+    fn test_is_known_agent_bare_names() {
+        assert!(is_known_agent("claude"));
+        assert!(is_known_agent("gemini"));
+        assert!(is_known_agent("codex"));
+        assert!(is_known_agent("opencode"));
+    }
+
+    #[test]
+    fn test_is_known_agent_with_args() {
+        assert!(is_known_agent("claude --dangerously-skip-permissions"));
+        assert!(is_known_agent("codex --yolo"));
+        assert!(is_known_agent("gemini -i foo"));
+    }
+
+    #[test]
+    fn test_is_known_agent_unknown() {
+        assert!(!is_known_agent("vim"));
+        assert!(!is_known_agent("npm run dev"));
+        assert!(!is_known_agent("clear"));
+        assert!(!is_known_agent("unknown-agent"));
     }
 }

@@ -338,6 +338,7 @@ fn pre_boot_lima_vm(
         }
         let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
             cmd == "<agent>"
+                || crate::multiplexer::agent::is_known_agent(cmd)
                 || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
         });
         match config.sandbox.target() {
@@ -363,10 +364,11 @@ pub fn resolve_pane_configuration(
         return original_panes.to_vec();
     };
 
-    if original_panes
-        .iter()
-        .any(|pane| pane.command.as_deref() == Some("<agent>"))
-    {
+    if original_panes.iter().any(|pane| {
+        pane.command
+            .as_deref()
+            .is_some_and(|cmd| cmd == "<agent>" || crate::multiplexer::agent::is_known_agent(cmd))
+    }) {
         return original_panes.to_vec();
     }
 
@@ -870,7 +872,7 @@ mod tests {
     #[test]
     fn validate_prompt_cli_agent_overrides_config() {
         let panes = vec![config::PaneConfig {
-            command: Some("gemini".to_string()),
+            command: Some("my-custom-agent".to_string()),
             focus: true,
             split: None,
             size: None,
@@ -880,8 +882,9 @@ mod tests {
         let config = make_config_with_agent(Some("claude")); // config says claude
         let options = make_options_with_prompt(true);
 
-        // CLI agent is gemini, which matches the pane
-        let result = super::validate_prompt_consumption(&panes, Some("gemini"), &config, &options);
+        // CLI agent is my-custom-agent, which matches the pane
+        let result =
+            super::validate_prompt_consumption(&panes, Some("my-custom-agent"), &config, &options);
         assert!(result.is_ok());
 
         // CLI agent is None, falls back to config (claude), which doesn't match
@@ -914,6 +917,54 @@ mod tests {
 
         let result = super::validate_prompt_consumption(&panes, None, &config, &options);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_prompt_succeeds_with_known_agent_command() {
+        let panes = vec![config::PaneConfig {
+            command: Some("codex --yolo".to_string()),
+            focus: true,
+            split: None,
+            size: None,
+            percentage: None,
+            target: None,
+        }];
+        let config = make_config_with_agent(None); // no global agent
+        let options = make_options_with_prompt(true);
+
+        // Known agent command should pass validation even without global agent
+        let result = super::validate_prompt_consumption(&panes, None, &config, &options);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn resolve_pane_configuration_known_agent_returns_original() {
+        let original_panes = vec![
+            config::PaneConfig {
+                command: Some("claude --dangerously-skip-permissions".to_string()),
+                focus: true,
+                split: None,
+                size: None,
+                percentage: None,
+                target: None,
+            },
+            config::PaneConfig {
+                command: Some("codex --yolo".to_string()),
+                focus: false,
+                split: Some(config::SplitDirection::Vertical),
+                size: None,
+                percentage: None,
+                target: None,
+            },
+        ];
+
+        // Should NOT overwrite known agent panes with the cli agent
+        let result = resolve_pane_configuration(&original_panes, Some("gemini"));
+        assert_eq!(
+            result[0].command.as_deref(),
+            Some("claude --dangerously-skip-permissions")
+        );
+        assert_eq!(result[1].command.as_deref(), Some("codex --yolo"));
     }
 
     #[test]
@@ -1024,6 +1075,20 @@ fn validate_prompt_consumption(
         ));
     }
 
+    // Known agent commands always consume prompts (they have their own agent
+    // profile), so the prompt is consumed regardless of whether a global agent
+    // is configured.
+    let has_self_identifying_agent = panes.iter().any(|pane| {
+        pane.command
+            .as_deref()
+            .is_some_and(crate::multiplexer::agent::is_known_agent)
+    });
+
+    if has_self_identifying_agent {
+        return Ok(());
+    }
+
+    // For non-named panes, require a global agent
     let effective_agent = cli_agent.or(config.agent.as_deref());
 
     let Some(agent_cmd) = effective_agent else {

@@ -12,9 +12,9 @@ workmux list [options] [worktree-or-branch...]
 
 ## Arguments
 
-| Argument               | Description                                                                                         |
-| ---------------------- | --------------------------------------------------------------------------------------------------- |
-| `worktree-or-branch`   | Filter by worktree handle (directory name) or branch name. Multiple values supported. Optional.     |
+| Argument             | Description                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `worktree-or-branch` | Filter by worktree handle (directory name) or branch name. Multiple values supported. Optional. |
 
 ## Options
 
