@@ -18,7 +18,7 @@ each with its own AI agent. No stashing, no branch switching, no conflicts.
 **One window per task.** A natural mental model. Each has its own terminal
 state, editor session, dev server, and AI agent. Context switching is switching tabs.
 
-**Automated setup.** New worktrees start broken (no `.env`, no `node_modules`, no dev server). workmux copies config files, symlinks dependencies, and runs install commands automatically on creation.
+**Automated setup.** New worktrees start broken (no `.env`, no `node_modules`, no dev server). workmux can copy config files, symlink dependencies, and run install commands on creation. Configure once, reuse everywhere.
 
 **One-command cleanup.** `workmux merge` handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. Or go next level and use the [`/merge` skill](/guide/skills#merge) to let your agent commit, rebase, and merge autonomously.
 
