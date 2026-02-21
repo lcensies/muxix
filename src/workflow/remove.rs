@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::config::MuxMode;
 use crate::git;
 use crate::sandbox;
 use tracing::{debug, info};
@@ -37,8 +36,8 @@ pub fn remove(
 
     debug!(handle = actual_handle, branch = branch_name, path = %worktree_path.display(), "remove:worktree resolved");
 
-    // Capture session mode BEFORE cleanup (cleanup removes the metadata)
-    let is_session_mode = get_worktree_mode(actual_handle) == MuxMode::Session;
+    // Capture mode BEFORE cleanup (cleanup removes the metadata)
+    let mode = get_worktree_mode(actual_handle);
 
     // Safety Check: Prevent deleting the main worktree itself, regardless of branch.
     let is_main_worktree = match (
@@ -108,7 +107,7 @@ pub fn remove(
         &context.main_branch,
         actual_handle,
         &cleanup_result,
-        is_session_mode,
+        mode,
     )?;
 
     Ok(RemoveResult {

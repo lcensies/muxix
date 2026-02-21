@@ -62,10 +62,8 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Pre-flight checks
     context.ensure_mux_running()?;
 
-    let is_session_mode = options.mode == MuxMode::Session;
-
     // Validate backend supports session mode before creating any git state
-    if is_session_mode && context.mux.name() != "tmux" {
+    if options.mode == MuxMode::Session && context.mux.name() != "tmux" {
         return Err(anyhow!(
             "Session mode (--session) is only supported with tmux.\n\
              Current backend: {}. Use window mode instead.",
@@ -74,12 +72,14 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Check if worktree or target (window/session) already exists
-    let full_target_name = crate::multiplexer::util::prefixed(&context.prefix, handle);
-    let target_exists = if is_session_mode {
-        context.mux.session_exists(&full_target_name)?
-    } else {
-        context.mux.window_exists(&context.prefix, handle)?
-    };
+    let target = crate::multiplexer::MuxHandle::new(
+        context.mux.as_ref(),
+        options.mode,
+        &context.prefix,
+        handle,
+    );
+    let full_target_name = target.full_name();
+    let target_exists = target.exists()?;
     let worktree_exists = git::worktree_exists(branch_name)?;
 
     // If open_if_exists is set and either exists, delegate to open workflow
@@ -112,11 +112,10 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Check target using handle (the display name)
     if target_exists {
-        let target_type = if is_session_mode { "session" } else { "window" };
         return Err(anyhow!(
             "A {} {} named '{}' already exists",
             context.mux.name(),
-            target_type,
+            target.kind(),
             full_target_name
         ));
     }
@@ -411,7 +410,7 @@ pub fn create_with_changes(
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
     // Capture mode before moving options (needed for rollback cleanup)
-    let is_session_mode = options.mode == MuxMode::Session;
+    let mode = options.mode;
 
     // 2. Create new worktree
     let create_result = match create(
@@ -480,7 +479,7 @@ pub fn create_with_changes(
                 &context.main_branch,
                 handle,
                 &cleanup_result,
-                is_session_mode,
+                mode,
             )?;
 
             Err(anyhow!(

@@ -137,8 +137,8 @@ pub fn list(
 
             // Check if mux target exists (window or session based on stored mode)
             let prefixed_name = util::prefixed(prefix, &handle);
-            let is_session_mode = get_worktree_mode(&handle) == MuxMode::Session;
-            let has_mux_window = if is_session_mode {
+            let mode = get_worktree_mode(&handle);
+            let has_mux_window = if mode == MuxMode::Session {
                 mux_sessions.contains(&prefixed_name)
             } else {
                 mux_windows.contains(&prefixed_name)

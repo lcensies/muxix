@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::config::MuxMode;
 use crate::{cmd, git};
 use tracing::{debug, info};
 
@@ -53,8 +52,8 @@ pub fn merge(
             )
         })?;
 
-    // Capture session mode BEFORE cleanup (cleanup removes the metadata)
-    let is_session_mode = get_worktree_mode(handle) == MuxMode::Session;
+    // Capture mode BEFORE cleanup (cleanup removes the metadata)
+    let mode = get_worktree_mode(handle);
 
     debug!(
         name = name,
@@ -336,7 +335,7 @@ pub fn merge(
         &target_window_name,
         handle,
         &cleanup_result,
-        is_session_mode,
+        mode,
     )?;
 
     Ok(MergeResult {

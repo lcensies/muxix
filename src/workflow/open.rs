@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 
-use crate::config::MuxMode;
 use crate::git;
+use crate::multiplexer::MuxHandle;
 use crate::multiplexer::util::prefixed;
 use tracing::info;
 
@@ -52,31 +52,22 @@ pub fn open(
 
     // Determine the target mode from stored metadata (or default to Window)
     let stored_mode = get_worktree_mode(&base_handle);
-    let is_session_mode = stored_mode == MuxMode::Session;
-    let target_type = if is_session_mode { "session" } else { "window" };
-
-    // Determine if target exists (check session or window based on mode)
-    let full_target_name = prefixed(&context.prefix, &base_handle);
-    let target_exists = if is_session_mode {
-        context.mux.session_exists(&full_target_name)?
-    } else {
-        context.mux.window_exists(&context.prefix, &base_handle)?
-    };
+    let target = MuxHandle::new(
+        context.mux.as_ref(),
+        stored_mode,
+        &context.prefix,
+        &base_handle,
+    );
+    let target_exists = target.exists()?;
 
     // If target exists and we're not forcing new, switch to it
     if target_exists && !new_window {
-        if is_session_mode {
-            context
-                .mux
-                .switch_to_session(&context.prefix, &base_handle)?;
-        } else {
-            context.mux.select_window(&context.prefix, &base_handle)?;
-        }
+        target.select()?;
         info!(
             handle = base_handle,
             branch = branch_name,
             path = %worktree_path.display(),
-            target_type,
+            kind = target.kind(),
             "open:switched to existing target"
         );
         return Ok(CreateResult {
@@ -89,7 +80,7 @@ pub fn open(
     }
 
     // Session mode doesn't support --new (duplicate sessions would be orphaned on cleanup)
-    if new_window && is_session_mode {
+    if new_window && target.is_session() {
         return Err(anyhow!(
             "--new is not supported in session mode. Each worktree can only have one session."
         ));
@@ -97,7 +88,7 @@ pub fn open(
 
     // Determine handle: use suffix if forcing new target and one exists
     let (handle, after_window) = if new_window && target_exists {
-        let unique_handle = resolve_unique_handle(context, &base_handle, is_session_mode)?;
+        let unique_handle = resolve_unique_handle(context, &base_handle)?;
         // Insert after the last window in the base handle group (base or -N suffixes)
         let after = context
             .mux
@@ -157,21 +148,15 @@ pub fn open(
 
 /// Find a unique handle by appending a suffix if necessary.
 ///
-/// If `base_handle` is "my-feature" and targets exist for:
+/// If `base_handle` is "my-feature" and windows exist for:
 /// - wm-my-feature
 /// - wm-my-feature-2
 ///
 /// This returns "my-feature-3".
-fn resolve_unique_handle(
-    context: &WorkflowContext,
-    base_handle: &str,
-    is_session_mode: bool,
-) -> Result<String> {
-    let all_names = if is_session_mode {
-        context.mux.get_all_session_names()?
-    } else {
-        context.mux.get_all_window_names()?
-    };
+///
+/// Note: Only called in window mode (session mode rejects --new).
+fn resolve_unique_handle(context: &WorkflowContext, base_handle: &str) -> Result<String> {
+    let all_names = context.mux.get_all_window_names()?;
     let prefix = &context.prefix;
     let full_base = prefixed(prefix, base_handle);
 

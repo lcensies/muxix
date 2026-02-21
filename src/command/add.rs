@@ -395,7 +395,7 @@ fn handle_rescue_flow(
     }
 
     // Capture mode before options is moved
-    let is_session_mode = options.mode == MuxMode::Session;
+    let mode = options.mode;
 
     let result = workflow::create_with_changes(
         branch_name,
@@ -414,12 +414,8 @@ fn handle_rescue_flow(
     );
 
     if wait {
-        let full_name = prefixed(&context.prefix, handle);
-        if is_session_mode {
-            context.mux.wait_until_session_closed(&full_name)?;
-        } else {
-            context.mux.wait_until_windows_closed(&[full_name])?;
-        }
+        crate::multiplexer::MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, handle)
+            .wait_until_closed()?;
     }
 
     Ok(true)
@@ -529,7 +525,7 @@ impl<'a> CreationPlan<'a> {
         let mut created_windows = Vec::new();
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
-        let is_session_mode = self.options.mode == MuxMode::Session;
+        let mode = self.options.mode;
 
         for (i, spec) in self.specs.iter().enumerate() {
             // Concurrency control: wait for a slot if at limit
@@ -539,7 +535,7 @@ impl<'a> CreationPlan<'a> {
                 if active_targets.len() >= limit {
                     loop {
                         // Filter to only targets that still exist
-                        if is_session_mode {
+                        if mode == MuxMode::Session {
                             let live_sessions = mux.get_all_session_names()?;
                             active_targets.retain(|t| live_sessions.contains(t));
                         } else {
@@ -632,13 +628,10 @@ impl<'a> CreationPlan<'a> {
                 println!("✓ Setup complete");
             }
 
-            let tmux_type = match self.options.mode {
-                MuxMode::Session => "session",
-                MuxMode::Window => "window",
-            };
             println!(
                 "✓ Successfully created worktree and tmux {} for '{}'",
-                tmux_type, result.branch_name
+                crate::multiplexer::handle::mode_label(mode),
+                result.branch_name
             );
             if let Some(ref base) = result.base_branch {
                 println!("  Base: {}", base);
@@ -647,7 +640,7 @@ impl<'a> CreationPlan<'a> {
         }
 
         if self.wait && !created_windows.is_empty() {
-            if self.options.mode == MuxMode::Session {
+            if mode == MuxMode::Session {
                 // For sessions, wait for each one to close
                 for session_name in &created_windows {
                     mux.wait_until_session_closed(session_name)?;

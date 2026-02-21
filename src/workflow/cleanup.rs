@@ -59,9 +59,9 @@ fn is_inside_matching_target(
     mux: &dyn Multiplexer,
     prefix: &str,
     handle: &str,
-    is_session_mode: bool,
+    mode: MuxMode,
 ) -> Result<Option<String>> {
-    let current_name = if is_session_mode {
+    let current_name = if mode == MuxMode::Session {
         mux.current_session()
     } else {
         mux.current_window_name()?
@@ -99,6 +99,7 @@ pub fn cleanup(
     // Determine if this worktree was created as a session or window
     let mode = get_worktree_mode(handle);
     let is_session_mode = mode == MuxMode::Session;
+    let kind = crate::multiplexer::handle::mode_label(mode);
 
     info!(
         branch = branch_name,
@@ -106,7 +107,7 @@ pub fn cleanup(
         path = %worktree_path.display(),
         force,
         keep_branch,
-        is_session_mode,
+        mode = kind,
         "cleanup:start"
     );
     // Change the CWD to main worktree before any destructive operations.
@@ -118,12 +119,7 @@ pub fn cleanup(
 
     // Check if we're running inside ANY matching target (original or duplicate)
     let current_matching_target = if mux_running {
-        is_inside_matching_target(
-            context.mux.as_ref(),
-            &context.prefix,
-            handle,
-            is_session_mode,
-        )?
+        is_inside_matching_target(context.mux.as_ref(), &context.prefix, handle, mode)?
     } else {
         None
     };
@@ -294,11 +290,10 @@ pub fn cleanup(
 
     if running_inside_target {
         let current_target = current_matching_target.unwrap();
-        let target_type = if is_session_mode { "session" } else { "window" };
         info!(
             branch = branch_name,
             current_target = current_target,
-            target_type,
+            kind,
             "cleanup:running inside matching target, deferring destructive cleanup",
         );
 
@@ -321,7 +316,7 @@ pub fn cleanup(
             if killed_count > 0 {
                 info!(
                     count = killed_count,
-                    target_type, "cleanup:killed duplicate {}s", target_type
+                    kind, "cleanup:killed duplicate {}s", kind
                 );
             }
         }
@@ -408,7 +403,7 @@ pub fn cleanup(
             });
             debug!(
                 worktree = %worktree_path.display(),
-                target_type,
+                kind,
                 "cleanup:deferred destructive cleanup until target close",
             );
         }
@@ -493,8 +488,9 @@ pub fn navigate_to_target_and_close(
     target_window_name: &str,
     source_handle: &str,
     cleanup_result: &CleanupResult,
-    is_session_mode: bool,
+    mode: MuxMode,
 ) -> Result<()> {
+    use crate::multiplexer::MuxHandle;
     use crate::shell::shell_quote as shell_escape;
 
     /// Build the deferred cleanup script for rename, prune, branch delete, and trash removal.
@@ -527,15 +523,11 @@ pub fn navigate_to_target_and_close(
     let mux_running = mux.is_running()?;
     let target_full = prefixed(prefix, target_window_name);
     let target_exists = if mux_running {
-        if is_session_mode {
-            mux.session_exists(&target_full)?
-        } else {
-            mux.window_exists(prefix, target_window_name)?
-        }
+        MuxHandle::exists_full(mux, mode, &target_full)?
     } else {
         false
     };
-    let target_type = if is_session_mode { "session" } else { "window" };
+    let kind = crate::multiplexer::handle::mode_label(mode);
 
     // Prepare window names for shell commands
     // Use the actual window name from window_to_close_later when available (includes -N suffix),
@@ -546,24 +538,15 @@ pub fn navigate_to_target_and_close(
         .unwrap_or_else(|| prefixed(prefix, source_handle));
 
     // Generate backend-specific shell commands for deferred scripts.
-    // Use session commands in session mode, window commands in window mode.
-    let kill_source_cmd = if is_session_mode {
-        mux.shell_kill_session_cmd(&source_full).ok()
-    } else {
-        mux.shell_kill_window_cmd(&source_full).ok()
-    };
-    let select_target_cmd = if is_session_mode {
-        mux.shell_switch_session_cmd(&target_full).ok()
-    } else {
-        mux.shell_select_window_cmd(&target_full).ok()
-    };
+    let kill_source_cmd = MuxHandle::shell_kill_cmd_full(mux, mode, &source_full).ok();
+    let select_target_cmd = MuxHandle::shell_select_cmd_full(mux, mode, &target_full).ok();
 
     debug!(
         prefix = prefix,
         target_window_name = target_window_name,
         mux_running = mux_running,
         target_exists = target_exists,
-        target_type,
+        kind,
         window_to_close = ?cleanup_result.window_to_close_later,
         deferred_cleanup = cleanup_result.deferred_cleanup.is_some(),
         "navigate_to_target_and_close:entry"
@@ -599,19 +582,19 @@ pub fn navigate_to_target_and_close(
             );
             debug!(
                 script = script,
-                target_type, "navigate_to_target_and_close:kill_only_script"
+                kind, "navigate_to_target_and_close:kill_only_script"
             );
             match mux.run_deferred_script(&script) {
                 Ok(_) => info!(
                     target = window_to_close,
                     script = script,
-                    target_type,
+                    kind,
                     "cleanup:scheduled target close",
                 ),
                 Err(e) => warn!(
                     target = window_to_close,
                     error = ?e,
-                    target_type,
+                    kind,
                     "cleanup:failed to schedule target close",
                 ),
             }
@@ -654,35 +637,32 @@ pub fn navigate_to_target_and_close(
         );
         debug!(
             script = script,
-            target_type, "navigate_to_target_and_close:nav_and_kill_script"
+            kind, "navigate_to_target_and_close:nav_and_kill_script"
         );
 
         match mux.run_deferred_script(&script) {
             Ok(_) => info!(
                 source = source_handle,
                 target = target_window_name,
-                target_type,
+                kind,
                 "cleanup:scheduled navigation to target and source close",
             ),
             Err(e) => warn!(
                 source = source_handle,
                 error = ?e,
-                target_type,
+                kind,
                 "cleanup:failed to schedule navigation and source close",
             ),
         }
     } else if !cleanup_result.tmux_window_killed {
         // Running outside and targets weren't killed yet (shouldn't happen normally)
         // but handle it for completeness
-        if is_session_mode {
-            mux.switch_to_session(prefix, target_window_name)?;
-        } else {
-            mux.select_window(prefix, target_window_name)?;
-        }
+        let target = MuxHandle::new(mux, mode, prefix, target_window_name);
+        target.select()?;
         info!(
             handle = source_handle,
             target = target_window_name,
-            target_type,
+            kind,
             "cleanup:navigated to target branch",
         );
     }

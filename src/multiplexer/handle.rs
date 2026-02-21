@@ -1,15 +1,15 @@
 //! Unified handle for multiplexer targets (windows or sessions).
 //!
 //! Centralizes all mode-dependent dispatch so callers don't need
-//! `if is_session_mode { ... } else { ... }` branches.
+//! `if mode == Session { ... } else { ... }` branches.
 
 use anyhow::Result;
 use std::time::Duration;
 
 use crate::config::MuxMode;
 
-use super::util;
 use super::Multiplexer;
+use super::util;
 
 /// Returns "window" or "session" for a given mode.
 pub fn mode_label(mode: MuxMode) -> &'static str {
@@ -30,13 +30,9 @@ pub struct MuxHandle<'a> {
     name: &'a str,
 }
 
+#[allow(dead_code)]
 impl<'a> MuxHandle<'a> {
-    pub fn new(
-        mux: &'a dyn Multiplexer,
-        mode: MuxMode,
-        prefix: &'a str,
-        name: &'a str,
-    ) -> Self {
+    pub fn new(mux: &'a dyn Multiplexer, mode: MuxMode, prefix: &'a str, name: &'a str) -> Self {
         Self {
             mux,
             mode,
@@ -163,6 +159,30 @@ impl<'a> MuxHandle<'a> {
         match self.mode {
             MuxMode::Session => self.mux.wait_until_session_closed(&full),
             MuxMode::Window => self.mux.wait_until_windows_closed(&[full]),
+        }
+    }
+
+    /// Generate a shell command to kill a target by full name (for deferred scripts).
+    pub fn shell_kill_cmd_full(
+        mux: &dyn Multiplexer,
+        mode: MuxMode,
+        full_name: &str,
+    ) -> Result<String> {
+        match mode {
+            MuxMode::Session => mux.shell_kill_session_cmd(full_name),
+            MuxMode::Window => mux.shell_kill_window_cmd(full_name),
+        }
+    }
+
+    /// Generate a shell command to select a target by full name (for deferred scripts).
+    pub fn shell_select_cmd_full(
+        mux: &dyn Multiplexer,
+        mode: MuxMode,
+        full_name: &str,
+    ) -> Result<String> {
+        match mode {
+            MuxMode::Session => mux.shell_switch_session_cmd(full_name),
+            MuxMode::Window => mux.shell_select_window_cmd(full_name),
         }
     }
 }
