@@ -169,6 +169,7 @@ pub fn setup_environment(
                     prefix,
                     name: handle,
                     cwd: effective_working_dir,
+                    initial_window_name: None,
                 })
                 .context("Failed to create session")?;
             info!(

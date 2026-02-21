@@ -242,22 +242,85 @@ impl Multiplexer for TmuxBackend {
         // -s: session name
         // -c: start directory
         // -P -F: print the pane ID of the initial window
-        let pane_id = Cmd::new("tmux")
-            .args(&[
-                "new-session",
-                "-d",
-                "-s",
-                &prefixed_name,
-                "-c",
-                working_dir_str,
-                "-P",
-                "-F",
-                "#{pane_id}",
-            ])
+        let mut cmd = Cmd::new("tmux").args(&[
+            "new-session",
+            "-d",
+            "-s",
+            &prefixed_name,
+            "-c",
+            working_dir_str,
+        ]);
+
+        // Optionally name the initial window
+        if let Some(window_name) = params.initial_window_name {
+            cmd = cmd.args(&["-n", window_name]);
+        }
+
+        let pane_id = cmd
+            .args(&["-P", "-F", "#{pane_id}"])
             .run_and_capture_stdout()
             .context("Failed to create tmux session and get pane ID")?;
 
-        Ok(pane_id.trim().to_string())
+        let pane_id = pane_id.trim().to_string();
+
+        // Disable automatic window renaming for named windows so the name stays
+        if params.initial_window_name.is_some() {
+            let _ = self.tmux_cmd(&[
+                "set-window-option",
+                "-w",
+                "-t",
+                &pane_id,
+                "automatic-rename",
+                "off",
+            ]);
+        }
+
+        Ok(pane_id)
+    }
+
+    fn create_window_in_session(&self, params: CreateWindowInSessionParams) -> Result<String> {
+        let working_dir_str = params
+            .cwd
+            .to_str()
+            .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
+
+        // Target the specific session with trailing colon (creates window at next index)
+        let target = format!("{}:", params.session_name);
+
+        let mut cmd = Cmd::new("tmux").args(&[
+            "new-window",
+            "-d",
+            "-t",
+            &target,
+            "-c",
+            working_dir_str,
+        ]);
+
+        // Optionally name the window
+        if let Some(window_name) = params.name {
+            cmd = cmd.args(&["-n", window_name]);
+        }
+
+        let pane_id = cmd
+            .args(&["-P", "-F", "#{pane_id}"])
+            .run_and_capture_stdout()
+            .context("Failed to create window in session")?;
+
+        let pane_id = pane_id.trim().to_string();
+
+        // Disable automatic window renaming for named windows
+        if params.name.is_some() {
+            let _ = self.tmux_cmd(&[
+                "set-window-option",
+                "-w",
+                "-t",
+                &pane_id,
+                "automatic-rename",
+                "off",
+            ]);
+        }
+
+        Ok(pane_id)
     }
 
     fn switch_to_session(&self, prefix: &str, name: &str) -> Result<()> {

@@ -61,6 +61,19 @@ pub struct CreateSessionParams<'a> {
     pub name: &'a str,
     /// Working directory for the session's initial window
     pub cwd: &'a std::path::Path,
+    /// Optional name for the initial window. If None, tmux auto-names it.
+    pub initial_window_name: Option<&'a str>,
+}
+
+/// Parameters for creating a new window within an existing session
+#[derive(Debug, Clone)]
+pub struct CreateWindowInSessionParams<'a> {
+    /// Full session name (already prefixed, e.g., "wm-feature-auth")
+    pub session_name: &'a str,
+    /// Optional window name. If None, tmux auto-names based on running command.
+    pub name: Option<&'a str>,
+    /// Working directory for the window
+    pub cwd: &'a std::path::Path,
 }
 
 /// Result of setting up panes in a window

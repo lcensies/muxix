@@ -58,6 +58,17 @@ pub trait Multiplexer: Send + Sync {
     /// For backends that don't support sessions (e.g., WezTerm), this may create a workspace.
     fn create_session(&self, params: CreateSessionParams) -> Result<String>;
 
+    /// Create a new window within an existing session.
+    /// Returns the pane ID of the new window's initial pane.
+    /// Only supported by backends with session support (tmux).
+    fn create_window_in_session(&self, params: CreateWindowInSessionParams) -> Result<String> {
+        let _ = params;
+        Err(anyhow!(
+            "Multi-window sessions are not supported by the {} backend",
+            self.name()
+        ))
+    }
+
     /// Switch to a session by prefix and name.
     /// For tmux, this switches the client to the session.
     /// For WezTerm, this may switch to a workspace.
