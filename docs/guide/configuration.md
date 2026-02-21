@@ -108,22 +108,21 @@ The `<agent>` placeholder must be the entire command value to be substituted. To
 
 ### File operations
 
-Copy or symlink files into new worktrees:
+New worktrees are clean checkouts with no gitignored files (`.env`, `node_modules`, etc.). Use `files` to automatically copy or symlink what each worktree needs:
 
 ```yaml
 files:
   copy:
     - .env
   symlink:
-    - node_modules
-    - .pnpm-store
+    - .next/cache # Share build cache across worktrees
 ```
 
 Both `copy` and `symlink` accept glob patterns.
 
 ### Lifecycle hooks
 
-Run commands at specific points in the worktree lifecycle. All hooks run with the **worktree directory** as the working directory (or the nested config directory for [nested configs](./monorepos.md#nested-configuration)) and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
+Run commands at specific points in the worktree lifecycle, such as installing dependencies or running database migrations. All hooks run with the **worktree directory** as the working directory (or the nested config directory for [nested configs](./monorepos.md#nested-configuration)) and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
 
 | Hook          | When it runs                                      | Additional env vars                  |
 | ------------- | ------------------------------------------------- | ------------------------------------ |
