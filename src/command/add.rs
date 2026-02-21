@@ -709,6 +709,9 @@ fn run_add_via_rpc(
         bail!("--foreach is not supported from inside a sandbox");
     }
 
+    // Note: --session flag is not passed to RPC; host uses its own config.
+    // The flag is silently ignored because the host determines the mode.
+
     // --- Resolve prompt via existing loader (handles -p, -P, -e) ---
     let prompt_content = load_prompt(&PromptLoadArgs {
         prompt_editor: prompt_args.prompt_editor,

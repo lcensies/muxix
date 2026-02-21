@@ -62,8 +62,18 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Pre-flight checks
     context.ensure_mux_running()?;
 
-    // Check if worktree or target (window/session) already exists
     let is_session_mode = options.mode == TmuxTarget::Session;
+
+    // Validate backend supports session mode before creating any git state
+    if is_session_mode && context.mux.name() != "tmux" {
+        return Err(anyhow!(
+            "Session mode (--session) is only supported with tmux.\n\
+             Current backend: {}. Use window mode instead.",
+            context.mux.name()
+        ));
+    }
+
+    // Check if worktree or target (window/session) already exists
     let full_target_name = crate::multiplexer::util::prefixed(&context.prefix, handle);
     let target_exists = if is_session_mode {
         context.mux.session_exists(&full_target_name)?

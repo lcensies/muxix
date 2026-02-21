@@ -674,7 +674,11 @@ pub fn navigate_to_target_and_close(
     } else if !cleanup_result.tmux_window_killed {
         // Running outside and targets weren't killed yet (shouldn't happen normally)
         // but handle it for completeness
-        mux.select_window(prefix, target_window_name)?;
+        if is_session_mode {
+            mux.switch_to_session(prefix, target_window_name)?;
+        } else {
+            mux.select_window(prefix, target_window_name)?;
+        }
         info!(
             handle = source_handle,
             target = target_window_name,

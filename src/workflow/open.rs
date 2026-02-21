@@ -88,6 +88,13 @@ pub fn open(
         });
     }
 
+    // Session mode doesn't support --new (duplicate sessions would be orphaned on cleanup)
+    if new_window && is_session_mode {
+        return Err(anyhow!(
+            "--new is not supported in session mode. Each worktree can only have one session."
+        ));
+    }
+
     // Determine handle: use suffix if forcing new target and one exists
     let (handle, after_window) = if new_window && target_exists {
         let unique_handle = resolve_unique_handle(context, &base_handle, is_session_mode)?;
