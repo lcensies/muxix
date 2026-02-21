@@ -215,7 +215,7 @@ enum Commands {
         wait: bool,
 
         /// Create the window in its own tmux session (useful for session-per-project workflows)
-        #[arg(short = 'S', long)]
+        #[arg(short = 's', long)]
         session: bool,
     },
 

@@ -32,7 +32,7 @@ workmux add <branch-name> [flags]
 | `-a, --agent <name>`           | The agent(s) to use for the worktree(s). Can be specified multiple times to generate a worktree for each agent. Overrides the `agent` from your config file.                                                                                                            |
 | `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `workmux remove --keep-branch`.                                                                 |
 | `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists.                                                                                       |
-| `-S, --session`                | Create the worktree's window in its own tmux session instead of the current session. Useful for session-per-project workflows. Can also be set via `target: session` in config.                                                                                         |
+| `-s, --session`                | Create the worktree's window in its own tmux session instead of the current session. Useful for session-per-project workflows. Can also be set via `target: session` in config.                                                                                         |
 
 ## Skip options
 

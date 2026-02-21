@@ -496,7 +496,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `-o, --open-if-exists`: If a worktree for the branch already exists, open it
   instead of failing. Similar to `tmux new-session -A`. Useful when you don't
   know or care whether the worktree already exists.
-- `-S, --session`: Create a tmux session instead of a window. See
+- `-s, --session`: Create a tmux session instead of a window. See
   [Session mode](#session-mode) for details.
 
 #### Skip options
