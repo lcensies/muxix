@@ -30,7 +30,6 @@ pub struct MuxHandle<'a> {
     name: &'a str,
 }
 
-#[allow(dead_code)]
 impl<'a> MuxHandle<'a> {
     pub fn new(mux: &'a dyn Multiplexer, mode: MuxMode, prefix: &'a str, name: &'a str) -> Self {
         Self {
@@ -48,10 +47,6 @@ impl<'a> MuxHandle<'a> {
 
     pub fn is_session(&self) -> bool {
         self.mode == MuxMode::Session
-    }
-
-    pub fn mode(&self) -> MuxMode {
-        self.mode
     }
 
     /// The prefixed name (e.g., "wm-feature-auth").
@@ -85,29 +80,11 @@ impl<'a> MuxHandle<'a> {
         }
     }
 
-    /// Kill the target.
-    pub fn kill(&self) -> Result<()> {
-        let full = self.full_name();
-        match self.mode {
-            MuxMode::Session => self.mux.kill_session(&full),
-            MuxMode::Window => self.mux.kill_window(&full),
-        }
-    }
-
     /// Kill a target by its full name.
     pub fn kill_full(mux: &dyn Multiplexer, mode: MuxMode, full_name: &str) -> Result<()> {
         match mode {
             MuxMode::Session => mux.kill_session(full_name),
             MuxMode::Window => mux.kill_window(full_name),
-        }
-    }
-
-    /// Schedule the target to close after a delay.
-    pub fn schedule_close(&self, delay: Duration) -> Result<()> {
-        let full = self.full_name();
-        match self.mode {
-            MuxMode::Session => self.mux.schedule_session_close(&full, delay),
-            MuxMode::Window => self.mux.schedule_window_close(&full, delay),
         }
     }
 
@@ -129,24 +106,6 @@ impl<'a> MuxHandle<'a> {
         match self.mode {
             MuxMode::Session => Ok(self.mux.current_session()),
             MuxMode::Window => self.mux.current_window_name(),
-        }
-    }
-
-    /// Generate a shell command to kill this target (for deferred scripts).
-    pub fn shell_kill_cmd(&self) -> Result<String> {
-        let full = self.full_name();
-        match self.mode {
-            MuxMode::Session => self.mux.shell_kill_session_cmd(&full),
-            MuxMode::Window => self.mux.shell_kill_window_cmd(&full),
-        }
-    }
-
-    /// Generate a shell command to select/activate this target (for deferred scripts).
-    pub fn shell_select_cmd(&self) -> Result<String> {
-        let full = self.full_name();
-        match self.mode {
-            MuxMode::Session => self.mux.shell_switch_session_cmd(&full),
-            MuxMode::Window => self.mux.shell_select_window_cmd(&full),
         }
     }
 
