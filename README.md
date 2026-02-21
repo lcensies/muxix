@@ -1653,6 +1653,74 @@ Both backends support:
 See the [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
 setup, configuration, and security details.
 
+## Session mode
+
+By default, workmux creates tmux **windows** within your current session. With
+session mode, each worktree gets its own **tmux session** instead. This allows
+each worktree to have multiple windows.
+
+### Enabling session mode
+
+Add to your config:
+
+```yaml
+# ~/.config/workmux/config.yaml or .workmux.yaml
+mode: session
+```
+
+Or use the `--session` flag:
+
+```bash
+workmux add feature-branch --session
+```
+
+### How it works
+
+- **Persistence**: The mode is stored per-worktree. If you create a worktree
+  with `--session`, subsequent `open`/`close`/`remove` commands automatically
+  use session mode for that worktree.
+- **Navigation**: After `merge` or `remove`, workmux switches you back to the
+  previous session.
+
+### Multiple windows per session
+
+Use the `windows` config to launch multiple windows in each session. Each window
+can have its own pane layout. This is mutually exclusive with the top-level
+`panes` config.
+
+```yaml
+mode: session
+windows:
+  - name: editor
+    panes:
+      - command: <agent>
+        focus: true
+      - split: horizontal
+        size: 20
+  - name: tests
+    panes:
+      - command: just test --watch
+  - panes:
+      - command: tail -f app.log
+```
+
+Each window supports:
+
+| Option  | Description                                            | Default      |
+| ------- | ------------------------------------------------------ | ------------ |
+| `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
+| `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
+
+`focus: true` works across windows -- the last pane with focus set determines
+which window is selected when the session opens.
+
+### Limitations
+
+- **tmux only**: Session mode is currently only supported for the tmux backend.
+- **No duplicates**: Unlike window mode which supports opening multiple windows
+  for the same worktree (`-2`, `-3` suffixes), session mode creates one session
+  per worktree.
+
 ## Workflow example
 
 Here's a complete workflow:
@@ -2138,75 +2206,6 @@ workmux auto-detects the backend from environment variables (`$TMUX`,
 `$WEZTERM_PANE`, or `$KITTY_WINDOW_ID`). Session-specific variables are checked
 first, so running tmux inside kitty correctly selects the tmux backend. Set
 `$WORKMUX_BACKEND` to override detection.
-
-### Session mode
-
-By default, workmux creates tmux **windows** within your current session. With
-session mode, each worktree gets its own **tmux session** instead. This allows
-each worktree to have multiple windows.
-
-#### Enabling session mode
-
-Add to your config:
-
-```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
-mode: session
-```
-
-Or use the `--session` flag:
-
-```bash
-workmux add feature-branch --session
-```
-
-#### How it works
-
-- **Session naming**: Sessions are prefixed like windows (e.g., `wm-feature`)
-- **Persistence**: The mode is stored per-worktree. If you create a worktree
-  with `--session`, subsequent `open`/`close`/`remove` commands automatically
-  use session mode for that worktree.
-- **Navigation**: After `merge` or `remove`, workmux switches you to the main
-  session using `tmux switch-client`
-
-#### Multiple windows per session
-
-Use the `windows` config to launch multiple windows in each session. Each window
-can have its own pane layout. This is mutually exclusive with the top-level
-`panes` config.
-
-```yaml
-mode: session
-windows:
-  - name: editor
-    panes:
-      - command: <agent>
-        focus: true
-      - split: horizontal
-        size: 20
-  - name: tests
-    panes:
-      - command: just test --watch
-  - panes:
-      - command: tail -f app.log
-```
-
-Each window supports:
-
-| Option  | Description                                            | Default      |
-| ------- | ------------------------------------------------------ | ------------ |
-| `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
-| `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
-
-`focus: true` works across windows -- the last pane with focus set determines
-which window is selected when the session opens.
-
-#### Limitations
-
-- **tmux only**: Session mode is currently only supported for the tmux backend.
-- **No duplicates**: Unlike window mode which supports opening multiple windows
-  for the same worktree (`-2`, `-3` suffixes), session mode creates one session
-  per worktree.
 
 ## Inspiration and related tools
 

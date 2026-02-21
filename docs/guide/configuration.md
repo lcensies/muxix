@@ -66,7 +66,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
 | `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
-| `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
+| `mode`           | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode). | `window`                |
 
 ### Naming options
 
@@ -109,7 +109,7 @@ The `<agent>` placeholder must be the entire command value to be substituted. To
 
 ### Windows
 
-When using session mode (`mode: session`), you can configure multiple windows per session using the `windows` array. This is mutually exclusive with the top-level `panes` config.
+When using [session mode](/guide/session-mode), you can configure multiple windows per session using the `windows` array. This is mutually exclusive with the top-level `panes` config. See [multiple windows per session](/guide/session-mode#multiple-windows-per-session) for full details.
 
 ```yaml
 mode: session
@@ -123,20 +123,7 @@ windows:
   - name: tests
     panes:
       - command: just test --watch
-  - panes:
-      - command: tail -f app.log
 ```
-
-Each window supports:
-
-| Option  | Description                                            | Default      |
-| ------- | ------------------------------------------------------ | ------------ |
-| `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
-| `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
-
-Named windows keep their name permanently. Unnamed windows use tmux's automatic naming based on the currently running command.
-
-`focus: true` works across windows -- the last pane with focus determines which window is active when the session opens.
 
 ### File operations
 
