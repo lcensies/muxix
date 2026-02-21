@@ -6,6 +6,7 @@ use std::{thread, time::Duration};
 
 use crate::config::MuxMode;
 use crate::multiplexer::{Multiplexer, util::prefixed};
+use crate::shell::shell_quote;
 use crate::{cmd, git};
 use tracing::{debug, info, warn};
 
@@ -483,6 +484,47 @@ pub fn cleanup(
     Ok(result)
 }
 
+/// Build the deferred cleanup script for rename, prune, branch delete, and trash removal.
+///
+/// Generates a semicolon-separated sequence of shell commands that:
+/// 1. Renames the worktree directory to a trash path (frees the original path)
+/// 2. Prunes git worktree metadata
+/// 3. Deletes the local branch (unless `keep_branch` is set)
+/// 4. Removes workmux worktree metadata from git config
+/// 5. Deletes the trash directory
+///
+/// The returned string starts with "; " so it can be appended to other commands.
+fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
+    let wt = shell_quote(&dc.worktree_path.to_string_lossy());
+    let trash = shell_quote(&dc.trash_path.to_string_lossy());
+    let git_dir = shell_quote(&dc.git_common_dir.to_string_lossy());
+
+    let mut cmds = Vec::new();
+    // 1. Rename worktree to trash
+    cmds.push(format!("mv {} {} >/dev/null 2>&1", wt, trash));
+    // 2. Prune git worktrees
+    cmds.push(format!("git -C {} worktree prune >/dev/null 2>&1", git_dir));
+    // 3. Delete branch (if not keeping)
+    if !dc.keep_branch {
+        let branch = shell_quote(&dc.branch_name);
+        let force_flag = if dc.force { "-D" } else { "-d" };
+        cmds.push(format!(
+            "git -C {} branch {} {} >/dev/null 2>&1",
+            git_dir, force_flag, branch
+        ));
+    }
+    // 4. Remove worktree metadata from git config
+    let handle = shell_quote(&dc.handle);
+    cmds.push(format!(
+        "git -C {} config --local --remove-section workmux.worktree.{} >/dev/null 2>&1",
+        git_dir, handle
+    ));
+    // 5. Delete trash
+    cmds.push(format!("rm -rf {} >/dev/null 2>&1", trash));
+
+    format!("; {}", cmds.join("; "))
+}
+
 /// Navigate to the target branch window and close the source window.
 /// Handles both cases: running inside the source window (async) and outside (sync).
 /// `target_window_name` is the window name of the merge target.
@@ -496,39 +538,6 @@ pub fn navigate_to_target_and_close(
     mode: MuxMode,
 ) -> Result<()> {
     use crate::multiplexer::MuxHandle;
-    use crate::shell::shell_quote as shell_escape;
-
-    /// Build the deferred cleanup script for rename, prune, branch delete, and trash removal.
-    fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
-        let wt = shell_escape(&dc.worktree_path.to_string_lossy());
-        let trash = shell_escape(&dc.trash_path.to_string_lossy());
-        let git_dir = shell_escape(&dc.git_common_dir.to_string_lossy());
-
-        let mut cmds = Vec::new();
-        // 1. Rename worktree to trash
-        cmds.push(format!("mv {} {} >/dev/null 2>&1", wt, trash));
-        // 2. Prune git worktrees
-        cmds.push(format!("git -C {} worktree prune >/dev/null 2>&1", git_dir));
-        // 3. Delete branch (if not keeping)
-        if !dc.keep_branch {
-            let branch = shell_escape(&dc.branch_name);
-            let force_flag = if dc.force { "-D" } else { "-d" };
-            cmds.push(format!(
-                "git -C {} branch {} {} >/dev/null 2>&1",
-                git_dir, force_flag, branch
-            ));
-        }
-        // 4. Remove worktree metadata from git config
-        let handle = shell_escape(&dc.handle);
-        cmds.push(format!(
-            "git -C {} config --local --remove-section workmux.worktree.{} >/dev/null 2>&1",
-            git_dir, handle
-        ));
-        // 5. Delete trash
-        cmds.push(format!("rm -rf {} >/dev/null 2>&1", trash));
-
-        format!("; {}", cmds.join("; "))
-    }
 
     // Check if target window/session exists (probe both modes since target
     // may be a different mode than source, e.g. session worktree -> window main)
@@ -588,7 +597,7 @@ pub fn navigate_to_target_and_close(
                 cleanup_result
                     .trash_path_to_delete
                     .as_ref()
-                    .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+                    .map(|tp| format!("; rm -rf {}", shell_quote(&tp.to_string_lossy())))
                     .unwrap_or_default()
             };
 
@@ -650,7 +659,7 @@ pub fn navigate_to_target_and_close(
             cleanup_result
                 .trash_path_to_delete
                 .as_ref()
-                .map(|tp| format!("; rm -rf {}", shell_escape(&tp.to_string_lossy())))
+                .map(|tp| format!("; rm -rf {}", shell_quote(&tp.to_string_lossy())))
                 .unwrap_or_default()
         };
 
@@ -704,4 +713,211 @@ pub fn navigate_to_target_and_close(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_deferred_cleanup(
+        worktree: &str,
+        trash: &str,
+        branch: &str,
+        handle: &str,
+        git_dir: &str,
+        keep_branch: bool,
+        force: bool,
+    ) -> DeferredCleanup {
+        DeferredCleanup {
+            worktree_path: PathBuf::from(worktree),
+            trash_path: PathBuf::from(trash),
+            branch_name: branch.to_string(),
+            handle: handle.to_string(),
+            keep_branch,
+            force,
+            git_common_dir: PathBuf::from(git_dir),
+        }
+    }
+
+    #[test]
+    fn deferred_cleanup_script_includes_all_steps() {
+        let dc = make_deferred_cleanup(
+            "/repo/worktrees/feature",
+            "/repo/worktrees/.workmux_trash_feature_123",
+            "feature",
+            "feature",
+            "/repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(script.contains(
+            "mv /repo/worktrees/feature /repo/worktrees/.workmux_trash_feature_123 >/dev/null 2>&1"
+        ));
+        assert!(script.contains("git -C /repo/.git worktree prune >/dev/null 2>&1"));
+        assert!(script.contains("git -C /repo/.git branch -d feature >/dev/null 2>&1"));
+        assert!(script.contains("git -C /repo/.git config --local --remove-section workmux.worktree.feature >/dev/null 2>&1"));
+        assert!(
+            script.contains("rm -rf /repo/worktrees/.workmux_trash_feature_123 >/dev/null 2>&1")
+        );
+    }
+
+    #[test]
+    fn deferred_cleanup_script_keep_branch_skips_branch_delete() {
+        let dc = make_deferred_cleanup(
+            "/repo/worktrees/feature",
+            "/repo/worktrees/.trash",
+            "feature",
+            "feature",
+            "/repo/.git",
+            true, // keep_branch
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            !script.contains("branch -d"),
+            "Should not delete branch when keep_branch is set"
+        );
+        assert!(
+            !script.contains("branch -D"),
+            "Should not delete branch when keep_branch is set"
+        );
+        // Other steps should still be present
+        assert!(script.contains("mv "));
+        assert!(script.contains("worktree prune"));
+        assert!(script.contains("config --local --remove-section"));
+        assert!(script.contains("rm -rf"));
+    }
+
+    #[test]
+    fn deferred_cleanup_script_force_uses_capital_d() {
+        let dc = make_deferred_cleanup(
+            "/repo/worktrees/feature",
+            "/repo/worktrees/.trash",
+            "feature",
+            "feature",
+            "/repo/.git",
+            false,
+            true, // force
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            script.contains("branch -D feature"),
+            "Force delete should use -D flag"
+        );
+        assert!(
+            !script.contains("branch -d feature"),
+            "Force delete should not use -d flag"
+        );
+    }
+
+    #[test]
+    fn deferred_cleanup_script_quotes_paths_with_spaces() {
+        let dc = make_deferred_cleanup(
+            "/my repo/worktrees/my feature",
+            "/my repo/worktrees/.trash_123",
+            "my-feature",
+            "my-feature",
+            "/my repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            script.contains("'/my repo/worktrees/my feature'"),
+            "Worktree path with spaces should be quoted: {script}"
+        );
+        assert!(
+            script.contains("'/my repo/worktrees/.trash_123'"),
+            "Trash path with spaces should be quoted: {script}"
+        );
+        assert!(
+            script.contains("'/my repo/.git'"),
+            "Git dir with spaces should be quoted: {script}"
+        );
+    }
+
+    #[test]
+    fn deferred_cleanup_script_preserves_command_order() {
+        let dc = make_deferred_cleanup(
+            "/repo/wt/feat",
+            "/repo/wt/.trash",
+            "feat",
+            "feat",
+            "/repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        // Commands must execute in this order for correctness:
+        // mv (free original path) -> prune (update git metadata) ->
+        // branch delete -> config remove -> rm (delete trash)
+        let mv_pos = script.find("mv ").expect("should contain mv");
+        let prune_pos = script.find("worktree prune").expect("should contain prune");
+        let branch_pos = script.find("branch -d").expect("should contain branch -d");
+        let config_pos = script
+            .find("config --local --remove-section")
+            .expect("should contain config remove");
+        let rm_pos = script.find("rm -rf").expect("should contain rm -rf");
+
+        assert!(mv_pos < prune_pos, "mv should precede prune");
+        assert!(prune_pos < branch_pos, "prune should precede branch delete");
+        assert!(
+            branch_pos < config_pos,
+            "branch delete should precede config remove"
+        );
+        assert!(config_pos < rm_pos, "config remove should precede rm");
+    }
+
+    #[test]
+    fn deferred_cleanup_script_starts_with_separator() {
+        let dc = make_deferred_cleanup(
+            "/repo/wt/feat",
+            "/repo/wt/.trash",
+            "feat",
+            "feat",
+            "/repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            script.starts_with("; "),
+            "Script should start with '; ' so it can be appended to other commands: {script}"
+        );
+    }
+
+    #[test]
+    fn deferred_cleanup_script_simple_paths_not_quoted() {
+        let dc = make_deferred_cleanup(
+            "/repo/worktrees/feature-branch",
+            "/repo/worktrees/.trash_feature",
+            "feature-branch",
+            "feature-branch",
+            "/repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        // Simple paths (alphanumeric, dash, underscore, dot, slash) should not be quoted
+        assert!(
+            script.contains("mv /repo/worktrees/feature-branch /repo/worktrees/.trash_feature"),
+            "Simple paths should not be quoted: {script}"
+        );
+    }
 }
