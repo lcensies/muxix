@@ -16,6 +16,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.120 (2026-02-21)
+
+- Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are now
+  auto-detected in pane commands, so prompt injection works without the
+  `<agent>` placeholder or a matching `agent` config. Just use the agent name
+  directly as the pane command (e.g., `command: "codex --yolo"`) and prompts are
+  delivered automatically. ([#57](https://github.com/raine/workmux/issues/57))
+
 ## v0.1.119 (2026-02-21)
 
 - Added session mode: worktrees can now be created as their own tmux sessions
