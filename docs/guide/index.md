@@ -6,6 +6,8 @@ description: A workflow tool for managing git worktrees and tmux windows as isol
 
 workmux is a giga opinionated zero-friction workflow tool for managing [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as isolated development environments. Also supports [kitty](/guide/kitty) and [WezTerm](/guide/wezterm) (experimental). Perfect for running multiple AI agents in parallel without conflict.
 
+**Philosophy:** Do one thing well, then compose. Your terminal handles windowing and layout, git handles branches and worktrees, your agent executes, and workmux ties it all together.
+
 ::: tip New to workmux?
 Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
 :::
@@ -22,10 +24,7 @@ state, editor session, dev server, and AI agent. Context switching is switching 
 
 **One-command cleanup.** `workmux merge` handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. Or go next level and use the [`/merge` skill](/guide/skills#merge) to let your agent commit, rebase, and merge autonomously.
 
-**tmux\* is the interface.** For existing and new tmux users. If you already live
-in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/).
-
-<small>\* [Kitty](/guide/kitty) and [WezTerm](/guide/wezterm) also supported</small>
+**Terminal workflow.** Build on your familiar terminal setup instead of yet another agentic GUI that won't exist next year. If you don't have one yet, [tmux is worth picking up](https://raine.dev/blog/my-tmux-setup/). Also supports [Kitty](/guide/kitty) and [WezTerm](/guide/wezterm).
 
 <div class="terminal-window">
   <div class="terminal-header">

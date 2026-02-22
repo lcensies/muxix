@@ -49,9 +49,9 @@ description: The zero-friction workflow for git worktrees and tmux, kitty, or We
       <div class="ed-why-item">
         <div class="ed-why-header">
           <span class="ed-why-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></span>
-          <h3>tmux is the interface</h3>
+          <h3>Terminal workflow</h3>
         </div>
-        <p>For existing and new tmux users. If you already live in tmux, it fits your workflow. If you don't, it's worth picking up.</p>
+        <p>Build on your familiar terminal setup instead of yet another agentic GUI that won't exist next year. Your tools, your muscle memory.</p>
       </div>
     </div>
   </div>
@@ -502,7 +502,7 @@ onMounted(() => {
 
 .ed-why-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3rem;
 }
 
@@ -524,7 +524,6 @@ onMounted(() => {
 .ed-why-item h3 {
   font-family: var(--ed-font-display);
   font-size: 1.375rem;
-  white-space: nowrap;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;

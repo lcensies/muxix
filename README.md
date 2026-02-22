@@ -24,8 +24,11 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
-\* Also supports [kitty](https://workmux.raine.dev/guide/kitty) and
-[WezTerm](https://workmux.raine.dev/guide/wezterm) as alternative backends.
+**Philosophy:** Do one thing well, then compose. Your terminal handles windowing
+and layout, git handles branches and worktrees, your agent executes, and workmux
+ties it all together.
+
+<sup><sub>\* Also supports <a href="https://workmux.raine.dev/guide/kitty">kitty</a> and <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a> as alternative backends.</sub></sup>
 
 📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
 configuration reference.
@@ -56,8 +59,9 @@ install commands on creation. Configure once, reuse everywhere.
 **One-command cleanup.** `workmux merge` handles the full lifecycle: merge the
 branch, delete the worktree, close the tmux window, remove the local branch.
 
-**tmux is the interface.** For existing and new tmux users. If you already live
-in tmux, it fits your workflow. If you don't, it's worth picking up.
+**Terminal workflow.** Build on your familiar terminal setup instead of yet
+another agentic GUI that won't exist next year. If you don't have one yet,
+tmux is worth picking up.
 
 New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
