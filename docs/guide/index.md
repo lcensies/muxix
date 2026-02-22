@@ -22,8 +22,10 @@ state, editor session, dev server, and AI agent. Context switching is switching 
 
 **One-command cleanup.** `workmux merge` handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. Or go next level and use the [`/merge` skill](/guide/skills#merge) to let your agent commit, rebase, and merge autonomously.
 
-**tmux is the interface.** For existing and new tmux users. If you already live
-in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/). Also supports [kitty](/guide/kitty) and [WezTerm](/guide/wezterm) as experimental alternatives.
+**tmux\* is the interface.** For existing and new tmux users. If you already live
+in tmux, it fits your workflow. If you don't, [it's worth picking up](https://raine.dev/blog/my-tmux-setup/).
+
+<small>\* [Kitty](/guide/kitty) and [WezTerm](/guide/wezterm) also supported</small>
 
 <div class="terminal-window">
   <div class="terminal-header">
