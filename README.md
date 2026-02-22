@@ -24,7 +24,7 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
-\*Also supports [kitty](https://workmux.raine.dev/guide/kitty) and
+\* Also supports [kitty](https://workmux.raine.dev/guide/kitty) and
 [WezTerm](https://workmux.raine.dev/guide/wezterm) as alternative backends.
 
 📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
@@ -134,6 +134,15 @@ For manual installation, see
 [pre-built binaries](https://github.com/raine/workmux/releases/latest).
 
 ## Quick start
+
+<!-- prettier-ignore -->
+> [!NOTE]
+> workmux requires a terminal multiplexer. Make sure you have
+> [tmux](https://github.com/tmux/tmux) (or
+> [WezTerm](https://raine.github.io/workmux/guide/wezterm) /
+> [Kitty](https://raine.github.io/workmux/guide/kitty)) installed and running
+> before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/)
+> if you need a starting point.
 
 1. **Initialize configuration (optional)**:
 
