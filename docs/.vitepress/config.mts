@@ -104,6 +104,7 @@ export default defineConfig({
         items: [
           { text: "kitty", link: "/guide/kitty" },
           { text: "WezTerm", link: "/guide/wezterm" },
+          { text: "Zellij", link: "/guide/zellij" },
         ],
       },
       {
