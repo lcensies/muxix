@@ -111,14 +111,6 @@ impl ZellijBackend {
         std::env::var("ZELLIJ").is_ok()
     }
 
-    /// Check if content contains dashboard UI patterns
-    fn contains_dashboard_ui(content: &str) -> bool {
-        // Check for distinctive dashboard UI elements
-        // The "Preview:" section is unique to the dashboard
-        content.contains("Preview:")
-            || (content.contains("[i] input") && content.contains("[d] diff"))
-    }
-
     /// Get session name from environment
     fn session_name() -> Option<String> {
         std::env::var("ZELLIJ_SESSION_NAME").ok()
@@ -677,14 +669,6 @@ impl Multiplexer for ZellijBackend {
         {
             if let Ok(content) = std::fs::read_to_string(&temp_path) {
                 let _ = std::fs::remove_file(&temp_path);
-
-                // If captured content contains dashboard UI, we're capturing
-                // the dashboard itself (not the agent pane). Return None to
-                // prevent recursive rendering.
-                if Self::contains_dashboard_ui(&content) {
-                    return None;
-                }
-
                 return Some(content);
             }
             let _ = std::fs::remove_file(&temp_path);
@@ -1142,46 +1126,6 @@ mod tests {
             parse_tab_name_from_output(output),
             Some("middle-tab".to_string())
         );
-    }
-
-    // === contains_dashboard_ui ===
-
-    #[test]
-    fn contains_dashboard_ui_with_preview() {
-        assert!(ZellijBackend::contains_dashboard_ui(
-            "Some content\nPreview:\nmore stuff"
-        ));
-    }
-
-    #[test]
-    fn contains_dashboard_ui_with_input_and_diff() {
-        assert!(ZellijBackend::contains_dashboard_ui(
-            "header\n[i] input  [d] diff\nfooter"
-        ));
-    }
-
-    #[test]
-    fn contains_dashboard_ui_input_without_diff() {
-        // Only [i] input without [d] diff should NOT match
-        assert!(!ZellijBackend::contains_dashboard_ui("[i] input only"));
-    }
-
-    #[test]
-    fn contains_dashboard_ui_diff_without_input() {
-        // Only [d] diff without [i] input should NOT match
-        assert!(!ZellijBackend::contains_dashboard_ui("[d] diff only"));
-    }
-
-    #[test]
-    fn contains_dashboard_ui_normal_content() {
-        assert!(!ZellijBackend::contains_dashboard_ui(
-            "$ cargo build\nCompiling workmux v0.1.0\n"
-        ));
-    }
-
-    #[test]
-    fn contains_dashboard_ui_empty() {
-        assert!(!ZellijBackend::contains_dashboard_ui(""));
     }
 
     // === PaneInfo deserialization ===

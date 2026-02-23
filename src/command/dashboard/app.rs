@@ -409,6 +409,9 @@ impl App {
     /// Update the preview for the currently selected agent.
     /// Only fetches if the selection has changed or preview is stale.
     pub fn update_preview(&mut self) {
+        if !self.mux.supports_preview() {
+            return;
+        }
         let current_pane_id = self
             .table_state
             .selected()
