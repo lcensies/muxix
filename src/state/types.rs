@@ -26,7 +26,7 @@ pub struct PaneKey {
     /// Pane identifier within the backend.
     /// - tmux: pane ID (e.g., "%42")
     /// - WezTerm: numeric pane ID
-    /// - Zellij: tab name (e.g., "wm-feature") since pane IDs are not reliably queryable
+    /// - Zellij: terminal pane ID (e.g., "terminal_5")
     pub pane_id: String,
 }
 
