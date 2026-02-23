@@ -200,6 +200,10 @@ impl Multiplexer for ZellijBackend {
         false // Preview requires expensive process spawning
     }
 
+    fn should_exit_on_jump(&self) -> bool {
+        false // Dashboard runs in a persistent tab; keep it alive when switching to agent tabs
+    }
+
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {
