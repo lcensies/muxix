@@ -125,9 +125,14 @@ pub fn resolve_fork_branch(fork_spec: &git::ForkBranchSpec) -> Result<ForkBranch
     // The `create` workflow will perform the fetch and fail if the branch is missing.
     let remote_ref = format!("{}/{}", remote_name, fork_spec.branch);
 
+    // Always prefix the local branch name with the fork owner to avoid conflicts
+    // with existing branches (e.g., "main"). The owner:branch syntax already signals
+    // this is someone else's branch, so including the owner is informative.
+    let local_branch_name = format!("{}-{}", fork_spec.owner, fork_spec.branch);
+
     Ok(ForkBranchResult {
         remote_ref,
-        template_base_name: fork_spec.branch.clone(),
+        template_base_name: local_branch_name,
     })
 }
 
@@ -286,10 +291,10 @@ mod tests {
         }
 
         fn resolve_fork(&self, spec: &git::ForkBranchSpec) -> Result<ForkBranchResult> {
-            // Simple mock that just returns constructed strings
+            // Mirror real behavior: always prefix local branch name with owner
             Ok(ForkBranchResult {
                 remote_ref: format!("fork-{}/{}", spec.owner, spec.branch),
-                template_base_name: spec.branch.clone(),
+                template_base_name: format!("{}-{}", spec.owner, spec.branch),
             })
         }
 
@@ -360,22 +365,35 @@ mod tests {
     #[test]
     fn test_fork_syntax_owner_colon_branch() {
         // Case: "owner:branch" - GitHub fork format
+        // Local branch name is always prefixed with owner to avoid conflicts
         let ctx = MockContext::new(&["origin"], &[]);
         let (remote, local) = detect_remote_branch_internal("owner:branch", None, &ctx).unwrap();
 
         assert_eq!(remote, Some("fork-owner/branch".to_string()));
-        assert_eq!(local, "branch");
+        assert_eq!(local, "owner-branch");
     }
 
     #[test]
     fn test_fork_syntax_with_slash_in_branch() {
         // Case: "owner:feature/foo" - fork with slash in branch name
+        // Local branch is prefixed: "owner-feature/foo" (slugified later to "owner-feature-foo")
         let ctx = MockContext::new(&["origin"], &[]);
         let (remote, local) =
             detect_remote_branch_internal("owner:feature/foo", None, &ctx).unwrap();
 
         assert_eq!(remote, Some("fork-owner/feature/foo".to_string()));
-        assert_eq!(local, "feature/foo");
+        assert_eq!(local, "owner-feature/foo");
+    }
+
+    #[test]
+    fn test_fork_syntax_avoids_main_conflict() {
+        // Case: "sundbp:main" - would conflict with existing "main" branch
+        // Always prefixed with owner regardless of whether conflict exists
+        let ctx = MockContext::new(&["origin"], &[]);
+        let (remote, local) = detect_remote_branch_internal("sundbp:main", None, &ctx).unwrap();
+
+        assert_eq!(remote, Some("fork-sundbp/main".to_string()));
+        assert_eq!(local, "sundbp-main");
     }
 
     #[test]

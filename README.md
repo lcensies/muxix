@@ -483,7 +483,9 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `<branch-name>`: Name of the branch to create or switch to, a remote branch
   reference (e.g., `origin/feature-branch`), or a GitHub fork reference (e.g.,
   `user:branch`). Remote and fork references are automatically fetched and
-  create a local branch with the derived name. Optional when using `--pr`.
+  create a local branch with the derived name. Fork references derive the local
+  branch as `user-branch` (e.g., `someuser:feature` creates local branch
+  `someuser-feature`). Optional when using `--pr`.
 
 #### Options
 
@@ -596,6 +598,7 @@ workmux add --pr 123
 workmux add fix/api-bug --pr 456
 
 # Checkout a fork branch using GitHub's owner:branch format (copy from GitHub UI)
+# Creates local branch "someuser-feature-branch" tracking the fork
 workmux add someuser:feature-branch
 ```
 
