@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::types::{AgentState, GlobalSettings, PaneKey};
 
@@ -215,20 +215,31 @@ impl StateStore {
             // Look up pane in the batched result
             let live_pane = live_panes.get(&state.pane_key.pane_id);
 
+            let pane_id = &state.pane_key.pane_id;
             match live_pane {
                 None => {
-                    // Pane no longer exists in multiplexer
+                    info!(pane_id, "reconcile: removing agent, pane no longer exists");
                     self.delete_agent(&state.pane_key)?;
                     // Note: Can't clear window status since pane is gone
                 }
                 Some(live) if live.pid != state.pane_pid => {
-                    // PID mismatch - pane ID was recycled by a new process
+                    info!(
+                        pane_id,
+                        stored_pid = state.pane_pid,
+                        live_pid = live.pid,
+                        "reconcile: removing agent, pane PID changed (pane ID recycled)"
+                    );
                     self.delete_agent(&state.pane_key)?;
                     // Clear stale window status icon from status bar
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
                 Some(live) if live.current_command != state.command => {
-                    // Command changed - agent exited (e.g., "node" -> "zsh")
+                    info!(
+                        pane_id,
+                        stored_command = state.command,
+                        live_command = live.current_command,
+                        "reconcile: removing agent, foreground command changed"
+                    );
                     self.delete_agent(&state.pane_key)?;
                     // Clear stale window status icon from status bar
                     let _ = mux.clear_status(&state.pane_key.pane_id);
