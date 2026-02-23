@@ -189,13 +189,6 @@ pub trait Multiplexer: Send + Sync {
         true
     }
 
-    /// Whether pane IDs remain stable across the pane's lifetime.
-    /// Defaults to true. Override to return false for backends where pane IDs
-    /// can change, requiring heartbeat-based liveness checks.
-    fn stable_pane_ids(&self) -> bool {
-        true
-    }
-
     // === Text I/O ===
 
     /// Send keys (command + Enter) to a pane
@@ -495,7 +488,7 @@ pub trait Multiplexer: Send + Sync {
     /// Validate if an agent is still alive and should be kept in the dashboard.
     ///
     /// Called when a pane is not found in the batched `get_all_live_pane_info()` result.
-    /// Backends can implement custom validation logic (e.g., Zellij checks heartbeat
+    /// Backends can implement custom validation logic (e.g., Zellij checks pane existence
     /// and command matching). Default implementation queries the pane individually.
     fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
         let live_pane = self.get_live_pane_info(&state.pane_key.pane_id)?;

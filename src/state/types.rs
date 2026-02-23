@@ -108,12 +108,6 @@ pub struct AgentState {
     /// Stored here for consistency with window_name.
     #[serde(default)]
     pub session_name: Option<String>,
-
-    /// Unix timestamp of last heartbeat (dashboard refresh).
-    /// Used by Zellij to detect dead agents faster than staleness timeout.
-    /// Backends with reliable PID validation (tmux/WezTerm) don't need this.
-    #[serde(default)]
-    pub last_heartbeat: Option<u64>,
 }
 
 impl AgentState {

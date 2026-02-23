@@ -908,25 +908,7 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
-        use std::time::{Duration, SystemTime};
-
-        // Performance optimization: Check heartbeat first (fast path)
-        // If heartbeat is recent, skip expensive pane query
-        if let Some(last_heartbeat) = state.last_heartbeat {
-            let heartbeat_fresh_threshold = Duration::from_secs(60); // 1 minute
-            if let Ok(now) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-                let heartbeat_age_secs = now.as_secs().saturating_sub(last_heartbeat);
-                if heartbeat_age_secs < heartbeat_fresh_threshold.as_secs() {
-                    return Ok(true); // Recent heartbeat - agent is alive
-                }
-                // If heartbeat is stale (> 5 minutes), agent is likely dead
-                if heartbeat_age_secs > 300 {
-                    return Ok(false);
-                }
-            }
-        }
-
-        // Primary validation: Check if pane exists
+        // Check if pane exists
         let pane_info = self.get_live_pane_info(&state.pane_key.pane_id)?;
         let pane_info = match pane_info {
             Some(info) => info,

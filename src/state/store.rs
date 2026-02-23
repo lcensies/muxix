@@ -217,7 +217,6 @@ impl StateStore {
             match live_pane {
                 None => {
                     // Pane not in batched result - use backend-specific validation
-                    // (Important for Zellij which can't query all panes)
                     if mux.validate_agent_alive(&state)? {
                         let agent_pane = state.to_agent_pane(
                             state.session_name.clone().unwrap_or_default(),
@@ -352,7 +351,6 @@ mod tests {
             updated_ts: 1234567890,
             window_name: Some("wm-test".to_string()),
             session_name: Some("main".to_string()),
-            last_heartbeat: Some(1234567890),
         }
     }
 
