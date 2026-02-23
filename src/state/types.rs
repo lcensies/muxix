@@ -119,12 +119,12 @@ pub struct AgentState {
 impl AgentState {
     /// Convert to AgentPane for dashboard display.
     ///
-    /// Uses stored session/window names if provided, otherwise uses the arguments.
-    /// This allows fallback for backends (like Zellij) that can't query unfocused panes.
+    /// The caller is responsible for providing the best available session/window names
+    /// (from live pane info when available, falling back to stored values).
     pub fn to_agent_pane(&self, session: String, window_name: String) -> AgentPane {
         AgentPane {
-            session: self.session_name.clone().unwrap_or(session),
-            window_name: self.window_name.clone().unwrap_or(window_name),
+            session,
+            window_name,
             pane_id: self.pane_key.pane_id.clone(),
             path: self.workdir.clone(),
             pane_title: self.pane_title.clone(),
