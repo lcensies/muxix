@@ -10,6 +10,7 @@ testing, and the PR process.
 - [just](https://github.com/casey/just) command runner
 - tmux (required for tests)
 - WezTerm (optional, for testing WezTerm backend)
+- Zellij (optional, for testing Zellij backend)
 
 ## Development setup
 
@@ -103,8 +104,8 @@ just pyright     # Type check Python tests
 3. **Run checks locally**: Before pushing, run `just check` to catch issues
    early.
 
-4. **Test both backends**: If your change affects multiplexer interaction, test
-   with both tmux and WezTerm:
+4. **Test multiple backends**: If your change affects multiplexer interaction,
+   test with other backends:
 
    ```bash
    just test --backend=tmux,wezterm

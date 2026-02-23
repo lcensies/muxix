@@ -28,7 +28,7 @@ parallel without conflict.
 and layout, git handles branches and worktrees, your agent executes, and workmux
 ties it all together.
 
-<sup><sub>\* Also supports <a href="https://workmux.raine.dev/guide/kitty">kitty</a> and <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a> as alternative backends.</sub></sup>
+<sup><sub>\* Also supports <a href="https://workmux.raine.dev/guide/kitty">kitty</a>, <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and <a href="https://workmux.raine.dev/guide/zellij">Zellij</a> as alternative backends.</sub></sup>
 
 📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
 configuration reference.
@@ -144,7 +144,8 @@ For manual installation, see
 > workmux requires a terminal multiplexer. Make sure you have
 > [tmux](https://github.com/tmux/tmux) (or
 > [WezTerm](https://raine.github.io/workmux/guide/wezterm) /
-> [Kitty](https://raine.github.io/workmux/guide/kitty)) installed and running
+> [Kitty](https://raine.github.io/workmux/guide/kitty) /
+> [Zellij](https://raine.github.io/workmux/guide/zellij)) installed and running
 > before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/)
 > if you need a starting point.
 
@@ -2246,11 +2247,14 @@ alternative terminal multiplexers:
 - **[kitty](https://workmux.raine.dev/guide/kitty)** (experimental) - For users
   who prefer kitty terminal. Requires `allow_remote_control` and `listen_on`
   configuration.
+- **[Zellij](https://workmux.raine.dev/guide/zellij)** (experimental) - For
+  users who prefer Zellij. Detected automatically via `$ZELLIJ`.
 
 workmux auto-detects the backend from environment variables (`$TMUX`,
-`$WEZTERM_PANE`, or `$KITTY_WINDOW_ID`). Session-specific variables are checked
-first, so running tmux inside kitty correctly selects the tmux backend. Set
-`$WORKMUX_BACKEND` to override detection.
+`$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`).
+Session-specific variables are checked first, so running tmux inside kitty
+correctly selects the tmux backend. Set `$WORKMUX_BACKEND` to override
+detection.
 
 ## Inspiration and related tools
 

@@ -1,6 +1,6 @@
 ---
 layout: home
-description: The zero-friction workflow for git worktrees and tmux, kitty, or WezTerm
+description: The zero-friction workflow for git worktrees and tmux, kitty, WezTerm, or Zellij
 ---
 
 <div class="mono-editorial">

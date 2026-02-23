@@ -70,5 +70,5 @@ Named windows keep their name permanently. Unnamed windows use tmux's automatic 
 
 ## Limitations
 
-- **tmux only**: Session mode is only supported for the tmux backend. WezTerm and kitty do not support sessions.
+- **tmux only**: Session mode is only supported for the tmux backend. WezTerm, kitty, and Zellij do not support sessions.
 - **No duplicates**: Unlike window mode which supports opening multiple windows for the same worktree (with `-2`, `-3` suffixes), session mode creates one session per worktree.
