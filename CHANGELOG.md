@@ -17,6 +17,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.122 (2026-02-23)
+
+- Fork branch references (e.g., `someuser:feature`) now prefix the local branch
+  name with the fork owner (`someuser-feature`), preventing conflicts with
+  existing branches like `main`
+
 ## v0.1.120 (2026-02-21)
 
 - Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are now
