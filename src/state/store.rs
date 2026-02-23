@@ -200,17 +200,6 @@ impl StateStore {
         // Fetch all live pane info in a single batched query
         let live_panes = mux.get_all_live_pane_info()?;
 
-        // For backends without stable pane IDs: Query tab names once for the entire
-        // reconciliation pass to avoid N process spawns (one per agent).
-        // Other backends ignore this.
-        let cached_tabs = if !mux.stable_pane_ids() {
-            mux.get_all_window_names()
-                .ok()
-                .map(|set| set.into_iter().collect::<Vec<_>>())
-        } else {
-            None
-        };
-
         let mut valid_agents = Vec::new();
         let backend = mux.name();
         let instance = mux.instance_id();
@@ -229,7 +218,7 @@ impl StateStore {
                 None => {
                     // Pane not in batched result - use backend-specific validation
                     // (Important for Zellij which can't query all panes)
-                    if mux.validate_agent_alive(&state, cached_tabs.as_deref())? {
+                    if mux.validate_agent_alive(&state)? {
                         let agent_pane = state.to_agent_pane(
                             state.session_name.clone().unwrap_or_default(),
                             state.window_name.clone().unwrap_or_default(),

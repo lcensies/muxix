@@ -903,11 +903,7 @@ impl Multiplexer for ZellijBackend {
         }))
     }
 
-    fn validate_agent_alive(
-        &self,
-        state: &crate::state::AgentState,
-        _cached_tabs: Option<&[String]>,
-    ) -> Result<bool> {
+    fn validate_agent_alive(&self, state: &crate::state::AgentState) -> Result<bool> {
         use std::time::{Duration, SystemTime};
 
         // Performance optimization: Check heartbeat first (fast path)
