@@ -258,7 +258,7 @@ impl App {
         }
 
         // Update heartbeat for loaded agents (needed for backends without stable pane IDs)
-        if !self.mux.capabilities().stable_pane_ids {
+        if !self.mux.stable_pane_ids() {
             use std::time::{SystemTime, UNIX_EPOCH};
             use crate::state::PaneKey;
 

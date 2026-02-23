@@ -203,7 +203,7 @@ impl StateStore {
         // For backends without stable pane IDs: Query tab names once for the entire
         // reconciliation pass to avoid N process spawns (one per agent).
         // Other backends ignore this.
-        let cached_tabs = if !mux.capabilities().stable_pane_ids {
+        let cached_tabs = if !mux.stable_pane_ids() {
             mux.get_all_window_names().ok().map(|set| set.into_iter().collect::<Vec<_>>())
         } else {
             None

@@ -173,13 +173,8 @@ impl Multiplexer for ZellijBackend {
         "zellij"
     }
 
-    fn capabilities(&self) -> super::MultiplexerCaps {
-        super::MultiplexerCaps {
-            pane_targeting: true,     // Reliable with --pane-id since zellij PR #4691
-            supports_preview: false,  // Preview requires expensive process spawning
-            stable_pane_ids: true,    // Real numeric pane IDs are stable
-            exit_on_jump: false,      // Keep dashboard open after jumping
-        }
+    fn supports_preview(&self) -> bool {
+        false // Preview requires expensive process spawning
     }
 
     // === Server/Session ===
@@ -214,6 +209,86 @@ impl Multiplexer for ZellijBackend {
 
     fn instance_id(&self) -> String {
         Self::session_name().unwrap_or_else(|| "default".to_string())
+    }
+
+    // === Session Management (not supported in Zellij) ===
+
+    fn create_session(&self, _params: super::types::CreateSessionParams) -> Result<String> {
+        Err(anyhow!(
+            "Session mode (--session) is not supported in Zellij. Use window mode instead."
+        ))
+    }
+
+    fn switch_to_session(&self, _prefix: &str, _name: &str) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Zellij. Use window mode instead."
+        ))
+    }
+
+    fn session_exists(&self, _full_name: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn kill_session(&self, _full_name: &str) -> Result<()> {
+        Ok(())
+    }
+
+    fn schedule_session_close(&self, _full_name: &str, _delay: Duration) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Zellij. Use window mode instead."
+        ))
+    }
+
+    fn get_all_session_names(&self) -> Result<HashSet<String>> {
+        Ok(HashSet::new())
+    }
+
+    fn wait_until_session_closed(&self, _full_session_name: &str) -> Result<()> {
+        Err(anyhow!(
+            "Session mode is not supported in Zellij. Use window mode instead."
+        ))
+    }
+
+    fn run_deferred_script(&self, script: &str) -> Result<()> {
+        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        Cmd::new("sh").args(&["-c", &bg_script]).run()?;
+        Ok(())
+    }
+
+    fn shell_select_window_cmd(&self, full_name: &str) -> Result<String> {
+        let tabs = Self::list_tabs()?;
+        let tab = tabs
+            .iter()
+            .find(|t| t.name == full_name)
+            .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+        Ok(format!(
+            "zellij action go-to-tab-by-id {} >/dev/null 2>&1",
+            tab.tab_id()
+        ))
+    }
+
+    fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String> {
+        let tabs = Self::list_tabs()?;
+        let tab = tabs
+            .iter()
+            .find(|t| t.name == full_name)
+            .ok_or_else(|| anyhow!("Window '{}' not found", full_name))?;
+        Ok(format!(
+            "zellij action close-tab-by-id {} >/dev/null 2>&1",
+            tab.tab_id()
+        ))
+    }
+
+    fn shell_switch_session_cmd(&self, _full_name: &str) -> Result<String> {
+        Err(anyhow!(
+            "Session mode is not supported in Zellij. Use window mode instead."
+        ))
+    }
+
+    fn shell_kill_session_cmd(&self, _full_name: &str) -> Result<String> {
+        Err(anyhow!(
+            "Session mode is not supported in Zellij. Use window mode instead."
+        ))
     }
 
     // === Window/Tab Management ===
@@ -932,89 +1007,4 @@ impl Multiplexer for ZellijBackend {
         Ok(result)
     }
 
-    fn schedule_cleanup_and_close(
-        &self,
-        source_window: &str,
-        target_window: Option<&str>,
-        cleanup_script: &str,
-        delay: Duration,
-    ) -> Result<()> {
-        // Shell-escape helper
-        fn shell_escape(s: &str) -> String {
-            format!("'{}'", s.replace('\'', r#"'\''"#))
-        }
-
-        // Resolve tab IDs upfront for more reliable targeting (zellij PR #4695)
-        let tabs = Self::list_tabs()?;
-        let source_tab_id = tabs
-            .iter()
-            .find(|t| t.name == source_window)
-            .map(|t| t.tab_id().to_string());
-        let target_tab_id = target_window.and_then(|name| {
-            tabs.iter()
-                .find(|t| t.name == name)
-                .map(|t| t.tab_id().to_string())
-        });
-
-        let delay_secs = delay.as_secs_f64();
-
-        // Build a robust shell script that survives the window closing
-        // trap '' HUP ensures the script continues even when the PTY is destroyed
-        let mut script = format!("trap '' HUP; sleep {:.1};", delay_secs);
-
-        // 1. Navigate to target (if exists) using tab ID for reliability
-        if let Some(target_id) = target_tab_id {
-            script.push_str(&format!(
-                " zellij action go-to-tab-by-id {} >/dev/null 2>&1;",
-                target_id
-            ));
-        } else if let Some(target) = target_window {
-            // Fallback to name-based if ID not found
-            script.push_str(&format!(
-                " zellij action go-to-tab-name {} >/dev/null 2>&1;",
-                shell_escape(target)
-            ));
-        }
-
-        // 2. Close source tab by ID (no need to focus first with close-tab-by-id)
-        if let Some(src_id) = source_tab_id {
-            script.push_str(&format!(
-                " zellij action close-tab-by-id {} >/dev/null 2>&1;",
-                src_id
-            ));
-        } else {
-            // Fallback to old method if tab ID not found
-            script.push_str(&format!(
-                " zellij action go-to-tab-name {} >/dev/null 2>&1;",
-                shell_escape(source_window)
-            ));
-            script.push_str(" zellij action close-tab >/dev/null 2>&1;");
-        }
-
-        // 3. Run cleanup script
-        if !cleanup_script.is_empty() {
-            script.push(' ');
-            script.push_str(cleanup_script);
-        }
-
-        debug!(script = script, "zellij:scheduling cleanup and close");
-
-        // Spawn as fully detached background process using nohup
-        // - Redirect stdin from /dev/null for proper detachment
-        // - Run from root dir to avoid holding a lock on the directory being deleted
-        // - Remove ZELLIJ_PANE_ID to avoid confusing zellij CLI
-        let full_cmd = format!(
-            "nohup sh -c {} </dev/null >/dev/null 2>&1 &",
-            shell_escape(&script)
-        );
-
-        std::process::Command::new("sh")
-            .args(["-c", &full_cmd])
-            .current_dir("/")
-            .env_remove("ZELLIJ_PANE_ID")
-            .spawn()
-            .context("Failed to spawn cleanup process")?;
-
-        Ok(())
-    }
 }

@@ -26,36 +26,12 @@ pub use types::*;
 
 use crate::config::{Config, PaneConfig, SplitDirection};
 
-/// Capability flags for multiplexer backends.
-///
-/// This abstraction allows backends to declare their actual feature support
-/// instead of relying on name-based logic, making the system more maintainable
-/// and extensible for future multiplexer implementations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MultiplexerCaps {
-    /// Whether the backend supports targeting specific panes with commands
-    pub pane_targeting: bool,
-    /// Whether the backend supports efficient preview capture
-    pub supports_preview: bool,
-    /// Whether pane IDs remain stable across the pane's lifetime
-    pub stable_pane_ids: bool,
-    /// Whether jumping to a pane should exit the dashboard
-    pub exit_on_jump: bool,
-}
-
 /// Main trait for terminal multiplexer backends.
 ///
 /// Implementations must be Send + Sync to allow sharing via Arc<dyn Multiplexer>.
 pub trait Multiplexer: Send + Sync {
     /// Returns the name of this backend (e.g., "tmux", "wezterm")
     fn name(&self) -> &'static str;
-
-    /// Returns the capabilities of this backend.
-    ///
-    /// Prefer using this method over string comparisons on `name()` for
-    /// feature detection, as it allows backends to declare their actual
-    /// capabilities independent of their name.
-    fn capabilities(&self) -> MultiplexerCaps;
 
     // === Server/Session ===
 
@@ -192,9 +168,9 @@ pub trait Multiplexer: Send + Sync {
     fn switch_to_pane(&self, pane_id: &str) -> Result<()>;
 
     /// Whether jumping to a pane should exit the dashboard.
-    /// Returns true for tmux/WezTerm (exit after jump), false for Zellij (keep dashboard open).
+    /// Defaults to true. Override to return false to keep the dashboard open after jumping.
     fn should_exit_on_jump(&self) -> bool {
-        self.capabilities().exit_on_jump
+        true
     }
 
     /// Respawn a pane with optional command. Returns the (possibly new) pane ID.
@@ -204,10 +180,17 @@ pub trait Multiplexer: Send + Sync {
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String>;
 
     /// Whether this backend supports preview capture efficiently.
-    /// Returns false for backends like Zellij where preview capture requires
-    /// expensive operations (process spawning, temp files) even when disabled.
+    /// Defaults to true. Override to return false for backends where preview capture
+    /// requires expensive operations (process spawning, temp files).
     fn supports_preview(&self) -> bool {
-        self.capabilities().supports_preview
+        true
+    }
+
+    /// Whether pane IDs remain stable across the pane's lifetime.
+    /// Defaults to true. Override to return false for backends where pane IDs
+    /// can change, requiring heartbeat-based liveness checks.
+    fn stable_pane_ids(&self) -> bool {
+        true
     }
 
     // === Text I/O ===
@@ -528,28 +511,6 @@ pub trait Multiplexer: Send + Sync {
     }
 
 
-    // === Deferred Cleanup ===
-
-    /// Schedule a sequence of cleanup operations after a delay:
-    /// 1. Navigate to target window (if provided)
-    /// 2. Close source window
-    /// 3. Execute the provided shell script (cleanup)
-    ///
-    /// This is used when removing a worktree from inside its own window.
-    /// The implementation must ensure the script execution survives the window closing.
-    ///
-    /// Arguments:
-    /// - `source_window`: Full name of window to close (e.g., "wm-feature")
-    /// - `target_window`: Optional full name of window to navigate to first
-    /// - `cleanup_script`: Shell commands to run after window close (e.g., "rm -rf /path")
-    /// - `delay`: How long to wait before starting the operations
-    fn schedule_cleanup_and_close(
-        &self,
-        source_window: &str,
-        target_window: Option<&str>,
-        cleanup_script: &str,
-        delay: Duration,
-    ) -> Result<()>;
 }
 
 /// Detect which backend to use based on environment.

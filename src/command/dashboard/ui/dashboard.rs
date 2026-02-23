@@ -19,7 +19,7 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     // Check if backend supports preview
-    let supports_preview = app.mux.capabilities().supports_preview;
+    let supports_preview = app.mux.supports_preview();
 
     // Layout: table (top), preview (bottom, only if supported), footer
     let chunks = if !supports_preview {
