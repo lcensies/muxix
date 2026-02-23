@@ -540,7 +540,7 @@ impl Multiplexer for WezTermBackend {
         Ok(())
     }
 
-    fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
+    fn switch_to_pane(&self, pane_id: &str, _window_hint: Option<&str>) -> Result<()> {
         // Check if we need to switch workspaces first
         let panes = self.list_panes()?;
         if let Some(target) = panes.iter().find(|p| p.pane_id.to_string() == pane_id) {

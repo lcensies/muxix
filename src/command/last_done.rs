@@ -56,9 +56,11 @@ pub fn run() -> Result<()> {
     // Try to switch, skipping dead panes
     for i in 0..done_agents.len() {
         let idx = (start_idx + i) % done_agents.len();
-        let pane_id = &done_agents[idx].pane_key.pane_id;
+        let agent = &done_agents[idx];
+        let pane_id = &agent.pane_key.pane_id;
+        let window_hint = agent.window_name.as_deref();
 
-        if let Err(e) = mux.switch_to_pane(pane_id) {
+        if let Err(e) = mux.switch_to_pane(pane_id, window_hint) {
             debug!(pane_id, error = %e, "pane dead, trying next");
         } else {
             return Ok(());

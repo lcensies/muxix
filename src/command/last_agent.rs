@@ -41,7 +41,11 @@ pub fn run() -> Result<()> {
     }
 
     // Attempt the switch
-    if mux.switch_to_pane(&target_pane_id).is_err() {
+    let window_hint = agents
+        .iter()
+        .find(|a| a.pane_id == target_pane_id)
+        .map(|a| a.window_name.as_str());
+    if mux.switch_to_pane(&target_pane_id, window_hint).is_err() {
         println!("Failed to switch to last agent");
         return Ok(());
     }

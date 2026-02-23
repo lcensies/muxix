@@ -582,7 +582,17 @@ impl App {
         let current_pane = self.mux.active_pane_id();
 
         // Attempt the switch first - only update state on success
-        if self.mux.switch_to_pane(target_pane_id).is_err() {
+        // Look up window_name for the target pane (needed by Zellij)
+        let window_hint = self
+            .agents
+            .iter()
+            .find(|a| a.pane_id == target_pane_id)
+            .map(|a| a.window_name.as_str());
+        if self
+            .mux
+            .switch_to_pane(target_pane_id, window_hint)
+            .is_err()
+        {
             return;
         }
 
@@ -646,7 +656,9 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            let _ = self.mux.switch_to_pane(&agent.pane_id);
+            let _ = self
+                .mux
+                .switch_to_pane(&agent.pane_id, Some(&agent.window_name));
             // Don't set should_jump - popup stays open
         }
     }

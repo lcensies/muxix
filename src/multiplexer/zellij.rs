@@ -572,62 +572,34 @@ impl Multiplexer for ZellijBackend {
         Ok(())
     }
 
-    fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
-        // Zellij can't switch to arbitrary panes, but we can switch to the tab containing the pane.
-        // Look up the window name from the state store and switch to that tab.
-
-        use crate::state::StateStore;
-
-        let store = StateStore::new()?;
-        let agents = store.load_reconciled_agents(self)?;
-
-        debug!(
-            "switch_to_pane: looking for pane_id '{}', found {} agents",
-            pane_id,
-            agents.len()
-        );
-
-        // Find the agent with matching pane_id
-        if let Some(agent) = agents.iter().find(|a| a.pane_id == pane_id) {
-            debug!(
-                "switch_to_pane: found agent, switching to tab '{}'",
-                agent.window_name
-            );
-
-            // Try to switch by tab ID for more reliability (zellij PR #4695)
-            let tabs = Self::list_tabs()?;
-            if let Some(tab) = tabs.iter().find(|t| t.name == agent.window_name) {
-                let tab_id = tab.tab_id().to_string();
-                Cmd::new("zellij")
-                    .args(&["action", "go-to-tab-by-id", &tab_id])
-                    .run()
-                    .with_context(|| {
-                        format!("Failed to switch to tab '{}' by ID", agent.window_name)
-                    })?;
-            } else {
-                // Fallback to name-based switch
-                Cmd::new("zellij")
-                    .args(&["action", "go-to-tab-name", &agent.window_name])
-                    .run()
-                    .with_context(|| format!("Failed to switch to tab '{}'", agent.window_name))?;
-            }
-
-            debug!(
-                "switch_to_pane: successfully switched to tab '{}'",
-                agent.window_name
-            );
-            Ok(())
-        } else {
-            warn!(
-                "Could not find agent with pane_id '{}' in state store",
+    fn switch_to_pane(&self, pane_id: &str, window_hint: Option<&str>) -> Result<()> {
+        // Zellij can't switch to arbitrary panes by ID, so switch to the containing tab.
+        let tab_name = window_hint.ok_or_else(|| {
+            anyhow!(
+                "Zellij switch_to_pane requires window_hint (tab name) for pane '{}'",
                 pane_id
-            );
-            debug!(
-                "Available pane_ids: {:?}",
-                agents.iter().map(|a| &a.pane_id).collect::<Vec<_>>()
-            );
-            Err(anyhow!("Pane '{}' not found in state store", pane_id))
+            )
+        })?;
+
+        debug!(pane_id, tab_name, "switch_to_pane: switching to tab");
+
+        // Try to switch by tab ID for more reliability
+        let tabs = Self::list_tabs()?;
+        if let Some(tab) = tabs.iter().find(|t| t.name == tab_name) {
+            let tab_id = tab.tab_id().to_string();
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-by-id", &tab_id])
+                .run()
+                .with_context(|| format!("Failed to switch to tab '{}' by ID", tab_name))?;
+        } else {
+            // Fallback to name-based switch
+            Cmd::new("zellij")
+                .args(&["action", "go-to-tab-name", tab_name])
+                .run()
+                .with_context(|| format!("Failed to switch to tab '{}'", tab_name))?;
         }
+
+        Ok(())
     }
 
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
@@ -980,23 +952,25 @@ impl Multiplexer for ZellijBackend {
         // Secondary validation: Check if command matches stored command
         // This detects if the agent process was killed and replaced with something else
         if let Some(ref live_command) = pane_info.current_command
-            && !state.command.is_empty() && !live_command.is_empty() {
-                // Extract base command name for comparison
-                let expected_base = state
-                    .command
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(&state.command);
-                let actual_base = live_command.split('/').next_back().unwrap_or(live_command);
+            && !state.command.is_empty()
+            && !live_command.is_empty()
+        {
+            // Extract base command name for comparison
+            let expected_base = state
+                .command
+                .split('/')
+                .next_back()
+                .unwrap_or(&state.command);
+            let actual_base = live_command.split('/').next_back().unwrap_or(live_command);
 
-                if expected_base != actual_base {
-                    debug!(
-                        "Agent validation: command mismatch - expected '{}', got '{}'",
-                        expected_base, actual_base
-                    );
-                    return Ok(false); // Different command running
-                }
+            if expected_base != actual_base {
+                debug!(
+                    "Agent validation: command mismatch - expected '{}', got '{}'",
+                    expected_base, actual_base
+                );
+                return Ok(false); // Different command running
             }
+        }
 
         Ok(true) // Agent is valid
     }

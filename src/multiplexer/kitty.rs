@@ -597,7 +597,7 @@ impl Multiplexer for KittyBackend {
         Ok(())
     }
 
-    fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
+    fn switch_to_pane(&self, pane_id: &str, _window_hint: Option<&str>) -> Result<()> {
         // In kitty, focusing a window also focuses its containing tab
         self.select_pane(pane_id)
     }

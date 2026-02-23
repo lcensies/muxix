@@ -562,7 +562,7 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["select-pane", "-t", pane_id])
     }
 
-    fn switch_to_pane(&self, pane_id: &str) -> Result<()> {
+    fn switch_to_pane(&self, pane_id: &str, _window_hint: Option<&str>) -> Result<()> {
         self.tmux_cmd(&["switch-client", "-t", pane_id])
     }
 

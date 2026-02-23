@@ -503,8 +503,15 @@ impl DiffOps for App {
     /// Send commit action to the agent pane and close diff modal
     fn send_commit_to_agent(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
+            let window_hint = self
+                .agents
+                .iter()
+                .find(|a| a.pane_id == diff.pane_id)
+                .map(|a| a.window_name.clone());
             // Switch to agent's tab first (required for Zellij)
-            let _ = self.mux.switch_to_pane(&diff.pane_id);
+            let _ = self
+                .mux
+                .switch_to_pane(&diff.pane_id, window_hint.as_deref());
 
             let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
@@ -525,8 +532,15 @@ impl DiffOps for App {
     /// Send merge action to the agent pane and close diff modal
     fn trigger_merge(&mut self) {
         if let ViewMode::Diff(diff) = &self.view_mode {
+            let window_hint = self
+                .agents
+                .iter()
+                .find(|a| a.pane_id == diff.pane_id)
+                .map(|a| a.window_name.clone());
             // Switch to agent's tab first (required for Zellij)
-            let _ = self.mux.switch_to_pane(&diff.pane_id);
+            let _ = self
+                .mux
+                .switch_to_pane(&diff.pane_id, window_hint.as_deref());
 
             let _ = self.mux.send_keys_to_agent(
                 &diff.pane_id,
@@ -550,7 +564,9 @@ impl DiffOps for App {
             && let Some(agent) = self.agents.get(selected)
         {
             // Switch to agent's tab first (required for Zellij)
-            let _ = self.mux.switch_to_pane(&agent.pane_id);
+            let _ = self
+                .mux
+                .switch_to_pane(&agent.pane_id, Some(&agent.window_name));
 
             let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,
@@ -572,7 +588,9 @@ impl DiffOps for App {
             && let Some(agent) = self.agents.get(selected)
         {
             // Switch to agent's tab first (required for Zellij)
-            let _ = self.mux.switch_to_pane(&agent.pane_id);
+            let _ = self
+                .mux
+                .switch_to_pane(&agent.pane_id, Some(&agent.window_name));
 
             let _ = self.mux.send_keys_to_agent(
                 &agent.pane_id,

@@ -163,8 +163,12 @@ pub trait Multiplexer: Send + Sync {
     /// Select (focus) a pane by ID
     fn select_pane(&self, pane_id: &str) -> Result<()>;
 
-    /// Switch to a pane (may also switch windows/tabs as needed)
-    fn switch_to_pane(&self, pane_id: &str) -> Result<()>;
+    /// Switch to a pane (may also switch windows/tabs as needed).
+    ///
+    /// `window_hint` provides the window/tab name for backends that need it
+    /// (e.g., Zellij can't look up a pane by ID alone). Backends that can
+    /// switch by pane ID directly (tmux, WezTerm) ignore this parameter.
+    fn switch_to_pane(&self, pane_id: &str, window_hint: Option<&str>) -> Result<()>;
 
     /// Whether jumping to a pane should exit the dashboard.
     /// Defaults to true. Override to return false to keep the dashboard open after jumping.
