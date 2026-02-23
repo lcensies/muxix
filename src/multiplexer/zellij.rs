@@ -63,6 +63,38 @@ impl TabInfo {
     }
 }
 
+/// Parse a numeric pane ID from a "terminal_X" string.
+fn parse_pane_id(pane_id: &str) -> Option<u32> {
+    pane_id
+        .strip_prefix("terminal_")
+        .and_then(|s| s.parse().ok())
+}
+
+/// Extract the base command name from a full command path/string.
+///
+/// Takes an optional command string (e.g., "/usr/bin/bash --login"),
+/// extracts the first word, then returns only the basename.
+fn extract_base_command(pane_command: Option<&str>, terminal_command: Option<&str>) -> String {
+    pane_command
+        .or(terminal_command)
+        .and_then(|cmd| cmd.split_whitespace().next())
+        .unwrap_or("")
+        .split('/')
+        .last()
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Parse the focused tab name from `zellij action current-tab-info` output.
+///
+/// Output format: "name: Tab #1\nid: 0\nposition: 0\n..."
+fn parse_tab_name_from_output(output: &str) -> Option<String> {
+    output
+        .lines()
+        .find(|l| l.starts_with("name: "))
+        .map(|l| l["name: ".len()..].to_string())
+}
+
 impl Default for ZellijBackend {
     fn default() -> Self {
         Self::new()
@@ -106,11 +138,7 @@ impl ZellijBackend {
             .run_and_capture_stdout()
             .ok()?;
 
-        // Output format: "name: Tab #1\nid: 0\nposition: 0"
-        output
-            .lines()
-            .find(|l| l.starts_with("name: "))
-            .map(|l| l["name: ".len()..].to_string())
+        parse_tab_name_from_output(&output)
     }
 
     /// Query all panes using `zellij action list-panes --json --tab --command`
@@ -475,9 +503,7 @@ impl Multiplexer for ZellijBackend {
         // using focus-next-pane or focus-previous-pane
 
         // Extract numeric ID from pane_id
-        let target_id: u32 = pane_id
-            .strip_prefix("terminal_")
-            .and_then(|s| s.parse().ok())
+        let target_id: u32 = parse_pane_id(pane_id)
             .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
 
         // Get focused tab name to filter panes
@@ -600,9 +626,7 @@ impl Multiplexer for ZellijBackend {
 
         // Verify the pane exists - if list-panes returns it, it's ready for --pane-id targeting
         let panes = Self::list_panes().context("Failed to list panes in respawn_pane")?;
-        let numeric_id: u32 = pane_id
-            .strip_prefix("terminal_")
-            .and_then(|s| s.parse().ok())
+        let numeric_id: u32 = parse_pane_id(pane_id)
             .ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
 
         if !panes.iter().any(|p| p.id == numeric_id && !p.is_plugin) {
@@ -871,9 +895,7 @@ impl Multiplexer for ZellijBackend {
         let panes = Self::list_panes()?;
 
         // Extract numeric ID from "terminal_X"
-        let numeric_id: u32 = pane_id
-            .strip_prefix("terminal_")
-            .and_then(|s| s.parse().ok())
+        let numeric_id: u32 = parse_pane_id(pane_id)
             .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
 
         // Find pane by ID
@@ -882,17 +904,10 @@ impl Multiplexer for ZellijBackend {
             None => return Ok(None), // Pane doesn't exist
         };
 
-        // Use pane_command (more reliable) with terminal_command as fallback
-        let current_command = pane
-            .pane_command
-            .as_deref()
-            .or(pane.terminal_command.as_deref())
-            .and_then(|cmd| cmd.split_whitespace().next())
-            .unwrap_or("")
-            .split('/')
-            .last()
-            .unwrap_or("")
-            .to_string();
+        let current_command = extract_base_command(
+            pane.pane_command.as_deref(),
+            pane.terminal_command.as_deref(),
+        );
 
         // Use actual pane_cwd instead of process cwd
         let working_dir = pane
@@ -972,17 +987,10 @@ impl Multiplexer for ZellijBackend {
 
             let pane_id = format!("terminal_{}", pane.id);
 
-            // Use pane_command (more reliable) with terminal_command as fallback
-            let current_command = pane
-                .pane_command
-                .as_deref()
-                .or(pane.terminal_command.as_deref())
-                .and_then(|cmd| cmd.split_whitespace().next())
-                .unwrap_or("")
-                .split('/')
-                .last()
-                .unwrap_or("")
-                .to_string();
+            let current_command = extract_base_command(
+                pane.pane_command.as_deref(),
+                pane.terminal_command.as_deref(),
+            );
 
             // Use actual pane_cwd instead of process cwd
             let working_dir = pane
@@ -1007,4 +1015,271 @@ impl Multiplexer for ZellijBackend {
         Ok(result)
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === parse_pane_id ===
+
+    #[test]
+    fn parse_pane_id_valid() {
+        assert_eq!(parse_pane_id("terminal_0"), Some(0));
+        assert_eq!(parse_pane_id("terminal_1"), Some(1));
+        assert_eq!(parse_pane_id("terminal_42"), Some(42));
+        assert_eq!(parse_pane_id("terminal_999"), Some(999));
+    }
+
+    #[test]
+    fn parse_pane_id_invalid_prefix() {
+        assert_eq!(parse_pane_id("plugin_1"), None);
+        assert_eq!(parse_pane_id("pane_1"), None);
+        assert_eq!(parse_pane_id("1"), None);
+        assert_eq!(parse_pane_id(""), None);
+    }
+
+    #[test]
+    fn parse_pane_id_non_numeric() {
+        assert_eq!(parse_pane_id("terminal_abc"), None);
+        assert_eq!(parse_pane_id("terminal_"), None);
+        assert_eq!(parse_pane_id("terminal_1.5"), None);
+        assert_eq!(parse_pane_id("terminal_-1"), None);
+    }
+
+    // === extract_base_command ===
+
+    #[test]
+    fn extract_base_command_full_path() {
+        assert_eq!(
+            extract_base_command(Some("/usr/bin/bash"), None),
+            "bash"
+        );
+    }
+
+    #[test]
+    fn extract_base_command_with_args() {
+        assert_eq!(
+            extract_base_command(Some("/usr/bin/bash --login -i"), None),
+            "bash"
+        );
+    }
+
+    #[test]
+    fn extract_base_command_bare_name() {
+        assert_eq!(extract_base_command(Some("zsh"), None), "zsh");
+    }
+
+    #[test]
+    fn extract_base_command_prefers_pane_command() {
+        assert_eq!(
+            extract_base_command(Some("fish"), Some("bash")),
+            "fish"
+        );
+    }
+
+    #[test]
+    fn extract_base_command_falls_back_to_terminal_command() {
+        assert_eq!(
+            extract_base_command(None, Some("/bin/zsh")),
+            "zsh"
+        );
+    }
+
+    #[test]
+    fn extract_base_command_both_none() {
+        assert_eq!(extract_base_command(None, None), "");
+    }
+
+    #[test]
+    fn extract_base_command_empty_strings() {
+        assert_eq!(extract_base_command(Some(""), None), "");
+    }
+
+    // === parse_tab_name_from_output ===
+
+    #[test]
+    fn parse_tab_name_standard() {
+        let output = "name: Tab #1\nid: 0\nposition: 0\n";
+        assert_eq!(
+            parse_tab_name_from_output(output),
+            Some("Tab #1".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_tab_name_custom_name() {
+        let output = "name: my-worktree\nid: 3\nposition: 2\n";
+        assert_eq!(
+            parse_tab_name_from_output(output),
+            Some("my-worktree".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_tab_name_with_spaces() {
+        let output = "name: My Project Tab\nid: 1\nposition: 0\n";
+        assert_eq!(
+            parse_tab_name_from_output(output),
+            Some("My Project Tab".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_tab_name_empty_output() {
+        assert_eq!(parse_tab_name_from_output(""), None);
+    }
+
+    #[test]
+    fn parse_tab_name_no_name_field() {
+        let output = "id: 0\nposition: 0\n";
+        assert_eq!(parse_tab_name_from_output(output), None);
+    }
+
+    #[test]
+    fn parse_tab_name_name_field_in_middle() {
+        let output = "id: 5\nname: middle-tab\nposition: 3\nactive: true\n";
+        assert_eq!(
+            parse_tab_name_from_output(output),
+            Some("middle-tab".to_string())
+        );
+    }
+
+    // === contains_dashboard_ui ===
+
+    #[test]
+    fn contains_dashboard_ui_with_preview() {
+        assert!(ZellijBackend::contains_dashboard_ui("Some content\nPreview:\nmore stuff"));
+    }
+
+    #[test]
+    fn contains_dashboard_ui_with_input_and_diff() {
+        assert!(ZellijBackend::contains_dashboard_ui(
+            "header\n[i] input  [d] diff\nfooter"
+        ));
+    }
+
+    #[test]
+    fn contains_dashboard_ui_input_without_diff() {
+        // Only [i] input without [d] diff should NOT match
+        assert!(!ZellijBackend::contains_dashboard_ui("[i] input only"));
+    }
+
+    #[test]
+    fn contains_dashboard_ui_diff_without_input() {
+        // Only [d] diff without [i] input should NOT match
+        assert!(!ZellijBackend::contains_dashboard_ui("[d] diff only"));
+    }
+
+    #[test]
+    fn contains_dashboard_ui_normal_content() {
+        assert!(!ZellijBackend::contains_dashboard_ui(
+            "$ cargo build\nCompiling workmux v0.1.0\n"
+        ));
+    }
+
+    #[test]
+    fn contains_dashboard_ui_empty() {
+        assert!(!ZellijBackend::contains_dashboard_ui(""));
+    }
+
+    // === PaneInfo deserialization ===
+
+    #[test]
+    fn pane_info_deserialize_full() {
+        let json = r#"{
+            "id": 5,
+            "is_plugin": false,
+            "is_focused": true,
+            "terminal_command": "/bin/bash",
+            "pane_command": "/usr/bin/fish",
+            "pane_cwd": "/home/user/project",
+            "tab_id": 2,
+            "tab_name": "my-tab",
+            "title": "fish"
+        }"#;
+
+        let pane: PaneInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(pane.id, 5);
+        assert!(!pane.is_plugin);
+        assert!(pane.is_focused);
+        assert_eq!(pane.terminal_command.as_deref(), Some("/bin/bash"));
+        assert_eq!(pane.pane_command.as_deref(), Some("/usr/bin/fish"));
+        assert_eq!(pane.pane_cwd.as_deref(), Some("/home/user/project"));
+        assert_eq!(pane.tab_id, Some(2));
+        assert_eq!(pane.tab_name, "my-tab");
+        assert_eq!(pane.title, "fish");
+    }
+
+    #[test]
+    fn pane_info_deserialize_minimal() {
+        // Only required fields; optional fields use serde defaults
+        let json = r#"{
+            "id": 0,
+            "is_plugin": true,
+            "is_focused": false,
+            "terminal_command": null
+        }"#;
+
+        let pane: PaneInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(pane.id, 0);
+        assert!(pane.is_plugin);
+        assert!(!pane.is_focused);
+        assert!(pane.terminal_command.is_none());
+        assert!(pane.pane_command.is_none());
+        assert!(pane.pane_cwd.is_none());
+        assert!(pane.tab_id.is_none());
+        assert_eq!(pane.tab_name, "");
+        assert_eq!(pane.title, "");
+    }
+
+    #[test]
+    fn pane_info_deserialize_list() {
+        let json = r#"[
+            {"id": 1, "is_plugin": false, "is_focused": true, "terminal_command": "bash", "tab_name": "tab1"},
+            {"id": 2, "is_plugin": true, "is_focused": false, "terminal_command": null, "tab_name": "tab1"}
+        ]"#;
+
+        let panes: Vec<PaneInfo> = serde_json::from_str(json).unwrap();
+        assert_eq!(panes.len(), 2);
+        assert_eq!(panes[0].id, 1);
+        assert!(!panes[0].is_plugin);
+        assert_eq!(panes[1].id, 2);
+        assert!(panes[1].is_plugin);
+    }
+
+    // === TabInfo deserialization ===
+
+    #[test]
+    fn tab_info_deserialize() {
+        let json = r#"{
+            "tab_id": 3,
+            "position": 1,
+            "name": "workmux-feature",
+            "active": true
+        }"#;
+
+        let tab: TabInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(tab.tab_id(), 3);
+        assert_eq!(tab.position, 1);
+        assert_eq!(tab.name, "workmux-feature");
+        assert!(tab.active);
+    }
+
+    #[test]
+    fn tab_info_deserialize_list() {
+        let json = r#"[
+            {"tab_id": 0, "position": 0, "name": "Tab #1", "active": true},
+            {"tab_id": 1, "position": 1, "name": "my-feature", "active": false}
+        ]"#;
+
+        let tabs: Vec<TabInfo> = serde_json::from_str(json).unwrap();
+        assert_eq!(tabs.len(), 2);
+        assert_eq!(tabs[0].tab_id(), 0);
+        assert_eq!(tabs[0].name, "Tab #1");
+        assert!(tabs[0].active);
+        assert_eq!(tabs[1].tab_id(), 1);
+        assert_eq!(tabs[1].name, "my-feature");
+        assert!(!tabs[1].active);
+    }
 }
