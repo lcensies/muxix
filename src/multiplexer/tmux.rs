@@ -742,8 +742,8 @@ impl Multiplexer for TmuxBackend {
         }
 
         Ok(Some(LivePaneInfo {
-            pid: parts[1].parse().unwrap_or(0),
-            current_command: parts[2].to_string(),
+            pid: parts[1].parse().ok(),
+            current_command: Some(parts[2].to_string()),
             working_dir: PathBuf::from(parts[3]),
             title: if parts[4].is_empty() {
                 None
@@ -775,8 +775,8 @@ impl Multiplexer for TmuxBackend {
             panes.insert(
                 pane_id,
                 LivePaneInfo {
-                    pid: parts[1].parse().unwrap_or(0),
-                    current_command: parts[2].to_string(),
+                    pid: parts[1].parse().ok(),
+                    current_command: Some(parts[2].to_string()),
                     working_dir: PathBuf::from(parts[3]),
                     title: if parts[4].is_empty() {
                         None

@@ -829,10 +829,8 @@ impl Multiplexer for KittyBackend {
 
         match pane {
             Some(p) => Ok(Some(LivePaneInfo {
-                pid: p.foreground_pid.unwrap_or(p.pid),
-                current_command: p
-                    .foreground_command
-                    .unwrap_or_else(|| "unknown".to_string()),
+                pid: Some(p.foreground_pid.unwrap_or(p.pid)),
+                current_command: p.foreground_command.or_else(|| Some("unknown".to_string())),
                 working_dir: p.cwd,
                 title: if p.title.is_empty() {
                     None
@@ -855,10 +853,8 @@ impl Multiplexer for KittyBackend {
             result.insert(
                 pane_id,
                 LivePaneInfo {
-                    pid: p.foreground_pid.unwrap_or(p.pid),
-                    current_command: p
-                        .foreground_command
-                        .unwrap_or_else(|| "unknown".to_string()),
+                    pid: Some(p.foreground_pid.unwrap_or(p.pid)),
+                    current_command: p.foreground_command.or_else(|| Some("unknown".to_string())),
                     working_dir: p.cwd,
                     title: if p.title.is_empty() {
                         None

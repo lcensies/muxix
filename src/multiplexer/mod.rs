@@ -506,10 +506,17 @@ pub trait Multiplexer: Send + Sync {
         let live_pane = self.get_live_pane_info(&state.pane_key.pane_id)?;
 
         match live_pane {
-            None => Ok(false),                                         // Pane no longer exists
-            Some(ref live) if live.pid != state.pane_pid => Ok(false), // PID mismatch
-            Some(ref live) if live.current_command != state.command => Ok(false), // Command changed
-            Some(_) => Ok(true),                                       // Valid
+            None => Ok(false), // Pane no longer exists
+            Some(ref live) if live.pid.is_some_and(|pid| pid != state.pane_pid) => Ok(false), // PID mismatch
+            Some(ref live)
+                if live
+                    .current_command
+                    .as_ref()
+                    .is_some_and(|cmd| *cmd != state.command) =>
+            {
+                Ok(false) // Command changed
+            }
+            Some(_) => Ok(true), // Valid
         }
     }
 }

@@ -808,8 +808,7 @@ impl Multiplexer for WezTermBackend {
                             .run_and_capture_stdout()
                             .ok()
                     })
-                    .and_then(|output| output.trim().parse::<u32>().ok())
-                    .unwrap_or(0);
+                    .and_then(|output| output.trim().parse::<u32>().ok());
 
                 // Get foreground command (process with '+' in STAT indicates foreground)
                 // This is the actual running command (e.g., "claude", "vim", "zsh")
@@ -830,8 +829,7 @@ impl Multiplexer for WezTermBackend {
                             .ok()
                     })
                     .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "unknown".to_string());
+                    .filter(|s| !s.is_empty());
 
                 Ok(Some(LivePaneInfo {
                     pid,
@@ -883,8 +881,7 @@ impl Multiplexer for WezTermBackend {
                         .run_and_capture_stdout()
                         .ok()
                 })
-                .and_then(|output| output.trim().parse::<u32>().ok())
-                .unwrap_or(0);
+                .and_then(|output| output.trim().parse::<u32>().ok());
 
             let current_command = tty_name
                 .and_then(|tty| {
@@ -900,8 +897,7 @@ impl Multiplexer for WezTermBackend {
                         .ok()
                 })
                 .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "unknown".to_string());
+                .filter(|s| !s.is_empty());
 
             result.insert(
                 pane_id,

@@ -141,11 +141,11 @@ impl std::str::FromStr for BackendType {
 /// used to validate stored state against actual pane state.
 #[derive(Debug, Clone)]
 pub struct LivePaneInfo {
-    /// PID of the pane's shell process
-    pub pid: u32,
+    /// PID of the pane's shell process (None if backend doesn't expose PIDs)
+    pub pid: Option<u32>,
 
-    /// Current foreground command (e.g., "node", "zsh")
-    pub current_command: String,
+    /// Current foreground command (e.g., "node", "zsh"). None if backend doesn't expose it.
+    pub current_command: Option<String>,
 
     /// Working directory
     pub working_dir: PathBuf,

@@ -924,6 +924,11 @@ impl Multiplexer for ZellijBackend {
             pane.pane_command.as_deref(),
             pane.terminal_command.as_deref(),
         );
+        let current_command = if current_command.is_empty() {
+            None
+        } else {
+            Some(current_command)
+        };
 
         // Use actual pane_cwd instead of process cwd
         let working_dir = pane
@@ -933,7 +938,7 @@ impl Multiplexer for ZellijBackend {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
         Ok(Some(LivePaneInfo {
-            pid: 0, // Zellij doesn't expose PID
+            pid: None, // Zellij doesn't expose PID
             current_command,
             working_dir,
             title: Some(pane.title.clone()).filter(|t| !t.is_empty()),
@@ -974,23 +979,24 @@ impl Multiplexer for ZellijBackend {
 
         // Secondary validation: Check if command matches stored command
         // This detects if the agent process was killed and replaced with something else
-        if !state.command.is_empty() && !pane_info.current_command.is_empty() {
-            // Extract base command name for comparison
-            let expected_base = state.command.split('/').next_back().unwrap_or(&state.command);
-            let actual_base = pane_info
-                .current_command
-                .split('/')
-                .next_back()
-                .unwrap_or(&pane_info.current_command);
+        if let Some(ref live_command) = pane_info.current_command
+            && !state.command.is_empty() && !live_command.is_empty() {
+                // Extract base command name for comparison
+                let expected_base = state
+                    .command
+                    .split('/')
+                    .next_back()
+                    .unwrap_or(&state.command);
+                let actual_base = live_command.split('/').next_back().unwrap_or(live_command);
 
-            if expected_base != actual_base {
-                debug!(
-                    "Agent validation: command mismatch - expected '{}', got '{}'",
-                    expected_base, actual_base
-                );
-                return Ok(false); // Different command running
+                if expected_base != actual_base {
+                    debug!(
+                        "Agent validation: command mismatch - expected '{}', got '{}'",
+                        expected_base, actual_base
+                    );
+                    return Ok(false); // Different command running
+                }
             }
-        }
 
         Ok(true) // Agent is valid
     }
@@ -1015,6 +1021,11 @@ impl Multiplexer for ZellijBackend {
                 pane.pane_command.as_deref(),
                 pane.terminal_command.as_deref(),
             );
+            let current_command = if current_command.is_empty() {
+                None
+            } else {
+                Some(current_command)
+            };
 
             // Use actual pane_cwd instead of process cwd
             let working_dir = pane
@@ -1026,7 +1037,7 @@ impl Multiplexer for ZellijBackend {
             result.insert(
                 pane_id,
                 LivePaneInfo {
-                    pid: 0, // Zellij doesn't expose PID
+                    pid: None, // Zellij doesn't expose PID
                     current_command,
                     working_dir,
                     title: Some(pane.title.clone()).filter(|t| !t.is_empty()),

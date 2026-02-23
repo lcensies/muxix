@@ -241,28 +241,28 @@ impl StateStore {
                         let _ = mux.clear_status(&state.pane_key.pane_id);
                     }
                 }
-                Some(live) if live.pid != state.pane_pid && live.pid != 0 => {
+                Some(live) if live.pid.is_some_and(|pid| pid != state.pane_pid) => {
                     // PID mismatch - pane ID was recycled by a new process
-                    // (Skip check if pid=0, which means backend doesn't support PIDs)
                     info!(
                         pane_id,
                         stored_pid = state.pane_pid,
-                        live_pid = live.pid,
+                        live_pid = live.pid.unwrap_or(0),
                         "reconcile: removing agent, pane PID changed (pane ID recycled)"
                     );
                     self.delete_agent(&state.pane_key)?;
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
                 Some(live)
-                    if !live.current_command.is_empty()
-                        && live.current_command != state.command =>
+                    if live
+                        .current_command
+                        .as_ref()
+                        .is_some_and(|cmd| *cmd != state.command) =>
                 {
                     // Command changed - agent exited (e.g., "node" -> "zsh")
-                    // (Skip check if command is empty, which means backend doesn't support it)
                     info!(
                         pane_id,
                         stored_command = state.command,
-                        live_command = live.current_command,
+                        live_command = live.current_command.as_deref().unwrap_or(""),
                         "reconcile: removing agent, foreground command changed"
                     );
                     self.delete_agent(&state.pane_key)?;
