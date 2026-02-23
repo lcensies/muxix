@@ -187,7 +187,6 @@ impl Multiplexer for WezTermBackend {
         "wezterm"
     }
 
-
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {
@@ -397,7 +396,6 @@ impl Multiplexer for WezTermBackend {
             "Session mode is not supported in WezTerm. Use window mode instead."
         ))
     }
-
 
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let full_name = util::prefixed(prefix, name);
@@ -943,7 +941,6 @@ impl Multiplexer for WezTermBackend {
             command,
         )
     }
-
 }
 
 /// Send escape sequence to trigger cross-workspace pane switch via WezTerm's user-var-changed event.

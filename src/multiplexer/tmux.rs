@@ -163,7 +163,6 @@ impl Multiplexer for TmuxBackend {
         "tmux"
     }
 
-
     // === Server/Session ===
 
     fn is_running(&self) -> Result<bool> {
@@ -405,7 +404,6 @@ impl Multiplexer for TmuxBackend {
     fn shell_switch_to_last_session_cmd(&self) -> Result<String> {
         Ok("tmux switch-client -l >/dev/null 2>&1".to_string())
     }
-
 
     fn select_window(&self, prefix: &str, name: &str) -> Result<()> {
         let prefixed_name = util::prefixed(prefix, name);
@@ -793,7 +791,6 @@ impl Multiplexer for TmuxBackend {
 
         Ok(panes)
     }
-
 }
 /// Format string to inject into tmux window-status-format.
 const WORKMUX_STATUS_FORMAT: &str = "#{?@workmux_status, #{@workmux_status},}";

@@ -8,14 +8,14 @@
 //! - Kitty "tab" = workmux "window" (a named tab)
 //! - Kitty "OS window" = the actual window on screen
 
+use crate::cmd::Cmd;
+use crate::config::SplitDirection;
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
-use crate::cmd::Cmd;
-use crate::config::SplitDirection;
 
 use super::agent;
 use super::handshake::UnixPipeHandshake;
@@ -251,7 +251,6 @@ impl Multiplexer for KittyBackend {
     fn name(&self) -> &'static str {
         "kitty"
     }
-
 
     // === Server/Session ===
 

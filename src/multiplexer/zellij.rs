@@ -48,9 +48,9 @@ struct PaneInfo {
 /// Info about a tab from `zellij action list-tabs --json`
 #[derive(Debug, serde::Deserialize)]
 struct TabInfo {
-    tab_id: u32,    // Stable tab ID (available in zellij 0.44.0+)
+    tab_id: u32, // Stable tab ID (available in zellij 0.44.0+)
     #[allow(dead_code)]
-    position: u32,  // Tab position (can change when tabs are reordered)
+    position: u32, // Tab position (can change when tabs are reordered)
     name: String,
     #[allow(dead_code)]
     active: bool,
@@ -80,7 +80,7 @@ fn extract_base_command(pane_command: Option<&str>, terminal_command: Option<&st
         .and_then(|cmd| cmd.split_whitespace().next())
         .unwrap_or("")
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or("")
         .to_string()
 }
@@ -192,7 +192,10 @@ impl ZellijBackend {
     #[allow(dead_code)]
     fn get_tab_id_by_name(name: &str) -> Result<Option<u32>> {
         let tabs = Self::list_tabs()?;
-        Ok(tabs.into_iter().find(|t| t.name == name).map(|t| t.tab_id()))
+        Ok(tabs
+            .into_iter()
+            .find(|t| t.name == name)
+            .map(|t| t.tab_id()))
     }
 }
 
@@ -336,9 +339,7 @@ impl Multiplexer for ZellijBackend {
 
         // new-tab returns tab_id on stdout and auto-focuses the new tab
         let tab_id_str = Cmd::new("zellij")
-            .args(&[
-                "action", "new-tab", "--name", &full_name, "--cwd", cwd_str,
-            ])
+            .args(&["action", "new-tab", "--name", &full_name, "--cwd", cwd_str])
             .run_and_capture_stdout()
             .with_context(|| format!("Failed to create zellij tab '{}'", full_name))?;
 
@@ -394,7 +395,10 @@ impl Multiplexer for ZellijBackend {
 
         let cmd = if let Some(id) = tab_id {
             // Use ID-based close (no need to focus the tab first)
-            format!("sleep {} && zellij action close-tab-by-id {}", delay_secs, id)
+            format!(
+                "sleep {} && zellij action close-tab-by-id {}",
+                delay_secs, id
+            )
         } else {
             // Fallback to name-based close
             format!(
@@ -425,7 +429,10 @@ impl Multiplexer for ZellijBackend {
                 .context("Failed to select zellij tab by ID")?;
         } else {
             // Fallback to old method
-            warn!("Tab '{}' not found, using fallback select method", full_name);
+            warn!(
+                "Tab '{}' not found, using fallback select method",
+                full_name
+            );
             Cmd::new("zellij")
                 .args(&["action", "go-to-tab-name", &full_name])
                 .run()
@@ -503,12 +510,12 @@ impl Multiplexer for ZellijBackend {
         // using focus-next-pane or focus-previous-pane
 
         // Extract numeric ID from pane_id
-        let target_id: u32 = parse_pane_id(pane_id)
-            .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
+        let target_id: u32 =
+            parse_pane_id(pane_id).ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
 
         // Get focused tab name to filter panes
-        let focused_tab = Self::focused_tab_name()
-            .ok_or_else(|| anyhow!("Could not determine focused tab"))?;
+        let focused_tab =
+            Self::focused_tab_name().ok_or_else(|| anyhow!("Could not determine focused tab"))?;
 
         // Get all panes in the current tab
         let all_panes = Self::list_panes()?;
@@ -594,7 +601,9 @@ impl Multiplexer for ZellijBackend {
                 Cmd::new("zellij")
                     .args(&["action", "go-to-tab-by-id", &tab_id])
                     .run()
-                    .with_context(|| format!("Failed to switch to tab '{}' by ID", agent.window_name))?;
+                    .with_context(|| {
+                        format!("Failed to switch to tab '{}' by ID", agent.window_name)
+                    })?;
             } else {
                 // Fallback to name-based switch
                 Cmd::new("zellij")
@@ -626,14 +635,17 @@ impl Multiplexer for ZellijBackend {
 
         // Verify the pane exists - if list-panes returns it, it's ready for --pane-id targeting
         let panes = Self::list_panes().context("Failed to list panes in respawn_pane")?;
-        let numeric_id: u32 = parse_pane_id(pane_id)
-            .ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
+        let numeric_id: u32 =
+            parse_pane_id(pane_id).ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
 
         if !panes.iter().any(|p| p.id == numeric_id && !p.is_plugin) {
             return Err(anyhow!(
                 "Pane {} not found. Available panes: {:?}",
                 pane_id,
-                panes.iter().map(|p| format!("terminal_{}", p.id)).collect::<Vec<_>>()
+                panes
+                    .iter()
+                    .map(|p| format!("terminal_{}", p.id))
+                    .collect::<Vec<_>>()
             ));
         }
 
@@ -644,7 +656,11 @@ impl Multiplexer for ZellijBackend {
 
         // Combine cd + command into a single write-chars call to reduce subprocess spawns
         let combined = if let Some(command) = cmd {
-            debug!(pane_id, command = &command[..command.len().min(100)], "respawn_pane: sending cd + command");
+            debug!(
+                pane_id,
+                command = &command[..command.len().min(100)],
+                "respawn_pane: sending cd + command"
+            );
             format!("cd '{}' && {}", cwd_str.replace('\'', "'\\''"), command)
         } else {
             debug!(pane_id, "respawn_pane: sending cd command");
@@ -895,8 +911,8 @@ impl Multiplexer for ZellijBackend {
         let panes = Self::list_panes()?;
 
         // Extract numeric ID from "terminal_X"
-        let numeric_id: u32 = parse_pane_id(pane_id)
-            .ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
+        let numeric_id: u32 =
+            parse_pane_id(pane_id).ok_or_else(|| anyhow!("Invalid pane_id: {}", pane_id))?;
 
         // Find pane by ID
         let pane = match panes.iter().find(|p| p.id == numeric_id && !p.is_plugin) {
@@ -926,7 +942,11 @@ impl Multiplexer for ZellijBackend {
         }))
     }
 
-    fn validate_agent_alive(&self, state: &crate::state::AgentState, _cached_tabs: Option<&[String]>) -> Result<bool> {
+    fn validate_agent_alive(
+        &self,
+        state: &crate::state::AgentState,
+        _cached_tabs: Option<&[String]>,
+    ) -> Result<bool> {
         use std::time::{Duration, SystemTime};
 
         // Performance optimization: Check heartbeat first (fast path)
@@ -956,8 +976,12 @@ impl Multiplexer for ZellijBackend {
         // This detects if the agent process was killed and replaced with something else
         if !state.command.is_empty() && !pane_info.current_command.is_empty() {
             // Extract base command name for comparison
-            let expected_base = state.command.split('/').last().unwrap_or(&state.command);
-            let actual_base = pane_info.current_command.split('/').last().unwrap_or(&pane_info.current_command);
+            let expected_base = state.command.split('/').next_back().unwrap_or(&state.command);
+            let actual_base = pane_info
+                .current_command
+                .split('/')
+                .next_back()
+                .unwrap_or(&pane_info.current_command);
 
             if expected_base != actual_base {
                 debug!(
@@ -1014,7 +1038,6 @@ impl Multiplexer for ZellijBackend {
 
         Ok(result)
     }
-
 }
 
 #[cfg(test)]
@@ -1051,10 +1074,7 @@ mod tests {
 
     #[test]
     fn extract_base_command_full_path() {
-        assert_eq!(
-            extract_base_command(Some("/usr/bin/bash"), None),
-            "bash"
-        );
+        assert_eq!(extract_base_command(Some("/usr/bin/bash"), None), "bash");
     }
 
     #[test]
@@ -1072,18 +1092,12 @@ mod tests {
 
     #[test]
     fn extract_base_command_prefers_pane_command() {
-        assert_eq!(
-            extract_base_command(Some("fish"), Some("bash")),
-            "fish"
-        );
+        assert_eq!(extract_base_command(Some("fish"), Some("bash")), "fish");
     }
 
     #[test]
     fn extract_base_command_falls_back_to_terminal_command() {
-        assert_eq!(
-            extract_base_command(None, Some("/bin/zsh")),
-            "zsh"
-        );
+        assert_eq!(extract_base_command(None, Some("/bin/zsh")), "zsh");
     }
 
     #[test]
@@ -1149,7 +1163,9 @@ mod tests {
 
     #[test]
     fn contains_dashboard_ui_with_preview() {
-        assert!(ZellijBackend::contains_dashboard_ui("Some content\nPreview:\nmore stuff"));
+        assert!(ZellijBackend::contains_dashboard_ui(
+            "Some content\nPreview:\nmore stuff"
+        ));
     }
 
     #[test]

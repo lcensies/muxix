@@ -221,7 +221,8 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
 
         // Auto-refresh preview more frequently for live updates
         // Uses faster refresh rate in input mode (set at top of loop)
-        if app.mux.supports_preview() && last_preview_refresh.elapsed() >= current_preview_interval {
+        if app.mux.supports_preview() && last_preview_refresh.elapsed() >= current_preview_interval
+        {
             app.refresh_preview();
             last_preview_refresh = std::time::Instant::now();
         }

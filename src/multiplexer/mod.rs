@@ -121,7 +121,6 @@ pub trait Multiplexer: Send + Sync {
         ))
     }
 
-
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 
@@ -499,7 +498,11 @@ pub trait Multiplexer: Send + Sync {
     /// to avoid repeated queries. For Zellij, this is a cached list of tab names.
     ///
     /// Default implementation uses `get_live_pane_info()` and validates PID/command.
-    fn validate_agent_alive(&self, state: &crate::state::AgentState, _cached_data: Option<&[String]>) -> Result<bool> {
+    fn validate_agent_alive(
+        &self,
+        state: &crate::state::AgentState,
+        _cached_data: Option<&[String]>,
+    ) -> Result<bool> {
         let live_pane = self.get_live_pane_info(&state.pane_key.pane_id)?;
 
         match live_pane {
@@ -509,8 +512,6 @@ pub trait Multiplexer: Send + Sync {
             Some(_) => Ok(true),                                       // Valid
         }
     }
-
-
 }
 
 /// Detect which backend to use based on environment.
@@ -534,7 +535,9 @@ pub fn detect_backend() -> BackendType {
         match val.parse() {
             Ok(bt) => return bt,
             Err(_) => {
-                eprintln!("workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty|zellij");
+                eprintln!(
+                    "workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty|zellij"
+                );
             }
         }
     }
@@ -584,27 +587,42 @@ mod tests {
 
     #[test]
     fn no_env_defaults_to_tmux() {
-        assert_eq!(resolve_backend(false, false, false, false), BackendType::Tmux);
+        assert_eq!(
+            resolve_backend(false, false, false, false),
+            BackendType::Tmux
+        );
     }
 
     #[test]
     fn tmux_only() {
-        assert_eq!(resolve_backend(true, false, false, false), BackendType::Tmux);
+        assert_eq!(
+            resolve_backend(true, false, false, false),
+            BackendType::Tmux
+        );
     }
 
     #[test]
     fn wezterm_only() {
-        assert_eq!(resolve_backend(false, true, false, false), BackendType::WezTerm);
+        assert_eq!(
+            resolve_backend(false, true, false, false),
+            BackendType::WezTerm
+        );
     }
 
     #[test]
     fn zellij_only() {
-        assert_eq!(resolve_backend(false, false, true, false), BackendType::Zellij);
+        assert_eq!(
+            resolve_backend(false, false, true, false),
+            BackendType::Zellij
+        );
     }
 
     #[test]
     fn kitty_only() {
-        assert_eq!(resolve_backend(false, false, false, true), BackendType::Kitty);
+        assert_eq!(
+            resolve_backend(false, false, false, true),
+            BackendType::Kitty
+        );
     }
 
     #[test]
@@ -624,12 +642,18 @@ mod tests {
 
     #[test]
     fn wezterm_inside_kitty() {
-        assert_eq!(resolve_backend(false, true, false, true), BackendType::WezTerm);
+        assert_eq!(
+            resolve_backend(false, true, false, true),
+            BackendType::WezTerm
+        );
     }
 
     #[test]
     fn zellij_inside_kitty() {
-        assert_eq!(resolve_backend(false, false, true, true), BackendType::Zellij);
+        assert_eq!(
+            resolve_backend(false, false, true, true),
+            BackendType::Zellij
+        );
     }
 
     #[test]

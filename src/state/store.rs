@@ -204,7 +204,9 @@ impl StateStore {
         // reconciliation pass to avoid N process spawns (one per agent).
         // Other backends ignore this.
         let cached_tabs = if !mux.stable_pane_ids() {
-            mux.get_all_window_names().ok().map(|set| set.into_iter().collect::<Vec<_>>())
+            mux.get_all_window_names()
+                .ok()
+                .map(|set| set.into_iter().collect::<Vec<_>>())
         } else {
             None
         };
@@ -251,7 +253,10 @@ impl StateStore {
                     self.delete_agent(&state.pane_key)?;
                     let _ = mux.clear_status(&state.pane_key.pane_id);
                 }
-                Some(live) if !live.current_command.is_empty() && live.current_command != state.command => {
+                Some(live)
+                    if !live.current_command.is_empty()
+                        && live.current_command != state.command =>
+                {
                     // Command changed - agent exited (e.g., "node" -> "zsh")
                     // (Skip check if command is empty, which means backend doesn't support it)
                     info!(
@@ -266,8 +271,12 @@ impl StateStore {
                 Some(live) => {
                     // Valid - include in dashboard
                     let agent_pane = state.to_agent_pane(
-                        live.session.clone().unwrap_or_else(|| state.session_name.clone().unwrap_or_default()),
-                        live.window.clone().unwrap_or_else(|| state.window_name.clone().unwrap_or_default()),
+                        live.session
+                            .clone()
+                            .unwrap_or_else(|| state.session_name.clone().unwrap_or_default()),
+                        live.window
+                            .clone()
+                            .unwrap_or_else(|| state.window_name.clone().unwrap_or_default()),
                     );
                     valid_agents.push(agent_pane);
                 }
