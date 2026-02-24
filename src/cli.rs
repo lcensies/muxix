@@ -524,10 +524,11 @@ fn should_prompt_nerdfont(cmd: &Commands) -> bool {
 
 /// Check if the command should show the status tracking setup wizard.
 /// Excludes `Setup` to avoid double-prompting (the setup command handles its own flow).
+/// Excludes `Dashboard` because the wizard prompt interferes with the TUI.
 fn should_prompt_status_setup(cmd: &Commands) -> bool {
     matches!(
         cmd,
-        Commands::Add { .. } | Commands::Init | Commands::Dashboard { .. } | Commands::List { .. }
+        Commands::Add { .. } | Commands::Init | Commands::List { .. }
     )
 }
 
