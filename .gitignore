@@ -25,3 +25,4 @@ docs/.vitepress/cache/
 result
 result-*
 history
+.claude/temp
