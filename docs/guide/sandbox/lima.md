@@ -42,21 +42,21 @@ sandbox:
       sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option | Default | Description |
-| --- | --- | --- |
-| `backend` | `container` | Set to `lima` for VM sandboxing |
-| `lima.isolation` | `project` | `project` (one VM per repo) or `shared` (single global VM) |
-| `lima.projects_dir` | - | Required for `shared` isolation: parent directory of all projects |
-| `image` | Debian 12 | Custom qcow2 image URL or `file://` path. **Global config only.** |
-| `lima.skip_default_provision` | `false` | Skip built-in provisioning (system deps + tool install) |
-| `lima.cpus` | `4` | Number of CPUs for Lima VMs |
-| `lima.memory` | `4GiB` | Memory for Lima VMs |
-| `lima.disk` | `100GiB` | Disk size for Lima VMs |
-| `lima.provision` | - | Custom user-mode shell script run once at VM creation after built-in steps |
-| `toolchain` | `auto` | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake` |
-| `host_commands` | `[]` | Commands to proxy from guest to host via RPC (see [shared features](./features#host-command-proxying)) |
-| `env_passthrough` | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM. **Global config only.** |
-| `extra_mounts` | `[]` | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.** |
+| Option                        | Default            | Description                                                                                              |
+| ----------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `backend`                     | `container`        | Set to `lima` for VM sandboxing                                                                          |
+| `lima.isolation`              | `project`          | `project` (one VM per repo) or `shared` (single global VM)                                               |
+| `lima.projects_dir`           | -                  | Required for `shared` isolation: parent directory of all projects                                        |
+| `image`                       | Debian 12          | Custom qcow2 image URL or `file://` path. **Global config only.**                                        |
+| `lima.skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                                                  |
+| `lima.cpus`                   | `4`                | Number of CPUs for Lima VMs                                                                              |
+| `lima.memory`                 | `4GiB`             | Memory for Lima VMs                                                                                      |
+| `lima.disk`                   | `100GiB`           | Disk size for Lima VMs                                                                                   |
+| `lima.provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps                               |
+| `toolchain`                   | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`                       |
+| `host_commands`               | `[]`               | Commands to proxy from guest to host via RPC (see [shared features](./features#host-command-proxying))   |
+| `env_passthrough`             | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM. **Global config only.**                                 |
+| `extra_mounts`                | `[]`               | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.** |
 
 VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `memory`, `disk`, `provision`, `skip_default_provision`) are nested under `lima`. Settings shared by both backends (`toolchain`, `host_commands`, `env_passthrough`, `image`, `target`) remain at the `sandbox` level. Container-specific settings (`runtime`) are nested under `container`.
 
@@ -89,21 +89,23 @@ VMs are created on first use and started automatically when needed. If a VM alre
 When a VM is first created, workmux runs two built-in provisioning steps:
 
 **System provision** (as root):
+
 - Installs `curl`, `ca-certificates`, `git`, `xz-utils`
 
 **User provision:**
+
 - Installs the configured agent CLI (based on the `agent` setting)
 - Installs [workmux](https://github.com/raine/workmux)
 - Installs [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) (only when the project has `devbox.json` or `flake.nix`, or `toolchain` is explicitly set to `devbox` or `flake`)
 
 The agent CLI installed depends on your `agent` configuration:
 
-| Agent | What gets installed |
-| --- | --- |
+| Agent              | What gets installed                        |
+| ------------------ | ------------------------------------------ |
 | `claude` (default) | Claude Code CLI via `claude.ai/install.sh` |
-| `codex` | Codex CLI binary from GitHub releases |
-| `gemini` | Node.js + Gemini CLI via npm |
-| `opencode` | OpenCode binary via `opencode.ai/install` |
+| `codex`            | Codex CLI binary from GitHub releases      |
+| `gemini`           | Node.js + Gemini CLI via npm               |
+| `opencode`         | OpenCode binary via `opencode.ai/install`  |
 
 Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to provision with a different agent.
 
@@ -337,4 +339,3 @@ This is useful when you want to:
 - Clean up after finishing work
 
 The VMs will automatically restart when needed for new worktrees.
-

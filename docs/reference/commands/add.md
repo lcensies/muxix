@@ -32,8 +32,8 @@ workmux add <branch-name> [flags]
 | `-a, --agent <name>`           | The agent(s) to use for the worktree(s). Can be specified multiple times to generate a worktree for each agent. Overrides the `agent` from your config file.                                                                                                            |
 | `-l, --layout <name>`          | Use a [named pane layout](/guide/configuration#named-layouts) from config instead of the default panes.                                                                                                                                                                 |
 | `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `workmux remove --keep-branch`.                                                                 |
-| `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists.                                                                                       |
-| `-s, --session`                | Create the worktree's window in its own tmux session instead of the current session. Useful for session-per-project workflows. Can also be set via `mode: session` in config.                                                                                         |
+| `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists.                                                                                      |
+| `-s, --session`                | Create the worktree's window in its own tmux session instead of the current session. Useful for session-per-project workflows. Can also be set via `mode: session` in config.                                                                                           |
 
 ## Skip options
 

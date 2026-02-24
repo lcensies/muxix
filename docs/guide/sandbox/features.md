@@ -93,11 +93,11 @@ No configuration is needed. If the host has no `user.name` or `user.email` confi
 
 Both sandbox backends mount agent-specific credential directories from the host. The mounted directory depends on the configured `agent`:
 
-| Agent | Host directory | Container mount | Lima mount |
-| --- | --- | --- | --- |
-| `claude` | `~/.claude/` | `/tmp/.claude/` | `$HOME/.claude/` |
-| `gemini` | `~/.gemini/` | `/tmp/.gemini/` | `$HOME/.gemini/` |
-| `codex` | `~/.codex/` | `/tmp/.codex/` | `$HOME/.codex/` |
+| Agent      | Host directory             | Container mount               | Lima mount                     |
+| ---------- | -------------------------- | ----------------------------- | ------------------------------ |
+| `claude`   | `~/.claude/`               | `/tmp/.claude/`               | `$HOME/.claude/`               |
+| `gemini`   | `~/.gemini/`               | `/tmp/.gemini/`               | `$HOME/.gemini/`               |
+| `codex`    | `~/.codex/`                | `/tmp/.codex/`                | `$HOME/.codex/`                |
 | `opencode` | `~/.local/share/opencode/` | `/tmp/.local/share/opencode/` | `$HOME/.local/share/opencode/` |
 
 Key behaviors:
