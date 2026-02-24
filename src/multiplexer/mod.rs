@@ -194,6 +194,13 @@ pub trait Multiplexer: Send + Sync {
     /// Send keys (command + Enter) to a pane
     fn send_keys(&self, pane_id: &str, command: &str) -> Result<()>;
 
+    /// Whether this backend requires focusing a pane before sending input to it.
+    /// Defaults to false. Backends like Zellij that can't target unfocused panes
+    /// override this to return true.
+    fn requires_focus_for_input(&self) -> bool {
+        false
+    }
+
     /// Send keys to an agent pane, with special handling for Claude's ! prefix
     fn send_keys_to_agent(&self, pane_id: &str, command: &str, agent: Option<&str>) -> Result<()>;
 

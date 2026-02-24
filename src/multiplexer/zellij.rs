@@ -200,6 +200,10 @@ impl Multiplexer for ZellijBackend {
         false // Preview requires expensive process spawning
     }
 
+    fn requires_focus_for_input(&self) -> bool {
+        true // Zellij's write-chars with --pane-id works, but tab must be active
+    }
+
     fn should_exit_on_jump(&self) -> bool {
         false // Dashboard runs in a persistent tab; keep it alive when switching to agent tabs
     }
