@@ -5,11 +5,11 @@
     "dev": "vitepress dev",
     "build": "vitepress build",
     "preview": "vitepress preview",
-    "format": "prettier --write ."
+    "format": "oxfmt ."
   },
   "devDependencies": {
     "@types/node": "^25.0.9",
-    "prettier": "^3.4.2",
+    "oxfmt": "^0.35.0",
     "typescript": "^5.9.3",
     "vitepress": "^2.0.0-alpha.15",
     "vue-tsc": "^3.2.2"

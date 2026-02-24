@@ -111,7 +111,7 @@ docs:
 
 # Format documentation files
 format-docs:
-    cd docs && npm install && npm run format
+    cd docs && npm run format
 
 # Release a new patch version
 release *ARGS:
