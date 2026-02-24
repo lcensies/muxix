@@ -17,6 +17,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.124 (2026-02-24)
+
+- Added experimental Zellij backend support. Zellij is auto-detected when
+  running inside a Zellij session. Requires Zellij built from source (uses
+  unreleased features). See the
+  [Zellij guide](https://workmux.raine.dev/guide/zellij) for details and known
+  limitations (contributed by [@Infonautica](https://github.com/Infonautica))
+
 ## v0.1.123 (2026-02-24)
 
 - Add GitHub Copilot CLI as a supported agent for status tracking. Copilot hooks
