@@ -1525,8 +1525,10 @@ at-a-glance visibility into what the agent in each window doing.
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
 
-**Note**: Currently Claude Code and [OpenCode](https://opencode.ai/) support
-hooks that enable this functionality. Gemini's support is
+**Note**: Currently Claude Code, [OpenCode](https://opencode.ai/), and
+[Copilot CLI](https://github.com/github/copilot-cli) support hooks that enable
+this functionality.
+Gemini's support is
 [on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex
 support can be tracked in
 [this issue](https://github.com/openai/codex/issues/2109).
@@ -1561,6 +1563,17 @@ claude plugin install workmux-status
 Or manually add the hooks to `~/.claude/settings.json`. See
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
 configuration.
+
+**Copilot CLI** -- copy the hooks to your repository:
+
+```bash
+mkdir -p .github/hooks/workmux-status
+curl -o .github/hooks/workmux-status/hooks.json \
+  https://raw.githubusercontent.com/raine/workmux/main/.github/hooks/workmux-status/hooks.json
+```
+
+Note: Copilot hooks are per-repository. The waiting state is not supported due
+to limitations in the Copilot CLI hooks implementation.
 
 **OpenCode** -- download the workmux status plugin:
 

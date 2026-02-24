@@ -780,6 +780,7 @@ impl SandboxConfig {
             let home = home::home_dir()?;
             match agent {
                 "claude" => Some(home.join(".claude")),
+                "copilot" => Some(home.join(".copilot")),
                 "gemini" => Some(home.join(".gemini")),
                 "codex" => Some(home.join(".codex")),
                 "opencode" => Some(home.join(".local/share/opencode")),

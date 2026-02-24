@@ -12,6 +12,7 @@ include = [
     "/src/**/*",
     "/docker/**/*",
     "/.claude-plugin/**/*",
+    "/.github/hooks/**/*",
     "/.opencode/plugin/**/*",
     "/Cargo.toml",
     "/Cargo.lock",

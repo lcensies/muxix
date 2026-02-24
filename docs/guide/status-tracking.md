@@ -15,6 +15,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Agent       | Status                                                                 |
 | ----------- | ---------------------------------------------------------------------- |
 | Claude Code | ✅ Supported                                                           |
+| Copilot CLI | ✅ Supported (no 💬 waiting state)                                     |
 | OpenCode    | ✅ Supported                                                           |
 | Gemini CLI  | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
 | Codex       | [Tracking issue](https://github.com/openai/codex/issues/2109)          |
@@ -33,7 +34,7 @@ Run `workmux setup` to automatically detect your agent CLIs and install status t
 workmux setup
 ```
 
-This detects Claude Code and OpenCode by checking for their configuration directories, then offers to install the appropriate hooks. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
+This detects Claude Code, Copilot CLI, and OpenCode by checking for their configuration directories, then offers to install the appropriate hooks. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
 
 Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
@@ -59,6 +60,18 @@ curl -o ~/.config/opencode/plugin/workmux-status.ts \
 ```
 
 Restart OpenCode for the plugin to take effect.
+
+## Copilot CLI setup
+
+If you prefer manual setup, copy the hooks configuration to your repository:
+
+```bash
+mkdir -p .github/hooks/workmux-status
+curl -o .github/hooks/workmux-status/hooks.json \
+  https://raw.githubusercontent.com/raine/workmux/main/.github/hooks/workmux-status/hooks.json
+```
+
+Note: Copilot CLI hooks are per-repository, unlike Claude Code and OpenCode which install globally. The Copilot CLI hooks API does not support detecting permission prompts, so only working/done states are tracked (no waiting state).
 
 ## Customization
 
