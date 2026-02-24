@@ -62,3 +62,7 @@ export WORKMUX_BACKEND=zellij
 - Pane splits are always 50/50 (no percentage-based sizing)
 - Tab insertion ordering is not supported (new tabs always appear at the end)
 - Some edge cases may not be as thoroughly tested as the tmux backend
+
+## Credits
+
+Thanks to [Leonid Danilov](https://github.com/Infonautica) for contributing Zellij support.
