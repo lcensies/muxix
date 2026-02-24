@@ -17,6 +17,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.123 (2026-02-24)
+
+- Add GitHub Copilot CLI as a supported agent for status tracking. Copilot hooks
+  are installed per-repository via `workmux setup`. Note: the waiting state is
+  not supported due to Copilot CLI hooks API limitations
+
 ## v0.1.122 (2026-02-23)
 
 - Fork branch references (e.g., `someuser:feature`) now prefix the local branch
