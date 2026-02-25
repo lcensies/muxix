@@ -1,6 +1,9 @@
 import { defineConfig } from "vitepress";
 import fs from "fs";
 import path from "path";
+import { retinaImagesPlugin } from "./retina-images";
+
+const publicDir = path.join(__dirname, "..", "public");
 
 export default defineConfig({
   transformPageData(pageData) {
@@ -39,6 +42,7 @@ export default defineConfig({
         allow: [".."],
       },
     },
+    plugins: [retinaImagesPlugin(publicDir)],
   },
 
   themeConfig: {
