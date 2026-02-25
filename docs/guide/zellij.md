@@ -10,16 +10,18 @@ The Zellij backend is new and experimental. It depends on unreleased Zellij feat
 
 [Zellij](https://zellij.dev/) can be used as an alternative to tmux. Detected automatically via `$ZELLIJ`.
 
+<img src="/zellij-screenshot.webp" alt="workmux running in zellij with multiple agents" style="border-radius: 4px;">
+
 ## Differences from tmux
 
-| Feature              | tmux                 | Zellij             |
-| -------------------- | -------------------- | ------------------ |
-| Agent status in tabs | Yes (window names)   | No                 |
-| Tab ordering         | Insert after current | Appends to end     |
-| Scope                | tmux session         | Zellij session     |
-| Session mode         | Yes                  | No (window only)   |
-| Pane size control    | Percentage-based     | 50/50 splits only  |
-| Dashboard preview    | Yes                  | No                 |
+| Feature              | tmux                 | Zellij            |
+| -------------------- | -------------------- | ----------------- |
+| Agent status in tabs | Yes (window names)   | No                |
+| Tab ordering         | Insert after current | Appends to end    |
+| Scope                | tmux session         | Zellij session    |
+| Session mode         | Yes                  | No (window only)  |
+| Pane size control    | Percentage-based     | 50/50 splits only |
+| Dashboard preview    | Yes                  | No                |
 
 - **Tab ordering**: New tabs appear at the end of the tab bar (no "insert after" support like tmux)
 - **Session isolation**: workmux operates within the current Zellij session. Tabs in other sessions are not affected.
