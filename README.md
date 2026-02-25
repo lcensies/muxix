@@ -300,7 +300,7 @@ Each pane supports:
 
 ##### Agent placeholders
 
-- `<agent>` -- resolves to the configured agent (from `agent` config or
+- `<agent>`: resolves to the configured agent (from `agent` config or
   `--agent` flag)
 
 Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are auto-detected when
@@ -1554,7 +1554,7 @@ session (not your global config).
 
 If you prefer manual setup:
 
-**Claude Code** -- install the workmux status plugin:
+**Claude Code**: install the workmux status plugin:
 
 ```
 claude plugin marketplace add raine/workmux
@@ -1565,7 +1565,7 @@ Or manually add the hooks to `~/.claude/settings.json`. See
 [.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
 configuration.
 
-**Copilot CLI** -- copy the hooks to your repository:
+**Copilot CLI**: copy the hooks to your repository:
 
 ```bash
 mkdir -p .github/hooks/workmux-status
@@ -1576,7 +1576,7 @@ curl -o .github/hooks/workmux-status/hooks.json \
 Note: Copilot hooks are per-repository. The waiting state is not supported due
 to limitations in the Copilot CLI hooks implementation.
 
-**OpenCode** -- download the workmux status plugin:
+**OpenCode**: download the workmux status plugin:
 
 ```bash
 mkdir -p ~/.config/opencode/plugin
@@ -1757,7 +1757,7 @@ Each window supports:
 | `name`  | Window name (if omitted, tmux auto-names from command) | Auto         |
 | `panes` | Pane layout (same syntax as top-level `panes`)         | Single shell |
 
-`focus: true` works across windows -- the last pane with focus set determines
+`focus: true` works across windows: the last pane with focus set determines
 which window is selected when the session opens.
 
 ### Limitations
