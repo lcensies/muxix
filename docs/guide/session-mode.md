@@ -66,7 +66,7 @@ Each window supports:
 
 Named windows keep their name permanently. Unnamed windows use tmux's automatic naming based on the running command.
 
-`focus: true` works across windows -- the last pane with focus set determines which window is active when the session opens.
+`focus: true` works across windows: the last pane with focus set determines which window is active when the session opens.
 
 ## Limitations
 

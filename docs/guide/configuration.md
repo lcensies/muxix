@@ -106,7 +106,7 @@ Each pane supports:
 
 #### Agent placeholders
 
-- `<agent>` -- resolves to the configured agent (from `agent` config or `--agent` flag)
+- `<agent>`: resolves to the configured agent (from `agent` config or `--agent` flag)
 
 Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are auto-detected when used as literal commands and receive prompt injection automatically, without needing the `<agent>` placeholder or a matching `agent` config:
 
