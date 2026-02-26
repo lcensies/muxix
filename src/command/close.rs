@@ -8,9 +8,22 @@ pub fn run(name: Option<&str>) -> Result<()> {
     let mux = create_backend(detect_backend());
     let prefix = config.window_prefix();
 
-    // Resolve the handle first to determine target mode
+    // Resolve the handle first. When the user passes a branch name that differs
+    // from the worktree directory name, find_worktree resolves through both handle
+    // and branch lookups, then we extract the true handle from the path basename.
     let resolved_handle = match name {
-        Some(h) => h.to_string(),
+        Some(n) => {
+            let (path, _branch) = git::find_worktree(n).with_context(|| {
+                format!(
+                    "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
+                    n
+                )
+            })?;
+            path.file_name()
+                .ok_or_else(|| anyhow!("Invalid worktree path: no directory name"))?
+                .to_string_lossy()
+                .to_string()
+        }
         None => super::resolve_name(None)?,
     };
 
@@ -20,15 +33,9 @@ pub fn run(name: Option<&str>) -> Result<()> {
     // When no name is provided, prefer the current window/session name
     // This handles duplicate windows/sessions (e.g., wm:feature-2) correctly
     let (full_target_name, is_current_target) = match name {
-        Some(handle) => {
-            // Explicit name provided - validate the worktree exists
-            git::find_worktree(handle).with_context(|| {
-                format!(
-                    "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
-                    handle
-                )
-            })?;
-            let target = MuxHandle::new(mux.as_ref(), mode, prefix, handle);
+        Some(_) => {
+            // Explicit name provided - worktree already validated above
+            let target = MuxHandle::new(mux.as_ref(), mode, prefix, &resolved_handle);
             let full = target.full_name();
             let current = target.current_name()?;
             let is_current = current.as_deref() == Some(full.as_str());

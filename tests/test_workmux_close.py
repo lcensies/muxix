@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from .conftest import (
+    DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
     WorkmuxCommandResult,
     get_scripts_dir,
@@ -201,3 +202,32 @@ def test_close_from_inside_worktree_window(
     # Verify worktree still exists
     worktree_path = get_worktree_path(mux_repo_path, branch_name)
     assert worktree_path.exists(), "Worktree should still exist after self-close"
+
+
+def test_close_by_branch_name_when_handle_differs(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    """Verifies `workmux close <branch>` resolves correctly when handle differs from branch name."""
+    env = mux_server
+    branch_name = "feature/close-handle-test"
+    handle = "close-handle-test"
+    window_name = f"{DEFAULT_WINDOW_PREFIX}{handle}"
+
+    write_workmux_config(mux_repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        f"add {branch_name} --name {handle}",
+    )
+
+    # Verify window exists (named after handle, not branch)
+    windows = env.list_windows()
+    assert window_name in windows
+
+    # Close using the branch name -- this should resolve to the correct handle
+    run_workmux_close(env, workmux_exe_path, mux_repo_path, branch_name)
+
+    # Verify window is gone
+    windows = env.list_windows()
+    assert window_name not in windows
