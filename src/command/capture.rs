@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use console::strip_ansi_codes;
 
 use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow;
@@ -12,7 +13,7 @@ pub fn run(name: &str, lines: u16) -> Result<()> {
         .ok_or_else(|| anyhow!("Failed to capture pane output"))?;
 
     // Strip ANSI escape codes
-    let stripped = strip_ansi_escapes::strip_str(&output);
+    let stripped = strip_ansi_codes(&output);
 
     // Trim trailing blank lines and limit to requested line count.
     // tmux capture-pane may return more lines than requested (it captures

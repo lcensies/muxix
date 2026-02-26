@@ -56,7 +56,6 @@ libc = "0.2"
 ctrlc = "3.4"
 base64 = "0.22"
 nix = { version = "0.31.1", features = ["fs"] }
-strip-ansi-escapes = "0.2"
 tempfile = "3.14"
 getrandom = "0.4.1"
 
