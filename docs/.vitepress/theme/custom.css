@@ -50,3 +50,57 @@
   color: var(--vp-c-text-1);
   border-color: var(--vp-c-text-2);
 }
+
+/* Image zoom overlay */
+.vp-doc img:not([src$=".svg"]):not(a img) {
+  cursor: zoom-in;
+}
+
+.image-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+  animation: image-zoom-fade-in 0.2s ease-out both;
+}
+
+.image-zoom-overlay.closing {
+  animation: image-zoom-fade-out 0.15s ease-in both;
+}
+
+.image-zoom-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  animation: image-zoom-scale-in 0.2s ease-out both;
+}
+
+.image-zoom-overlay.closing .image-zoom-img {
+  animation: image-zoom-scale-out 0.15s ease-in both;
+}
+
+@keyframes image-zoom-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes image-zoom-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes image-zoom-scale-in {
+  from { transform: scale(0.9); }
+  to { transform: scale(1); }
+}
+
+@keyframes image-zoom-scale-out {
+  from { transform: scale(1); }
+  to { transform: scale(0.9); }
+}
