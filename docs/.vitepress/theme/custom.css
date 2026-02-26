@@ -86,21 +86,37 @@
 }
 
 @keyframes image-zoom-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes image-zoom-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes image-zoom-scale-in {
-  from { transform: scale(0.9); }
-  to { transform: scale(1); }
+  from {
+    transform: scale(0.9);
+  }
+  to {
+    transform: scale(1);
+  }
 }
 
 @keyframes image-zoom-scale-out {
-  from { transform: scale(1); }
-  to { transform: scale(0.9); }
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(0.9);
+  }
 }

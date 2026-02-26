@@ -1,22 +1,20 @@
-let initialized = false;
-
 function isZoomable(el: HTMLElement): el is HTMLImageElement {
   return (
     el.tagName === "IMG" &&
     !!el.closest(".vp-doc") &&
     !el.closest("a") &&
-    !(el as HTMLImageElement).src.endsWith(".svg")
+    !/\.svg([?#]|$)/i.test((el as HTMLImageElement).src)
   );
 }
 
 export function initImageZoom(): void {
-  if (typeof window === "undefined" || initialized) return;
-  initialized = true;
+  if (typeof window === "undefined" || (window as any).__imageZoomInit) return;
+  (window as any).__imageZoomInit = true;
 
   let overlay: HTMLDivElement | null = null;
 
   function close() {
-    if (!overlay) return;
+    if (!overlay || overlay.classList.contains("closing")) return;
     overlay.classList.add("closing");
     overlay.addEventListener(
       "animationend",
@@ -33,7 +31,6 @@ export function initImageZoom(): void {
     const target = e.target as HTMLElement;
 
     if (overlay) {
-      if (target.closest(".image-zoom-img")) return;
       close();
       return;
     }
@@ -45,7 +42,6 @@ export function initImageZoom(): void {
 
     const img = document.createElement("img");
     img.src = target.src;
-    if (target.srcset) img.srcset = target.srcset;
     img.className = "image-zoom-img";
 
     overlay.appendChild(img);
@@ -56,4 +52,6 @@ export function initImageZoom(): void {
   document.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key === "Escape") close();
   });
+
+  window.addEventListener("popstate", close);
 }
