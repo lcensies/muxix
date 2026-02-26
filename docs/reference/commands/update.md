@@ -35,6 +35,23 @@ The command downloads prebuilt binaries for:
 - macOS (Apple Silicon / Intel)
 - Linux (x86_64 / ARM64)
 
+## Automatic update check
+
+Workmux periodically checks for new versions in the background. When an update is available, a one-line notice is printed to stderr:
+
+```
+Update available: workmux v0.1.124 -> v0.1.125 (run `workmux update`)
+```
+
+The check runs at most once every 24 hours via a detached background process and never slows down your commands. The notice is shown at most once per day and only in interactive terminals.
+
+### Disabling
+
+To disable the automatic update check, either:
+
+- Set `auto_update_check: false` in the global config (`~/.config/workmux/config.yaml`)
+- Set the environment variable `WORKMUX_NO_UPDATE_CHECK=1`
+
 ## Requirements
 
 - `curl` must be available in PATH (used for downloading)
