@@ -10,9 +10,6 @@ use crate::multiplexer::{
 use crate::{cmd, config, git, prompt::Prompt};
 use tracing::{debug, info};
 
-use fs_extra::dir as fs_dir;
-use fs_extra::file as fs_file;
-
 use super::types::CreateResult;
 
 /// Sets up the terminal window, files, and hooks for a worktree.
@@ -459,16 +456,8 @@ pub fn handle_file_operations(
                 let dest_path = worktree_path.join(relative_path);
 
                 if source_path.is_dir() {
-                    // Create destination parent directory
-                    if let Some(parent) = dest_path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    // Use fs_extra::dir::copy which handles recursion and symlinks correctly
-                    let mut dir_options = fs_dir::CopyOptions::new();
-                    dir_options.overwrite = true;
-                    dir_options.content_only = true;
-                    fs::create_dir_all(&dest_path)?; // Ensure dest exists
-                    fs_dir::copy(&source_path, &dest_path, &dir_options).with_context(|| {
+                    // Recursively copy directory contents
+                    copy_dir_recursive(&source_path, &dest_path).with_context(|| {
                         format!(
                             "Failed to copy directory {:?} to {:?}",
                             source_path, dest_path
@@ -481,9 +470,7 @@ pub fn handle_file_operations(
                             format!("Failed to create parent directory for {:?}", dest_path)
                         })?;
                     }
-                    let mut options = fs_file::CopyOptions::new();
-                    options.overwrite = true;
-                    fs_file::copy(&source_path, &dest_path, &options).with_context(|| {
+                    fs::copy(&source_path, &dest_path).with_context(|| {
                         format!("Failed to copy file {:?} to {:?}", source_path, dest_path)
                     })?;
                 }
@@ -649,6 +636,40 @@ fn resolve_git_exclude_path(dir: &Path) -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+/// Recursively copy a directory's contents into the destination, overwriting existing files.
+/// Symlinks are preserved rather than followed to avoid infinite recursion on symlink loops.
+/// Special files (sockets, FIFOs) are skipped to avoid blocking.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        let file_type = entry.file_type()?;
+
+        // Remove existing entry at destination to support overwrite
+        if let Ok(meta) = dst_path.symlink_metadata() {
+            if meta.is_dir() && file_type.is_dir() {
+                // Both are directories; merge contents
+            } else if meta.is_dir() {
+                fs::remove_dir_all(&dst_path)?;
+            } else {
+                fs::remove_file(&dst_path)?;
+            }
+        }
+
+        if file_type.is_symlink() {
+            let target = fs::read_link(&src_path)?;
+            std::os::unix::fs::symlink(&target, &dst_path)?;
+        } else if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
