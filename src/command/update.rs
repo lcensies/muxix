@@ -1,8 +1,12 @@
 use anyhow::{Context, Result, bail};
+use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const REPO: &str = "raine/workmux";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
+const NOTIFY_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
 /// Map OS/arch to the release artifact suffix used in GitHub releases.
 fn platform_suffix() -> Result<&'static str> {
@@ -228,6 +232,169 @@ pub fn run() -> Result<()> {
     }
 }
 
+// --- Auto-update check ---
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct UpdateCache {
+    latest_version: Option<String>,
+    last_checked: Option<u64>,
+    last_notified: Option<u64>,
+}
+
+fn update_cache_path() -> Option<std::path::PathBuf> {
+    let home = home::home_dir()?;
+    let dir = home.join(".cache").join("workmux");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("update_check.json"))
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn load_cache(path: &std::path::Path) -> UpdateCache {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_cache(path: &std::path::Path, cache: &UpdateCache) {
+    if let Ok(json) = serde_json::to_string(cache) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// Compare two version strings as numeric tuples (e.g. "0.1.10" > "0.1.9").
+fn is_newer_version(latest: &str, current: &str) -> bool {
+    let parse = |v: &str| -> Vec<u64> { v.split('.').filter_map(|s| s.parse().ok()).collect() };
+    let l = parse(latest);
+    let c = parse(current);
+    l > c
+}
+
+/// Called on CLI startup to show an update notice if one is cached.
+/// Also spawns a background check if the cache is stale.
+/// Designed to be completely non-blocking and fail-silent.
+pub fn check_and_notify(config: &crate::config::Config) {
+    // Opt-out via config
+    if config.auto_update_check == Some(false) {
+        return;
+    }
+
+    // Opt-out via environment variable
+    if std::env::var("WORKMUX_NO_UPDATE_CHECK").is_ok() {
+        return;
+    }
+
+    // Don't print notices in non-interactive contexts
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() || !std::io::stderr().is_terminal() {
+        return;
+    }
+
+    let cache_path = match update_cache_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let mut cache = load_cache(&cache_path);
+    let now = now_secs();
+
+    // Spawn background check if cache is stale
+    if now.saturating_sub(cache.last_checked.unwrap_or(0)) > CHECK_INTERVAL_SECS {
+        let spawned = std::env::current_exe().ok().and_then(|exe| {
+            Command::new(exe)
+                .arg("_check-update")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()
+        });
+
+        // Only mark as checked if spawn succeeded to avoid silent blackout
+        if spawned.is_some() {
+            cache.last_checked = Some(now);
+            save_cache(&cache_path, &cache);
+        }
+    }
+
+    // Show notice if a newer version is available and we haven't notified recently
+    if let Some(ref latest) = cache.latest_version
+        && is_newer_version(latest, CURRENT_VERSION)
+        && now.saturating_sub(cache.last_notified.unwrap_or(0)) > NOTIFY_INTERVAL_SECS
+    {
+        let is_brew = std::env::current_exe()
+            .ok()
+            .and_then(|p| std::fs::canonicalize(&p).ok())
+            .is_some_and(|p| is_homebrew_install(&p));
+
+        let update_cmd = if is_brew {
+            "brew upgrade workmux"
+        } else {
+            "workmux update"
+        };
+
+        eprintln!("Update available: workmux v{CURRENT_VERSION} -> v{latest} (run `{update_cmd}`)");
+
+        cache.last_notified = Some(now);
+        save_cache(&cache_path, &cache);
+    }
+}
+
+/// Fetch latest version with a timeout (for background checks).
+fn fetch_latest_version_with_timeout() -> Result<String> {
+    let output = Command::new("curl")
+        .args([
+            "-sSf",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "10",
+            &format!("https://api.github.com/repos/{REPO}/releases/latest"),
+        ])
+        .output()
+        .context("Failed to run curl")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("Failed to fetch latest release: {}", stderr.trim());
+    }
+
+    let body: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub API response")?;
+
+    let tag = body["tag_name"]
+        .as_str()
+        .context("No tag_name in GitHub API response")?;
+
+    Ok(tag.strip_prefix('v').unwrap_or(tag).to_string())
+}
+
+/// Hidden subcommand handler: fetch the latest version and update the cache.
+pub fn run_background_check() -> Result<()> {
+    let latest = fetch_latest_version_with_timeout()?;
+    let now = now_secs();
+
+    let cache_path = update_cache_path().context("Could not determine cache path")?;
+    let mut cache = load_cache(&cache_path);
+
+    // Reset notification timer when a new version is discovered
+    if cache.latest_version.as_deref() != Some(&latest) {
+        cache.last_notified = Some(0);
+    }
+
+    cache.latest_version = Some(latest);
+    cache.last_checked = Some(now);
+    save_cache(&cache_path, &cache);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +432,30 @@ mod tests {
         assert!(!is_homebrew_install(std::path::Path::new(
             "/home/user/.local/bin/workmux"
         )));
+    }
+
+    #[test]
+    fn test_is_newer_version_patch() {
+        assert!(is_newer_version("0.1.10", "0.1.9"));
+    }
+
+    #[test]
+    fn test_is_newer_version_minor() {
+        assert!(is_newer_version("0.2.0", "0.1.124"));
+    }
+
+    #[test]
+    fn test_is_newer_version_major() {
+        assert!(is_newer_version("1.0.0", "0.99.99"));
+    }
+
+    #[test]
+    fn test_is_not_newer_same() {
+        assert!(!is_newer_version("0.1.124", "0.1.124"));
+    }
+
+    #[test]
+    fn test_is_not_newer_older() {
+        assert!(!is_newer_version("0.1.9", "0.1.10"));
     }
 }

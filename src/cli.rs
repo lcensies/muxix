@@ -508,6 +508,10 @@ enum Commands {
     /// Output git branches for shell completion (internal use)
     #[command(hide = true, name = "_complete-git-branches")]
     CompleteGitBranches,
+
+    /// Background update check (internal use)
+    #[command(hide = true, name = "_check-update")]
+    CheckUpdate,
 }
 
 #[derive(Subcommand)]
@@ -532,6 +536,24 @@ fn should_prompt_status_setup(cmd: &Commands) -> bool {
     matches!(
         cmd,
         Commands::Add { .. } | Commands::Init | Commands::List { .. }
+    )
+}
+
+/// Check if the command should trigger a background update check.
+/// Skips internal commands, TUI, completions, and the update command itself.
+fn should_check_update(cmd: &Commands) -> bool {
+    !matches!(
+        cmd,
+        Commands::Dashboard { .. }
+            | Commands::Update
+            | Commands::CheckUpdate
+            | Commands::Completions { .. }
+            | Commands::CompleteBranches
+            | Commands::CompleteHandles
+            | Commands::CompleteGitBranches
+            | Commands::Exec { .. }
+            | Commands::HostExec { .. }
+            | Commands::SetWindowStatus { .. }
     )
 }
 
@@ -567,6 +589,12 @@ pub fn run() -> Result<()> {
         && let Err(e) = crate::agent_setup::prompt_wizard()
     {
         tracing::debug!(?e, "status setup wizard failed");
+    }
+
+    // Background update check: reads local cache, optionally shows a notice,
+    // and spawns a background process to refresh the cache if stale.
+    if should_check_update(&cli.command) {
+        command::update::check_and_notify(&cfg);
     }
 
     match cli.command {
@@ -700,6 +728,7 @@ pub fn run() -> Result<()> {
             }
             Ok(())
         }
+        Commands::CheckUpdate => command::update::run_background_check(),
     }
 }
 

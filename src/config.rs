@@ -207,6 +207,10 @@ pub struct Config {
     #[serde(default)]
     pub mode: Option<MuxMode>,
 
+    /// Automatically check for updates in the background. Default: true
+    #[serde(default)]
+    pub auto_update_check: Option<bool>,
+
     /// Container sandbox configuration
     #[serde(default)]
     pub sandbox: SandboxConfig,
@@ -1272,6 +1276,7 @@ impl Config {
             status_format,
             auto_name,
             nerdfont,
+            auto_update_check,
         );
 
         // windows and panes are mutually exclusive: project layout choice wins entirely
