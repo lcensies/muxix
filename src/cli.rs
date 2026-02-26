@@ -425,6 +425,9 @@ enum Commands {
     /// Show the changelog (what's new in each version)
     Changelog,
 
+    /// Update workmux to the latest version
+    Update,
+
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
@@ -657,6 +660,7 @@ pub fn run() -> Result<()> {
         Commands::Setup => command::setup::run(),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
+        Commands::Update => command::update::run(),
         Commands::Dashboard { preview_size, diff } => command::dashboard::run(preview_size, diff),
         Commands::Config(args) => command::config::run(args),
         Commands::Claude { command } => match command {

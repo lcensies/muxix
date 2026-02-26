@@ -21,3 +21,4 @@ description: Complete reference for all workmux commands
 | [`claude prune`](./claude)     | Clean up stale Claude Code entries              |
 | [`completions`](./completions) | Generate shell completions                      |
 | [`docs`](./docs)               | Show detailed documentation                     |
+| [`update`](./update)           | Update workmux to the latest version            |

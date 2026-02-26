@@ -23,6 +23,7 @@ pub mod set_base;
 pub mod set_window_status;
 pub mod setup;
 pub mod status;
+pub mod update;
 pub mod wait;
 
 use anyhow::{Context, Result, anyhow};

@@ -137,6 +137,7 @@ export default defineConfig({
           { text: "sandbox", link: "/reference/commands/sandbox" },
           { text: "completions", link: "/reference/commands/completions" },
           { text: "docs", link: "/reference/commands/docs" },
+          { text: "update", link: "/reference/commands/update" },
         ],
       },
     ],
