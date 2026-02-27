@@ -540,21 +540,8 @@ fn should_prompt_status_setup(cmd: &Commands) -> bool {
 }
 
 /// Check if the command should trigger a background update check.
-/// Skips internal commands, TUI, completions, and the update command itself.
 fn should_check_update(cmd: &Commands) -> bool {
-    !matches!(
-        cmd,
-        Commands::Dashboard { .. }
-            | Commands::Update
-            | Commands::CheckUpdate
-            | Commands::Completions { .. }
-            | Commands::CompleteBranches
-            | Commands::CompleteHandles
-            | Commands::CompleteGitBranches
-            | Commands::Exec { .. }
-            | Commands::HostExec { .. }
-            | Commands::SetWindowStatus { .. }
-    )
+    matches!(cmd, Commands::Add { .. })
 }
 
 // --- Public Entry Point ---
