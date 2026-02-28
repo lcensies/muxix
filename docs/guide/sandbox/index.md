@@ -6,7 +6,7 @@ description: Run agents in isolated containers or VMs for enhanced security
 
 workmux provides first-class sandboxing for agents in containers or VMs. Agents are isolated from host secrets like SSH keys, AWS credentials, and other sensitive files. That makes YOLO mode safe to use without risking your host.
 
-Status indicators, the dashboard, spawning agents, merging, and [image pasting](./features#clipboard-proxy) all work the same with or without a sandbox. A built-in RPC bridge keeps host-side workmux features in sync with agent activity inside the sandbox.
+Status indicators, the dashboard, [spawning agents](/guide/workflows#from-an-ongoing-agent-session), [merging](/guide/workflows#direct-merge), and [image pasting](./features#clipboard-proxy) all work the same with or without a sandbox. A built-in RPC bridge keeps host-side workmux features in sync with agent activity inside the sandbox.
 
 <style>
 .sandbox-screenshot {
