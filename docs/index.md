@@ -943,8 +943,6 @@ onMounted(() => {
   }
 
   .ed-hero-actions {
-    flex-direction: column;
-    align-items: flex-start;
     gap: 1rem;
   }
 
