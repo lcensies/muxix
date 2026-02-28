@@ -32,6 +32,7 @@ const DENY_READ_DIRS: &[&str] = &[
     ".local/share/opencode", // OpenCode credentials
     ".config/gh",            // GitHub CLI credentials
     ".config/op",            // 1Password CLI config
+    ".config/sops",          // SOPS age/PGP keys
     ".password-store",       // pass password manager
 ];
 
