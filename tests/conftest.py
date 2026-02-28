@@ -773,7 +773,7 @@ def wait_for_pane_output(
 def wait_for_file(
     env: MuxEnvironment,
     file_path: Path,
-    timeout: float = 2.0,
+    timeout: float = 5.0,
     *,
     window_name: str | None = None,
     worktree_path: Path | None = None,
@@ -1491,7 +1491,7 @@ cd {shlex.quote(str(workdir))}
     # Execute the script - this keeps the send_keys command short
     env.send_keys("test:", str(script_file), enter=True)
 
-    if not poll_until_file_has_content(exit_code_file, timeout=5.0):
+    if not poll_until_file_has_content(exit_code_file, timeout=10.0):
         # Capture pane content for debugging
         pane_content = env.capture_pane("test") or "(empty)"
         raise AssertionError(

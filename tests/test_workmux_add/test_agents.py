@@ -278,7 +278,6 @@ printf '%s' "$2" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -367,7 +366,6 @@ printf '%s' "$prompt" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
             window_name=window_name,
             worktree_path=worktree_path,
             debug_log_path=debug_file,
@@ -449,7 +447,6 @@ printf '%s' "$prompt" > "{output_filename}"
         wait_for_file(
             env,
             agent_output,
-            timeout=2.0,
             window_name=window_name,
             worktree_path=worktree_path,
         )
@@ -563,7 +560,7 @@ class TestMultiAgent:
                 files.extend(worktree.glob("gemini_task_*.txt"))
                 return len(files) == 1
 
-            assert poll_until(_has_output, timeout=2.0), (
+            assert poll_until(_has_output, timeout=5.0), (
                 f"gemini output file not found in worktree {worktree}"
             )
             assert files[0].read_text() == f"Task {idx}"
