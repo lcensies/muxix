@@ -11,7 +11,8 @@ allowed-tools: Read, Bash, Glob, Grep
 
 Check the arguments for flags:
 
-- `--keep` → pass `--keep` to `workmux merge` (keeps the worktree and tmux window after merging)
+- `--keep`, `-k` → pass `--keep` to `workmux merge` (keeps the worktree and tmux window after merging)
+- `--no-verify`, `-n` → pass `--no-verify` to `workmux merge`
 
 Strip all flags from arguments.
 
@@ -59,9 +60,10 @@ If conflicts occur:
 
 ## Step 3: Merge
 
-Run: `workmux merge --rebase --notification [--keep]`
+Run: `workmux merge --rebase --notification [--keep] [--no-verify]`
 
 Include `--keep` only if the `--keep` flag was passed in arguments.
+Include `--no-verify` only if the `--no-verify` flag was passed in arguments.
 
 This will merge the branch into the base branch and clean up the worktree and
 tmux window (unless `--keep` is used).
