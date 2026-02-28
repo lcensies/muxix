@@ -50,6 +50,9 @@ pub enum RpcRequest {
         no_hooks: bool,
         notification: bool,
     },
+    ClipboardRead {
+        mime: String,
+    },
 }
 
 /// RPC response sent from host to guest.
@@ -62,6 +65,7 @@ pub enum RpcResponse {
     ExecOutput { data: String },
     ExecError { data: String },
     ExecExit { code: i32 },
+    ClipboardData { path: String },
 }
 
 // ── Server ──────────────────────────────────────────────────────────────
@@ -344,6 +348,7 @@ fn dispatch_request(request: &RpcRequest, ctx: &RpcContext) -> RpcResponse {
             *background,
             &ctx.worktree_path,
         ),
+        RpcRequest::ClipboardRead { mime } => handle_clipboard_read(mime, &ctx.worktree_path),
         RpcRequest::Exec { .. } => {
             // Handled in handle_connection before dispatch
             unreachable!("Exec is handled directly in handle_connection")
@@ -462,6 +467,26 @@ fn disable_git_hooks(cmd: &mut std::process::Command) {
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", "core.hooksPath")
         .env("GIT_CONFIG_VALUE_0", "/dev/null");
+}
+
+fn handle_clipboard_read(mime: &str, worktree_path: &std::path::Path) -> RpcResponse {
+    if mime != "image/png" {
+        return RpcResponse::Error {
+            message: format!("unsupported clipboard MIME type: {}", mime),
+        };
+    }
+
+    match crate::sandbox::clipboard::materialize_clipboard_png(worktree_path) {
+        Ok(Some(path)) => RpcResponse::ClipboardData {
+            path: path.to_string_lossy().into_owned(),
+        },
+        Ok(None) => RpcResponse::Error {
+            message: "no image in clipboard".to_string(),
+        },
+        Err(e) => RpcResponse::Error {
+            message: format!("clipboard read failed: {}", e),
+        },
+    }
 }
 
 fn handle_spawn_agent(
@@ -970,6 +995,7 @@ mod tests {
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
             r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"no_hooks":false,"notification":false}"#,
+            r#"{"type":"ClipboardRead","mime":"image/png"}"#,
         ];
         for json in cases {
             let req: RpcRequest = serde_json::from_str(json).unwrap();
@@ -1620,5 +1646,39 @@ mod tests {
             Some(&Some(OsStr::new("core.hooksPath"))),
             "spawn-agent command should set core.hooksPath"
         );
+    }
+
+    #[test]
+    fn test_request_serialization_clipboard_read() {
+        let req = RpcRequest::ClipboardRead {
+            mime: "image/png".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"ClipboardRead\""));
+        assert!(json.contains("\"mime\":\"image/png\""));
+
+        let parsed: RpcRequest = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcRequest::ClipboardRead { mime } => assert_eq!(mime, "image/png"),
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_response_serialization_clipboard_data() {
+        let resp = RpcResponse::ClipboardData {
+            path: "/tmp/test/.workmux/tmp/clipboard-123-456.png".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"ClipboardData\""));
+        assert!(json.contains("clipboard-123-456.png"));
+
+        let parsed: RpcResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            RpcResponse::ClipboardData { path } => {
+                assert!(path.contains("clipboard-123-456.png"));
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 }

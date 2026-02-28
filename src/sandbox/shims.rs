@@ -8,10 +8,68 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-/// Commands that are always available as host-exec shims, regardless of
-/// user `host_commands` config. These are system-level commands that sandbox
-/// guests need to proxy to the host (e.g., `afplay` for macOS sound).
-pub const BUILTIN_HOST_COMMANDS: &[&str] = &["afplay"];
+/// Commands that are always available as shims, regardless of
+/// user `host_commands` config. Includes both host-exec commands (e.g., `afplay`)
+/// and clipboard shims (`wl-paste`, `xclip`).
+pub const BUILTIN_HOST_COMMANDS: &[&str] = &["afplay", "wl-paste", "xclip"];
+
+/// Clipboard shim scripts: these translate Linux clipboard tool CLIs
+/// into `workmux clipboard-read` calls.
+const CLIPBOARD_SHIMS: &[(&str, &str)] = &[
+    (
+        "wl-paste",
+        r#"#!/bin/sh
+mime=""
+list_types=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -l|--list-types) list_types=1; shift ;;
+    -t|--type) [ $# -ge 2 ] || exit 1; mime="$2"; shift 2 ;;
+    -n|--no-newline) shift ;;
+    *) shift ;;
+  esac
+done
+if [ "$list_types" -eq 1 ]; then
+  printf '%s\n' image/png
+  exit 0
+fi
+[ -n "$mime" ] || exit 1
+exec workmux clipboard-read "$mime"
+"#,
+    ),
+    (
+        "xclip",
+        r#"#!/bin/sh
+mime=""
+output=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) output=1; shift ;;
+    -selection) shift; shift ;;
+    -t) [ $# -ge 2 ] || exit 1; mime="$2"; shift 2 ;;
+    -i) echo "workmux: xclip write not supported in sandbox" >&2; exit 1 ;;
+    *) shift ;;
+  esac
+done
+[ "$output" -eq 1 ] || { echo "workmux: xclip write not supported in sandbox" >&2; exit 1; }
+[ -n "$mime" ] || exit 1
+exec workmux clipboard-read "$mime"
+"#,
+    ),
+];
+
+/// Check if a command name has a custom clipboard shim script.
+fn clipboard_shim_script(cmd: &str) -> Option<&'static str> {
+    CLIPBOARD_SHIMS
+        .iter()
+        .find(|(name, _)| *name == cmd)
+        .map(|(_, script)| *script)
+}
+
+/// Check if a command name is a clipboard shim (uses ClipboardRead RPC, not Exec).
+pub fn is_clipboard_shim(cmd: &str) -> bool {
+    CLIPBOARD_SHIMS.iter().any(|(name, _)| *name == cmd)
+}
 
 /// Validate a command name for use in host-exec.
 ///
@@ -85,7 +143,7 @@ pub fn create_shim_directory(state_dir: &Path, commands: &[String]) -> Result<Pa
         fs::set_permissions(&dispatcher, fs::Permissions::from_mode(0o755))?;
     }
 
-    // Create symlinks for each command
+    // Create shims for each command
     for cmd in commands {
         if !validate_command_name(cmd) {
             tracing::warn!(command = cmd, "skipping invalid host_command name");
@@ -93,14 +151,27 @@ pub fn create_shim_directory(state_dir: &Path, commands: &[String]) -> Result<Pa
         }
 
         let link = shim_bin.join(cmd);
-        // Atomic: create temp symlink and rename into place.
+        // Atomic: create temp file/symlink and rename into place.
         // Safe under concurrent supervisors sharing the same VM.
         let tmp = shim_bin.join(format!(".{}.tmp", cmd));
         let _ = fs::remove_file(&tmp);
-        symlink("_shim", &tmp)
-            .with_context(|| format!("Failed to create temp shim symlink for: {}", cmd))?;
-        fs::rename(&tmp, &link)
-            .with_context(|| format!("Failed to rename shim symlink for: {}", cmd))?;
+
+        if let Some(script) = clipboard_shim_script(cmd) {
+            // Custom clipboard shim: write script file
+            fs::write(&tmp, script)
+                .with_context(|| format!("Failed to write clipboard shim for: {}", cmd))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
+            }
+        } else {
+            // Standard host-exec symlink
+            symlink("_shim", &tmp)
+                .with_context(|| format!("Failed to create temp shim symlink for: {}", cmd))?;
+        }
+
+        fs::rename(&tmp, &link).with_context(|| format!("Failed to rename shim for: {}", cmd))?;
     }
 
     Ok(shim_bin)
@@ -145,18 +216,26 @@ mod tests {
     fn test_effective_host_commands_includes_builtins() {
         let result = effective_host_commands(&[]);
         assert!(result.contains(&"afplay".to_string()));
+        assert!(result.contains(&"wl-paste".to_string()));
+        assert!(result.contains(&"xclip".to_string()));
     }
 
     #[test]
     fn test_effective_host_commands_merges_user() {
         let result = effective_host_commands(&["just".to_string(), "cargo".to_string()]);
-        assert_eq!(result, vec!["afplay", "just", "cargo"]);
+        assert!(result.contains(&"afplay".to_string()));
+        assert!(result.contains(&"wl-paste".to_string()));
+        assert!(result.contains(&"xclip".to_string()));
+        assert!(result.contains(&"just".to_string()));
+        assert!(result.contains(&"cargo".to_string()));
     }
 
     #[test]
     fn test_effective_host_commands_deduplicates() {
         let result = effective_host_commands(&["afplay".to_string(), "just".to_string()]);
-        assert_eq!(result, vec!["afplay", "just"]);
+        let afplay_count = result.iter().filter(|c| *c == "afplay").count();
+        assert_eq!(afplay_count, 1);
+        assert!(result.contains(&"just".to_string()));
     }
 
     #[test]
@@ -228,5 +307,65 @@ mod tests {
         assert!(!validate_command_name(&long));
         let ok = "a".repeat(64);
         assert!(validate_command_name(&ok));
+    }
+
+    #[test]
+    fn test_clipboard_shims_are_regular_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let commands = vec![
+            "just".to_string(),
+            "wl-paste".to_string(),
+            "xclip".to_string(),
+        ];
+
+        let shim_bin = create_shim_directory(tmp.path(), &commands).unwrap();
+
+        // wl-paste and xclip should be regular files, not symlinks
+        for cmd in &["wl-paste", "xclip"] {
+            let path = shim_bin.join(cmd);
+            let meta = path.symlink_metadata().unwrap();
+            assert!(
+                meta.file_type().is_file(),
+                "{} should be a regular file, not a symlink",
+                cmd
+            );
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                content.contains("workmux clipboard-read"),
+                "{} shim should call workmux clipboard-read",
+                cmd
+            );
+        }
+
+        // just should still be a symlink
+        let just_meta = shim_bin.join("just").symlink_metadata().unwrap();
+        assert!(just_meta.file_type().is_symlink());
+    }
+
+    #[test]
+    fn test_is_clipboard_shim() {
+        assert!(is_clipboard_shim("wl-paste"));
+        assert!(is_clipboard_shim("xclip"));
+        assert!(!is_clipboard_shim("afplay"));
+        assert!(!is_clipboard_shim("just"));
+    }
+
+    #[test]
+    fn test_wl_paste_shim_content() {
+        let script = clipboard_shim_script("wl-paste").unwrap();
+        assert!(script.starts_with("#!/bin/sh"));
+        assert!(script.contains("-t|--type"));
+        assert!(script.contains("--list-types"));
+        assert!(script.contains("image/png"));
+        assert!(script.contains("workmux clipboard-read"));
+    }
+
+    #[test]
+    fn test_xclip_shim_content() {
+        let script = clipboard_shim_script("xclip").unwrap();
+        assert!(script.starts_with("#!/bin/sh"));
+        assert!(script.contains("-o) output=1"));
+        assert!(script.contains("xclip write not supported"));
+        assert!(script.contains("workmux clipboard-read"));
     }
 }

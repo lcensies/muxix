@@ -168,9 +168,14 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         info!(toolchain = ?detected, "wrapping command with toolchain environment");
     }
 
-    // Create host-exec shims (built-in commands like afplay + user-configured ones)
+    // Create shims (built-in commands like afplay, clipboard shims, + user-configured ones)
     let host_commands = shims::effective_host_commands(config.sandbox.host_commands());
-    let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
+    // Clipboard shims use ClipboardRead RPC, not Exec -- exclude from exec allowlist
+    let allowed_commands: HashSet<String> = host_commands
+        .iter()
+        .filter(|cmd| !shims::is_clipboard_shim(cmd))
+        .cloned()
+        .collect();
 
     let state_dir = lima::mounts::lima_state_dir_path(&vm_name)?;
     shims::create_shim_directory(&state_dir, &host_commands)?;
@@ -265,9 +270,14 @@ fn run_container(
     // Ensure sandbox config dirs exist before building container args
     ensure_sandbox_config_dirs()?;
 
-    // Merge built-in host commands (e.g. afplay) with user-configured ones
+    // Merge built-in commands (e.g. afplay, clipboard shims) with user-configured ones
     let host_commands = shims::effective_host_commands(config.sandbox.host_commands());
-    let allowed_commands: HashSet<String> = host_commands.iter().cloned().collect();
+    // Clipboard shims use ClipboardRead RPC, not Exec -- exclude from exec allowlist
+    let allowed_commands: HashSet<String> = host_commands
+        .iter()
+        .filter(|cmd| !shims::is_clipboard_shim(cmd))
+        .cloned()
+        .collect();
 
     // Resolve toolchain for host-exec command wrapping (runs on host, not in container)
     let detected = toolchain::resolve_toolchain(&config.sandbox.toolchain(), worktree_root);

@@ -2,6 +2,7 @@ pub mod add;
 pub mod args;
 pub mod capture;
 pub mod changelog;
+pub mod clipboard_read;
 pub mod close;
 pub mod config;
 pub mod dashboard;

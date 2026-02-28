@@ -490,6 +490,13 @@ enum Commands {
         args: Vec<String>,
     },
 
+    /// Read clipboard from host (used by sandbox clipboard shims)
+    #[command(hide = true, name = "clipboard-read")]
+    ClipboardRead {
+        /// MIME type to read
+        mime: String,
+    },
+
     /// Generate shell completions
     Completions {
         /// The shell to generate completions for
@@ -691,6 +698,10 @@ pub fn run() -> Result<()> {
                 .split_first()
                 .ok_or_else(|| anyhow::anyhow!("host-exec requires a command name"))?;
             let code = command::host_exec::run(command, cmd_args)?;
+            std::process::exit(code);
+        }
+        Commands::ClipboardRead { mime } => {
+            let code = command::clipboard_read::run(&mime)?;
             std::process::exit(code);
         }
         Commands::Completions { shell } => {

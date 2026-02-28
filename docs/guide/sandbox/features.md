@@ -83,6 +83,12 @@ Claude Code hooks often use `afplay` to play notification sounds (e.g., when an 
 
 This is transparent: when a hook runs `afplay /System/Library/Sounds/Glass.aiff` inside the sandbox, the shim runs `afplay` on the host via the host-exec RPC mechanism. No configuration is needed.
 
+## Clipboard proxy
+
+Image pasting via Ctrl+V works inside the sandbox. workmux provides built-in shims for `wl-paste` and `xclip` that transparently proxy clipboard reads to the host. No configuration is needed.
+
+Currently only `image/png` is supported. Text clipboard works natively through the terminal and does not need proxying.
+
 ## Git identity
 
 The sandbox does not mount your `~/.gitconfig` because it may contain credential helpers, shell aliases, or other sensitive configuration. Instead, workmux automatically extracts your `user.name` and `user.email` from the host's git config and injects them into the sandbox via environment variables (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_*`/`GIT_CONFIG_VALUE_*`).
@@ -147,6 +153,7 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `SpawnAgent` - runs `workmux add` on the host to create a new worktree and pane
 - `Exec` - runs a command on the host and streams stdout/stderr back (used by host-exec shims, including built-in `afplay`)
 - `Merge` - runs `workmux merge` on the host with all flags forwarded
+- `ClipboardRead` - reads the host clipboard and writes image data to the shared worktree filesystem (used by `wl-paste`/`xclip` shims)
 
 Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
 
