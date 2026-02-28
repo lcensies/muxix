@@ -17,6 +17,17 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.126 (2026-02-28)
+
+- Added `workmux update` command for self-updating workmux directly from GitHub
+  releases. Downloads the latest version, verifies checksums, and replaces the
+  binary in place. Homebrew-managed installs are detected and directed to use
+  `brew upgrade` instead
+- workmux now automatically checks for updates in the background and shows a
+  notification when a newer version is available. Checks happen at most once per
+  day during `workmux add`. Disable with `auto_update_check: false` in config or
+  by setting the `WORKMUX_NO_UPDATE_CHECK` environment variable
+
 ## v0.1.125 (2026-02-28)
 
 - Added Apple Container as a sandbox runtime alongside Docker and Podman,
