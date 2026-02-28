@@ -39,14 +39,14 @@ Outbound network access can be restricted to only approved domains using [networ
 
 workmux supports two sandboxing backends:
 
-|                      | Container (Docker/Podman)                                                    | Lima VM                                                          |
+|                      | Container (Docker/Podman/Apple Container)                                    | Lima VM                                                          |
 | -------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| **Isolation**        | Process-level (namespaces)                                                   | Machine-level (virtual machine)                                  |
+| **Isolation**        | Process-level (namespaces) or VM-level (Apple Container)                     | Machine-level (virtual machine)                                  |
 | **Persistence**      | Ephemeral (new container per session)                                        | Persistent (stateful VMs)                                        |
 | **Toolchain**        | Custom Dockerfile or [host commands](./features#host-command-proxying)       | Built-in [Nix & Devbox](./lima#nix-and-devbox-toolchain) support |
 | **Credential model** | Shared with host (see [credentials](./features#credentials))                 | Shared with host (see [credentials](./features#credentials))     |
 | **Network**          | Optional [restrictions](./container#network-restrictions) (domain allowlist) | Unrestricted                                                     |
-| **Platform**         | macOS, Linux                                                                 | macOS, Linux                                                     |
+| **Platform**         | macOS, Linux (Apple Container: macOS only)                                   | macOS, Linux                                                     |
 
 Container is a good default: it's simple to set up and ephemeral, so no state accumulates between sessions. Choose Lima if you want persistent VMs with built-in Nix/Devbox toolchain support.
 
@@ -65,7 +65,7 @@ Agents often need project tooling (compilers, linters, build tools) available in
 
 ### Container backend
 
-Install [Docker](https://www.docker.com/) or [Podman](https://podman.io/), then enable in config:
+Install [Docker](https://www.docker.com/), [Podman](https://podman.io/), or [Apple Container](https://github.com/apple/container) (macOS 26+, Apple Silicon), then enable in config:
 
 ```yaml
 # ~/.config/workmux/config.yaml or .workmux.yaml

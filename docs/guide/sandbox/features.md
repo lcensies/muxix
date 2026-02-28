@@ -31,6 +31,8 @@ Paths starting with `~` are expanded to the user's home directory. When `guest_p
 
 **Note:** For the Lima backend, mount changes only take effect when the VM is created. To apply changes to an existing VM, recreate it with `workmux sandbox prune`.
 
+**Note:** Apple Container only supports directory mounts. Individual file paths in `extra_mounts` will fail with Apple Container.
+
 ## Host command proxying
 
 The `host_commands` option lets agents inside the sandbox run specific commands on the host machine. It's useful for project toolchain commands (build tools, task runners, linters) that are available on the host but would be slow or complex to install inside the sandbox. Running builds on the host is also faster since both backends use virtualization on macOS, and filesystem I/O through mount sharing adds overhead for build-heavy workloads.
@@ -107,7 +109,7 @@ Key behaviors:
 - Authentication done inside the sandbox writes back to the host directory. Credentials persist across sandbox recreations.
 - The credential mount is determined by the `agent` setting. Switching agents requires recreating the sandbox (Lima) or starting a new container.
 
-The container backend also uses `~/.claude-sandbox.json` as a separate config file for Claude, mounted to `/tmp/.claude.json`.
+The container backend also uses a separate config file for Claude, mounted to `/tmp/.claude.json` inside the container. Docker/Podman use `~/.claude-sandbox.json` (file mount); Apple Container uses `~/.claude-sandbox-config/claude.json` (directory mount, since Apple Container only supports directory mounts).
 
 ### Custom config directory
 

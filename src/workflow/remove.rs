@@ -87,7 +87,7 @@ pub fn remove(
     // This is necessary because tmux kill-window sends SIGHUP which doesn't allow
     // the supervisor's Drop handler to run. We try unconditionally since sandbox
     // may have been enabled via --sandbox flag even if disabled in config.
-    sandbox::stop_containers_for_handle(actual_handle, &context.config.sandbox);
+    sandbox::stop_containers_for_handle(actual_handle);
 
     info!(branch = %branch_name, keep_branch, "remove:cleanup start");
     let cleanup_result = cleanup::cleanup(

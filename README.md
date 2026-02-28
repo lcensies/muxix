@@ -1648,9 +1648,10 @@ Then press `prefix + Tab` to toggle between your two most recent agents.
 
 ## Sandbox
 
-workmux can run agents inside containers (Docker/Podman) or Lima VMs, isolating
-them from your host. Agents are restricted to the project worktree; sensitive
-files like SSH keys, AWS credentials, and other secrets are not accessible. This
+workmux can run agents inside containers (Docker/Podman/Apple Container) or Lima
+VMs, isolating them from your host. Agents are restricted to the project
+worktree; sensitive files like SSH keys, AWS credentials, and other secrets are
+not accessible. This
 lets you run agents with `--dangerously-skip-permissions` without worrying about
 what they might touch on your host.
 
@@ -1659,9 +1660,9 @@ agents, and merging all continue to work normally across the sandbox boundary.
 
 ### Backends
 
-|                 | Container (Docker/Podman)                  | Lima VM                         |
+|                 | Container (Docker/Podman/Apple Container)  | Lima VM                         |
 | --------------- | ------------------------------------------ | ------------------------------- |
-| **Isolation**   | Process-level (namespaces)                 | Machine-level (virtual machine) |
+| **Isolation**   | Process/VM-level                           | Machine-level (virtual machine) |
 | **Persistence** | Ephemeral (new container per session)      | Persistent (stateful VMs)       |
 | **Toolchain**   | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support   |
 | **Network**     | Optional restrictions (domain allowlist)   | Unrestricted                    |

@@ -305,7 +305,7 @@ pub enum SandboxBackend {
 }
 
 /// Container runtime for sandbox
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxRuntime {
     /// Docker (default fallback when neither runtime is found in PATH)
@@ -313,22 +313,76 @@ pub enum SandboxRuntime {
     Docker,
     /// Podman
     Podman,
+    /// Apple Container (macOS only, uses `container` binary)
+    #[serde(rename = "apple-container")]
+    AppleContainer,
 }
 
 impl SandboxRuntime {
     /// Auto-detect container runtime by checking PATH.
     ///
-    /// Returns the first available runtime found in PATH, preferring docker over
-    /// podman. Falls back to Docker if neither is found (will fail later with a
-    /// clear "command not found" error).
+    /// On macOS, prefers Apple Container (`container`) over Docker/Podman.
+    /// The `container` probe is gated behind macOS since the generic binary name
+    /// could false-positive on Linux. Falls back to Docker if nothing is found
+    /// (will fail later with a clear "command not found" error).
     pub fn detect() -> Self {
+        #[cfg(target_os = "macos")]
+        if which("container").is_ok() {
+            return SandboxRuntime::AppleContainer;
+        }
+
         if which("docker").is_ok() {
             SandboxRuntime::Docker
         } else if which("podman").is_ok() {
             SandboxRuntime::Podman
         } else {
-            debug!("neither docker nor podman found in PATH, defaulting to docker");
+            debug!("no container runtime found in PATH, defaulting to docker");
             SandboxRuntime::Docker
+        }
+    }
+
+    /// Returns the binary name for this runtime.
+    pub fn binary_name(&self) -> &'static str {
+        match self {
+            SandboxRuntime::Docker => "docker",
+            SandboxRuntime::Podman => "podman",
+            SandboxRuntime::AppleContainer => "container",
+        }
+    }
+
+    /// Whether this runtime needs `--add-host host.docker.internal:host-gateway`.
+    /// Only Docker requires this.
+    pub fn needs_add_host(&self) -> bool {
+        matches!(self, SandboxRuntime::Docker)
+    }
+
+    /// Whether this runtime needs `--userns=keep-id`.
+    /// Only Podman requires this.
+    pub fn needs_userns_keep_id(&self) -> bool {
+        matches!(self, SandboxRuntime::Podman)
+    }
+
+    /// Whether this runtime needs `--cap-add=NET_ADMIN` and `--security-opt
+    /// no-new-privileges` in network deny mode. Apple Container runs each
+    /// container as a full VM where root already has all capabilities.
+    pub fn needs_deny_mode_caps(&self) -> bool {
+        matches!(self, SandboxRuntime::Docker | SandboxRuntime::Podman)
+    }
+
+    /// Whether this runtime supports binding individual files (not just directories).
+    /// Apple Container only supports directory mounts via virtiofs.
+    pub fn supports_file_mounts(&self) -> bool {
+        !matches!(self, SandboxRuntime::AppleContainer)
+    }
+
+    /// Returns the arguments for pulling an image.
+    /// Apple Container uses `image pull`, others use `pull`.
+    pub fn pull_args(&self, image: &str) -> Vec<String> {
+        match self {
+            SandboxRuntime::AppleContainer => {
+                vec!["image".into(), "pull".into(), image.into()]
+            }
+            _ => vec!["pull".into(), image.into()],
         }
     }
 
@@ -336,10 +390,31 @@ impl SandboxRuntime {
     ///
     /// - Docker: `host.docker.internal` (Docker Desktop built-in)
     /// - Podman: `host.containers.internal` (Podman built-in)
+    /// - Apple Container: `192.168.64.1` (default gateway for Apple VMs)
     pub fn rpc_host_address(&self) -> &'static str {
         match self {
             SandboxRuntime::Docker => "host.docker.internal",
             SandboxRuntime::Podman => "host.containers.internal",
+            SandboxRuntime::AppleContainer => "192.168.64.1",
+        }
+    }
+
+    /// Returns the serde name for this runtime (used for state store serialization).
+    pub fn serde_name(&self) -> &'static str {
+        match self {
+            SandboxRuntime::Docker => "docker",
+            SandboxRuntime::Podman => "podman",
+            SandboxRuntime::AppleContainer => "apple-container",
+        }
+    }
+
+    /// Parse a runtime from its serde name. Returns None for unrecognized values.
+    pub fn from_serde_name(s: &str) -> Option<Self> {
+        match s {
+            "docker" => Some(SandboxRuntime::Docker),
+            "podman" => Some(SandboxRuntime::Podman),
+            "apple-container" => Some(SandboxRuntime::AppleContainer),
+            _ => None,
         }
     }
 }
@@ -1628,7 +1703,7 @@ impl Config {
 #   backend: lima
 #   # host_commands: ["just", "cargo", "npm"]
 #   # container:
-#   #   runtime: docker
+#   #   runtime: docker          # docker | podman | apple-container
 #   # lima:
 #   #   isolation: project
 #   #   cpus: 4
@@ -3069,5 +3144,95 @@ windows:
         let merged = global.merge(project);
         assert!(merged.windows.is_some());
         assert!(merged.panes.is_none());
+    }
+
+    #[test]
+    fn parse_runtime_apple_container() {
+        let yaml = r#"
+sandbox:
+  container:
+    runtime: apple-container
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.sandbox.container.runtime,
+            Some(SandboxRuntime::AppleContainer)
+        );
+    }
+
+    #[test]
+    fn runtime_binary_names() {
+        assert_eq!(SandboxRuntime::Docker.binary_name(), "docker");
+        assert_eq!(SandboxRuntime::Podman.binary_name(), "podman");
+        assert_eq!(SandboxRuntime::AppleContainer.binary_name(), "container");
+    }
+
+    #[test]
+    fn runtime_rpc_host_addresses() {
+        assert_eq!(
+            SandboxRuntime::Docker.rpc_host_address(),
+            "host.docker.internal"
+        );
+        assert_eq!(
+            SandboxRuntime::Podman.rpc_host_address(),
+            "host.containers.internal"
+        );
+        assert_eq!(
+            SandboxRuntime::AppleContainer.rpc_host_address(),
+            "192.168.64.1"
+        );
+    }
+
+    #[test]
+    fn runtime_capability_flags() {
+        // needs_add_host: only Docker
+        assert!(SandboxRuntime::Docker.needs_add_host());
+        assert!(!SandboxRuntime::Podman.needs_add_host());
+        assert!(!SandboxRuntime::AppleContainer.needs_add_host());
+
+        // needs_userns_keep_id: only Podman
+        assert!(!SandboxRuntime::Docker.needs_userns_keep_id());
+        assert!(SandboxRuntime::Podman.needs_userns_keep_id());
+        assert!(!SandboxRuntime::AppleContainer.needs_userns_keep_id());
+
+        // needs_deny_mode_caps: Docker and Podman, not Apple Container
+        assert!(SandboxRuntime::Docker.needs_deny_mode_caps());
+        assert!(SandboxRuntime::Podman.needs_deny_mode_caps());
+        assert!(!SandboxRuntime::AppleContainer.needs_deny_mode_caps());
+    }
+
+    #[test]
+    fn runtime_pull_args() {
+        assert_eq!(
+            SandboxRuntime::Docker.pull_args("img:latest"),
+            vec!["pull", "img:latest"]
+        );
+        assert_eq!(
+            SandboxRuntime::Podman.pull_args("img:latest"),
+            vec!["pull", "img:latest"]
+        );
+        assert_eq!(
+            SandboxRuntime::AppleContainer.pull_args("img:latest"),
+            vec!["image", "pull", "img:latest"]
+        );
+    }
+
+    #[test]
+    fn runtime_serde_name_roundtrip() {
+        for runtime in [
+            SandboxRuntime::Docker,
+            SandboxRuntime::Podman,
+            SandboxRuntime::AppleContainer,
+        ] {
+            let name = runtime.serde_name();
+            let parsed = SandboxRuntime::from_serde_name(name).unwrap();
+            assert_eq!(parsed, runtime);
+        }
+    }
+
+    #[test]
+    fn runtime_from_serde_name_unknown() {
+        assert_eq!(SandboxRuntime::from_serde_name("unknown"), None);
+        assert_eq!(SandboxRuntime::from_serde_name(""), None);
     }
 }

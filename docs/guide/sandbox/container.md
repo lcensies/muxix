@@ -1,10 +1,10 @@
 ---
-description: Run agents in isolated Docker or Podman containers
+description: Run agents in isolated containers using Docker, Podman, or Apple Container
 ---
 
 # Container backend
 
-The container sandbox runs agents in isolated Docker or Podman containers, providing lightweight, ephemeral environments that reset after every session.
+The container sandbox runs agents in isolated containers using Docker, Podman, or Apple Container, providing lightweight, ephemeral environments that reset after every session.
 
 ## Setup
 
@@ -18,6 +18,8 @@ brew install --cask orbstack        # OrbStack (Docker-compatible)
 # or
 brew install podman                 # Podman
 ```
+
+On macOS 26+ with Apple Silicon, you can also use [Apple Container](https://github.com/apple/container). When installed, it is auto-detected and preferred over Docker/Podman.
 
 ### 2. Enable sandbox in config
 
@@ -39,18 +41,18 @@ workmux sandbox pull
 
 ## Configuration
 
-| Option                    | Default                                 | Description                                                                                                                                                                                     |
-| ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                                     |
-| `container.runtime`       | auto-detect                             | Container runtime: `docker` or `podman`. Auto-detected from PATH when not set (prefers docker).                                                                                                 |
-| `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                        |
-| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                             |
-| `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker) or `host.containers.internal` (Podman). Useful for non-standard networking setups. **Global config only.** |
-| `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                  |
-| `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                        |
-| `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                          |
-| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**                  |
-| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                                |
+| Option                    | Default                                 | Description                                                                                                                                                                             |
+| ------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                             |
+| `container.runtime`       | auto-detect                             | Container runtime: `docker`, `podman`, or `apple-container`. Auto-detected from PATH when not set. On macOS, prefers Apple Container (`container`) over Docker/Podman.                  |
+| `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                |
+| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                     |
+| `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.** |
+| `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                          |
+| `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                |
+| `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                  |
+| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**          |
+| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                        |
 
 ### Example configurations
 
@@ -74,6 +76,15 @@ sandbox:
     runtime: podman
 ```
 
+**With Apple Container (macOS 26+):**
+
+```yaml
+sandbox:
+  enabled: true
+  container:
+    runtime: apple-container
+```
+
 **Sandbox all panes (not just agent):**
 
 ```yaml
@@ -90,7 +101,7 @@ When you run `workmux add feature-x`, the agent command is wrapped:
 # Without sandbox:
 claude -- "$(cat .workmux/PROMPT-feature-x.md)"
 
-# With sandbox:
+# With sandbox (Docker example):
 docker run --rm -it \
   --user 501:20 \
   --env HOME=/tmp \
@@ -104,6 +115,8 @@ docker run --rm -it \
   sh -c 'claude -- "$(cat .workmux/PROMPT-feature-x.md)"'
 ```
 
+The exact flags vary by runtime (e.g., Podman adds `--userns=keep-id`, Apple Container uses directory mounts instead of file mounts).
+
 ### What's mounted
 
 | Mount                  | Access      | Purpose                                                       |
@@ -116,7 +129,7 @@ docker run --rm -it \
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
-For Claude specifically, `~/.claude-sandbox.json` is also mounted to `/tmp/.claude.json` as a separate config file.
+For Claude specifically, a separate config file is mounted to `/tmp/.claude.json`. Docker/Podman mount `~/.claude-sandbox.json` directly; Apple Container mounts the `~/.claude-sandbox-config/` directory (since it only supports directory mounts).
 
 ### Networking
 

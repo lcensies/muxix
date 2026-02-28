@@ -544,12 +544,7 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
 /// Returns Ok(true) if the image was patched, Ok(false) if the base image
 /// doesn't exist.
 fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) -> Result<bool> {
-    use crate::config::SandboxRuntime;
-
-    let runtime = match config.sandbox.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
+    let runtime = config.sandbox.runtime().binary_name();
 
     // Check if the base image exists
     let inspect = Command::new(runtime)
@@ -929,7 +924,6 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
 }
 
 fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Result<()> {
-    use crate::config::SandboxRuntime;
     use crate::sandbox::network_proxy::NetworkProxy;
     use crate::state::StateStore;
 
@@ -942,11 +936,6 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         .file_name()
         .and_then(|n| n.to_str())
         .context("Could not determine worktree handle from directory name")?;
-
-    let runtime = match config.sandbox.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
 
     // Build shell command
     let shell_cmd = if command.is_empty() {
@@ -969,24 +958,26 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
             );
         }
 
-        // Use the first (usually only) container
-        let container_name = &containers[0];
+        // Use the first (usually only) container, with its stored runtime
+        let (container_name, container_runtime) = &containers[0];
+        let runtime_bin = container_runtime.binary_name();
         if containers.len() > 1 {
+            let others: Vec<&str> = containers[1..].iter().map(|(n, _)| n.as_str()).collect();
             println!(
                 "Multiple containers found, using: {} (others: {})",
                 container_name,
-                containers[1..].join(", ")
+                others.join(", ")
             );
         }
 
         debug!(
-            runtime,
-            container = container_name,
+            runtime = runtime_bin,
+            container = container_name.as_str(),
             cmd = shell_cmd,
             "exec into container"
         );
 
-        let status = Command::new(runtime)
+        let status = Command::new(runtime_bin)
             .args(["exec", "-it", container_name, "bash", "-c", &shell_cmd])
             .status()
             .with_context(|| format!("Failed to exec into container {}", container_name))?;
@@ -1049,16 +1040,17 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         docker_args.insert(1, "--name".to_string());
         docker_args.insert(2, format!("wm-shell-{}", std::process::id()));
 
+        let runtime_bin = config.sandbox.runtime().binary_name();
         let redacted_args: Vec<_> = docker_args
             .iter()
             .map(|a| super::sandbox_run::redact_env_arg(a))
             .collect();
-        debug!(runtime, args = ?redacted_args, "starting shell container");
+        debug!(runtime = runtime_bin, args = ?redacted_args, "starting shell container");
 
-        let status = Command::new(runtime)
+        let status = Command::new(runtime_bin)
             .args(&docker_args)
             .status()
-            .with_context(|| format!("Failed to execute {} run", runtime))?;
+            .with_context(|| format!("Failed to execute {} run", runtime_bin))?;
 
         std::process::exit(status.code().unwrap_or(1));
     }

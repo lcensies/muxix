@@ -74,7 +74,7 @@ pub fn run(name: Option<&str>) -> Result<()> {
 
     // Stop any running containers for this worktree before killing the target.
     if let Some(handle) = full_target_name.strip_prefix(prefix) {
-        sandbox::stop_containers_for_handle(handle, &config.sandbox);
+        sandbox::stop_containers_for_handle(handle);
     }
 
     if is_current_target {

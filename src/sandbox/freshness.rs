@@ -182,10 +182,11 @@ fn get_remote_digest(image: &str) -> Result<String> {
 
 /// Perform the freshness check and print hint if stale.
 fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
-    let runtime_bin = match runtime {
-        SandboxRuntime::Docker => "docker",
-        SandboxRuntime::Podman => "podman",
-    };
+    if matches!(runtime, SandboxRuntime::AppleContainer) {
+        return Ok(true);
+    }
+
+    let runtime_bin = runtime.binary_name();
 
     // Get the digests the local image was pulled with (e.g. "registry/repo@sha256:abc...")
     let local_digests =
@@ -211,10 +212,11 @@ fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
 /// Call this after a successful `sandbox pull` so the staleness hint
 /// is not shown until the next TTL window.
 pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
-    let runtime_bin = match runtime {
-        SandboxRuntime::Docker => "docker",
-        SandboxRuntime::Podman => "podman",
-    };
+    if matches!(runtime, SandboxRuntime::AppleContainer) {
+        return;
+    }
+
+    let runtime_bin = runtime.binary_name();
     let local_id = get_local_image_id(runtime_bin, image).ok();
     let _ = save_cache(image, true, local_id);
 }
@@ -231,15 +233,17 @@ pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
 /// Silent on any failure (network issues, missing commands, etc.)
 pub fn check_in_background(image: String, runtime: SandboxRuntime) {
     std::thread::spawn(move || {
+        // Skip freshness checking for Apple Container
+        if matches!(runtime, SandboxRuntime::AppleContainer) {
+            return;
+        }
+
         // Only check official images from our registry
         if !image.starts_with(DEFAULT_IMAGE_REGISTRY) {
             return;
         }
 
-        let runtime_bin = match runtime {
-            SandboxRuntime::Docker => "docker",
-            SandboxRuntime::Podman => "podman",
-        };
+        let runtime_bin = runtime.binary_name();
 
         // Check cache first
         if let Some(cache) = load_cache(&image) {
@@ -322,5 +326,18 @@ mod tests {
         let parsed: FreshnessCache = serde_json::from_str(json).unwrap();
         assert!(!parsed.is_fresh);
         assert_eq!(parsed.local_image_id, None);
+    }
+
+    #[test]
+    fn test_check_freshness_skips_apple_container() {
+        let result = check_freshness("test-image:latest", SandboxRuntime::AppleContainer);
+        // Should return Ok(true) immediately without running any commands
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_mark_fresh_skips_apple_container() {
+        // Should not panic or error -- just returns immediately
+        mark_fresh("test-image:latest", SandboxRuntime::AppleContainer);
     }
 }

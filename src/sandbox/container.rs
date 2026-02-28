@@ -33,18 +33,27 @@ pub fn dockerfile_for_agent(agent: &str) -> Option<&'static str> {
 }
 
 /// Sandbox-specific config paths on host.
-/// The config file (~/.claude-sandbox.json) is separate from host CLI config
-/// to avoid confusion, while ~/.claude/ is shared from the host.
+///
+/// Two layouts exist:
+/// - `config_file` (~/.claude-sandbox.json): direct file mount for Docker/Podman
+/// - `config_dir` (~/.claude-sandbox-config/): directory mount for Apple Container,
+///   which only supports directory mounts via virtiofs
 pub struct SandboxPaths {
-    /// ~/.claude-sandbox.json - main config/auth file
+    /// ~/.claude-sandbox.json - used by Docker/Podman (file mount)
     pub config_file: PathBuf,
+    /// ~/.claude-sandbox-config/ - used by Apple Container (directory mount)
+    pub config_dir: PathBuf,
 }
+
+const CLAUDE_ONBOARDING_JSON: &str =
+    r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#;
 
 impl SandboxPaths {
     pub fn new() -> Option<Self> {
         let home = home::home_dir()?;
         Some(Self {
             config_file: home.join(".claude-sandbox.json"),
+            config_dir: home.join(".claude-sandbox-config"),
         })
     }
 }
@@ -53,13 +62,19 @@ impl SandboxPaths {
 pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
     let paths = SandboxPaths::new().context("Could not determine home directory")?;
 
-    // Seed config file with onboarding defaults if it doesn't exist
+    // Docker/Podman: seed single file
     if !paths.config_file.exists() {
-        std::fs::write(
-            &paths.config_file,
-            r#"{"hasCompletedOnboarding":true,"bypassPermissionsModeAccepted":true}"#,
-        )
-        .with_context(|| format!("Failed to create {}", paths.config_file.display()))?;
+        std::fs::write(&paths.config_file, CLAUDE_ONBOARDING_JSON)
+            .with_context(|| format!("Failed to create {}", paths.config_file.display()))?;
+    }
+
+    // Apple Container: seed directory with claude.json
+    std::fs::create_dir_all(&paths.config_dir)
+        .with_context(|| format!("Failed to create {}", paths.config_dir.display()))?;
+    let dir_file = paths.config_dir.join("claude.json");
+    if !dir_file.exists() {
+        std::fs::write(&dir_file, CLAUDE_ONBOARDING_JSON)
+            .with_context(|| format!("Failed to create {}", dir_file.display()))?;
     }
 
     Ok(paths)
@@ -67,10 +82,7 @@ pub fn ensure_sandbox_config_dirs() -> Result<SandboxPaths> {
 
 /// Build the sandbox Docker image locally (two-stage: base + agent).
 pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
-    let runtime = match config.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
+    let runtime = config.runtime().binary_name();
 
     let agent_dockerfile = dockerfile_for_agent(agent).ok_or_else(|| {
         anyhow::anyhow!(
@@ -132,15 +144,12 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
 
 /// Pull the sandbox image from the registry.
 pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
-    let runtime = match config.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
+    let runtime = config.runtime();
 
     println!("Pulling image '{}'...", image);
 
-    let status = Command::new(runtime)
-        .args(["pull", image])
+    let status = Command::new(runtime.binary_name())
+        .args(runtime.pull_args(image))
         .status()
         .context("Failed to run container runtime")?;
 
@@ -188,7 +197,9 @@ pub fn build_docker_run_args(
     // On Linux Docker Engine (not Desktop), host.docker.internal doesn't resolve
     // unless we explicitly add it. The special "host-gateway" value maps to the
     // host's gateway IP. This is a harmless no-op on Docker Desktop.
-    if matches!(config.runtime(), SandboxRuntime::Docker) {
+    let runtime = config.runtime();
+
+    if runtime.needs_add_host() {
         args.push("--add-host".to_string());
         args.push("host.docker.internal:host-gateway".to_string());
     }
@@ -197,7 +208,9 @@ pub fn build_docker_run_args(
         // Deny mode: start as root for iptables setup, drop privileges via gosu.
         // Do NOT use --userns=keep-id (Podman) in deny mode since the container
         // starts as root and drops privileges via gosu after iptables setup.
-        args.extend(deny_mode_run_flags());
+        if runtime.needs_deny_mode_caps() {
+            args.extend(deny_mode_run_flags());
+        }
         args.push("--env".to_string());
         args.push(format!("WM_TARGET_UID={}", uid));
         args.push("--env".to_string());
@@ -207,7 +220,7 @@ pub fn build_docker_run_args(
         // Rootless Podman uses a user namespace that remaps UIDs. Without --userns=keep-id,
         // the host UID appears as root inside the container, making bind-mounted files
         // (credentials, config) inaccessible to the --user process.
-        if matches!(config.runtime(), SandboxRuntime::Podman) {
+        if runtime.needs_userns_keep_id() {
             args.push("--userns=keep-id".to_string());
         }
         args.push("--user".to_string());
@@ -281,17 +294,33 @@ pub fn build_docker_run_args(
     args.push("HOME=/tmp".to_string());
 
     // Agent-specific credential mounts
-    // Claude uses ~/.claude-sandbox.json for container-specific config
-    if agent == "claude"
+    // Claude uses ~/.claude-sandbox-config/claude.json for container-specific config.
+    // Apple Container only supports directory mounts, so we mount the directory
+    // and symlink the file inside the container (see command wrapping below).
+    // Docker/Podman can mount the file directly.
+    let needs_claude_config_symlink = if agent == "claude"
         && let Some(paths) = SandboxPaths::new()
-        && paths.config_file.exists()
     {
-        args.push("--mount".to_string());
-        args.push(format!(
-            "type=bind,source={},target=/tmp/.claude.json",
-            paths.config_file.display()
-        ));
-    }
+        if runtime.supports_file_mounts() && paths.config_file.exists() {
+            args.push("--mount".to_string());
+            args.push(format!(
+                "type=bind,source={},target=/tmp/.claude.json",
+                paths.config_file.display()
+            ));
+            false
+        } else if !runtime.supports_file_mounts() && paths.config_dir.exists() {
+            args.push("--mount".to_string());
+            args.push(format!(
+                "type=bind,source={},target=/tmp/.claude-sandbox-config",
+                paths.config_dir.display()
+            ));
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
     // Mount agent config directory
     if let Some(config_dir) = config.resolved_agent_config_dir(agent) {
@@ -349,17 +378,29 @@ pub fn build_docker_run_args(
 
     // Command
     // No shell quoting needed -- callers use Command::args() which handles escaping
+    //
+    // For Apple Container with Claude, we symlink the config file from the
+    // mounted directory since Apple Container doesn't support file mounts.
+    let wrapped_command = if needs_claude_config_symlink {
+        format!(
+            "ln -sf /tmp/.claude-sandbox-config/claude.json /tmp/.claude.json; {}",
+            command
+        )
+    } else {
+        command.to_string()
+    };
+
     if network_deny {
         // In deny mode, wrap command with network-init.sh which sets up
         // iptables firewall rules and then drops privileges via gosu.
         args.push("network-init.sh".to_string());
         args.push("sh".to_string());
         args.push("-c".to_string());
-        args.push(command.to_string());
+        args.push(wrapped_command);
     } else {
         args.push("sh".to_string());
         args.push("-c".to_string());
-        args.push(command.to_string());
+        args.push(wrapped_command);
     }
 
     Ok(args)
@@ -421,7 +462,7 @@ pub fn wrap_for_container(
 /// Uses the state store to find registered containers instead of running
 /// `docker ps`. This avoids spawning docker commands for users who don't
 /// use containers.
-pub fn stop_containers_for_handle(handle: &str, config: &SandboxConfig) {
+pub fn stop_containers_for_handle(handle: &str) {
     // Check state store for registered containers
     let store = match StateStore::new() {
         Ok(s) => s,
@@ -433,23 +474,29 @@ pub fn stop_containers_for_handle(handle: &str, config: &SandboxConfig) {
         return;
     }
 
-    let runtime = match config.runtime() {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
-
     tracing::debug!(?containers, handle, "stopping containers for worktree");
 
-    // Stop all containers in one command
-    let _ = Command::new(runtime)
-        .arg("stop")
-        .arg("-t")
-        .arg("0")
-        .args(&containers)
-        .output();
+    // Group containers by runtime so we issue separate stop commands per binary
+    let mut by_runtime: std::collections::HashMap<SandboxRuntime, Vec<String>> =
+        std::collections::HashMap::new();
+    for (name, runtime) in &containers {
+        by_runtime
+            .entry(runtime.clone())
+            .or_default()
+            .push(name.clone());
+    }
+
+    for (runtime, names) in &by_runtime {
+        let _ = Command::new(runtime.binary_name())
+            .arg("stop")
+            .arg("-t")
+            .arg("0")
+            .args(names)
+            .output();
+    }
 
     // Unregister containers from state store
-    for name in containers {
+    for (name, _) in containers {
         store.unregister_container(handle, &name);
     }
 }
@@ -1086,5 +1133,63 @@ mod tests {
         assert!(flags.contains(&"--cap-add=NET_ADMIN".to_string()));
         assert!(flags.contains(&"--security-opt".to_string()));
         assert!(flags.contains(&"no-new-privileges".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_apple_container_omits_docker_podman_flags() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        // Should NOT have Docker's --add-host
+        assert!(!args.contains(&"--add-host".to_string()));
+        // Should NOT have Podman's --userns=keep-id
+        assert!(!args.contains(&"--userns=keep-id".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_apple_container_deny_mode_skips_caps() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true, // network_deny
+        )
+        .unwrap();
+
+        // Should NOT have --cap-add=NET_ADMIN or --security-opt
+        assert!(!args.contains(&"--cap-add=NET_ADMIN".to_string()));
+        assert!(!args.contains(&"--security-opt".to_string()));
+        // Should still have UID/GID env vars for deny mode
+        assert!(args.iter().any(|a| a.starts_with("WM_TARGET_UID=")));
+        assert!(args.iter().any(|a| a.starts_with("WM_TARGET_GID=")));
     }
 }

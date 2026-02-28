@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use super::types::{AgentState, GlobalSettings, PaneKey};
+use crate::config::SandboxRuntime;
 
 /// Manages filesystem-based state persistence for workmux agents.
 ///
@@ -147,11 +148,18 @@ impl StateStore {
 
     /// Register a running container for a worktree handle.
     ///
-    /// Creates a marker file at `containers/<handle>/<container_name>`.
-    pub fn register_container(&self, handle: &str, container_name: &str) -> Result<()> {
+    /// Creates a marker file at `containers/<handle>/<container_name>` with the
+    /// runtime's serde name as content for cleanup correctness.
+    pub fn register_container(
+        &self,
+        handle: &str,
+        container_name: &str,
+        runtime: &SandboxRuntime,
+    ) -> Result<()> {
         let dir = self.containers_dir().join(handle);
         fs::create_dir_all(&dir).context("Failed to create container state directory")?;
-        fs::write(dir.join(container_name), "").context("Failed to write container marker")?;
+        fs::write(dir.join(container_name), runtime.serde_name())
+            .context("Failed to write container marker")?;
         Ok(())
     }
 
@@ -171,7 +179,10 @@ impl StateStore {
     }
 
     /// List registered containers for a worktree handle.
-    pub fn list_containers(&self, handle: &str) -> Vec<String> {
+    ///
+    /// Returns container names paired with their stored runtime. For backwards
+    /// compatibility with empty marker files (pre-runtime-storage), defaults to Docker.
+    pub fn list_containers(&self, handle: &str) -> Vec<(String, SandboxRuntime)> {
         let dir = self.containers_dir().join(handle);
         if !dir.exists() {
             return Vec::new();
@@ -181,8 +192,17 @@ impl StateStore {
             .into_iter()
             .flatten()
             .filter_map(|entry| entry.ok())
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .filter(|name| !name.starts_with('.'))
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                if name.starts_with('.') {
+                    return None;
+                }
+                let runtime = fs::read_to_string(entry.path())
+                    .ok()
+                    .and_then(|content| SandboxRuntime::from_serde_name(content.trim()))
+                    .unwrap_or_default();
+                Some((name, runtime))
+            })
             .collect()
     }
 
@@ -512,5 +532,59 @@ mod tests {
 
         let agents = store.list_all_agents().unwrap();
         assert_eq!(agents.len(), 1);
+    }
+
+    #[test]
+    fn test_register_container_stores_runtime() {
+        let (store, _dir) = test_store();
+        store
+            .register_container("handle", "container-1", &SandboxRuntime::AppleContainer)
+            .unwrap();
+
+        let containers = store.list_containers("handle");
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].0, "container-1");
+        assert_eq!(containers[0].1, SandboxRuntime::AppleContainer);
+    }
+
+    #[test]
+    fn test_register_container_runtime_roundtrip() {
+        let (store, _dir) = test_store();
+
+        for runtime in [
+            SandboxRuntime::Docker,
+            SandboxRuntime::Podman,
+            SandboxRuntime::AppleContainer,
+        ] {
+            let name = format!("container-{}", runtime.binary_name());
+            store.register_container("handle", &name, &runtime).unwrap();
+        }
+
+        let containers = store.list_containers("handle");
+        assert_eq!(containers.len(), 3);
+
+        let by_name: std::collections::HashMap<&str, &SandboxRuntime> =
+            containers.iter().map(|(n, r)| (n.as_str(), r)).collect();
+        assert_eq!(by_name["container-docker"], &SandboxRuntime::Docker);
+        assert_eq!(by_name["container-podman"], &SandboxRuntime::Podman);
+        assert_eq!(
+            by_name["container-container"],
+            &SandboxRuntime::AppleContainer
+        );
+    }
+
+    #[test]
+    fn test_list_containers_empty_marker_defaults_to_docker() {
+        let (store, dir) = test_store();
+
+        // Simulate old marker file with empty content
+        let container_dir = dir.path().join("containers").join("handle");
+        fs::create_dir_all(&container_dir).unwrap();
+        fs::write(container_dir.join("old-container"), "").unwrap();
+
+        let containers = store.list_containers("handle");
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].0, "old-container");
+        assert_eq!(containers[0].1, SandboxRuntime::Docker);
     }
 }

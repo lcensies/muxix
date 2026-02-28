@@ -11,7 +11,7 @@ use tracing::{debug, info, warn};
 
 use std::collections::HashSet;
 
-use crate::config::{Config, SandboxBackend, SandboxRuntime};
+use crate::config::{Config, SandboxBackend};
 use crate::multiplexer;
 use crate::sandbox::build_docker_run_args;
 use crate::sandbox::ensure_sandbox_config_dirs;
@@ -317,10 +317,7 @@ fn run_container(
     // Compute RPC host BEFORE matching on runtime (SandboxRuntime is not Copy)
     let rpc_host = config.sandbox.resolved_rpc_host();
     let runtime = config.sandbox.runtime();
-    let runtime_bin: &'static str = match runtime {
-        SandboxRuntime::Podman => "podman",
-        SandboxRuntime::Docker => "docker",
-    };
+    let runtime_bin = runtime.binary_name();
 
     // Generate container name from worktree directory name so cleanup can find it.
     // Include PID to allow multiple agents in the same worktree (e.g., open -n).
@@ -333,7 +330,7 @@ fn run_container(
 
     // Register container in state store so cleanup can find it without docker ps
     if let Ok(store) = StateStore::new()
-        && let Err(e) = store.register_container(&handle, &container_name)
+        && let Err(e) = store.register_container(&handle, &container_name, &runtime)
     {
         warn!(error = %e, "failed to register container state");
     }

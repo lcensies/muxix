@@ -4,7 +4,7 @@ description: Manage sandbox backends and tooling
 
 # sandbox
 
-Commands for managing sandbox functionality across container and Lima backends.
+Commands for managing sandbox functionality across container (Docker/Podman/Apple Container) and Lima backends.
 
 ## Container commands
 
