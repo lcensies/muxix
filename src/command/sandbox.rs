@@ -575,11 +575,14 @@ fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) 
     std::fs::write(context_path.join("Dockerfile"), &dockerfile)
         .context("Failed to write Dockerfile")?;
 
-    // Build, tagging as the same image name (replaces it in-place)
+    // Build, tagging as the same image name (replaces it in-place).
+    // Pass the absolute context path as the argument instead of using
+    // current_dir + "." because Apple Container doesn't resolve "." correctly
+    // when current_dir differs from the process working directory.
     let status = Command::new(runtime)
         .env("DOCKER_CLI_HINTS", "false")
-        .args(["build", "-t", image_name, "."])
-        .current_dir(context_path)
+        .args(["build", "-t", image_name])
+        .arg(context_path)
         .status()
         .with_context(|| format!("Failed to run {} build", runtime))?;
 
