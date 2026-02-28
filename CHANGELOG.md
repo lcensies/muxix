@@ -17,6 +17,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.127 (2026-02-28)
+
+- Sandbox: Images copied to the host clipboard can now be pasted into sandboxed
+  agents (Ctrl+V), enabling workflows like sharing screenshots with Claude Code
+  running inside a container or VM
+- Merge skill: Added `--no-verify` (`-n`) flag to skip pre-merge hooks, and `-k`
+  as a shorthand alias for `--keep`
+
 ## v0.1.126 (2026-02-28)
 
 - Added `workmux update` command for self-updating workmux directly from GitHub

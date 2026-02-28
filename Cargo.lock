@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "workmux"
-version = "0.1.126"
+version = "0.1.127"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
