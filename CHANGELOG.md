@@ -17,6 +17,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.125 (2026-02-28)
+
+- Added Apple Container as a sandbox runtime alongside Docker and Podman,
+  enabling sandboxing on macOS using Apple's native container technology (macOS
+  26+, Apple Silicon). Auto-detected when the `container` binary is available.
+  Configure with `runtime: apple-container` or let workmux detect it
+  automatically
+- Fixed `close` command not finding the correct worktree when using a branch
+  name that differs from the worktree handle (e.g., when created with `--name`)
+
 ## v0.1.124 (2026-02-24)
 
 - Added experimental Zellij backend support. Zellij is auto-detected when
