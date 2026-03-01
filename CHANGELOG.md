@@ -17,6 +17,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.128 (2026-03-01)
+
+- Dashboard now renders colored status icons correctly instead of showing raw
+  tmux color codes as literal text
+  ([#66](https://github.com/raine/workmux/issues/66))
+
 ## v0.1.127 (2026-02-28)
 
 - Sandbox: Images copied to the host clipboard can now be pasted into sandboxed
