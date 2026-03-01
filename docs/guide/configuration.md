@@ -185,6 +185,15 @@ status_icons:
   done: "✅" # Agent finished (auto-clears on focus)
 ```
 
+You can use tmux style codes for colored icons in both the tmux status bar and the dashboard:
+
+```yaml
+status_icons:
+  done: "#[fg=#a6e3a1]󰄴#[fg=default]"
+```
+
+Supported tmux style attributes: `fg=`, `bg=`, `default`. Colors can be hex (`#a6e3a1`), named (`red`, `green`, etc.), or indexed (`colour196`).
+
 Set `status_format: false` to disable automatic tmux format modification.
 
 ### Auto-name configuration

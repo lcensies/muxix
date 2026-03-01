@@ -85,6 +85,13 @@ status_icons:
   done: "✔️"
 ```
 
+Tmux style codes are supported for colored icons, and work in both the tmux status bar and the dashboard:
+
+```yaml
+status_icons:
+  done: "#[fg=#a6e3a1]󰄴#[fg=default]"
+```
+
 If you prefer to manage the tmux format yourself, disable auto-modification and add the status variable to your `~/.tmux.conf`:
 
 ```yaml

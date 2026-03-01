@@ -230,7 +230,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 .as_ref()
                 .map(|t| t.strip_prefix("... ").unwrap_or(t).to_string())
                 .unwrap_or_default();
-            let (status_text, status_color) = app.get_status_display(agent);
+            let status_spans = app.get_status_display(agent);
             let duration = app
                 .get_elapsed(agent)
                 .map(|d| app.format_duration(d))
@@ -256,8 +256,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 is_current,
                 git_spans,
                 pr_spans,
-                status_text,
-                status_color,
+                status_spans,
                 duration,
                 title,
             )
@@ -267,7 +266,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate max project name width (with padding, capped)
     let max_project_width = row_data
         .iter()
-        .map(|(_, project, _, _, _, _, _, _, _, _, _)| project.len())
+        .map(|(_, project, _, _, _, _, _, _, _, _)| project.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20) // min 5, max 20
@@ -277,7 +276,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use at least 8 to fit the "Worktree" header
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, worktree_display, _, _, _, _, _, _, _, _)| worktree_display.len())
+        .map(|(_, _, worktree_display, _, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
         .max(8) // min 8 (header width)
@@ -287,7 +286,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Use chars().count() instead of len() because Nerd Font icons are multi-byte
     let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, _, _, git_spans, _, _, _, _, _)| {
+        .map(|(_, _, _, _, _, git_spans, _, _, _, _)| {
             git_spans
                 .iter()
                 .map(|(text, _)| text.chars().count())
@@ -302,7 +301,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let max_pr_width = if show_pr_column {
         row_data
             .iter()
-            .filter_map(|(_, _, _, _, _, _, pr_spans, _, _, _, _)| pr_spans.as_ref())
+            .filter_map(|(_, _, _, _, _, _, pr_spans, _, _, _)| pr_spans.as_ref())
             .map(|spans| {
                 spans
                     .iter()
@@ -328,8 +327,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 is_current,
                 git_spans,
                 pr_spans,
-                status_text,
-                status_color,
+                status_spans,
                 duration,
                 title,
             )| {
@@ -366,8 +364,14 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                     cells.push(Cell::from(pr_line));
                 }
 
+                let status_line = Line::from(
+                    status_spans
+                        .into_iter()
+                        .map(|(text, style)| Span::styled(text, style))
+                        .collect::<Vec<_>>(),
+                );
                 cells.extend(vec![
-                    Cell::from(status_text).style(Style::default().fg(status_color)),
+                    Cell::from(status_line),
                     Cell::from(duration),
                     Cell::from(title),
                 ]);

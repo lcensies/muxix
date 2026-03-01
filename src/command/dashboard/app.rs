@@ -1,7 +1,7 @@
 //! Application state and business logic for the dashboard TUI.
 
 use anyhow::Result;
-use ratatui::style::Color;
+use ratatui::style::{Color, Style};
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -693,7 +693,7 @@ impl App {
         agent::elapsed_secs(agent.status_ts, now)
     }
 
-    pub fn get_status_display(&self, agent: &AgentPane) -> (String, Color) {
+    pub fn get_status_display(&self, agent: &AgentPane) -> Vec<(String, Style)> {
         let is_stale = self.is_stale(agent);
 
         // Map status enum to icon and color
@@ -706,18 +706,23 @@ impl App {
             None => ("", self.palette.text, false),
         };
 
-        // If stale, dim the color and add timer-off indicator
+        let base_style = Style::default().fg(base_color);
+        let mut spans = super::ansi::parse_tmux_styles(icon, base_style);
+
         if is_stale {
-            let display_text = format!("{} \u{f051b}", icon);
-            (display_text, self.palette.dimmed)
+            // Override all styling for stale agents
+            let dimmed = Style::default().fg(self.palette.dimmed);
+            for span in &mut spans {
+                span.1 = dimmed;
+            }
+            spans.push((" \u{f051b}".to_string(), dimmed));
         } else if is_working {
             // Add animated spinner when agent is working
             let spinner = SPINNER_FRAMES[self.spinner_frame as usize];
-            let display_text = format!("{} {}", icon, spinner);
-            (display_text, base_color)
-        } else {
-            (icon.to_string(), base_color)
+            spans.push((format!(" {}", spinner), base_style));
         }
+
+        spans
     }
 
     /// Extract the worktree name from an agent.
