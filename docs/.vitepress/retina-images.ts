@@ -6,15 +6,18 @@ import sharp from "sharp";
 const IMG_RE = /<img([^>]*?)src="\/([^"]+\.webp)"([^>]*?)>/g;
 
 export function retinaImagesPlugin(publicDir: string): Plugin {
+  let ready: Promise<void> | undefined;
+
   return {
     name: "vitepress-retina-images",
     enforce: "pre",
 
-    async buildStart() {
-      await generateRetina1x(publicDir);
+    buildStart() {
+      ready = generateRetina1x(publicDir);
     },
 
-    transform(code, id) {
+    async transform(code, id) {
+      await ready;
       if (!id.endsWith(".md")) return null;
 
       const result = code.replace(IMG_RE, (match, before, src, after) => {
