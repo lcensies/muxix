@@ -18,6 +18,51 @@ use super::types::{CleanupResult, DeferredCleanup};
 
 const WINDOW_CLOSE_DELAY_MS: u64 = 300;
 
+/// Read the worktree's `.git` file to find the admin directory path.
+///
+/// Linked worktrees have a `.git` file (not directory) containing `gitdir: <path>`.
+/// The path may be absolute or relative to the worktree directory.
+/// Falls back to `$GIT_COMMON_DIR/worktrees/<dir_name>` if the `.git` file is missing
+/// (e.g., the worktree directory was already deleted).
+fn resolve_worktree_admin_dir(
+    worktree_path: &Path,
+    git_common_dir: &Path,
+) -> Option<std::path::PathBuf> {
+    let git_file = worktree_path.join(".git");
+    if git_file.is_file() {
+        match std::fs::read_to_string(&git_file) {
+            Ok(content) => {
+                if let Some(raw) = content.trim().strip_prefix("gitdir: ") {
+                    let p = Path::new(raw.trim());
+                    let abs = if p.is_absolute() {
+                        p.to_path_buf()
+                    } else {
+                        worktree_path.join(p)
+                    };
+                    return Some(abs);
+                }
+                warn!(
+                    path = %git_file.display(),
+                    "cleanup:worktree .git file missing 'gitdir:' prefix"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    path = %git_file.display(),
+                    error = %e,
+                    "cleanup:failed to read worktree .git file"
+                );
+            }
+        }
+    }
+
+    // Fallback: construct expected admin dir from the worktree directory name.
+    // Git uses the basename of the worktree path as the admin directory name.
+    worktree_path
+        .file_name()
+        .map(|name| git_common_dir.join("worktrees").join(name))
+}
+
 /// Best-effort recursive deletion of directory contents.
 /// Used to ensure files are removed even if the directory itself is locked (e.g., CWD).
 fn remove_dir_contents(path: &Path) {
@@ -138,6 +183,9 @@ pub fn cleanup(
     // Helper closure to perform the actual filesystem and git cleanup.
     // This avoids code duplication while enforcing the correct operational order.
     let perform_fs_git_cleanup = |result: &mut CleanupResult| -> Result<()> {
+        // Resolve the admin dir before the rename so we can unlock it later.
+        let worktree_admin_dir = resolve_worktree_admin_dir(worktree_path, &context.git_common_dir);
+
         // Run pre-remove hooks before removing the worktree directory.
         // Skip if the worktree directory doesn't exist (e.g., user manually deleted it).
         // Skip if --no-hooks is set (e.g., RPC-triggered merge).
@@ -245,12 +293,27 @@ pub fn cleanup(
             }
         }
 
-        // 2. Prune worktrees to clean up git's metadata.
+        // 2. Remove any worktree lock before pruning.
+        // Git creates a "locked" file during `git worktree add` (with content "initializing")
+        // and removes it on completion. If creation was interrupted, this file persists and
+        // prevents `git worktree prune` from cleaning up the metadata.
+        if let Some(ref admin_dir) = worktree_admin_dir {
+            let locked_file = admin_dir.join("locked");
+            match std::fs::remove_file(&locked_file) {
+                Ok(()) => debug!(path = %locked_file.display(), "cleanup:removed worktree lock"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    warn!(path = %locked_file.display(), error = %e, "cleanup:failed to remove worktree lock")
+                }
+            }
+        }
+
+        // 3. Prune worktrees to clean up git's metadata.
         // Git will see the original path as missing since we renamed it.
         git::prune_worktrees_in(&context.git_common_dir).context("Failed to prune worktrees")?;
         debug!("cleanup:git worktrees pruned");
 
-        // 3. Delete the local branch (unless keeping it).
+        // 4. Delete the local branch (unless keeping it).
         if !keep_branch {
             git::delete_branch_in(branch_name, force, &context.git_common_dir)
                 .context("Failed to delete local branch")?;
@@ -258,7 +321,7 @@ pub fn cleanup(
             info!(branch = branch_name, "cleanup:local branch deleted");
         }
 
-        // 4. Best-effort deletion of the trash directory.
+        // 5. Best-effort deletion of the trash directory.
         // If the shell is inside this directory, remove_dir_all on the root might fail
         // immediately. Clearing children first ensures we reclaim the space.
         if let Some(tp) = trash_path {
@@ -394,6 +457,10 @@ pub fn cleanup(
             );
             let trash_path = parent.join(&trash_name);
 
+            // Resolve the admin dir before the worktree is renamed.
+            let worktree_admin_dir =
+                resolve_worktree_admin_dir(worktree_path, &context.git_common_dir);
+
             result.deferred_cleanup = Some(DeferredCleanup {
                 worktree_path: worktree_path.to_path_buf(),
                 trash_path,
@@ -402,6 +469,7 @@ pub fn cleanup(
                 keep_branch,
                 force,
                 git_common_dir: context.git_common_dir.clone(),
+                worktree_admin_dir,
             });
             debug!(
                 worktree = %worktree_path.display(),
@@ -488,10 +556,11 @@ pub fn cleanup(
 ///
 /// Generates a semicolon-separated sequence of shell commands that:
 /// 1. Renames the worktree directory to a trash path (frees the original path)
-/// 2. Prunes git worktree metadata
-/// 3. Deletes the local branch (unless `keep_branch` is set)
-/// 4. Removes workmux worktree metadata from git config
-/// 5. Deletes the trash directory
+/// 2. Removes any worktree lock (so prune can clean up the metadata)
+/// 3. Prunes git worktree metadata
+/// 4. Deletes the local branch (unless `keep_branch` is set)
+/// 5. Removes workmux worktree metadata from git config
+/// 6. Deletes the trash directory
 ///
 /// The returned string starts with "; " so it can be appended to other commands.
 fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
@@ -502,9 +571,16 @@ fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
     let mut cmds = Vec::new();
     // 1. Rename worktree to trash
     cmds.push(format!("mv {} {} >/dev/null 2>&1", wt, trash));
-    // 2. Prune git worktrees
+    // 2. Remove worktree lock if present (git worktree prune skips locked entries)
+    if let Some(ref admin_dir) = dc.worktree_admin_dir
+        && admin_dir.is_absolute()
+    {
+        let locked = shell_quote(&admin_dir.join("locked").to_string_lossy());
+        cmds.push(format!("rm -f {} >/dev/null 2>&1", locked));
+    }
+    // 3. Prune git worktrees
     cmds.push(format!("git -C {} worktree prune >/dev/null 2>&1", git_dir));
-    // 3. Delete branch (if not keeping)
+    // 4. Delete branch (if not keeping)
     if !dc.keep_branch {
         let branch = shell_quote(&dc.branch_name);
         let force_flag = if dc.force { "-D" } else { "-d" };
@@ -513,13 +589,13 @@ fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
             git_dir, force_flag, branch
         ));
     }
-    // 4. Remove worktree metadata from git config
+    // 5. Remove worktree metadata from git config
     let handle = shell_quote(&dc.handle);
     cmds.push(format!(
         "git -C {} config --local --remove-section workmux.worktree.{} >/dev/null 2>&1",
         git_dir, handle
     ));
-    // 5. Delete trash
+    // 6. Delete trash
     cmds.push(format!("rm -rf {} >/dev/null 2>&1", trash));
 
     format!("; {}", cmds.join("; "))
@@ -738,6 +814,7 @@ mod tests {
             keep_branch,
             force,
             git_common_dir: PathBuf::from(git_dir),
+            worktree_admin_dir: None,
         }
     }
 
@@ -919,6 +996,56 @@ mod tests {
         assert!(
             script.contains("mv /repo/worktrees/feature-branch /repo/worktrees/.trash_feature"),
             "Simple paths should not be quoted: {script}"
+        );
+    }
+
+    #[test]
+    fn deferred_cleanup_script_removes_lock_when_admin_dir_set() {
+        let mut dc = make_deferred_cleanup(
+            "/repo/worktrees/feature",
+            "/repo/worktrees/.trash",
+            "feature",
+            "feature",
+            "/repo/.git",
+            false,
+            false,
+        );
+        dc.worktree_admin_dir = Some(PathBuf::from("/repo/.git/worktrees/feature"));
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            script.contains("rm -f /repo/.git/worktrees/feature/locked"),
+            "Should remove lock file when admin dir is set: {script}"
+        );
+
+        // Lock removal should happen after mv but before prune
+        let mv_pos = script.find("mv ").unwrap();
+        let lock_pos = script
+            .find("rm -f /repo/.git/worktrees/feature/locked")
+            .unwrap();
+        let prune_pos = script.find("worktree prune").unwrap();
+        assert!(mv_pos < lock_pos, "lock removal should follow mv");
+        assert!(lock_pos < prune_pos, "lock removal should precede prune");
+    }
+
+    #[test]
+    fn deferred_cleanup_script_no_lock_step_without_admin_dir() {
+        let dc = make_deferred_cleanup(
+            "/repo/worktrees/feature",
+            "/repo/worktrees/.trash",
+            "feature",
+            "feature",
+            "/repo/.git",
+            false,
+            false,
+        );
+
+        let script = build_deferred_cleanup_script(&dc);
+
+        assert!(
+            !script.contains("/locked"),
+            "Should not have lock removal without admin dir: {script}"
         );
     }
 }

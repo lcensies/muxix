@@ -48,6 +48,9 @@ pub struct DeferredCleanup {
     pub keep_branch: bool,
     pub force: bool,
     pub git_common_dir: PathBuf,
+    /// Path to the git worktree admin directory (e.g., $GIT_COMMON_DIR/worktrees/<name>/).
+    /// Used to remove lock files before pruning, since `git worktree prune` skips locked entries.
+    pub worktree_admin_dir: Option<PathBuf>,
 }
 
 /// Result of cleanup operations
