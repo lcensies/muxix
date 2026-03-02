@@ -22,6 +22,8 @@ description: Release notes and version history for workmux
 - Branch name generation now automatically uses your configured AI agent
   (Claude, Gemini, Codex, or OpenCode) instead of requiring the `llm` CLI to be
   installed ([#68](https://github.com/raine/workmux/pull/68))
+  - **Note**: This is a breaking change. If you were previously using `llm` to
+    generate branch names. Add `auto_name.command: 'llm'` to your global config.
 - New `auto_name.command` config option lets you specify a custom command for
   branch name generation
 - `workmux rm` no longer fails with "cannot delete branch used by worktree" when
