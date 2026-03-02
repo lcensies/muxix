@@ -40,10 +40,26 @@ fn generate_branch_name_with_spinner(
         .auto_name
         .as_ref()
         .and_then(|c| c.system_prompt.as_deref());
-    let command = config.auto_name.as_ref().and_then(|c| c.command.as_deref());
 
-    let generated = spinner::with_spinner("Generating branch name", || {
-        crate::llm::generate_branch_name(prompt_text, model, system_prompt, command)
+    // Resolve effective command: explicit config > agent profile > None (llm fallback)
+    let config_command = config
+        .auto_name
+        .as_ref()
+        .and_then(|c| c.command.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let profile_command =
+        crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).auto_name_command();
+    let effective_command = config_command.or(profile_command);
+
+    // Extract program name from effective command for spinner message
+    let program_name = effective_command
+        .and_then(|cmd| cmd.split_whitespace().next())
+        .unwrap_or("llm");
+    let spinner_msg = format!("Generating branch name with {}", program_name);
+
+    let generated = spinner::with_spinner(&spinner_msg, || {
+        crate::llm::generate_branch_name(prompt_text, model, system_prompt, effective_command)
     })?;
     println!("  Branch: {}", generated);
 

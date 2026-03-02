@@ -202,18 +202,26 @@ Configure LLM-based branch name generation for the `--auto-name` (`-A`) flag:
 
 ```yaml
 auto_name:
-  command: "claude -p" # Use a custom command instead of llm
+  command: "claude -p" # Use a custom command instead of the inferred default
   model: "gemini-2.5-flash-lite"
   background: true
   system_prompt: "Generate a kebab-case git branch name."
 ```
 
-| Option          | Description                                                      | Default         |
-| --------------- | ---------------------------------------------------------------- | --------------- |
-| `command`       | Custom command for branch name generation (overrides `llm`)      | Uses `llm` CLI  |
-| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default |
-| `background`    | Always run in background when using `--auto-name`                | `false`         |
-| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt |
+The command used for branch name generation is resolved in this order:
+
+1. `auto_name.command` is set: uses that command as-is
+2. `agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`): uses the agent's CLI with a fast/cheap model automatically
+3. Neither: falls back to the `llm` CLI (requires installation)
+
+To override back to `llm` when an agent is configured, set `auto_name.command: "llm"`.
+
+| Option          | Description                                                      | Default                    |
+| --------------- | ---------------------------------------------------------------- | -------------------------- |
+| `command`       | Command for branch name generation (overrides agent profile)     | Agent profile or `llm` CLI |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default            |
+| `background`    | Always run in background when using `--auto-name`                | `false`                    |
+| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt            |
 
 See [`workmux add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
 

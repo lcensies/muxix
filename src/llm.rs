@@ -30,8 +30,8 @@ fn run_generator_command(
     full_prompt: &str,
 ) -> Result<String> {
     match command.map(str::trim).filter(|s| !s.is_empty()) {
+        Some("llm") | None => run_llm_command(model, full_prompt),
         Some(cmdline) => run_custom_command(cmdline, full_prompt),
-        None => run_llm_command(model, full_prompt),
     }
 }
 
@@ -52,19 +52,32 @@ fn run_custom_command(cmdline: &str, full_prompt: &str) -> Result<String> {
 
     tracing::debug!("Running custom generator: {} {:?}", program, fixed_args);
 
-    let output = Command::new(program)
+    let mut child = Command::new(program)
         .args(fixed_args)
-        .arg(full_prompt)
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("Failed to execute custom command '{}'", program))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(full_prompt.as_bytes())?;
+    }
+
+    let output = child.wait_with_output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let msg = if stderr.trim().is_empty() {
+            String::from_utf8_lossy(&output.stdout)
+        } else {
+            stderr
+        };
         anyhow::bail!(
             "Custom command '{}' failed (exit code {}):\n{}",
             program,
             output.status.code().unwrap_or(1),
-            stderr.trim()
+            msg.trim()
         );
     }
 
@@ -174,6 +187,29 @@ mod tests {
             "Error should mention the custom command: {}",
             err
         );
+    }
+
+    #[test]
+    fn run_generator_routes_bare_llm_to_llm_command() {
+        // "llm" as the command string should route to run_llm_command (stdin-based path),
+        // not run_custom_command. Both will fail if llm isn't installed, but the error
+        // message differs: run_custom_command appends the prompt as an arg, while
+        // run_llm_command uses stdin and mentions "llm" in its error.
+        let result = run_generator_command(Some("llm"), Some("model"), "prompt");
+        // Either llm is installed (ok) or it fails with the llm-specific error.
+        // The key assertion: it must NOT treat "llm" as a custom command (which would
+        // call `llm prompt` with prompt as an argument, producing a different error).
+        if let Err(e) = result {
+            let err = e.to_string();
+            // run_llm_command produces "Failed to run 'llm' command" or "llm command failed"
+            assert!(err.contains("llm"), "Error should mention llm: {}", err);
+            // run_custom_command would produce "Failed to execute custom command"
+            assert!(
+                !err.contains("Failed to execute custom command"),
+                "Should not be routed to run_custom_command: {}",
+                err
+            );
+        }
     }
 
     #[test]

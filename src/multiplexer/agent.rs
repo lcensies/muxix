@@ -43,6 +43,14 @@ pub trait AgentProfile: Send + Sync {
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("-- \"$(cat {})\"", prompt_path)
     }
+
+    /// Default command for auto-naming branches with this agent's CLI.
+    ///
+    /// Returns a fast/cheap command string suitable for branch name generation,
+    /// or `None` if this profile has no known auto-name command.
+    fn auto_name_command(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 // === Built-in Profiles ===
@@ -65,6 +73,10 @@ impl AgentProfile for ClaudeProfile {
     fn skip_permissions_flag(&self) -> Option<&'static str> {
         Some("--dangerously-skip-permissions")
     }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("claude --model haiku -p")
+    }
 }
 
 pub struct GeminiProfile;
@@ -80,6 +92,10 @@ impl AgentProfile for GeminiProfile {
 
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("-i \"$(cat {})\"", prompt_path)
+    }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("gemini -m gemini-2.5-flash-lite -p")
     }
 }
 
@@ -97,6 +113,10 @@ impl AgentProfile for OpenCodeProfile {
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("--prompt \"$(cat {})\"", prompt_path)
     }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("opencode run")
+    }
 }
 
 pub struct CodexProfile;
@@ -108,6 +128,10 @@ impl AgentProfile for CodexProfile {
 
     fn skip_permissions_flag(&self) -> Option<&'static str> {
         Some("--yolo")
+    }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some(r#"codex exec --config model_reasoning_effort="low" -m gpt-5.1-codex-mini"#)
     }
 }
 
@@ -195,6 +219,7 @@ mod tests {
             profile.skip_permissions_flag(),
             Some("--dangerously-skip-permissions")
         );
+        assert_eq!(profile.auto_name_command(), Some("claude --model haiku -p"));
     }
 
     #[test]
@@ -208,6 +233,10 @@ mod tests {
             "-i \"$(cat PROMPT.md)\""
         );
         assert_eq!(profile.skip_permissions_flag(), Some("--yolo"));
+        assert_eq!(
+            profile.auto_name_command(),
+            Some("gemini -m gemini-2.5-flash-lite -p")
+        );
     }
 
     #[test]
@@ -220,6 +249,7 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "--prompt \"$(cat PROMPT.md)\""
         );
+        assert_eq!(profile.auto_name_command(), Some("opencode run"));
     }
 
     #[test]
@@ -233,6 +263,10 @@ mod tests {
             "-- \"$(cat PROMPT.md)\""
         );
         assert_eq!(profile.skip_permissions_flag(), Some("--yolo"));
+        assert_eq!(
+            profile.auto_name_command(),
+            Some(r#"codex exec --config model_reasoning_effort="low" -m gpt-5.1-codex-mini"#)
+        );
     }
 
     #[test]
@@ -245,6 +279,7 @@ mod tests {
             profile.prompt_argument("PROMPT.md"),
             "-- \"$(cat PROMPT.md)\""
         );
+        assert_eq!(profile.auto_name_command(), None);
     }
 
     // === resolve_profile tests ===

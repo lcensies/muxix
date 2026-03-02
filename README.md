@@ -674,8 +674,11 @@ your project configuration for each task.
 #### Automatic branch name generation
 
 The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
-LLM. By default it uses the [`llm`](https://llm.datasette.io/) CLI tool, but
-you can configure any command via `auto_name.command`.
+LLM. The tool used depends on your configuration:
+
+1. `auto_name.command` is set: uses that command as-is
+2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`): uses the agent's CLI with a fast/cheap model
+3. Neither: falls back to the [`llm`](https://llm.datasette.io/) CLI tool
 
 ##### Usage
 
@@ -692,7 +695,12 @@ workmux add -A -P task-spec.md
 
 ##### Requirements
 
-By default, workmux uses the `llm` CLI tool:
+When `agent` is configured (e.g., `agent: claude`), workmux automatically uses
+that agent's CLI for branch naming. No additional setup is required beyond
+having the agent installed.
+
+If no agent is configured and no `auto_name.command` is set, workmux uses the
+`llm` CLI tool:
 
 ```bash
 pipx install llm
@@ -707,6 +715,20 @@ llm install llm-ollama
 ```
 
 If you set `auto_name.command`, `llm` is not required.
+
+##### Agent profile defaults
+
+When an agent is configured, these commands are used automatically:
+
+| Agent      | Auto-name command                                                        |
+| ---------- | ------------------------------------------------------------------------ |
+| `claude`   | `claude --model haiku -p`                                                |
+| `gemini`   | `gemini -m gemini-2.5-flash-lite -p`                                     |
+| `codex`    | `codex exec --config model_reasoning_effort="low" -m gpt-5.1-codex-mini` |
+| `opencode` | `opencode run`                                                           |
+
+To override back to `llm` when an agent is configured, set
+`auto_name.command: "llm"`.
 
 ##### Configuration
 
@@ -735,21 +757,24 @@ auto_name:
     Output ONLY the branch name, nothing else.
 ```
 
-To use a different tool instead of `llm`, set `auto_name.command`. The command
-string is split into program and arguments, and the composed prompt is appended
-as the final argument.
+To use a specific tool, set `auto_name.command`. The command string is split
+into program and arguments, and the composed prompt is piped via stdin.
 
 ```yaml
 auto_name:
   command: 'claude -p'
+
+# Force llm even when an agent is configured
+auto_name:
+  command: 'llm'
 ```
 
-| Option          | Description                                                      | Default         |
-| --------------- | ---------------------------------------------------------------- | --------------- |
-| `command`       | Custom command for branch name generation (overrides `llm`)      | Uses `llm` CLI  |
-| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default |
-| `background`    | Always run in background when using `--auto-name`                | `false`         |
-| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt |
+| Option          | Description                                                        | Default                    |
+| --------------- | ------------------------------------------------------------------ | -------------------------- |
+| `command`       | Command for branch name generation (overrides agent profile)       | Agent profile or `llm` CLI |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set)  | `llm`'s default            |
+| `background`    | Always run in background when using `--auto-name`                  | `false`                    |
+| `system_prompt` | Custom system prompt for branch name generation                    | Built-in prompt            |
 
 Recommended models for fast, cheap branch name generation (with `llm`):
 
