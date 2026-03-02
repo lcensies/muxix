@@ -17,6 +17,23 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.129 (2026-03-02)
+
+- Branch name generation now automatically uses your configured AI agent
+  (Claude, Gemini, Codex, or OpenCode) instead of requiring the `llm` CLI to be
+  installed ([#68](https://github.com/raine/workmux/pull/68))
+- New `auto_name.command` config option lets you specify a custom command for
+  branch name generation
+- `workmux rm` no longer fails with "cannot delete branch used by worktree" when
+  a previous `workmux add` was interrupted mid-creation
+- Fixed zsh completions not working when installed via fpath autoloading
+  ([#65](https://github.com/raine/workmux/pull/65))
+- Fixed zsh tab completion suggesting file paths for commands that only accept
+  worktree handles or branch names
+  ([#65](https://github.com/raine/workmux/pull/65))
+- Fixed phantom whitespace appearing in zsh completions when no candidates exist
+  ([#65](https://github.com/raine/workmux/pull/65))
+
 ## v0.1.128 (2026-03-01)
 
 - Dashboard now renders colored status icons correctly instead of showing raw
