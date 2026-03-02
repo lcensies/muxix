@@ -202,16 +202,18 @@ Configure LLM-based branch name generation for the `--auto-name` (`-A`) flag:
 
 ```yaml
 auto_name:
+  command: "claude -p" # Use a custom command instead of llm
   model: "gemini-2.5-flash-lite"
   background: true
   system_prompt: "Generate a kebab-case git branch name."
 ```
 
-| Option          | Description                                       | Default         |
-| --------------- | ------------------------------------------------- | --------------- |
-| `model`         | LLM model to use with the `llm` CLI               | `llm`'s default |
-| `background`    | Always run in background when using `--auto-name` | `false`         |
-| `system_prompt` | Custom system prompt for branch name generation   | Built-in prompt |
+| Option          | Description                                                      | Default         |
+| --------------- | ---------------------------------------------------------------- | --------------- |
+| `command`       | Custom command for branch name generation (overrides `llm`)      | Uses `llm` CLI  |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default |
+| `background`    | Always run in background when using `--auto-name`                | `false`         |
+| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt |
 
 See [`workmux add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
 

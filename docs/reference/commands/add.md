@@ -164,7 +164,7 @@ This means you can launch AI agents with task-specific prompts without modifying
 
 ## Automatic branch name generation
 
-The `--auto-name` (`-A`) flag generates a branch name from your prompt using an LLM via the [`llm`](https://llm.datasette.io/) CLI tool.
+The `--auto-name` (`-A`) flag generates a branch name from your prompt using an LLM. By default it uses the [`llm`](https://llm.datasette.io/) CLI tool, but you can configure any command via `auto_name.command`.
 
 ### Usage
 
@@ -181,7 +181,7 @@ workmux add -A -P task-spec.md
 
 ### Requirements
 
-Install the `llm` CLI tool:
+By default, workmux uses the `llm` CLI tool:
 
 ```bash
 pipx install llm
@@ -194,6 +194,8 @@ llm keys set openai
 # Or use a local model
 llm install llm-ollama
 ```
+
+If you set `auto_name.command`, `llm` is not required. Any tool that accepts a prompt and outputs a branch name will work.
 
 ### Configuration
 
@@ -222,13 +224,34 @@ auto_name:
     Output ONLY the branch name, nothing else.
 ```
 
-| Option          | Description                                       | Default         |
-| --------------- | ------------------------------------------------- | --------------- |
-| `model`         | LLM model to use with the `llm` CLI               | `llm`'s default |
-| `background`    | Always run in background when using `--auto-name` | `false`         |
-| `system_prompt` | Custom system prompt for branch name generation   | Built-in prompt |
+#### Using a custom command
 
-Recommended models for fast, cheap branch name generation:
+Set `auto_name.command` to use a different tool instead of `llm`. The command string is split into program and arguments, and the composed prompt (system prompt + user input) is appended as the final argument.
+
+```yaml
+# Use Claude CLI
+auto_name:
+  command: "claude -p"
+
+# Use Gemini CLI
+auto_name:
+  command: "gemini"
+
+# Use a custom script
+auto_name:
+  command: "/path/to/my-script --format branch-name"
+```
+
+When `command` is set, the `model` option is ignored since it is specific to the `llm` CLI.
+
+| Option          | Description                                                      | Default         |
+| --------------- | ---------------------------------------------------------------- | --------------- |
+| `command`       | Custom command for branch name generation (overrides `llm`)      | Uses `llm` CLI  |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default |
+| `background`    | Always run in background when using `--auto-name`                | `false`         |
+| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt |
+
+Recommended models for fast, cheap branch name generation (with `llm`):
 
 - `gemini-2.5-flash-lite` (recommended)
 - `gpt-5-nano`

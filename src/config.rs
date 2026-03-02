@@ -52,8 +52,14 @@ impl StatusIcons {
 /// Configuration for LLM-based branch name generation
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct AutoNameConfig {
+    /// Custom command to use instead of `llm` for branch name generation.
+    /// The command string is split into program and arguments (e.g., "claude -p").
+    /// The composed prompt is appended as the final argument at execution time.
+    /// When set, `model` is ignored.
+    pub command: Option<String>,
+
     /// Model to use with llm CLI (e.g., "gpt-4o-mini", "claude-3-5-sonnet").
-    /// If not set, uses llm's default model.
+    /// If not set, uses llm's default model. Ignored when `command` is set.
     pub model: Option<String>,
 
     /// Custom system prompt for branch name generation.

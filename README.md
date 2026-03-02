@@ -674,7 +674,8 @@ your project configuration for each task.
 #### Automatic branch name generation
 
 The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
-LLM via the [`llm`](https://llm.datasette.io/) CLI tool.
+LLM. By default it uses the [`llm`](https://llm.datasette.io/) CLI tool, but
+you can configure any command via `auto_name.command`.
 
 ##### Usage
 
@@ -691,7 +692,7 @@ workmux add -A -P task-spec.md
 
 ##### Requirements
 
-Install the `llm` CLI tool:
+By default, workmux uses the `llm` CLI tool:
 
 ```bash
 pipx install llm
@@ -704,6 +705,8 @@ llm keys set openai
 # Or use a local model
 llm install llm-ollama
 ```
+
+If you set `auto_name.command`, `llm` is not required.
 
 ##### Configuration
 
@@ -732,13 +735,23 @@ auto_name:
     Output ONLY the branch name, nothing else.
 ```
 
-| Option          | Description                                       | Default         |
-| --------------- | ------------------------------------------------- | --------------- |
-| `model`         | LLM model to use with the `llm` CLI               | `llm`'s default |
-| `background`    | Always run in background when using `--auto-name` | `false`         |
-| `system_prompt` | Custom system prompt for branch name generation   | Built-in prompt |
+To use a different tool instead of `llm`, set `auto_name.command`. The command
+string is split into program and arguments, and the composed prompt is appended
+as the final argument.
 
-Recommended models for fast, cheap branch name generation:
+```yaml
+auto_name:
+  command: 'claude -p'
+```
+
+| Option          | Description                                                      | Default         |
+| --------------- | ---------------------------------------------------------------- | --------------- |
+| `command`       | Custom command for branch name generation (overrides `llm`)      | Uses `llm` CLI  |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default |
+| `background`    | Always run in background when using `--auto-name`                | `false`         |
+| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt |
+
+Recommended models for fast, cheap branch name generation (with `llm`):
 
 - `gemini-2.5-flash-lite` (recommended)
 - `gpt-5-nano`

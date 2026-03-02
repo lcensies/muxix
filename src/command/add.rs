@@ -40,9 +40,10 @@ fn generate_branch_name_with_spinner(
         .auto_name
         .as_ref()
         .and_then(|c| c.system_prompt.as_deref());
+    let command = config.auto_name.as_ref().and_then(|c| c.command.as_deref());
 
     let generated = spinner::with_spinner("Generating branch name", || {
-        crate::llm::generate_branch_name(prompt_text, model, system_prompt)
+        crate::llm::generate_branch_name(prompt_text, model, system_prompt, command)
     })?;
     println!("  Branch: {}", generated);
 
