@@ -24,11 +24,11 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
-**Philosophy:** Do one thing well, then compose. Your terminal handles windowing
-and layout, git handles branches and worktrees, your agent executes, and workmux
-ties it all together.
-
-<sup><sub>\* Also supports <a href="https://workmux.raine.dev/guide/kitty">kitty</a>, <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and <a href="https://workmux.raine.dev/guide/zellij">Zellij</a> as alternative backends.</sub></sup>
+<sup><sub>\* Also supports
+<a href="https://workmux.raine.dev/guide/kitty">kitty</a>,
+<a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and
+<a href="https://workmux.raine.dev/guide/zellij">Zellij</a> as alternative
+backends.</sub></sup>
 
 📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
 configuration reference.
@@ -38,7 +38,7 @@ configuration reference.
 quick overview.
 
 🚀 **Using Claude Code?** Try the
-[`/worktree` command](#delegating-tasks-with-a-custom-command) to delegate tasks
+[`/worktree` skill](#delegating-tasks-with-worktree) to delegate tasks
 from your conversation.
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
@@ -60,8 +60,12 @@ install commands on creation. Configure once, reuse everywhere.
 branch, delete the worktree, close the tmux window, remove the local branch.
 
 **Terminal workflow.** Build on your familiar terminal setup instead of yet
-another agentic GUI that won't exist next year. If you don't have one yet,
-tmux is worth picking up.
+another agentic GUI that won't exist next year. If you don't have one yet, tmux
+is worth picking up.
+
+**Philosophy:** Do one thing well, then compose. Your terminal handles windowing
+and layout, git handles branches and worktrees, your agent executes, and workmux
+ties it all together.
 
 New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
@@ -72,8 +76,8 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
   one command (`merge`)
 - [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
   sending commands
-- [Delegate tasks to worktree agents](#delegating-tasks-with-a-custom-command)
-  with a `/worktree` slash command
+- [Delegate tasks to worktree agents](#delegating-tasks-with-worktree)
+  with the `/worktree` skill
 - [Display Claude agent status in tmux window names](#agent-status-tracking)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
@@ -300,8 +304,8 @@ Each pane supports:
 
 ##### Agent placeholders
 
-- `<agent>`: resolves to the configured agent (from `agent` config or
-  `--agent` flag)
+- `<agent>`: resolves to the configured agent (from `agent` config or `--agent`
+  flag)
 
 Built-in agents (`claude`, `gemini`, `codex`, `opencode`) are auto-detected when
 used as literal commands and receive prompt injection automatically, without
@@ -677,7 +681,8 @@ The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
 LLM. The tool used depends on your configuration:
 
 1. `auto_name.command` is set: uses that command as-is
-2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`): uses the agent's CLI with a fast/cheap model
+2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`):
+   uses the agent's CLI with a fast/cheap model
 3. Neither: falls back to the [`llm`](https://llm.datasette.io/) CLI tool
 
 ##### Usage
@@ -769,12 +774,12 @@ auto_name:
   command: 'llm'
 ```
 
-| Option          | Description                                                        | Default                    |
-| --------------- | ------------------------------------------------------------------ | -------------------------- |
-| `command`       | Command for branch name generation (overrides agent profile)       | Agent profile or `llm` CLI |
-| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set)  | `llm`'s default            |
-| `background`    | Always run in background when using `--auto-name`                  | `false`                    |
-| `system_prompt` | Custom system prompt for branch name generation                    | Built-in prompt            |
+| Option          | Description                                                      | Default                    |
+| --------------- | ---------------------------------------------------------------- | -------------------------- |
+| `command`       | Command for branch name generation (overrides agent profile)     | Agent profile or `llm` CLI |
+| `model`         | LLM model to use with the `llm` CLI (ignored when `command` set) | `llm`'s default            |
+| `background`    | Always run in background when using `--auto-name`                | `false`                    |
+| `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt            |
 
 Recommended models for fast, cheap branch name generation (with `llm`):
 
@@ -1566,8 +1571,7 @@ at-a-glance visibility into what the agent in each window doing.
 
 **Note**: Currently Claude Code, [OpenCode](https://opencode.ai/), and
 [Copilot CLI](https://github.com/github/copilot-cli) support hooks that enable
-this functionality.
-Gemini's support is
+this functionality. Gemini's support is
 [on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex
 support can be tracked in
 [this issue](https://github.com/openai/codex/issues/2109).
@@ -1689,9 +1693,8 @@ Then press `prefix + Tab` to toggle between your two most recent agents.
 workmux can run agents inside containers (Docker/Podman/Apple Container) or Lima
 VMs, isolating them from your host. Agents are restricted to the project
 worktree; sensitive files like SSH keys, AWS credentials, and other secrets are
-not accessible. This
-lets you run agents with `--dangerously-skip-permissions` without worrying about
-what they might touch on your host.
+not accessible. This lets you run agents with `--dangerously-skip-permissions`
+without worrying about what they might touch on your host.
 
 Sandboxing is transparent: status indicators, the dashboard, spawning new
 agents, and merging all continue to work normally across the sandbox boundary.
@@ -2192,49 +2195,17 @@ alias:
 alias claude="claude --dangerously-skip-permissions"
 ```
 
-### Delegating tasks with a custom command
+### Delegating tasks with `/worktree`
 
-📝 **See [this blog post][delegating-post]** for a detailed walkthrough of the
-workflow.
+The `/worktree` [skill](https://workmux.raine.dev/guide/skills) lets you
+delegate tasks to parallel worktree agents directly from your conversation. A
+main agent on the main branch can act as a coordinator: planning work and
+spinning up worktree agents for each task.
 
-A Claude Code [custom slash command][custom slash commands] can streamline task
-delegation to worktree agents. Save this as `~/.claude/commands/worktree.md`:
+📝 **See [this blog post](https://raine.dev/blog/git-worktrees-parallel-agents/)**
+for a detailed walkthrough of the workflow.
 
-```markdown
-Launch one or more tasks in new git worktrees using workmux.
-
-Tasks: $ARGUMENTS
-
-## Instructions
-
-Note: The tasks above may reference something discussed earlier in the
-conversation (e.g., "do option 2", "implement the fix we discussed"). Include
-all relevant context from the conversation in each prompt you write.
-
-If tasks reference a markdown file (e.g., a plan or spec), re-read the file to
-ensure you have the latest version before writing prompts.
-
-For each task:
-
-1. Generate a short, descriptive worktree name (2-4 words, kebab-case)
-2. Write a detailed implementation prompt to a temp file
-3. Run `workmux add <worktree-name> -b -P <temp-file>` to create the worktree
-
-The prompt file should:
-
-- Include the full task description
-- Use RELATIVE paths only (never absolute paths, since each worktree has its own
-  root directory)
-- Be specific about what the agent should accomplish
-
-## Workflow
-
-Write ALL temp files first, THEN run all workmux commands in parallel.
-
-After creating the worktrees, inform the user which branches were created.
-```
-
-Usage:
+#### Usage
 
 ```
 > /worktree Implement user authentication
@@ -2242,9 +2213,8 @@ Usage:
 > /worktree Add dark mode, Implement caching  # multiple tasks
 ```
 
-[custom slash commands]:
-  https://docs.anthropic.com/en/docs/claude-code/tutorials/custom-slash-commands
-[delegating-post]: https://raine.dev/blog/git-worktrees-parallel-agents/
+See the [Skills guide](https://workmux.raine.dev/guide/skills) for more skills
+including `/merge`, `/rebase`, `/coordinator`, and `/open-pr`.
 
 ## Shell completions
 
@@ -2290,10 +2260,9 @@ alternative terminal multiplexers:
   users who prefer Zellij. Detected automatically via `$ZELLIJ`.
 
 workmux auto-detects the backend from environment variables (`$TMUX`,
-`$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`).
-Session-specific variables are checked first, so running tmux inside kitty
-correctly selects the tmux backend. Set `$WORKMUX_BACKEND` to override
-detection.
+`$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`). Session-specific variables
+are checked first, so running tmux inside kitty correctly selects the tmux
+backend. Set `$WORKMUX_BACKEND` to override detection.
 
 ## Inspiration and related tools
 
