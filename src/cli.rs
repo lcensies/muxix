@@ -750,7 +750,7 @@ fn generate_completions(shell: Shell) {
     match shell {
         Shell::Zsh => {
             let base = prepare_zsh_base(&base_script, &name);
-            print!("{base}\n");
+            println!("{base}");
             print_zsh_dynamic_completion();
         }
         _ => {
@@ -944,17 +944,12 @@ mod tests {
         // The dynamic wrapper's case branches for handle commands should
         // call _workmux_handles, not _workmux_base (which has _default).
         // Extract the case block from the wrapper.
-        let wrapper_start = output
-            .find("\n_workmux()")
-            .expect("_workmux() not found");
+        let wrapper_start = output.find("\n_workmux()").expect("_workmux() not found");
         let wrapper = &output[wrapper_start..];
 
         // The handle commands should appear in the case pattern
         for cmd in ["open", "remove", "close", "merge"] {
-            assert!(
-                wrapper.contains(cmd),
-                "Wrapper should handle {cmd}"
-            );
+            assert!(wrapper.contains(cmd), "Wrapper should handle {cmd}");
         }
         assert!(
             wrapper.contains("_workmux_handles"),

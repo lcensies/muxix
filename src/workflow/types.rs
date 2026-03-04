@@ -14,6 +14,8 @@ pub struct CreateArgs<'a> {
     pub prompt: Option<&'a Prompt>,
     pub options: SetupOptions,
     pub agent: Option<&'a str>,
+    /// True if the handle was explicitly set via --name (skip auto-suffix on collision)
+    pub is_explicit_name: bool,
 }
 
 /// Result of creating a worktree
@@ -24,6 +26,8 @@ pub struct CreateResult {
     pub base_branch: Option<String>,
     /// True if we switched to an existing window instead of creating a new one
     pub did_switch: bool,
+    /// The actual handle used (may differ from requested if auto-suffixed for cross-repo collision)
+    pub resolved_handle: String,
 }
 
 /// Result of merging a worktree

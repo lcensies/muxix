@@ -45,6 +45,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         prompt,
         options,
         agent,
+        is_explicit_name,
     } = args;
 
     info!(
@@ -87,8 +88,53 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Check if worktree or target (window/session) already exists
     let target = MuxHandle::new(context.mux.as_ref(), options.mode, &context.prefix, handle);
     let full_target_name = target.full_name();
-    let target_exists = target.exists()?;
+    let mut target_exists = target.exists()?;
     let worktree_exists = git::worktree_exists(branch_name)?;
+
+    // Detect cross-repo collision: mux target exists but local worktree does not.
+    // This means the target belongs to a different repository. Auto-suffix with the
+    // project directory name to avoid the collision. We use a non-numeric suffix so
+    // cleanup's `find_matching_windows` regex (base(-\d+)?) won't confuse it with
+    // `open --new` duplicates.
+    let mut current_handle = handle.to_string();
+    if target_exists && !worktree_exists && !is_explicit_name {
+        let project_name = context
+            .main_worktree_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("repo");
+        let mut project_slug = slug::slugify(project_name);
+        // Guard against empty slugs (e.g., project dir "___") and purely numeric
+        // slugs (e.g., "123") which would match cleanup's `base(-\d+)?` regex and
+        // cause `wm rm` in one repo to kill the other repo's window.
+        if project_slug.is_empty() || project_slug.chars().all(|c| c.is_ascii_digit()) {
+            project_slug = format!(
+                "repo-{}",
+                if project_slug.is_empty() {
+                    "unnamed"
+                } else {
+                    &project_slug
+                }
+            );
+        }
+        current_handle = format!("{}-{}", handle, project_slug);
+
+        let suffixed_target = MuxHandle::new(
+            context.mux.as_ref(),
+            options.mode,
+            &context.prefix,
+            &current_handle,
+        );
+
+        eprintln!(
+            "workmux: {} '{}' exists in another repository, using '{}'",
+            target.kind(),
+            full_target_name,
+            suffixed_target.full_name()
+        );
+
+        target_exists = suffixed_target.exists()?;
+    }
 
     // If open_if_exists is set and either exists, delegate to open workflow
     if options.open_if_exists && (target_exists || worktree_exists) {
@@ -121,10 +167,17 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Check target using handle (the display name)
     if target_exists {
         return Err(anyhow!(
-            "A {} {} named '{}' already exists",
+            "A {} {} named '{}' already exists.\n\
+             Hint: use --name to specify a unique name.",
             context.mux.name(),
             target.kind(),
-            full_target_name
+            MuxHandle::new(
+                context.mux.as_ref(),
+                options.mode,
+                &context.prefix,
+                &current_handle,
+            )
+            .full_name()
         ));
     }
 
@@ -223,8 +276,8 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             .ok_or_else(|| anyhow!("Could not determine parent directory"))?
             .join(format!("{}__worktrees", project_name))
     };
-    // Use handle for the worktree directory name (not branch_name)
-    let worktree_path = base_dir.join(handle);
+    // Use current_handle for the worktree directory name (may be suffixed for cross-repo collision)
+    let worktree_path = base_dir.join(&current_handle);
 
     // Check if path already exists (handle collision detection)
     if worktree_path.exists() {
@@ -303,10 +356,14 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Store the tmux mode in git config for cleanup operations
     // This allows remove/close/merge to know whether to kill a window or session
     if options.mode == MuxMode::Session {
-        git::set_worktree_meta(handle, "mode", "session")
-            .with_context(|| format!("Failed to store tmux mode for worktree '{}'", handle))?;
+        git::set_worktree_meta(&current_handle, "mode", "session").with_context(|| {
+            format!(
+                "Failed to store tmux mode for worktree '{}'",
+                current_handle
+            )
+        })?;
         debug!(
-            handle = handle,
+            handle = %current_handle,
             mode = "session",
             "create:stored tmux mode in git config"
         );
@@ -357,7 +414,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     let mut result = setup::setup_environment(
         context.mux.as_ref(),
         branch_name,
-        handle,
+        &current_handle,
         &worktree_path,
         &context.config,
         &options_with_prompt,
@@ -431,6 +488,7 @@ pub fn create_with_changes(
             prompt: None,
             options,
             agent: None,
+            is_explicit_name: false,
         },
     ) {
         Ok(result) => result,
@@ -470,7 +528,7 @@ pub fn create_with_changes(
             let cleanup_result = cleanup::cleanup(
                 context,
                 branch_name,
-                handle,
+                &create_result.resolved_handle,
                 &create_result.worktree_path,
                 true,  // force
                 false, // keep_branch
@@ -485,7 +543,7 @@ pub fn create_with_changes(
                 context.mux.as_ref(),
                 &context.prefix,
                 &context.main_branch,
-                handle,
+                &create_result.resolved_handle,
                 &cleanup_result,
                 mode,
             )?;

@@ -289,6 +289,7 @@ pub fn setup_environment(
         post_create_hooks_run: hooks_run,
         base_branch: None,
         did_switch: false,
+        resolved_handle: handle.to_string(),
     })
 }
 

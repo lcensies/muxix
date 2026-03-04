@@ -611,18 +611,6 @@ impl<'a> CreationPlan<'a> {
             // Create a WorkflowContext for this spec's config (reuse shared mux)
             let context = workflow::WorkflowContext::new(config, mux.clone(), config_location)?;
 
-            // Calculate window name for tracking
-            let full_window_name = prefixed(&context.prefix, &handle);
-
-            if self.wait {
-                created_targets.push(full_window_name.clone());
-            }
-
-            // Track for concurrency control
-            if self.max_concurrent.is_some() {
-                active_targets.push(full_window_name);
-            }
-
             let result = workflow::create(
                 &context,
                 workflow::CreateArgs {
@@ -633,6 +621,7 @@ impl<'a> CreationPlan<'a> {
                     prompt: prompt_for_spec.as_ref(),
                     options: self.options.clone(),
                     agent: spec.agent.as_deref(),
+                    is_explicit_name: self.explicit_name.is_some(),
                 },
             )
             .with_context(|| {
@@ -641,6 +630,18 @@ impl<'a> CreationPlan<'a> {
                     final_branch_name
                 )
             })?;
+
+            // Use resolved handle for tracking (may differ from original if auto-suffixed)
+            let full_window_name = prefixed(&context.prefix, &result.resolved_handle);
+
+            if self.wait {
+                created_targets.push(full_window_name.clone());
+            }
+
+            // Track for concurrency control
+            if self.max_concurrent.is_some() {
+                active_targets.push(full_window_name);
+            }
 
             if result.post_create_hooks_run > 0 {
                 println!("✓ Setup complete");
