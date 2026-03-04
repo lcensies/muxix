@@ -17,6 +17,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.130 (2026-03-04)
+
+- Window names are now automatically suffixed with the project directory name
+  when a name collision is detected across different repositories, avoiding
+  errors when multiple repos use the same worktree name. Explicit names set via
+  `--name` are not modified ([#70](https://github.com/raine/workmux/issue/70))
+
 ## v0.1.129 (2026-03-02)
 
 - Branch name generation now automatically uses your configured AI agent
