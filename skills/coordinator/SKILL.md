@@ -172,13 +172,10 @@ resolve handles across projects. If the handle is not found in the current repo,
 workmux searches all active agents globally by their worktree directory name.
 
 ```bash
-# These work from any project
-workmux status other-project-worktree
-workmux capture other-project-worktree
-workmux wait other-project-worktree
-workmux run other-project-worktree -- make test
+# Target an agent in another project (resolved globally)
+workmux send other-worktree "run the tests"
 
-# Use project:handle to disambiguate
+# Use project:handle to disambiguate when names collide
 workmux send myproject:feature-auth "check the edge cases"
 ```
 
