@@ -15,6 +15,7 @@ mod nerdfont;
 mod prompt;
 mod sandbox;
 mod shell;
+mod skills;
 mod spinner;
 mod state;
 mod template;

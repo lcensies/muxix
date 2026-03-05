@@ -114,6 +114,8 @@ pub fn install(agent: Agent) -> Result<String> {
 struct SetupState {
     #[serde(default)]
     declined: BTreeSet<Agent>,
+    #[serde(default)]
+    declined_skills: BTreeSet<Agent>,
 }
 
 fn setup_state_path() -> Result<PathBuf> {
@@ -151,6 +153,18 @@ fn mark_declined(agents: &[Agent]) -> Result<()> {
     let mut state = load_setup_state();
     for agent in agents {
         state.declined.insert(*agent);
+    }
+    save_setup_state(&state)
+}
+
+fn is_skill_declined(agent: Agent) -> bool {
+    load_setup_state().declined_skills.contains(&agent)
+}
+
+fn mark_skills_declined(agents: &[Agent]) -> Result<()> {
+    let mut state = load_setup_state();
+    for agent in agents {
+        state.declined_skills.insert(*agent);
     }
     save_setup_state(&state)
 }
@@ -229,48 +243,117 @@ pub fn prompt_wizard() -> Result<()> {
     }
 
     let checks = check_all();
-    let needs_setup: Vec<_> = checks
+    let needs_hooks: Vec<_> = checks
         .iter()
         .filter(|c| matches!(c.status, StatusCheck::NotInstalled))
         .filter(|c| !is_declined(c.agent))
         .collect();
 
-    if needs_setup.is_empty() {
+    // Check if any agents need skills installed (and haven't been declined)
+    let needs_skills = checks
+        .iter()
+        .any(|c| crate::skills::needs_install(c.agent) && !is_skill_declined(c.agent));
+
+    if needs_hooks.is_empty() && !needs_skills {
         return Ok(());
     }
 
     let dim = style("│").dim();
     let corner_top = style("┌").dim();
 
-    println!();
-    println!("{} {}", corner_top, style("Status Tracking").bold().cyan());
-    println!("{}", dim);
+    // Status tracking hooks
+    if !needs_hooks.is_empty() {
+        println!();
+        println!("{} {}", corner_top, style("Status Tracking").bold().cyan());
+        println!("{}", dim);
 
-    for check in &needs_setup {
-        println!(
-            "{}  Detected {} ({})",
-            dim,
-            style(check.agent.name()).bold(),
-            check.reason
-        );
+        for check in &needs_hooks {
+            println!(
+                "{}  Detected {} ({})",
+                dim,
+                style(check.agent.name()).bold(),
+                check.reason
+            );
+        }
+
+        println!("{}", dim);
+        let dim_str = format!("{}", dim);
+        print_description(&dim_str);
+        println!("{}", dim);
+
+        if confirm_install()? {
+            install_agents(&needs_hooks);
+        } else {
+            let agents: Vec<_> = needs_hooks.iter().map(|c| c.agent).collect();
+            if let Err(e) = mark_declined(&agents) {
+                tracing::debug!(?e, "failed to save declined state");
+            }
+        }
     }
 
-    println!("{}", dim);
-    let dim_str = format!("{}", dim);
-    print_description(&dim_str);
-    println!("{}", dim);
+    // Skill installation
+    if needs_skills {
+        let skill_agents: Vec<Agent> = checks
+            .iter()
+            .map(|c| c.agent)
+            .filter(|a| crate::skills::needs_install(*a) && !is_skill_declined(*a))
+            .collect();
 
-    if confirm_install()? {
-        install_agents(&needs_setup);
-    } else {
-        let agents: Vec<_> = needs_setup.iter().map(|c| c.agent).collect();
-        if let Err(e) = mark_declined(&agents) {
-            tracing::debug!(?e, "failed to save declined state");
+        if !skill_agents.is_empty() {
+            println!("{}", dim);
+            println!("{} {}", dim, style("Skills").bold().cyan());
+            println!("{}", dim);
+
+            let skill_names: Vec<_> = crate::skills::BUNDLED_SKILLS
+                .iter()
+                .map(|s| s.name)
+                .collect();
+            println!(
+                "{}  workmux includes skills: {}",
+                dim,
+                skill_names.join(", ")
+            );
+            println!("{}", dim);
+
+            if confirm_install_skills()? {
+                for agent in &skill_agents {
+                    match crate::skills::install_skills(*agent) {
+                        Ok(msg) => println!("  {}", msg),
+                        Err(e) => println!("  {} {}: {}", style("✗").red(), agent.name(), e),
+                    }
+                }
+            } else if let Err(e) = mark_skills_declined(&skill_agents) {
+                tracing::debug!(?e, "failed to save declined skills state");
+            }
         }
     }
 
     println!();
     Ok(())
+}
+
+fn confirm_install_skills() -> Result<bool> {
+    let prompt = format!(
+        "  Install skills? {}{}{} ",
+        style("[").bold().cyan(),
+        style("Y/n").bold(),
+        style("]").bold().cyan(),
+    );
+
+    loop {
+        print!("{}", prompt);
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let answer = input.trim().to_lowercase();
+
+        match answer.as_str() {
+            "" | "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            _ => println!("    {}", style("Please enter y or n").dim()),
+        }
+    }
 }
 
 #[cfg(test)]

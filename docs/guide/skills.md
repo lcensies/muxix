@@ -29,7 +29,15 @@ dashboard:
 
 ## Installation
 
-Copy the skills you want from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
+Run `workmux setup` to install all skills automatically:
+
+```bash
+workmux setup --skills
+```
+
+This detects your installed agents and copies skills to the right location. The setup wizard also offers skill installation on first run.
+
+You can also copy skills manually from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
 
 **Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`)
 

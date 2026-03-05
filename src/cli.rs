@@ -499,8 +499,15 @@ enum Commands {
     /// Generate example .workmux.yaml configuration file
     Init,
 
-    /// Set up agent status tracking hooks
-    Setup,
+    /// Set up agent status tracking hooks and install skills
+    Setup {
+        /// Only set up status tracking hooks
+        #[arg(long)]
+        hooks: bool,
+        /// Only install skills
+        #[arg(long)]
+        skills: bool,
+    },
 
     /// Show detailed documentation (renders README.md)
     Docs,
@@ -780,7 +787,7 @@ pub fn run() -> Result<()> {
         } => command::run::run(&name, command, background, keep, timeout),
         Commands::Exec { run_dir } => command::exec::run(&run_dir),
         Commands::Init => crate::config::Config::init(),
-        Commands::Setup => command::setup::run(),
+        Commands::Setup { hooks, skills } => command::setup::run(hooks, skills),
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),

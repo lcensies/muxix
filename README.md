@@ -1595,15 +1595,17 @@ support can be tracked in
 
 ### Setup
 
-Run `workmux setup` to automatically detect your agent CLIs and install status
-tracking hooks:
+Run `workmux setup` to automatically detect your agent CLIs, install status
+tracking hooks, and install skills:
 
 ```bash
 workmux setup
 ```
 
+You can also run specific parts: `workmux setup --hooks` or `workmux setup --skills`.
+
 Workmux will also prompt you on first run if it detects an agent without status
-tracking configured.
+tracking or skills configured.
 
 Workmux automatically modifies your tmux `window-status-format` to display the
 status icons. This happens once per session and only affects the current tmux

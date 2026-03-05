@@ -10,6 +10,7 @@ homepage = "https://github.com/raine/workmux"
 repository = "https://github.com/raine/workmux"
 include = [
     "/src/**/*",
+    "/skills/**/*",
     "/docker/**/*",
     "/.claude-plugin/**/*",
     "/.github/hooks/**/*",
@@ -58,6 +59,7 @@ base64 = "0.22"
 nix = { version = "0.31.1", features = ["fs"] }
 tempfile = "3.14"
 getrandom = "0.4.1"
+similar = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
