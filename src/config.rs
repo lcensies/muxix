@@ -1090,7 +1090,7 @@ impl Config {
             // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
             if config.panes.is_none() && config.windows.is_none() {
                 if repo_root.join("CLAUDE.md").exists() || has_explicit_agent {
-                    config.panes = Some(Self::claude_default_panes());
+                    config.panes = Some(Self::agent_default_panes());
                 } else {
                     config.panes = Some(Self::default_panes());
                 }
@@ -1104,7 +1104,7 @@ impl Config {
             // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
             if config.panes.is_none() && config.windows.is_none() {
                 if has_explicit_agent {
-                    config.panes = Some(Self::claude_default_panes());
+                    config.panes = Some(Self::agent_default_panes());
                 } else {
                     config.panes = Some(Self::default_panes());
                 }
@@ -1159,7 +1159,7 @@ impl Config {
             // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
             if config.panes.is_none() && config.windows.is_none() {
                 if defaults_root.join("CLAUDE.md").exists() || has_explicit_agent {
-                    config.panes = Some(Self::claude_default_panes());
+                    config.panes = Some(Self::agent_default_panes());
                 } else {
                     config.panes = Some(Self::default_panes());
                 }
@@ -1170,7 +1170,7 @@ impl Config {
             }
         } else if config.panes.is_none() && config.windows.is_none() {
             if has_explicit_agent {
-                config.panes = Some(Self::claude_default_panes());
+                config.panes = Some(Self::agent_default_panes());
             } else {
                 config.panes = Some(Self::default_panes());
             }
@@ -1533,7 +1533,7 @@ impl Config {
     }
 
     /// Get default panes for a Claude project.
-    fn claude_default_panes() -> Vec<PaneConfig> {
+    fn agent_default_panes() -> Vec<PaneConfig> {
         vec![
             PaneConfig {
                 command: Some("<agent>".to_string()),
