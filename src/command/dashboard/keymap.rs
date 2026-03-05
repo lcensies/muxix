@@ -40,7 +40,7 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Tab => Some(Action::JumpToLast),
         KeyCode::Char('p') => Some(Action::PeekSelected),
         KeyCode::Char('s') => Some(Action::CycleSortMode),
-        KeyCode::Char('F') => Some(Action::CycleScopeMode),
+        KeyCode::Char('F') => Some(Action::ToggleScopeFilter),
         KeyCode::Char('f') => Some(Action::ToggleStaleFilter),
         KeyCode::Char('i') => Some(Action::EnterInputMode),
         KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -142,7 +142,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("Tab", "Toggle last agent"),
             ("p", "Peek agent (keep popup)"),
             ("s", "Cycle sort mode"),
-            ("F", "Cycle scope filter"),
+            ("F", "Toggle session filter"),
             ("f", "Toggle stale filter"),
             ("i", "Enter input mode"),
             ("Ctrl+u/d", "Scroll preview"),
@@ -267,7 +267,7 @@ mod tests {
         let shift_f = KeyEvent::new(KeyCode::Char('F'), KeyModifiers::NONE);
         assert_eq!(
             action_for_key(Context::DashboardNormal, shift_f),
-            Some(Action::CycleScopeMode)
+            Some(Action::ToggleScopeFilter)
         );
     }
 }

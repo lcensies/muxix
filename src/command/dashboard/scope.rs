@@ -1,26 +1,23 @@
-//! Scope filter mode for the dashboard agent list.
+//! Scope filter for the dashboard agent list.
 
 use crate::state::StateStore;
 
-/// Scope modes for filtering the dashboard to a subset of agents.
+/// Whether the dashboard shows all agents or only those in the current session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ScopeMode {
-    /// Show all agents across all sessions/projects
+    /// Show all agents across all sessions
     #[default]
     All,
-    /// Show only agents in the current tmux session
+    /// Show only agents in the current session
     Session,
-    /// Show only agents in the current project (by git repo root)
-    Project,
 }
 
 impl ScopeMode {
-    /// Cycle to the next scope mode
-    pub fn next(self) -> Self {
+    /// Toggle between All and Session
+    pub fn toggle(self) -> Self {
         match self {
             ScopeMode::All => ScopeMode::Session,
-            ScopeMode::Session => ScopeMode::Project,
-            ScopeMode::Project => ScopeMode::All,
+            ScopeMode::Session => ScopeMode::All,
         }
     }
 
@@ -29,7 +26,6 @@ impl ScopeMode {
         match self {
             ScopeMode::All => "all",
             ScopeMode::Session => "session",
-            ScopeMode::Project => "project",
         }
     }
 
@@ -38,7 +34,6 @@ impl ScopeMode {
         match self {
             ScopeMode::All => "all",
             ScopeMode::Session => "session",
-            ScopeMode::Project => "project",
         }
     }
 
@@ -46,7 +41,6 @@ impl ScopeMode {
     fn from_str(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
             "session" => ScopeMode::Session,
-            "project" => ScopeMode::Project,
             _ => ScopeMode::All,
         }
     }
@@ -77,26 +71,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cycle_all_modes() {
-        let mode = ScopeMode::All;
-        let mode = mode.next();
-        assert_eq!(mode, ScopeMode::Session);
-        let mode = mode.next();
-        assert_eq!(mode, ScopeMode::Project);
-        let mode = mode.next();
-        assert_eq!(mode, ScopeMode::All);
+    fn test_toggle() {
+        assert_eq!(ScopeMode::All.toggle(), ScopeMode::Session);
+        assert_eq!(ScopeMode::Session.toggle(), ScopeMode::All);
     }
 
     #[test]
     fn test_labels() {
         assert_eq!(ScopeMode::All.label(), "all");
         assert_eq!(ScopeMode::Session.label(), "session");
-        assert_eq!(ScopeMode::Project.label(), "project");
     }
 
     #[test]
     fn test_roundtrip_strings() {
-        for mode in [ScopeMode::All, ScopeMode::Session, ScopeMode::Project] {
+        for mode in [ScopeMode::All, ScopeMode::Session] {
             assert_eq!(ScopeMode::from_str(mode.as_str()), mode);
         }
     }
@@ -105,11 +93,12 @@ mod tests {
     fn test_from_str_defaults_to_all() {
         assert_eq!(ScopeMode::from_str(""), ScopeMode::All);
         assert_eq!(ScopeMode::from_str("unknown"), ScopeMode::All);
+        assert_eq!(ScopeMode::from_str("project"), ScopeMode::All);
     }
 
     #[test]
     fn test_from_str_case_insensitive() {
         assert_eq!(ScopeMode::from_str("Session"), ScopeMode::Session);
-        assert_eq!(ScopeMode::from_str("PROJECT"), ScopeMode::Project);
+        assert_eq!(ScopeMode::from_str("SESSION"), ScopeMode::Session);
     }
 }

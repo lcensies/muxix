@@ -91,14 +91,15 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" scope: "),
         ]);
 
-        if app.scope_mode == super::super::scope::ScopeMode::All {
-            spans.push(Span::styled("all", Style::default().fg(app.palette.dimmed)));
+        let scope_color = if app.scope_mode.label() == "all" {
+            app.palette.dimmed
         } else {
-            spans.push(Span::styled(
-                app.scope_mode.label(),
-                Style::default().fg(Color::Yellow),
-            ));
-        }
+            Color::Yellow
+        };
+        spans.push(Span::styled(
+            app.scope_mode.label(),
+            Style::default().fg(scope_color),
+        ));
 
         spans.extend(vec![
             Span::raw("  "),

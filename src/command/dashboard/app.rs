@@ -102,12 +102,10 @@ pub struct App {
     last_pane_id: Option<String>,
     /// Color palette based on the configured theme
     pub palette: ThemePalette,
-    /// Dashboard scope filter mode (All, Session, Project)
+    /// Dashboard scope filter mode (All or Session)
     pub scope_mode: ScopeMode,
     /// Session name at launch time (for session scope filtering)
     launch_session: Option<String>,
-    /// Project name at launch time (for project scope filtering)
-    launch_project: Option<String>,
 }
 
 impl App {
@@ -137,9 +135,6 @@ impl App {
             ScopeMode::load()
         };
         let launch_session = mux.current_session();
-        let launch_project = current_worktree
-            .as_ref()
-            .map(|p| agent::extract_project_name(p));
         let git_statuses = git::load_status_cache();
         let pr_statuses = crate::github::load_pr_cache();
         let hide_stale = load_hide_stale();
@@ -184,7 +179,6 @@ impl App {
             palette,
             scope_mode,
             launch_session,
-            launch_project,
         };
 
         app.refresh();
@@ -207,20 +201,11 @@ impl App {
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
 
-        // Apply scope filter before sorting and background fetches
-        match self.scope_mode {
-            ScopeMode::All => {}
-            ScopeMode::Session => {
-                if let Some(ref session) = self.launch_session {
-                    self.agents.retain(|a| a.session == *session);
-                }
-            }
-            ScopeMode::Project => {
-                if let Some(ref project) = self.launch_project {
-                    self.agents
-                        .retain(|a| agent::extract_project_name(&a.path) == *project);
-                }
-            }
+        // Apply session scope filter before sorting and background fetches
+        if self.scope_mode == ScopeMode::Session
+            && let Some(ref session) = self.launch_session
+        {
+            self.agents.retain(|a| a.session == *session);
         }
 
         self.sort_agents();
@@ -532,21 +517,9 @@ impl App {
         self.sort_agents();
     }
 
-    /// Cycle to the next scope filter mode, skipping modes with unavailable context
-    pub fn cycle_scope_mode(&mut self) {
-        let start = self.scope_mode;
-        loop {
-            self.scope_mode = self.scope_mode.next();
-            // Skip modes whose context is unavailable
-            let available = match self.scope_mode {
-                ScopeMode::All => true,
-                ScopeMode::Session => self.launch_session.is_some(),
-                ScopeMode::Project => self.launch_project.is_some(),
-            };
-            if available || self.scope_mode == start {
-                break;
-            }
-        }
+    /// Toggle between showing all agents or only the current session's agents
+    pub fn toggle_scope_mode(&mut self) {
+        self.scope_mode = self.scope_mode.toggle();
         self.scope_mode.save();
         self.refresh();
     }
