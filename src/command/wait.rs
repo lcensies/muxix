@@ -10,6 +10,29 @@ use crate::state::StateStore;
 use crate::util;
 use crate::workflow;
 
+/// Resolve a worktree name to its path, trying local git first then global agents.
+///
+/// Local resolution is preferred because it works even before an agent starts
+/// (the worktree directory exists from `workmux add`). Global resolution requires
+/// a running agent.
+fn resolve_worktree_path(
+    name: &str,
+    mux: &dyn crate::multiplexer::Multiplexer,
+) -> Result<std::path::PathBuf> {
+    // Try local git resolution first (supports waiting for unstarted agents)
+    if git::is_git_repo().unwrap_or(false) {
+        match git::find_worktree(name) {
+            Ok((path, _branch)) => return Ok(path),
+            Err(e) if e.downcast_ref::<git::WorktreeNotFound>().is_some() => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Fall back to global agent resolution
+    let (path, _agents) = workflow::resolve_worktree_agents(name, mux)?;
+    Ok(path)
+}
+
 fn parse_status(s: &str) -> Result<AgentStatus> {
     match s {
         "working" => Ok(AgentStatus::Working),
@@ -32,11 +55,11 @@ pub fn run(
     let mux = create_backend(detect_backend());
     let start = Instant::now();
 
-    // Resolve worktree paths upfront
+    // Resolve worktree paths upfront (local git first, then global agents)
     let worktree_paths: Vec<_> = worktree_names
         .iter()
         .map(|name| {
-            let (path, _branch) = git::find_worktree(name)?;
+            let path = resolve_worktree_path(name, mux.as_ref())?;
             Ok((name.clone(), path))
         })
         .collect::<Result<Vec<_>>>()?;

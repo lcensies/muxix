@@ -98,6 +98,23 @@ The coordinator agent does not implement tasks itself. It writes prompt files, s
 | `workmux send`             | Send instructions or skill commands to an agent |
 | `workmux run`              | Run shell commands in an agent's worktree       |
 
+### Cross-project agent communication
+
+Agent commands (`send`, `capture`, `status`, `wait`, `run`) can target agents in other projects, not just the current git repository. If a worktree name is not found locally, workmux searches all active agents globally.
+
+```bash
+# From any project, send to an agent in another project
+workmux send other-project-worktree "run the tests"
+
+# Use project:handle syntax to disambiguate when names collide
+workmux send myproject:docs-update "also add the API reference"
+
+# Check status of agents across projects
+workmux status myproject:feature-auth
+```
+
+Lifecycle commands (`add`, `open`, `merge`, `remove`, `close`) remain scoped to the current repository.
+
 ### Fan-out / fan-in pattern
 
 The typical coordinator workflow:

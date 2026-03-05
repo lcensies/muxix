@@ -1,11 +1,20 @@
 # Dynamic worktree handle completion (directory names)
-# Used for open/remove/merge/path/close - these accept handles or branch names
+# Used for open/remove/merge/path/close - repo-scoped lifecycle commands
 _workmux_handles() {
     local -a handles
     handles=("${(@f)$(workmux _complete-handles 2>/dev/null)}")
     # "${(@f)...}" on empty output produces a single empty string; filter it out
     handles=(${handles:#})
     (( ${#handles} )) && compadd -a handles
+}
+
+# Dynamic agent target completion (local handles + cross-project agents)
+# Used for send/capture/status/wait/run - agent communication commands
+_workmux_agent_targets() {
+    local -a targets
+    targets=("${(@f)$(workmux _complete-agent-targets 2>/dev/null)}")
+    targets=(${targets:#})
+    (( ${#targets} )) && compadd -a targets
 }
 
 # Dynamic git branch completion for add command
@@ -82,8 +91,11 @@ _workmux() {
     # For commands that take handles or branches, offer only those
     # (no file fallback from _default). Flag completion is handled above.
     case "$cmd" in
-        open|remove|rm|path|merge|close|send|capture|status|wait|run)
+        open|remove|rm|path|merge|close)
             _workmux_handles
+            ;;
+        send|capture|status|wait|run)
+            _workmux_agent_targets
             ;;
         add)
             _workmux_git_branches

@@ -164,16 +164,21 @@ pub fn delete_branch_in(branch_name: &str, force: bool, git_common_dir: &Path) -
 
 /// Get the base branch for merge checks, preferring local branch over remote
 pub fn get_merge_base(main_branch: &str) -> Result<String> {
+    get_merge_base_in(None, main_branch)
+}
+
+/// Get the base branch for merge checks in a specific workdir
+pub fn get_merge_base_in(workdir: Option<&Path>, main_branch: &str) -> Result<String> {
     // Check if the local branch exists first.
     // This ensures we compare against the local state (which might be ahead of remote)
     // avoiding false positives when local main has merged changes but hasn't been pushed.
-    if branch_exists(main_branch)? {
+    if branch_exists_in(main_branch, workdir)? {
         return Ok(main_branch.to_string());
     }
 
     // Fallback: check if origin/<main_branch> exists
     let remote_main = format!("origin/{}", main_branch);
-    if branch_exists(&remote_main)? {
+    if branch_exists_in(&remote_main, workdir)? {
         Ok(remote_main)
     } else {
         Ok(main_branch.to_string())
@@ -182,16 +187,27 @@ pub fn get_merge_base(main_branch: &str) -> Result<String> {
 
 /// Get a set of all branches not merged into the base branch
 pub fn get_unmerged_branches(base_branch: &str) -> Result<HashSet<String>> {
+    get_unmerged_branches_in(None, base_branch)
+}
+
+/// Get a set of all branches not merged into the base branch in a specific workdir
+pub fn get_unmerged_branches_in(
+    workdir: Option<&Path>,
+    base_branch: &str,
+) -> Result<HashSet<String>> {
     // Special handling for potential errors since base branch might not exist
     let no_merged_arg = format!("--no-merged={}", base_branch);
-    let result = Cmd::new("git")
-        .args(&[
-            "for-each-ref",
-            "--format=%(refname:short)",
-            &no_merged_arg,
-            "refs/heads/",
-        ])
-        .run_and_capture_stdout();
+    let cmd = Cmd::new("git").args(&[
+        "for-each-ref",
+        "--format=%(refname:short)",
+        &no_merged_arg,
+        "refs/heads/",
+    ]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let result = cmd.run_and_capture_stdout();
 
     match result {
         Ok(stdout) => {
@@ -208,6 +224,16 @@ pub fn get_unmerged_branches(base_branch: &str) -> Result<HashSet<String>> {
             }
         }
     }
+}
+
+/// Get the branch name for a worktree at a specific path.
+///
+/// Runs `git branch --show-current` in the worktree's directory.
+pub fn get_branch_for_worktree(worktree_path: &Path) -> Result<String> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["branch", "--show-current"])
+        .run_and_capture_stdout()
 }
 
 /// Get a set of branches whose upstream remote-tracking branch has been deleted.

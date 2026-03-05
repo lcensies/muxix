@@ -121,6 +121,85 @@ impl clap::builder::TypedValueParser for WorktreeHandleParser {
     }
 }
 
+/// Parser for agent targets, used for send/capture/status/wait/run commands.
+///
+/// Includes local worktree handles plus active agents from other projects.
+/// Cross-project agents appear as `project:handle` when their name would be ambiguous.
+#[derive(Clone, Debug)]
+struct AgentTargetParser;
+
+impl AgentTargetParser {
+    fn new() -> Self {
+        Self
+    }
+
+    fn get_targets() -> Vec<String> {
+        // Start with local worktree handles
+        let mut targets = WorktreeHandleParser::get_handles();
+
+        // Also include the main worktree handle (agents can run there too)
+        if git::is_git_repo().unwrap_or(false)
+            && let Ok(main_root) = git::get_main_worktree_root()
+            && let Some(name) = main_root.file_name()
+        {
+            let handle = name.to_string_lossy().to_string();
+            if !targets.contains(&handle) {
+                targets.push(handle);
+            }
+        }
+
+        // Append global agent handles from reconciled state
+        let mux = crate::multiplexer::create_backend(crate::multiplexer::detect_backend());
+        if let Ok(store) = crate::state::StateStore::new()
+            && let Ok(agents) = store.load_reconciled_agents(mux.as_ref())
+        {
+            for agent in &agents {
+                let root = crate::workflow::find_worktree_root(&agent.path)
+                    .unwrap_or_else(|| agent.path.clone());
+                if let Some(name) = root.file_name() {
+                    let handle = name.to_string_lossy().to_string();
+                    if !targets.contains(&handle) {
+                        targets.push(handle.clone());
+                    }
+                    // Also add qualified project:handle for disambiguation
+                    if let Some(parent) = root.parent()
+                        && let Some(proj) = parent.file_name()
+                    {
+                        let qualified = format!("{}:{}", proj.to_string_lossy(), handle);
+                        if !targets.contains(&qualified) {
+                            targets.push(qualified);
+                        }
+                    }
+                }
+            }
+        }
+
+        targets.sort();
+        targets.dedup();
+        targets
+    }
+}
+
+impl clap::builder::TypedValueParser for AgentTargetParser {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        clap::builder::StringValueParser::new().parse_ref(cmd, None, value)
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        // Dynamic completions handled by _complete-agent-targets subcommand
+        None
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GitBranchParser;
 
@@ -336,8 +415,8 @@ enum Commands {
 
     /// Send a prompt or instruction to a running agent
     Send {
-        /// Worktree name
-        #[arg(value_parser = WorktreeHandleParser::new())]
+        /// Worktree name (supports cross-project with project:handle syntax)
+        #[arg(value_parser = AgentTargetParser::new())]
         name: String,
 
         /// Text to send (reads from --file or stdin if omitted)
@@ -351,8 +430,8 @@ enum Commands {
 
     /// Capture terminal output from a running agent
     Capture {
-        /// Worktree name
-        #[arg(value_parser = WorktreeHandleParser::new())]
+        /// Worktree name (supports cross-project with project:handle syntax)
+        #[arg(value_parser = AgentTargetParser::new())]
         name: String,
 
         /// Number of lines to capture
@@ -362,8 +441,8 @@ enum Commands {
 
     /// Query agent status for worktrees
     Status {
-        /// Worktree names (default: all with active agents)
-        #[arg(value_parser = WorktreeHandleParser::new())]
+        /// Worktree names (supports cross-project with project:handle syntax)
+        #[arg(value_parser = AgentTargetParser::new())]
         worktrees: Vec<String>,
 
         /// Output as JSON
@@ -377,8 +456,8 @@ enum Commands {
 
     /// Wait for agents to reach a target status
     Wait {
-        /// Worktree names to wait on
-        #[arg(required = true, value_parser = WorktreeHandleParser::new())]
+        /// Worktree names (supports cross-project with project:handle syntax)
+        #[arg(required = true, value_parser = AgentTargetParser::new())]
         worktrees: Vec<String>,
 
         /// Target status to wait for
@@ -396,8 +475,8 @@ enum Commands {
 
     /// Run a command in a worktree's window
     Run {
-        /// Worktree name
-        #[arg(value_parser = WorktreeHandleParser::new())]
+        /// Worktree name (supports cross-project with project:handle syntax)
+        #[arg(value_parser = AgentTargetParser::new())]
         name: String,
 
         /// Command to run (everything after --)
@@ -519,6 +598,12 @@ enum Commands {
     /// Output git branches for shell completion (internal use)
     #[command(hide = true, name = "_complete-git-branches")]
     CompleteGitBranches,
+
+    /// Output agent targets for shell completion (internal use)
+    ///
+    /// Includes local worktree handles plus active agents from other projects.
+    #[command(hide = true, name = "_complete-agent-targets")]
+    CompleteAgentTargets,
 
     /// Background update check (internal use)
     #[command(hide = true, name = "_check-update")]
@@ -735,6 +820,12 @@ pub fn run() -> Result<()> {
         Commands::CompleteGitBranches => {
             for branch in GitBranchParser::get_branches() {
                 println!("{branch}");
+            }
+            Ok(())
+        }
+        Commands::CompleteAgentTargets => {
+            for target in AgentTargetParser::get_targets() {
+                println!("{target}");
             }
             Ok(())
         }

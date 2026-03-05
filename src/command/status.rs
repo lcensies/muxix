@@ -76,6 +76,31 @@ fn status_label(status: Option<AgentStatus>) -> String {
     }
 }
 
+/// Compute git info for a worktree path.
+///
+/// Runs git commands with the worktree's directory as the working dir,
+/// so it works correctly for cross-project agents.
+fn compute_git_info(wt_path: &std::path::Path, branch: &str) -> GitInfo {
+    let has_staged = git::has_staged_changes(wt_path).unwrap_or(false);
+    let has_unstaged = git::has_unstaged_changes(wt_path).unwrap_or(false);
+
+    // For unmerged commits, we need to check against the repo's default branch.
+    // Run git commands in the worktree's directory for correct repo context.
+    let has_unmerged = (|| -> Option<bool> {
+        let main = git::get_default_branch_in(Some(wt_path)).ok()?;
+        let base = git::get_merge_base_in(Some(wt_path), &main).ok()?;
+        let unmerged = git::get_unmerged_branches_in(Some(wt_path), &base).ok()?;
+        Some(unmerged.contains(branch))
+    })()
+    .unwrap_or(false);
+
+    GitInfo {
+        has_staged,
+        has_unstaged,
+        has_unmerged_commits: has_unmerged,
+    }
+}
+
 pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
     let mux = create_backend(detect_backend());
 
@@ -91,74 +116,102 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Get all worktrees for mapping (propagate errors)
-    let all_worktrees = git::list_worktrees()?;
-
-    // Get unmerged info if --git flag
-    let main_branch = if show_git {
-        git::get_default_branch().ok()
-    } else {
-        None
-    };
-    let unmerged_branches = if show_git {
-        main_branch
-            .as_deref()
-            .and_then(|main| git::get_merge_base(main).ok())
-            .and_then(|base| git::get_unmerged_branches(&base).ok())
-            .unwrap_or_default()
-    } else {
-        std::collections::HashSet::new()
-    };
-
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    // Build entries: match each agent pane to its worktree using shared helper
     let mut entries: Vec<StatusEntry> = Vec::new();
 
-    for (wt_path, branch) in &all_worktrees {
-        let matching = workflow::match_agents_to_worktree(&agent_panes, wt_path);
-        if matching.is_empty() {
-            continue;
-        }
+    if worktrees.is_empty() {
+        // No specific targets: show all agents in the local repo (existing behavior)
+        let all_worktrees = git::list_worktrees()?;
 
-        let worktree_name = wt_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        let git_info = if show_git {
-            Some(GitInfo {
-                has_staged: git::has_staged_changes(wt_path).unwrap_or(false),
-                has_unstaged: git::has_unstaged_changes(wt_path).unwrap_or(false),
-                has_unmerged_commits: unmerged_branches.contains(branch),
-            })
+        // Get unmerged info if --git flag (scoped to current repo)
+        let unmerged_branches = if show_git {
+            git::get_default_branch()
+                .ok()
+                .and_then(|main| git::get_merge_base(&main).ok())
+                .and_then(|base| git::get_unmerged_branches(&base).ok())
+                .unwrap_or_default()
         } else {
-            None
+            std::collections::HashSet::new()
         };
 
-        // Each agent pane in the worktree gets its own entry
-        for agent in matching {
-            let elapsed_secs = agent.status_ts.map(|ts| now.saturating_sub(ts));
+        for (wt_path, branch) in &all_worktrees {
+            let matching = workflow::match_agents_to_worktree(&agent_panes, wt_path);
+            if matching.is_empty() {
+                continue;
+            }
 
-            entries.push(StatusEntry {
-                worktree: worktree_name.clone(),
-                branch: branch.clone(),
-                status: status_label(agent.status),
-                elapsed_secs,
-                title: agent.pane_title.clone(),
-                pane_id: agent.pane_id.clone(),
-                git: git_info.clone(),
-            });
+            let worktree_name = wt_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let git_info = if show_git {
+                Some(GitInfo {
+                    has_staged: git::has_staged_changes(wt_path).unwrap_or(false),
+                    has_unstaged: git::has_unstaged_changes(wt_path).unwrap_or(false),
+                    has_unmerged_commits: unmerged_branches.contains(branch),
+                })
+            } else {
+                None
+            };
+
+            for agent in matching {
+                let elapsed_secs = agent.status_ts.map(|ts| now.saturating_sub(ts));
+                entries.push(StatusEntry {
+                    worktree: worktree_name.clone(),
+                    branch: branch.clone(),
+                    status: status_label(agent.status),
+                    elapsed_secs,
+                    title: agent.pane_title.clone(),
+                    pane_id: agent.pane_id.clone(),
+                    git: git_info.clone(),
+                });
+            }
         }
-    }
+    } else {
+        // Specific targets: resolve each via the cross-project-aware resolver
+        for name in worktrees {
+            match workflow::resolve_worktree_agents(name, mux.as_ref()) {
+                Ok((wt_path, matching)) => {
+                    let worktree_name = wt_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
 
-    // Filter to requested worktrees if specified (handle-first, then branch fallback)
-    if !worktrees.is_empty() {
-        entries.retain(|e| worktrees.iter().any(|w| w == &e.worktree || w == &e.branch));
+                    // Try to determine branch name from git
+                    let branch = git::get_branch_for_worktree(&wt_path)
+                        .unwrap_or_else(|_| worktree_name.clone());
+
+                    let git_info = if show_git {
+                        Some(compute_git_info(&wt_path, &branch))
+                    } else {
+                        None
+                    };
+
+                    for agent in &matching {
+                        let elapsed_secs = agent.status_ts.map(|ts| now.saturating_sub(ts));
+                        entries.push(StatusEntry {
+                            worktree: worktree_name.clone(),
+                            branch: branch.clone(),
+                            status: status_label(agent.status),
+                            elapsed_secs,
+                            title: agent.pane_title.clone(),
+                            pane_id: agent.pane_id.clone(),
+                            git: git_info.clone(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{}: {}", name, e);
+                }
+            }
+        }
     }
 
     if json {

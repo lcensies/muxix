@@ -13,7 +13,9 @@ mod setup;
 pub mod types;
 
 // Public API re-exports
-pub use agent_resolve::{match_agents_to_worktree, resolve_worktree_agent};
+pub use agent_resolve::{
+    find_worktree_root, match_agents_to_worktree, resolve_worktree_agent, resolve_worktree_agents,
+};
 pub use create::{create, create_with_changes};
 pub use list::list;
 pub use merge::merge;
