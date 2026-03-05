@@ -17,6 +17,10 @@ monitor them, send instructions, and trigger merges.
   worktree/branch
 - **Handle**: the worktree directory name, used to address agents in all
   commands
+- **Cross-project targeting**: agent commands (`send`, `capture`, `status`,
+  `wait`, `run`) can target agents in other projects. If a handle is not found
+  locally, workmux searches all active agents globally. Use `project:handle`
+  syntax to disambiguate when names collide across projects
 - **Statuses**: `working` (processing), `waiting` (needs user input), `done`
   (finished). Set automatically by agent hooks. Agents typically go `working` ->
   `done`; `waiting` only occurs if the agent prompts for input
@@ -119,6 +123,12 @@ workmux send agent-a "/commit"
 
 # Send from file (for long prompts)
 workmux send agent-a -f followup.md
+
+# Send to an agent in another project (global fallback)
+workmux send other-worktree "run the tests"
+
+# Disambiguate with project:handle when names collide
+workmux send myproject:docs-update "also add the API reference"
 ```
 
 ### Run Commands
@@ -154,6 +164,26 @@ workmux send agent-a "/merge"
 # Remove a worktree without merging
 workmux remove agent-a
 ```
+
+### Cross-Project Targeting
+
+Agent commands (`send`, `capture`, `status`, `wait`, `run`) automatically
+resolve handles across projects. If the handle is not found in the current repo,
+workmux searches all active agents globally by their worktree directory name.
+
+```bash
+# These work from any project
+workmux status other-project-worktree
+workmux capture other-project-worktree
+workmux wait other-project-worktree
+workmux run other-project-worktree -- make test
+
+# Use project:handle to disambiguate
+workmux send myproject:feature-auth "check the edge cases"
+```
+
+Lifecycle commands (`add`, `open`, `merge`, `remove`, `close`) remain scoped to
+the current repository.
 
 ## Workflow Patterns
 
