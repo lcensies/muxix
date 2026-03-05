@@ -532,9 +532,21 @@ impl App {
         self.sort_agents();
     }
 
-    /// Cycle to the next scope filter mode, re-filter, and persist
+    /// Cycle to the next scope filter mode, skipping modes with unavailable context
     pub fn cycle_scope_mode(&mut self) {
-        self.scope_mode = self.scope_mode.next();
+        let start = self.scope_mode;
+        loop {
+            self.scope_mode = self.scope_mode.next();
+            // Skip modes whose context is unavailable
+            let available = match self.scope_mode {
+                ScopeMode::All => true,
+                ScopeMode::Session => self.launch_session.is_some(),
+                ScopeMode::Project => self.launch_project.is_some(),
+            };
+            if available || self.scope_mode == start {
+                break;
+            }
+        }
         self.scope_mode.save();
         self.refresh();
     }

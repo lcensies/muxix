@@ -521,7 +521,7 @@ enum Commands {
         #[arg(long, short = 'd')]
         diff: bool,
 
-        /// Filter to only show agents in the current tmux session
+        /// Filter to only show agents in the current session
         #[arg(short = 's', long)]
         session: bool,
     },

@@ -14,7 +14,7 @@ workmux dashboard
 
 - `-d, --diff`: Open the diff view directly for the current worktree's agent.
 - `-P, --preview-size <10-90>`: Set preview pane size as percentage (larger = more preview, less table). Default: 60.
-- `-s, --session`: Filter to only show agents in the current tmux session.
+- `-s, --session`: Filter to only show agents in the current session.
 
 ## Examples
 

@@ -1334,8 +1334,8 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
   the agent list.
 - `-P, --preview-size <10-90>`: Set preview pane size as percentage (larger =
   more preview, less table). Default: 60.
-- `-s, --session`: Filter to only show agents in the current tmux session.
-  Useful for session-per-project workflows where each tmux session maps to a
+- `-s, --session`: Filter to only show agents in the current session.
+  Useful for session-per-project workflows where each session maps to a
   different repository.
 
 <!-- prettier-ignore -->
