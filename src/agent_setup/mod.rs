@@ -157,10 +157,6 @@ fn mark_declined(agents: &[Agent]) -> Result<()> {
     save_setup_state(&state)
 }
 
-fn is_skill_declined(agent: Agent) -> bool {
-    load_setup_state().declined_skills.contains(&agent)
-}
-
 fn mark_skills_declined(agents: &[Agent]) -> Result<()> {
     let mut state = load_setup_state();
     for agent in agents {
@@ -249,12 +245,7 @@ pub fn prompt_wizard() -> Result<()> {
         .filter(|c| !is_declined(c.agent))
         .collect();
 
-    // Check if any agents need skills installed (and haven't been declined)
-    let needs_skills = checks
-        .iter()
-        .any(|c| crate::skills::needs_install(c.agent) && !is_skill_declined(c.agent));
-
-    if needs_hooks.is_empty() && !needs_skills {
+    if needs_hooks.is_empty() {
         return Ok(());
     }
 
@@ -291,12 +282,12 @@ pub fn prompt_wizard() -> Result<()> {
         }
     }
 
-    // Skill installation
-    if needs_skills {
+    // Skill installation (only during first-run wizard, not for existing users)
+    {
         let skill_agents: Vec<Agent> = checks
             .iter()
             .map(|c| c.agent)
-            .filter(|a| crate::skills::needs_install(*a) && !is_skill_declined(*a))
+            .filter(|a| crate::skills::needs_install(*a))
             .collect();
 
         if !skill_agents.is_empty() {
@@ -312,6 +303,11 @@ pub fn prompt_wizard() -> Result<()> {
                 "{}  workmux includes skills: {}",
                 dim,
                 skill_names.join(", ")
+            );
+            println!(
+                "{}  Learn more: {}",
+                dim,
+                style("https://workmux.raine.dev/guide/skills").dim()
             );
             println!("{}", dim);
 
