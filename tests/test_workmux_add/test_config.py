@@ -3,12 +3,14 @@
 from pathlib import Path
 
 from ..conftest import (
+    FakeAgentInstaller,
     MuxEnvironment,
     RepoBuilder,
     assert_copied_file,
     assert_symlink_to,
     assert_window_exists,
     get_window_name,
+    wait_for_file,
     wait_for_pane_output,
     write_global_workmux_config,
     write_workmux_config,
@@ -261,3 +263,48 @@ class TestPaneOverrides:
         pane_content = env.capture_pane(window_name)
         assert pane_content is not None
         assert global_output not in pane_content
+
+
+class TestGlobalAgentDefault:
+    """Tests for global agent config triggering agent-aware default panes."""
+
+    def test_global_agent_starts_in_default_pane(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """When agent is set in global config and no panes are defined, the agent should run."""
+        env = mux_server
+        branch_name = "feature-global-agent-default"
+        window_name = get_window_name(branch_name)
+        output_filename = "global_agent_ran.txt"
+
+        # Ensure CLAUDE.md does not exist so we isolate the global agent config behavior
+        assert not (mux_repo_path / "CLAUDE.md").exists()
+
+        # Install fake agent using absolute path to avoid shell RC/PATH dependencies
+        fake_agent_installer.install(
+            "global_agent",
+            f"#!/bin/sh\necho ran > {output_filename}\n",
+        )
+
+        # Write global config with agent but NO explicit panes
+        write_global_workmux_config(env, agent="global_agent")
+
+        # Do NOT write project-level .workmux.yaml
+
+        worktree_path = add_branch_and_get_worktree(
+            env, workmux_exe_path, mux_repo_path, branch_name
+        )
+
+        agent_output = worktree_path / output_filename
+        wait_for_file(
+            env,
+            agent_output,
+            timeout=5.0,
+            window_name=window_name,
+            worktree_path=worktree_path,
+        )
+        assert agent_output.read_text().strip() == "ran"
