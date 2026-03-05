@@ -17,6 +17,24 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.131 (2026-03-05)
+
+- New `--session` flag for `workmux open` lets you open worktrees in a dedicated
+  tmux session instead of a window. Session mode is persisted, so reopening the
+  same worktree remembers the preference
+  ([#73](https://github.com/raine/workmux/pull/73))
+- Dashboard now has a scope filter (toggle with `F`) to show only agents in the
+  current session or all agents across sessions
+  ([#74](https://github.com/raine/workmux/issues/74))
+- `workmux setup` now offers to install bundled skills (merge, rebase, worktree,
+  coordinator) during the first-run wizard
+- Agents can now communicate across projects using the coordinator skill
+- The `claude_default_panes` config option has been renamed to
+  `agent_default_panes` to reflect multi-agent support. Agent-specific default
+  panes are now also read from the global config
+- Fixed session mode not being detected correctly when reopening a worktree
+  after a tmux restart
+
 ## v0.1.130 (2026-03-04)
 
 - Window names are now automatically suffixed with the project directory name
