@@ -1067,6 +1067,9 @@ impl Config {
         let global_config = Self::load_global()?.unwrap_or_default();
         let project_config = Self::load_project()?.unwrap_or_default();
 
+        let has_explicit_agent =
+            cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
+
         let final_agent = cli_agent
             .map(|s| s.to_string())
             .or_else(|| project_config.agent.clone())
@@ -1083,9 +1086,10 @@ impl Config {
                 || repo_root.join("package-lock.json").exists()
                 || repo_root.join("yarn.lock").exists();
 
-            // Default panes based on project type (only when windows is not set)
+            // Default panes based on project type (only when windows is not set).
+            // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
             if config.panes.is_none() && config.windows.is_none() {
-                if repo_root.join("CLAUDE.md").exists() {
+                if repo_root.join("CLAUDE.md").exists() || has_explicit_agent {
                     config.panes = Some(Self::claude_default_panes());
                 } else {
                     config.panes = Some(Self::default_panes());
@@ -1099,7 +1103,11 @@ impl Config {
         } else {
             // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
             if config.panes.is_none() && config.windows.is_none() {
-                config.panes = Some(Self::default_panes());
+                if has_explicit_agent {
+                    config.panes = Some(Self::claude_default_panes());
+                } else {
+                    config.panes = Some(Self::default_panes());
+                }
             }
         }
 
@@ -1124,6 +1132,9 @@ impl Config {
         let (project_config, location) = Self::load_project_with_location()?;
         let project_config = project_config.unwrap_or_default();
 
+        let has_explicit_agent =
+            cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
+
         let final_agent = cli_agent
             .map(|s| s.to_string())
             .or_else(|| project_config.agent.clone())
@@ -1145,8 +1156,9 @@ impl Config {
                 || defaults_root.join("package-lock.json").exists()
                 || defaults_root.join("yarn.lock").exists();
 
+            // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
             if config.panes.is_none() && config.windows.is_none() {
-                if defaults_root.join("CLAUDE.md").exists() {
+                if defaults_root.join("CLAUDE.md").exists() || has_explicit_agent {
                     config.panes = Some(Self::claude_default_panes());
                 } else {
                     config.panes = Some(Self::default_panes());
@@ -1157,7 +1169,11 @@ impl Config {
                 config.pre_remove = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
             }
         } else if config.panes.is_none() && config.windows.is_none() {
-            config.panes = Some(Self::default_panes());
+            if has_explicit_agent {
+                config.panes = Some(Self::claude_default_panes());
+            } else {
+                config.panes = Some(Self::default_panes());
+            }
         }
 
         config.sandbox.network.validate()?;
