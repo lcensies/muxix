@@ -6,10 +6,10 @@ use crate::multiplexer::MuxHandle;
 use crate::multiplexer::util::prefixed;
 use tracing::info;
 
-use super::cleanup::get_worktree_mode;
 use super::context::WorkflowContext;
 use super::setup;
 use super::types::{CreateResult, SetupOptions};
+use crate::config::MuxMode;
 
 /// Open a tmux window for an existing worktree
 pub fn open(
@@ -55,17 +55,20 @@ pub fn open(
         .to_string_lossy()
         .to_string();
 
-    // Resolve mode using canonical base_handle (not the CLI-provided name which may be a branch)
-    let stored_mode = get_worktree_mode(&base_handle);
+    // Resolve mode using canonical base_handle (not the CLI-provided name which may be a branch).
+    // Precedence: --session flag > stored git metadata > config default (from options.mode)
+    let stored_mode = git::get_worktree_mode_opt(&base_handle);
     let mode = if session_override {
-        crate::config::MuxMode::Session
+        MuxMode::Session
+    } else if let Some(m) = stored_mode {
+        m
     } else {
-        stored_mode
+        options.mode
     };
 
     // Validate windows config requires session mode (after canonical mode resolution)
     if let Some(windows) = &context.config.windows {
-        if mode != crate::config::MuxMode::Session {
+        if mode != MuxMode::Session {
             anyhow::bail!(
                 "'windows' configuration requires 'mode: session'. \
                  Add 'mode: session' to your config."
@@ -74,11 +77,13 @@ pub fn open(
         crate::config::validate_windows_config(windows)?;
     }
 
-    // If --session was explicitly passed and mode is changing, close existing targets and persist
-    if session_override && stored_mode != mode {
+    // If mode is resolving to session and prior mode was window, close existing window targets
+    // to prevent orphaned windows (covers both --session flag and config fallback)
+    if mode == MuxMode::Session && stored_mode != Some(MuxMode::Session) {
         // Kill all matching window targets (base + any -N numeric duplicates only)
+        let prior_mode = stored_mode.unwrap_or(MuxMode::Window);
         let all_names = context.mux.get_all_window_names()?;
-        let full_base = crate::multiplexer::util::prefixed(&context.prefix, &base_handle);
+        let full_base = prefixed(&context.prefix, &base_handle);
         let full_base_dash = format!("{}-", full_base);
         for name in &all_names {
             let is_exact = *name == full_base;
@@ -92,11 +97,9 @@ pub fn open(
                     window = name,
                     "open:closing window before mode conversion"
                 );
-                MuxHandle::kill_full(context.mux.as_ref(), stored_mode, name)?;
+                MuxHandle::kill_full(context.mux.as_ref(), prior_mode, name)?;
             }
         }
-        git::set_worktree_meta(&base_handle, "mode", "session")
-            .context("Failed to persist session mode")?;
     }
 
     // Update options with the resolved mode
@@ -107,6 +110,15 @@ pub fn open(
 
     // If target exists and we're not forcing new, switch to it
     if target_exists && !new_window {
+        // Backfill mode metadata for legacy worktrees on successful switch
+        if stored_mode != Some(mode) {
+            let mode_str = if mode == MuxMode::Session {
+                "session"
+            } else {
+                "window"
+            };
+            let _ = git::set_worktree_meta(&base_handle, "mode", mode_str);
+        }
         target.select()?;
         info!(
             handle = base_handle,
@@ -131,6 +143,23 @@ pub fn open(
         return Err(anyhow!(
             "--new is not supported in session mode. Each worktree can only have one session."
         ));
+    }
+
+    // Persist mode metadata if it's missing or changing (backfill legacy worktrees).
+    // Placed after early-exit checks to avoid side effects on failed commands.
+    if stored_mode != Some(mode) {
+        let mode_str = if mode == MuxMode::Session {
+            "session"
+        } else {
+            "window"
+        };
+        git::set_worktree_meta(&base_handle, "mode", mode_str)
+            .context("Failed to persist worktree mode")?;
+        info!(
+            handle = base_handle,
+            mode = mode_str,
+            "open:persisted worktree mode"
+        );
     }
 
     // Determine handle: use suffix if forcing new target and one exists

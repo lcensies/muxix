@@ -353,21 +353,23 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
     }
 
-    // Store the tmux mode in git config for cleanup operations
-    // This allows remove/close/merge to know whether to kill a window or session
-    if options.mode == MuxMode::Session {
-        git::set_worktree_meta(&current_handle, "mode", "session").with_context(|| {
-            format!(
-                "Failed to store tmux mode for worktree '{}'",
-                current_handle
-            )
-        })?;
-        debug!(
-            handle = %current_handle,
-            mode = "session",
-            "create:stored tmux mode in git config"
-        );
-    }
+    // Store the tmux mode in git config for cleanup and reopen operations.
+    // This allows remove/close/merge/open to know whether to kill a window or session.
+    let mode_str = match options.mode {
+        MuxMode::Session => "session",
+        MuxMode::Window => "window",
+    };
+    git::set_worktree_meta(&current_handle, "mode", mode_str).with_context(|| {
+        format!(
+            "Failed to store tmux mode for worktree '{}'",
+            current_handle
+        )
+    })?;
+    debug!(
+        handle = %current_handle,
+        mode = mode_str,
+        "create:stored tmux mode in git config"
+    );
 
     // Setup the rest of the environment (tmux, files, hooks)
     let prompt_file_path = if let Some(p) = prompt {

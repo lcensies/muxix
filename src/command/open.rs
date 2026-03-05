@@ -3,7 +3,7 @@ use crate::config::MuxMode;
 use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
-use crate::{config, git, workflow};
+use crate::{config, workflow};
 use anyhow::{Context, Result, bail};
 
 pub fn run(
@@ -39,10 +39,12 @@ pub fn run(
     // Note: final mode resolution happens in workflow::open using the canonical
     // base_handle (which may differ from resolved_name when opening by branch name).
     // We pass a preliminary mode here for SetupOptions; workflow::open will override it.
+    // Use config.mode() as fallback (matching `add` behavior) so that worktrees
+    // without stored metadata still respect the config's mode setting.
     let preliminary_mode = if session {
         MuxMode::Session
     } else {
-        git::get_worktree_mode(&resolved_name)
+        context.config.mode()
     };
 
     // Load prompt if any prompt argument is provided

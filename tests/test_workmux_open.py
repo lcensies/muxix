@@ -1,6 +1,8 @@
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from .conftest import (
     DEFAULT_WINDOW_PREFIX,
@@ -16,6 +18,7 @@ from .conftest import (
     run_workmux_add,
     run_workmux_open,
     run_workmux_remove,
+    slugify,
     write_workmux_config,
 )
 
@@ -718,3 +721,79 @@ def test_open_session_flag_with_new_flag_fails(
 
     # Command should have exited non-zero (expect_fail=True already asserts this)
     assert result.exit_code != 0
+
+
+@pytest.mark.tmux_only
+def test_open_legacy_worktree_falls_back_to_config_mode(
+    mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open` falls back to config mode for legacy worktrees without metadata.
+
+    Simulates the scenario where a worktree was created before mode metadata
+    persistence existed. When the config has `mode: session`, open should use
+    session mode and backfill the metadata.
+    """
+    env = mux_server
+    branch_name = "feature-legacy-session"
+    handle = slugify(branch_name)
+    session_name = get_session_name(branch_name)
+    window_name = get_window_name(branch_name)
+
+    # Create worktree in default window mode
+    write_workmux_config(repo_path)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Kill the window created by add
+    env.kill_window(window_name)
+
+    # Remove mode metadata to simulate a legacy worktree (created before metadata persistence)
+    subprocess.run(
+        [
+            "git",
+            "config",
+            "--local",
+            "--unset",
+            f"workmux.worktree.{handle}.mode",
+        ],
+        cwd=repo_path,
+        check=True,
+        env=env.env,
+    )
+
+    # Rewrite config with mode: session (simulating user adding session mode to config)
+    config: dict = {
+        "nerdfont": False,
+        "mode": "session",
+    }
+    (repo_path / ".workmux.yaml").write_text(yaml.dump(config))
+
+    # Open without --session flag: should fall back to config mode (session)
+    # switch-client may fail in test env, so expect_fail=True
+    run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        expect_fail=True,
+    )
+
+    # Session should have been created (config fallback to session mode)
+    assert_session_exists(env, session_name)
+
+    # Verify metadata was backfilled
+    result = subprocess.run(
+        [
+            "git",
+            "config",
+            "--local",
+            "--get",
+            f"workmux.worktree.{handle}.mode",
+        ],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+        env=env.env,
+    )
+    assert result.stdout.strip() == "session", (
+        f"Expected backfilled mode to be 'session', got: {result.stdout.strip()!r}"
+    )

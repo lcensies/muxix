@@ -179,12 +179,19 @@ pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
 }
 
 /// Determine the tmux mode for a worktree from git metadata.
+/// Returns None if no metadata is found (legacy worktree).
+pub fn get_worktree_mode_opt(handle: &str) -> Option<MuxMode> {
+    match get_worktree_meta(handle, "mode") {
+        Some(mode) if mode == "session" => Some(MuxMode::Session),
+        Some(mode) if mode == "window" => Some(MuxMode::Window),
+        _ => None,
+    }
+}
+
+/// Determine the tmux mode for a worktree from git metadata.
 /// Falls back to Window mode if no metadata is found (backward compatibility).
 pub fn get_worktree_mode(handle: &str) -> MuxMode {
-    match get_worktree_meta(handle, "mode") {
-        Some(mode) if mode == "session" => MuxMode::Session,
-        _ => MuxMode::Window,
-    }
+    get_worktree_mode_opt(handle).unwrap_or(MuxMode::Window)
 }
 
 /// Batch-load all worktree modes from git config in a single subprocess call.
