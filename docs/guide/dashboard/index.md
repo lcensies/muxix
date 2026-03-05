@@ -43,6 +43,7 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
+| `F`       | Cycle scope filter (all/session/project) |
 | `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
@@ -81,6 +82,16 @@ Press `s` to cycle through sort modes:
 - **Natural**: Original tmux order (by pane creation)
 
 Your sort preference persists in the tmux session.
+
+## Scope filter
+
+Press `F` to cycle through scope filter modes:
+
+- **all** (default): Show agents from all sessions and projects
+- **session**: Show only agents in the current tmux session
+- **project**: Show only agents in the current project (by git repo root)
+
+The scope filter is useful for session-per-project workflows where each tmux session maps to a repository. You can also start the dashboard with `--session` to default to session scope. The scope preference persists across sessions.
 
 ## Stale filter
 

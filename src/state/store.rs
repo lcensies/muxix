@@ -485,6 +485,7 @@ mod tests {
             hide_stale: true,
             preview_size: Some(30),
             last_pane_id: Some("%5".to_string()),
+            dashboard_scope: Some("session".to_string()),
         };
 
         store.save_settings(&settings).unwrap();

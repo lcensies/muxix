@@ -87,17 +87,32 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::raw(" sort: "),
             Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
             Span::raw("  "),
+            Span::styled("[F]", Style::default().fg(Color::Cyan)),
+            Span::raw(" scope: "),
+        ]);
+
+        if app.scope_mode == super::super::scope::ScopeMode::All {
+            spans.push(Span::styled("all", Style::default().fg(app.palette.dimmed)));
+        } else {
+            spans.push(Span::styled(
+                app.scope_mode.label(),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+
+        spans.extend(vec![
+            Span::raw("  "),
             Span::styled("[f]", Style::default().fg(Color::Cyan)),
-            Span::raw(" filter: "),
+            Span::raw(" stale: "),
         ]);
 
         if app.hide_stale {
-            spans.push(Span::styled(
-                "hiding stale",
-                Style::default().fg(Color::Yellow),
-            ));
+            spans.push(Span::styled("hidden", Style::default().fg(Color::Yellow)));
         } else {
-            spans.push(Span::styled("all", Style::default().fg(app.palette.dimmed)));
+            spans.push(Span::styled(
+                "shown",
+                Style::default().fg(app.palette.dimmed),
+            ));
         }
 
         spans.extend(vec![

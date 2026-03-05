@@ -21,6 +21,7 @@ const PR_FETCH_INTERVAL: Duration = Duration::from_secs(30);
 
 use super::agent;
 use super::diff::DiffView;
+use super::scope::ScopeMode;
 use super::settings::{
     load_hide_stale, load_last_pane_id, load_preview_size, save_hide_stale, save_last_pane_id,
     save_preview_size,
@@ -101,10 +102,16 @@ pub struct App {
     last_pane_id: Option<String>,
     /// Color palette based on the configured theme
     pub palette: ThemePalette,
+    /// Dashboard scope filter mode (All, Session, Project)
+    pub scope_mode: ScopeMode,
+    /// Session name at launch time (for session scope filtering)
+    launch_session: Option<String>,
+    /// Project name at launch time (for project scope filtering)
+    launch_project: Option<String>,
 }
 
 impl App {
-    pub fn new(mux: Arc<dyn Multiplexer>) -> Result<Self> {
+    pub fn new(mux: Arc<dyn Multiplexer>, cli_session_filter: bool) -> Result<Self> {
         let config = Config::load(None)?;
         let (git_tx, git_rx) = mpsc::channel();
         let (pr_tx, pr_rx) = mpsc::channel();
@@ -124,6 +131,15 @@ impl App {
 
         let palette = ThemePalette::from_theme(config.theme);
         let sort_mode = SortMode::load();
+        let scope_mode = if cli_session_filter {
+            ScopeMode::Session
+        } else {
+            ScopeMode::load()
+        };
+        let launch_session = mux.current_session();
+        let launch_project = current_worktree
+            .as_ref()
+            .map(|p| agent::extract_project_name(p));
         let git_statuses = git::load_status_cache();
         let pr_statuses = crate::github::load_pr_cache();
         let hide_stale = load_hide_stale();
@@ -166,6 +182,9 @@ impl App {
             preview_size,
             last_pane_id,
             palette,
+            scope_mode,
+            launch_session,
+            launch_project,
         };
 
         app.refresh();
@@ -187,6 +206,22 @@ impl App {
         self.agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
+
+        // Apply scope filter before sorting and background fetches
+        match self.scope_mode {
+            ScopeMode::All => {}
+            ScopeMode::Session => {
+                if let Some(ref session) = self.launch_session {
+                    self.agents.retain(|a| a.session == *session);
+                }
+            }
+            ScopeMode::Project => {
+                if let Some(ref project) = self.launch_project {
+                    self.agents
+                        .retain(|a| agent::extract_project_name(&a.path) == *project);
+                }
+            }
+        }
 
         self.sort_agents();
 
@@ -495,6 +530,13 @@ impl App {
         self.sort_mode = self.sort_mode.next();
         self.sort_mode.save();
         self.sort_agents();
+    }
+
+    /// Cycle to the next scope filter mode, re-filter, and persist
+    pub fn cycle_scope_mode(&mut self) {
+        self.scope_mode = self.scope_mode.next();
+        self.scope_mode.save();
+        self.refresh();
     }
 
     /// Toggle hiding stale agents

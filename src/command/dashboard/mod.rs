@@ -30,6 +30,7 @@ mod app;
 mod diff;
 mod diff_ops;
 mod keymap;
+mod scope;
 mod settings;
 mod sort;
 mod spinner;
@@ -106,7 +107,7 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
     }
 }
 
-pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
+pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) -> Result<()> {
     let mux = create_backend(detect_backend());
 
     // Check if multiplexer is running
@@ -123,7 +124,7 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool) -> Result<()> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     // Create app state
-    let mut app = App::new(mux)?;
+    let mut app = App::new(mux, session_filter)?;
 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {

@@ -142,6 +142,10 @@ pub struct GlobalSettings {
 
     /// Last visited agent pane_id (for quick toggle)
     pub last_pane_id: Option<String>,
+
+    /// Dashboard scope filter: "all", "session", "project"
+    #[serde(default)]
+    pub dashboard_scope: Option<String>,
 }
 
 #[cfg(test)]

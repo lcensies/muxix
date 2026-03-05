@@ -20,6 +20,7 @@ pub enum Action {
 
     // Dashboard commands
     CycleSortMode,
+    CycleScopeMode,
     ToggleStaleFilter,
     EnterInputMode,
     ExitInputMode,
@@ -105,6 +106,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         // Dashboard commands
         Action::CycleSortMode => {
             app.cycle_sort_mode();
+            false
+        }
+        Action::CycleScopeMode => {
+            app.cycle_scope_mode();
             false
         }
         Action::ToggleStaleFilter => {

@@ -520,6 +520,10 @@ enum Commands {
         /// Open diff view directly for the current worktree
         #[arg(long, short = 'd')]
         diff: bool,
+
+        /// Filter to only show agents in the current tmux session
+        #[arg(short = 's', long)]
+        session: bool,
     },
 
     /// Manage global configuration
@@ -780,7 +784,11 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
-        Commands::Dashboard { preview_size, diff } => command::dashboard::run(preview_size, diff),
+        Commands::Dashboard {
+            preview_size,
+            diff,
+            session,
+        } => command::dashboard::run(preview_size, diff, session),
         Commands::Config(args) => command::config::run(args),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
