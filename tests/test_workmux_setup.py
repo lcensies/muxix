@@ -87,7 +87,9 @@ class TestSetupNoPrompt:
         }
         (claude_dir / "settings.json").write_text(json.dumps(settings))
 
-        result = run_workmux_command(mux_server, workmux_exe_path, repo_path, "setup")
+        result = run_workmux_command(
+            mux_server, workmux_exe_path, repo_path, "setup --hooks"
+        )
         assert "All agents have status tracking configured" in result.stdout
 
     def test_claude_plugin_enabled(
@@ -102,7 +104,9 @@ class TestSetupNoPrompt:
         settings = {"enabledPlugins": {"workmux-status@workmux": True}}
         (claude_dir / "settings.json").write_text(json.dumps(settings))
 
-        result = run_workmux_command(mux_server, workmux_exe_path, repo_path, "setup")
+        result = run_workmux_command(
+            mux_server, workmux_exe_path, repo_path, "setup --hooks"
+        )
         assert "All agents have status tracking configured" in result.stdout
 
     def test_claude_plugin_disabled_counts_as_configured(
@@ -117,7 +121,9 @@ class TestSetupNoPrompt:
         settings = {"enabledPlugins": {"workmux-status@workmux": False}}
         (claude_dir / "settings.json").write_text(json.dumps(settings))
 
-        result = run_workmux_command(mux_server, workmux_exe_path, repo_path, "setup")
+        result = run_workmux_command(
+            mux_server, workmux_exe_path, repo_path, "setup --hooks"
+        )
         assert "All agents have status tracking configured" in result.stdout
 
     def test_opencode_plugin_configured(
@@ -131,7 +137,9 @@ class TestSetupNoPrompt:
         plugin_dir.mkdir(parents=True)
         (plugin_dir / "workmux-status.ts").write_text("// plugin")
 
-        result = run_workmux_command(mux_server, workmux_exe_path, repo_path, "setup")
+        result = run_workmux_command(
+            mux_server, workmux_exe_path, repo_path, "setup --hooks"
+        )
         assert "All agents have status tracking configured" in result.stdout
 
     def test_both_agents_configured(
@@ -164,7 +172,9 @@ class TestSetupNoPrompt:
         plugin_dir.mkdir(parents=True)
         (plugin_dir / "workmux-status.ts").write_text("// plugin")
 
-        result = run_workmux_command(mux_server, workmux_exe_path, repo_path, "setup")
+        result = run_workmux_command(
+            mux_server, workmux_exe_path, repo_path, "setup --hooks"
+        )
         assert "All agents have status tracking configured" in result.stdout
 
     def test_requires_interactive_terminal(
@@ -208,6 +218,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "y")
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
@@ -236,6 +248,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "")  # Just Enter
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
@@ -260,6 +274,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "n")
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
@@ -282,6 +298,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "y")
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
@@ -307,6 +325,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "y")
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
@@ -353,6 +373,8 @@ class TestSetupInstall:
             mux_server, "test", "Install status tracking hooks?", timeout=5.0
         )
         mux_server.send_keys("test:", "y")
+        wait_for_pane_output(mux_server, "test", "Install bundled skills?", timeout=5.0)
+        mux_server.send_keys("test:", "n")
 
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
