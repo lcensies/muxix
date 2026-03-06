@@ -1595,7 +1595,10 @@ at-a-glance visibility into what the agent in each window doing.
 | Kiro        | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)       |
 | Codex       | [Tracking issue](https://github.com/openai/codex/issues/2109)          |
 
-\*Copilot CLI does not support the 💬 waiting state.
+**Notes:**
+
+- **Copilot CLI**: No 💬 waiting state
+- **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
 
 ### Setup
 
