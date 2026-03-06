@@ -1586,12 +1586,16 @@ at-a-glance visibility into what the agent in each window doing.
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
 
-**Note**: Currently Claude Code, [OpenCode](https://opencode.ai/), and
-[Copilot CLI](https://github.com/github/copilot-cli) support hooks that enable
-this functionality. Gemini's support is
-[on the way](https://github.com/google-gemini/gemini-cli/issues/9070). Codex
-support can be tracked in
-[this issue](https://github.com/openai/codex/issues/2109).
+| Agent       | Status                                                                 |
+| ----------- | ---------------------------------------------------------------------- |
+| Claude Code | ✅ Supported                                                           |
+| Copilot CLI | ✅ Supported\*                                                         |
+| OpenCode    | ✅ Supported                                                           |
+| Gemini CLI  | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070) |
+| Kiro        | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)       |
+| Codex       | [Tracking issue](https://github.com/openai/codex/issues/2109)          |
+
+\*Copilot CLI does not support the 💬 waiting state.
 
 ### Setup
 
