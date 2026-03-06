@@ -76,8 +76,18 @@ pub fn rewrite_agent_command(
     let rest = pane_rest.trim_start();
 
     // Build the inner command step-by-step to ensure correct order:
-    // [agent_command] [agent_options] [user_args] [prompt_argument]
+    // [executable] [default_subcommand?] [user_args] [prompt_argument]
+    let profile = super::agent::resolve_profile(effective_agent);
     let mut inner_cmd = pane_token.to_string();
+
+    // Insert default subcommand (e.g., "chat" for kiro-cli) if the user
+    // hasn't already included it in their config args.
+    if let Some(subcmd) = profile.default_subcommand()
+        && needs_default_subcommand(rest, subcmd)
+    {
+        inner_cmd.push(' ');
+        inner_cmd.push_str(subcmd);
+    }
 
     // Add user-provided arguments from config (must come before the prompt)
     if !rest.is_empty() {
@@ -85,8 +95,7 @@ pub fn rewrite_agent_command(
         inner_cmd.push_str(rest);
     }
 
-    // Add the prompt argument using agent profile
-    let profile = super::agent::resolve_profile(effective_agent);
+    // Add the prompt argument
     inner_cmd.push(' ');
     inner_cmd.push_str(&profile.prompt_argument(&prompt_path));
 
@@ -175,7 +184,47 @@ pub fn adjust_command<'a>(
     {
         return Cow::Owned(rewritten);
     }
+
+    // Even without a prompt, insert the default subcommand if needed
+    // (e.g., "kiro-cli" -> "kiro-cli chat"). Only applies when the
+    // command itself is the agent (stem must match).
+    let profile = super::agent::resolve_profile(effective_agent);
+    if let Some(subcmd) = profile.default_subcommand()
+        && let Some((token, rest_with_leading)) = crate::config::split_first_token(command)
+    {
+        let resolved =
+            crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
+        let stem = Path::new(&resolved)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if stem == profile.name() {
+            let rest = rest_with_leading.trim_start();
+            if needs_default_subcommand(rest, subcmd) {
+                return if rest.is_empty() {
+                    Cow::Owned(format!("{} {}", token, subcmd))
+                } else {
+                    Cow::Owned(format!("{} {} {}", token, subcmd, rest))
+                };
+            }
+        }
+    }
+
     Cow::Borrowed(command)
+}
+
+/// Check whether a default subcommand needs to be inserted.
+///
+/// Returns `true` when the user's args don't already start with the
+/// subcommand (e.g., "chat"). Flags like `--verbose` are not subcommands,
+/// so the default is still inserted before them.
+fn needs_default_subcommand(rest: &str, subcmd: &str) -> bool {
+    match rest.split_whitespace().next() {
+        None => true,                                  // no args at all
+        Some(first) if first == subcmd => false,       // already has it
+        Some(first) if first.starts_with('-') => true, // flag, not a subcommand
+        Some(_) => false,                              // some other subcommand
+    }
 }
 
 /// Escape a string for embedding inside a double-quoted shell context.
@@ -349,6 +398,63 @@ mod tests {
         assert_eq!(
             result,
             Some(" opencode --prompt \"$(cat PROMPT.md)\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_kiro_bare_command_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        // agent: kiro-cli (bare, no "chat" subcommand)
+        let result = rewrite_agent_command(
+            "kiro-cli",
+            &prompt_file,
+            &working_dir,
+            Some("kiro-cli"),
+            "/bin/zsh",
+        );
+        assert_eq!(
+            result,
+            Some(" kiro-cli chat \"$(cat PROMPT.md)\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_kiro_with_chat_subcommand() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        // agent: "kiro-cli chat" (user already includes chat)
+        let result = rewrite_agent_command(
+            "kiro-cli chat",
+            &prompt_file,
+            &working_dir,
+            Some("kiro-cli chat"),
+            "/bin/zsh",
+        );
+        assert_eq!(
+            result,
+            Some(" kiro-cli chat \"$(cat PROMPT.md)\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_kiro_with_chat_and_flags() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        // agent: "kiro-cli chat --model sonnet"
+        let result = rewrite_agent_command(
+            "kiro-cli chat --model sonnet",
+            &prompt_file,
+            &working_dir,
+            Some("kiro-cli chat --model sonnet"),
+            "/bin/zsh",
+        );
+        assert_eq!(
+            result,
+            Some(" kiro-cli chat --model sonnet \"$(cat PROMPT.md)\"".to_string())
         );
     }
 
@@ -738,5 +844,110 @@ mod tests {
         // Should use gemini's profile (-i flag)
         assert!(resolved.command.contains("-i"));
         assert_eq!(resolved.effective_agent.as_deref(), Some("gemini"));
+    }
+
+    // --- kiro-cli default subcommand tests ---
+
+    #[test]
+    fn test_resolve_pane_command_kiro_bare_inserts_chat() {
+        // agent: kiro-cli, no prompt -> should become "kiro-cli chat"
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("kiro-cli"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "kiro-cli chat");
+    }
+
+    #[test]
+    fn test_resolve_pane_command_kiro_with_chat_no_duplicate() {
+        // agent: "kiro-cli chat", no prompt -> stays "kiro-cli chat"
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("kiro-cli chat"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "kiro-cli chat");
+    }
+
+    #[test]
+    fn test_resolve_pane_command_kiro_no_chat_on_vim() {
+        // agent: kiro-cli but pane command is vim -> no chat inserted
+        let result = resolve_pane_command(
+            Some("vim"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("kiro-cli"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "vim");
+    }
+
+    #[test]
+    fn test_resolve_pane_command_kiro_with_prompt() {
+        // agent: kiro-cli, with prompt -> "kiro-cli chat "$(cat PROMPT.md)""
+        let prompt = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            Some(&prompt),
+            &working_dir,
+            Some("kiro-cli"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert!(resolved.prompt_injected);
+        assert_eq!(resolved.command, " kiro-cli chat \"$(cat PROMPT.md)\"");
+    }
+
+    #[test]
+    fn test_resolve_pane_command_kiro_with_flags_inserts_chat() {
+        // agent: "kiro-cli --verbose" -> should become "kiro-cli chat --verbose"
+        let result = resolve_pane_command(
+            Some("<agent>"),
+            true,
+            None,
+            Path::new("/tmp"),
+            Some("kiro-cli --verbose"),
+            "/bin/zsh",
+        );
+        let resolved = result.unwrap();
+        assert_eq!(resolved.command, "kiro-cli chat --verbose");
+    }
+
+    // --- needs_default_subcommand tests ---
+
+    #[test]
+    fn test_needs_default_subcommand_empty() {
+        assert!(needs_default_subcommand("", "chat"));
+    }
+
+    #[test]
+    fn test_needs_default_subcommand_already_present() {
+        assert!(!needs_default_subcommand("chat", "chat"));
+        assert!(!needs_default_subcommand("chat --model foo", "chat"));
+    }
+
+    #[test]
+    fn test_needs_default_subcommand_flag() {
+        assert!(needs_default_subcommand("--verbose", "chat"));
+        assert!(needs_default_subcommand("-v", "chat"));
+    }
+
+    #[test]
+    fn test_needs_default_subcommand_other_subcommand() {
+        assert!(!needs_default_subcommand("login", "chat"));
+        assert!(!needs_default_subcommand("agent list", "chat"));
     }
 }

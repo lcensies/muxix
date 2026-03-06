@@ -44,6 +44,18 @@ pub trait AgentProfile: Send + Sync {
         format!("-- \"$(cat {})\"", prompt_path)
     }
 
+    /// Subcommand to insert after the executable when launching.
+    ///
+    /// For agents like kiro-cli where the bare executable shows a menu
+    /// rather than starting chat, this returns the subcommand needed
+    /// (e.g., `"chat"` so that `kiro-cli` becomes `kiro-cli chat`).
+    ///
+    /// Skipped if the user already includes it in their config
+    /// (e.g., `agent: "kiro-cli chat"`).
+    fn default_subcommand(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Default command for auto-naming branches with this agent's CLI.
     ///
     /// Returns a fast/cheap command string suitable for branch name generation,
@@ -135,6 +147,26 @@ impl AgentProfile for CodexProfile {
     }
 }
 
+pub struct KiroProfile;
+
+impl AgentProfile for KiroProfile {
+    fn name(&self) -> &'static str {
+        "kiro-cli"
+    }
+
+    fn default_subcommand(&self) -> Option<&'static str> {
+        Some("chat")
+    }
+
+    fn prompt_argument(&self, prompt_path: &str) -> String {
+        format!("\"$(cat {})\"", prompt_path)
+    }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("kiro-cli chat --no-interactive")
+    }
+}
+
 pub struct DefaultProfile;
 
 impl AgentProfile for DefaultProfile {
@@ -150,6 +182,7 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &GeminiProfile,
     &OpenCodeProfile,
     &CodexProfile,
+    &KiroProfile,
 ];
 
 /// Check if a command matches a known agent profile.
@@ -270,6 +303,21 @@ mod tests {
     }
 
     #[test]
+    fn test_kiro_profile() {
+        let profile = KiroProfile;
+        assert_eq!(profile.name(), "kiro-cli");
+        assert!(!profile.needs_bang_delay());
+        assert!(!profile.needs_auto_status());
+        assert_eq!(profile.default_subcommand(), Some("chat"));
+        assert_eq!(profile.prompt_argument("PROMPT.md"), "\"$(cat PROMPT.md)\"");
+        assert_eq!(profile.skip_permissions_flag(), None);
+        assert_eq!(
+            profile.auto_name_command(),
+            Some("kiro-cli chat --no-interactive")
+        );
+    }
+
+    #[test]
     fn test_default_profile() {
         let profile = DefaultProfile;
         assert_eq!(profile.name(), "default");
@@ -321,6 +369,18 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_profile_kiro() {
+        let profile = resolve_profile(Some("kiro-cli"));
+        assert_eq!(profile.name(), "kiro-cli");
+    }
+
+    #[test]
+    fn test_resolve_profile_kiro_with_subcommand() {
+        let profile = resolve_profile(Some("kiro-cli chat"));
+        assert_eq!(profile.name(), "kiro-cli");
+    }
+
+    #[test]
     fn test_resolve_profile_unknown() {
         let profile = resolve_profile(Some("unknown-agent"));
         assert_eq!(profile.name(), "default");
@@ -334,6 +394,7 @@ mod tests {
         assert!(is_known_agent("gemini"));
         assert!(is_known_agent("codex"));
         assert!(is_known_agent("opencode"));
+        assert!(is_known_agent("kiro-cli"));
     }
 
     #[test]
