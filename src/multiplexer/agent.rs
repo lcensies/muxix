@@ -167,6 +167,22 @@ impl AgentProfile for KiroProfile {
     }
 }
 
+pub struct VibeProfile;
+
+impl AgentProfile for VibeProfile {
+    fn name(&self) -> &'static str {
+        "vibe"
+    }
+
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        Some("--agent auto-approve")
+    }
+
+    fn prompt_argument(&self, prompt_path: &str) -> String {
+        format!("\"$(cat {})\"", prompt_path)
+    }
+}
+
 pub struct DefaultProfile;
 
 impl AgentProfile for DefaultProfile {
@@ -183,6 +199,7 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &OpenCodeProfile,
     &CodexProfile,
     &KiroProfile,
+    &VibeProfile,
 ];
 
 /// Check if a command matches a known agent profile.
@@ -318,6 +335,20 @@ mod tests {
     }
 
     #[test]
+    fn test_vibe_profile() {
+        let profile = VibeProfile;
+        assert_eq!(profile.name(), "vibe");
+        assert!(!profile.needs_bang_delay());
+        assert!(!profile.needs_auto_status());
+        assert_eq!(profile.prompt_argument("PROMPT.md"), "\"$(cat PROMPT.md)\"");
+        assert_eq!(
+            profile.skip_permissions_flag(),
+            Some("--agent auto-approve")
+        );
+        assert_eq!(profile.auto_name_command(), None);
+    }
+
+    #[test]
     fn test_default_profile() {
         let profile = DefaultProfile;
         assert_eq!(profile.name(), "default");
@@ -381,6 +412,12 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_profile_vibe() {
+        let profile = resolve_profile(Some("vibe"));
+        assert_eq!(profile.name(), "vibe");
+    }
+
+    #[test]
     fn test_resolve_profile_unknown() {
         let profile = resolve_profile(Some("unknown-agent"));
         assert_eq!(profile.name(), "default");
@@ -395,6 +432,7 @@ mod tests {
         assert!(is_known_agent("codex"));
         assert!(is_known_agent("opencode"));
         assert!(is_known_agent("kiro-cli"));
+        assert!(is_known_agent("vibe"));
     }
 
     #[test]

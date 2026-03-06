@@ -307,7 +307,7 @@ Each pane supports:
 - `<agent>`: resolves to the configured agent (from `agent` config or `--agent`
   flag)
 
-Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`) are auto-detected when
+Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`) are auto-detected when
 used as literal commands and receive prompt injection automatically, without
 needing the `<agent>` placeholder or a matching `agent` config:
 
@@ -681,7 +681,7 @@ The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
 LLM. The tool used depends on your configuration:
 
 1. `auto_name.command` is set: uses that command as-is
-2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`):
+2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`):
    uses the agent's CLI with a fast/cheap model
 3. Neither: falls back to the [`llm`](https://llm.datasette.io/) CLI tool
 
