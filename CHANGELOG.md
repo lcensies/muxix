@@ -17,6 +17,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.132 (2026-03-06)
+
+- Added support for Kiro CLI (`kiro-cli`) as a recognized agent
+- Added support for Mistral Vibe (`vibe`) as a recognized agent
+  ([#76](https://github.com/raine/workmux/issues/76))
+
 ## v0.1.131 (2026-03-05)
 
 - New `--session` flag for `workmux open` lets you open worktrees in a dedicated
