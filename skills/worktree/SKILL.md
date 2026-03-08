@@ -72,6 +72,10 @@ Then use the /merge skill to commit, rebase, and merge the branch.
 
 Write ALL temp files first, THEN run all workmux commands.
 
+**IMPORTANT:** Run `workmux add` from the CURRENT directory. Do NOT `cd` to the
+main repo or any other directory. The new worktree branches from whatever branch
+is checked out in the current directory.
+
 Step 1 - Write all prompt files (in parallel):
 
 ```bash
