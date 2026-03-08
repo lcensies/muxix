@@ -3,6 +3,13 @@
 Thanks for your interest in contributing! This guide covers development setup,
 testing, and the PR process.
 
+## Before contributing
+
+This is a small project maintained by one person. Reviewing and testing pull
+requests often takes more time than implementing a feature from scratch. Please
+don't be surprised if your PR is not accepted, even if the idea itself is good.
+To avoid wasted effort, open an issue first to discuss your proposed change.
+
 ## Prerequisites
 
 - Rust toolchain (stable)
