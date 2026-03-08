@@ -35,9 +35,6 @@ description: Release notes and version history for workmux
 - `workmux setup` now offers to install bundled skills (merge, rebase, worktree,
   coordinator) during the first-run wizard
 - Agents can now communicate across projects using the coordinator skill
-- The `claude_default_panes` config option has been renamed to
-  `agent_default_panes` to reflect multi-agent support. Agent-specific default
-  panes are now also read from the global config
 - Fixed session mode not being detected correctly when reopening a worktree
   after a tmux restart
 
