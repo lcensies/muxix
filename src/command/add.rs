@@ -52,6 +52,14 @@ fn generate_branch_name_with_spinner(
         crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).auto_name_command();
     let effective_command = config_command.or(profile_command);
 
+    tracing::info!(
+        config_command = config_command,
+        profile_command = profile_command,
+        effective_command = effective_command,
+        agent = config.agent.as_deref().unwrap_or("none"),
+        "resolved auto-name command"
+    );
+
     // Extract program name from effective command for spinner message
     let program_name = effective_command
         .and_then(|cmd| cmd.split_whitespace().next())

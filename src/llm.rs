@@ -14,10 +14,26 @@ pub fn generate_branch_name(
     let system = system_prompt.unwrap_or(DEFAULT_SYSTEM_PROMPT);
     let full_prompt = format!("{}\n\nUser Input:\n{}", system, prompt);
 
+    tracing::info!(
+        user_prompt = prompt,
+        system_prompt = system,
+        model = model.unwrap_or("default"),
+        command = command.unwrap_or("llm"),
+        "generating branch name"
+    );
+    tracing::info!(full_prompt = full_prompt, "full prompt sent to generator");
+
     let raw = run_generator_command(command, model, &full_prompt)?;
+    tracing::info!(raw_output = raw.trim(), "raw output from generator");
+
     let branch_name = sanitize_branch_name(raw.trim());
+    tracing::info!(branch_name = branch_name, "sanitized branch name");
 
     if branch_name.is_empty() {
+        tracing::error!(
+            raw_output = raw.trim(),
+            "generator returned empty branch name after sanitization"
+        );
         return Err(anyhow!("LLM returned empty branch name"));
     }
 
@@ -50,7 +66,11 @@ fn run_custom_command(cmdline: &str, full_prompt: &str) -> Result<String> {
     let program = &parts[0];
     let fixed_args = &parts[1..];
 
-    tracing::debug!("Running custom generator: {} {:?}", program, fixed_args);
+    tracing::info!(
+        program = program.as_str(),
+        args = ?fixed_args,
+        "running custom generator command"
+    );
 
     let mut child = Command::new(program)
         .args(fixed_args)
@@ -73,6 +93,12 @@ fn run_custom_command(cmdline: &str, full_prompt: &str) -> Result<String> {
         } else {
             stderr
         };
+        tracing::error!(
+            program = program.as_str(),
+            exit_code = output.status.code().unwrap_or(1),
+            stderr = msg.trim(),
+            "custom generator command failed"
+        );
         anyhow::bail!(
             "Custom command '{}' failed (exit code {}):\n{}",
             program,
@@ -90,6 +116,8 @@ fn run_llm_command(model: Option<&str>, full_prompt: &str) -> Result<String> {
         cmd.args(["-m", m]);
     }
 
+    tracing::info!(model = model.unwrap_or("default"), "running llm command");
+
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -105,6 +133,7 @@ fn run_llm_command(model: Option<&str>, full_prompt: &str) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(stderr = %stderr, "llm command failed");
         return Err(anyhow!("llm command failed: {}", stderr));
     }
 
