@@ -17,6 +17,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.133 (2026-03-09)
+
+- Fixed OpenCode plugin's waiting (💬) status not triggering when the agent
+  requests permission or asks a multiple-choice question, caused by event name
+  changes in OpenCode v2 ([#75](https://github.com/raine/workmux/pull/75))
+- Added logging for branch name auto-generation
+
 ## v0.1.132 (2026-03-06)
 
 - Added support for Kiro CLI (`kiro-cli`) as a recognized agent
