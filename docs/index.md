@@ -14,7 +14,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
     <div class="ed-hero-text">
       <span class="ed-hero-name">workmux</span>
       <h1 class="ed-hero-headline">Terminal-first workflow for parallel AI agents.</h1>
-      <p class="ed-hero-tagline">Your terminal, now with parallel agents. Each task gets its own worktree and a tab. Let agents work conflict-free.</p>
+      <p class="ed-hero-tagline">Turn your terminal into a multi-agent workspace. Every task gets a dedicated <span class="ed-term">git worktree</span> and <span class="ed-term">tmux window</span>, letting agents code conflict-free.</p>
       <div class="ed-hero-actions">
         <a href="/guide/quick-start" class="ed-btn-primary">Get started</a>
         <a href="https://github.com/raine/workmux" class="ed-btn-github">GitHub</a>
@@ -419,12 +419,17 @@ onMounted(() => {
 }
 
 .ed-hero-tagline {
-  font-family: var(--ed-font-mono);
-  font-size: 0.875rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
   line-height: 1.7;
-  color: var(--vp-c-text-2);
+  color: color-mix(in srgb, var(--vp-c-text-1) 65%, var(--vp-c-text-2));
   max-width: 440px;
   margin-bottom: 2.5rem !important;
+}
+
+.ed-term {
+  color: var(--ed-accent);
+  border-bottom: 1px solid var(--ed-accent);
 }
 
 .ed-hero-actions {
