@@ -37,3 +37,15 @@ This only affects workmux-created worktrees. Alternatively, use a global shell a
 ```bash
 alias claude="claude --dangerously-skip-permissions"
 ```
+
+## Continuing a conversation in a worktree
+
+Sometimes you want to continue a Claude conversation inside a worktree. Since worktrees are technically separate project directories, Claude Code treats them as different projects, so you cannot directly resume a conversation that started in another worktree (or the main tree).
+
+[claude-history](https://github.com/raine/claude-history) solves this with its cross-project fork feature. Use `--global` mode to search conversations across all projects, then fork the one you want:
+
+```sh
+claude-history --global
+```
+
+Select a conversation and press `Ctrl+F` to fork it. When the conversation belongs to a different project than your current directory, claude-history automatically copies the session files into the current project and resumes there. The forked conversation then lives in the worktree as if it started there.
