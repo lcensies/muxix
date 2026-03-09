@@ -17,6 +17,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.134 (2026-03-09)
+
+- Apple Container sandboxes now default to 16 GB memory limit, preventing OOM
+  kills during heavy workloads. Memory and CPU limits are configurable via
+  `container.memory` and `container.cpus` in your config
+  ([#77](https://github.com/raine/workmux/issues/77))
+- Fork PRs checked out with `--pr` now automatically prefix the local branch
+  name with the fork owner (e.g., `forkowner-main`), preventing conflicts when
+  the fork's branch name matches an existing local branch
+
 ## v0.1.133 (2026-03-09)
 
 - Fixed OpenCode plugin's waiting (💬) status not triggering when the agent
