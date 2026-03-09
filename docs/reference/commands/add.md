@@ -86,7 +86,8 @@ workmux add my-feature -o
 ```
 
 ```bash [Pull requests & forks]
-# Checkout PR #123. The local branch will be named after the PR's branch.
+# Checkout PR #123. Same-repo PRs use the PR's branch name;
+# fork PRs are prefixed with the owner (e.g., "forkowner-main").
 workmux add --pr 123
 
 # Checkout PR #456 with a custom local branch name

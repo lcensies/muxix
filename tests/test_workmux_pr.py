@@ -245,6 +245,82 @@ def test_add_pr_conflicts_with_base_flag(
     )
 
 
+def test_add_pr_fork_with_main_branch(mux_server, workmux_exe_path, remote_repo_path):
+    """Test that fork PRs with branch 'main' get prefixed with owner to avoid conflict"""
+    env = mux_server
+    repo_path = env.tmp_path
+    setup_git_repo(repo_path, env.env)
+
+    # Set up origin with a GitHub-style URL
+    github_url = "https://github.com/testowner/testrepo.git"
+    env.run_command(
+        ["git", "remote", "add", "origin", github_url],
+        cwd=repo_path,
+    )
+    env.run_command(
+        ["git", "remote", "set-url", "--push", "origin", str(remote_repo_path)],
+        cwd=repo_path,
+    )
+    env.run_command(
+        ["git", "config", f"url.{remote_repo_path}.insteadOf", github_url],
+        cwd=repo_path,
+    )
+    env.run_command(["git", "push", "-u", "origin", "main"], cwd=repo_path)
+
+    # Create a separate "fork" bare repo that has a "main" branch with a commit
+    fork_repo_path = repo_path.parent / "fork_repo.git"
+    env.run_command(
+        ["git", "clone", "--bare", str(remote_repo_path), str(fork_repo_path)]
+    )
+
+    # Create a commit on main in the fork (via a temp checkout)
+    fork_work = repo_path.parent / "fork_work"
+    env.run_command(
+        ["git", "clone", str(fork_repo_path), str(fork_work)], cwd=repo_path
+    )
+    env.run_command(["git", "config", "user.name", "Fork User"], cwd=fork_work)
+    env.run_command(["git", "config", "user.email", "fork@example.com"], cwd=fork_work)
+    env.run_command(
+        ["git", "commit", "--allow-empty", "-m", "Fork PR changes"],
+        cwd=fork_work,
+    )
+    env.run_command(["git", "push", "origin", "main"], cwd=fork_work)
+
+    # Map the fork URL that ensure_fork_remote will construct
+    fork_github_url = "https://github.com/forkowner/testrepo.git"
+    env.run_command(
+        ["git", "config", f"url.{fork_repo_path}.insteadOf", fork_github_url],
+        cwd=repo_path,
+    )
+
+    # PR data: fork PR where head branch is "main" from a different owner
+    pr_data = {
+        "headRefName": "main",
+        "headRepositoryOwner": {"login": "forkowner"},
+        "state": "OPEN",
+        "isDraft": False,
+        "title": "Use ANSI palette colors",
+        "author": {"login": "forkowner"},
+    }
+    install_fake_gh_cli(env, pr_number=16, json_response=pr_data)
+
+    result = run_workmux_command(env, workmux_exe_path, repo_path, "add --pr 16")
+
+    assert "PR #16" in result.stdout
+    assert "Use ANSI palette colors" in result.stdout
+
+    # The worktree should be created with the prefixed branch name
+    worktree_path = get_worktree_path(repo_path, "forkowner-main")
+    assert worktree_path.exists(), (
+        f"Expected worktree at {worktree_path} (forkowner-main), "
+        f"but it does not exist. stderr: {result.stderr}"
+    )
+
+    window_name = get_window_name("forkowner-main")
+    windows = env.list_windows()
+    assert window_name in windows
+
+
 def test_add_pr_fails_when_worktree_exists(
     mux_server, workmux_exe_path, remote_repo_path
 ):

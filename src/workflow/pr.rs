@@ -35,6 +35,13 @@ impl RemoteDetectionContext for RealRemoteDetectionContext {
     }
 }
 
+/// Generate a local branch name for a fork branch by prefixing with the owner.
+/// Used by both `resolve_pr_ref` (--pr) and `resolve_fork_branch` (owner:branch)
+/// to avoid conflicts with common branch names like "main".
+fn fork_local_branch_name(owner: &str, branch: &str) -> String {
+    format!("{}-{}", owner, branch)
+}
+
 /// Result of resolving a PR checkout.
 pub struct PrCheckoutResult {
     pub local_branch: String,
@@ -70,21 +77,29 @@ pub fn resolve_pr_ref(
         eprintln!("⚠️  Warning: PR #{} is a DRAFT.", pr_number);
     }
 
-    // Determine local branch name (match gh pr checkout behavior)
-    let local_branch = custom_branch_name
-        .map(String::from)
-        .unwrap_or_else(|| pr_details.head_ref_name.clone());
-
     // Determine if this is a fork PR and ensure remote exists
     let current_repo_owner =
         git::get_repo_owner().context("Failed to determine repository owner from origin remote")?;
 
-    let remote_name = if pr_details.is_fork(&current_repo_owner) {
-        let fork_owner = &pr_details.head_repository_owner.login;
+    let is_fork = pr_details.is_fork(&current_repo_owner);
+    let fork_owner = &pr_details.head_repository_owner.login;
+
+    let remote_name = if is_fork {
         git::ensure_fork_remote(fork_owner)?
     } else {
         "origin".to_string()
     };
+
+    // Determine local branch name.
+    // For fork PRs, prefix with the fork owner to avoid conflicts with common
+    // branch names like "main", matching resolve_fork_branch behavior.
+    let local_branch = custom_branch_name.map(String::from).unwrap_or_else(|| {
+        if is_fork {
+            fork_local_branch_name(fork_owner, &pr_details.head_ref_name)
+        } else {
+            pr_details.head_ref_name.clone()
+        }
+    });
 
     // Note: We do not fetch here. The `create` workflow handles fetching
     // the remote branch to ensure the worktree base is up to date.
@@ -128,7 +143,7 @@ pub fn resolve_fork_branch(fork_spec: &git::ForkBranchSpec) -> Result<ForkBranch
     // Always prefix the local branch name with the fork owner to avoid conflicts
     // with existing branches (e.g., "main"). The owner:branch syntax already signals
     // this is someone else's branch, so including the owner is informative.
-    let local_branch_name = format!("{}-{}", fork_spec.owner, fork_spec.branch);
+    let local_branch_name = fork_local_branch_name(&fork_spec.owner, &fork_spec.branch);
 
     Ok(ForkBranchResult {
         remote_ref,
