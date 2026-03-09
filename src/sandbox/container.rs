@@ -194,10 +194,30 @@ pub fn build_docker_run_args(
     args.push("--rm".to_string());
     args.push("-it".to_string());
 
+    let runtime = config.runtime();
+
+    // Resource limits: user config overrides runtime default.
+    // Apple Container VMs default to 1 GB RAM which is too low for most workloads.
+    // Docker/Podman use host resources directly, so these are only passed when
+    // explicitly configured (or when the runtime provides a default).
+    if let Some(mem) = config
+        .container
+        .memory
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| runtime.default_memory())
+    {
+        args.push("--memory".to_string());
+        args.push(mem.to_string());
+    }
+    if let Some(cpus) = config.container.cpus {
+        args.push("--cpus".to_string());
+        args.push(cpus.to_string());
+    }
+
     // On Linux Docker Engine (not Desktop), host.docker.internal doesn't resolve
     // unless we explicitly add it. The special "host-gateway" value maps to the
     // host's gateway IP. This is a harmless no-op on Docker Desktop.
-    let runtime = config.runtime();
 
     if runtime.needs_add_host() {
         args.push("--add-host".to_string());
@@ -511,6 +531,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Docker),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             env_passthrough: Some(vec!["TEST_KEY".to_string()]),
@@ -567,6 +588,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Docker),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -593,6 +615,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Podman),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -618,6 +641,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Podman),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -770,6 +794,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Docker),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             extra_mounts: Some(vec![ExtraMount::Path("/tmp/notes".to_string())]),
@@ -799,6 +824,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Docker),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             extra_mounts: Some(vec![ExtraMount::Spec {
@@ -1084,6 +1110,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::Podman),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -1141,6 +1168,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::AppleContainer),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -1169,6 +1197,7 @@ mod tests {
             enabled: Some(true),
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::AppleContainer),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -1191,5 +1220,114 @@ mod tests {
         // Should still have UID/GID env vars for deny mode
         assert!(args.iter().any(|a| a.starts_with("WM_TARGET_UID=")));
         assert!(args.iter().any(|a| a.starts_with("WM_TARGET_GID=")));
+    }
+
+    #[test]
+    fn test_build_args_apple_container_default_memory() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        // Apple Container should get --memory 16G by default
+        let mem_idx = args.iter().position(|a| a == "--memory").unwrap();
+        assert_eq!(args[mem_idx + 1], "16G");
+        // No --cpus unless explicitly configured
+        assert!(!args.contains(&"--cpus".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_apple_container_custom_resources() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+                memory: Some("8G".to_string()),
+                cpus: Some(8),
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let mem_idx = args.iter().position(|a| a == "--memory").unwrap();
+        assert_eq!(args[mem_idx + 1], "8G");
+        let cpu_idx = args.iter().position(|a| a == "--cpus").unwrap();
+        assert_eq!(args[cpu_idx + 1], "8");
+    }
+
+    #[test]
+    fn test_build_args_docker_no_default_resource_flags() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        // Docker should NOT get --memory or --cpus by default
+        assert!(!args.contains(&"--memory".to_string()));
+        assert!(!args.contains(&"--cpus".to_string()));
+    }
+
+    #[test]
+    fn test_build_args_docker_explicit_memory() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                memory: Some("4G".to_string()),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        // Explicit memory should be passed even for Docker
+        let mem_idx = args.iter().position(|a| a == "--memory").unwrap();
+        assert_eq!(args[mem_idx + 1], "4G");
     }
 }

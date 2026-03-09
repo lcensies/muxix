@@ -41,18 +41,20 @@ workmux sandbox pull
 
 ## Configuration
 
-| Option                    | Default                                 | Description                                                                                                                                                                             |
-| ------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                             |
-| `container.runtime`       | auto-detect                             | Container runtime: `docker`, `podman`, or `apple-container`. Auto-detected from PATH when not set. On macOS, prefers Apple Container (`container`) over Docker/Podman.                  |
-| `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                |
-| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                     |
-| `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.** |
-| `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                          |
-| `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                |
-| `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                  |
-| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**          |
-| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                        |
+| Option                    | Default                                 | Description                                                                                                                                                                                                       |
+| ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                                                       |
+| `container.runtime`       | auto-detect                             | Container runtime: `docker`, `podman`, or `apple-container`. Auto-detected from PATH when not set. On macOS, prefers Apple Container (`container`) over Docker/Podman.                                            |
+| `container.memory`        | `16G` (Apple Container) / none (others) | Memory limit for the container. Apple Container VMs default to 1 GB which is too low, so workmux sets `16G` by default. This is a ceiling, not an upfront allocation. Works with any runtime when explicitly set. |
+| `container.cpus`          | none                                    | CPU count for the container. Only passed when explicitly set. Apple Container defaults to 4 CPUs which is sufficient for most workloads.                                                                          |
+| `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                                          |
+| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                                               |
+| `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.**                           |
+| `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                                    |
+| `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                                          |
+| `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                                            |
+| `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**                                    |
+| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                                                  |
 
 ### Example configurations
 
@@ -83,6 +85,8 @@ sandbox:
   enabled: true
   container:
     runtime: apple-container
+    # memory: 16G   # default, adjust if needed
+    # cpus: 8       # optional, Apple Container defaults to 4
 ```
 
 **Sandbox all panes (not just agent):**
