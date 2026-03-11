@@ -24,6 +24,10 @@ Giga opinionated zero-friction workflow tool for managing
 isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
+**Philosophy**: Build on tools you already use. tmux/zellij/kitty/etc. for
+windowing, git for worktrees, your agent for coding — workmux orchestrates the
+rest.
+
 <sup><sub>\* Also supports
 <a href="https://workmux.raine.dev/guide/kitty">kitty</a>,
 <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and
@@ -36,10 +40,6 @@ configuration reference.
 📖 **New to workmux?** Read the
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
 quick overview.
-
-🚀 **Using Claude Code?** Try the
-[`/worktree` skill](#delegating-tasks-with-worktree) to delegate tasks
-from your conversation.
 
 ![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
 
@@ -54,18 +54,14 @@ tabs.
 
 **Automated setup.** New worktrees start broken (no `.env`, no `node_modules`,
 no dev server). workmux can copy config files, symlink dependencies, and run
-install commands on creation. Configure once, reuse everywhere.
+install commands on creation.
 
 **One-command cleanup.** `workmux merge` handles the full lifecycle: merge the
 branch, delete the worktree, close the tmux window, remove the local branch.
 
-**Terminal workflow.** Build on your familiar terminal setup instead of yet
-another agentic GUI that won't exist next year. If you don't have one yet, tmux
-is worth picking up.
-
-**Philosophy:** Do one thing well, then compose. Your terminal handles windowing
-and layout, git handles branches and worktrees, your agent executes, and workmux
-ties it all together.
+**Terminal workflow.** Build on your terminal setup instead of yet another
+agentic GUI that won't exist next year. If you don't have one yet, tmux might be
+worth picking up.
 
 New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
@@ -76,8 +72,8 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
   one command (`merge`)
 - [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
   sending commands
-- [Delegate tasks to worktree agents](#delegating-tasks-with-worktree)
-  with the `/worktree` skill
+- [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
+  `/worktree` skill
 - [Display Claude agent status in tmux window names](#agent-status-tracking)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
@@ -308,9 +304,10 @@ Each pane supports:
 - `<agent>`: resolves to the configured agent (from `agent` config or `--agent`
   flag)
 
-Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`) are auto-detected when
-used as literal commands and receive prompt injection automatically, without
-needing the `<agent>` placeholder or a matching `agent` config:
+Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`)
+are auto-detected when used as literal commands and receive prompt injection
+automatically, without needing the `<agent>` placeholder or a matching `agent`
+config:
 
 ```yaml
 panes:
@@ -663,9 +660,9 @@ done
 
 When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
 workmux automatically injects the prompt into panes running the configured agent
-command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, or whatever you've set
-via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml`
-changes:
+command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, or whatever
+you've set via the `agent` config or `--agent` flag) without requiring any
+`.workmux.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started
   with the given prompt.
@@ -682,8 +679,8 @@ The `--auto-name` (`-A`) flag generates a branch name from your prompt using an
 LLM. The tool used depends on your configuration:
 
 1. `auto_name.command` is set: uses that command as-is
-2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`):
-   uses the agent's CLI with a fast/cheap model
+2. `config.agent` is a known agent (`claude`, `gemini`, `codex`, `opencode`,
+   `kiro-cli`, `vibe`): uses the agent's CLI with a fast/cheap model
 3. Neither: falls back to the [`llm`](https://llm.datasette.io/) CLI tool
 
 ##### Usage
@@ -1335,9 +1332,9 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
   the agent list.
 - `-P, --preview-size <10-90>`: Set preview pane size as percentage (larger =
   more preview, less table). Default: 60.
-- `-s, --session`: Filter to only show agents in the current session.
-  Useful for session-per-project workflows where each session maps to a
-  different repository.
+- `-s, --session`: Filter to only show agents in the current session. Useful for
+  session-per-project workflows where each session maps to a different
+  repository.
 
 <!-- prettier-ignore -->
 > [!IMPORTANT]
@@ -1355,7 +1352,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
-| `F`       | Toggle session filter                    |
+| `F`       | Toggle session filter                   |
 | `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
 | `Ctrl+u`  | Scroll preview up                       |
@@ -1599,7 +1596,8 @@ at-a-glance visibility into what the agent in each window doing.
 **Notes:**
 
 - **Copilot CLI**: No 💬 waiting state
-- **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
+- **Kiro**: Hooks support is messy: requires a custom agent since the default
+  can't be edited
 
 ### Setup
 
@@ -1610,7 +1608,8 @@ tracking hooks, and install skills:
 workmux setup
 ```
 
-You can also run specific parts: `workmux setup --hooks` or `workmux setup --skills`.
+You can also run specific parts: `workmux setup --hooks` or
+`workmux setup --skills`.
 
 Workmux will also prompt you on first run if it detects an agent without status
 tracking or skills configured.
@@ -2229,8 +2228,9 @@ delegate tasks to parallel worktree agents directly from your conversation. A
 main agent on the main branch can act as a coordinator: planning work and
 spinning up worktree agents for each task.
 
-📝 **See [this blog post](https://raine.dev/blog/git-worktrees-parallel-agents/)**
-for a detailed walkthrough of the workflow.
+📝 **See
+[this blog post](https://raine.dev/blog/git-worktrees-parallel-agents/)** for a
+detailed walkthrough of the workflow.
 
 #### Usage
 

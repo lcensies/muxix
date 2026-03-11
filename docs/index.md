@@ -65,7 +65,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
     <div class="ed-pain-points-list">
       <div class="ed-pain-point">
         <h3>"You need to reinstall everything"</h3>
-        <p>New worktrees are clean checkouts with no <code>.env</code>, no <code>node_modules</code>, no dev server. workmux can <a href="/guide/configuration#file-operations">copy config files, symlink dependencies</a>, and <a href="/guide/configuration#lifecycle-hooks">run setup commands</a> on creation. Configure once, reuse everywhere.</p>
+        <p>New worktrees are clean checkouts with no <code>.env</code>, no <code>node_modules</code>, no dev server. workmux can <a href="/guide/configuration#file-operations">copy config files, symlink dependencies</a>, and <a href="/guide/configuration#lifecycle-hooks">run setup commands</a> on creation.</p>
       </div>
       <div class="ed-pain-point">
         <h3>"You need to clean up after"</h3>
