@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, anyhow};
+use regex::Regex;
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 const DEFAULT_SYSTEM_PROMPT: &str = r#"Generate a short, valid git branch name (kebab-case) based on the user's input.
 Output ONLY the branch name."#;
@@ -140,9 +142,22 @@ fn run_llm_command(model: Option<&str>, full_prompt: &str) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
+/// Strip ANSI escape sequences (colors, cursor control, OSC, etc.)
+fn strip_ansi(s: &str) -> String {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        // CSI sequences, OSC sequences, and simple two-byte escapes
+        Regex::new(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[^\[\]]").unwrap()
+    });
+    re.replace_all(s, "").into_owned()
+}
+
 fn sanitize_branch_name(raw: &str) -> String {
+    // Strip ANSI escape sequences (some CLIs emit colors even when piped)
+    let stripped = strip_ansi(raw);
+
     // Remove markdown code blocks if present
-    let cleaned = raw
+    let cleaned = stripped
         .trim_matches('`')
         .trim()
         .lines()
@@ -202,6 +217,39 @@ mod tests {
     #[test]
     fn sanitize_branch_name_whitespace_only() {
         assert_eq!(sanitize_branch_name("   "), "");
+    }
+
+    #[test]
+    fn sanitize_branch_name_strips_ansi_escapes() {
+        // kiro-cli emits colored output with a bell character even when piped
+        assert_eq!(
+            sanitize_branch_name("\x1b[38;5;141m> \x1b[0minvestigate-zero-report-slow-loading\x07"),
+            "investigate-zero-report-slow-loading"
+        );
+    }
+
+    #[test]
+    fn sanitize_branch_name_plain_after_ansi_fix() {
+        // When the CLI stops emitting ANSI, stripping is a no-op
+        assert_eq!(
+            sanitize_branch_name("investigate-zero-report-slow-loading"),
+            "investigate-zero-report-slow-loading"
+        );
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_sequences() {
+        assert_eq!(strip_ansi("\x1b[31mhello\x1b[0m"), "hello");
+    }
+
+    #[test]
+    fn strip_ansi_removes_osc_sequences() {
+        assert_eq!(strip_ansi("hello\x1b]0;title\x07world"), "helloworld");
+    }
+
+    #[test]
+    fn strip_ansi_passthrough_clean_input() {
+        assert_eq!(strip_ansi("no-escapes-here"), "no-escapes-here");
     }
 
     #[test]
