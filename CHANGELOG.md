@@ -17,6 +17,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.136 (2026-03-11)
+
+- Add `base_branch` config option to set a default base branch for new
+  worktrees, so they always branch off a specific branch (e.g. main) instead of
+  whatever is currently checked out. The `--base` CLI flag takes precedence over
+  config ([#78](https://github.com/raine/workmux/issues/78))
+
 ## v0.1.135 (2026-03-11)
 
 - Fix auto-generated branch names containing garbage characters with kiro-cli
