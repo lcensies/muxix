@@ -17,6 +17,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.135 (2026-03-11)
+
+- Fix auto-generated branch names containing garbage characters with kiro-cli
+
 ## v0.1.134 (2026-03-09)
 
 - Apple Container sandboxes now default to 16 GB memory limit, preventing OOM
