@@ -255,11 +255,12 @@ pub fn run(
 
     // Use the determined branch name and override base if from PR
     let branch_name = &final_branch_name;
-    let base = if remote_branch_for_pr.is_some() {
+    let cli_base = if remote_branch_for_pr.is_some() {
         None
     } else {
         base
     };
+    let config_base = initial_config.base_branch.as_deref();
 
     // Validate --with-changes compatibility
     if rescue.with_changes && multi.agent.len() > 1 {
@@ -356,12 +357,18 @@ pub fn run(
 
     // Detect remote branch and extract base name
     // If we have a PR remote branch, use that; otherwise detect from branch_name
+    // Only pass CLI --base to detect_remote_branch; config base_branch should not
+    // interfere with remote/fork branch detection.
     let (remote_branch, template_base_name) = if let Some(ref pr_remote) = remote_branch_for_pr {
         (Some(pr_remote.clone()), branch_name.to_string())
     } else {
-        detect_remote_branch(branch_name, base)?
+        detect_remote_branch(branch_name, cli_base)?
     };
-    let resolved_base = if remote_branch.is_some() { None } else { base };
+    let resolved_base = if remote_branch.is_some() {
+        None
+    } else {
+        cli_base.or(config_base)
+    };
 
     // Determine effective foreach matrix
     let effective_foreach_rows =

@@ -60,6 +60,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | Option           | Description                                                                 | Default                 |
 | ---------------- | --------------------------------------------------------------------------- | ----------------------- |
 | `main_branch`    | Branch to merge into                                                        | Auto-detected           |
+| `base_branch`    | Default base branch for new worktrees (overridden by `--base`)              | Current branch          |
 | `worktree_dir`   | Directory for worktrees (absolute or relative)                              | `<project>__worktrees/` |
 | `nerdfont`       | Enable nerdfont icons (prompted on first run)                               | Prompted                |
 | `window_prefix`  | Override tmux window/session prefix                                         | Icon or `wm-`           |

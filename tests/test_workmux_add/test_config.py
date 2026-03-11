@@ -9,6 +9,8 @@ from ..conftest import (
     assert_copied_file,
     assert_symlink_to,
     assert_window_exists,
+    create_commit,
+    file_for_commit,
     get_window_name,
     wait_for_file,
     wait_for_pane_output,
@@ -308,3 +310,79 @@ class TestGlobalAgentDefault:
             worktree_path=worktree_path,
         )
         assert agent_output.read_text().strip() == "ran"
+
+
+class TestBaseBranchConfig:
+    """Tests for base_branch config option."""
+
+    def test_config_base_branch_used_when_base_flag_omitted(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Config base_branch should be used as default when --base is not passed."""
+        env = mux_server
+        base_branch = "config-base-source"
+        new_branch = "feature-from-config-base"
+        commit_msg = "Commit on config base"
+
+        # Create a branch with a unique commit
+        env.run_command(["git", "checkout", "-b", base_branch], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, commit_msg)
+
+        # Go back to main so the current branch is NOT the base
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+
+        # Write config with base_branch pointing to our branch
+        write_workmux_config(mux_repo_path, base_branch=base_branch)
+
+        # Add without --base; config should kick in
+        worktree_path = add_branch_and_get_worktree(
+            env, workmux_exe_path, mux_repo_path, new_branch
+        )
+
+        # The new worktree should have the commit from the configured base branch
+        expected_file = file_for_commit(worktree_path, commit_msg)
+        assert expected_file.exists()
+
+    def test_cli_base_overrides_config_base_branch(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """CLI --base flag should override config base_branch."""
+        env = mux_server
+        config_base = "config-base-override"
+        cli_base = "cli-base-override"
+        new_branch = "feature-cli-overrides-config"
+        config_commit = "Commit on config base branch"
+        cli_commit = "Commit on cli base branch"
+
+        # Create the config base branch with a commit
+        env.run_command(["git", "checkout", "-b", config_base], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, config_commit)
+
+        # Create the CLI base branch with a different commit
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+        env.run_command(["git", "checkout", "-b", cli_base], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, cli_commit)
+
+        # Go back to main
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+
+        # Config points to config_base, but we pass --base cli_base
+        write_workmux_config(mux_repo_path, base_branch=config_base)
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            new_branch,
+            extra_args=f"--base {cli_base}",
+        )
+
+        # Should have the CLI base commit, not the config base commit
+        assert file_for_commit(worktree_path, cli_commit).exists()
+        assert not file_for_commit(worktree_path, config_commit).exists()

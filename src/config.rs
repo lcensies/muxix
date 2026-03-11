@@ -134,6 +134,11 @@ pub struct Config {
     #[serde(default)]
     pub main_branch: Option<String>,
 
+    /// Default base branch/commit to branch from when creating new worktrees.
+    /// Used as fallback when --base is not passed to `workmux add`.
+    #[serde(default)]
+    pub base_branch: Option<String>,
+
     /// Directory where worktrees should be created (optional, defaults to <project>__worktrees pattern)
     /// Can be relative to repo root or absolute path
     #[serde(default)]
@@ -1314,6 +1319,7 @@ impl Config {
             self,
             project,
             main_branch,
+            base_branch,
             worktree_dir,
             window_prefix,
             agent,
@@ -1629,6 +1635,11 @@ impl Config {
 # The primary branch to merge into.
 # Default: Auto-detected from remote HEAD, falls back to main/master.
 # main_branch: main
+
+# Default base branch/commit to branch from when creating new worktrees.
+# The --base CLI flag always overrides this.
+# Default: The currently checked out branch.
+# base_branch: main
 
 # Default merge strategy for `workmux merge`.
 # Options: merge (default), rebase, squash

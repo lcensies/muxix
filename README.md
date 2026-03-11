@@ -257,6 +257,7 @@ customize.
 | Option           | Description                                          | Default                 |
 | ---------------- | ---------------------------------------------------- | ----------------------- |
 | `main_branch`    | Branch to merge into                                 | Auto-detected           |
+| `base_branch`    | Default base branch for new worktrees                | Current branch          |
 | `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
 | `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                   |
 | `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
@@ -495,8 +496,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 #### Options
 
 - `--base <branch|commit|tag>`: Specify a base branch, commit, or tag to branch
-  from when creating a new branch. By default, new branches are created from the
-  current branch you have checked out.
+  from when creating a new branch. Overrides `base_branch` config. Defaults to
+  `base_branch` from config, then the currently checked out branch.
 - `--pr <number>`: Checkout a GitHub pull request by its number into a new
   worktree.
   - Requires the `gh` command-line tool to be installed and authenticated.

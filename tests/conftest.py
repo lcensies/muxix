@@ -1284,6 +1284,7 @@ def write_workmux_config(
     merge_strategy: Optional[str] = None,
     worktree_naming: Optional[str] = None,
     worktree_prefix: Optional[str] = None,
+    base_branch: Optional[str] = None,
 ):
     """Creates a .workmux.yaml file from structured data and optionally commits it."""
     # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
@@ -1309,6 +1310,8 @@ def write_workmux_config(
         config["worktree_naming"] = worktree_naming
     if worktree_prefix:
         config["worktree_prefix"] = worktree_prefix
+    if base_branch:
+        config["base_branch"] = base_branch
     (repo_path / ".workmux.yaml").write_text(yaml.dump(config))
 
     # If env is provided, commit the config file to avoid uncommitted changes in merge tests
@@ -1331,6 +1334,7 @@ def write_global_workmux_config(
     files: Optional[Dict[str, List[str]]] = None,
     window_prefix: Optional[str] = None,
     agent: Optional[str] = None,
+    base_branch: Optional[str] = None,
 ) -> Path:
     """Creates the global ~/.config/workmux/config.yaml file within the isolated HOME."""
     config: Dict[str, Any] = {}
@@ -1344,6 +1348,8 @@ def write_global_workmux_config(
         config["window_prefix"] = window_prefix
     if agent is not None:
         config["agent"] = agent
+    if base_branch is not None:
+        config["base_branch"] = base_branch
 
     config_dir = env.home_path / ".config" / "workmux"
     config_dir.mkdir(parents=True, exist_ok=True)
