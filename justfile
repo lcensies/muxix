@@ -51,6 +51,10 @@ clippy-fix:
 build:
     cargo build --all
 
+# Install release binary globally
+install:
+    cargo install --offline --path . --locked
+
 # Install debug binary globally via symlink
 install-dev:
     cargo build && ln -sf $(pwd)/target/debug/workmux ~/.cargo/bin/workmux
