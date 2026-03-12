@@ -17,6 +17,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.137 (2026-03-12)
+
+- Fix multiline paste not being submitted automatically because the Enter
+  keystroke arrived before the application finished processing the pasted
+  content
+
 ## v0.1.136 (2026-03-11)
 
 - Add `base_branch` config option to set a default base branch for new
