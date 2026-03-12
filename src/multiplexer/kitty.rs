@@ -722,6 +722,9 @@ impl Multiplexer for KittyBackend {
             .run()
             .context("Failed to paste content to pane")?;
 
+        // Small delay to let the application process the bracketed paste before sending Enter
+        thread::sleep(Duration::from_millis(100));
+
         // Send Enter to submit
         self.kitten_cmd()
             .args(&["send-text", "--match", &format!("id:{}", pane_id), "\r"])

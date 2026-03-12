@@ -646,6 +646,10 @@ impl Multiplexer for TmuxBackend {
         }
 
         self.tmux_cmd(&["paste-buffer", "-t", pane_id, "-p", "-d"])?;
+
+        // Small delay to let the application process the bracketed paste before sending Enter
+        thread::sleep(Duration::from_millis(100));
+
         self.tmux_cmd(&["send-keys", "-t", pane_id, "Enter"])
     }
 
