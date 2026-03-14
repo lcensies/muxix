@@ -17,12 +17,15 @@ pub enum ConfigCommand {
     Edit,
     /// Print the path to the global configuration file
     Path,
+    /// Print the default configuration reference with all options documented
+    Reference,
 }
 
 pub fn run(args: ConfigArgs) -> Result<()> {
     match args.command {
         ConfigCommand::Edit => run_edit(),
         ConfigCommand::Path => run_path(),
+        ConfigCommand::Reference => run_reference(),
     }
 }
 
@@ -69,6 +72,11 @@ fn run_path() -> Result<()> {
     let config_path =
         crate::config::global_config_path().context("Could not determine home directory")?;
     println!("{}", config_path.display());
+    Ok(())
+}
+
+fn run_reference() -> Result<()> {
+    print!("{}", crate::config::EXAMPLE_PROJECT_CONFIG);
     Ok(())
 }
 

@@ -1616,7 +1616,19 @@ impl Config {
             ));
         }
 
-        let example_config = r#"# workmux project configuration
+        fs::write(&config_path, EXAMPLE_PROJECT_CONFIG)?;
+
+        println!("✓ Created .workmux.yaml");
+        println!("\nThis file provides project-specific overrides.");
+        println!("For global settings, edit ~/.config/workmux/config.yaml");
+
+        Ok(())
+    }
+}
+
+/// Example project configuration with all options documented.
+/// Used by `workmux init` and `workmux config show`.
+pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # For global settings, edit ~/.config/workmux/config.yaml
 # All options below are commented out - uncomment to override defaults.
 
@@ -1820,16 +1832,6 @@ impl Config {
 #   #     guest_path: /mnt/data
 #   #     writable: true
 "#;
-
-        fs::write(&config_path, example_config)?;
-
-        println!("✓ Created .workmux.yaml");
-        println!("\nThis file provides project-specific overrides.");
-        println!("For global settings, edit ~/.config/workmux/config.yaml");
-
-        Ok(())
-    }
-}
 
 /// Resolves an executable name or path to its full absolute path.
 ///

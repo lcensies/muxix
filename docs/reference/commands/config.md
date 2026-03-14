@@ -1,5 +1,5 @@
 ---
-description: Edit or locate the global workmux configuration file
+description: Edit, locate, or view the global workmux configuration file
 ---
 
 # config
@@ -25,6 +25,14 @@ workmux config path
 # Output: /home/user/.config/workmux/config.yaml
 ```
 
+## config reference
+
+Print the default configuration file with all options documented. Useful for discovering available options or piping to an AI agent for context.
+
+```bash
+workmux config reference
+```
+
 ## Examples
 
 ```bash
@@ -36,6 +44,9 @@ EDITOR=nano workmux config edit
 
 # Print the config path (for use in scripts)
 cat "$(workmux config path)"
+
+# Print the default config reference
+workmux config reference
 ```
 
 ## See also

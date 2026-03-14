@@ -1202,6 +1202,13 @@ Prints the path to the global configuration file. Useful for scripting.
 
 ---
 
+### `workmux config reference`
+
+Prints the default configuration file with all options documented. Useful
+for discovering available options or piping to an AI agent for context.
+
+---
+
 ### `workmux init`
 
 Generates `.workmux.yaml` with example configuration and `"<global>"`
