@@ -14,6 +14,7 @@ This documentation uses Claude Code's skill support as example, but other agents
 
 Skills unlock the full potential of workmux. While you can run workmux commands directly, skills let agents handle the complete workflow - committing with context-aware messages, resolving conflicts intelligently, and delegating tasks to parallel worktrees.
 
+- [**`/workmux`**](#-workmux) - Teach the agent how to use workmux
 - [**`/merge`**](#-merge) - Commit, rebase, and merge the current branch
 - [**`/rebase`**](#-rebase) - Rebase with flexible target and smart conflict resolution
 - [**`/worktree`**](#-worktree) - Delegate tasks to parallel worktree agents
@@ -40,6 +41,14 @@ This detects your installed agents and copies skills to the right location. The 
 You can also copy skills manually from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
 
 **Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`)
+
+## `/workmux`
+
+Teaches the agent how to use the workmux CLI. Invoke `/workmux` to give the agent knowledge of workmux commands, configuration, and concepts. The agent can then use workmux to manage worktrees, check status, and interact with other agents.
+
+[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/workmux/SKILL.md)
+
+This is a reference skill, not an action skill. It loads workmux documentation into the agent's context so it can use workmux commands as needed. For specific workflows, the agent is directed to the dedicated skills below.
 
 ## `/merge`
 

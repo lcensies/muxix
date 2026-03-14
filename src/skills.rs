@@ -38,6 +38,10 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
         name: "open-pr",
         content: include_str!("../skills/open-pr/SKILL.md"),
     },
+    BundledSkill {
+        name: "workmux",
+        content: include_str!("../skills/workmux/SKILL.md"),
+    },
 ];
 
 /// Return the skills base directory for a given agent.
@@ -200,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_bundled_skills_not_empty() {
-        assert_eq!(BUNDLED_SKILLS.len(), 5);
+        assert_eq!(BUNDLED_SKILLS.len(), 6);
         for skill in BUNDLED_SKILLS {
             assert!(!skill.name.is_empty(), "skill name should not be empty");
             assert!(
@@ -243,5 +247,6 @@ mod tests {
         assert!(names.contains(&"worktree"));
         assert!(names.contains(&"coordinator"));
         assert!(names.contains(&"open-pr"));
+        assert!(names.contains(&"workmux"));
     }
 }
