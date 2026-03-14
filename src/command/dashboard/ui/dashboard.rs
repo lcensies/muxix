@@ -52,7 +52,23 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     };
 
     // Footer - show different help based on mode
-    let footer_text = if app.input_mode {
+    let footer_text = if app.filter_active {
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                "  /",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(app.filter_text.as_str()),
+            Span::styled("_", Style::default().fg(Color::Yellow)),
+            Span::raw("  "),
+            Span::styled("[Enter]", Style::default().fg(app.palette.dimmed)),
+            Span::raw(" accept  "),
+            Span::styled("[Esc]", Style::default().fg(app.palette.dimmed)),
+            Span::raw(" clear"),
+        ]))
+    } else if app.input_mode {
         Paragraph::new(Line::from(vec![
             Span::styled(
                 "  INPUT MODE",
@@ -114,6 +130,16 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
                 "shown",
                 Style::default().fg(app.palette.dimmed),
             ));
+        }
+
+        // Show active filter indicator
+        if !app.filter_text.is_empty() {
+            spans.extend(vec![
+                Span::raw("  "),
+                Span::styled("[/]", Style::default().fg(Color::Yellow)),
+                Span::raw(" filter: "),
+                Span::styled(app.filter_text.as_str(), Style::default().fg(Color::Yellow)),
+            ]);
         }
 
         spans.extend(vec![

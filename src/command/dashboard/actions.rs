@@ -56,6 +56,13 @@ pub enum Action {
     NextHunk,
     ExitPatchMode,
 
+    // Filter mode
+    EnterFilterMode,
+    AcceptFilter,
+    ClearFilter,
+    FilterAppendChar(char),
+    FilterDeleteChar,
+
     // Comment input
     CancelComment,
     SendComment,
@@ -73,7 +80,12 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             false
         }
         Action::Quit => {
-            app.should_quit = true;
+            if !app.filter_text.is_empty() {
+                app.filter_text.clear();
+                app.apply_filters();
+            } else {
+                app.should_quit = true;
+            }
             false
         }
 
@@ -152,6 +164,32 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::TriggerMergeDashboard => {
             app.trigger_merge_for_selected();
+            false
+        }
+
+        // Filter mode
+        Action::EnterFilterMode => {
+            app.filter_active = true;
+            false
+        }
+        Action::AcceptFilter => {
+            app.filter_active = false;
+            false
+        }
+        Action::ClearFilter => {
+            app.filter_active = false;
+            app.filter_text.clear();
+            app.apply_filters();
+            false
+        }
+        Action::FilterAppendChar(c) => {
+            app.filter_text.push(c);
+            app.apply_filters();
+            false
+        }
+        Action::FilterDeleteChar => {
+            app.filter_text.pop();
+            app.apply_filters();
             false
         }
 

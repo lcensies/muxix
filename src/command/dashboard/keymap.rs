@@ -9,6 +9,7 @@ use super::actions::Action;
 pub enum Context {
     DashboardNormal,
     DashboardInput,
+    DashboardFilter,
     DiffNormal,
     Patch,
     Comment,
@@ -19,6 +20,7 @@ pub fn action_for_key(ctx: Context, key: KeyEvent) -> Option<Action> {
     match ctx {
         Context::DashboardNormal => dashboard_normal_key(key),
         Context::DashboardInput => dashboard_input_key(key),
+        Context::DashboardFilter => dashboard_filter_key(key),
         Context::DiffNormal => diff_normal_key(key),
         Context::Patch => patch_key(key),
         Context::Comment => comment_key(key),
@@ -54,7 +56,18 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('d') => Some(Action::LoadWipDiff),
         KeyCode::Char('c') => Some(Action::SendCommitDashboard),
         KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
+        KeyCode::Char('/') => Some(Action::EnterFilterMode),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
+        _ => None,
+    }
+}
+
+fn dashboard_filter_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::ClearFilter),
+        KeyCode::Enter => Some(Action::AcceptFilter),
+        KeyCode::Backspace => Some(Action::FilterDeleteChar),
+        KeyCode::Char(c) => Some(Action::FilterAppendChar(c)),
         _ => None,
     }
 }
@@ -150,9 +163,15 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("d", "View diff"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),
+            ("/", "Filter agents"),
             ("1-9", "Quick jump"),
         ],
         Context::DashboardInput => vec![("Esc", "Exit input mode"), ("<keys>", "Send to agent")],
+        Context::DashboardFilter => vec![
+            ("Enter", "Accept filter"),
+            ("Esc", "Clear filter"),
+            ("<type>", "Filter text"),
+        ],
         Context::DiffNormal => vec![
             ("?", "Show help"),
             ("q/Esc", "Close diff"),
@@ -192,6 +211,7 @@ mod tests {
     fn test_each_context_has_help_rows() {
         assert!(!help_rows(Context::DashboardNormal).is_empty());
         assert!(!help_rows(Context::DashboardInput).is_empty());
+        assert!(!help_rows(Context::DashboardFilter).is_empty());
         assert!(!help_rows(Context::DiffNormal).is_empty());
         assert!(!help_rows(Context::Patch).is_empty());
         assert!(!help_rows(Context::Comment).is_empty());
@@ -202,6 +222,7 @@ mod tests {
         for ctx in [
             Context::DashboardNormal,
             Context::DashboardInput,
+            Context::DashboardFilter,
             Context::DiffNormal,
             Context::Patch,
             Context::Comment,

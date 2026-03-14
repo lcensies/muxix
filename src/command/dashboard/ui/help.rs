@@ -15,7 +15,9 @@ use super::super::keymap::{Context, help_rows};
 fn get_help_context(app: &App) -> Context {
     match &app.view_mode {
         ViewMode::Dashboard => {
-            if app.input_mode {
+            if app.filter_active {
+                Context::DashboardFilter
+            } else if app.input_mode {
                 Context::DashboardInput
             } else {
                 Context::DashboardNormal
@@ -40,6 +42,7 @@ fn context_title(ctx: Context) -> &'static str {
     match ctx {
         Context::DashboardNormal => "Dashboard",
         Context::DashboardInput => "Input Mode",
+        Context::DashboardFilter => "Filter",
         Context::DiffNormal => "Diff View",
         Context::Patch => "Patch Mode",
         Context::Comment => "Comment",

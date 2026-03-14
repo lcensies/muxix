@@ -45,6 +45,8 @@ pub struct App {
     /// The multiplexer backend
     pub mux: Arc<dyn Multiplexer>,
     pub agents: Vec<AgentPane>,
+    /// Full agent list before name/stale filtering (populated by refresh())
+    all_agents: Vec<AgentPane>,
     pub table_state: TableState,
     /// Track the selected item by pane_id to preserve selection across reorders
     selected_pane_id: Option<String>,
@@ -106,6 +108,10 @@ pub struct App {
     pub scope_mode: ScopeMode,
     /// Session name at launch time (for session scope filtering)
     launch_session: Option<String>,
+    /// Whether the filter input is active (accepting keystrokes)
+    pub filter_active: bool,
+    /// Text filter for filtering agents by name. Empty string means no filter.
+    pub filter_text: String,
 }
 
 impl App {
@@ -143,6 +149,7 @@ impl App {
         let mut app = Self {
             mux,
             agents: Vec::new(),
+            all_agents: Vec::new(),
             table_state: TableState::default(),
             selected_pane_id: None,
             current_worktree,
@@ -179,6 +186,8 @@ impl App {
             palette,
             scope_mode,
             launch_session,
+            filter_active: false,
+            filter_text: String::new(),
         };
 
         app.refresh();
@@ -197,7 +206,7 @@ impl App {
 
     pub fn refresh(&mut self) {
         // Load agents from StateStore with reconciliation against live pane state
-        self.agents = StateStore::new()
+        self.all_agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
 
@@ -205,14 +214,12 @@ impl App {
         if self.scope_mode == ScopeMode::Session
             && let Some(ref session) = self.launch_session
         {
-            self.agents.retain(|a| a.session == *session);
+            self.all_agents.retain(|a| a.session == *session);
         }
-
-        self.sort_agents();
 
         // Cache repo roots for new agents (parallel execution)
         let paths_to_resolve: Vec<PathBuf> = self
-            .agents
+            .all_agents
             .iter()
             .filter(|a| !self.repo_roots.contains_key(&a.path))
             .map(|a| a.path.clone())
@@ -240,21 +247,6 @@ impl App {
             }
         }
 
-        // Filter out stale agents if hide_stale is enabled
-        if self.hide_stale {
-            let threshold = self.stale_threshold_secs;
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            self.agents.retain(|agent| {
-                agent
-                    .status_ts
-                    .map(|ts| now.saturating_sub(ts) <= threshold)
-                    .unwrap_or(true) // Keep agents without timestamp
-            });
-        }
-
         // Consume any pending git status updates from background thread
         while let Ok((path, status)) = self.git_rx.try_recv() {
             self.git_statuses.insert(path, status);
@@ -277,13 +269,50 @@ impl App {
             self.spawn_pr_status_fetch();
         }
 
+        // Apply name filter, stale filter, sort, and restore selection
+        self.apply_filters();
+    }
+
+    /// Apply name and stale filters to the cached agent list, sort, and restore selection.
+    /// This is fast (in-memory only) and safe to call on every filter keystroke.
+    pub fn apply_filters(&mut self) {
+        self.agents = self.all_agents.clone();
+
+        // Apply name filter if active
+        if !self.filter_text.is_empty() {
+            let filter_lower = self.filter_text.to_lowercase();
+            let window_prefix = self.config.window_prefix();
+            self.agents.retain(|a| {
+                let project = Self::extract_project_name(a).to_lowercase();
+                let (worktree, _) =
+                    agent::extract_worktree_name(&a.session, &a.window_name, window_prefix);
+                let worktree_lower = worktree.to_lowercase();
+                project.contains(&filter_lower) || worktree_lower.contains(&filter_lower)
+            });
+        }
+
+        // Filter out stale agents if hide_stale is enabled
+        if self.hide_stale {
+            let threshold = self.stale_threshold_secs;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            self.agents.retain(|agent| {
+                agent
+                    .status_ts
+                    .map(|ts| now.saturating_sub(ts) <= threshold)
+                    .unwrap_or(true)
+            });
+        }
+
+        self.sort_agents();
+
         // Restore selection by pane_id to follow the item across reorders
         if let Some(ref pane_id) = self.selected_pane_id {
-            // Find the new index of the previously selected item
             if let Some(new_idx) = self.agents.iter().position(|a| &a.pane_id == pane_id) {
                 self.table_state.select(Some(new_idx));
             } else {
-                // Item was removed (filtered out or closed), keep selection in bounds
                 self.selected_pane_id = None;
                 if self.agents.is_empty() {
                     self.table_state.select(None);
@@ -291,14 +320,12 @@ impl App {
                     if selected >= self.agents.len() {
                         self.table_state.select(Some(self.agents.len() - 1));
                     }
-                    // Update selected_pane_id to the new selection
                     if let Some(idx) = self.table_state.selected() {
                         self.selected_pane_id = self.agents.get(idx).map(|a| a.pane_id.clone());
                     }
                 }
             }
         } else if let Some(selected) = self.table_state.selected() {
-            // No tracked pane_id but we have a selection - adjust if out of bounds
             if selected >= self.agents.len() {
                 self.table_state.select(if self.agents.is_empty() {
                     None
@@ -306,13 +333,11 @@ impl App {
                     Some(self.agents.len() - 1)
                 });
             }
-            // Sync selected_pane_id to ensure we start tracking the current selection
             if let Some(idx) = self.table_state.selected() {
                 self.selected_pane_id = self.agents.get(idx).map(|a| a.pane_id.clone());
             }
         }
 
-        // Update preview for current selection
         self.update_preview();
     }
 
@@ -329,7 +354,7 @@ impl App {
 
         let tx = self.git_tx.clone();
         let is_fetching = self.is_git_fetching.clone();
-        let agent_paths: Vec<PathBuf> = self.agents.iter().map(|a| a.path.clone()).collect();
+        let agent_paths: Vec<PathBuf> = self.all_agents.iter().map(|a| a.path.clone()).collect();
 
         std::thread::spawn(move || {
             // Reset flag when thread completes (even on panic)

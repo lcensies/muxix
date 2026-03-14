@@ -1359,6 +1359,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
+| `/`       | Filter agents by name                   |
 | `F`       | Toggle session filter                   |
 | `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
@@ -1404,6 +1405,13 @@ Press `F` to toggle the session filter. When active, only agents in the current
 session are shown. This is useful for session-per-project workflows where each
 session maps to a repository. You can also start the dashboard with `--session`
 to default to session filtering. The preference persists across sessions.
+
+#### Name filter
+
+Press `/` to activate the name filter. Type to filter the agent list by project
+or worktree name (case-insensitive). Press `Enter` to accept the filter and
+return to normal navigation, or `Esc` to clear the filter. When a filter is
+active, it is shown in the footer bar.
 
 #### Stale filter
 
