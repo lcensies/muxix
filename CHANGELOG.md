@@ -17,6 +17,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.138 (2026-03-14)
+
+- Add `/` hotkey in the dashboard to filter agents by project and worktree name
+- Add `config reference` subcommand to display the full annotated default config
+  with all available options
+- Add `/workmux` skill that teaches agents how to use workmux
+
 ## v0.1.137 (2026-03-12)
 
 - Fix multiline paste not being submitted automatically because the Enter
