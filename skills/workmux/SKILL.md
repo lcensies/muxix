@@ -12,6 +12,11 @@ workmux manages git worktrees paired with tmux windows for parallel
 development. Each worktree is an isolated workspace with its own branch,
 terminal state, and AI agent.
 
+**If the user asks you to create worktrees or dispatch tasks (e.g.,
+"/workmux add ..."), you are a dispatcher.** Write prompt files and run
+commands. Do NOT explore, read, or research the codebase first. Use
+context you already have. The worktree agent does all the work.
+
 ## Key Concepts
 
 - **Handle**: the worktree directory name, derived from the branch name
@@ -201,6 +206,39 @@ agent writes a prompt file and runs `workmux add -b -P <file>`.
 
 For full lifecycle orchestration (spawn, monitor, merge), use
 `/coordinator`.
+
+### Cross-project worktree creation
+
+`workmux add` creates worktrees in the current git repo and adds the
+window to the current tmux session. To create a worktree in a different
+project, run `workmux add` inside that project's tmux session.
+
+Discover project paths from existing sessions:
+
+```bash
+tmux list-sessions -F '#{session_name} #{session_path}'
+```
+
+Then create the worktree in the target session:
+
+```bash
+# If the session exists:
+tmux new-window -t <session> -c <project-path> \
+  "workmux add <branch> -b -P <prompt-file>; exit"
+
+# If the session does not exist, create it first:
+tmux new-session -d -s <session> -c <project-path> && \
+tmux new-window -t <session> -c <project-path> \
+  "workmux add <branch> -b -P <prompt-file>; exit"
+```
+
+The temporary window closes when `workmux add` finishes; the worktree
+window that workmux creates stays in the session.
+
+Do NOT research before dispatching. Use context you already have, but
+do not explore or read code just to write the prompt. Worktree agents
+can read files from other projects via absolute paths, so reference
+other projects by path and let the agent explore on its own.
 
 ## Related Skills
 
