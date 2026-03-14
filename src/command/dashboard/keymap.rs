@@ -67,6 +67,7 @@ fn dashboard_filter_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Esc => Some(Action::ClearFilter),
         KeyCode::Enter => Some(Action::AcceptFilter),
         KeyCode::Backspace => Some(Action::FilterDeleteChar),
+        KeyCode::Char('?') => Some(Action::ShowHelp),
         KeyCode::Char(c) => Some(Action::FilterAppendChar(c)),
         _ => None,
     }

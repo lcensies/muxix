@@ -338,6 +338,17 @@ impl App {
             }
         }
 
+        // Fallback: if nothing is selected but agents exist, select the first one.
+        // This handles the case where filtering produced zero matches (clearing selection)
+        // and then results reappear.
+        if self.selected_pane_id.is_none()
+            && self.table_state.selected().is_none()
+            && !self.agents.is_empty()
+        {
+            self.table_state.select(Some(0));
+            self.selected_pane_id = self.agents.first().map(|a| a.pane_id.clone());
+        }
+
         self.update_preview();
     }
 
