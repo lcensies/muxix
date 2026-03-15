@@ -30,10 +30,10 @@ impl SortMode {
     /// Get the display name for the sort mode
     pub fn label(&self) -> &'static str {
         match self {
-            SortMode::Priority => "Priority",
-            SortMode::Project => "Project",
-            SortMode::Recency => "Recency",
-            SortMode::Natural => "Natural",
+            SortMode::Priority => "priority",
+            SortMode::Project => "project",
+            SortMode::Recency => "recency",
+            SortMode::Natural => "natural",
         }
     }
 
