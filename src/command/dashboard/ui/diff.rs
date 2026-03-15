@@ -289,32 +289,40 @@ fn render_normal_diff(
         )
     };
 
+    let dimmed = Style::default().fg(palette.dimmed);
+    let bold_text = Style::default()
+        .fg(palette.text)
+        .add_modifier(Modifier::BOLD);
+    let pipe = || -> Span<'_> { Span::styled(" \u{2502} ", Style::default().fg(palette.border)) };
+
     let mut footer_spans = vec![
         Span::raw("  "),
-        Span::styled("[Tab]", Style::default().fg(palette.keycap)),
+        Span::styled("Tab", dimmed),
         Span::raw(" "),
         Span::styled("WIP", wip_style),
-        Span::styled(" | ", Style::default().fg(palette.dimmed)),
+        Span::styled(" | ", dimmed),
         Span::styled("review", review_style),
-        Span::raw("  "),
     ];
 
-    // Show [a] patch option only for WIP mode with changes
+    // Show patch option only for WIP mode with changes
     if !diff.is_branch_diff && (diff.lines_added > 0 || diff.lines_removed > 0) {
-        footer_spans.push(Span::styled("[a]", Style::default().fg(palette.accent)));
-        footer_spans.push(Span::raw(" patch  "));
+        footer_spans.push(pipe());
+        footer_spans.push(Span::styled("a", dimmed));
+        footer_spans.push(Span::styled(" Patch", bold_text));
     }
 
-    footer_spans.extend(vec![
-        Span::styled("[j/k]", Style::default().fg(palette.keycap)),
-        Span::raw(" scroll  "),
-        Span::styled("[c]", Style::default().fg(palette.keycap)),
-        Span::raw(" commit  "),
-        Span::styled("[m]", Style::default().fg(palette.keycap)),
-        Span::raw(" merge  "),
-        Span::styled("[q]", Style::default().fg(palette.keycap)),
-        Span::raw(" close"),
-    ]);
+    footer_spans.push(pipe());
+    footer_spans.push(Span::styled("j/k", dimmed));
+    footer_spans.push(Span::styled(" Scroll", bold_text));
+    footer_spans.push(pipe());
+    footer_spans.push(Span::styled("c", dimmed));
+    footer_spans.push(Span::styled(" Commit", bold_text));
+    footer_spans.push(pipe());
+    footer_spans.push(Span::styled("m", dimmed));
+    footer_spans.push(Span::styled(" Merge", bold_text));
+    footer_spans.push(pipe());
+    footer_spans.push(Span::styled("q", dimmed));
+    footer_spans.push(Span::styled(" Close", bold_text));
 
     let footer = Paragraph::new(Line::from(footer_spans));
     f.render_widget(footer, footer_area);
@@ -387,24 +395,30 @@ fn render_patch_mode(
 
     f.render_widget(paragraph, content_area);
 
+    let dimmed = Style::default().fg(palette.dimmed);
+    let bold_text = Style::default()
+        .fg(palette.text)
+        .add_modifier(Modifier::BOLD);
+    let pipe = || -> Span<'_> { Span::styled(" \u{2502} ", Style::default().fg(palette.border)) };
+
     // Footer: show comment input if in comment mode, otherwise show keybindings
     if let Some(ref input) = diff.comment_input {
         // Comment input mode - hints on left stay fixed, input on right
         let mut spans = vec![
-            Span::styled("[Enter]", Style::default().fg(palette.success)),
-            Span::raw(" send  "),
-            Span::styled("[Esc]", Style::default().fg(palette.danger)),
-            Span::raw(" cancel  "),
-            Span::styled("| ", Style::default().fg(palette.dimmed)),
+            Span::raw("  "),
+            Span::styled("Enter", dimmed),
+            Span::styled(" Send", bold_text),
+            pipe(),
+            Span::styled("Esc", dimmed),
+            Span::styled(" Cancel", bold_text),
+            Span::raw("  "),
+            Span::styled("\u{2502} ", Style::default().fg(palette.border)),
         ];
 
         if input.is_empty() {
             // Show cursor then placeholder when empty
             spans.push(Span::styled("|", Style::default().fg(palette.text)));
-            spans.push(Span::styled(
-                "Type your comment...",
-                Style::default().fg(palette.dimmed),
-            ));
+            spans.push(Span::styled("Type your comment...", dimmed));
         } else {
             spans.push(Span::raw(input));
             spans.push(Span::styled("|", Style::default().fg(palette.text)));
@@ -416,28 +430,32 @@ fn render_patch_mode(
         // Normal patch mode keybindings
         let mut footer_spans = vec![
             Span::raw("  "),
-            Span::styled("[y]", Style::default().fg(palette.success)),
-            Span::raw(" stage  "),
-            Span::styled("[n]", Style::default().fg(palette.danger)),
-            Span::raw(" skip  "),
+            Span::styled("y", dimmed),
+            Span::styled(" Stage", bold_text),
+            pipe(),
+            Span::styled("n", dimmed),
+            Span::styled(" Skip", bold_text),
         ];
 
         // Show undo option if there are staged hunks
         if !diff.staged_hunks.is_empty() {
-            footer_spans.push(Span::styled("[u]", Style::default().fg(palette.accent)));
-            footer_spans.push(Span::raw(" undo  "));
+            footer_spans.push(pipe());
+            footer_spans.push(Span::styled("u", dimmed));
+            footer_spans.push(Span::styled(" Undo", bold_text));
         }
 
-        footer_spans.extend(vec![
-            Span::styled("[s]", Style::default().fg(palette.keycap)),
-            Span::raw(" split  "),
-            Span::styled("[o]", Style::default().fg(palette.keycap)),
-            Span::raw(" comment  "),
-            Span::styled("[j/k]", Style::default().fg(palette.keycap)),
-            Span::raw(" nav  "),
-            Span::styled("[q]", Style::default().fg(palette.keycap)),
-            Span::raw(" quit"),
-        ]);
+        footer_spans.push(pipe());
+        footer_spans.push(Span::styled("s", dimmed));
+        footer_spans.push(Span::styled(" Split", bold_text));
+        footer_spans.push(pipe());
+        footer_spans.push(Span::styled("o", dimmed));
+        footer_spans.push(Span::styled(" Comment", bold_text));
+        footer_spans.push(pipe());
+        footer_spans.push(Span::styled("j/k", dimmed));
+        footer_spans.push(Span::styled(" Nav", bold_text));
+        footer_spans.push(pipe());
+        footer_spans.push(Span::styled("q", dimmed));
+        footer_spans.push(Span::styled(" Quit", bold_text));
 
         let footer = Paragraph::new(Line::from(footer_spans));
         f.render_widget(footer, footer_area);
