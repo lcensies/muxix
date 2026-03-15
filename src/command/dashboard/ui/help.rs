@@ -100,7 +100,7 @@ pub fn render_help(f: &mut Frame, app: &App) {
                 Span::styled(
                     format!("{:>8}", key),
                     Style::default()
-                        .fg(palette.keycap)
+                        .fg(palette.dimmed)
                         .add_modifier(Modifier::BOLD),
                 ),
             ])),
