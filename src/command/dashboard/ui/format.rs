@@ -1,6 +1,6 @@
 //! Formatting helpers for dashboard UI rendering.
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 
 use crate::git::GitStatus;
 use crate::github::{CheckState, PrSummary};
@@ -48,20 +48,20 @@ pub fn format_git_status(
             if !spans.is_empty() {
                 spans.push((" ".to_string(), Style::default()));
             }
-            spans.push((icons.diff.to_string(), Style::default().fg(Color::Magenta)));
+            spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
 
             if status.uncommitted_added > 0 {
                 spans.push((" ".to_string(), Style::default()));
                 spans.push((
                     format!("+{}", status.uncommitted_added),
-                    Style::default().fg(Color::Green),
+                    Style::default().fg(palette.success),
                 ));
             }
             if status.uncommitted_removed > 0 {
                 spans.push((" ".to_string(), Style::default()));
                 spans.push((
                     format!("-{}", status.uncommitted_removed),
-                    Style::default().fg(Color::Red),
+                    Style::default().fg(palette.danger),
                 ));
             }
         } else {
@@ -73,7 +73,7 @@ pub fn format_git_status(
                 spans.push((
                     format!("+{}", status.lines_added),
                     Style::default()
-                        .fg(Color::Green)
+                        .fg(palette.success)
                         .add_modifier(Modifier::DIM),
                 ));
             }
@@ -83,7 +83,9 @@ pub fn format_git_status(
                 }
                 spans.push((
                     format!("-{}", status.lines_removed),
-                    Style::default().fg(Color::Red).add_modifier(Modifier::DIM),
+                    Style::default()
+                        .fg(palette.danger)
+                        .add_modifier(Modifier::DIM),
                 ));
             }
 
@@ -92,20 +94,20 @@ pub fn format_git_status(
                 if !spans.is_empty() {
                     spans.push((" ".to_string(), Style::default()));
                 }
-                spans.push((icons.diff.to_string(), Style::default().fg(Color::Magenta)));
+                spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
 
                 if status.uncommitted_added > 0 {
                     spans.push((" ".to_string(), Style::default()));
                     spans.push((
                         format!("+{}", status.uncommitted_added),
-                        Style::default().fg(Color::Green),
+                        Style::default().fg(palette.success),
                     ));
                 }
                 if status.uncommitted_removed > 0 {
                     spans.push((" ".to_string(), Style::default()));
                     spans.push((
                         format!("-{}", status.uncommitted_removed),
-                        Style::default().fg(Color::Red),
+                        Style::default().fg(palette.danger),
                     ));
                 }
             }
@@ -116,7 +118,10 @@ pub fn format_git_status(
             if !spans.is_empty() {
                 spans.push((" ".to_string(), Style::default()));
             }
-            spans.push((icons.conflict.to_string(), Style::default().fg(Color::Red)));
+            spans.push((
+                icons.conflict.to_string(),
+                Style::default().fg(palette.danger),
+            ));
         }
 
         // Ahead/behind upstream
@@ -126,7 +131,7 @@ pub fn format_git_status(
             }
             spans.push((
                 format!("↑{}", status.ahead),
-                Style::default().fg(Color::Blue),
+                Style::default().fg(palette.info),
             ));
         }
         if status.behind > 0 {
@@ -135,7 +140,7 @@ pub fn format_git_status(
             }
             spans.push((
                 format!("↓{}", status.behind),
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(palette.warning),
             ));
         }
 
@@ -164,9 +169,9 @@ pub fn format_pr_status(
                 (icons.draft, palette.dimmed)
             } else {
                 match pr.state.as_str() {
-                    "OPEN" => (icons.open, Color::Green),
-                    "MERGED" => (icons.merged, Color::Magenta),
-                    "CLOSED" => (icons.closed, Color::Red),
+                    "OPEN" => (icons.open, palette.success),
+                    "MERGED" => (icons.merged, palette.accent),
+                    "CLOSED" => (icons.closed, palette.danger),
                     _ => ("?", palette.dimmed),
                 }
             };
@@ -179,13 +184,15 @@ pub fn format_pr_status(
             if let Some(ref checks) = pr.checks {
                 let check_icons = nerdfont::check_icons();
                 let (check_icon, check_color, counts) = match checks {
-                    CheckState::Success => (check_icons.success, Color::Green, None),
+                    CheckState::Success => (check_icons.success, palette.success, None),
                     CheckState::Failure { passed, total } => {
-                        (check_icons.failure, Color::Red, Some((*passed, *total)))
+                        (check_icons.failure, palette.danger, Some((*passed, *total)))
                     }
-                    CheckState::Pending { passed, total } => {
-                        (check_icons.pending, Color::Yellow, Some((*passed, *total)))
-                    }
+                    CheckState::Pending { passed, total } => (
+                        check_icons.pending,
+                        palette.warning,
+                        Some((*passed, *total)),
+                    ),
                 };
 
                 spans.push((" ".to_string(), Style::default()));

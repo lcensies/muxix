@@ -1,7 +1,7 @@
 //! Application state and business logic for the dashboard TUI.
 
 use anyhow::Result;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -761,11 +761,17 @@ impl App {
 
         // Map status enum to icon and color
         let (icon, base_color, is_working) = match agent.status {
-            Some(AgentStatus::Working) => (self.config.status_icons.working(), Color::Cyan, true),
-            Some(AgentStatus::Waiting) => {
-                (self.config.status_icons.waiting(), Color::Magenta, false)
+            Some(AgentStatus::Working) => {
+                (self.config.status_icons.working(), self.palette.info, true)
             }
-            Some(AgentStatus::Done) => (self.config.status_icons.done(), Color::Green, false),
+            Some(AgentStatus::Waiting) => (
+                self.config.status_icons.waiting(),
+                self.palette.accent,
+                false,
+            ),
+            Some(AgentStatus::Done) => {
+                (self.config.status_icons.done(), self.palette.success, false)
+            }
             None => ("", self.palette.text, false),
         };
 

@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, List, ListItem, Paragraph},
 };
@@ -94,7 +94,7 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemeP
 
     let block = Block::bordered()
         .title(format!(" Files ({}) ", diff.file_list.len()))
-        .title_style(Style::default().fg(Color::Cyan))
+        .title_style(Style::default().fg(palette.header))
         .border_style(Style::default().fg(palette.dimmed));
 
     // Calculate available width (subtract borders)
@@ -107,11 +107,11 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemeP
 
         // Determine status indicator
         let (status_char, status_color) = if file.is_new {
-            ("A", Color::Green)
+            ("A", palette.success)
         } else if file.lines_added == 0 && file.lines_removed > 0 {
-            ("D", Color::Red)
+            ("D", palette.danger)
         } else {
-            ("M", Color::Yellow)
+            ("M", palette.warning)
         };
 
         // Format stats
@@ -209,16 +209,16 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemeP
             if file.lines_added > 0 && file.lines_removed > 0 {
                 spans.push(Span::styled(
                     format!("+{}", file.lines_added),
-                    Style::default().fg(Color::Green),
+                    Style::default().fg(palette.success),
                 ));
                 spans.push(Span::styled(
                     format!(" -{}", file.lines_removed),
-                    Style::default().fg(Color::Red),
+                    Style::default().fg(palette.danger),
                 ));
             } else if file.lines_added > 0 {
-                spans.push(Span::styled(stats, Style::default().fg(Color::Green)));
+                spans.push(Span::styled(stats, Style::default().fg(palette.success)));
             } else {
-                spans.push(Span::styled(stats, Style::default().fg(Color::Red)));
+                spans.push(Span::styled(stats, Style::default().fg(palette.danger)));
             }
         }
 
@@ -243,23 +243,23 @@ fn render_normal_diff(
         Span::styled(
             format!(" {} ", diff.title),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.header)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("+{}", diff.lines_added),
-            Style::default().fg(Color::Green),
+            Style::default().fg(palette.success),
         ),
         Span::raw(" "),
         Span::styled(
             format!("-{}", diff.lines_removed),
-            Style::default().fg(Color::Red),
+            Style::default().fg(palette.danger),
         ),
         Span::raw(" "),
     ]);
     let block = Block::bordered()
         .title(title)
-        .border_style(Style::default().fg(palette.dimmed));
+        .border_style(Style::default().fg(palette.border));
 
     // Calculate inner area (content area minus borders)
     let inner_height = content_area.height.saturating_sub(2) as usize;
@@ -280,18 +280,18 @@ fn render_normal_diff(
     let (wip_style, review_style) = if diff.is_branch_diff {
         (
             Style::default().fg(palette.dimmed),
-            Style::default().fg(Color::Green),
+            Style::default().fg(palette.success),
         )
     } else {
         (
-            Style::default().fg(Color::Green),
+            Style::default().fg(palette.success),
             Style::default().fg(palette.dimmed),
         )
     };
 
     let mut footer_spans = vec![
         Span::raw("  "),
-        Span::styled("[Tab]", Style::default().fg(Color::Yellow)),
+        Span::styled("[Tab]", Style::default().fg(palette.keycap)),
         Span::raw(" "),
         Span::styled("WIP", wip_style),
         Span::styled(" | ", Style::default().fg(palette.dimmed)),
@@ -301,18 +301,18 @@ fn render_normal_diff(
 
     // Show [a] patch option only for WIP mode with changes
     if !diff.is_branch_diff && (diff.lines_added > 0 || diff.lines_removed > 0) {
-        footer_spans.push(Span::styled("[a]", Style::default().fg(Color::Magenta)));
+        footer_spans.push(Span::styled("[a]", Style::default().fg(palette.accent)));
         footer_spans.push(Span::raw(" patch  "));
     }
 
     footer_spans.extend(vec![
-        Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+        Span::styled("[j/k]", Style::default().fg(palette.keycap)),
         Span::raw(" scroll  "),
-        Span::styled("[c]", Style::default().fg(Color::Green)),
+        Span::styled("[c]", Style::default().fg(palette.keycap)),
         Span::raw(" commit  "),
-        Span::styled("[m]", Style::default().fg(Color::Yellow)),
+        Span::styled("[m]", Style::default().fg(palette.keycap)),
         Span::raw(" merge  "),
-        Span::styled("[q]", Style::default().fg(Color::Cyan)),
+        Span::styled("[q]", Style::default().fg(palette.keycap)),
         Span::raw(" close"),
     ]);
 
@@ -335,15 +335,15 @@ fn render_patch_mode(
         Span::styled(
             " PATCH ",
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Magenta)
+                .fg(palette.current_row_bg)
+                .bg(palette.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
         Span::styled(
             &hunk.filename,
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.header)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
@@ -353,24 +353,24 @@ fn render_patch_mode(
                 diff.hunks_processed + diff.current_hunk + 1,
                 diff.hunks_total
             ),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(palette.keycap),
         ),
         Span::raw(" "),
         Span::styled(
             format!("+{}", hunk.lines_added),
-            Style::default().fg(Color::Green),
+            Style::default().fg(palette.success),
         ),
         Span::raw(" "),
         Span::styled(
             format!("-{}", hunk.lines_removed),
-            Style::default().fg(Color::Red),
+            Style::default().fg(palette.danger),
         ),
         Span::raw(" "),
     ]);
 
     let block = Block::bordered()
         .title(title)
-        .border_style(Style::default().fg(Color::Magenta));
+        .border_style(Style::default().fg(palette.accent));
 
     // Calculate inner area (content area minus borders)
     let inner_height = content_area.height.saturating_sub(2) as usize;
@@ -391,9 +391,9 @@ fn render_patch_mode(
     if let Some(ref input) = diff.comment_input {
         // Comment input mode - hints on left stay fixed, input on right
         let mut spans = vec![
-            Span::styled("  [Enter]", Style::default().fg(Color::Green)),
+            Span::styled("[Enter]", Style::default().fg(palette.success)),
             Span::raw(" send  "),
-            Span::styled("[Esc]", Style::default().fg(Color::Red)),
+            Span::styled("[Esc]", Style::default().fg(palette.danger)),
             Span::raw(" cancel  "),
             Span::styled("| ", Style::default().fg(palette.dimmed)),
         ];
@@ -416,26 +416,26 @@ fn render_patch_mode(
         // Normal patch mode keybindings
         let mut footer_spans = vec![
             Span::raw("  "),
-            Span::styled("[y]", Style::default().fg(Color::Green)),
+            Span::styled("[y]", Style::default().fg(palette.success)),
             Span::raw(" stage  "),
-            Span::styled("[n]", Style::default().fg(Color::Red)),
+            Span::styled("[n]", Style::default().fg(palette.danger)),
             Span::raw(" skip  "),
         ];
 
         // Show undo option if there are staged hunks
         if !diff.staged_hunks.is_empty() {
-            footer_spans.push(Span::styled("[u]", Style::default().fg(Color::Magenta)));
+            footer_spans.push(Span::styled("[u]", Style::default().fg(palette.accent)));
             footer_spans.push(Span::raw(" undo  "));
         }
 
         footer_spans.extend(vec![
-            Span::styled("[s]", Style::default().fg(Color::Yellow)),
+            Span::styled("[s]", Style::default().fg(palette.keycap)),
             Span::raw(" split  "),
-            Span::styled("[o]", Style::default().fg(Color::Cyan)),
+            Span::styled("[o]", Style::default().fg(palette.keycap)),
             Span::raw(" comment  "),
-            Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+            Span::styled("[j/k]", Style::default().fg(palette.keycap)),
             Span::raw(" nav  "),
-            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::styled("[q]", Style::default().fg(palette.keycap)),
             Span::raw(" quit"),
         ]);
 

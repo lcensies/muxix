@@ -4,7 +4,7 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Cell, Paragraph, Row, Table},
 };
@@ -57,11 +57,11 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::styled(
                 "  /",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(app.palette.keycap)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(app.filter_text.as_str()),
-            Span::styled("_", Style::default().fg(Color::Yellow)),
+            Span::styled("_", Style::default().fg(app.palette.keycap)),
             Span::raw("  "),
             Span::styled("[Enter]", Style::default().fg(app.palette.dimmed)),
             Span::raw(" accept  "),
@@ -73,44 +73,44 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
             Span::styled(
                 "  INPUT MODE",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(app.palette.success)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" - Type to send keys to agent  "),
-            Span::styled("[Esc]", Style::default().fg(Color::Yellow)),
+            Span::styled("[Esc]", Style::default().fg(app.palette.keycap)),
             Span::raw(" exit"),
         ]))
     } else {
         let mut spans = vec![
-            Span::styled("  [i]", Style::default().fg(Color::Green)),
+            Span::styled("  [i]", Style::default().fg(app.palette.success)),
             Span::raw(" input  "),
-            Span::styled("[d]", Style::default().fg(Color::Yellow)),
+            Span::styled("[d]", Style::default().fg(app.palette.keycap)),
             Span::raw(" diff  "),
-            Span::styled("[1-9]", Style::default().fg(Color::Yellow)),
+            Span::styled("[1-9]", Style::default().fg(app.palette.keycap)),
             Span::raw(" jump  "),
         ];
 
         // Only show peek command if backend supports preview
         if supports_preview {
             spans.extend(vec![
-                Span::styled("[p]", Style::default().fg(Color::Cyan)),
+                Span::styled("[p]", Style::default().fg(app.palette.keycap)),
                 Span::raw(" peek  "),
             ]);
         }
 
         spans.extend(vec![
-            Span::styled("[s]", Style::default().fg(Color::Cyan)),
+            Span::styled("[s]", Style::default().fg(app.palette.keycap)),
             Span::raw(" sort: "),
-            Span::styled(app.sort_mode.label(), Style::default().fg(Color::Green)),
+            Span::styled(app.sort_mode.label(), Style::default().fg(app.palette.info)),
             Span::raw("  "),
-            Span::styled("[F]", Style::default().fg(Color::Cyan)),
+            Span::styled("[F]", Style::default().fg(app.palette.keycap)),
             Span::raw(" scope: "),
         ]);
 
         let scope_color = if app.scope_mode.label() == "all" {
             app.palette.dimmed
         } else {
-            Color::Yellow
+            app.palette.info
         };
         spans.push(Span::styled(
             app.scope_mode.label(),
@@ -119,12 +119,15 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
 
         spans.extend(vec![
             Span::raw("  "),
-            Span::styled("[f]", Style::default().fg(Color::Cyan)),
+            Span::styled("[f]", Style::default().fg(app.palette.keycap)),
             Span::raw(" stale: "),
         ]);
 
         if app.hide_stale {
-            spans.push(Span::styled("hidden", Style::default().fg(Color::Yellow)));
+            spans.push(Span::styled(
+                "hidden",
+                Style::default().fg(app.palette.info),
+            ));
         } else {
             spans.push(Span::styled(
                 "shown",
@@ -136,21 +139,24 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
         if !app.filter_text.is_empty() {
             spans.extend(vec![
                 Span::raw("  "),
-                Span::styled("[/]", Style::default().fg(Color::Yellow)),
+                Span::styled("[/]", Style::default().fg(app.palette.keycap)),
                 Span::raw(" filter: "),
-                Span::styled(app.filter_text.as_str(), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    app.filter_text.as_str(),
+                    Style::default().fg(app.palette.keycap),
+                ),
             ]);
         }
 
         spans.extend(vec![
             Span::raw("  "),
-            Span::styled("[c]", Style::default().fg(Color::Green)),
+            Span::styled("[c]", Style::default().fg(app.palette.keycap)),
             Span::raw(" commit  "),
-            Span::styled("[m]", Style::default().fg(Color::Yellow)),
+            Span::styled("[m]", Style::default().fg(app.palette.keycap)),
             Span::raw(" merge  "),
-            Span::styled("[Enter]", Style::default().fg(Color::Cyan)),
+            Span::styled("[Enter]", Style::default().fg(app.palette.keycap)),
             Span::raw(" go  "),
-            Span::styled("[q]", Style::default().fg(Color::Cyan)),
+            Span::styled("[q]", Style::default().fg(app.palette.keycap)),
             Span::raw(" quit"),
         ]);
 
@@ -173,25 +179,31 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
     let git_header = if is_git_fetching {
         let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
         Line::from(vec![
-            Span::styled("Git ", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("Git ", Style::default().fg(app.palette.header).bold()),
             Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
         ])
     } else {
-        Line::from(Span::styled("Git", Style::default().fg(Color::Cyan).bold()))
+        Line::from(Span::styled(
+            "Git",
+            Style::default().fg(app.palette.header).bold(),
+        ))
     };
 
     // Build PR header with spinner when fetching
     let pr_header = if app.is_pr_fetching() {
         let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
         Line::from(vec![
-            Span::styled("PR ", Style::default().fg(Color::Cyan).bold()),
+            Span::styled("PR ", Style::default().fg(app.palette.header).bold()),
             Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
         ])
     } else {
-        Line::from(Span::styled("PR", Style::default().fg(Color::Cyan).bold()))
+        Line::from(Span::styled(
+            "PR",
+            Style::default().fg(app.palette.header).bold(),
+        ))
     };
 
-    let header_style = Style::default().fg(Color::Cyan).bold();
+    let header_style = Style::default().fg(app.palette.header).bold();
     let mut header_cells = vec![
         Cell::from("#").style(header_style),
         Cell::from("Project").style(header_style),
@@ -389,7 +401,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 );
 
                 let mut cells = vec![
-                    Cell::from(jump_key).style(Style::default().fg(Color::Yellow)),
+                    Cell::from(jump_key).style(Style::default().fg(app.palette.keycap)),
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
                     Cell::from(git_line),
@@ -470,22 +482,22 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
         (
             format!(" INPUT: {} ", worktree_name),
             Style::default()
-                .fg(Color::Green)
+                .fg(app.palette.success)
                 .add_modifier(Modifier::BOLD),
-            Style::default().fg(Color::Green),
+            Style::default().fg(app.palette.success),
         )
     } else if let Some(agent) = selected_agent {
         let worktree_name = app.extract_worktree_name(agent).0;
         (
             format!(" Preview: {} ", worktree_name),
-            Style::default().fg(Color::Cyan),
-            Style::default().fg(app.palette.dimmed),
+            Style::default().fg(app.palette.header),
+            Style::default().fg(app.palette.border),
         )
     } else {
         (
             " Preview ".to_string(),
-            Style::default().fg(Color::Cyan),
-            Style::default().fg(app.palette.dimmed),
+            Style::default().fg(app.palette.header),
+            Style::default().fg(app.palette.border),
         )
     };
 

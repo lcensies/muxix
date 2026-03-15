@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Cell, Clear, Row, Table},
 };
@@ -80,7 +80,7 @@ pub fn render_help(f: &mut Frame, app: &App) {
             Span::styled(
                 title,
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(palette.header)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ", Style::default()),
@@ -100,7 +100,7 @@ pub fn render_help(f: &mut Frame, app: &App) {
                 Span::styled(
                     format!("{:>8}", key),
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(palette.keycap)
                         .add_modifier(Modifier::BOLD),
                 ),
             ])),
