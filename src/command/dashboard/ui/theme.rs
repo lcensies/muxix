@@ -67,6 +67,8 @@ impl ThemePalette {
             (ThemeScheme::GraphiteCode, ThemeMode::Light) => Self::graphite_code_light(),
             (ThemeScheme::FestivalCircuit, ThemeMode::Dark) => Self::festival_circuit_dark(),
             (ThemeScheme::FestivalCircuit, ThemeMode::Light) => Self::festival_circuit_light(),
+            (ThemeScheme::TealDrift, ThemeMode::Dark) => Self::teal_drift_dark(),
+            (ThemeScheme::TealDrift, ThemeMode::Light) => Self::teal_drift_light(),
         }
     }
 
@@ -529,6 +531,49 @@ impl ThemePalette {
             warning: Color::Rgb(190, 105, 15),
             danger: Color::Rgb(205, 40, 75),
             accent: Color::Rgb(120, 50, 210),
+        }
+    }
+
+    // ── Teal Drift ──────────────────────────────────────────────
+
+    /// Neutral grays with teal accents and warm gold highlights.
+    fn teal_drift_dark() -> Self {
+        Self {
+            current_row_bg: Color::Rgb(25, 25, 30),
+            highlight_row_bg: Color::Rgb(45, 45, 55),
+            current_worktree_fg: Color::Rgb(255, 255, 255),
+            dimmed: Color::Rgb(100, 100, 100),
+            text: Color::Rgb(200, 200, 200),
+            border: Color::Rgb(60, 60, 60),
+            help_border: Color::Rgb(78, 201, 176),
+            help_muted: Color::Rgb(100, 100, 100),
+            header: Color::Rgb(180, 190, 200),
+            keycap: Color::Rgb(200, 180, 120),
+            info: Color::Rgb(78, 201, 176),
+            success: Color::Rgb(120, 200, 120),
+            warning: Color::Rgb(200, 180, 120),
+            danger: Color::Rgb(220, 120, 120),
+            accent: Color::Rgb(180, 140, 200),
+        }
+    }
+
+    fn teal_drift_light() -> Self {
+        Self {
+            current_row_bg: Color::Rgb(242, 244, 246),
+            highlight_row_bg: Color::Rgb(228, 232, 236),
+            current_worktree_fg: Color::Rgb(36, 45, 53),
+            dimmed: Color::Rgb(130, 140, 148),
+            text: Color::Rgb(36, 45, 53),
+            border: Color::Rgb(188, 196, 200),
+            help_border: Color::Rgb(13, 128, 118),
+            help_muted: Color::Rgb(130, 140, 148),
+            header: Color::Rgb(52, 70, 100),
+            keycap: Color::Rgb(140, 105, 30),
+            info: Color::Rgb(13, 128, 118),
+            success: Color::Rgb(40, 120, 60),
+            warning: Color::Rgb(140, 105, 30),
+            danger: Color::Rgb(180, 50, 50),
+            accent: Color::Rgb(115, 75, 145),
         }
     }
 }

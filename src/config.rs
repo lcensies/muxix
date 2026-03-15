@@ -311,10 +311,11 @@ pub enum ThemeScheme {
     NightSorbet,
     GraphiteCode,
     FestivalCircuit,
+    TealDrift,
 }
 
 impl ThemeScheme {
-    pub const ALL: [ThemeScheme; 11] = [
+    pub const ALL: [ThemeScheme; 12] = [
         ThemeScheme::Default,
         ThemeScheme::Emberforge,
         ThemeScheme::GlacierSignal,
@@ -326,6 +327,7 @@ impl ThemeScheme {
         ThemeScheme::NightSorbet,
         ThemeScheme::GraphiteCode,
         ThemeScheme::FestivalCircuit,
+        ThemeScheme::TealDrift,
     ];
 
     pub fn next(self) -> Self {
@@ -346,6 +348,7 @@ impl ThemeScheme {
             ThemeScheme::NightSorbet => "Night Sorbet",
             ThemeScheme::GraphiteCode => "Graphite Code",
             ThemeScheme::FestivalCircuit => "Festival Circuit",
+            ThemeScheme::TealDrift => "Teal Drift",
         }
     }
 
@@ -362,6 +365,7 @@ impl ThemeScheme {
             ThemeScheme::NightSorbet => "night-sorbet",
             ThemeScheme::GraphiteCode => "graphite-code",
             ThemeScheme::FestivalCircuit => "festival-circuit",
+            ThemeScheme::TealDrift => "teal-drift",
         }
     }
 
@@ -1808,7 +1812,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Color scheme for the dashboard. Press t in the dashboard to cycle.
 # Options: default, emberforge, glacier-signal, obsidian-pop, slate-garden,
 #          phosphor-arcade, lasergrid, mossfire, night-sorbet, graphite-code,
-#          festival-circuit
+#          festival-circuit, teal-drift
 # theme: default
 #
 # Or with explicit dark/light mode (otherwise auto-detected from terminal):

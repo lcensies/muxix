@@ -76,7 +76,7 @@ The dashboard supports 11 color schemes, each with dark and light variants. Dark
 
 Press `t` in the dashboard to cycle through schemes. The selection persists to your global config (`~/.config/workmux/config.yaml`).
 
-Available schemes: `default`, `emberforge`, `glacier-signal`, `obsidian-pop`, `slate-garden`, `phosphor-arcade`, `lasergrid`, `mossfire`, `night-sorbet`, `graphite-code`, `festival-circuit`.
+Available schemes: `default`, `emberforge`, `glacier-signal`, `obsidian-pop`, `slate-garden`, `phosphor-arcade`, `lasergrid`, `mossfire`, `night-sorbet`, `graphite-code`, `festival-circuit`, `teal-drift`.
 
 ```yaml
 # Just a scheme name (auto-detect dark/light)
