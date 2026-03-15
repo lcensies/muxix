@@ -56,6 +56,7 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('d') => Some(Action::LoadWipDiff),
         KeyCode::Char('c') => Some(Action::SendCommitDashboard),
         KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
+        KeyCode::Char('x') => Some(Action::CycleColorScheme),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
         _ => None,

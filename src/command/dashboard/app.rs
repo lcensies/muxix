@@ -104,6 +104,8 @@ pub struct App {
     last_pane_id: Option<String>,
     /// Color palette based on the configured theme
     pub palette: ThemePalette,
+    /// Current color scheme index for cycling (0 = default)
+    pub color_scheme_index: u8,
     /// Dashboard scope filter mode (All or Session)
     pub scope_mode: ScopeMode,
     /// Session name at launch time (for session scope filtering)
@@ -184,6 +186,7 @@ impl App {
             preview_size,
             last_pane_id,
             palette,
+            color_scheme_index: 0,
             scope_mode,
             launch_session,
             filter_active: false,
@@ -547,6 +550,12 @@ impl App {
     }
 
     /// Cycle to the next sort mode, re-sort, and persist to tmux
+    pub fn cycle_color_scheme(&mut self) {
+        use super::ui::theme::{DARK_SCHEME_COUNT, ThemePalette};
+        self.color_scheme_index = (self.color_scheme_index + 1) % DARK_SCHEME_COUNT;
+        self.palette = ThemePalette::dark_variant(self.color_scheme_index);
+    }
+
     pub fn cycle_sort_mode(&mut self) {
         self.sort_mode = self.sort_mode.next();
         self.sort_mode.save();

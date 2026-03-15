@@ -19,6 +19,7 @@ pub enum Action {
     PeekSelected,
 
     // Dashboard commands
+    CycleColorScheme,
     CycleSortMode,
     ToggleScopeFilter,
     ToggleStaleFilter,
@@ -116,6 +117,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
 
         // Dashboard commands
+        Action::CycleColorScheme => {
+            app.cycle_color_scheme();
+            false
+        }
         Action::CycleSortMode => {
             app.cycle_sort_mode();
             false
