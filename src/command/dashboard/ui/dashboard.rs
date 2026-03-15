@@ -547,30 +547,12 @@ fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     s.push(pipe());
     s.extend(cmd("q".into(), "Quit".into()));
 
-    // Split footer: left commands, right-pinned info
-    use super::theme::ThemePalette;
-    let scheme_name = ThemePalette::dark_variant_name(app.color_scheme_index);
-    let right_text = if app.color_scheme_index > 0 {
-        format!("x {} | ? Help ", scheme_name)
-    } else {
-        "? Help ".to_string()
-    };
-    let right_len = right_text.len() as u16;
-    let right = if app.color_scheme_index > 0 {
-        Line::from(vec![
-            Span::styled("x", dimmed),
-            Span::styled(format!(" {} ", scheme_name), Style::default().fg(p.info)),
-            Span::styled("| ", Style::default().fg(p.border)),
-            Span::styled("?", dimmed),
-            Span::styled(" Help ", bold_text),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled("?", dimmed),
-            Span::styled(" Help ", bold_text),
-        ])
-    };
-    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(right_len)]).split(area);
+    // Split footer: left commands, right-pinned help
+    let right = Line::from(vec![
+        Span::styled("?", dimmed),
+        Span::styled(" Help ", bold_text),
+    ]);
+    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(7)]).split(area);
 
     f.render_widget(Paragraph::new(Line::from(s)), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);

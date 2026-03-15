@@ -209,9 +209,9 @@ pub struct Config {
     #[serde(default)]
     pub nerdfont: Option<bool>,
 
-    /// Color theme for the dashboard (dark or light)
+    /// Color theme for the dashboard
     #[serde(default)]
-    pub theme: Theme,
+    pub theme: ThemeConfig,
 
     /// Mode for tmux operations: window (default) or session
     /// None means "use default" (Window), Some means explicitly set
@@ -277,13 +277,179 @@ pub enum MergeStrategy {
     Squash,
 }
 
-/// Color theme for the dashboard
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq)]
+/// Dark or light mode for the dashboard
+#[derive(Debug, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum Theme {
+pub enum ThemeMode {
     #[default]
     Dark,
     Light,
+}
+
+impl<'de> serde::Deserialize<'de> for ThemeMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        match s.to_lowercase().as_str() {
+            "light" => Ok(ThemeMode::Light),
+            _ => Ok(ThemeMode::Dark),
+        }
+    }
+}
+
+/// Named color scheme for the dashboard
+#[derive(Debug, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ThemeScheme {
+    #[default]
+    Default,
+    Emberforge,
+    GlacierSignal,
+    ObsidianPop,
+    SlateGarden,
+    PhosphorArcade,
+    Lasergrid,
+    Mossfire,
+    NightSorbet,
+    GraphiteCode,
+    FestivalCircuit,
+}
+
+impl ThemeScheme {
+    pub const ALL: [ThemeScheme; 11] = [
+        ThemeScheme::Default,
+        ThemeScheme::Emberforge,
+        ThemeScheme::GlacierSignal,
+        ThemeScheme::ObsidianPop,
+        ThemeScheme::SlateGarden,
+        ThemeScheme::PhosphorArcade,
+        ThemeScheme::Lasergrid,
+        ThemeScheme::Mossfire,
+        ThemeScheme::NightSorbet,
+        ThemeScheme::GraphiteCode,
+        ThemeScheme::FestivalCircuit,
+    ];
+
+    pub fn next(self) -> Self {
+        let idx = Self::ALL.iter().position(|&s| s == self).unwrap_or(0);
+        Self::ALL[(idx + 1) % Self::ALL.len()]
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            ThemeScheme::Default => "Default",
+            ThemeScheme::Emberforge => "Emberforge",
+            ThemeScheme::GlacierSignal => "Glacier Signal",
+            ThemeScheme::ObsidianPop => "Obsidian Pop",
+            ThemeScheme::SlateGarden => "Slate Garden",
+            ThemeScheme::PhosphorArcade => "Phosphor Arcade",
+            ThemeScheme::Lasergrid => "Lasergrid",
+            ThemeScheme::Mossfire => "Mossfire",
+            ThemeScheme::NightSorbet => "Night Sorbet",
+            ThemeScheme::GraphiteCode => "Graphite Code",
+            ThemeScheme::FestivalCircuit => "Festival Circuit",
+        }
+    }
+
+    pub fn slug(&self) -> &'static str {
+        match self {
+            ThemeScheme::Default => "default",
+            ThemeScheme::Emberforge => "emberforge",
+            ThemeScheme::GlacierSignal => "glacier-signal",
+            ThemeScheme::ObsidianPop => "obsidian-pop",
+            ThemeScheme::SlateGarden => "slate-garden",
+            ThemeScheme::PhosphorArcade => "phosphor-arcade",
+            ThemeScheme::Lasergrid => "lasergrid",
+            ThemeScheme::Mossfire => "mossfire",
+            ThemeScheme::NightSorbet => "night-sorbet",
+            ThemeScheme::GraphiteCode => "graphite-code",
+            ThemeScheme::FestivalCircuit => "festival-circuit",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<Self> {
+        Self::ALL.iter().find(|v| v.slug() == s).copied()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ThemeScheme {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(Self::from_slug(&s.to_lowercase()).unwrap_or_default())
+    }
+}
+
+/// Theme configuration: scheme + optional mode override.
+/// Supports deserializing from:
+///   - `theme: emberforge` (scheme name, auto-detect mode)
+///   - `theme: dark` or `theme: light` (legacy mode override)
+///   - `theme: { scheme: emberforge, mode: dark }` (structured)
+#[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct ThemeConfig {
+    pub scheme: ThemeScheme,
+    /// None = auto-detect from terminal background
+    pub mode: Option<ThemeMode>,
+}
+
+impl<'de> serde::Deserialize<'de> for ThemeConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de;
+
+        struct ThemeVisitor;
+
+        impl<'de> de::Visitor<'de> for ThemeVisitor {
+            type Value = ThemeConfig;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a theme scheme name, \"dark\", \"light\", or a {scheme, mode} map")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<ThemeConfig, E> {
+                let lower = v.to_lowercase();
+                match lower.as_str() {
+                    "dark" => Ok(ThemeConfig {
+                        scheme: ThemeScheme::Default,
+                        mode: Some(ThemeMode::Dark),
+                    }),
+                    "light" => Ok(ThemeConfig {
+                        scheme: ThemeScheme::Default,
+                        mode: Some(ThemeMode::Light),
+                    }),
+                    _ => Ok(ThemeConfig {
+                        scheme: ThemeScheme::from_slug(&lower).unwrap_or_default(),
+                        mode: None,
+                    }),
+                }
+            }
+
+            fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<ThemeConfig, M::Error> {
+                let mut scheme = None;
+                let mut mode = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "scheme" => {
+                            let s: String = map.next_value()?;
+                            scheme = ThemeScheme::from_slug(&s.to_lowercase());
+                        }
+                        "mode" => {
+                            let s: String = map.next_value()?;
+                            mode = Some(match s.to_lowercase().as_str() {
+                                "light" => ThemeMode::Light,
+                                _ => ThemeMode::Dark,
+                            });
+                        }
+                        _ => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ThemeConfig {
+                    scheme: scheme.unwrap_or_default(),
+                    mode,
+                })
+            }
+        }
+
+        d.deserialize_any(ThemeVisitor)
+    }
 }
 
 /// Mode for multiplexer operations: create windows within the current session or create new sessions
@@ -1385,11 +1551,14 @@ impl Config {
             self.worktree_naming
         };
 
-        // Special case: theme (project wins if not default)
-        merged.theme = if project.theme != Theme::default() {
-            project.theme
-        } else {
-            self.theme
+        // Special case: theme (merge field-by-field, project wins if explicitly set)
+        merged.theme = ThemeConfig {
+            scheme: if project.theme.scheme != ThemeScheme::Default {
+                project.theme.scheme
+            } else {
+                self.theme.scheme
+            },
+            mode: project.theme.mode.or(self.theme.mode),
         };
 
         // Special case: mode (project wins if explicitly set)
@@ -1636,9 +1805,16 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Appearance
 #-------------------------------------------------------------------------------
 
-# Color theme for the dashboard.
-# Options: dark (default), light
-# theme: dark
+# Color scheme for the dashboard. Press t in the dashboard to cycle.
+# Options: default, emberforge, glacier-signal, obsidian-pop, slate-garden,
+#          phosphor-arcade, lasergrid, mossfire, night-sorbet, graphite-code,
+#          festival-circuit
+# theme: default
+#
+# Or with explicit dark/light mode (otherwise auto-detected from terminal):
+# theme:
+#   scheme: emberforge
+#   mode: dark
 
 #-------------------------------------------------------------------------------
 # Git

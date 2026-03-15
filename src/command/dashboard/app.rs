@@ -104,8 +104,12 @@ pub struct App {
     last_pane_id: Option<String>,
     /// Color palette based on the configured theme
     pub palette: ThemePalette,
-    /// Current color scheme index for cycling (0 = default)
-    pub color_scheme_index: u8,
+    /// Current color scheme
+    pub scheme: crate::config::ThemeScheme,
+    /// Current theme mode (dark/light)
+    pub theme_mode: crate::config::ThemeMode,
+    /// Path to the project config file (for persisting theme changes)
+    config_path: Option<PathBuf>,
     /// Dashboard scope filter mode (All or Session)
     pub scope_mode: ScopeMode,
     /// Session name at launch time (for session scope filtering)
@@ -135,7 +139,17 @@ impl App {
             .unwrap_or_else(|| config.dashboard.preview_size())
             .clamp(10, 90);
 
-        let palette = ThemePalette::from_theme(config.theme);
+        // Determine theme mode: config override or auto-detect from terminal
+        let theme_mode = config
+            .theme
+            .mode
+            .unwrap_or_else(|| match terminal_light::luma() {
+                Ok(luma) if luma > 0.6 => crate::config::ThemeMode::Light,
+                _ => crate::config::ThemeMode::Dark,
+            });
+        let scheme = config.theme.scheme;
+        let palette = ThemePalette::for_scheme(scheme, theme_mode);
+        let config_path = crate::config::global_config_path();
         let sort_mode = SortMode::load();
         let scope_mode = if cli_session_filter {
             ScopeMode::Session
@@ -186,7 +200,9 @@ impl App {
             preview_size,
             last_pane_id,
             palette,
-            color_scheme_index: 0,
+            scheme,
+            theme_mode,
+            config_path,
             scope_mode,
             launch_session,
             filter_active: false,
@@ -551,9 +567,64 @@ impl App {
 
     /// Cycle to the next sort mode, re-sort, and persist to tmux
     pub fn cycle_color_scheme(&mut self) {
-        use super::ui::theme::{DARK_SCHEME_COUNT, ThemePalette};
-        self.color_scheme_index = (self.color_scheme_index + 1) % DARK_SCHEME_COUNT;
-        self.palette = ThemePalette::dark_variant(self.color_scheme_index);
+        self.scheme = self.scheme.next();
+        self.palette = ThemePalette::for_scheme(self.scheme, self.theme_mode);
+        self.save_theme_scheme();
+    }
+
+    fn save_theme_scheme(&self) {
+        let Some(ref path) = self.config_path else {
+            return;
+        };
+        // Create parent dirs and file if needed
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let contents = std::fs::read_to_string(path).unwrap_or_default();
+
+        let slug = self.scheme.slug();
+        let new_line = if self.scheme == crate::config::ThemeScheme::Default {
+            "# theme: default".to_string()
+        } else {
+            format!("theme: {}", slug)
+        };
+
+        let lines: Vec<&str> = contents.lines().collect();
+        let mut new_lines: Vec<String> = Vec::new();
+        let mut found = false;
+        let mut skip_indent = false;
+
+        for line in &lines {
+            if skip_indent {
+                if line.starts_with("  ") || line.starts_with('\t') {
+                    continue; // skip structured theme sub-keys
+                }
+                skip_indent = false;
+            }
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("theme:") || trimmed.starts_with("# theme:") {
+                new_lines.push(new_line.clone());
+                found = true;
+                // Check if next lines are indented sub-keys of a structured theme block
+                skip_indent =
+                    trimmed.starts_with("theme:") && !trimmed.contains(char::is_alphanumeric);
+                if trimmed.starts_with("theme:") && trimmed.len() > 6 {
+                    skip_indent = false; // simple `theme: value`, no sub-keys
+                }
+                continue;
+            }
+            new_lines.push(line.to_string());
+        }
+
+        if !found && self.scheme != crate::config::ThemeScheme::Default {
+            new_lines.push(new_line);
+        }
+
+        let mut result = new_lines.join("\n");
+        if contents.ends_with('\n') && !result.ends_with('\n') {
+            result.push('\n');
+        }
+        let _ = std::fs::write(path, result);
     }
 
     pub fn cycle_sort_mode(&mut self) {

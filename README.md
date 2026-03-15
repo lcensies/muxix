@@ -259,7 +259,7 @@ customize.
 | `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
 | `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
-| `theme`          | Dashboard color theme (`dark`, `light`)              | `dark`                  |
+| `theme`          | Dashboard color scheme          | `default` (auto dark/light) |
 
 #### Naming options
 

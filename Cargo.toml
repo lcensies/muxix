@@ -60,6 +60,7 @@ nix = { version = "0.31.1", features = ["fs"] }
 tempfile = "3.14"
 getrandom = "0.4.1"
 similar = "2"
+terminal-light = "1.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
