@@ -98,7 +98,7 @@ impl ThemePalette {
             help_border: Color::Rgb(81, 104, 130),
             help_muted: Color::Rgb(112, 126, 144),
 
-            header: Color::Rgb(137, 180, 250),
+            header: Color::Rgb(180, 200, 220),
             keycap: Color::Rgb(249, 226, 175),
             info: Color::Rgb(120, 225, 213),
             success: Color::Rgb(166, 218, 149),
