@@ -592,28 +592,35 @@ impl App {
         let lines: Vec<&str> = contents.lines().collect();
         let mut new_lines: Vec<String> = Vec::new();
         let mut found = false;
-        let mut skip_indent = false;
+        let mut iter = lines.iter().peekable();
 
-        for line in &lines {
-            if skip_indent {
-                if line.starts_with("  ") || line.starts_with('\t') {
-                    continue; // skip structured theme sub-keys
-                }
-                skip_indent = false;
-            }
+        while let Some(line) = iter.next() {
             let trimmed = line.trim_start();
-            if trimmed.starts_with("theme:") || trimmed.starts_with("# theme:") {
-                new_lines.push(new_line.clone());
+            if !found && (trimmed.starts_with("theme:") || trimmed.starts_with("# theme:")) {
                 found = true;
-                // Check if next lines are indented sub-keys of a structured theme block
-                skip_indent =
-                    trimmed.starts_with("theme:") && !trimmed.contains(char::is_alphanumeric);
-                if trimmed.starts_with("theme:") && trimmed.len() > 6 {
-                    skip_indent = false; // simple `theme: value`, no sub-keys
+                new_lines.push(new_line.clone());
+
+                // Check if this is a structured block (theme: with nothing after the colon)
+                let is_block = trimmed
+                    .strip_prefix("theme:")
+                    .is_some_and(|rest| rest.trim().is_empty());
+
+                if is_block {
+                    // Skip indented sub-keys
+                    let block_indent = line.len() - trimmed.len();
+                    while let Some(next_line) = iter.peek() {
+                        let next_trimmed = next_line.trim_start();
+                        if next_trimmed.is_empty()
+                            || (next_line.len() - next_trimmed.len()) <= block_indent
+                        {
+                            break;
+                        }
+                        iter.next();
+                    }
                 }
-                continue;
+            } else {
+                new_lines.push(line.to_string());
             }
-            new_lines.push(line.to_string());
         }
 
         if !found && self.scheme != crate::config::ThemeScheme::Default {
