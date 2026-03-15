@@ -52,117 +52,13 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     };
 
     // Footer - show different help based on mode
-    let footer_text = if app.filter_active {
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                "  /",
-                Style::default()
-                    .fg(app.palette.keycap)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(app.filter_text.as_str()),
-            Span::styled("_", Style::default().fg(app.palette.keycap)),
-            Span::raw("  "),
-            Span::styled("[Enter]", Style::default().fg(app.palette.dimmed)),
-            Span::raw(" accept  "),
-            Span::styled("[Esc]", Style::default().fg(app.palette.dimmed)),
-            Span::raw(" clear"),
-        ]))
+    if app.filter_active {
+        f.render_widget(render_footer_filter(app), chunks[footer_index]);
     } else if app.input_mode {
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                "  INPUT MODE",
-                Style::default()
-                    .fg(app.palette.success)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" - Type to send keys to agent  "),
-            Span::styled("[Esc]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" exit"),
-        ]))
+        f.render_widget(render_footer_input(app), chunks[footer_index]);
     } else {
-        let mut spans = vec![
-            Span::styled("  [i]", Style::default().fg(app.palette.success)),
-            Span::raw(" input  "),
-            Span::styled("[d]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" diff  "),
-            Span::styled("[1-9]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" jump  "),
-        ];
-
-        // Only show peek command if backend supports preview
-        if supports_preview {
-            spans.extend(vec![
-                Span::styled("[p]", Style::default().fg(app.palette.keycap)),
-                Span::raw(" peek  "),
-            ]);
-        }
-
-        spans.extend(vec![
-            Span::styled("[s]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" sort: "),
-            Span::styled(app.sort_mode.label(), Style::default().fg(app.palette.info)),
-            Span::raw("  "),
-            Span::styled("[F]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" scope: "),
-        ]);
-
-        let scope_color = if app.scope_mode.label() == "all" {
-            app.palette.dimmed
-        } else {
-            app.palette.info
-        };
-        spans.push(Span::styled(
-            app.scope_mode.label(),
-            Style::default().fg(scope_color),
-        ));
-
-        spans.extend(vec![
-            Span::raw("  "),
-            Span::styled("[f]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" stale: "),
-        ]);
-
-        if app.hide_stale {
-            spans.push(Span::styled(
-                "hidden",
-                Style::default().fg(app.palette.info),
-            ));
-        } else {
-            spans.push(Span::styled(
-                "shown",
-                Style::default().fg(app.palette.dimmed),
-            ));
-        }
-
-        // Show active filter indicator
-        if !app.filter_text.is_empty() {
-            spans.extend(vec![
-                Span::raw("  "),
-                Span::styled("[/]", Style::default().fg(app.palette.keycap)),
-                Span::raw(" filter: "),
-                Span::styled(
-                    app.filter_text.as_str(),
-                    Style::default().fg(app.palette.keycap),
-                ),
-            ]);
-        }
-
-        spans.extend(vec![
-            Span::raw("  "),
-            Span::styled("[c]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" commit  "),
-            Span::styled("[m]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" merge  "),
-            Span::styled("[Enter]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" go  "),
-            Span::styled("[q]", Style::default().fg(app.palette.keycap)),
-            Span::raw(" quit"),
-        ]);
-
-        Paragraph::new(Line::from(spans))
-    };
-    f.render_widget(footer_text, chunks[footer_index]);
+        render_footer_normal(f, app, chunks[footer_index]);
+    }
 }
 
 fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
@@ -547,4 +443,120 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     let paragraph = Paragraph::new(text).block(block).scroll((scroll_offset, 0));
 
     f.render_widget(paragraph, area);
+}
+
+// ── Footer rendering ────────────────────────────────────────────
+
+/// Filter mode footer
+fn render_footer_filter<'a>(app: &'a App) -> Paragraph<'a> {
+    Paragraph::new(Line::from(vec![
+        Span::styled(
+            "  /",
+            Style::default()
+                .fg(app.palette.keycap)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(app.filter_text.as_str()),
+        Span::styled("_", Style::default().fg(app.palette.keycap)),
+        Span::raw("  "),
+        Span::styled("Enter", Style::default().fg(app.palette.dimmed)),
+        Span::raw(" accept  "),
+        Span::styled("Esc", Style::default().fg(app.palette.dimmed)),
+        Span::raw(" clear"),
+    ]))
+}
+
+/// Input mode footer
+fn render_footer_input<'a>(app: &'a App) -> Paragraph<'a> {
+    Paragraph::new(Line::from(vec![
+        Span::styled(
+            "  INPUT MODE",
+            Style::default()
+                .fg(app.palette.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" \u{2014} type to send keys to agent  "),
+        Span::styled("Esc", Style::default().fg(app.palette.keycap)),
+        Span::raw(" exit"),
+    ]))
+}
+
+/// Normal mode footer with right-pinned help
+fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
+    let p = &app.palette;
+
+    let dimmed = Style::default().fg(p.dimmed);
+    let bold_text = Style::default().fg(p.text).add_modifier(Modifier::BOLD);
+    let pipe_style = Style::default().fg(p.border);
+    let active_style = Style::default().fg(p.info);
+
+    let cmd = |k: String, l: String| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(k, dimmed),
+            Span::styled(format!(" {}", l), bold_text),
+        ]
+    };
+    let toggle = |k: String, l: String, v: String, active: bool| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(k, dimmed),
+            Span::styled(format!(" {} ", l), bold_text),
+            Span::styled(
+                format!("({})", v),
+                if active { active_style } else { dimmed },
+            ),
+        ]
+    };
+    let pipe = || -> Span<'static> { Span::styled(" \u{2502} ", pipe_style) };
+
+    let sort = app.sort_mode.label();
+    let scope = app.scope_mode.label();
+    let stale = if app.hide_stale { "hidden" } else { "shown" };
+    let scope_active = scope != "all";
+    let stale_active = stale == "hidden";
+
+    let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
+    s.extend(cmd("i".into(), "Input".into()));
+    s.push(pipe());
+    s.extend(cmd("d".into(), "Diff".into()));
+    s.push(pipe());
+    s.extend(cmd("1-9".into(), "Jump".into()));
+    s.push(pipe());
+    s.extend(toggle("s".into(), "Sort".into(), sort.to_string(), true));
+    s.push(pipe());
+    s.extend(toggle(
+        "F".into(),
+        "Scope".into(),
+        scope.to_string(),
+        scope_active,
+    ));
+    s.push(pipe());
+    s.extend(toggle(
+        "f".into(),
+        "Stale".into(),
+        stale.to_string(),
+        stale_active,
+    ));
+    if !app.filter_text.is_empty() {
+        s.push(pipe());
+        s.extend(cmd("/".into(), app.filter_text.clone()));
+    }
+    s.push(pipe());
+    s.extend(cmd("c".into(), "Commit".into()));
+    s.push(pipe());
+    s.extend(cmd("m".into(), "Merge".into()));
+    s.push(pipe());
+    s.extend(cmd("q".into(), "Quit".into()));
+
+    // Split footer: left commands, right-pinned help
+    let right = Line::from(vec![
+        Span::styled("?", Style::default().fg(p.dimmed)),
+        Span::styled(
+            " Help ",
+            Style::default().fg(p.text).add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(7)]).split(area);
+
+    f.render_widget(Paragraph::new(Line::from(s)), cols[0]);
+    f.render_widget(Paragraph::new(right), cols[1]);
 }
