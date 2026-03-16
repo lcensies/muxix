@@ -17,6 +17,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.139 (2026-03-16)
+
+- Add configurable theme for dashboard
+- Auto-detect dark/light mode from terminal background
+- Press `T` (shift+t) in the dashboard to cycle through color schemes; selection
+  persists to config
+- Redesign dashboard footer
+
 ## v0.1.138 (2026-03-14)
 
 - Add `/` hotkey in the dashboard to filter agents by project and worktree name
