@@ -335,6 +335,7 @@ impl ThemeScheme {
         Self::ALL[(idx + 1) % Self::ALL.len()]
     }
 
+    #[allow(dead_code)]
     pub fn name(&self) -> &'static str {
         match self {
             ThemeScheme::Default => "Default",
@@ -1809,7 +1810,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Appearance
 #-------------------------------------------------------------------------------
 
-# Color scheme for the dashboard. Press t in the dashboard to cycle.
+# Color scheme for the dashboard. Press T (shift+t) in the dashboard to cycle.
 # Options: default, emberforge, glacier-signal, obsidian-pop, slate-garden,
 #          phosphor-arcade, lasergrid, mossfire, night-sorbet, graphite-code,
 #          festival-circuit, teal-drift

@@ -51,7 +51,7 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 | `+`/`-`   | Resize preview pane                     |
 | `Enter`   | Go to selected agent (closes dashboard) |
 | `j`/`k`   | Navigate up/down                        |
-| `t`       | Cycle theme                             |
+| `T`       | Cycle theme                             |
 | `q`/`Esc` | Quit                                    |
 | `Ctrl+c`  | Quit (works from any view)              |
 
