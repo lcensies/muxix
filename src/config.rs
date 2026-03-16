@@ -3555,4 +3555,128 @@ sandbox:
         assert_eq!(merged.cpus, Some(4)); // falls back to global
         assert_eq!(merged.runtime, Some(SandboxRuntime::Docker));
     }
+
+    // ── Theme config deserialization tests ───────────────────────
+
+    use super::{ThemeConfig, ThemeMode, ThemeScheme};
+
+    #[test]
+    fn theme_scheme_slug_roundtrip() {
+        for scheme in &ThemeScheme::ALL {
+            let slug = scheme.slug();
+            assert_eq!(
+                ThemeScheme::from_slug(slug),
+                Some(*scheme),
+                "slug roundtrip failed for {:?}",
+                scheme
+            );
+        }
+    }
+
+    #[test]
+    fn theme_scheme_next_wraps() {
+        let mut current = ThemeScheme::Default;
+        for _ in 0..ThemeScheme::ALL.len() {
+            current = current.next();
+        }
+        assert_eq!(current, ThemeScheme::Default);
+    }
+
+    #[test]
+    fn theme_scheme_all_is_exhaustive() {
+        // This match will fail to compile if a variant is added but not listed
+        for scheme in &ThemeScheme::ALL {
+            match scheme {
+                ThemeScheme::Default
+                | ThemeScheme::Emberforge
+                | ThemeScheme::GlacierSignal
+                | ThemeScheme::ObsidianPop
+                | ThemeScheme::SlateGarden
+                | ThemeScheme::PhosphorArcade
+                | ThemeScheme::Lasergrid
+                | ThemeScheme::Mossfire
+                | ThemeScheme::NightSorbet
+                | ThemeScheme::GraphiteCode
+                | ThemeScheme::FestivalCircuit
+                | ThemeScheme::TealDrift => {}
+            }
+        }
+        assert_eq!(ThemeScheme::ALL.len(), 12);
+    }
+
+    #[test]
+    fn theme_config_string_scheme() {
+        let config: ThemeConfig = serde_yaml::from_str("emberforge").unwrap();
+        assert_eq!(config.scheme, ThemeScheme::Emberforge);
+        assert_eq!(config.mode, None);
+    }
+
+    #[test]
+    fn theme_config_string_legacy_dark() {
+        let config: ThemeConfig = serde_yaml::from_str("dark").unwrap();
+        assert_eq!(config.scheme, ThemeScheme::Default);
+        assert_eq!(config.mode, Some(ThemeMode::Dark));
+    }
+
+    #[test]
+    fn theme_config_string_legacy_light() {
+        let config: ThemeConfig = serde_yaml::from_str("light").unwrap();
+        assert_eq!(config.scheme, ThemeScheme::Default);
+        assert_eq!(config.mode, Some(ThemeMode::Light));
+    }
+
+    #[test]
+    fn theme_config_structured() {
+        let yaml = "scheme: glacier-signal\nmode: light";
+        let config: ThemeConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.scheme, ThemeScheme::GlacierSignal);
+        assert_eq!(config.mode, Some(ThemeMode::Light));
+    }
+
+    #[test]
+    fn theme_config_structured_scheme_only() {
+        let yaml = "scheme: night-sorbet";
+        let config: ThemeConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.scheme, ThemeScheme::NightSorbet);
+        assert_eq!(config.mode, None);
+    }
+
+    #[test]
+    fn theme_config_unknown_scheme_defaults() {
+        let config: ThemeConfig = serde_yaml::from_str("nonexistent").unwrap();
+        assert_eq!(config.scheme, ThemeScheme::Default);
+        assert_eq!(config.mode, None);
+    }
+
+    #[test]
+    fn theme_config_full_config_file() {
+        let yaml = "agent: claude\ntheme: teal-drift\nnerdfont: true";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, ThemeScheme::TealDrift);
+        assert_eq!(config.theme.mode, None);
+    }
+
+    #[test]
+    fn theme_config_full_config_structured() {
+        let yaml = "agent: claude\ntheme:\n  scheme: obsidian-pop\n  mode: dark\nnerdfont: true";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, ThemeScheme::ObsidianPop);
+        assert_eq!(config.theme.mode, Some(ThemeMode::Dark));
+    }
+
+    #[test]
+    fn theme_config_full_config_legacy() {
+        let yaml = "agent: claude\ntheme: light";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, ThemeScheme::Default);
+        assert_eq!(config.theme.mode, Some(ThemeMode::Light));
+    }
+
+    #[test]
+    fn theme_config_missing_defaults() {
+        let yaml = "agent: claude";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, ThemeScheme::Default);
+        assert_eq!(config.theme.mode, None);
+    }
 }
