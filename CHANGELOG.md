@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.140 (2026-03-17)
+
+- Add pi agent support for status tracking and setup
+  ([#81](https://github.com/raine/workmux/issues/81))
+
 ## v0.1.139 (2026-03-16)
 
 - Add configurable theme for dashboard

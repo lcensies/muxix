@@ -1,6 +1,6 @@
 [package]
 name = "workmux"
-version = "0.1.139"
+version = "0.1.140"
 edition = "2024"
 authors = ["workmux contributors"]
 description = "An opinionated workflow tool that orchestrates git worktrees and tmux"
@@ -15,6 +15,7 @@ include = [
     "/.claude-plugin/**/*",
     "/.github/hooks/**/*",
     "/.opencode/plugin/**/*",
+    "/.pi/extensions/**/*",
     "/Cargo.toml",
     "/Cargo.lock",
     "/CHANGELOG.md",
