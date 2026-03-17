@@ -51,6 +51,14 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
     match agent {
         Agent::Claude => Some(home.join(".claude/skills")),
         Agent::OpenCode => Some(home.join(".config/opencode/skills")),
+        Agent::Pi => {
+            let pi_dir = if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
+                PathBuf::from(dir)
+            } else {
+                home.join(".pi/agent")
+            };
+            Some(pi_dir.join("skills"))
+        }
         Agent::Copilot => None,
     }
 }
@@ -232,6 +240,14 @@ mod tests {
     fn test_skills_dir_opencode() {
         let dir = skills_dir(Agent::OpenCode);
         assert!(dir.is_some());
+    }
+
+    #[test]
+    fn test_skills_dir_pi() {
+        let dir = skills_dir(Agent::Pi);
+        assert!(dir.is_some());
+        let path = dir.unwrap();
+        assert!(path.ends_with(".pi/agent/skills"));
     }
 
     #[test]

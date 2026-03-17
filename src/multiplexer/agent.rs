@@ -183,6 +183,22 @@ impl AgentProfile for VibeProfile {
     }
 }
 
+pub struct PiProfile;
+
+impl AgentProfile for PiProfile {
+    fn name(&self) -> &'static str {
+        "pi"
+    }
+
+    fn needs_auto_status(&self) -> bool {
+        true
+    }
+
+    fn prompt_argument(&self, prompt_path: &str) -> String {
+        format!("-p \"$(cat {})\"", prompt_path)
+    }
+}
+
 pub struct DefaultProfile;
 
 impl AgentProfile for DefaultProfile {
@@ -198,6 +214,7 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &GeminiProfile,
     &OpenCodeProfile,
     &CodexProfile,
+    &PiProfile,
     &KiroProfile,
     &VibeProfile,
 ];
@@ -349,6 +366,20 @@ mod tests {
     }
 
     #[test]
+    fn test_pi_profile() {
+        let profile = PiProfile;
+        assert_eq!(profile.name(), "pi");
+        assert!(!profile.needs_bang_delay());
+        assert!(profile.needs_auto_status());
+        assert_eq!(
+            profile.prompt_argument("PROMPT.md"),
+            "-p \"$(cat PROMPT.md)\""
+        );
+        assert_eq!(profile.skip_permissions_flag(), None);
+        assert_eq!(profile.auto_name_command(), None);
+    }
+
+    #[test]
     fn test_default_profile() {
         let profile = DefaultProfile;
         assert_eq!(profile.name(), "default");
@@ -394,6 +425,12 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_profile_pi() {
+        let profile = resolve_profile(Some("pi"));
+        assert_eq!(profile.name(), "pi");
+    }
+
+    #[test]
     fn test_resolve_profile_codex() {
         let profile = resolve_profile(Some("codex"));
         assert_eq!(profile.name(), "codex");
@@ -431,6 +468,7 @@ mod tests {
         assert!(is_known_agent("gemini"));
         assert!(is_known_agent("codex"));
         assert!(is_known_agent("opencode"));
+        assert!(is_known_agent("pi"));
         assert!(is_known_agent("kiro-cli"));
         assert!(is_known_agent("vibe"));
     }

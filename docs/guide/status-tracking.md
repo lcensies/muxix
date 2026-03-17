@@ -17,6 +17,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Claude Code  | ✅ Supported                                                                |
 | Copilot CLI  | ✅ Supported\*                                                              |
 | OpenCode     | ✅ Supported                                                                |
+| Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Codex        | [Tracking issue](https://github.com/openai/codex/issues/2109)               |
@@ -25,6 +26,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 **Notes:**
 
 - **Copilot CLI**: No 💬 waiting state
+- **Pi**: No 💬 waiting state
 - **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
 
 ## Status icons
@@ -41,7 +43,7 @@ Run `workmux setup` to automatically detect your agent CLIs and install status t
 workmux setup
 ```
 
-This detects Claude Code, Copilot CLI, and OpenCode by checking for their configuration directories, then offers to install the appropriate hooks. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
+This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their configuration directories, then offers to install the appropriate hooks. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
 
 Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
@@ -55,6 +57,18 @@ claude plugin install workmux-status
 ```
 
 Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See [.claude-plugin/plugin.json](https://github.com/raine/workmux/blob/main/.claude-plugin/plugin.json) for the hook configuration.
+
+## Pi setup
+
+If you prefer manual setup, copy the workmux status extension to your global pi extensions directory:
+
+```bash
+mkdir -p ~/.pi/agent/extensions
+curl -o ~/.pi/agent/extensions/workmux-status.ts \
+  https://raw.githubusercontent.com/raine/workmux/main/.pi/extensions/workmux-status.ts
+```
+
+Restart pi for the extension to take effect.
 
 ## OpenCode setup
 
