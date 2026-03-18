@@ -7,21 +7,31 @@ use crate::{config, workflow};
 use anyhow::{Context, Result, bail};
 
 pub fn run(
-    name: Option<&str>,
+    names: &[String],
     run_hooks: bool,
     force_files: bool,
     new_window: bool,
     session: bool,
     prompt_args: PromptArgs,
 ) -> Result<()> {
-    // Resolve the worktree name
-    let resolved_name = match (name, new_window) {
-        (Some(n), _) => n.to_string(),
-        (None, true) => super::resolve_name(None).context(
-            "Could not infer current worktree. Run inside a worktree or provide a name.",
-        )?,
-        (None, false) => bail!("Worktree name is required unless --new is provided"),
+    // Resolve names: use provided names, or infer from current directory with --new
+    let resolved_names: Vec<String> = if names.is_empty() {
+        if new_window {
+            let inferred = super::resolve_name(None).context(
+                "Could not infer current worktree. Run inside a worktree or provide a name.",
+            )?;
+            vec![inferred]
+        } else {
+            bail!("Worktree name is required unless --new is provided")
+        }
+    } else {
+        names.to_vec()
     };
+
+    // Disallow prompt args when opening multiple worktrees
+    if resolved_names.len() > 1 && prompt_args.has_any() {
+        bail!("Prompt arguments (-p, -P, -e) cannot be used when opening multiple worktrees");
+    }
 
     let (config, config_location) = config::Config::load_with_location(None)?;
     let mux = create_backend(detect_backend());
@@ -36,11 +46,6 @@ pub fn run(
         );
     }
 
-    // Note: final mode resolution happens in workflow::open using the canonical
-    // base_handle (which may differ from resolved_name when opening by branch name).
-    // We pass a preliminary mode here for SetupOptions; workflow::open will override it.
-    // Use config.mode() as fallback (matching `add` behavior) so that worktrees
-    // without stored metadata still respect the config's mode setting.
     let preliminary_mode = if session {
         MuxMode::Session
     } else {
@@ -54,66 +59,85 @@ pub fn run(
         prompt_file: prompt_args.prompt_file.as_ref(),
     })?;
 
-    // Write prompt to temp file if provided
-    // Use unique filename with timestamp to prevent race condition when opening multiple duplicates
-    // Note: We use None for working_dir here because we don't know the worktree path yet
-    // (open resolves it later). The temp dir approach works fine for open since sandbox
-    // wrapping only happens during initial create, not open.
-    let prompt_file_path = if let Some(ref p) = prompt {
-        let unique_name = format!(
-            "{}-{}",
-            resolved_name,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-        );
-        Some(crate::workflow::write_prompt_file(None, &unique_name, p)?)
-    } else {
-        None
-    };
+    let mut errors: Vec<(String, anyhow::Error)> = Vec::new();
 
-    // Construct setup options (pane commands always run on open)
-    let mut options = SetupOptions::new(run_hooks, force_files, true);
-    options.mode = preliminary_mode;
-    options.prompt_file_path = prompt_file_path;
+    for resolved_name in &resolved_names {
+        // Write prompt to temp file if provided (unique per worktree)
+        let prompt_file_path = if let Some(ref p) = prompt {
+            let unique_name = format!(
+                "{}-{}",
+                resolved_name,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            );
+            Some(crate::workflow::write_prompt_file(None, &unique_name, p)?)
+        } else {
+            None
+        };
 
-    // Only announce hooks if we're forcing a new target (otherwise we might just switch)
-    if new_window {
-        super::announce_hooks(
-            &context.config,
-            Some(&options),
-            super::HookPhase::PostCreate,
-        );
-    }
+        // Construct setup options (pane commands always run on open)
+        let mut options = SetupOptions::new(run_hooks, force_files, true);
+        options.mode = preliminary_mode;
+        options.prompt_file_path = prompt_file_path;
 
-    let result = workflow::open(&resolved_name, &context, options, new_window, session)
-        .context("Failed to open worktree environment")?;
-
-    let target_type = match result.mode {
-        MuxMode::Session => "session",
-        MuxMode::Window => "window",
-    };
-
-    if result.did_switch {
-        println!(
-            "✓ Switched to existing tmux {} for '{}'\n  Worktree: {}",
-            target_type,
-            resolved_name,
-            result.worktree_path.display()
-        );
-    } else {
-        if result.post_create_hooks_run > 0 {
-            println!("✓ Setup complete");
+        // Only announce hooks if we're forcing a new target (otherwise we might just switch)
+        if new_window {
+            super::announce_hooks(
+                &context.config,
+                Some(&options),
+                super::HookPhase::PostCreate,
+            );
         }
 
-        println!(
-            "✓ Opened tmux {} for '{}'\n  Worktree: {}",
-            target_type,
-            resolved_name,
-            result.worktree_path.display()
-        );
+        match workflow::open(resolved_name, &context, options, new_window, session)
+            .context("Failed to open worktree environment")
+        {
+            Ok(result) => {
+                let target_type = match result.mode {
+                    MuxMode::Session => "session",
+                    MuxMode::Window => "window",
+                };
+
+                if result.did_switch {
+                    println!(
+                        "✓ Switched to existing tmux {} for '{}'\n  Worktree: {}",
+                        target_type,
+                        resolved_name,
+                        result.worktree_path.display()
+                    );
+                } else {
+                    if result.post_create_hooks_run > 0 {
+                        println!("✓ Setup complete");
+                    }
+
+                    println!(
+                        "✓ Opened tmux {} for '{}'\n  Worktree: {}",
+                        target_type,
+                        resolved_name,
+                        result.worktree_path.display()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ Failed to open '{}': {:#}", resolved_name, e);
+                errors.push((resolved_name.clone(), e));
+            }
+        }
     }
 
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else if errors.len() == resolved_names.len() {
+        // All failed
+        bail!("Failed to open all {} worktrees", errors.len())
+    } else {
+        // Some failed
+        bail!(
+            "Failed to open {} of {} worktrees",
+            errors.len(),
+            resolved_names.len()
+        )
+    }
 }

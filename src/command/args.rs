@@ -20,6 +20,12 @@ pub struct PromptArgs {
     pub prompt_editor: bool,
 }
 
+impl PromptArgs {
+    pub fn has_any(&self) -> bool {
+        self.prompt.is_some() || self.prompt_file.is_some() || self.prompt_editor
+    }
+}
+
 #[derive(clap::Args, Debug)]
 pub struct SetupFlags {
     /// Skip running post-create hooks

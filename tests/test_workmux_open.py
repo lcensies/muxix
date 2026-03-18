@@ -797,3 +797,82 @@ def test_open_legacy_worktree_falls_back_to_config_mode(
     assert result.stdout.strip() == "session", (
         f"Expected backfilled mode to be 'session', got: {result.stdout.strip()!r}"
     )
+
+
+def test_open_multiple_worktrees_at_once(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open` can open multiple worktrees in a single command."""
+    env = mux_server
+    branches = ["feature-multi-a", "feature-multi-b", "feature-multi-c"]
+
+    write_workmux_config(repo_path)
+    for branch in branches:
+        run_workmux_add(env, workmux_exe_path, repo_path, branch)
+        env.kill_window(get_window_name(branch))
+
+    # Open all three at once
+    result = run_workmux_open(env, workmux_exe_path, repo_path, branches)
+
+    windows = _get_all_windows(env)
+    for branch in branches:
+        window_name = get_window_name(branch)
+        assert window_name in windows, (
+            f"Expected window '{window_name}' to exist after multi-open"
+        )
+
+    # Verify output mentions all worktrees
+    for branch in branches:
+        assert branch in result.stdout
+
+
+def test_open_multiple_with_partial_failure(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open` with multiple names continues on failure."""
+    env = mux_server
+    valid_branch = "feature-multi-valid"
+    invalid_branch = "feature-multi-nonexistent"
+
+    write_workmux_config(repo_path)
+    run_workmux_add(env, workmux_exe_path, repo_path, valid_branch)
+    env.kill_window(get_window_name(valid_branch))
+
+    # One valid, one invalid: should open the valid one and report error for invalid
+    result = run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        [valid_branch, invalid_branch],
+        expect_fail=True,
+    )
+
+    # Valid worktree should still be opened
+    windows = _get_all_windows(env)
+    assert get_window_name(valid_branch) in windows
+
+    # Output should report the failure
+    assert invalid_branch in result.stderr
+
+
+def test_open_multiple_with_prompt_fails(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open` rejects prompt args when opening multiple worktrees."""
+    env = mux_server
+    branches = ["feature-prompt-a", "feature-prompt-b"]
+
+    write_workmux_config(repo_path)
+    for branch in branches:
+        run_workmux_add(env, workmux_exe_path, repo_path, branch)
+
+    result = run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branches,
+        prompt="some prompt",
+        expect_fail=True,
+    )
+
+    assert "cannot be used when opening multiple worktrees" in result.stderr

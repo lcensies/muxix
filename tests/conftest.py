@@ -1572,7 +1572,7 @@ def run_workmux_open(
     env: MuxEnvironment,
     workmux_exe_path: Path,
     repo_path: Path,
-    branch_name: Optional[str] = None,
+    branch_name: Union[Optional[str], List[str]] = None,
     *,
     run_hooks: bool = False,
     force_files: bool = False,
@@ -1590,7 +1590,8 @@ def run_workmux_open(
     Returns the command result so tests can assert on stdout/stderr.
 
     Args:
-        branch_name: Worktree name to open (optional with --new, uses current directory)
+        branch_name: Worktree name(s) to open. Can be a single string, a list of
+            strings, or None (optional with --new, uses current directory).
         new_window: If True, pass --new to force opening a new window (creates suffix like -2, -3)
         session: If True, pass -s to force opening as a tmux session
         prompt: Inline prompt text to pass via -p
@@ -1612,7 +1613,10 @@ def run_workmux_open(
         flags.append(f"-P {shlex.quote(str(prompt_file))}")
 
     flag_str = f" {' '.join(flags)}" if flags else ""
-    name_part = f" {branch_name}" if branch_name else ""
+    if isinstance(branch_name, list):
+        name_part = " " + " ".join(branch_name) if branch_name else ""
+    else:
+        name_part = f" {branch_name}" if branch_name else ""
     return run_workmux_command(
         env,
         workmux_exe_path,
