@@ -1285,6 +1285,7 @@ def write_workmux_config(
     worktree_naming: Optional[str] = None,
     worktree_prefix: Optional[str] = None,
     base_branch: Optional[str] = None,
+    prompt_file_only: Optional[bool] = None,
 ):
     """Creates a .workmux.yaml file from structured data and optionally commits it."""
     # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
@@ -1312,6 +1313,8 @@ def write_workmux_config(
         config["worktree_prefix"] = worktree_prefix
     if base_branch:
         config["base_branch"] = base_branch
+    if prompt_file_only is not None:
+        config["prompt_file_only"] = prompt_file_only
     (repo_path / ".workmux.yaml").write_text(yaml.dump(config))
 
     # If env is provided, commit the config file to avoid uncommitted changes in merge tests

@@ -968,3 +968,120 @@ class TestTemplateVariableValidation:
         assert "plattform" in result.stderr
         # Should suggest the correct variable
         assert "platform" in result.stderr
+
+
+class TestPromptFileOnly:
+    """Tests for --prompt-file-only flag."""
+
+    def test_add_prompt_file_only_succeeds_without_agent_pane(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """--prompt-file-only should succeed even when no agent pane is configured."""
+        env = mux_server
+        branch_name = "feature-file-only"
+        prompt_text = "Task for embedded agent"
+
+        # Config with only vim - no agent pane at all
+        write_workmux_config(mux_repo_path, panes=[{"command": "vim"}])
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)} --prompt-file-only",
+        )
+
+        # Prompt file should be written to the worktree
+        assert_prompt_file_contents(env, branch_name, prompt_text, worktree_path)
+
+    def test_add_prompt_file_only_does_not_inject_into_agent(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+        shell_cmd: ShellCommands,
+    ):
+        """--prompt-file-only should write the file but NOT inject the prompt into the agent."""
+        env = mux_server
+        branch_name = "feature-file-only-no-inject"
+        prompt_text = "Should not be injected"
+        output_filename = "agent_output.txt"
+        window_name = get_window_name(branch_name)
+
+        env.configure_default_shell(shell_cmd.path)
+
+        # Install a fake claude that writes its arguments
+        fake_agent_installer.install(
+            "claude",
+            f"""#!/bin/sh
+# If prompt was injected, $1 would be "--" and $2 would be the prompt.
+# In file-only mode, claude should receive no arguments.
+echo "ARGS:$@" > "{output_filename}"
+""",
+        )
+
+        rc_path = env.home_path / shell_cmd.rc_filename
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(
+            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
+        )
+
+        write_workmux_config(
+            mux_repo_path, agent="claude", panes=[{"command": "<agent>"}]
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)} --prompt-file-only",
+        )
+
+        # Prompt file should still be written
+        assert_prompt_file_contents(env, branch_name, prompt_text, worktree_path)
+
+        # Agent should have been launched without prompt injection
+        agent_output = worktree_path / output_filename
+        wait_for_file(
+            env,
+            agent_output,
+            timeout=5.0,
+            window_name=window_name,
+            worktree_path=worktree_path,
+        )
+        # In file-only mode, claude gets no arguments (no "-- <prompt>")
+        assert agent_output.read_text().strip() == "ARGS:"
+
+    def test_add_prompt_file_only_with_config_option(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """prompt_file_only config option should work the same as the CLI flag."""
+        env = mux_server
+        branch_name = "feature-file-only-config"
+        prompt_text = "Config-driven file-only"
+
+        # Config with prompt_file_only and no agent
+        write_workmux_config(
+            mux_repo_path,
+            panes=[{"command": "vim"}],
+            prompt_file_only=True,
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
+        )
+
+        assert_prompt_file_contents(env, branch_name, prompt_text, worktree_path)
