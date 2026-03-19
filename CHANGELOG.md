@@ -17,6 +17,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.141 (2026-03-19)
+
+- Add `--prompt-file-only` flag for editors with embedded agents (e.g., neovim
+  with an agent plugin) that consume prompts from the filesystem instead of pane
+  injection ([#82](https://github.com/raine/workmux/issues/82))
+- `workmux open` now accepts multiple worktree names in a single command (e.g.,
+  `workmux open foo bar`)
+
 ## v0.1.140 (2026-03-17)
 
 - Add pi agent support for status tracking and setup
