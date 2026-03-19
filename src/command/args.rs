@@ -18,6 +18,13 @@ pub struct PromptArgs {
     /// Open $EDITOR to write the prompt
     #[arg(short = 'e', long = "prompt-editor", conflicts_with_all = ["prompt", "prompt_file"])]
     pub prompt_editor: bool,
+
+    /// Write the prompt file without injecting it into agent commands.
+    /// The prompt is written to .workmux/PROMPT-<branch>.md in the worktree,
+    /// but no agent pane is required. Useful when your editor has an embedded
+    /// agent that reads the prompt file directly.
+    #[arg(long)]
+    pub prompt_file_only: bool,
 }
 
 impl PromptArgs {

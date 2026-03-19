@@ -222,6 +222,11 @@ pub struct Config {
     #[serde(default)]
     pub auto_update_check: Option<bool>,
 
+    /// Write prompt files without injecting into agent commands.
+    /// Useful when your editor has an embedded agent that reads prompt files directly.
+    #[serde(default)]
+    pub prompt_file_only: Option<bool>,
+
     /// Container sandbox configuration
     #[serde(default)]
     pub sandbox: SandboxConfig,
@@ -1501,6 +1506,7 @@ impl Config {
             status_format,
             nerdfont,
             auto_update_check,
+            prompt_file_only,
         );
 
         // Deep merge auto_name. Security: command is global-only to prevent

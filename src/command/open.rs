@@ -59,20 +59,29 @@ pub fn run(
         prompt_file: prompt_args.prompt_file.as_ref(),
     })?;
 
+    let prompt_file_only =
+        prompt_args.prompt_file_only || context.config.prompt_file_only.unwrap_or(false);
+
     let mut errors: Vec<(String, anyhow::Error)> = Vec::new();
 
     for resolved_name in &resolved_names {
-        // Write prompt to temp file if provided (unique per worktree)
+        // Write prompt to temp file if provided (unique per worktree).
+        // In file-only mode, skip writing here; the prompt is passed to
+        // workflow::open which writes to the worktree before pane setup.
         let prompt_file_path = if let Some(ref p) = prompt {
-            let unique_name = format!(
-                "{}-{}",
-                resolved_name,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis()
-            );
-            Some(crate::workflow::write_prompt_file(None, &unique_name, p)?)
+            if prompt_file_only {
+                None
+            } else {
+                let unique_name = format!(
+                    "{}-{}",
+                    resolved_name,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                );
+                Some(crate::workflow::write_prompt_file(None, &unique_name, p)?)
+            }
         } else {
             None
         };
@@ -91,8 +100,23 @@ pub fn run(
             );
         }
 
-        match workflow::open(resolved_name, &context, options, new_window, session)
-            .context("Failed to open worktree environment")
+        // In file-only mode, pass the prompt to workflow::open so it can write the
+        // file before pane commands start (avoids race with editor startup).
+        let file_only_prompt = if prompt_file_only {
+            prompt.as_ref()
+        } else {
+            None
+        };
+
+        match workflow::open(
+            resolved_name,
+            &context,
+            options,
+            new_window,
+            session,
+            file_only_prompt,
+        )
+        .context("Failed to open worktree environment")
         {
             Ok(result) => {
                 let target_type = match result.mode {

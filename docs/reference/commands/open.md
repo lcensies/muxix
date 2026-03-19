@@ -25,6 +25,7 @@ workmux open [name...] [flags]
 | `-p, --prompt <text>`      | Provide an inline prompt for AI agent panes.                                                                                                                                                                                  |
 | `-P, --prompt-file <path>` | Provide a path to a file containing the prompt.                                                                                                                                                                               |
 | `-e, --prompt-editor`      | Open your editor to write the prompt interactively.                                                                                                                                                                           |
+| `--prompt-file-only`       | Write the prompt file to the worktree without injecting it into agent commands.                                                                                                                                               |
 
 ## What happens
 

@@ -41,6 +41,16 @@ workmux add -A
 The `-A` (`--auto-name`) flag uses an LLM to [generate a branch name](/reference/commands/add#automatic-branch-name-generation) from your prompt, so you don't have to think of one.
 :::
 
+## Embedded agent mode
+
+If your editor has a built-in agent (e.g., neovim with an agent plugin), you can use `--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md` without requiring an agent pane:
+
+```bash
+workmux add feature/task -P task.md --prompt-file-only
+```
+
+Your editor can then detect the prompt file on startup and pass it to its embedded agent. Set `prompt_file_only: true` in `.workmux.yaml` to make this the default.
+
 ## Per-pane agents
 
 workmux automatically recognizes built-in agent commands (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`, `pi`) in pane commands. This means prompt injection works without the `<agent>` placeholder or a matching `agent` config:

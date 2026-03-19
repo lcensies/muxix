@@ -523,6 +523,9 @@ immediately. If the branch doesn't exist, it will be created automatically.
   used as the prompt.
 - `-e, --prompt-editor`: Open your `$EDITOR` (or `$VISUAL`) to write the prompt
   interactively.
+- `--prompt-file-only`: Write the prompt file to the worktree without injecting
+  it into agent commands. No agent pane is required. Useful when your editor has
+  an embedded agent that reads `.workmux/PROMPT-*.md` directly.
 - `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
   specified multiple times to generate a worktree for each agent. Overrides the
   `agent` from your config file.
@@ -632,6 +635,9 @@ workmux add feature/refactor --prompt-file task-description.md
 
 # Open your editor to write a prompt interactively
 workmux add feature/new-api --prompt-editor
+
+# Write prompt file only (for editors with embedded agents like neovim)
+workmux add feature/task -P task.md --prompt-file-only
 ```
 
 ##### Skipping setup steps
@@ -672,6 +678,11 @@ or whatever you've set via the `agent` config or `--agent` flag) without requiri
 
 This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
+
+If your editor has an embedded agent (e.g., neovim with an agent plugin), use
+`--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md` without
+requiring an agent pane. Your editor can then detect and consume the file on
+startup. This can also be set permanently in config with `prompt_file_only: true`.
 
 #### Automatic branch name generation
 
@@ -1242,6 +1253,8 @@ worktrees at once.
 - `-p, --prompt <text>`: Provide an inline prompt for AI agent panes.
 - `-P, --prompt-file <path>`: Provide a path to a file containing the prompt.
 - `-e, --prompt-editor`: Open your editor to write the prompt interactively.
+- `--prompt-file-only`: Write the prompt file without injecting it into agent
+  commands.
 
 #### What happens
 

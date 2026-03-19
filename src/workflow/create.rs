@@ -46,6 +46,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         options,
         agent,
         is_explicit_name,
+        prompt_file_only,
     } = args;
 
     info!(
@@ -161,7 +162,17 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             mode: options.mode,
         };
 
-        return super::open::open(branch_name, context, open_options, false, false);
+        // In file-only mode, pass the prompt so open can write it to the worktree
+        let file_only_prompt = if prompt_file_only { prompt } else { None };
+
+        return super::open::open(
+            branch_name,
+            context,
+            open_options,
+            false,
+            false,
+            file_only_prompt,
+        );
     }
 
     // Check target using handle (the display name)
@@ -371,7 +382,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         "create:stored tmux mode in git config"
     );
 
-    // Setup the rest of the environment (tmux, files, hooks)
+    // Write prompt file to worktree if provided
     let prompt_file_path = if let Some(p) = prompt {
         Some(setup::write_prompt_file(
             Some(&worktree_path),
@@ -380,6 +391,14 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         )?)
     } else {
         None
+    };
+
+    // In file-only mode, the prompt file is written but not passed to setup.
+    // This skips agent validation and prompt injection into pane commands.
+    let setup_prompt_file_path = if prompt_file_only {
+        None
+    } else {
+        prompt_file_path
     };
 
     // Compute working directory from config location
@@ -408,7 +427,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Merge options
     let options_with_prompt = SetupOptions {
-        prompt_file_path,
+        prompt_file_path: setup_prompt_file_path,
         working_dir,
         config_root,
         ..options
@@ -491,6 +510,7 @@ pub fn create_with_changes(
             options,
             agent: None,
             is_explicit_name: false,
+            prompt_file_only: false,
         },
     ) {
         Ok(result) => result,
