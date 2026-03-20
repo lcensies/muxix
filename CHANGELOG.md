@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.142 (2026-03-20)
+
+- Add automatic worktree naming support for the pi agent
+  ([#84](https://github.com/raine/workmux/issues/84))
+
 ## v0.1.141 (2026-03-19)
 
 - Add `--prompt-file-only` flag for editors with embedded agents (e.g., neovim
