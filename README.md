@@ -740,6 +740,8 @@ When an agent is configured, these commands are used automatically:
 | `gemini`   | `gemini -m gemini-2.5-flash-lite -p`                                     |
 | `codex`    | `codex exec --config model_reasoning_effort="low" -m gpt-5.1-codex-mini` |
 | `opencode` | `opencode run`                                                           |
+| `kiro-cli` | `kiro-cli chat --no-interactive`                                         |
+| `pi`       | `pi -p`                                                                  |
 
 To override back to `llm` when an agent is configured, set
 `auto_name.command: "llm"`.

@@ -197,6 +197,10 @@ impl AgentProfile for PiProfile {
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("-p \"$(cat {})\"", prompt_path)
     }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("pi -p")
+    }
 }
 
 pub struct DefaultProfile;
@@ -376,7 +380,7 @@ mod tests {
             "-p \"$(cat PROMPT.md)\""
         );
         assert_eq!(profile.skip_permissions_flag(), None);
-        assert_eq!(profile.auto_name_command(), None);
+        assert_eq!(profile.auto_name_command(), Some("pi -p"));
     }
 
     #[test]
