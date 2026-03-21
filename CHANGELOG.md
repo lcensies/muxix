@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.143 (2026-03-21)
+
+- Fix `focus: true` not switching to the correct pane in session mode
+  ([#86](https://github.com/raine/workmux/issues/86))
+
 ## v0.1.142 (2026-03-20)
 
 - Add automatic worktree naming support for the pi agent
