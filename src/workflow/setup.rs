@@ -270,15 +270,20 @@ pub fn setup_environment(
     );
 
     // Focus the configured pane and optionally switch to the window/session.
-    // select_pane automatically selects the containing window in tmux.
     if options.focus_window {
-        mux.select_pane(&focus_pane_id)?;
         match options.mode {
             MuxMode::Window => {
+                // select_pane automatically selects the containing window in tmux.
+                mux.select_pane(&focus_pane_id)?;
                 mux.select_window(prefix, handle)?;
             }
             MuxMode::Session => {
-                mux.switch_to_session(prefix, handle)?;
+                // switch_to_pane switches the client directly to the pane,
+                // which also selects the correct window within the session.
+                // Using select_pane + switch_to_session would lose the window
+                // selection because switch_to_session targets the session by
+                // name, defaulting to its first window.
+                mux.switch_to_pane(&focus_pane_id, None)?;
             }
         }
     }
