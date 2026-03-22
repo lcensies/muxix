@@ -3,6 +3,7 @@ mod agent_resolve;
 mod cleanup;
 mod context;
 mod create;
+pub mod file_ops;
 mod list;
 mod merge;
 mod open;

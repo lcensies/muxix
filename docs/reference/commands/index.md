@@ -14,6 +14,7 @@ description: Complete reference for all workmux commands
 | [`list`](./list)               | List all worktrees with status                  |
 | [`open`](./open)               | Open a tmux window for an existing worktree     |
 | [`close`](./close)             | Close a worktree's tmux window (keeps worktree) |
+| [`sync-files`](./sync-files)   | Re-apply file operations to existing worktrees  |
 | [`path`](./path)               | Get the filesystem path of a worktree           |
 | [`dashboard`](./dashboard)     | TUI dashboard for monitoring agents             |
 | [`config edit`](./config)      | Edit the global configuration file              |

@@ -130,6 +130,7 @@ export default defineConfig({
           { text: "list", link: "/reference/commands/list" },
           { text: "open", link: "/reference/commands/open" },
           { text: "close", link: "/reference/commands/close" },
+          { text: "sync-files", link: "/reference/commands/sync-files" },
           { text: "path", link: "/reference/commands/path" },
           { text: "dashboard", link: "/reference/commands/dashboard" },
           { text: "init", link: "/reference/commands/init" },

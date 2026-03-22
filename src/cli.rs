@@ -496,6 +496,14 @@ enum Commands {
         timeout: Option<u64>,
     },
 
+    /// Re-apply file operations (copy/symlink) to worktrees
+    #[command(name = "sync-files")]
+    SyncFiles {
+        /// Sync all worktrees instead of just the current one
+        #[arg(long)]
+        all: bool,
+    },
+
     /// Generate example .workmux.yaml configuration file
     Init,
 
@@ -779,6 +787,7 @@ pub fn run() -> Result<()> {
             timeout,
         } => command::run::run(&name, command, background, keep, timeout),
         Commands::Exec { run_dir } => command::exec::run(&run_dir),
+        Commands::SyncFiles { all } => command::sync_files::run(all),
         Commands::Init => crate::config::Config::init(),
         Commands::Setup { hooks, skills } => command::setup::run(hooks, skills),
         Commands::Docs => command::docs::run(),

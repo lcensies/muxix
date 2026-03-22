@@ -337,6 +337,10 @@ files:
 
 Both `copy` and `symlink` accept glob patterns.
 
+To re-apply file operations to an existing worktree (e.g., after updating the
+config), run `workmux sync-files` from inside the worktree. Use `--all` to sync
+all worktrees at once.
+
 #### Lifecycle hooks
 
 Run commands at specific points in the worktree lifecycle, such as installing
@@ -1320,6 +1324,28 @@ To reopen the window later, use [`workmux open`](#workmux-open-name).
 
 **Tip**: You can also use tmux's native kill-window command (default:
 `prefix + &`) to close a worktree's window with the same effect.
+
+---
+
+### `workmux sync-files`
+
+Re-applies file operations (copy and symlink from `files` config) to existing
+worktrees. Useful when you add new entries to the `files` config or a symlink
+was accidentally deleted.
+
+#### Options
+
+- `--all`: Sync all worktrees instead of just the current one.
+
+#### Examples
+
+```bash
+# Sync files to the current worktree
+workmux sync-files
+
+# Sync files to all worktrees
+workmux sync-files --all
+```
 
 ---
 

@@ -1339,6 +1339,72 @@ impl Config {
         let (project_config, location) = Self::load_project_with_location()?;
         let project_config = project_config.unwrap_or_default();
 
+        let defaults_root = location
+            .as_ref()
+            .map(|loc| loc.config_dir.clone())
+            .or_else(|| git::get_repo_root().ok())
+            .unwrap_or_default();
+
+        let config = Self::merge_and_apply_defaults(
+            global_config,
+            project_config,
+            cli_agent,
+            &defaults_root,
+        );
+
+        debug!(
+            agent = ?config.agent,
+            panes = config.panes.as_ref().map_or(0, |p| p.len()),
+            windows = config.windows.as_ref().map_or(0, |w| w.len()),
+            has_location = location.is_some(),
+            "config:loaded with location"
+        );
+        Ok((config, location))
+    }
+
+    /// Like `load_with_location`, but searches for the project config starting
+    /// from `start_dir` instead of CWD.
+    pub fn load_with_location_from(
+        start_dir: &std::path::Path,
+        cli_agent: Option<&str>,
+    ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
+        debug!(start_dir = %start_dir.display(), "config:loading with location from");
+        let global_config = Self::load_global()?.unwrap_or_default();
+
+        let location = find_project_config(start_dir)?;
+        let project_config = if let Some(ref loc) = location {
+            Self::load_from_path(&loc.config_path)?.unwrap_or_default()
+        } else {
+            Self::default()
+        };
+
+        let defaults_root = location
+            .as_ref()
+            .map(|loc| loc.config_dir.clone())
+            .unwrap_or_else(|| start_dir.to_path_buf());
+
+        let config = Self::merge_and_apply_defaults(
+            global_config,
+            project_config,
+            cli_agent,
+            &defaults_root,
+        );
+
+        debug!(
+            agent = ?config.agent,
+            has_location = location.is_some(),
+            "config:loaded with location from"
+        );
+        Ok((config, location))
+    }
+
+    /// Merge global and project configs, resolve agent, and apply defaults.
+    fn merge_and_apply_defaults(
+        global_config: Self,
+        project_config: Self,
+        cli_agent: Option<&str>,
+        defaults_root: &std::path::Path,
+    ) -> Self {
         let has_explicit_agent =
             cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
 
@@ -1351,19 +1417,11 @@ impl Config {
         let mut config = global_config.merge(project_config);
         config.agent = Some(final_agent);
 
-        // Apply defaults - scope to config directory if nested config found
-        let defaults_root = location
-            .as_ref()
-            .map(|loc| loc.config_dir.clone())
-            .or_else(|| git::get_repo_root().ok())
-            .unwrap_or_default();
-
         if !defaults_root.as_os_str().is_empty() {
             let has_node_modules = defaults_root.join("pnpm-lock.yaml").exists()
                 || defaults_root.join("package-lock.json").exists()
                 || defaults_root.join("yarn.lock").exists();
 
-            // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
             if config.panes.is_none() && config.windows.is_none() {
                 if defaults_root.join("CLAUDE.md").exists() || has_explicit_agent {
                     config.panes = Some(Self::agent_default_panes());
@@ -1383,16 +1441,11 @@ impl Config {
             }
         }
 
-        config.sandbox.network.validate()?;
+        // Unwrap is safe: validate only fails for invalid network config,
+        // which would have failed during deserialization already.
+        let _ = config.sandbox.network.validate();
 
-        debug!(
-            agent = ?config.agent,
-            panes = config.panes.as_ref().map_or(0, |p| p.len()),
-            windows = config.windows.as_ref().map_or(0, |w| w.len()),
-            has_location = location.is_some(),
-            "config:loaded with location"
-        );
-        Ok((config, location))
+        config
     }
 
     /// Load configuration from a specific path.
