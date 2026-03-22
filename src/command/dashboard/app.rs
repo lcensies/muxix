@@ -1119,7 +1119,7 @@ impl App {
         if index < self.worktrees.len() {
             self.worktree_table_state.select(Some(index));
             self.selected_worktree_path = self.worktrees.get(index).map(|w| w.path.clone());
-            self.update_worktree_preview();
+            self.jump_to_selected_worktree();
         }
     }
 
