@@ -1,11 +1,12 @@
 ---
-description: Toggle a compact agent status sidebar in the current tmux window
+description: Toggle a compact agent status sidebar across all tmux windows
 ---
 
 # sidebar
 
-Toggles a compact agent status sidebar on the left side of the current tmux
-window. Shows all active agents in the current session with live status updates.
+Toggles a compact agent status sidebar on the left side of all tmux windows.
+Shows all active agents across all sessions and projects with live status
+updates.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
@@ -17,7 +18,7 @@ workmux sidebar --width 40 # Custom width (default: 30)
 Each agent row displays:
 
 - Status icon (working/waiting/done with spinner animation)
-- Worktree name (truncated to fit)
+- Project and worktree name (e.g. `myproject/fix-bug`)
 - Elapsed time since last status change
 
 ## Keybindings
@@ -37,19 +38,17 @@ Each agent row displays:
 
 ## How it works
 
-The sidebar creates a narrow tmux pane on the left side of the current window
-using a full-height split. It runs a lightweight TUI that polls agent state
-every 2 seconds and renders a compact list.
+When enabled, the sidebar creates a narrow tmux pane on the left side of every
+existing window using a full-height split. Each pane runs a lightweight TUI that
+polls agent state every 2 seconds. A tmux hook (`after-new-window`) ensures
+newly created windows also get a sidebar automatically.
 
-The sidebar pane is tagged with a tmux pane option (`@workmux_role`), so
-running `workmux sidebar` again in the same window will close the existing
-sidebar instead of creating a new one.
+Running `workmux sidebar` again disables the sidebar globally, killing all
+sidebar panes and removing the hook.
 
 ## Limitations
 
 - tmux only (other backends are not supported yet)
-- Per-window (tmux panes are bound to their window)
-- Session-scoped (only shows agents from the current tmux session)
 
 ## Example tmux binding
 

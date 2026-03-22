@@ -1573,8 +1573,8 @@ Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 ### `workmux sidebar`
 
-Toggles a compact agent status sidebar on the left side of the current tmux
-window. The sidebar shows all active agents in the current session with live
+Toggles a compact agent status sidebar on the left side of all tmux windows.
+The sidebar shows all active agents across all sessions and projects with live
 status updates, providing an always-visible overview without taking over the
 full screen like the dashboard.
 
@@ -1586,7 +1586,7 @@ workmux sidebar --width 40 # Toggle with custom width
 The sidebar displays:
 
 - Status icon (working/waiting/done with spinner animation)
-- Worktree name
+- Project and worktree name (e.g. `myproject/fix-bug`)
 - Elapsed time since last status change
 
 | Key     | Action              |
@@ -1604,9 +1604,9 @@ bind C-t run-shell "workmux sidebar"
 
 Then press `prefix + Ctrl-t` to toggle the sidebar.
 
-> **Note:** The sidebar is currently tmux-only and per-window (tmux panes are
-> bound to their window). Running `workmux sidebar` in a different window will
-> create a separate sidebar instance for that window.
+> **Note:** The sidebar is currently tmux-only. When enabled, a sidebar pane is
+> created in every existing window, and new windows automatically get one via a
+> tmux hook.
 
 ---
 

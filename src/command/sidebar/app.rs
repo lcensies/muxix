@@ -5,6 +5,7 @@ use ratatui::widgets::ListState;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
 use crate::config::{Config, StatusIcons};
 use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
@@ -21,8 +22,6 @@ pub struct SidebarApp {
     pub status_icons: StatusIcons,
     pub spinner_frame: u8,
     pub stale_threshold_secs: u64,
-    /// Session name at launch time (for session scope filtering)
-    launch_session: Option<String>,
     /// Window prefix from config
     window_prefix: String,
 }
@@ -39,7 +38,6 @@ impl SidebarApp {
                 _ => crate::config::ThemeMode::Dark,
             });
         let palette = ThemePalette::for_scheme(config.theme.scheme, theme_mode);
-        let launch_session = mux.current_session();
         let window_prefix = config.window_prefix().to_string();
         let status_icons = config.status_icons.clone();
 
@@ -52,7 +50,6 @@ impl SidebarApp {
             status_icons,
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
-            launch_session,
             window_prefix,
         };
 
@@ -69,11 +66,6 @@ impl SidebarApp {
         let mut agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
-
-        // Filter to current session
-        if let Some(ref session) = self.launch_session {
-            agents.retain(|a| a.session == *session);
-        }
 
         // Sort by priority (same logic as dashboard)
         let stale_threshold = self.stale_threshold_secs;
@@ -181,14 +173,16 @@ impl SidebarApp {
         }
     }
 
-    /// Extract worktree display name from an agent pane.
-    pub fn worktree_name(&self, agent: &AgentPane) -> String {
-        if let Some(stripped) = agent.window_name.strip_prefix(self.window_prefix.as_str()) {
-            stripped.to_string()
-        } else if let Some(stripped) = agent.session.strip_prefix(self.window_prefix.as_str()) {
-            stripped.to_string()
+    /// Display name for an agent: "project/worktree" or just "project" for main.
+    pub fn display_name(&self, agent: &AgentPane) -> String {
+        let project = extract_project_name(&agent.path);
+        let (worktree, is_main) =
+            extract_worktree_name(&agent.session, &agent.window_name, &self.window_prefix);
+
+        if is_main {
+            project
         } else {
-            "main".to_string()
+            format!("{}/{}", project, worktree)
         }
     }
 }

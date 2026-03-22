@@ -24,7 +24,7 @@
 //!   - `help`: Help overlay
 
 mod actions;
-mod agent;
+pub mod agent;
 mod ansi;
 mod app;
 mod diff;

@@ -43,7 +43,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
         .agents
         .iter()
         .map(|agent| {
-            let worktree_name = app.worktree_name(agent);
+            let worktree_name = app.display_name(agent);
 
             let is_stale = agent
                 .status_ts

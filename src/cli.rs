@@ -600,6 +600,10 @@ enum Commands {
     #[command(hide = true, name = "_sidebar-run")]
     SidebarRun,
 
+    /// Sync sidebar into the current window (internal use, called by tmux hooks)
+    #[command(hide = true, name = "_sidebar-sync")]
+    SidebarSync,
+
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
@@ -879,6 +883,7 @@ pub fn run() -> Result<()> {
         Commands::Update => command::update::run(),
         Commands::Sidebar { width } => command::sidebar::toggle(width),
         Commands::SidebarRun => command::sidebar::run_sidebar(),
+        Commands::SidebarSync => command::sidebar::sync(),
         Commands::Dashboard {
             preview_size,
             diff,
