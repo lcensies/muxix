@@ -157,8 +157,11 @@ pub struct AgentStatusSummary {
 
 /// List all worktrees with their status
 pub struct WorktreeInfo {
+    pub handle: String,
     pub branch: String,
     pub path: PathBuf,
+    pub is_main: bool,
+    pub mode: MuxMode,
     pub has_mux_window: bool,
     pub has_unmerged: bool,
     pub pr_info: Option<PrSummary>,

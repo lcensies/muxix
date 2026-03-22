@@ -401,6 +401,10 @@ enum Commands {
         #[arg(long)]
         pr: bool,
 
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
         /// Filter by worktree name or branch (supports multiple)
         #[arg(value_parser = WorktreeBranchParser::new())]
         filter: Vec<String>,
@@ -762,7 +766,7 @@ pub fn run() -> Result<()> {
             force,
             keep_branch,
         } => command::remove::run(names, gone, all, force, keep_branch),
-        Commands::List { pr, filter } => command::list::run(pr, &filter),
+        Commands::List { pr, json, filter } => command::list::run(pr, json, &filter),
         Commands::Path { name } => command::path::run(&name),
         Commands::Send { name, text, file } => {
             command::send::run(&name, text.as_deref(), file.as_deref())

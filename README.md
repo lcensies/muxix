@@ -1168,6 +1168,9 @@ merge status. Supports filtering by worktree handle or branch name.
   installed and authenticated. Note that it shows pull requests' statuses with
   [Nerd Font](https://www.nerdfonts.com/) icons, which requires Nerd Font
   compatible font installed.
+- `--json`: Output as JSON. Produces a JSON array of objects with fields:
+  `handle`, `branch`, `path`, `is_main`, `mode`, `has_uncommitted_changes`,
+  `is_open`.
 
 #### Examples
 
@@ -1177,6 +1180,9 @@ workmux list
 
 # List with PR status
 workmux list --pr
+
+# Output as JSON for scripting
+workmux list --json
 
 # Filter to specific worktrees
 workmux list my-feature

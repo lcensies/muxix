@@ -67,6 +67,9 @@ pub fn list(
         return Ok(Vec::new());
     }
 
+    // The first worktree from `git worktree list` is always the main worktree
+    let main_worktree_path = worktrees_data.first().map(|(p, _)| p.clone());
+
     // Apply filter early before expensive operations
     let worktrees_data = filter_worktrees(worktrees_data, filter);
 
@@ -183,9 +186,16 @@ pub fn list(
                 })
             };
 
+            let is_main = main_worktree_path
+                .as_ref()
+                .is_some_and(|main_path| *main_path == path);
+
             WorktreeInfo {
+                handle,
                 branch,
                 path,
+                is_main,
+                mode,
                 has_mux_window,
                 has_unmerged,
                 pr_info,

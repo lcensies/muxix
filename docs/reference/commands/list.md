@@ -18,9 +18,10 @@ workmux list [options] [worktree-or-branch...]
 
 ## Options
 
-| Flag   | Description                                                                                                                                                                                                                                          |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--pr` | Show GitHub PR status for each worktree. Requires the `gh` CLI to be installed and authenticated. Note that it shows pull requests' statuses with [Nerd Font](https://www.nerdfonts.com/) icons, which requires Nerd Font compatible font installed. |
+| Flag     | Description                                                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--pr`   | Show GitHub PR status for each worktree. Requires the `gh` CLI to be installed and authenticated. Note that it shows pull requests' statuses with [Nerd Font](https://www.nerdfonts.com/) icons, which requires Nerd Font compatible font installed. |
+| `--json` | Output as JSON. Produces a JSON array of objects with fields: `handle`, `branch`, `path`, `is_main`, `mode`, `has_uncommitted_changes`, `is_open`.                                                                                                   |
 
 ## Examples
 
@@ -30,6 +31,9 @@ workmux list
 
 # List with PR status
 workmux list --pr
+
+# Output as JSON for scripting
+workmux list --json
 
 # Filter to a specific worktree
 workmux list my-feature

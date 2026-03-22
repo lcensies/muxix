@@ -1,11 +1,13 @@
 use std::io::IsTerminal;
 
 use crate::config;
+use crate::config::MuxMode;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::workflow::types::AgentStatusSummary;
-use crate::{nerdfont, workflow};
+use crate::{git, nerdfont, workflow};
 use anyhow::Result;
 use pathdiff::diff_paths;
+use serde::Serialize;
 use tabled::{
     Table, Tabled,
     settings::{Padding, Style, disable::Remove, object::Columns},
@@ -109,13 +111,49 @@ fn format_agent_status(
     }
 }
 
-pub fn run(show_pr: bool, filter: &[String]) -> Result<()> {
+#[derive(Serialize)]
+struct JsonWorktree {
+    handle: String,
+    branch: String,
+    path: String,
+    is_main: bool,
+    mode: String,
+    has_uncommitted_changes: bool,
+    is_open: bool,
+}
+
+pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
     let config = config::Config::load(None)?;
     let mux = create_backend(detect_backend());
-    let worktrees = workflow::list(&config, mux.as_ref(), show_pr, filter)?;
+    // Skip PR fetch when outputting JSON since it's not included in the JSON schema
+    let worktrees = workflow::list(&config, mux.as_ref(), show_pr && !json, filter)?;
 
     if worktrees.is_empty() {
-        println!("No worktrees found");
+        if json {
+            println!("[]");
+        } else {
+            println!("No worktrees found");
+        }
+        return Ok(());
+    }
+
+    if json {
+        let entries: Vec<JsonWorktree> = worktrees
+            .into_iter()
+            .map(|wt| JsonWorktree {
+                handle: wt.handle,
+                branch: wt.branch,
+                path: wt.path.to_string_lossy().to_string(),
+                is_main: wt.is_main,
+                mode: match wt.mode {
+                    MuxMode::Window => "window".to_string(),
+                    MuxMode::Session => "session".to_string(),
+                },
+                has_uncommitted_changes: git::has_uncommitted_changes(&wt.path).unwrap_or(false),
+                is_open: wt.has_mux_window,
+            })
+            .collect();
+        println!("{}", serde_json::to_string(&entries)?);
         return Ok(());
     }
 
