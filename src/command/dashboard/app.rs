@@ -438,7 +438,13 @@ impl App {
 
         let tx = self.event_tx.clone();
         let is_fetching = self.is_git_fetching.clone();
-        let agent_paths: Vec<PathBuf> = self.all_agents.iter().map(|a| a.path.clone()).collect();
+        // Include both agent paths and worktree paths so the worktree view gets git status too
+        let mut paths: Vec<PathBuf> = self.all_agents.iter().map(|a| a.path.clone()).collect();
+        for wt in &self.worktrees {
+            if !paths.contains(&wt.path) {
+                paths.push(wt.path.clone());
+            }
+        }
 
         std::thread::spawn(move || {
             // Reset flag when thread completes (even on panic)
@@ -450,7 +456,7 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            for path in agent_paths {
+            for path in paths {
                 let status = git::get_git_status(&path);
                 let _ = tx.send(AppEvent::GitStatus(path, status));
             }
