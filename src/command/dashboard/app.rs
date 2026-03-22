@@ -34,6 +34,21 @@ use super::spinner::SPINNER_FRAMES;
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
 
+/// Unified event type for the dashboard event loop.
+/// All background threads and the input thread send events through a single channel.
+pub enum AppEvent {
+    /// Terminal input event (from dedicated input thread)
+    Terminal(crossterm::event::Event),
+    /// Git status update for a worktree path
+    GitStatus(PathBuf, GitStatus),
+    /// PR status update for a repo root
+    PrStatus(PathBuf, HashMap<String, PrSummary>),
+    /// Full worktree list from background fetch
+    WorktreeList(Vec<WorktreeInfo>),
+    /// Git log preview for a worktree path
+    WorktreeLog(PathBuf, String),
+}
+
 /// Which tab is active in the dashboard
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum DashboardTab {
@@ -83,23 +98,18 @@ pub struct App {
     pub preview_height: u16,
     /// Git status for each worktree path
     pub git_statuses: HashMap<PathBuf, GitStatus>,
-    /// Channel receiver for git status updates from background thread
-    git_rx: mpsc::Receiver<(PathBuf, GitStatus)>,
-    /// Channel sender for git status updates (cloned for background threads)
-    git_tx: mpsc::Sender<(PathBuf, GitStatus)>,
     /// Last time git status was fetched (to throttle background fetches)
     last_git_fetch: std::time::Instant,
     /// Flag to track if a git fetch is in progress (prevents thread pile-up)
     pub is_git_fetching: Arc<AtomicBool>,
     /// PR info indexed by repo root, then branch name
     pr_statuses: HashMap<PathBuf, HashMap<String, PrSummary>>,
-    /// Channel for PR status updates (repo_root, prs)
-    pr_rx: mpsc::Receiver<(PathBuf, HashMap<String, PrSummary>)>,
-    pr_tx: mpsc::Sender<(PathBuf, HashMap<String, PrSummary>)>,
     /// Last PR fetch time
     last_pr_fetch: std::time::Instant,
     /// Flag to prevent concurrent PR fetches
     is_pr_fetching: Arc<AtomicBool>,
+    /// Unified event sender (cloned by all background threads)
+    pub event_tx: mpsc::Sender<AppEvent>,
     /// Cache of repo roots for agent paths
     repo_roots: HashMap<PathBuf, PathBuf>,
     /// Frame counter for spinner animation (increments each tick)
@@ -144,9 +154,6 @@ pub struct App {
     pub worktree_filter_active: bool,
     /// Worktree path awaiting delete confirmation
     pub pending_delete_worktree: Option<PathBuf>,
-    /// Channel for worktree list updates from background thread
-    worktree_rx: mpsc::Receiver<Vec<WorktreeInfo>>,
-    worktree_tx: mpsc::Sender<Vec<WorktreeInfo>>,
     /// Flag to prevent concurrent worktree fetches
     is_worktree_fetching: Arc<AtomicBool>,
     /// Last time worktree list was fetched
@@ -155,16 +162,15 @@ pub struct App {
     pub worktree_preview: Option<String>,
     /// Path of the worktree whose preview is cached
     worktree_preview_path: Option<PathBuf>,
-    /// Channel for worktree git log preview from background thread
-    worktree_log_rx: mpsc::Receiver<(PathBuf, String)>,
-    worktree_log_tx: mpsc::Sender<(PathBuf, String)>,
 }
 
 impl App {
-    pub fn new(mux: Arc<dyn Multiplexer>, cli_session_filter: bool) -> Result<Self> {
+    pub fn new(
+        mux: Arc<dyn Multiplexer>,
+        cli_session_filter: bool,
+        event_tx: mpsc::Sender<AppEvent>,
+    ) -> Result<Self> {
         let config = Config::load(None)?;
-        let (git_tx, git_rx) = mpsc::channel();
-        let (pr_tx, pr_rx) = mpsc::channel();
 
         // Get the active pane's directory to indicate the active worktree.
         // Try multiplexer first (handles popup case), fall back to current_dir.
@@ -202,9 +208,6 @@ impl App {
         let hide_stale = load_hide_stale();
         let last_pane_id = load_last_pane_id();
 
-        let (worktree_tx, worktree_rx) = mpsc::channel();
-        let (worktree_log_tx, worktree_log_rx) = mpsc::channel();
-
         let mut app = Self {
             mux,
             agents: Vec::new(),
@@ -225,17 +228,14 @@ impl App {
             preview_line_count: 0,
             preview_height: 0,
             git_statuses,
-            git_rx,
-            git_tx,
             // Set to past to trigger immediate fetch on first refresh
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
             pr_statuses,
-            pr_rx,
-            pr_tx,
             // Set to past to trigger immediate fetch on first refresh
             last_pr_fetch: std::time::Instant::now() - PR_FETCH_INTERVAL,
             is_pr_fetching: Arc::new(AtomicBool::new(false)),
+            event_tx,
             repo_roots: HashMap::new(),
             spinner_frame: 0,
             hide_stale,
@@ -258,15 +258,11 @@ impl App {
             worktree_filter_text: String::new(),
             worktree_filter_active: false,
             pending_delete_worktree: None,
-            worktree_rx,
-            worktree_tx,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
             // Set to past so first switch triggers immediate fetch
             last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
             worktree_preview: None,
             worktree_preview_path: None,
-            worktree_log_rx,
-            worktree_log_tx,
         };
 
         app.refresh();
@@ -326,20 +322,10 @@ impl App {
             }
         }
 
-        // Consume any pending git status updates from background thread
-        while let Ok((path, status)) = self.git_rx.try_recv() {
-            self.git_statuses.insert(path, status);
-        }
-
         // Trigger background git status fetch every 5 seconds
         if self.last_git_fetch.elapsed() >= Duration::from_secs(5) {
             self.last_git_fetch = std::time::Instant::now();
             self.spawn_git_status_fetch();
-        }
-
-        // Consume any pending PR status updates
-        while let Ok((repo_root, prs)) = self.pr_rx.try_recv() {
-            self.pr_statuses.insert(repo_root, prs);
         }
 
         // Trigger PR fetch every 30 seconds
@@ -348,28 +334,12 @@ impl App {
             self.spawn_pr_status_fetch();
         }
 
-        // Consume pending worktree updates
-        if self.active_tab == DashboardTab::Worktrees {
-            self.apply_worktree_updates();
-
-            // Trigger background fetch every 5 seconds
-            if self.last_worktree_fetch.elapsed() >= Duration::from_secs(5) {
-                self.last_worktree_fetch = std::time::Instant::now();
-                self.spawn_worktree_fetch();
-            }
-        }
-
-        // Consume pending worktree log preview
+        // Trigger background worktree fetch every 5 seconds
+        if self.active_tab == DashboardTab::Worktrees
+            && self.last_worktree_fetch.elapsed() >= Duration::from_secs(5)
         {
-            let mut latest = None;
-            while let Ok(entry) = self.worktree_log_rx.try_recv() {
-                latest = Some(entry);
-            }
-            if let Some((path, log)) = latest
-                && self.worktree_preview_path.as_ref() == Some(&path)
-            {
-                self.worktree_preview = Some(log);
-            }
+            self.last_worktree_fetch = std::time::Instant::now();
+            self.spawn_worktree_fetch();
         }
 
         // Apply name filter, stale filter, sort, and restore selection
@@ -466,7 +436,7 @@ impl App {
             return;
         }
 
-        let tx = self.git_tx.clone();
+        let tx = self.event_tx.clone();
         let is_fetching = self.is_git_fetching.clone();
         let agent_paths: Vec<PathBuf> = self.all_agents.iter().map(|a| a.path.clone()).collect();
 
@@ -482,8 +452,7 @@ impl App {
 
             for path in agent_paths {
                 let status = git::get_git_status(&path);
-                // Ignore send errors (receiver dropped means app is shutting down)
-                let _ = tx.send((path, status));
+                let _ = tx.send(AppEvent::GitStatus(path, status));
             }
         });
     }
@@ -516,7 +485,7 @@ impl App {
             .filter_map(|agent| self.repo_roots.get(&agent.path).cloned())
             .collect();
 
-        let tx = self.pr_tx.clone();
+        let tx = self.event_tx.clone();
         let is_fetching = self.is_pr_fetching.clone();
 
         std::thread::spawn(move || {
@@ -531,7 +500,7 @@ impl App {
             for repo_root in repo_roots {
                 match crate::github::list_prs_in_repo(&repo_root) {
                     Ok(prs) => {
-                        let _ = tx.send((repo_root, prs));
+                        let _ = tx.send(AppEvent::PrStatus(repo_root, prs));
                     }
                     Err(e) => {
                         tracing::warn!("Failed to fetch PRs for {:?}: {}", repo_root, e);
@@ -1012,6 +981,34 @@ impl App {
         self.last_worktree_fetch = std::time::Instant::now() - Duration::from_secs(60);
     }
 
+    /// Apply a background event to app state.
+    /// Called from the main loop when an AppEvent arrives on the unified channel.
+    pub fn apply_event(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::Terminal(_) => {} // handled separately in main loop
+            AppEvent::GitStatus(path, status) => {
+                self.git_statuses.insert(path, status);
+            }
+            AppEvent::PrStatus(repo_root, prs) => {
+                self.pr_statuses.insert(repo_root, prs);
+            }
+            AppEvent::WorktreeList(mut worktrees) => {
+                worktrees.sort_by(|a, b| {
+                    let proj_a = agent::extract_project_name(&a.path);
+                    let proj_b = agent::extract_project_name(&b.path);
+                    proj_a.cmp(&proj_b).then_with(|| a.handle.cmp(&b.handle))
+                });
+                self.worktrees = worktrees;
+                self.apply_worktree_filters();
+            }
+            AppEvent::WorktreeLog(path, log) => {
+                if self.worktree_preview_path.as_ref() == Some(&path) {
+                    self.worktree_preview = Some(log);
+                }
+            }
+        }
+    }
+
     /// Switch between Agents and Worktrees tabs
     pub fn switch_tab(&mut self) {
         self.active_tab = match self.active_tab {
@@ -1035,7 +1032,7 @@ impl App {
             return;
         }
 
-        let tx = self.worktree_tx.clone();
+        let tx = self.event_tx.clone();
         let is_fetching = self.is_worktree_fetching.clone();
         let config = self.config.clone();
         let mux = self.mux.clone();
@@ -1055,26 +1052,6 @@ impl App {
                 let _ = tx.send(AppEvent::WorktreeList(worktrees));
             }
         });
-    }
-
-    /// Consume latest worktree data from background thread
-    fn apply_worktree_updates(&mut self) {
-        let mut latest = None;
-        while let Ok(worktrees) = self.worktree_rx.try_recv() {
-            latest = Some(worktrees);
-        }
-
-        if let Some(mut worktrees) = latest {
-            // Sort by project name then handle
-            worktrees.sort_by(|a, b| {
-                let proj_a = agent::extract_project_name(&a.path);
-                let proj_b = agent::extract_project_name(&b.path);
-                proj_a.cmp(&proj_b).then_with(|| a.handle.cmp(&b.handle))
-            });
-
-            self.worktrees = worktrees;
-            self.apply_worktree_filters();
-        }
     }
 
     /// Apply filter text to worktree list and restore selection
@@ -1246,7 +1223,7 @@ impl App {
             self.worktree_preview = None;
 
             if let Some(path) = current_path {
-                let tx = self.worktree_log_tx.clone();
+                let tx = self.event_tx.clone();
                 std::thread::spawn(move || {
                     let output = std::process::Command::new("git")
                         .args(["log", "--oneline", "-n", "20"])
@@ -1254,7 +1231,7 @@ impl App {
                         .output();
                     if let Ok(out) = output {
                         let log = String::from_utf8_lossy(&out.stdout).to_string();
-                        let _ = tx.send((path, log));
+                        let _ = tx.send(AppEvent::WorktreeLog(path, log));
                     }
                 });
             }

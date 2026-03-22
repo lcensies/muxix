@@ -44,6 +44,7 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use std::io;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::git;
@@ -51,7 +52,7 @@ use crate::github;
 use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
-use self::app::{App, DashboardTab, ViewMode};
+use self::app::{App, AppEvent, DashboardTab, ViewMode};
 use self::diff_ops::DiffOps;
 use self::keymap::{Context, action_for_key};
 use self::spinner::SPINNER_FRAME_COUNT;
@@ -134,8 +135,21 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = ratatui::Terminal::new(backend)?;
 
+    // Unified event channel: all background threads and the input thread send here
+    let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
+
+    // Dedicated input thread: reads crossterm events and forwards them
+    let input_tx = event_tx.clone();
+    std::thread::spawn(move || {
+        while let Ok(ev) = event::read() {
+            if input_tx.send(AppEvent::Terminal(ev)).is_err() {
+                break; // receiver dropped, app is shutting down
+            }
+        }
+    });
+
     // Create app state
-    let mut app = App::new(mux, session_filter)?;
+    let mut app = App::new(mux, session_filter, event_tx)?;
 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {
@@ -165,7 +179,7 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
-        // Calculate timeout to respect the next scheduled preview refresh
+        // Calculate timeout: wake for the earliest timer deadline
         let current_preview_interval = if app.input_mode {
             preview_refresh_interval_input
         } else {
@@ -176,67 +190,18 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
         let time_until_tick = tick_rate.saturating_sub(last_tick.elapsed());
         let timeout = time_until_tick.min(time_until_preview);
 
-        if event::poll(timeout)? {
-            let event = event::read()?;
+        // Block until an event arrives OR the timeout fires
+        match event_rx.recv_timeout(timeout) {
+            Ok(event) => {
+                handle_event(&mut app, event, &mut last_preview_refresh);
 
-            // Handle mouse scroll events in diff view
-            if let Event::Mouse(mouse) = &event {
-                handle_mouse_event(&mut app, mouse.kind);
-                continue;
-            }
-
-            // Handle key events
-            let Event::Key(key) = event else { continue };
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-
-            // Help overlay handling - close on any key if open
-            if app.show_help {
-                app.show_help = false;
-                continue;
-            }
-
-            // Kill confirmation popup - y confirms, anything else cancels
-            if app.pending_kill_pane_id.is_some() {
-                if key.code == crossterm::event::KeyCode::Char('y') {
-                    app.confirm_kill();
-                } else {
-                    app.pending_kill_pane_id = None;
-                }
-                continue;
-            }
-
-            // Delete worktree confirmation popup - y confirms, anything else cancels
-            if app.pending_delete_worktree.is_some() {
-                if key.code == crossterm::event::KeyCode::Char('y') {
-                    app.confirm_delete_worktree();
-                } else {
-                    app.pending_delete_worktree = None;
-                }
-                continue;
-            }
-
-            // Get current context and map key to action
-            let ctx = get_context(&app);
-
-            // Special case: EnterPatchMode only works in WIP diff view (not branch diff)
-            if ctx == Context::DiffNormal
-                && let ViewMode::Diff(ref diff) = app.view_mode
-                && diff.is_branch_diff
-            {
-                // Skip patch mode action for branch diffs
-                if let Some(actions::Action::EnterPatchMode) = action_for_key(ctx, key) {
-                    continue;
+                // Drain any other pending events to coalesce bursts
+                while let Ok(event) = event_rx.try_recv() {
+                    handle_event(&mut app, event, &mut last_preview_refresh);
                 }
             }
-
-            if let Some(action) = action_for_key(ctx, key) {
-                let refreshed_preview = apply_action(&mut app, action);
-                if refreshed_preview {
-                    last_preview_refresh = std::time::Instant::now();
-                }
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
 
         if last_tick.elapsed() >= tick_rate {
@@ -280,4 +245,78 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+/// Handle a single AppEvent, dispatching terminal input or applying background data.
+fn handle_event(app: &mut App, event: AppEvent, last_preview_refresh: &mut std::time::Instant) {
+    match event {
+        AppEvent::Terminal(terminal_event) => {
+            handle_terminal_event(app, terminal_event, last_preview_refresh);
+        }
+        bg_event => app.apply_event(bg_event),
+    }
+}
+
+/// Handle a crossterm terminal event (key press, mouse scroll, etc.)
+fn handle_terminal_event(
+    app: &mut App,
+    event: Event,
+    last_preview_refresh: &mut std::time::Instant,
+) {
+    // Handle mouse scroll events in diff view
+    if let Event::Mouse(mouse) = &event {
+        handle_mouse_event(app, mouse.kind);
+        return;
+    }
+
+    // Handle key events
+    let Event::Key(key) = event else { return };
+    if key.kind != KeyEventKind::Press {
+        return;
+    }
+
+    // Help overlay handling - close on any key if open
+    if app.show_help {
+        app.show_help = false;
+        return;
+    }
+
+    // Kill confirmation popup - y confirms, anything else cancels
+    if app.pending_kill_pane_id.is_some() {
+        if key.code == crossterm::event::KeyCode::Char('y') {
+            app.confirm_kill();
+        } else {
+            app.pending_kill_pane_id = None;
+        }
+        return;
+    }
+
+    // Delete worktree confirmation popup - y confirms, anything else cancels
+    if app.pending_delete_worktree.is_some() {
+        if key.code == crossterm::event::KeyCode::Char('y') {
+            app.confirm_delete_worktree();
+        } else {
+            app.pending_delete_worktree = None;
+        }
+        return;
+    }
+
+    // Get current context and map key to action
+    let ctx = get_context(app);
+
+    // Special case: EnterPatchMode only works in WIP diff view (not branch diff)
+    if ctx == Context::DiffNormal
+        && let ViewMode::Diff(ref diff) = app.view_mode
+        && diff.is_branch_diff
+        && let Some(actions::Action::EnterPatchMode) = action_for_key(ctx, key)
+    {
+        return;
+    }
+
+    if let Some(action) = action_for_key(ctx, key) {
+        let refreshed_preview = apply_action(app, action);
+        if refreshed_preview {
+            *last_preview_refresh = std::time::Instant::now();
+        }
+    }
 }
