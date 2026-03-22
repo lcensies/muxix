@@ -33,8 +33,8 @@ mod keymap;
 mod scope;
 mod settings;
 mod sort;
-mod spinner;
-mod ui;
+pub mod spinner;
+pub mod ui;
 
 use anyhow::Result;
 use crossterm::{

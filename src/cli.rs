@@ -589,6 +589,17 @@ enum Commands {
     /// Update workmux to the latest version
     Update,
 
+    /// Toggle a compact agent status sidebar in the current tmux window
+    Sidebar {
+        /// Width of the sidebar pane in columns
+        #[arg(long, short = 'w')]
+        width: Option<u16>,
+    },
+
+    /// Run the sidebar TUI (internal use)
+    #[command(hide = true, name = "_sidebar-run")]
+    SidebarRun,
+
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
@@ -866,6 +877,8 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
+        Commands::Sidebar { width } => command::sidebar::toggle(width),
+        Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::Dashboard {
             preview_size,
             diff,

@@ -476,6 +476,7 @@ alias wm='workmux'
 - [`resurrect`](#workmux-resurrect) - Restore worktree windows after a crash
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
+- [`sidebar`](#workmux-sidebar) - Toggle a compact agent status sidebar in tmux
 - [`config edit`](#workmux-config-edit) - Edit the global configuration file
 - [`init`](#workmux-init) - Generate configuration file
 - [`sandbox`](#workmux-sandbox) - Manage sandbox backends (container/Lima)
@@ -1567,6 +1568,45 @@ bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
+
+---
+
+### `workmux sidebar`
+
+Toggles a compact agent status sidebar on the left side of the current tmux
+window. The sidebar shows all active agents in the current session with live
+status updates, providing an always-visible overview without taking over the
+full screen like the dashboard.
+
+```bash
+workmux sidebar            # Toggle sidebar on/off
+workmux sidebar --width 40 # Toggle with custom width
+```
+
+The sidebar displays:
+
+- Status icon (working/waiting/done with spinner animation)
+- Worktree name
+- Elapsed time since last status change
+
+| Key     | Action              |
+| ------- | ------------------- |
+| `j`/`k` | Navigate up/down    |
+| `Enter` | Jump to agent       |
+| `g`/`G` | Jump to first/last  |
+| `q`     | Quit sidebar        |
+
+#### Example tmux binding
+
+```bash
+bind C-t run-shell "workmux sidebar"
+```
+
+Then press `prefix + Ctrl-t` to toggle the sidebar.
+
+> **Note:** The sidebar is currently tmux-only and per-window (tmux panes are
+> bound to their window). Running `workmux sidebar` in a different window will
+> create a separate sidebar instance for that window.
 
 ---
 

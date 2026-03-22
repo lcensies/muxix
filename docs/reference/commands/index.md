@@ -18,6 +18,7 @@ description: Complete reference for all workmux commands
 | [`sync-files`](./sync-files)   | Re-apply file operations to existing worktrees  |
 | [`path`](./path)               | Get the filesystem path of a worktree           |
 | [`dashboard`](./dashboard)     | TUI dashboard for monitoring agents             |
+| [`sidebar`](./sidebar)         | Compact agent status sidebar in tmux            |
 | [`config edit`](./config)      | Edit the global configuration file              |
 | [`init`](./init)               | Generate configuration file                     |
 | [`claude prune`](./claude)     | Clean up stale Claude Code entries              |
