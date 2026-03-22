@@ -280,14 +280,14 @@ pub fn render_worktree_preview(f: &mut Frame, app: &mut App, area: Rect) {
 
     let (title, title_style) = if let Some(wt) = selected_worktree {
         (
-            format!(" Preview: {} ", wt.handle),
+            format!(" Git Log: {} ", wt.handle),
             Style::default()
                 .fg(app.palette.header)
                 .add_modifier(Modifier::BOLD),
         )
     } else {
         (
-            " Preview ".to_string(),
+            " Git Log ".to_string(),
             Style::default()
                 .fg(app.palette.header)
                 .add_modifier(Modifier::BOLD),
