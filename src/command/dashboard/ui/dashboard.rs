@@ -45,61 +45,66 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Check if backend supports preview
     let supports_preview = app.mux.supports_preview();
 
-    // Layout: tab header, table (top), preview (bottom, only if supported), footer
-    let chunks = if !supports_preview {
-        Layout::vertical([
-            Constraint::Length(1), // Tab header
-            Constraint::Min(5),    // Table (takes all space except footer)
-            Constraint::Length(1), // Footer
-        ])
-        .split(area)
+    // Outer layout: fixed-height tab header and footer, flexible content area.
+    // Fill(1) guarantees the content takes exactly the remaining space.
+    let outer = Layout::vertical([
+        Constraint::Length(1), // Tab header
+        Constraint::Fill(1),   // Content (table + optional preview)
+        Constraint::Length(1), // Footer
+    ])
+    .split(area);
+
+    let tab_area = outer[0];
+    let content_area = outer[1];
+    let footer_area = outer[2];
+
+    // Split content area into table + preview (or just table if no preview)
+    let (table_area, preview_area) = if !supports_preview {
+        (content_area, None)
     } else {
         let table_size = 100u16.saturating_sub(app.preview_size as u16);
-        Layout::vertical([
-            Constraint::Length(1),              // Tab header
-            Constraint::Percentage(table_size), // Table (top)
-            Constraint::Min(5),                 // Preview (bottom, at least 5 lines)
-            Constraint::Length(1),              // Footer
+        // Use Fill() proportional constraints to split space safely without overflow
+        let content_chunks = Layout::vertical([
+            Constraint::Fill(table_size),              // Table
+            Constraint::Fill(app.preview_size as u16), // Preview
         ])
-        .split(area)
+        .split(content_area);
+        (content_chunks[0], Some(content_chunks[1]))
     };
 
     // Tab header
-    render_tab_header(f, app, chunks[0]);
+    render_tab_header(f, app, tab_area);
 
     // Table (agents or worktrees based on active tab)
     match app.active_tab {
-        DashboardTab::Agents => render_table(f, app, chunks[1]),
-        DashboardTab::Worktrees => render_worktree_table(f, app, chunks[1]),
+        DashboardTab::Agents => render_table(f, app, table_area),
+        DashboardTab::Worktrees => render_worktree_table(f, app, table_area),
     }
 
     // Preview (only for backends that support it)
-    let footer_index = if supports_preview {
+    if let Some(preview) = preview_area {
         match app.active_tab {
-            DashboardTab::Agents => render_preview(f, app, chunks[2]),
-            DashboardTab::Worktrees => render_worktree_preview(f, app, chunks[2]),
+            DashboardTab::Agents => render_preview(f, app, preview),
+            DashboardTab::Worktrees => render_worktree_preview(f, app, preview),
         }
-        3 // Footer is at index 3 when preview is shown (tab header + table + preview)
-    } else {
-        2 // Footer is at index 2 when preview is hidden (tab header + table)
-    };
+    }
 
     // Footer - show different help based on mode
     match app.active_tab {
         DashboardTab::Agents => {
             if app.filter_active {
-                f.render_widget(render_footer_filter(app), chunks[footer_index]);
+                f.render_widget(render_footer_filter(app), footer_area);
             } else if app.input_mode {
-                f.render_widget(render_footer_input(app), chunks[footer_index]);
+                f.render_widget(render_footer_input(app), footer_area);
             } else {
-                render_footer_normal(f, app, chunks[footer_index]);
+                render_footer_normal(f, app, footer_area);
             }
         }
         DashboardTab::Worktrees => {
             if app.worktree_filter_active {
-                f.render_widget(render_worktree_footer_filter(app), chunks[footer_index]);
+                f.render_widget(render_worktree_footer_filter(app), footer_area);
             } else {
-                render_worktree_footer_normal(f, app, chunks[footer_index]);
+                render_worktree_footer_normal(f, app, footer_area);
             }
         }
     }
@@ -466,9 +471,11 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
                         (text, count)
                     }
                     Err(_) => {
-                        // Fallback to plain text if ANSI parsing fails
-                        let count = trimmed.lines().count() as u16;
-                        (Text::raw(trimmed), count)
+                        // Fallback: strip ANSI escapes to prevent raw control
+                        // sequences from corrupting the terminal display
+                        let safe = super::super::ansi::strip_ansi_escapes(trimmed);
+                        let count = safe.lines().count() as u16;
+                        (Text::raw(safe), count)
                     }
                 }
             }
@@ -596,7 +603,7 @@ fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("?", dimmed),
         Span::styled(" Help ", bold_text),
     ]);
-    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(7)]).split(area);
+    let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(7)]).split(area);
 
     f.render_widget(Paragraph::new(Line::from(s)), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);
@@ -658,7 +665,7 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("?", dimmed),
         Span::styled(" Help ", bold_text),
     ]);
-    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(7)]).split(area);
+    let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(7)]).split(area);
 
     f.render_widget(Paragraph::new(Line::from(s)), cols[0]);
     f.render_widget(Paragraph::new(right), cols[1]);
