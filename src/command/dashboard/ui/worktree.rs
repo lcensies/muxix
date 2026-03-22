@@ -77,7 +77,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                     let icon = app.config.status_icons.working();
                     let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
                     parts.push((
-                        format!("{}{} ", icon, spinner),
+                        format!("{} {} ", icon, spinner),
                         Style::default().fg(app.palette.info),
                     ));
                 }
