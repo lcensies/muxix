@@ -22,20 +22,25 @@ fn render_tab_header(f: &mut Frame, app: &App, area: Rect) {
         .add_modifier(Modifier::BOLD);
     let inactive_style = Style::default().fg(app.palette.dimmed);
     let pipe_style = Style::default().fg(app.palette.border);
+    let rule_style = Style::default().fg(app.palette.border);
 
     let (agents_style, worktrees_style) = match app.active_tab {
         DashboardTab::Agents => (active_style, inactive_style),
         DashboardTab::Worktrees => (inactive_style, active_style),
     };
 
-    let line = Line::from(vec![
+    let tabs = Line::from(vec![
         Span::raw("  "),
         Span::styled("Agents", agents_style),
         Span::styled(" \u{2502} ", pipe_style),
         Span::styled("Worktrees", worktrees_style),
     ]);
+    let rule = Line::from(Span::styled(
+        "\u{2500}".repeat(area.width as usize),
+        rule_style,
+    ));
 
-    f.render_widget(Paragraph::new(line), area);
+    f.render_widget(Paragraph::new(vec![tabs, rule]), area);
 }
 
 /// Render the dashboard view (table + preview + footer).
@@ -48,7 +53,7 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Outer layout: fixed-height tab header and footer, flexible content area.
     // Fill(1) guarantees the content takes exactly the remaining space.
     let outer = Layout::vertical([
-        Constraint::Length(1), // Tab header
+        Constraint::Length(2), // Tab header + spacer
         Constraint::Fill(1),   // Content (table + optional preview)
         Constraint::Length(1), // Footer
     ])
