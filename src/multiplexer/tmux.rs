@@ -566,6 +566,10 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["switch-client", "-t", pane_id])
     }
 
+    fn kill_pane(&self, pane_id: &str) -> Result<()> {
+        self.tmux_cmd(&["kill-pane", "-t", pane_id])
+    }
+
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
         let working_dir_str = cwd
             .to_str()

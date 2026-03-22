@@ -58,6 +58,7 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
         KeyCode::Char('T') => Some(Action::CycleColorScheme),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
+        KeyCode::Char('X') => Some(Action::KillSelected),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
         _ => None,
     }
@@ -165,6 +166,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("d", "View diff"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),
+            ("X", "Kill agent"),
             ("/", "Filter agents"),
             ("T", "Cycle theme"),
             ("1-9", "Quick jump"),

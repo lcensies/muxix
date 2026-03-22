@@ -118,6 +118,8 @@ pub struct App {
     pub filter_active: bool,
     /// Text filter for filtering agents by name. Empty string means no filter.
     pub filter_text: String,
+    /// Pane ID awaiting kill confirmation (set when pressing x on a working agent)
+    pub pending_kill_pane_id: Option<String>,
 }
 
 impl App {
@@ -207,6 +209,7 @@ impl App {
             launch_session,
             filter_active: false,
             filter_text: String::new(),
+            pending_kill_pane_id: None,
         };
 
         app.refresh();
@@ -740,6 +743,53 @@ impl App {
                 .switch_to_pane(&agent.pane_id, Some(&agent.window_name));
             // Don't set should_jump - popup stays open
         }
+    }
+
+    /// Kill the selected agent's pane and remove it from the list.
+    /// Shows a confirmation popup for working agents.
+    pub fn kill_selected(&mut self) {
+        if let Some(selected) = self.table_state.selected()
+            && let Some(agent) = self.agents.get(selected)
+        {
+            if agent.status == Some(AgentStatus::Working) {
+                // Show confirmation popup
+                self.pending_kill_pane_id = Some(agent.pane_id.clone());
+            } else {
+                self.do_kill(&agent.pane_id.clone());
+            }
+        }
+    }
+
+    /// Execute the pending kill confirmation.
+    pub fn confirm_kill(&mut self) {
+        if let Some(pane_id) = self.pending_kill_pane_id.take() {
+            self.do_kill(&pane_id);
+        }
+    }
+
+    /// Kill a pane and remove it from the agent list.
+    fn do_kill(&mut self, pane_id: &str) {
+        let _ = self.mux.kill_pane(pane_id);
+
+        let selected = self.table_state.selected().unwrap_or(0);
+
+        // Remove from local lists immediately for responsive UI
+        self.agents.retain(|a| a.pane_id != pane_id);
+        self.all_agents.retain(|a| a.pane_id != pane_id);
+
+        // Adjust selection
+        if self.agents.is_empty() {
+            self.table_state.select(None);
+            self.selected_pane_id = None;
+        } else {
+            let new_idx = selected.min(self.agents.len() - 1);
+            self.table_state.select(Some(new_idx));
+            self.selected_pane_id = self.agents.get(new_idx).map(|a| a.pane_id.clone());
+        }
+
+        // Force preview refresh for new selection
+        self.preview_pane_id = None;
+        self.update_preview();
     }
 
     /// Send a key to the selected agent's pane

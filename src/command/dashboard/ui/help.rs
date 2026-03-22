@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Cell, Clear, Row, Table},
+    widgets::{Block, Cell, Clear, Paragraph, Row, Table},
 };
 
 use super::super::app::{App, ViewMode};
@@ -47,6 +47,49 @@ fn context_title(ctx: Context) -> &'static str {
         Context::Patch => "Patch Mode",
         Context::Comment => "Comment",
     }
+}
+
+/// Render the kill confirmation popup.
+pub fn render_confirm_kill(f: &mut Frame, app: &App) {
+    let palette = &app.palette;
+
+    let height = 3;
+    let width = 34;
+
+    let area = f.area();
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(palette.help_border));
+
+    let text = Line::from(vec![
+        Span::styled(" Kill working agent? ", Style::default().fg(palette.text)),
+        Span::styled(
+            "y",
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("es / ", Style::default().fg(palette.dimmed)),
+        Span::styled(
+            "n",
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("o", Style::default().fg(palette.dimmed)),
+    ]);
+
+    let paragraph = Paragraph::new(text).block(block);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(paragraph, popup_area);
 }
 
 /// Render the help overlay.

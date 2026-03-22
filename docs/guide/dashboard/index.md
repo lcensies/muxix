@@ -46,6 +46,7 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 | `F`       | Toggle session filter                   |
 | `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
+| `X`       | Kill selected agent                     |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |
 | `+`/`-`   | Resize preview pane                     |

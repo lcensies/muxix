@@ -559,6 +559,13 @@ impl Multiplexer for WezTermBackend {
         self.select_pane(pane_id)
     }
 
+    fn kill_pane(&self, pane_id: &str) -> Result<()> {
+        self.wezterm_cmd()
+            .args(&["cli", "kill-pane", "--pane-id", pane_id])
+            .run()?;
+        Ok(())
+    }
+
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
         let panes = self.list_panes()?;
         let target = panes

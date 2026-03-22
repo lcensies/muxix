@@ -32,6 +32,7 @@ pub enum Action {
     LoadWipDiff,
     SendCommitDashboard,
     TriggerMergeDashboard,
+    KillSelected,
 
     // Input mode
     SendKey(String),
@@ -169,6 +170,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::TriggerMergeDashboard => {
             app.trigger_merge_for_selected();
+            false
+        }
+        Action::KillSelected => {
+            app.kill_selected();
             false
         }
 

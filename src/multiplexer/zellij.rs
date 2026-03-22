@@ -602,6 +602,21 @@ impl Multiplexer for ZellijBackend {
         Ok(())
     }
 
+    fn kill_pane(&self, pane_id: &str) -> Result<()> {
+        let numeric_id =
+            parse_pane_id(pane_id).ok_or_else(|| anyhow!("Invalid pane_id format: {}", pane_id))?;
+        let panes = Self::list_panes().context("Failed to list panes in kill_pane")?;
+        let tab_id = panes
+            .iter()
+            .find(|p| p.id == numeric_id && !p.is_plugin)
+            .and_then(|p| p.tab_id)
+            .ok_or_else(|| anyhow!("Pane {} not found or tab_id unavailable", pane_id))?;
+        Cmd::new("zellij")
+            .args(&["action", "close-tab-by-id", &tab_id.to_string()])
+            .run()?;
+        Ok(())
+    }
+
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
         debug!(pane_id, "respawn_pane: starting");
 

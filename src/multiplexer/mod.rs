@@ -176,6 +176,10 @@ pub trait Multiplexer: Send + Sync {
         true
     }
 
+    /// Kill a pane by its ID. If this is the last pane in a window/tab,
+    /// the window closes automatically.
+    fn kill_pane(&self, pane_id: &str) -> Result<()>;
+
     /// Respawn a pane with optional command. Returns the (possibly new) pane ID.
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String>;
 

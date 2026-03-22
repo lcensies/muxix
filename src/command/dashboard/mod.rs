@@ -188,6 +188,16 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
                 continue;
             }
 
+            // Kill confirmation popup - y confirms, anything else cancels
+            if app.pending_kill_pane_id.is_some() {
+                if key.code == crossterm::event::KeyCode::Char('y') {
+                    app.confirm_kill();
+                } else {
+                    app.pending_kill_pane_id = None;
+                }
+                continue;
+            }
+
             // Get current context and map key to action
             let ctx = get_context(&app);
 

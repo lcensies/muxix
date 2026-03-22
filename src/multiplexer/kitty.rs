@@ -602,6 +602,13 @@ impl Multiplexer for KittyBackend {
         self.select_pane(pane_id)
     }
 
+    fn kill_pane(&self, pane_id: &str) -> Result<()> {
+        self.kitten_cmd()
+            .args(&["close-window", "--match", &format!("id:{}", pane_id)])
+            .run()?;
+        Ok(())
+    }
+
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String> {
         // Unified approach: split the current pane, then close the original.
         // This preserves tab position regardless of whether there were siblings.
@@ -610,10 +617,7 @@ impl Multiplexer for KittyBackend {
             self.split_pane_internal(pane_id, SplitDirection::Vertical, cwd, None, None, cmd)?;
 
         // Close old window
-        let _ = self
-            .kitten_cmd()
-            .args(&["close-window", "--match", &format!("id:{}", pane_id)])
-            .run();
+        let _ = self.kill_pane(pane_id);
 
         Ok(new_pane_id)
     }
