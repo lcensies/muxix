@@ -4,7 +4,7 @@ use anyhow::Result;
 use ratatui::style::Style;
 use ratatui::widgets::TableState;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -14,6 +14,8 @@ use crate::git::{self, GitStatus};
 use crate::github::PrSummary;
 use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
+use crate::workflow;
+use crate::workflow::types::WorktreeInfo;
 
 use super::ui::theme::ThemePalette;
 
@@ -31,6 +33,14 @@ use super::spinner::SPINNER_FRAMES;
 
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
 pub const PREVIEW_LINES: u16 = 200;
+
+/// Which tab is active in the dashboard
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardTab {
+    #[default]
+    Agents,
+    Worktrees,
+}
 
 /// Current view mode of the dashboard
 #[derive(Debug, Default, PartialEq)]
@@ -120,6 +130,34 @@ pub struct App {
     pub filter_text: String,
     /// Pane ID awaiting kill confirmation (set when pressing x on a working agent)
     pub pending_kill_pane_id: Option<String>,
+    /// Which tab is active (Agents or Worktrees)
+    pub active_tab: DashboardTab,
+    /// Worktree list (populated from background thread)
+    pub worktrees: Vec<WorktreeInfo>,
+    /// Table state for the worktree view
+    pub worktree_table_state: TableState,
+    /// Track selected worktree by path for stable selection
+    selected_worktree_path: Option<PathBuf>,
+    /// Filter text for worktree view (separate from agent filter)
+    pub worktree_filter_text: String,
+    /// Whether worktree filter input is active
+    pub worktree_filter_active: bool,
+    /// Worktree path awaiting delete confirmation
+    pub pending_delete_worktree: Option<PathBuf>,
+    /// Channel for worktree list updates from background thread
+    worktree_rx: mpsc::Receiver<Vec<WorktreeInfo>>,
+    worktree_tx: mpsc::Sender<Vec<WorktreeInfo>>,
+    /// Flag to prevent concurrent worktree fetches
+    is_worktree_fetching: Arc<AtomicBool>,
+    /// Last time worktree list was fetched
+    last_worktree_fetch: std::time::Instant,
+    /// Cached git log preview for selected worktree
+    pub worktree_preview: Option<String>,
+    /// Path of the worktree whose preview is cached
+    worktree_preview_path: Option<PathBuf>,
+    /// Channel for worktree git log preview from background thread
+    worktree_log_rx: mpsc::Receiver<(PathBuf, String)>,
+    worktree_log_tx: mpsc::Sender<(PathBuf, String)>,
 }
 
 impl App {
@@ -163,6 +201,9 @@ impl App {
         let pr_statuses = crate::github::load_pr_cache();
         let hide_stale = load_hide_stale();
         let last_pane_id = load_last_pane_id();
+
+        let (worktree_tx, worktree_rx) = mpsc::channel();
+        let (worktree_log_tx, worktree_log_rx) = mpsc::channel();
 
         let mut app = Self {
             mux,
@@ -210,6 +251,22 @@ impl App {
             filter_active: false,
             filter_text: String::new(),
             pending_kill_pane_id: None,
+            active_tab: DashboardTab::Agents,
+            worktrees: Vec::new(),
+            worktree_table_state: TableState::default(),
+            selected_worktree_path: None,
+            worktree_filter_text: String::new(),
+            worktree_filter_active: false,
+            pending_delete_worktree: None,
+            worktree_rx,
+            worktree_tx,
+            is_worktree_fetching: Arc::new(AtomicBool::new(false)),
+            // Set to past so first switch triggers immediate fetch
+            last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
+            worktree_preview: None,
+            worktree_preview_path: None,
+            worktree_log_rx,
+            worktree_log_tx,
         };
 
         app.refresh();
@@ -289,6 +346,30 @@ impl App {
         if self.last_pr_fetch.elapsed() >= PR_FETCH_INTERVAL {
             self.last_pr_fetch = std::time::Instant::now();
             self.spawn_pr_status_fetch();
+        }
+
+        // Consume pending worktree updates
+        if self.active_tab == DashboardTab::Worktrees {
+            self.apply_worktree_updates();
+
+            // Trigger background fetch every 5 seconds
+            if self.last_worktree_fetch.elapsed() >= Duration::from_secs(5) {
+                self.last_worktree_fetch = std::time::Instant::now();
+                self.spawn_worktree_fetch();
+            }
+        }
+
+        // Consume pending worktree log preview
+        {
+            let mut latest = None;
+            while let Ok(entry) = self.worktree_log_rx.try_recv() {
+                latest = Some(entry);
+            }
+            if let Some((path, log)) = latest
+                && self.worktree_preview_path.as_ref() == Some(&path)
+            {
+                self.worktree_preview = Some(log);
+            }
         }
 
         // Apply name filter, stale filter, sort, and restore selection
@@ -922,6 +1003,260 @@ impl App {
     /// Get PR statuses for caching
     pub fn pr_statuses(&self) -> &HashMap<PathBuf, HashMap<String, PrSummary>> {
         &self.pr_statuses
+    }
+
+    // ── Worktree tab methods ────────────────────────────────────────
+
+    /// Reset the worktree fetch timer to trigger an immediate refetch
+    pub fn trigger_worktree_refetch(&mut self) {
+        self.last_worktree_fetch = std::time::Instant::now() - Duration::from_secs(60);
+    }
+
+    /// Switch between Agents and Worktrees tabs
+    pub fn switch_tab(&mut self) {
+        self.active_tab = match self.active_tab {
+            DashboardTab::Agents => DashboardTab::Worktrees,
+            DashboardTab::Worktrees => DashboardTab::Agents,
+        };
+        if self.active_tab == DashboardTab::Worktrees {
+            // Trigger immediate fetch on switch
+            self.last_worktree_fetch = std::time::Instant::now();
+            self.spawn_worktree_fetch();
+        }
+    }
+
+    /// Spawn background thread to fetch worktree list
+    fn spawn_worktree_fetch(&self) {
+        if self
+            .is_worktree_fetching
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
+        let tx = self.worktree_tx.clone();
+        let is_fetching = self.is_worktree_fetching.clone();
+        let config = self.config.clone();
+        let mux = self.mux.clone();
+
+        std::thread::spawn(move || {
+            struct ResetFlag(Arc<AtomicBool>);
+            impl Drop for ResetFlag {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::SeqCst);
+                }
+            }
+            let _reset = ResetFlag(is_fetching);
+
+            if let Ok(worktrees) = workflow::list(&config, mux.as_ref(), true, &[]) {
+                let _ = tx.send(worktrees);
+            }
+        });
+    }
+
+    /// Consume latest worktree data from background thread
+    fn apply_worktree_updates(&mut self) {
+        let mut latest = None;
+        while let Ok(worktrees) = self.worktree_rx.try_recv() {
+            latest = Some(worktrees);
+        }
+
+        if let Some(mut worktrees) = latest {
+            // Sort by project name then handle
+            worktrees.sort_by(|a, b| {
+                let proj_a = agent::extract_project_name(&a.path);
+                let proj_b = agent::extract_project_name(&b.path);
+                proj_a.cmp(&proj_b).then_with(|| a.handle.cmp(&b.handle))
+            });
+
+            self.worktrees = worktrees;
+            self.apply_worktree_filters();
+        }
+    }
+
+    /// Apply filter text to worktree list and restore selection
+    fn apply_worktree_filters(&mut self) {
+        // Apply name filter
+        if !self.worktree_filter_text.is_empty() {
+            let filter = self.worktree_filter_text.to_lowercase();
+            self.worktrees.retain(|w| {
+                let handle = w.handle.to_lowercase();
+                handle.contains(&filter) || w.branch.to_lowercase().contains(&filter)
+            });
+        }
+
+        // Restore selection by path
+        if let Some(ref path) = self.selected_worktree_path {
+            if let Some(idx) = self.worktrees.iter().position(|w| &w.path == path) {
+                self.worktree_table_state.select(Some(idx));
+            } else {
+                self.selected_worktree_path = None;
+                if self.worktrees.is_empty() {
+                    self.worktree_table_state.select(None);
+                } else {
+                    self.worktree_table_state.select(Some(0));
+                }
+            }
+        } else if !self.worktrees.is_empty() && self.worktree_table_state.selected().is_none() {
+            self.worktree_table_state.select(Some(0));
+            self.selected_worktree_path = self.worktrees.first().map(|w| w.path.clone());
+        }
+
+        self.update_worktree_preview();
+    }
+
+    pub fn worktree_next(&mut self) {
+        if self.worktrees.is_empty() {
+            return;
+        }
+        let i = self.worktree_table_state.selected().unwrap_or(0);
+        let next = if i >= self.worktrees.len() - 1 {
+            0
+        } else {
+            i + 1
+        };
+        self.worktree_table_state.select(Some(next));
+        self.selected_worktree_path = self.worktrees.get(next).map(|w| w.path.clone());
+        self.update_worktree_preview();
+    }
+
+    pub fn worktree_previous(&mut self) {
+        if self.worktrees.is_empty() {
+            return;
+        }
+        let i = self.worktree_table_state.selected().unwrap_or(0);
+        let prev = if i == 0 {
+            self.worktrees.len() - 1
+        } else {
+            i - 1
+        };
+        self.worktree_table_state.select(Some(prev));
+        self.selected_worktree_path = self.worktrees.get(prev).map(|w| w.path.clone());
+        self.update_worktree_preview();
+    }
+
+    pub fn worktree_jump_to_index(&mut self, index: usize) {
+        if index < self.worktrees.len() {
+            self.worktree_table_state.select(Some(index));
+            self.selected_worktree_path = self.worktrees.get(index).map(|w| w.path.clone());
+            self.update_worktree_preview();
+        }
+    }
+
+    /// Delete selected worktree (with safety checks)
+    pub fn delete_selected_worktree(&mut self) {
+        let Some(selected) = self.worktree_table_state.selected() else {
+            return;
+        };
+        let Some(worktree) = self.worktrees.get(selected) else {
+            return;
+        };
+        let path = worktree.path.clone();
+
+        // Check for uncommitted changes or unmerged commits
+        let has_uncommitted = git::has_uncommitted_changes(&path).unwrap_or(false);
+        let has_unmerged = worktree.has_unmerged;
+
+        if has_uncommitted || has_unmerged {
+            self.pending_delete_worktree = Some(path);
+            return;
+        }
+
+        self.do_delete_worktree(&path);
+    }
+
+    /// Execute the pending delete confirmation
+    pub fn confirm_delete_worktree(&mut self) {
+        if let Some(path) = self.pending_delete_worktree.take() {
+            self.do_delete_worktree(&path);
+        }
+    }
+
+    fn do_delete_worktree(&mut self, path: &Path) {
+        let handle = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let Ok(ctx) = workflow::WorkflowContext::new(self.config.clone(), self.mux.clone(), None)
+        else {
+            return;
+        };
+
+        // force=true because we already confirmed, keep_branch=false
+        if workflow::remove(&handle, true, false, &ctx).is_ok() {
+            // Only remove from UI on success
+            self.worktrees.retain(|w| w.path != *path);
+
+            // Adjust selection
+            if self.worktrees.is_empty() {
+                self.worktree_table_state.select(None);
+                self.selected_worktree_path = None;
+            } else {
+                let idx = self.worktree_table_state.selected().unwrap_or(0);
+                let new_idx = idx.min(self.worktrees.len() - 1);
+                self.worktree_table_state.select(Some(new_idx));
+                self.selected_worktree_path = self.worktrees.get(new_idx).map(|w| w.path.clone());
+            }
+        }
+    }
+
+    /// Jump to the selected worktree's agent or mux window
+    pub fn jump_to_selected_worktree(&mut self) {
+        let Some(selected) = self.worktree_table_state.selected() else {
+            return;
+        };
+        let Some(worktree) = self.worktrees.get(selected) else {
+            return;
+        };
+
+        // Try agent first
+        if let Some(agent) = self.all_agents.iter().find(|a| a.path == worktree.path) {
+            let target = agent.pane_id.clone();
+            self.switch_to_pane_and_track(&target);
+            return;
+        }
+
+        // Fall back to mux window/session via MuxHandle
+        let handle = &worktree.handle;
+        let prefix = self.config.window_prefix();
+        let mode = worktree.mode;
+        let mux_handle =
+            crate::multiplexer::handle::MuxHandle::new(self.mux.as_ref(), mode, prefix, handle);
+        if mux_handle.exists().unwrap_or(false) {
+            let _ = mux_handle.select();
+            self.should_jump = true;
+        }
+    }
+
+    /// Update the preview for the selected worktree (git log)
+    fn update_worktree_preview(&mut self) {
+        let current_path = self
+            .worktree_table_state
+            .selected()
+            .and_then(|idx| self.worktrees.get(idx))
+            .map(|w| w.path.clone());
+
+        if current_path != self.worktree_preview_path {
+            self.worktree_preview_path = current_path.clone();
+            self.worktree_preview = None;
+
+            if let Some(path) = current_path {
+                let tx = self.worktree_log_tx.clone();
+                std::thread::spawn(move || {
+                    let output = std::process::Command::new("git")
+                        .args(["log", "--oneline", "-n", "20"])
+                        .current_dir(&path)
+                        .output();
+                    if let Ok(out) = output {
+                        let log = String::from_utf8_lossy(&out.stdout).to_string();
+                        let _ = tx.send((path, log));
+                    }
+                });
+            }
+        }
     }
 }
 

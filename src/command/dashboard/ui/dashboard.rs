@@ -10,9 +10,33 @@ use ratatui::{
 };
 use std::collections::{BTreeMap, HashSet};
 
-use super::super::app::App;
+use super::super::app::{App, DashboardTab};
 use super::super::spinner::SPINNER_FRAMES;
 use super::format::{format_git_status, format_pr_status};
+use super::worktree::{render_worktree_preview, render_worktree_table};
+
+/// Render the tab header line showing Agents | Worktrees with active tab highlighted.
+fn render_tab_header(f: &mut Frame, app: &App, area: Rect) {
+    let active_style = Style::default()
+        .fg(app.palette.header)
+        .add_modifier(Modifier::BOLD);
+    let inactive_style = Style::default().fg(app.palette.dimmed);
+    let pipe_style = Style::default().fg(app.palette.border);
+
+    let (agents_style, worktrees_style) = match app.active_tab {
+        DashboardTab::Agents => (active_style, inactive_style),
+        DashboardTab::Worktrees => (inactive_style, active_style),
+    };
+
+    let line = Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Agents", agents_style),
+        Span::styled(" \u{2502} ", pipe_style),
+        Span::styled("Worktrees", worktrees_style),
+    ]);
+
+    f.render_widget(Paragraph::new(line), area);
+}
 
 /// Render the dashboard view (table + preview + footer).
 pub fn render_dashboard(f: &mut Frame, app: &mut App) {
@@ -21,18 +45,18 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Check if backend supports preview
     let supports_preview = app.mux.supports_preview();
 
-    // Layout: table (top), preview (bottom, only if supported), footer
+    // Layout: tab header, table (top), preview (bottom, only if supported), footer
     let chunks = if !supports_preview {
-        // Zellij: no preview section
         Layout::vertical([
+            Constraint::Length(1), // Tab header
             Constraint::Min(5),    // Table (takes all space except footer)
             Constraint::Length(1), // Footer
         ])
         .split(area)
     } else {
-        // Other multiplexers: include preview
         let table_size = 100u16.saturating_sub(app.preview_size as u16);
         Layout::vertical([
+            Constraint::Length(1),              // Tab header
             Constraint::Percentage(table_size), // Table (top)
             Constraint::Min(5),                 // Preview (bottom, at least 5 lines)
             Constraint::Length(1),              // Footer
@@ -40,24 +64,44 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
         .split(area)
     };
 
-    // Table
-    render_table(f, app, chunks[0]);
+    // Tab header
+    render_tab_header(f, app, chunks[0]);
+
+    // Table (agents or worktrees based on active tab)
+    match app.active_tab {
+        DashboardTab::Agents => render_table(f, app, chunks[1]),
+        DashboardTab::Worktrees => render_worktree_table(f, app, chunks[1]),
+    }
 
     // Preview (only for backends that support it)
     let footer_index = if supports_preview {
-        render_preview(f, app, chunks[1]);
-        2 // Footer is at index 2 when preview is shown
+        match app.active_tab {
+            DashboardTab::Agents => render_preview(f, app, chunks[2]),
+            DashboardTab::Worktrees => render_worktree_preview(f, app, chunks[2]),
+        }
+        3 // Footer is at index 3 when preview is shown (tab header + table + preview)
     } else {
-        1 // Footer is at index 1 when preview is hidden
+        2 // Footer is at index 2 when preview is hidden (tab header + table)
     };
 
     // Footer - show different help based on mode
-    if app.filter_active {
-        f.render_widget(render_footer_filter(app), chunks[footer_index]);
-    } else if app.input_mode {
-        f.render_widget(render_footer_input(app), chunks[footer_index]);
-    } else {
-        render_footer_normal(f, app, chunks[footer_index]);
+    match app.active_tab {
+        DashboardTab::Agents => {
+            if app.filter_active {
+                f.render_widget(render_footer_filter(app), chunks[footer_index]);
+            } else if app.input_mode {
+                f.render_widget(render_footer_input(app), chunks[footer_index]);
+            } else {
+                render_footer_normal(f, app, chunks[footer_index]);
+            }
+        }
+        DashboardTab::Worktrees => {
+            if app.worktree_filter_active {
+                f.render_widget(render_worktree_footer_filter(app), chunks[footer_index]);
+            } else {
+                render_worktree_footer_normal(f, app, chunks[footer_index]);
+            }
+        }
     }
 }
 
@@ -544,6 +588,68 @@ fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     s.extend(cmd("c".into(), "Commit".into()));
     s.push(pipe());
     s.extend(cmd("m".into(), "Merge".into()));
+    s.push(pipe());
+    s.extend(cmd("q".into(), "Quit".into()));
+
+    // Split footer: left commands, right-pinned help
+    let right = Line::from(vec![
+        Span::styled("?", dimmed),
+        Span::styled(" Help ", bold_text),
+    ]);
+    let cols = Layout::horizontal([Constraint::Min(0), Constraint::Length(7)]).split(area);
+
+    f.render_widget(Paragraph::new(Line::from(s)), cols[0]);
+    f.render_widget(Paragraph::new(right), cols[1]);
+}
+
+/// Worktree filter mode footer
+fn render_worktree_footer_filter<'a>(app: &'a App) -> Paragraph<'a> {
+    Paragraph::new(Line::from(vec![
+        Span::styled(
+            "  /",
+            Style::default()
+                .fg(app.palette.keycap)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(app.worktree_filter_text.as_str()),
+        Span::styled("_", Style::default().fg(app.palette.keycap)),
+        Span::raw("  "),
+        Span::styled("Enter", Style::default().fg(app.palette.dimmed)),
+        Span::raw(" accept  "),
+        Span::styled("Esc", Style::default().fg(app.palette.dimmed)),
+        Span::raw(" clear"),
+    ]))
+}
+
+/// Worktree normal mode footer
+fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
+    let p = &app.palette;
+
+    let dimmed = Style::default().fg(p.dimmed);
+    let bold_text = Style::default().fg(p.text).add_modifier(Modifier::BOLD);
+    let pipe_style = Style::default().fg(p.border);
+
+    let cmd = |k: String, l: String| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(k, dimmed),
+            Span::styled(format!(" {}", l), bold_text),
+        ]
+    };
+    let pipe = || -> Span<'static> { Span::styled(" \u{2502} ", pipe_style) };
+
+    let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
+    s.extend(cmd("x".into(), "Delete".into()));
+    s.push(pipe());
+    s.extend(cmd("1-9".into(), "Jump".into()));
+    if !app.worktree_filter_text.is_empty() {
+        s.push(pipe());
+        s.extend(cmd("/".into(), app.worktree_filter_text.clone()));
+    } else {
+        s.push(pipe());
+        s.extend(cmd("/".into(), "Filter".into()));
+    }
+    s.push(pipe());
+    s.extend(cmd("Tab".into(), "Agents".into()));
     s.push(pipe());
     s.extend(cmd("q".into(), "Quit".into()));
 

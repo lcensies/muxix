@@ -34,12 +34,20 @@ Consider binding the dashboard to a key you can press without the tmux prefix, s
 
 See [command reference](/reference/commands/dashboard) for CLI options.
 
-## Keybindings
+## Views
+
+The dashboard has two views, toggled with `Tab`:
+
+- **Agents**: Shows all running agent panes with their status, git info, and live terminal preview
+- **Worktrees**: Shows all git worktrees with branch, PR status, and agent summary. Press `x` to delete a worktree (confirmation required for worktrees with uncommitted changes or unmerged commits).
+
+## Keybindings (Agents view)
 
 | Key       | Action                                  |
 | --------- | --------------------------------------- |
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
-| `Tab`     | Toggle between current and last agent   |
+| `Tab`     | Switch to worktree view                 |
+| `Bksp`    | Toggle between current and last agent   |
 | `d`       | View diff (opens WIP view)              |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
@@ -51,10 +59,25 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 | `Ctrl+d`  | Scroll preview down                     |
 | `+`/`-`   | Resize preview pane                     |
 | `Enter`   | Go to selected agent (closes dashboard) |
+| `/`       | Filter agents by name                   |
 | `j`/`k`   | Navigate up/down                        |
 | `T`       | Cycle theme                             |
 | `q`/`Esc` | Quit                                    |
 | `Ctrl+c`  | Quit (works from any view)              |
+
+## Keybindings (Worktrees view)
+
+| Key       | Action                                 |
+| --------- | -------------------------------------- |
+| `1`-`9`   | Quick jump to worktree index           |
+| `Tab`     | Switch to agents view                  |
+| `Enter`   | Jump to worktree (agent or mux window) |
+| `x`       | Delete worktree                        |
+| `/`       | Filter worktrees by name/branch        |
+| `j`/`k`   | Navigate up/down                       |
+| `T`       | Cycle theme                            |
+| `q`/`Esc` | Quit                                   |
+| `Ctrl+c`  | Quit (works from any view)             |
 
 ## Columns
 

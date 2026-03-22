@@ -51,7 +51,7 @@ use crate::github;
 use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
-use self::app::{App, ViewMode};
+use self::app::{App, DashboardTab, ViewMode};
 use self::diff_ops::DiffOps;
 use self::keymap::{Context, action_for_key};
 use self::spinner::SPINNER_FRAME_COUNT;
@@ -60,15 +60,24 @@ use self::ui::ui;
 /// Determine the current keymap context based on app state.
 fn get_context(app: &App) -> Context {
     match &app.view_mode {
-        ViewMode::Dashboard => {
-            if app.filter_active {
-                Context::DashboardFilter
-            } else if app.input_mode {
-                Context::DashboardInput
-            } else {
-                Context::DashboardNormal
+        ViewMode::Dashboard => match app.active_tab {
+            DashboardTab::Agents => {
+                if app.filter_active {
+                    Context::DashboardFilter
+                } else if app.input_mode {
+                    Context::DashboardInput
+                } else {
+                    Context::DashboardNormal
+                }
             }
-        }
+            DashboardTab::Worktrees => {
+                if app.worktree_filter_active {
+                    Context::WorktreeFilter
+                } else {
+                    Context::WorktreeNormal
+                }
+            }
+        },
         ViewMode::Diff(diff) => {
             if diff.patch_mode {
                 if diff.comment_input.is_some() {
@@ -194,6 +203,16 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
                     app.confirm_kill();
                 } else {
                     app.pending_kill_pane_id = None;
+                }
+                continue;
+            }
+
+            // Delete worktree confirmation popup - y confirms, anything else cancels
+            if app.pending_delete_worktree.is_some() {
+                if key.code == crossterm::event::KeyCode::Char('y') {
+                    app.confirm_delete_worktree();
+                } else {
+                    app.pending_delete_worktree = None;
                 }
                 continue;
             }
