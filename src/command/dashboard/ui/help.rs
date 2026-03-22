@@ -76,14 +76,14 @@ pub fn render_confirm_kill(f: &mut Frame, app: &App) {
                 .fg(palette.text)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("es / ", Style::default().fg(palette.dimmed)),
+        Span::styled("es / ", Style::default().fg(palette.help_muted)),
         Span::styled(
             "n",
             Style::default()
-                .fg(palette.text)
+                .fg(palette.dimmed)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("o", Style::default().fg(palette.dimmed)),
+        Span::styled("o", Style::default().fg(palette.help_muted)),
     ]);
 
     let paragraph = Paragraph::new(text).block(block);
