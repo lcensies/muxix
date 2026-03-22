@@ -11,7 +11,7 @@ use ratatui::{
 use super::super::agent;
 use super::super::app::App;
 use super::super::spinner::SPINNER_FRAMES;
-use super::format::format_pr_status;
+use super::format::{format_git_status, format_pr_status};
 
 /// Render the worktree table in the given area.
 pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
@@ -23,16 +23,40 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let show_check_counts = app.config.dashboard.show_check_counts();
 
+    // Only show PR column when at least one worktree has a PR
+    let show_pr_column = app.worktrees.iter().any(|w| w.pr_info.is_some());
+
+    // Check if git data is being refreshed
+    let is_git_fetching = app
+        .is_git_fetching
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    // Build Git header with spinner when fetching
+    let git_header = if is_git_fetching {
+        let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
+        Line::from(vec![
+            Span::styled("Git ", Style::default().fg(app.palette.header).bold()),
+            Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
+        ])
+    } else {
+        Line::from(Span::styled(
+            "Git",
+            Style::default().fg(app.palette.header).bold(),
+        ))
+    };
+
     let header_style = Style::default().fg(app.palette.header).bold();
-    let header = Row::new(vec![
+    let mut header_cells = vec![
         Cell::from("#").style(header_style),
         Cell::from("Project").style(header_style),
         Cell::from("Worktree").style(header_style),
-        Cell::from("Branch").style(header_style),
-        Cell::from("PR").style(header_style),
-        Cell::from("Agent").style(header_style),
-    ])
-    .height(1);
+        Cell::from(git_header),
+    ];
+    if show_pr_column {
+        header_cells.push(Cell::from("PR").style(header_style));
+    }
+    header_cells.push(Cell::from("Agent").style(header_style));
+    let header = Row::new(header_cells).height(1);
 
     // Pre-compute row data
     let row_data: Vec<_> = app
@@ -47,11 +71,28 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let project = agent::extract_project_name(&wt.path);
-            let handle = wt.handle.clone();
-            let branch = wt.branch.clone();
 
-            // PR status
-            let pr_spans = format_pr_status(wt.pr_info.as_ref(), show_check_counts, &app.palette);
+            // Show branch inline only when it differs from the handle
+            let worktree_display = if wt.branch != wt.handle {
+                format!("{} \u{2192}{}", wt.handle, wt.branch)
+            } else {
+                wt.handle.clone()
+            };
+
+            // Git status
+            let git_status = app.git_statuses.get(&wt.path);
+            let git_spans = format_git_status(git_status, app.spinner_frame, &app.palette);
+
+            // PR status (only computed if column is shown)
+            let pr_spans = if show_pr_column {
+                Some(format_pr_status(
+                    wt.pr_info.as_ref(),
+                    show_check_counts,
+                    &app.palette,
+                ))
+            } else {
+                None
+            };
 
             // Agent status summary
             let agent_spans = if let Some(ref summary) = wt.agent_status {
@@ -106,9 +147,9 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
             (
                 jump_key,
                 project,
-                handle,
-                branch,
+                worktree_display,
                 wt.is_main,
+                git_spans,
                 pr_spans,
                 agent_spans,
             )
@@ -124,46 +165,56 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         .clamp(5, 20)
         + 2;
 
-    let max_handle_width = row_data
+    let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, h, _, _, _, _)| h.len())
+        .map(|(_, _, w, _, _, _, _)| w.len())
         .max()
         .unwrap_or(8)
         .max(8)
         + 1;
 
-    let max_branch_width = row_data
+    let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, b, _, _, _)| b.len())
-        .max()
-        .unwrap_or(6)
-        .clamp(6, 30)
-        + 1;
-
-    let max_pr_width = row_data
-        .iter()
-        .map(|(_, _, _, _, _, pr, _)| {
-            pr.iter()
+        .map(|(_, _, _, _, git, _, _)| {
+            git.iter()
                 .map(|(text, _)| text.chars().count())
                 .sum::<usize>()
         })
         .max()
         .unwrap_or(4)
-        .clamp(4, 16)
+        .clamp(4, 30)
         + 1;
+
+    let max_pr_width = if show_pr_column {
+        row_data
+            .iter()
+            .filter_map(|(_, _, _, _, _, pr, _)| pr.as_ref())
+            .map(|spans| {
+                spans
+                    .iter()
+                    .map(|(text, _)| text.chars().count())
+                    .sum::<usize>()
+            })
+            .max()
+            .unwrap_or(4)
+            .clamp(4, 16)
+            + 1
+    } else {
+        0
+    };
 
     let rows: Vec<Row> = row_data
         .into_iter()
         .map(
-            |(jump_key, project, handle, branch, is_main, pr_spans, agent_spans)| {
+            |(jump_key, project, worktree_display, is_main, git_spans, pr_spans, agent_spans)| {
                 let worktree_style = if is_main {
                     Style::default().fg(app.palette.dimmed)
                 } else {
                     Style::default()
                 };
 
-                let pr_line = Line::from(
-                    pr_spans
+                let git_line = Line::from(
+                    git_spans
                         .into_iter()
                         .map(|(text, style)| Span::styled(text, style))
                         .collect::<Vec<_>>(),
@@ -176,26 +227,40 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                         .collect::<Vec<_>>(),
                 );
 
-                Row::new(vec![
+                let mut cells = vec![
                     Cell::from(jump_key).style(Style::default().fg(app.palette.keycap)),
                     Cell::from(project),
-                    Cell::from(handle).style(worktree_style),
-                    Cell::from(branch),
-                    Cell::from(pr_line),
-                    Cell::from(agent_line),
-                ])
+                    Cell::from(worktree_display).style(worktree_style),
+                    Cell::from(git_line),
+                ];
+
+                if let Some(pr_spans) = pr_spans {
+                    let pr_line = Line::from(
+                        pr_spans
+                            .into_iter()
+                            .map(|(text, style)| Span::styled(text, style))
+                            .collect::<Vec<_>>(),
+                    );
+                    cells.push(Cell::from(pr_line));
+                }
+
+                cells.push(Cell::from(agent_line));
+
+                Row::new(cells)
             },
         )
         .collect();
 
-    let constraints = vec![
-        Constraint::Length(2),                        // #
-        Constraint::Length(max_project_width as u16), // Project
-        Constraint::Length(max_handle_width as u16),  // Worktree
-        Constraint::Length(max_branch_width as u16),  // Branch
-        Constraint::Length(max_pr_width as u16),      // PR
-        Constraint::Fill(1),                          // Agent
+    let mut constraints = vec![
+        Constraint::Length(2),                         // #
+        Constraint::Length(max_project_width as u16),  // Project
+        Constraint::Length(max_worktree_width as u16), // Worktree (+ branch when different)
+        Constraint::Length(max_git_width as u16),      // Git
     ];
+    if show_pr_column {
+        constraints.push(Constraint::Length(max_pr_width as u16));
+    }
+    constraints.push(Constraint::Fill(1)); // Agent
 
     let table = Table::new(rows, constraints)
         .header(header)
