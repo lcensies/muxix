@@ -1049,8 +1049,10 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            if let Ok(worktrees) = workflow::list(&config, mux.as_ref(), true, &[]) {
-                let _ = tx.send(worktrees);
+            // fetch_pr_status=false: the dashboard fetches PR status separately,
+            // and workflow::list's spinner would corrupt the TUI output
+            if let Ok(worktrees) = workflow::list(&config, mux.as_ref(), false, &[]) {
+                let _ = tx.send(AppEvent::WorktreeList(worktrees));
             }
         });
     }
