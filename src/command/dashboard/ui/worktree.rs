@@ -15,6 +15,12 @@ use super::format::format_pr_status;
 
 /// Render the worktree table in the given area.
 pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
+    // Don't render headers for an empty table - avoids a visual blink
+    // as column widths jump when data arrives on the next frame
+    if app.worktrees.is_empty() {
+        return;
+    }
+
     let show_check_counts = app.config.dashboard.show_check_counts();
 
     let header_style = Style::default().fg(app.palette.header).bold();
