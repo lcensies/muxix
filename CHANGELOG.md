@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.144 (2026-03-22)
+
+- Add `sync-files` command to re-apply file operations (copy/symlink) to
+  existing worktrees, with `--all` flag to sync all worktrees at once
+
 ## v0.1.143 (2026-03-21)
 
 - Fix `focus: true` not switching to the correct pane in session mode
