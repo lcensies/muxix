@@ -382,10 +382,9 @@ impl App {
             self.spawn_git_status_fetch();
         }
 
-        // Trigger PR fetch every 30 seconds
-        if self.last_pr_fetch.elapsed() >= PR_FETCH_INTERVAL {
+        // Trigger PR fetch every 30 seconds (only update timer if fetch actually started)
+        if self.last_pr_fetch.elapsed() >= PR_FETCH_INTERVAL && self.spawn_pr_status_fetch() {
             self.last_pr_fetch = std::time::Instant::now();
-            self.spawn_pr_status_fetch();
         }
 
         // Trigger background worktree fetch every 5 seconds
@@ -517,33 +516,72 @@ impl App {
         });
     }
 
-    /// Spawn a background thread to fetch PR status for all repos
-    fn spawn_pr_status_fetch(&self) {
+    /// Spawn a background thread to fetch PR status for all repos.
+    /// Returns true if a fetch was started, false if one is already in progress.
+    fn spawn_pr_status_fetch(&self) -> bool {
         // Skip if already fetching
         if self
             .is_pr_fetching
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {
-            return;
+            return false;
         }
 
-        // Collect repo roots that have at least one non-main feature branch
-        let repo_roots: std::collections::HashSet<PathBuf> = self
-            .agents
+        // Collect branches per repo root from agents
+        let mut repo_branches: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        for agent in &self.agents {
+            let Some(status) = self.git_statuses.get(&agent.path) else {
+                continue;
+            };
+            let Some(ref branch) = status.branch else {
+                continue;
+            };
+            if branch == "main" || branch == "master" {
+                continue;
+            }
+            if let Some(repo_root) = self.repo_roots.get(&agent.path) {
+                repo_branches
+                    .entry(repo_root.clone())
+                    .or_default()
+                    .push(branch.clone());
+            }
+        }
+
+        // Also collect branches from worktrees (keyed by main worktree path as repo root)
+        // Group non-main worktrees by their project's main worktree path
+        let main_paths: HashMap<String, PathBuf> = self
+            .all_worktrees
             .iter()
-            .filter(|agent| {
-                let Some(status) = self.git_statuses.get(&agent.path) else {
-                    return false;
-                };
-                let Some(ref branch) = status.branch else {
-                    return false;
-                };
-                // Skip main/master - they don't need PR status
-                branch != "main" && branch != "master"
+            .filter(|w| w.is_main)
+            .map(|w| {
+                let project = super::agent::extract_project_name(&w.path);
+                (project, w.path.clone())
             })
-            .filter_map(|agent| self.repo_roots.get(&agent.path).cloned())
             .collect();
+        for wt in &self.all_worktrees {
+            if wt.is_main || wt.branch == "main" || wt.branch == "master" {
+                continue;
+            }
+            let project = super::agent::extract_project_name(&wt.path);
+            if let Some(repo_root) = main_paths.get(&project) {
+                repo_branches
+                    .entry(repo_root.clone())
+                    .or_default()
+                    .push(wt.branch.clone());
+            }
+        }
+
+        // Deduplicate branches per repo
+        for branches in repo_branches.values_mut() {
+            branches.sort();
+            branches.dedup();
+        }
+
+        if repo_branches.is_empty() {
+            self.is_pr_fetching.store(false, Ordering::SeqCst);
+            return true;
+        }
 
         let tx = self.event_tx.clone();
         let is_fetching = self.is_pr_fetching.clone();
@@ -557,10 +595,12 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            for repo_root in repo_roots {
-                match crate::github::list_prs_in_repo(&repo_root) {
+            for (repo_root, branches) in &repo_branches {
+                match crate::github::list_prs_for_branches(repo_root, branches) {
                     Ok(prs) => {
-                        let _ = tx.send(AppEvent::PrStatus(repo_root, prs));
+                        if !prs.is_empty() {
+                            let _ = tx.send(AppEvent::PrStatus(repo_root.clone(), prs));
+                        }
                     }
                     Err(e) => {
                         tracing::warn!("Failed to fetch PRs for {:?}: {}", repo_root, e);
@@ -568,6 +608,8 @@ impl App {
                 }
             }
         });
+
+        true
     }
 
     /// Update the preview for the currently selected agent.

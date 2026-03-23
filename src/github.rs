@@ -351,6 +351,61 @@ pub fn list_prs_in_repo(repo_root: &Path) -> Result<HashMap<String, PrSummary>> 
     Ok(map)
 }
 
+/// Fetch PR status for specific branches in a repo (one `gh pr list --head` call per branch).
+/// Much faster than `list_prs_in_repo` for repos with many PRs.
+pub fn list_prs_for_branches(
+    repo_root: &Path,
+    branches: &[String],
+) -> Result<HashMap<String, PrSummary>> {
+    let mut map = HashMap::new();
+
+    for branch in branches {
+        let output = match Command::new("gh")
+            .current_dir(repo_root)
+            .args([
+                "pr",
+                "list",
+                "--head",
+                branch,
+                "--state",
+                "all",
+                "--json",
+                "number,title,state,isDraft,headRefName,statusCheckRollup",
+                "--limit",
+                "1",
+            ])
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => continue,
+        };
+
+        if !output.status.success() {
+            continue;
+        }
+
+        let prs: Vec<PrBatchItem> = match serde_json::from_slice(&output.stdout) {
+            Ok(prs) => prs,
+            Err(_) => continue,
+        };
+
+        if let Some(pr) = prs.into_iter().next() {
+            map.insert(
+                pr.head_ref_name,
+                PrSummary {
+                    number: pr.number,
+                    title: pr.title,
+                    state: pr.state,
+                    is_draft: pr.is_draft,
+                    checks: aggregate_checks(&pr.status_check_rollup),
+                },
+            );
+        }
+    }
+
+    Ok(map)
+}
+
 /// Get the path to the PR status cache file
 fn get_pr_cache_path() -> Result<PathBuf> {
     let home = home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
