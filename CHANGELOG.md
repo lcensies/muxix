@@ -17,6 +17,17 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.145 (2026-03-23)
+
+- Add worktree view as a second tab in the dashboard (press Tab to switch
+  between Agents and Worktrees)
+- Add bulk sweep (R) to identify and remove worktrees ready for cleanup based on
+  merged/closed PRs, deleted remote branches, or locally merged branches
+- Add X hotkey to kill an agent directly from the dashboard
+- Add worktree remove (r) with a context-aware confirmation modal that warns
+  about uncommitted changes or unmerged commits
+- Add `workmux list --json` flag for machine-readable output
+
 ## v0.1.144 (2026-03-22)
 
 - Add `sync-files` command to re-apply file operations (copy/symlink) to
