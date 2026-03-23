@@ -51,6 +51,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         Cell::from("Project").style(header_style),
         Cell::from("Worktree").style(header_style),
         Cell::from(git_header),
+        Cell::from("Mux").style(header_style),
     ];
     if show_pr_column {
         header_cells.push(Cell::from("PR").style(header_style));
@@ -155,6 +156,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 git_spans,
                 pr_spans,
                 agent_spans,
+                wt.has_mux_window,
             )
         })
         .collect();
@@ -162,7 +164,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate dynamic column widths
     let max_project_width = row_data
         .iter()
-        .map(|(_, p, _, _, _, _, _)| p.len())
+        .map(|(_, p, _, _, _, _, _, _)| p.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20)
@@ -170,7 +172,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, w, _, _, _, _)| w.len())
+        .map(|(_, _, w, _, _, _, _, _)| w.len())
         .max()
         .unwrap_or(8)
         .max(8)
@@ -178,7 +180,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, _, git, _, _)| {
+        .map(|(_, _, _, _, git, _, _, _)| {
             git.iter()
                 .map(|(text, _)| text.chars().count())
                 .sum::<usize>()
@@ -191,7 +193,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
     let max_pr_width = if show_pr_column {
         row_data
             .iter()
-            .filter_map(|(_, _, _, _, _, pr, _)| pr.as_ref())
+            .filter_map(|(_, _, _, _, _, pr, _, _)| pr.as_ref())
             .map(|spans| {
                 spans
                     .iter()
@@ -209,7 +211,16 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
     let rows: Vec<Row> = row_data
         .into_iter()
         .map(
-            |(jump_key, project, worktree_display, is_main, git_spans, pr_spans, agent_spans)| {
+            |(
+                jump_key,
+                project,
+                worktree_display,
+                is_main,
+                git_spans,
+                pr_spans,
+                agent_spans,
+                has_mux_window,
+            )| {
                 let worktree_style = if is_main {
                     Style::default().fg(app.palette.dimmed)
                 } else {
@@ -223,6 +234,12 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                         .collect::<Vec<_>>(),
                 );
 
+                let mux_cell = if has_mux_window {
+                    Cell::from("\u{25cf}").style(Style::default().fg(app.palette.success))
+                } else {
+                    Cell::from("-").style(Style::default().fg(app.palette.dimmed))
+                };
+
                 let agent_line = Line::from(
                     agent_spans
                         .into_iter()
@@ -235,6 +252,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
                     Cell::from(git_line),
+                    mux_cell,
                 ];
 
                 if let Some(pr_spans) = pr_spans {
@@ -259,6 +277,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Length(max_project_width as u16),  // Project
         Constraint::Length(max_worktree_width as u16), // Worktree (+ branch when different)
         Constraint::Length(max_git_width as u16),      // Git
+        Constraint::Length(4),                         // Mux
     ];
     if show_pr_column {
         constraints.push(Constraint::Length(max_pr_width as u16));
