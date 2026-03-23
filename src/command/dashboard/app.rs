@@ -378,14 +378,7 @@ impl App {
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
 
-        // Apply session scope filter before sorting and background fetches
-        if self.scope_mode == ScopeMode::Session
-            && let Some(ref session) = self.launch_session
-        {
-            self.all_agents.retain(|a| a.session == *session);
-        }
-
-        // Cache repo roots for new agents (parallel execution)
+        // Cache repo roots for ALL agents before filtering (project picker needs all projects)
         let paths_to_resolve: Vec<PathBuf> = self
             .all_agents
             .iter()
@@ -413,6 +406,13 @@ impl App {
                     self.repo_roots.insert(path, r);
                 }
             }
+        }
+
+        // Apply session scope filter after caching repo roots
+        if self.scope_mode == ScopeMode::Session
+            && let Some(ref session) = self.launch_session
+        {
+            self.all_agents.retain(|a| a.session == *session);
         }
 
         // Trigger background git status fetch every 5 seconds

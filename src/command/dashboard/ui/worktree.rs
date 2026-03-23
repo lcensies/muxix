@@ -614,7 +614,7 @@ fn render_git_log(
                 .collect();
             Text::from(lines)
         }
-        (None, Some(_)) => Text::raw("(loading...)"),
+        (None, Some(_)) => Text::raw(""),
         (Some(_), Some(_)) => Text::raw("(no commits)"),
         (_, None) => Text::raw(""),
     };

@@ -678,6 +678,8 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
         s.extend(cmd("/".into(), "Filter".into()));
     }
     s.push(pipe());
+    s.extend(cmd("p".into(), "Project".into()));
+    s.push(pipe());
     s.extend(cmd("Tab".into(), "Agents".into()));
     s.push(pipe());
     s.extend(cmd("q".into(), "Quit".into()));
