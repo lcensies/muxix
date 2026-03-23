@@ -330,6 +330,9 @@ impl App {
         // Initial preview fetch
         app.update_preview();
 
+        // Fetch worktree list early so PR fetching can include worktree repo roots
+        app.spawn_worktree_fetch();
+
         Ok(app)
     }
 
@@ -1093,10 +1096,20 @@ impl App {
             }
             AppEvent::PrStatus(repo_root, prs) => {
                 self.pr_statuses.insert(repo_root, prs);
+                // Re-apply worktree filters to merge new PR data
+                if !self.all_worktrees.is_empty() {
+                    self.apply_worktree_filters();
+                }
             }
             AppEvent::WorktreeList(worktrees) => {
+                let is_initial_load = self.all_worktrees.is_empty() && !worktrees.is_empty();
                 self.all_worktrees = worktrees;
                 self.apply_worktree_filters();
+
+                // Force a PR re-fetch now that worktree repo roots are known
+                if is_initial_load {
+                    self.last_pr_fetch = std::time::Instant::now() - PR_FETCH_INTERVAL;
+                }
             }
             AppEvent::WorktreeLog(path, log) => {
                 if self.worktree_preview_path.as_ref() == Some(&path) {
@@ -1173,6 +1186,23 @@ impl App {
     fn apply_worktree_filters(&mut self) {
         // Reset from baseline
         self.worktrees = self.all_worktrees.clone();
+
+        // Merge PR data from dashboard's own PR fetching into worktrees
+        // (workflow::list is called with fetch_pr_status=false to avoid spinner)
+        if !self.pr_statuses.is_empty() {
+            for wt in &mut self.worktrees {
+                if wt.pr_info.is_some() || wt.is_main {
+                    continue;
+                }
+                // Search all repo roots for a matching branch
+                for prs in self.pr_statuses.values() {
+                    if let Some(pr) = prs.get(&wt.branch) {
+                        wt.pr_info = Some(pr.clone());
+                        break;
+                    }
+                }
+            }
+        }
 
         // Apply name filter
         if !self.worktree_filter_text.is_empty() {

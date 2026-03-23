@@ -51,12 +51,14 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         Cell::from("Project").style(header_style),
         Cell::from("Worktree").style(header_style),
         Cell::from(git_header),
-        Cell::from("Mux").style(header_style),
-        Cell::from("Age").style(header_style),
     ];
     if show_pr_column {
         header_cells.push(Cell::from("PR").style(header_style));
     }
+    header_cells.extend([
+        Cell::from("Mux").style(header_style),
+        Cell::from("Age").style(header_style),
+    ]);
     header_cells.push(Cell::from("Agent").style(header_style));
     let header = Row::new(header_cells).height(1);
 
@@ -266,8 +268,6 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                     Cell::from(project),
                     Cell::from(worktree_display).style(worktree_style),
                     Cell::from(git_line),
-                    mux_cell,
-                    age_cell,
                 ];
 
                 if let Some(pr_spans) = pr_spans {
@@ -280,6 +280,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                     cells.push(Cell::from(pr_line));
                 }
 
+                cells.extend([mux_cell, age_cell]);
                 cells.push(Cell::from(agent_line));
 
                 Row::new(cells)
@@ -292,12 +293,14 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Length(max_project_width as u16),  // Project
         Constraint::Length(max_worktree_width as u16), // Worktree (+ branch when different)
         Constraint::Length(max_git_width as u16),      // Git
-        Constraint::Length(4),                         // Mux
-        Constraint::Length(4),                         // Age
     ];
     if show_pr_column {
         constraints.push(Constraint::Length(max_pr_width as u16));
     }
+    constraints.extend([
+        Constraint::Length(4), // Mux
+        Constraint::Length(4), // Age
+    ]);
     constraints.push(Constraint::Fill(1)); // Agent
 
     let table = Table::new(rows, constraints)
