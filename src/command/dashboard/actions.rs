@@ -61,6 +61,9 @@ pub enum Action {
     NextHunk,
     ExitPatchMode,
 
+    // Shared (both tabs)
+    OpenPr,
+
     // Worktree view
     WorktreeNext,
     WorktreePrevious,
@@ -200,6 +203,12 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::KillSelected => {
             app.kill_selected();
+            false
+        }
+
+        // Shared (both tabs)
+        Action::OpenPr => {
+            app.open_pr_for_selected();
             false
         }
 

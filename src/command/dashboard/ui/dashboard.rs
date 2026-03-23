@@ -94,22 +94,33 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
         }
     }
 
-    // Footer - show different help based on mode
-    match app.active_tab {
-        DashboardTab::Agents => {
-            if app.filter_active {
-                f.render_widget(render_footer_filter(app), footer_area);
-            } else if app.input_mode {
-                f.render_widget(render_footer_input(app), footer_area);
-            } else {
-                render_footer_normal(f, app, footer_area);
+    // Footer - show status message if active, otherwise mode-specific help
+    if let Some((msg, _)) = &app.status_message {
+        let p = &app.palette;
+        f.render_widget(
+            Paragraph::new(Line::from(vec![Span::styled(
+                format!("  {msg}"),
+                Style::default().fg(p.text),
+            )])),
+            footer_area,
+        );
+    } else {
+        match app.active_tab {
+            DashboardTab::Agents => {
+                if app.filter_active {
+                    f.render_widget(render_footer_filter(app), footer_area);
+                } else if app.input_mode {
+                    f.render_widget(render_footer_input(app), footer_area);
+                } else {
+                    render_footer_normal(f, app, footer_area);
+                }
             }
-        }
-        DashboardTab::Worktrees => {
-            if app.worktree_filter_active {
-                f.render_widget(render_worktree_footer_filter(app), footer_area);
-            } else {
-                render_worktree_footer_normal(f, app, footer_area);
+            DashboardTab::Worktrees => {
+                if app.worktree_filter_active {
+                    f.render_widget(render_worktree_footer_filter(app), footer_area);
+                } else {
+                    render_worktree_footer_normal(f, app, footer_area);
+                }
             }
         }
     }
@@ -575,6 +586,8 @@ fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     s.push(pipe());
     s.extend(cmd("d".into(), "Diff".into()));
     s.push(pipe());
+    s.extend(cmd("o".into(), "PR".into()));
+    s.push(pipe());
     s.extend(cmd("1-9".into(), "Jump".into()));
     s.push(pipe());
     s.extend(toggle("s".into(), "Sort".into(), sort.to_string(), true));
@@ -661,6 +674,8 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     let sort = app.worktree_sort_mode.label();
 
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
+    s.extend(cmd("o".into(), "PR".into()));
+    s.push(pipe());
     s.extend(cmd("r".into(), "Remove".into()));
     s.push(pipe());
     s.extend(cmd("c".into(), "Close".into()));

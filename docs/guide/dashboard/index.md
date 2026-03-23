@@ -49,6 +49,7 @@ The dashboard has two views, toggled with `Tab`:
 | `Tab`     | Switch to worktree view                 |
 | `Bksp`    | Toggle between current and last agent   |
 | `d`       | View diff (opens WIP view)              |
+| `o`       | Open PR in browser                      |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
 | `F`       | Toggle session filter                   |
@@ -73,6 +74,7 @@ The dashboard has two views, toggled with `Tab`:
 | `1`-`9`   | Quick jump to worktree index           |
 | `Tab`     | Switch to agents view                  |
 | `Enter`   | Jump to worktree (agent or mux window) |
+| `o`       | Open PR in browser                     |
 | `r`       | Remove worktree                        |
 | `c`       | Close mux window (keeps worktree)      |
 | `R`       | Sweep (bulk remove merged/gone)        |

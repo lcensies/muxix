@@ -1408,6 +1408,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `1`-`9`   | Quick jump to agent (closes dashboard)  |
 | `Tab`     | Toggle between current and last agent   |
 | `d`       | View diff (opens WIP view)              |
+| `o`       | Open PR in browser                      |
 | `p`       | Peek at agent (dashboard stays open)    |
 | `s`       | Cycle sort mode                         |
 | `/`       | Filter agents by name                   |

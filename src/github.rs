@@ -57,6 +57,9 @@ pub struct PrSummary {
     /// Aggregated check status (None if no checks configured)
     #[serde(default)]
     pub checks: Option<CheckState>,
+    /// PR URL for opening in browser
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Handles both CheckRun (status/conclusion) and StatusContext (state) from GitHub API
@@ -126,6 +129,8 @@ struct PrListResult {
     pub is_draft: bool,
     #[serde(rename = "headRepositoryOwner")]
     pub head_repository_owner: RepositoryOwner,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Find a PR by its head ref (e.g., "owner:branch" format).
@@ -142,7 +147,7 @@ pub fn find_pr_by_head_ref(owner: &str, branch: &str) -> Result<Option<PrSummary
             "--state",
             "all", // Include closed/merged PRs
             "--json",
-            "number,title,state,isDraft,headRepositoryOwner",
+            "number,title,state,isDraft,headRepositoryOwner,url",
             "--limit",
             "50", // Get enough results to handle common branch names
         ])
@@ -185,6 +190,7 @@ pub fn find_pr_by_head_ref(owner: &str, branch: &str) -> Result<Option<PrSummary
         state: pr.state,
         is_draft: pr.is_draft,
         checks: None,
+        url: pr.url,
     }))
 }
 
@@ -243,6 +249,7 @@ struct PrBatchItem {
     is_draft: bool,
     #[serde(rename = "headRefName")]
     head_ref_name: String,
+    url: String,
     #[serde(rename = "statusCheckRollup", default)]
     status_check_rollup: Vec<CheckRollupItem>,
 }
@@ -256,7 +263,7 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
             "--state",
             "all",
             "--json",
-            "number,title,state,isDraft,headRefName,statusCheckRollup",
+            "number,title,state,isDraft,headRefName,url,statusCheckRollup",
             "--limit",
             "200",
         ])
@@ -294,6 +301,7 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
                     state: pr.state,
                     is_draft: pr.is_draft,
                     checks: aggregate_checks(&pr.status_check_rollup),
+                    url: Some(pr.url),
                 },
             )
         })
@@ -338,7 +346,7 @@ fn build_branch_fragment(alias: &str, branch: &str) -> String {
     format!(
         r#"    {alias}: pullRequests(headRefName: "{escaped}", first: 1, states: [OPEN, MERGED, CLOSED], orderBy: {{field: CREATED_AT, direction: DESC}}) {{
       nodes {{
-        number title state isDraft headRefName
+        number title state isDraft headRefName url
         commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ contexts(first: 100) {{
           nodes {{ __typename ... on CheckRun {{ name status conclusion }} ... on StatusContext {{ context state }} }}
         }} }} }} }} }}
@@ -379,6 +387,7 @@ struct GraphqlPrNode {
     is_draft: bool,
     #[serde(rename = "headRefName")]
     head_ref_name: String,
+    url: String,
     commits: GraphqlCommits,
 }
 
@@ -572,6 +581,7 @@ fn list_prs_for_branches_graphql(
                     state: node.state,
                     is_draft: node.is_draft,
                     checks: aggregate_checks(&checks),
+                    url: Some(node.url),
                 },
             );
         }
@@ -598,7 +608,7 @@ fn list_prs_for_branches_rest(
                 "--state",
                 "all",
                 "--json",
-                "number,title,state,isDraft,headRefName,statusCheckRollup",
+                "number,title,state,isDraft,headRefName,url,statusCheckRollup",
                 "--limit",
                 "1",
             ])
@@ -626,6 +636,7 @@ fn list_prs_for_branches_rest(
                     state: pr.state,
                     is_draft: pr.is_draft,
                     checks: aggregate_checks(&pr.status_check_rollup),
+                    url: Some(pr.url),
                 },
             );
         }

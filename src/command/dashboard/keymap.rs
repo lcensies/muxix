@@ -63,6 +63,7 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
         KeyCode::Char('T') => Some(Action::CycleColorScheme),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
+        KeyCode::Char('o') => Some(Action::OpenPr),
         KeyCode::Char('X') => Some(Action::KillSelected),
         KeyCode::Char('R') => Some(Action::StartSweep),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
@@ -96,6 +97,7 @@ fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
             Some(Action::WorktreePrevious)
         }
         KeyCode::Enter => Some(Action::JumpToSelectedWorktree),
+        KeyCode::Char('o') => Some(Action::OpenPr),
         KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
         KeyCode::Char('c') => Some(Action::CloseSelectedWorktreeWindow),
         KeyCode::Char('R') => Some(Action::StartSweep),
@@ -202,6 +204,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("d", "View diff"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),
+            ("o", "Open PR in browser"),
             ("X", "Kill agent"),
             ("R", "Sweep cleanup"),
             ("/", "Filter agents"),
@@ -220,6 +223,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("j/k/C-n/C-p", "Navigate up/down"),
             ("Enter", "Jump to worktree"),
             ("Tab", "Switch to agents"),
+            ("o", "Open PR in browser"),
             ("r", "Remove worktree"),
             ("c", "Close mux window"),
             ("R", "Sweep cleanup"),

@@ -140,6 +140,8 @@ pub struct App {
     pub worktree_preview: Option<String>,
     /// Path of the worktree whose preview is cached
     worktree_preview_path: Option<PathBuf>,
+    /// Temporary status message shown in the footer (auto-clears after timeout)
+    pub status_message: Option<(String, std::time::Instant)>,
 }
 
 impl App {
@@ -246,6 +248,7 @@ impl App {
             last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
             worktree_preview: None,
             worktree_preview_path: None,
+            status_message: None,
         };
 
         app.refresh();
@@ -325,6 +328,13 @@ impl App {
         {
             self.last_worktree_fetch = std::time::Instant::now();
             self.spawn_worktree_fetch();
+        }
+
+        // Clear expired status messages
+        if let Some((_, created)) = &self.status_message
+            && created.elapsed() >= Duration::from_millis(1500)
+        {
+            self.status_message = None;
         }
 
         // Apply name filter, stale filter, sort, and restore selection

@@ -10,6 +10,8 @@ use ratatui::style::Style;
 use crate::github::PrSummary;
 use crate::multiplexer::{AgentPane, AgentStatus};
 
+use super::DashboardTab;
+
 use super::super::agent;
 use super::super::ansi;
 use super::super::settings::{load_last_pane_id, save_hide_stale, save_last_pane_id};
@@ -472,5 +474,52 @@ impl App {
     /// Get PR statuses for caching
     pub fn pr_statuses(&self) -> &HashMap<PathBuf, HashMap<String, PrSummary>> {
         &self.pr_statuses
+    }
+
+    /// Open the PR associated with the selected agent or worktree in the browser.
+    pub fn open_pr_for_selected(&mut self) {
+        let pr = match self.active_tab {
+            DashboardTab::Agents => self
+                .table_state
+                .selected()
+                .and_then(|i| self.agents.get(i))
+                .and_then(|agent| self.get_pr_for_agent(agent))
+                .cloned(),
+            DashboardTab::Worktrees => self
+                .worktree_table_state
+                .selected()
+                .and_then(|i| self.worktrees.get(i))
+                .and_then(|wt| wt.pr_info.clone()),
+        };
+
+        match pr {
+            Some(ref pr) if pr.url.is_some() => {
+                let url = pr.url.as_ref().unwrap();
+
+                #[cfg(target_os = "macos")]
+                let cmd = "open";
+                #[cfg(not(target_os = "macos"))]
+                let cmd = "xdg-open";
+
+                if let Err(e) = std::process::Command::new(cmd).arg(url).spawn() {
+                    self.status_message = Some((
+                        format!("Failed to open browser: {e}"),
+                        std::time::Instant::now(),
+                    ));
+                }
+            }
+            Some(_) => {
+                self.status_message = Some((
+                    "PR URL not available yet".to_string(),
+                    std::time::Instant::now(),
+                ));
+            }
+            None => {
+                self.status_message = Some((
+                    "No PR found for selected item".to_string(),
+                    std::time::Instant::now(),
+                ));
+            }
+        }
     }
 }
