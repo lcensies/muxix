@@ -17,6 +17,17 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.146 (2026-03-23)
+
+- Dashboard: add project picker (`p`) to switch between projects' worktrees
+- Dashboard: show PR status and CI checks in worktree table and preview panel
+- Dashboard: add worktree sort modes (`s`) to cycle between natural and
+  newest-first ordering
+- Dashboard: add age column to worktree table
+- Dashboard: add close mux window action (`c`) to stop an agent while keeping
+  the worktree
+- Dashboard: redesigned worktree preview with info panel and styled git log
+
 ## v0.1.145 (2026-03-23)
 
 - Dashboard: add worktree view as a second tab (press Tab to switch between
