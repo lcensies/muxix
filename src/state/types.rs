@@ -146,6 +146,10 @@ pub struct GlobalSettings {
     /// Dashboard scope filter: "all", "session", "project"
     #[serde(default)]
     pub dashboard_scope: Option<String>,
+
+    /// Worktree sort mode: "natural", "age", "name", "project"
+    #[serde(default)]
+    pub worktree_sort_mode: Option<String>,
 }
 
 #[cfg(test)]

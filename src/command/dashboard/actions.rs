@@ -67,6 +67,7 @@ pub enum Action {
     WorktreeJumpToIndex(usize),
     RemoveSelectedWorktree,
     StartSweep,
+    CycleWorktreeSortMode,
     JumpToSelectedWorktree,
 
     // Filter mode
@@ -225,6 +226,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::StartSweep => {
             app.start_sweep();
+            false
+        }
+        Action::CycleWorktreeSortMode => {
+            app.cycle_worktree_sort_mode();
             false
         }
         Action::JumpToSelectedWorktree => {

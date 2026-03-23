@@ -76,3 +76,58 @@ impl SortMode {
         }
     }
 }
+
+/// Available sort modes for the worktree list
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WorktreeSortMode {
+    /// Git worktree list order
+    #[default]
+    Natural,
+    /// Sort by creation time (newest first)
+    Age,
+}
+
+impl WorktreeSortMode {
+    pub fn next(self) -> Self {
+        match self {
+            WorktreeSortMode::Natural => WorktreeSortMode::Age,
+            WorktreeSortMode::Age => WorktreeSortMode::Natural,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            WorktreeSortMode::Natural => "natural",
+            WorktreeSortMode::Age => "age",
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        self.label()
+    }
+
+    fn from_str(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "age" => WorktreeSortMode::Age,
+            _ => WorktreeSortMode::Natural,
+        }
+    }
+
+    pub fn load() -> Self {
+        StateStore::new()
+            .ok()
+            .and_then(|store| store.load_settings().ok())
+            .and_then(|s| s.worktree_sort_mode)
+            .map(|s| Self::from_str(&s))
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self) {
+        if let Ok(store) = StateStore::new()
+            && let Ok(mut settings) = store.load_settings()
+        {
+            settings.worktree_sort_mode = Some(self.as_str().to_string());
+            let _ = store.save_settings(&settings);
+        }
+    }
+}

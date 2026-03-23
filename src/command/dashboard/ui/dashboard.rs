@@ -637,6 +637,7 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
 
     let dimmed = Style::default().fg(p.dimmed);
     let bold_text = Style::default().fg(p.text).add_modifier(Modifier::BOLD);
+    let active_style = Style::default().fg(p.accent);
     let pipe_style = Style::default().fg(p.border);
 
     let cmd = |k: String, l: String| -> Vec<Span<'static>> {
@@ -645,12 +646,26 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(format!(" {}", l), bold_text),
         ]
     };
+    let toggle = |k: String, l: String, v: String, active: bool| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(k, dimmed),
+            Span::styled(format!(" {} ", l), bold_text),
+            Span::styled(
+                format!("({})", v),
+                if active { active_style } else { dimmed },
+            ),
+        ]
+    };
     let pipe = || -> Span<'static> { Span::styled(" \u{2502} ", pipe_style) };
+
+    let sort = app.worktree_sort_mode.label();
 
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
     s.extend(cmd("r".into(), "Remove".into()));
     s.push(pipe());
     s.extend(cmd("1-9".into(), "Jump".into()));
+    s.push(pipe());
+    s.extend(toggle("s".into(), "Sort".into(), sort.to_string(), true));
     if !app.worktree_filter_text.is_empty() {
         s.push(pipe());
         s.extend(cmd("/".into(), app.worktree_filter_text.clone()));

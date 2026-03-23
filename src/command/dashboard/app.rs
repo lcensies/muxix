@@ -28,7 +28,7 @@ use super::settings::{
     load_hide_stale, load_last_pane_id, load_preview_size, save_hide_stale, save_last_pane_id,
     save_preview_size,
 };
-use super::sort::SortMode;
+use super::sort::{SortMode, WorktreeSortMode};
 use super::spinner::SPINNER_FRAMES;
 
 /// Number of lines to capture from the agent's terminal for preview (scrollable history)
@@ -187,7 +187,9 @@ pub struct App {
     pub pending_kill_pane_id: Option<String>,
     /// Which tab is active (Agents or Worktrees)
     pub active_tab: DashboardTab,
-    /// Worktree list (populated from background thread)
+    /// Full worktree list from background fetch (baseline for filtering/sorting)
+    all_worktrees: Vec<WorktreeInfo>,
+    /// Filtered and sorted worktree list for display
     pub worktrees: Vec<WorktreeInfo>,
     /// Table state for the worktree view
     pub worktree_table_state: TableState,
@@ -197,6 +199,8 @@ pub struct App {
     pub worktree_filter_text: String,
     /// Whether worktree filter input is active
     pub worktree_filter_active: bool,
+    /// Current sort mode for the worktree list
+    pub worktree_sort_mode: WorktreeSortMode,
     /// Pending worktree removal (shown in confirmation modal)
     pub pending_remove: Option<RemovePlan>,
     /// Pending bulk sweep state (shown in sweep modal)
@@ -299,11 +303,13 @@ impl App {
             filter_text: String::new(),
             pending_kill_pane_id: None,
             active_tab: DashboardTab::Agents,
+            all_worktrees: Vec::new(),
             worktrees: Vec::new(),
             worktree_table_state: TableState::default(),
             selected_worktree_path: None,
             worktree_filter_text: String::new(),
             worktree_filter_active: false,
+            worktree_sort_mode: WorktreeSortMode::load(),
             pending_remove: None,
             pending_sweep: None,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
@@ -1046,13 +1052,8 @@ impl App {
             AppEvent::PrStatus(repo_root, prs) => {
                 self.pr_statuses.insert(repo_root, prs);
             }
-            AppEvent::WorktreeList(mut worktrees) => {
-                worktrees.sort_by(|a, b| {
-                    let proj_a = agent::extract_project_name(&a.path);
-                    let proj_b = agent::extract_project_name(&b.path);
-                    proj_a.cmp(&proj_b).then_with(|| a.handle.cmp(&b.handle))
-                });
-                self.worktrees = worktrees;
+            AppEvent::WorktreeList(worktrees) => {
+                self.all_worktrees = worktrees;
                 self.apply_worktree_filters();
             }
             AppEvent::WorktreeLog(path, log) => {
@@ -1108,8 +1109,29 @@ impl App {
         });
     }
 
+    /// Cycle to the next worktree sort mode.
+    pub fn cycle_worktree_sort_mode(&mut self) {
+        self.worktree_sort_mode = self.worktree_sort_mode.next();
+        self.worktree_sort_mode.save();
+        self.apply_worktree_filters();
+    }
+
+    /// Sort worktrees according to the current sort mode.
+    fn sort_worktrees(&mut self) {
+        match self.worktree_sort_mode {
+            WorktreeSortMode::Natural => {} // Keep original order from git
+            WorktreeSortMode::Age => {
+                self.worktrees
+                    .sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            }
+        }
+    }
+
     /// Apply filter text to worktree list and restore selection
     fn apply_worktree_filters(&mut self) {
+        // Reset from baseline
+        self.worktrees = self.all_worktrees.clone();
+
         // Apply name filter
         if !self.worktree_filter_text.is_empty() {
             let filter = self.worktree_filter_text.to_lowercase();
@@ -1118,6 +1140,9 @@ impl App {
                 handle.contains(&filter) || w.branch.to_lowercase().contains(&filter)
             });
         }
+
+        // Sort after filtering
+        self.sort_worktrees();
 
         // Restore selection by path
         if let Some(ref path) = self.selected_worktree_path {
