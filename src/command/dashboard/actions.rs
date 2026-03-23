@@ -65,7 +65,7 @@ pub enum Action {
     WorktreeNext,
     WorktreePrevious,
     WorktreeJumpToIndex(usize),
-    DeleteSelectedWorktree,
+    RemoveSelectedWorktree,
     JumpToSelectedWorktree,
 
     // Filter mode
@@ -218,8 +218,8 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             app.worktree_jump_to_index(idx);
             false
         }
-        Action::DeleteSelectedWorktree => {
-            app.delete_selected_worktree();
+        Action::RemoveSelectedWorktree => {
+            app.remove_selected_worktree();
             false
         }
         Action::JumpToSelectedWorktree => {

@@ -4,7 +4,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Rect},
     style::{Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Cell, Clear, Paragraph, Row, Table},
 };
 
@@ -102,12 +102,115 @@ pub fn render_confirm_kill(f: &mut Frame, app: &App) {
     f.render_widget(paragraph, popup_area);
 }
 
-/// Render the delete worktree confirmation popup.
-pub fn render_confirm_delete_worktree(f: &mut Frame, app: &App) {
+/// Render the remove worktree confirmation modal.
+pub fn render_confirm_remove(f: &mut Frame, app: &App) {
+    let Some(ref plan) = app.pending_remove else {
+        return;
+    };
     let palette = &app.palette;
 
-    let height = 3;
-    let width = 46;
+    let bold = |s: &str| {
+        Span::styled(
+            s.to_string(),
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
+    let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette.dimmed));
+
+    // Build content lines
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Title line + spacer
+    lines.push(Line::from(vec![Span::styled(
+        format!(" Remove {}?", plan.handle),
+        Style::default().fg(palette.text),
+    )]));
+    lines.push(Line::from(""));
+
+    // Warning lines
+    if plan.is_dirty {
+        lines.push(Line::from(vec![Span::styled(
+            " Has uncommitted changes.",
+            Style::default().fg(palette.danger),
+        )]));
+    }
+    if plan.is_unmerged {
+        lines.push(Line::from(vec![Span::styled(
+            " Has unmerged commits.",
+            Style::default().fg(palette.dimmed),
+        )]));
+    }
+
+    // Branch outcome line
+    if plan.keep_branch {
+        lines.push(Line::from(vec![Span::styled(
+            " Branch will be kept.",
+            Style::default().fg(palette.dimmed),
+        )]));
+    } else {
+        lines.push(Line::from(vec![Span::styled(
+            " Branch will be deleted.",
+            Style::default().fg(palette.dimmed),
+        )]));
+    }
+
+    // Empty line before actions
+    lines.push(Line::from(""));
+
+    // Action line (context-dependent)
+    let action_line = if plan.is_dirty && !plan.force_armed {
+        // Dirty: must press f to arm force
+        Line::from(vec![
+            Span::raw(" "),
+            bold("f"),
+            dim(" force  "),
+            bold("n"),
+            dim(" cancel  "),
+            bold("k"),
+            if plan.keep_branch {
+                dim(" delete branch")
+            } else {
+                dim(" keep branch")
+            },
+        ])
+    } else if plan.is_dirty && plan.force_armed {
+        // Dirty + force armed: y now available
+        Line::from(vec![
+            Span::raw(" "),
+            bold("y"),
+            dim(" confirm force  "),
+            bold("n"),
+            dim(" cancel  "),
+            bold("k"),
+            if plan.keep_branch {
+                dim(" delete branch")
+            } else {
+                dim(" keep branch")
+            },
+        ])
+    } else {
+        // Clean or unmerged: y available
+        Line::from(vec![
+            Span::raw(" "),
+            bold("y"),
+            dim(" remove  "),
+            bold("n"),
+            dim(" cancel  "),
+            bold("k"),
+            if plan.keep_branch {
+                dim(" delete branch")
+            } else {
+                dim(" keep branch")
+            },
+        ])
+    };
+    lines.push(action_line);
+
+    // Calculate dimensions
+    let height = lines.len() as u16 + 2; // +2 for borders
+    let width = 44;
 
     let area = f.area();
     let popup_area = Rect {
@@ -121,28 +224,7 @@ pub fn render_confirm_delete_worktree(f: &mut Frame, app: &App) {
         .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(Style::default().fg(palette.help_border));
 
-    let text = Line::from(vec![
-        Span::styled(
-            " Has uncommitted/unmerged changes. ",
-            Style::default().fg(palette.text),
-        ),
-        Span::styled(
-            "y",
-            Style::default()
-                .fg(palette.text)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("es / ", Style::default().fg(palette.dimmed)),
-        Span::styled(
-            "n",
-            Style::default()
-                .fg(palette.text)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("o", Style::default().fg(palette.dimmed)),
-    ]);
-
-    let paragraph = Paragraph::new(text).block(block);
+    let paragraph = Paragraph::new(Text::from(lines)).block(block);
 
     f.render_widget(Clear, popup_area);
     f.render_widget(paragraph, popup_area);

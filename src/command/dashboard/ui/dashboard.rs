@@ -648,7 +648,7 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     let pipe = || -> Span<'static> { Span::styled(" \u{2502} ", pipe_style) };
 
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
-    s.extend(cmd("x".into(), "Delete".into()));
+    s.extend(cmd("r".into(), "Remove".into()));
     s.push(pipe());
     s.extend(cmd("1-9".into(), "Jump".into()));
     if !app.worktree_filter_text.is_empty() {

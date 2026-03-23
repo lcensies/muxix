@@ -95,7 +95,7 @@ fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
             Some(Action::WorktreePrevious)
         }
         KeyCode::Enter => Some(Action::JumpToSelectedWorktree),
-        KeyCode::Char('x') => Some(Action::DeleteSelectedWorktree),
+        KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
         KeyCode::Char('T') => Some(Action::CycleColorScheme),
         KeyCode::Char(c @ '1'..='9') => {
@@ -214,7 +214,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("j/k/C-n/C-p", "Navigate up/down"),
             ("Enter", "Jump to worktree"),
             ("Tab", "Switch to agents"),
-            ("x", "Delete worktree"),
+            ("r", "Remove worktree"),
             ("/", "Filter worktrees"),
             ("T", "Cycle theme"),
             ("1-9", "Quick jump"),

@@ -291,12 +291,13 @@ fn handle_terminal_event(
         return;
     }
 
-    // Delete worktree confirmation popup - y confirms, anything else cancels
-    if app.pending_delete_worktree.is_some() {
-        if key.code == crossterm::event::KeyCode::Char('y') {
-            app.confirm_delete_worktree();
-        } else {
-            app.pending_delete_worktree = None;
+    // Remove worktree confirmation modal
+    if app.pending_remove.is_some() {
+        match key.code {
+            crossterm::event::KeyCode::Char('y') => app.confirm_remove(),
+            crossterm::event::KeyCode::Char('k') => app.toggle_remove_keep_branch(),
+            crossterm::event::KeyCode::Char('f') => app.arm_remove_force(),
+            _ => app.pending_remove = None, // n, Esc, or any other key cancels
         }
         return;
     }

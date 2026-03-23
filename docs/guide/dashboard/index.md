@@ -39,7 +39,7 @@ See [command reference](/reference/commands/dashboard) for CLI options.
 The dashboard has two views, toggled with `Tab`:
 
 - **Agents**: Shows all running agent panes with their status, git info, and live terminal preview
-- **Worktrees**: Shows all git worktrees with branch, PR status, and agent summary. Press `x` to delete a worktree (confirmation required for worktrees with uncommitted changes or unmerged commits).
+- **Worktrees**: Shows all git worktrees with branch, PR status, and agent summary. Press `r` to remove a worktree (kills agent, removes worktree, deletes branch).
 
 ## Keybindings (Agents view)
 
@@ -72,7 +72,7 @@ The dashboard has two views, toggled with `Tab`:
 | `1`-`9`   | Quick jump to worktree index           |
 | `Tab`     | Switch to agents view                  |
 | `Enter`   | Jump to worktree (agent or mux window) |
-| `x`       | Delete worktree                        |
+| `r`       | Remove worktree                        |
 | `/`       | Filter worktrees by name/branch        |
 | `j`/`k`   | Navigate up/down                       |
 | `T`       | Cycle theme                            |

@@ -65,6 +65,16 @@ pub enum ViewMode {
     Diff(Box<DiffView>),
 }
 
+/// Plan for a pending worktree removal (shown in confirmation modal).
+pub struct RemovePlan {
+    pub handle: String,
+    pub path: PathBuf,
+    pub is_dirty: bool,
+    pub is_unmerged: bool,
+    pub keep_branch: bool,
+    pub force_armed: bool,
+}
+
 /// App state for the TUI
 pub struct App {
     /// The multiplexer backend
@@ -152,8 +162,8 @@ pub struct App {
     pub worktree_filter_text: String,
     /// Whether worktree filter input is active
     pub worktree_filter_active: bool,
-    /// Worktree path awaiting delete confirmation
-    pub pending_delete_worktree: Option<PathBuf>,
+    /// Pending worktree removal (shown in confirmation modal)
+    pub pending_remove: Option<RemovePlan>,
     /// Flag to prevent concurrent worktree fetches
     is_worktree_fetching: Arc<AtomicBool>,
     /// Last time worktree list was fetched
@@ -257,7 +267,7 @@ impl App {
             selected_worktree_path: None,
             worktree_filter_text: String::new(),
             worktree_filter_active: false,
-            pending_delete_worktree: None,
+            pending_remove: None,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
             // Set to past so first switch triggers immediate fetch
             last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
@@ -1129,36 +1139,65 @@ impl App {
         }
     }
 
-    /// Delete selected worktree (with safety checks)
-    pub fn delete_selected_worktree(&mut self) {
+    /// Show the remove confirmation modal for the selected worktree.
+    /// Always shows the modal (even for clean worktrees). Skips main worktree.
+    pub fn remove_selected_worktree(&mut self) {
         let Some(selected) = self.worktree_table_state.selected() else {
             return;
         };
         let Some(worktree) = self.worktrees.get(selected) else {
             return;
         };
-        let path = worktree.path.clone();
 
-        // Check for uncommitted changes or unmerged commits
-        let has_uncommitted = git::has_uncommitted_changes(&path).unwrap_or(false);
-        let has_unmerged = worktree.has_unmerged;
-
-        if has_uncommitted || has_unmerged {
-            self.pending_delete_worktree = Some(path);
+        // Block removal of main worktree
+        if worktree.is_main {
             return;
         }
 
-        self.do_delete_worktree(&path);
+        let is_dirty = git::has_uncommitted_changes(&worktree.path).unwrap_or(false);
+
+        self.pending_remove = Some(RemovePlan {
+            handle: worktree.handle.clone(),
+            path: worktree.path.clone(),
+            is_dirty,
+            is_unmerged: worktree.has_unmerged,
+            keep_branch: false,
+            force_armed: false,
+        });
     }
 
-    /// Execute the pending delete confirmation
-    pub fn confirm_delete_worktree(&mut self) {
-        if let Some(path) = self.pending_delete_worktree.take() {
-            self.do_delete_worktree(&path);
+    /// Toggle keep-branch in the pending remove plan.
+    pub fn toggle_remove_keep_branch(&mut self) {
+        if let Some(ref mut plan) = self.pending_remove {
+            plan.keep_branch = !plan.keep_branch;
         }
     }
 
-    fn do_delete_worktree(&mut self, path: &Path) {
+    /// Arm force mode for dirty worktree removal.
+    pub fn arm_remove_force(&mut self) {
+        if let Some(ref mut plan) = self.pending_remove
+            && plan.is_dirty
+        {
+            plan.force_armed = true;
+        }
+    }
+
+    /// Execute the pending remove confirmation.
+    pub fn confirm_remove(&mut self) {
+        let Some(plan) = self.pending_remove.take() else {
+            return;
+        };
+
+        // Dirty worktrees require force to be armed
+        if plan.is_dirty && !plan.force_armed {
+            self.pending_remove = Some(plan);
+            return;
+        }
+
+        self.do_remove_worktree(&plan.path, plan.keep_branch);
+    }
+
+    fn do_remove_worktree(&mut self, path: &Path, keep_branch: bool) {
         let handle = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -1170,12 +1209,10 @@ impl App {
             return;
         };
 
-        // force=true because we already confirmed, keep_branch=false
-        if workflow::remove(&handle, true, false, &ctx).is_ok() {
-            // Only remove from UI on success
+        // force=true because user confirmed via modal
+        if workflow::remove(&handle, true, keep_branch, &ctx).is_ok() {
             self.worktrees.retain(|w| w.path != *path);
 
-            // Adjust selection
             if self.worktrees.is_empty() {
                 self.worktree_table_state.select(None);
                 self.selected_worktree_path = None;
