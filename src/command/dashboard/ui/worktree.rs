@@ -151,6 +151,16 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 vec![("-".to_string(), Style::default().fg(app.palette.dimmed))]
             };
 
+            let is_current = app.current_worktree.as_ref().is_some_and(|cwd| {
+                if let (Ok(cwd_canonical), Ok(wt_canonical)) =
+                    (cwd.canonicalize(), wt.path.canonicalize())
+                {
+                    cwd_canonical == wt_canonical
+                } else {
+                    wt.path == *cwd
+                }
+            });
+
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -164,6 +174,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 wt.is_main,
+                is_current,
                 git_spans,
                 pr_spans,
                 agent_spans,
@@ -176,7 +187,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
     // Calculate dynamic column widths
     let max_project_width = row_data
         .iter()
-        .map(|(_, p, _, _, _, _, _, _, _)| p.len())
+        .map(|(_, p, _, _, _, _, _, _, _, _)| p.len())
         .max()
         .unwrap_or(5)
         .clamp(5, 20)
@@ -184,7 +195,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let max_worktree_width = row_data
         .iter()
-        .map(|(_, _, w, _, _, _, _, _, _)| w.len())
+        .map(|(_, _, w, _, _, _, _, _, _, _)| w.len())
         .max()
         .unwrap_or(8)
         .max(8)
@@ -192,7 +203,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
     let max_git_width = row_data
         .iter()
-        .map(|(_, _, _, _, git, _, _, _, _)| {
+        .map(|(_, _, _, _, _, git, _, _, _, _)| {
             git.iter()
                 .map(|(text, _)| text.chars().count())
                 .sum::<usize>()
@@ -205,7 +216,7 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
     let max_pr_width = if show_pr_column {
         row_data
             .iter()
-            .filter_map(|(_, _, _, _, _, pr, _, _, _)| pr.as_ref())
+            .filter_map(|(_, _, _, _, _, _, pr, _, _, _)| pr.as_ref())
             .map(|spans| {
                 spans
                     .iter()
@@ -228,13 +239,16 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 project,
                 worktree_display,
                 is_main,
+                is_current,
                 git_spans,
                 pr_spans,
                 agent_spans,
                 has_mux_window,
                 age,
             )| {
-                let worktree_style = if is_main {
+                let worktree_style = if is_current {
+                    Style::default().fg(app.palette.current_worktree_fg)
+                } else if is_main {
                     Style::default().fg(app.palette.dimmed)
                 } else {
                     Style::default()
@@ -283,7 +297,12 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 cells.extend([mux_cell, age_cell]);
                 cells.push(Cell::from(agent_line));
 
-                Row::new(cells)
+                let row = Row::new(cells);
+                if is_current {
+                    row.style(Style::default().bg(app.palette.current_row_bg))
+                } else {
+                    row
+                }
             },
         )
         .collect();
