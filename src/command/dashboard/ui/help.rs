@@ -373,7 +373,7 @@ pub fn render_sweep(f: &mut Frame, app: &App) {
             lines.push(Line::from(vec![
                 Span::styled(cursor, cursor_style),
                 dim(&format!(
-                    "--- {} ({}, dirty)",
+                    "[ ] {} ({}, dirty)",
                     candidate.handle,
                     candidate.reason.label()
                 )),
@@ -414,7 +414,7 @@ pub fn render_sweep(f: &mut Frame, app: &App) {
         .candidates
         .iter()
         .map(|c| {
-            // cursor + checkbox/dash + handle + reason
+            // cursor + checkbox + handle + reason
             2 + 4 + c.handle.len() + c.reason.label().len() + 10
         })
         .max()
