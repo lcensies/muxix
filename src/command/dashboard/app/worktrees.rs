@@ -421,9 +421,14 @@ impl App {
                     .map(agent::extract_project_name)
             });
 
+        let initial_cursor = current_name
+            .as_ref()
+            .and_then(|name| projects.iter().position(|p| &p.name == name))
+            .unwrap_or(0);
+
         self.pending_project_picker = Some(ProjectPicker {
             projects,
-            cursor: 0,
+            cursor: initial_cursor,
             filter: String::new(),
             current_name,
         });
