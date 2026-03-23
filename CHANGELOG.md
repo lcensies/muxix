@@ -19,13 +19,14 @@ description: Release notes and version history for workmux
 
 ## v0.1.145 (2026-03-23)
 
-- Add worktree view as a second tab in the dashboard (press Tab to switch
-  between Agents and Worktrees)
-- Add bulk sweep (R) to identify and remove worktrees ready for cleanup based on
-  merged/closed PRs, deleted remote branches, or locally merged branches
-- Add X hotkey to kill an agent directly from the dashboard
-- Add worktree remove (r) with a context-aware confirmation modal that warns
-  about uncommitted changes or unmerged commits
+- Dashboard: add worktree view as a second tab (press Tab to switch between
+  Agents and Worktrees)
+- Dashboard: add bulk sweep (R) to identify and remove worktrees ready for
+  cleanup based on merged/closed PRs, deleted remote branches, or locally merged
+  branches
+- Dashboard: add X hotkey to kill an agent directly
+- Dashboard: add worktree remove (r) with a context-aware confirmation modal
+  that warns about uncommitted changes or unmerged commits
 - Add `workmux list --json` flag for machine-readable output
 
 ## v0.1.144 (2026-03-22)
