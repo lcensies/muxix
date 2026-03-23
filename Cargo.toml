@@ -68,6 +68,9 @@ mac-notification-sys = "0.6"
 
 [dev-dependencies]
 
+[patch.crates-io]
+crossterm = { git = "https://github.com/raine/crossterm" }
+
 [profile.release]
 strip = true       # Strip debug symbols
 lto = true         # Link Time Optimization for smaller binaries
