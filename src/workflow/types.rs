@@ -151,11 +151,13 @@ impl SetupOptions {
 }
 
 /// Summary of agent statuses for a worktree (may have multiple agents)
+#[derive(Clone)]
 pub struct AgentStatusSummary {
     pub statuses: Vec<AgentStatus>,
 }
 
 /// List all worktrees with their status
+#[derive(Clone)]
 pub struct WorktreeInfo {
     pub handle: String,
     pub branch: String,
@@ -166,4 +168,6 @@ pub struct WorktreeInfo {
     pub has_unmerged: bool,
     pub pr_info: Option<PrSummary>,
     pub agent_status: Option<AgentStatusSummary>,
+    /// Worktree directory creation time (Unix timestamp in seconds)
+    pub created_at: Option<u64>,
 }

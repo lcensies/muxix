@@ -73,6 +73,26 @@ pub fn format_duration(secs: u64) -> String {
     format!("{:02}:{:02}:{:02}", hours, mins, secs)
 }
 
+/// Format an age in seconds as a compact relative string (e.g., "2h", "3d", "1w").
+pub fn format_age(secs: u64) -> String {
+    let mins = secs / 60;
+    let hours = secs / 3600;
+    let days = secs / 86400;
+    let weeks = days / 7;
+
+    if weeks > 0 {
+        format!("{}w", weeks)
+    } else if days > 0 {
+        format!("{}d", days)
+    } else if hours > 0 {
+        format!("{}h", hours)
+    } else if mins > 0 {
+        format!("{}m", mins)
+    } else {
+        "<1m".to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

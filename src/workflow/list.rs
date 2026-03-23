@@ -190,6 +190,12 @@ pub fn list(
                 .as_ref()
                 .is_some_and(|main_path| *main_path == path);
 
+            let created_at = std::fs::metadata(&path)
+                .ok()
+                .and_then(|m| m.created().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+
             WorktreeInfo {
                 handle,
                 branch,
@@ -200,6 +206,7 @@ pub fn list(
                 has_unmerged,
                 pr_info,
                 agent_status,
+                created_at,
             }
         })
         .collect();
