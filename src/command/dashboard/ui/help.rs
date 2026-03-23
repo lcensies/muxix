@@ -322,14 +322,14 @@ pub fn render_sweep(f: &mut Frame, app: &App) {
         let lines = vec![
             Line::from(""),
             Line::from(vec![Span::styled(
-                " Nothing to sweep.",
+                " No merged or gone worktrees found.",
                 Style::default().fg(palette.dimmed),
             )]),
             Line::from(""),
         ];
 
         let height = lines.len() as u16 + 2;
-        let width = 30;
+        let width = 38;
         let area = f.area();
         let popup_area = Rect {
             x: area.width.saturating_sub(width) / 2,
