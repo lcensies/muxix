@@ -1681,7 +1681,7 @@ impl App {
                 let tx = self.event_tx.clone();
                 std::thread::spawn(move || {
                     let output = std::process::Command::new("git")
-                        .args(["log", "--oneline", "-n", "20"])
+                        .args(["log", "--format=%h\t%ar\t%s", "-n", "20"])
                         .current_dir(&path)
                         .output();
                     if let Ok(out) = output {
