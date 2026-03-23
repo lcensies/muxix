@@ -302,56 +302,6 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
     Ok(pr_map)
 }
 
-/// List PRs for a specific repository
-pub fn list_prs_in_repo(repo_root: &Path) -> Result<HashMap<String, PrSummary>> {
-    let output = match Command::new("gh")
-        .current_dir(repo_root)
-        .args([
-            "pr",
-            "list",
-            "--state",
-            "all",
-            "--json",
-            "number,title,state,isDraft,headRefName,statusCheckRollup",
-            "--limit",
-            "200",
-        ])
-        .output()
-    {
-        Ok(output) => output,
-        Err(e) => {
-            tracing::warn!("Failed to run gh pr list: {}", e);
-            return Ok(HashMap::new());
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        tracing::warn!("gh pr list failed: {}", stderr);
-        return Ok(HashMap::new());
-    }
-
-    let prs: Vec<PrBatchItem> = serde_json::from_slice(&output.stdout)?;
-
-    let map = prs
-        .into_iter()
-        .map(|pr| {
-            (
-                pr.head_ref_name,
-                PrSummary {
-                    number: pr.number,
-                    title: pr.title,
-                    state: pr.state,
-                    is_draft: pr.is_draft,
-                    checks: aggregate_checks(&pr.status_check_rollup),
-                },
-            )
-        })
-        .collect();
-
-    Ok(map)
-}
-
 /// Fetch PR status for specific branches using a single GraphQL query.
 /// Falls back to per-branch REST calls if GraphQL fails.
 pub fn list_prs_for_branches(
