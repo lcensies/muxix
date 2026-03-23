@@ -663,6 +663,8 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
     s.extend(cmd("r".into(), "Remove".into()));
     s.push(pipe());
+    s.extend(cmd("c".into(), "Close".into()));
+    s.push(pipe());
     s.extend(cmd("R".into(), "Sweep".into()));
     s.push(pipe());
     s.extend(cmd("1-9".into(), "Jump".into()));

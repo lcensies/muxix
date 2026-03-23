@@ -66,6 +66,7 @@ pub enum Action {
     WorktreePrevious,
     WorktreeJumpToIndex(usize),
     RemoveSelectedWorktree,
+    CloseSelectedWorktreeWindow,
     StartSweep,
     CycleWorktreeSortMode,
     JumpToSelectedWorktree,
@@ -222,6 +223,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::RemoveSelectedWorktree => {
             app.remove_selected_worktree();
+            false
+        }
+        Action::CloseSelectedWorktreeWindow => {
+            app.close_selected_worktree_window();
             false
         }
         Action::StartSweep => {

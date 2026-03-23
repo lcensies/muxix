@@ -1360,6 +1360,29 @@ impl App {
         }
     }
 
+    /// Close the mux window/session for the selected worktree without removing it.
+    pub fn close_selected_worktree_window(&mut self) {
+        let Some(selected) = self.worktree_table_state.selected() else {
+            return;
+        };
+        let Some(worktree) = self.worktrees.get(selected) else {
+            return;
+        };
+
+        if worktree.is_main || !worktree.has_mux_window {
+            return;
+        }
+
+        let prefix = self.config.window_prefix();
+        let full_name = crate::multiplexer::util::prefixed(prefix, &worktree.handle);
+        let _ = crate::multiplexer::handle::MuxHandle::kill_full(
+            self.mux.as_ref(),
+            worktree.mode,
+            &full_name,
+        );
+        self.trigger_worktree_refetch();
+    }
+
     /// Build the sweep candidate list and open the sweep modal.
     /// If worktree data hasn't been loaded yet, triggers a background fetch
     /// and opens an empty sweep modal (data will arrive on next refresh).

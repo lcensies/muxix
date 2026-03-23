@@ -97,6 +97,7 @@ fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
         }
         KeyCode::Enter => Some(Action::JumpToSelectedWorktree),
         KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
+        KeyCode::Char('c') => Some(Action::CloseSelectedWorktreeWindow),
         KeyCode::Char('R') => Some(Action::StartSweep),
         KeyCode::Char('s') => Some(Action::CycleWorktreeSortMode),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
@@ -219,6 +220,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Jump to worktree"),
             ("Tab", "Switch to agents"),
             ("r", "Remove worktree"),
+            ("c", "Close mux window"),
             ("R", "Sweep cleanup"),
             ("s", "Cycle sort mode"),
             ("/", "Filter worktrees"),
