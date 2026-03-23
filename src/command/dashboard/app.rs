@@ -1264,7 +1264,14 @@ impl App {
     }
 
     /// Build the sweep candidate list and open the sweep modal.
+    /// If worktree data hasn't been loaded yet, triggers a background fetch
+    /// and opens an empty sweep modal (data will arrive on next refresh).
     pub fn start_sweep(&mut self) {
+        // Ensure worktree data is loaded (may not be if called from agents view)
+        if self.worktrees.is_empty() {
+            self.spawn_worktree_fetch();
+        }
+
         let gone = git::get_gone_branches().unwrap_or_default();
 
         let mut candidates: Vec<SweepCandidate> = Vec::new();

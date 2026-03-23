@@ -55,6 +55,7 @@ The dashboard has two views, toggled with `Tab`:
 | `f`       | Toggle stale filter (show/hide stale)   |
 | `i`       | Enter input mode (type to agent)        |
 | `X`       | Kill selected agent                     |
+| `R`       | Sweep (bulk remove merged/gone)         |
 | `Ctrl+u`  | Scroll preview up                       |
 | `Ctrl+d`  | Scroll preview down                     |
 | `+`/`-`   | Resize preview pane                     |
