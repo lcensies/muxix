@@ -3,10 +3,10 @@
 use anyhow::Result;
 use ratatui::style::Style;
 use ratatui::widgets::TableState;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
@@ -625,6 +625,17 @@ impl App {
         let tx = self.event_tx.clone();
         let is_fetching = self.is_pr_fetching.clone();
 
+        // Identify the priority repo (current project) so it fetches first
+        let priority_repo = self
+            .worktree_project_override
+            .as_ref()
+            .map(|(_, p)| p.clone())
+            .or_else(|| {
+                self.current_worktree
+                    .as_ref()
+                    .and_then(|p| self.repo_roots.get(p).cloned())
+            });
+
         std::thread::spawn(move || {
             struct ResetFlag(Arc<AtomicBool>);
             impl Drop for ResetFlag {
@@ -634,18 +645,44 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            for (repo_root, branches) in &repo_branches {
-                match crate::github::list_prs_for_branches(repo_root, branches) {
-                    Ok(prs) => {
-                        if !prs.is_empty() {
-                            let _ = tx.send(AppEvent::PrStatus(repo_root.clone(), prs));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to fetch PRs for {:?}: {}", repo_root, e);
-                    }
-                }
+            // Sort repos so the priority repo (current project) is fetched first
+            let mut repos: VecDeque<_> = repo_branches.into_iter().collect();
+            if let Some(ref priority) = priority_repo {
+                repos
+                    .make_contiguous()
+                    .sort_by_key(|(repo, _)| repo != priority);
             }
+
+            // Fetch repos in parallel with bounded concurrency
+            let queue = Arc::new(Mutex::new(repos));
+            let workers = queue.lock().unwrap().len().min(4);
+
+            std::thread::scope(|s| {
+                for _ in 0..workers {
+                    let queue = Arc::clone(&queue);
+                    let tx = tx.clone();
+                    s.spawn(move || {
+                        loop {
+                            let Some((repo_root, branches)) = queue.lock().unwrap().pop_front()
+                            else {
+                                break;
+                            };
+                            match crate::github::list_prs_for_branches(&repo_root, &branches) {
+                                Ok(prs) => {
+                                    let _ = tx.send(AppEvent::PrStatus(repo_root, prs));
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to fetch PRs for {:?}: {}",
+                                        repo_root,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+            });
         });
 
         true
@@ -1131,19 +1168,25 @@ impl App {
                 self.git_statuses.insert(path, status);
             }
             AppEvent::PrStatus(repo_root, prs) => {
-                self.pr_statuses.insert(repo_root, prs);
+                // Clear stale state when a repo has no PRs, otherwise update
+                if prs.is_empty() {
+                    self.pr_statuses.remove(&repo_root);
+                } else {
+                    self.pr_statuses.insert(repo_root, prs);
+                }
                 // Re-apply worktree filters to merge new PR data
                 if !self.all_worktrees.is_empty() {
                     self.apply_worktree_filters();
                 }
             }
             AppEvent::WorktreeList(worktrees) => {
-                let is_initial_load = self.all_worktrees.is_empty() && !worktrees.is_empty();
+                let needs_pr_fetch = self.all_worktrees.is_empty() && !worktrees.is_empty();
                 self.all_worktrees = worktrees;
                 self.apply_worktree_filters();
 
-                // Force a PR re-fetch now that worktree repo roots are known
-                if is_initial_load {
+                // Force a PR re-fetch on initial load or after project switch
+                // (confirm_project_picker clears all_worktrees, so this fires)
+                if needs_pr_fetch {
                     self.last_pr_fetch = std::time::Instant::now() - PR_FETCH_INTERVAL;
                 }
             }
@@ -1611,6 +1654,7 @@ impl App {
 
         self.worktree_project_override = Some((selected.name.clone(), selected.path.clone()));
         self.worktrees.clear();
+        self.all_worktrees.clear();
         self.last_worktree_fetch = std::time::Instant::now();
         self.spawn_worktree_fetch();
 
