@@ -1360,7 +1360,32 @@ impl App {
         }
     }
 
-    /// Jump to the selected worktree's agent or mux window
+    /// Open a tmux window/session for the selected worktree via workflow::open,
+    /// then close the dashboard.
+    pub fn open_selected_worktree(&mut self) {
+        let Some(selected) = self.worktree_table_state.selected() else {
+            return;
+        };
+        let Some(worktree) = self.worktrees.get(selected) else {
+            return;
+        };
+
+        let handle = worktree.handle.clone();
+
+        let Ok(ctx) = workflow::WorkflowContext::new(self.config.clone(), self.mux.clone(), None)
+        else {
+            return;
+        };
+
+        let options = workflow::types::SetupOptions::new(false, false, true);
+        if workflow::open(&handle, &ctx, options, false, false, None).is_ok() {
+            self.should_jump = true;
+        }
+    }
+
+    /// Jump to the selected worktree's agent or mux window.
+    /// Tries the agent pane first, then falls back to workflow::open
+    /// which switches to an existing window/session or creates one.
     pub fn jump_to_selected_worktree(&mut self) {
         let Some(selected) = self.worktree_table_state.selected() else {
             return;
@@ -1369,23 +1394,15 @@ impl App {
             return;
         };
 
-        // Try agent first
+        // Try agent pane first for direct pane targeting
         if let Some(agent) = self.all_agents.iter().find(|a| a.path == worktree.path) {
             let target = agent.pane_id.clone();
             self.switch_to_pane_and_track(&target);
             return;
         }
 
-        // Fall back to mux window/session via MuxHandle
-        let handle = &worktree.handle;
-        let prefix = self.config.window_prefix();
-        let mode = worktree.mode;
-        let mux_handle =
-            crate::multiplexer::handle::MuxHandle::new(self.mux.as_ref(), mode, prefix, handle);
-        if mux_handle.exists().unwrap_or(false) {
-            let _ = mux_handle.select();
-            self.should_jump = true;
-        }
+        // Fall back to workflow::open (switches to existing or creates new)
+        self.open_selected_worktree();
     }
 
     /// Update the preview for the selected worktree (git log)
