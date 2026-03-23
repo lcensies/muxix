@@ -17,6 +17,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.147 (2026-03-23)
+
+- Dashboard: open a worktree's pull request in the browser with `o`
+
 ## v0.1.146 (2026-03-23)
 
 - Dashboard: add project picker (`p`) to switch between projects' worktrees
