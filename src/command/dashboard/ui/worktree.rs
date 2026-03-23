@@ -72,8 +72,11 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
 
             let project = agent::extract_project_name(&wt.path);
 
-            // Show branch inline only when it differs from the handle
-            let worktree_display = if wt.branch != wt.handle {
+            // Main worktree: show branch name (handle is just the repo dir name)
+            // Other worktrees: show branch inline when it differs from the handle
+            let worktree_display = if wt.is_main {
+                wt.branch.clone()
+            } else if wt.branch != wt.handle {
                 format!("{} \u{2192}{}", wt.handle, wt.branch)
             } else {
                 wt.handle.clone()
