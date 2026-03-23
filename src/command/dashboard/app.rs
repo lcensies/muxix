@@ -100,6 +100,36 @@ pub struct SweepState {
     pub cursor: usize,
 }
 
+/// An entry in the project picker.
+pub struct ProjectEntry {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+/// State for the project picker modal.
+pub struct ProjectPicker {
+    pub projects: Vec<ProjectEntry>,
+    pub cursor: usize,
+    pub filter: String,
+    pub current_name: Option<String>,
+}
+
+impl ProjectPicker {
+    /// Return indices into `projects` that match the current filter.
+    pub fn filtered(&self) -> Vec<usize> {
+        if self.filter.is_empty() {
+            return (0..self.projects.len()).collect();
+        }
+        let lower = self.filter.to_lowercase();
+        self.projects
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.name.to_lowercase().contains(&lower))
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
 /// Plan for a pending worktree removal (shown in confirmation modal).
 pub struct RemovePlan {
     pub handle: String,
@@ -205,6 +235,10 @@ pub struct App {
     pub pending_remove: Option<RemovePlan>,
     /// Pending bulk sweep state (shown in sweep modal)
     pub pending_sweep: Option<SweepState>,
+    /// Pending project picker state (shown in project picker modal)
+    pub pending_project_picker: Option<ProjectPicker>,
+    /// Override which repo's worktrees are shown (name, git root path)
+    pub worktree_project_override: Option<(String, PathBuf)>,
     /// Flag to prevent concurrent worktree fetches
     is_worktree_fetching: Arc<AtomicBool>,
     /// Last time worktree list was fetched
@@ -312,6 +346,8 @@ impl App {
             worktree_sort_mode: WorktreeSortMode::load(),
             pending_remove: None,
             pending_sweep: None,
+            pending_project_picker: None,
+            worktree_project_override: None,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
             // Set to past so first switch triggers immediate fetch
             last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
@@ -1146,6 +1182,10 @@ impl App {
         let is_fetching = self.is_worktree_fetching.clone();
         let config = self.config.clone();
         let mux = self.mux.clone();
+        let repo_override = self
+            .worktree_project_override
+            .as_ref()
+            .map(|(_, p)| p.clone());
 
         std::thread::spawn(move || {
             struct ResetFlag(Arc<AtomicBool>);
@@ -1158,7 +1198,9 @@ impl App {
 
             // fetch_pr_status=false: the dashboard fetches PR status separately,
             // and workflow::list's spinner would corrupt the TUI output
-            if let Ok(worktrees) = workflow::list(&config, mux.as_ref(), false, &[]) {
+            if let Ok(worktrees) =
+                workflow::list_in(&config, mux.as_ref(), false, &[], repo_override.as_deref())
+            {
                 let _ = tx.send(AppEvent::WorktreeList(worktrees));
             }
         });
@@ -1484,6 +1526,97 @@ impl App {
 
         for path in &paths_to_remove {
             self.do_remove_worktree(path, false);
+        }
+    }
+
+    // ── Project picker methods ─────────────────────────────────────
+
+    /// Discover projects from cached repo roots and open the picker modal.
+    pub fn show_project_picker(&mut self) {
+        // Deduplicate by project name, keeping one representative path per project
+        let mut by_name: std::collections::BTreeMap<String, PathBuf> =
+            std::collections::BTreeMap::new();
+
+        for root in self.repo_roots.values() {
+            let name = agent::extract_project_name(root);
+            by_name.entry(name).or_insert_with(|| root.clone());
+        }
+
+        let projects: Vec<ProjectEntry> = by_name
+            .into_iter()
+            .map(|(name, path)| ProjectEntry { name, path })
+            .collect();
+
+        let current_name = self
+            .worktree_project_override
+            .as_ref()
+            .map(|(name, _)| name.clone())
+            .or_else(|| {
+                self.current_worktree
+                    .as_deref()
+                    .map(agent::extract_project_name)
+            });
+
+        self.pending_project_picker = Some(ProjectPicker {
+            projects,
+            cursor: 0,
+            filter: String::new(),
+            current_name,
+        });
+    }
+
+    /// Move cursor down in project picker.
+    pub fn project_picker_down(&mut self) {
+        if let Some(ref mut picker) = self.pending_project_picker {
+            let filtered = picker.filtered();
+            if !filtered.is_empty() && picker.cursor + 1 < filtered.len() {
+                picker.cursor += 1;
+            }
+        }
+    }
+
+    /// Move cursor up in project picker.
+    pub fn project_picker_up(&mut self) {
+        if let Some(ref mut picker) = self.pending_project_picker {
+            picker.cursor = picker.cursor.saturating_sub(1);
+        }
+    }
+
+    /// Append a character to the project picker filter.
+    pub fn project_picker_filter_append(&mut self, c: char) {
+        if let Some(ref mut picker) = self.pending_project_picker {
+            picker.filter.push(c);
+            picker.cursor = 0;
+        }
+    }
+
+    /// Delete the last character from the project picker filter.
+    pub fn project_picker_filter_delete(&mut self) {
+        if let Some(ref mut picker) = self.pending_project_picker {
+            picker.filter.pop();
+            picker.cursor = 0;
+        }
+    }
+
+    /// Confirm project picker selection: set override and trigger refetch.
+    pub fn confirm_project_picker(&mut self) {
+        let Some(picker) = self.pending_project_picker.take() else {
+            return;
+        };
+        let filtered = picker.filtered();
+        let Some(&idx) = filtered.get(picker.cursor) else {
+            return;
+        };
+        let selected = &picker.projects[idx];
+
+        self.worktree_project_override = Some((selected.name.clone(), selected.path.clone()));
+        self.worktrees.clear();
+        self.last_worktree_fetch = std::time::Instant::now();
+        self.spawn_worktree_fetch();
+
+        // Switch to worktrees tab to show the result
+        if self.active_tab != DashboardTab::Worktrees {
+            self.active_tab = DashboardTab::Worktrees;
         }
     }
 

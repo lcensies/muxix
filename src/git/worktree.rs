@@ -142,8 +142,17 @@ pub fn find_worktree(name: &str) -> Result<(PathBuf, String)> {
 
 /// List all worktrees with their branches
 pub fn list_worktrees() -> Result<Vec<(PathBuf, String)>> {
-    let list = Cmd::new("git")
-        .args(&["worktree", "list", "--porcelain"])
+    list_worktrees_in(None)
+}
+
+/// List all worktrees with their branches, optionally in a specific workdir
+pub fn list_worktrees_in(workdir: Option<&Path>) -> Result<Vec<(PathBuf, String)>> {
+    let cmd = Cmd::new("git").args(&["worktree", "list", "--porcelain"]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let list = cmd
         .run_and_capture_stdout()
         .context("Failed to list worktrees")?;
     parse_worktree_list_porcelain(&list)
@@ -194,18 +203,21 @@ pub fn get_worktree_mode(handle: &str) -> MuxMode {
     get_worktree_mode_opt(handle).unwrap_or(MuxMode::Window)
 }
 
-/// Batch-load all worktree modes from git config in a single subprocess call.
-/// Returns a map from handle to MuxMode. Handles not in the map default to Window.
-pub fn get_all_worktree_modes() -> std::collections::HashMap<String, MuxMode> {
-    let output = Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            "--get-regexp",
-            r"^workmux\.worktree\..*\.mode$",
-        ])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
+/// Batch-load all worktree modes, optionally in a specific workdir.
+pub fn get_all_worktree_modes_in(
+    workdir: Option<&Path>,
+) -> std::collections::HashMap<String, MuxMode> {
+    let cmd = Cmd::new("git").args(&[
+        "config",
+        "--local",
+        "--get-regexp",
+        r"^workmux\.worktree\..*\.mode$",
+    ]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let output = cmd.run_and_capture_stdout().unwrap_or_default();
 
     let mut modes = std::collections::HashMap::new();
     for line in output.lines() {

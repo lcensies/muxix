@@ -448,3 +448,112 @@ pub fn render_sweep(f: &mut Frame, app: &App) {
     f.render_widget(Clear, popup_area);
     f.render_widget(paragraph, popup_area);
 }
+
+/// Render the project picker modal.
+pub fn render_project_picker(f: &mut Frame, app: &App) {
+    let Some(ref picker) = app.pending_project_picker else {
+        return;
+    };
+    let palette = &app.palette;
+
+    let bold = |s: &str| {
+        Span::styled(
+            s.to_string(),
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
+    let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette.dimmed));
+
+    let filtered = picker.filtered();
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Filter input line (shown when typing)
+    if !picker.filter.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(" /", Style::default().fg(palette.dimmed)),
+            Span::styled(picker.filter.clone(), Style::default().fg(palette.text)),
+            Span::styled("_", Style::default().fg(palette.text)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+
+    if filtered.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            " No matching projects.",
+            Style::default().fg(palette.dimmed),
+        )]));
+    } else {
+        for (fi, &idx) in filtered.iter().enumerate() {
+            let project = &picker.projects[idx];
+            let cursor = if fi == picker.cursor { "> " } else { "  " };
+
+            let is_current = picker
+                .current_name
+                .as_ref()
+                .is_some_and(|n| *n == project.name);
+
+            let name_style = if is_current {
+                Style::default().fg(palette.accent)
+            } else {
+                Style::default().fg(palette.text)
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(cursor, Style::default().fg(palette.text)),
+                Span::styled(project.name.clone(), name_style),
+            ]));
+        }
+    }
+
+    lines.push(Line::from(""));
+
+    // Footer
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        bold("Enter"),
+        dim(" switch  "),
+        bold("Esc"),
+        dim(" cancel"),
+    ]));
+
+    // Calculate dimensions
+    let height = lines.len() as u16 + 2;
+    let content_width = picker
+        .projects
+        .iter()
+        .map(|p| 2 + p.name.len())
+        .max()
+        .unwrap_or(20);
+    let width = (content_width as u16 + 4).clamp(36, 60);
+
+    let area = f.area();
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(palette.help_border))
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                "Switch Project",
+                Style::default()
+                    .fg(palette.header)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+
+    let paragraph = Paragraph::new(Text::from(lines)).block(block);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(paragraph, popup_area);
+}

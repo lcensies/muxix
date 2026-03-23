@@ -77,6 +77,7 @@ The dashboard has two views, toggled with `Tab`:
 | `c`       | Close mux window (keeps worktree)      |
 | `R`       | Sweep (bulk remove merged/gone)        |
 | `s`       | Cycle sort mode                        |
+| `p`       | Switch project                         |
 | `/`       | Filter worktrees by name/branch        |
 | `j`/`k`   | Navigate up/down                       |
 | `T`       | Cycle theme                            |

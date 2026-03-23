@@ -70,6 +70,7 @@ pub enum Action {
     StartSweep,
     CycleWorktreeSortMode,
     JumpToSelectedWorktree,
+    ShowProjectPicker,
 
     // Filter mode
     EnterFilterMode,
@@ -239,6 +240,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::JumpToSelectedWorktree => {
             app.jump_to_selected_worktree();
+            false
+        }
+        Action::ShowProjectPicker => {
+            app.show_project_picker();
             false
         }
 
