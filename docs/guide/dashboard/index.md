@@ -73,6 +73,7 @@ The dashboard has two views, toggled with `Tab`:
 | `Tab`     | Switch to agents view                  |
 | `Enter`   | Jump to worktree (agent or mux window) |
 | `r`       | Remove worktree                        |
+| `R`       | Sweep (bulk remove merged/gone)        |
 | `/`       | Filter worktrees by name/branch        |
 | `j`/`k`   | Navigate up/down                       |
 | `T`       | Cycle theme                            |

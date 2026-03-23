@@ -302,6 +302,20 @@ fn handle_terminal_event(
         return;
     }
 
+    // Sweep modal
+    if app.pending_sweep.is_some() {
+        match key.code {
+            crossterm::event::KeyCode::Char(' ') => app.sweep_toggle(),
+            crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Down => {
+                app.sweep_down()
+            }
+            crossterm::event::KeyCode::Char('k') | crossterm::event::KeyCode::Up => app.sweep_up(),
+            crossterm::event::KeyCode::Enter => app.confirm_sweep(),
+            _ => app.pending_sweep = None, // Esc or any other key cancels
+        }
+        return;
+    }
+
     // Get current context and map key to action
     let ctx = get_context(app);
 

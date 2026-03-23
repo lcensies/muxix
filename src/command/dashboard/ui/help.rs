@@ -299,3 +299,152 @@ pub fn render_help(f: &mut Frame, app: &App) {
     f.render_widget(Clear, popup_area);
     f.render_widget(table, popup_area);
 }
+
+/// Render the sweep cleanup modal.
+pub fn render_sweep(f: &mut Frame, app: &App) {
+    let Some(ref sweep) = app.pending_sweep else {
+        return;
+    };
+    let palette = &app.palette;
+
+    let bold = |s: &str| {
+        Span::styled(
+            s.to_string(),
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
+    let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette.dimmed));
+
+    // Empty state
+    if sweep.candidates.is_empty() {
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                " Nothing to sweep.",
+                Style::default().fg(palette.dimmed),
+            )]),
+            Line::from(""),
+        ];
+
+        let height = lines.len() as u16 + 2;
+        let width = 30;
+        let area = f.area();
+        let popup_area = Rect {
+            x: area.width.saturating_sub(width) / 2,
+            y: area.height.saturating_sub(height) / 2,
+            width: width.min(area.width),
+            height: height.min(area.height),
+        };
+
+        let block = Block::bordered()
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .border_style(Style::default().fg(palette.help_border))
+            .title(Line::from(vec![
+                Span::styled(" ", Style::default()),
+                Span::styled(
+                    "Sweep",
+                    Style::default()
+                        .fg(palette.header)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" ", Style::default()),
+            ]));
+
+        let paragraph = Paragraph::new(Text::from(lines)).block(block);
+        f.render_widget(Clear, popup_area);
+        f.render_widget(paragraph, popup_area);
+        return;
+    }
+
+    let selected_count = sweep.candidates.iter().filter(|c| c.selected).count();
+
+    // Build content lines
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(""));
+
+    for (i, candidate) in sweep.candidates.iter().enumerate() {
+        let cursor = if i == sweep.cursor { "> " } else { "  " };
+        let cursor_style = Style::default().fg(palette.text);
+
+        if candidate.is_dirty {
+            // Dirty: greyed out, not selectable
+            lines.push(Line::from(vec![
+                Span::styled(cursor, cursor_style),
+                dim(&format!(
+                    "--- {} ({}, dirty)",
+                    candidate.handle,
+                    candidate.reason.label()
+                )),
+            ]));
+        } else {
+            let checkbox = if candidate.selected { "[x]" } else { "[ ]" };
+            let style = Style::default().fg(palette.text);
+            lines.push(Line::from(vec![
+                Span::styled(cursor, cursor_style),
+                Span::styled(format!("{} {} ", checkbox, candidate.handle), style),
+                dim(&format!("({})", candidate.reason.label())),
+            ]));
+        }
+    }
+
+    lines.push(Line::from(""));
+
+    // Action line
+    let remove_label = if selected_count > 0 {
+        format!(" remove ({})", selected_count)
+    } else {
+        " remove".to_string()
+    };
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        bold("Space"),
+        dim(" toggle  "),
+        bold("Enter"),
+        dim(&remove_label),
+        dim("  "),
+        bold("Esc"),
+        dim(" cancel"),
+    ]));
+
+    // Calculate dimensions
+    let height = lines.len() as u16 + 2; // +2 for borders
+    let content_width = sweep
+        .candidates
+        .iter()
+        .map(|c| {
+            // cursor + checkbox/dash + handle + reason
+            2 + 4 + c.handle.len() + c.reason.label().len() + 10
+        })
+        .max()
+        .unwrap_or(30);
+    let width = (content_width as u16 + 4).max(44); // +4 for border+padding
+
+    let area = f.area();
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(palette.help_border))
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                "Sweep",
+                Style::default()
+                    .fg(palette.header)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+
+    let paragraph = Paragraph::new(Text::from(lines)).block(block);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(paragraph, popup_area);
+}

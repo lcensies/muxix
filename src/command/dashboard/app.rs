@@ -65,6 +65,41 @@ pub enum ViewMode {
     Diff(Box<DiffView>),
 }
 
+/// A candidate worktree for bulk sweep cleanup.
+pub struct SweepCandidate {
+    pub handle: String,
+    pub path: PathBuf,
+    pub reason: SweepReason,
+    pub is_dirty: bool,
+    pub selected: bool,
+}
+
+/// Why a worktree is a sweep candidate.
+#[derive(Clone)]
+pub enum SweepReason {
+    PrMerged,
+    PrClosed,
+    UpstreamGone,
+    MergedLocally,
+}
+
+impl SweepReason {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SweepReason::PrMerged => "PR merged",
+            SweepReason::PrClosed => "PR closed",
+            SweepReason::UpstreamGone => "upstream gone",
+            SweepReason::MergedLocally => "merged locally",
+        }
+    }
+}
+
+/// State for the bulk sweep modal.
+pub struct SweepState {
+    pub candidates: Vec<SweepCandidate>,
+    pub cursor: usize,
+}
+
 /// Plan for a pending worktree removal (shown in confirmation modal).
 pub struct RemovePlan {
     pub handle: String,
@@ -164,6 +199,8 @@ pub struct App {
     pub worktree_filter_active: bool,
     /// Pending worktree removal (shown in confirmation modal)
     pub pending_remove: Option<RemovePlan>,
+    /// Pending bulk sweep state (shown in sweep modal)
+    pub pending_sweep: Option<SweepState>,
     /// Flag to prevent concurrent worktree fetches
     is_worktree_fetching: Arc<AtomicBool>,
     /// Last time worktree list was fetched
@@ -268,6 +305,7 @@ impl App {
             worktree_filter_text: String::new(),
             worktree_filter_active: false,
             pending_remove: None,
+            pending_sweep: None,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
             // Set to past so first switch triggers immediate fetch
             last_worktree_fetch: std::time::Instant::now() - Duration::from_secs(60),
@@ -1222,6 +1260,103 @@ impl App {
                 self.worktree_table_state.select(Some(new_idx));
                 self.selected_worktree_path = self.worktrees.get(new_idx).map(|w| w.path.clone());
             }
+        }
+    }
+
+    /// Build the sweep candidate list and open the sweep modal.
+    pub fn start_sweep(&mut self) {
+        let gone = git::get_gone_branches().unwrap_or_default();
+
+        let mut candidates: Vec<SweepCandidate> = Vec::new();
+
+        for wt in &self.worktrees {
+            if wt.is_main {
+                continue;
+            }
+
+            let status = self.git_statuses.get(&wt.path);
+            let is_dirty = status.is_some_and(|s| s.is_dirty);
+            let has_upstream = status.is_some_and(|s| s.has_upstream);
+
+            // Determine reason: PR merged > PR closed > upstream gone > merged locally
+            let reason = if let Some(ref pr) = wt.pr_info {
+                match pr.state.as_str() {
+                    "MERGED" => Some(SweepReason::PrMerged),
+                    "CLOSED" => Some(SweepReason::PrClosed),
+                    _ => {
+                        if gone.contains(&wt.branch) {
+                            Some(SweepReason::UpstreamGone)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            } else if gone.contains(&wt.branch) {
+                Some(SweepReason::UpstreamGone)
+            } else if !has_upstream && !wt.has_unmerged {
+                Some(SweepReason::MergedLocally)
+            } else {
+                None
+            };
+
+            let Some(reason) = reason else { continue };
+
+            candidates.push(SweepCandidate {
+                handle: wt.handle.clone(),
+                path: wt.path.clone(),
+                reason,
+                is_dirty,
+                selected: !is_dirty, // Pre-select non-dirty candidates
+            });
+        }
+
+        self.pending_sweep = Some(SweepState {
+            candidates,
+            cursor: 0,
+        });
+    }
+
+    /// Toggle selection of the current sweep candidate.
+    pub fn sweep_toggle(&mut self) {
+        if let Some(ref mut sweep) = self.pending_sweep
+            && let Some(candidate) = sweep.candidates.get_mut(sweep.cursor)
+            && !candidate.is_dirty
+        {
+            candidate.selected = !candidate.selected;
+        }
+    }
+
+    /// Move cursor up in sweep modal.
+    pub fn sweep_up(&mut self) {
+        if let Some(ref mut sweep) = self.pending_sweep {
+            sweep.cursor = sweep.cursor.saturating_sub(1);
+        }
+    }
+
+    /// Move cursor down in sweep modal.
+    pub fn sweep_down(&mut self) {
+        if let Some(ref mut sweep) = self.pending_sweep
+            && sweep.cursor + 1 < sweep.candidates.len()
+        {
+            sweep.cursor += 1;
+        }
+    }
+
+    /// Execute sweep: remove all selected candidates.
+    pub fn confirm_sweep(&mut self) {
+        let Some(sweep) = self.pending_sweep.take() else {
+            return;
+        };
+
+        let paths_to_remove: Vec<PathBuf> = sweep
+            .candidates
+            .iter()
+            .filter(|c| c.selected)
+            .map(|c| c.path.clone())
+            .collect();
+
+        for path in &paths_to_remove {
+            self.do_remove_worktree(path, false);
         }
     }
 
