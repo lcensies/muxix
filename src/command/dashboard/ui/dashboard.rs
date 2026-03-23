@@ -597,9 +597,7 @@ fn render_footer_normal(f: &mut Frame, app: &App, area: Rect) {
         s.extend(cmd("/".into(), app.filter_text.clone()));
     }
     s.push(pipe());
-    s.extend(cmd("c".into(), "Commit".into()));
-    s.push(pipe());
-    s.extend(cmd("m".into(), "Merge".into()));
+    s.extend(cmd("Tab".into(), "Worktrees".into()));
     s.push(pipe());
     s.extend(cmd("q".into(), "Quit".into()));
 
