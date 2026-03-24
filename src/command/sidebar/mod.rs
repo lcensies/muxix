@@ -338,6 +338,9 @@ fn install_hooks() -> Result<()> {
     Cmd::new("tmux")
         .args(&["set-hook", "-g", "after-new-window[99]", &sync_cmd])
         .run()?;
+    Cmd::new("tmux")
+        .args(&["set-hook", "-g", "after-new-session[99]", &sync_cmd])
+        .run()?;
 
     Ok(())
 }
@@ -346,6 +349,9 @@ fn install_hooks() -> Result<()> {
 fn remove_hooks() {
     let _ = Cmd::new("tmux")
         .args(&["set-hook", "-gu", "after-new-window[99]"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-hook", "-gu", "after-new-session[99]"])
         .run();
 }
 
