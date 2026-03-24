@@ -57,9 +57,26 @@ pub struct PrSummary {
     /// Aggregated check status (None if no checks configured)
     #[serde(default)]
     pub checks: Option<CheckState>,
+    /// Check timing and name metadata
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_meta: Option<CheckMeta>,
     /// PR URL for opening in browser
     #[serde(default)]
     pub url: Option<String>,
+}
+
+/// Metadata about PR checks (timing, names) separate from aggregated state
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CheckMeta {
+    /// Earliest start time among pending/running checks (Unix timestamp).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u64>,
+    /// Pre-computed total duration in seconds for completed check runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<u64>,
+    /// Name of the first failing check, if any
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failing_name: Option<String>,
 }
 
 /// Handles both CheckRun (status/conclusion) and StatusContext (state) from GitHub API
@@ -68,33 +85,103 @@ struct CheckRollupItem {
     #[serde(alias = "state")]
     status: Option<String>,
     conclusion: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    started_at: Option<String>,
 }
 
-/// Aggregate check results into a single CheckState
-fn aggregate_checks(checks: &[CheckRollupItem]) -> Option<CheckState> {
-    if checks.is_empty() {
+/// Parse a GitHub ISO 8601 UTC timestamp (e.g., "2026-03-24T14:02:00Z") to Unix seconds.
+fn parse_github_timestamp(s: &str) -> Option<u64> {
+    // GitHub always returns UTC timestamps in format: YYYY-MM-DDTHH:MM:SSZ
+    let s = s.trim();
+    if s.len() < 20 || !s.ends_with('Z') {
         return None;
+    }
+    let b = s.as_bytes();
+    if b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let year: u64 = s[0..4].parse().ok()?;
+    let month: u64 = s[5..7].parse().ok()?;
+    let day: u64 = s[8..10].parse().ok()?;
+    let hour: u64 = s[11..13].parse().ok()?;
+    let min: u64 = s[14..16].parse().ok()?;
+    let sec: u64 = s[17..19].parse().ok()?;
+
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || min > 59 || sec > 59 {
+        return None;
+    }
+
+    // Days from year 0 to Unix epoch (1970-01-01)
+    // Using a simplified days-since-epoch calculation
+    let mut days: u64 = 0;
+    for y in 1970..year {
+        days += if is_leap_year(y) { 366 } else { 365 };
+    }
+    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    for m in 1..month {
+        days += month_days[(m - 1) as usize] as u64;
+        if m == 2 && is_leap_year(year) {
+            days += 1;
+        }
+    }
+    days += day - 1;
+
+    Some(days * 86400 + hour * 3600 + min * 60 + sec)
+}
+
+fn is_leap_year(y: u64) -> bool {
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+}
+
+/// Aggregate check results into a single CheckState with optional metadata
+fn aggregate_checks(checks: &[CheckRollupItem]) -> (Option<CheckState>, Option<CheckMeta>) {
+    if checks.is_empty() {
+        return (None, None);
     }
 
     let mut passed = 0u32;
     let mut failed = 0u32;
     let mut pending = 0u32;
     let mut skipped = 0u32;
+    let mut earliest_pending_start: Option<u64> = None;
+    let mut earliest_any_start: Option<u64> = None;
+    let mut latest_any_start: Option<u64> = None;
+    let mut failing_name: Option<String> = None;
 
     for check in checks {
         let status = check.status.as_deref().unwrap_or("");
         let conclusion = check.conclusion.as_deref().unwrap_or("");
+        let ts = check.started_at.as_deref().and_then(parse_github_timestamp);
+
+        // Track global start time range
+        if let Some(t) = ts {
+            earliest_any_start = Some(earliest_any_start.map_or(t, |prev: u64| prev.min(t)));
+            latest_any_start = Some(latest_any_start.map_or(t, |prev: u64| prev.max(t)));
+        }
 
         match (status, conclusion) {
             // Success states
             (_, "SUCCESS") | ("SUCCESS", _) => passed += 1,
             // Failure states (expanded to catch all failure-like conclusions)
             (_, "FAILURE" | "CANCELLED" | "TIMED_OUT" | "STARTUP_FAILURE" | "ACTION_REQUIRED")
-            | ("FAILURE" | "ERROR", _) => failed += 1,
+            | ("FAILURE" | "ERROR", _) => {
+                failed += 1;
+                if failing_name.is_none() {
+                    failing_name = check.name.clone();
+                }
+            }
             // Neutral/skipped - track but don't count toward active total
             (_, "NEUTRAL" | "SKIPPED") => skipped += 1,
             // Pending states (expanded)
-            ("IN_PROGRESS" | "QUEUED" | "PENDING" | "REQUESTED" | "WAITING", _) => pending += 1,
+            ("IN_PROGRESS" | "QUEUED" | "PENDING" | "REQUESTED" | "WAITING", _) => {
+                pending += 1;
+                if let Some(t) = ts {
+                    earliest_pending_start =
+                        Some(earliest_pending_start.map_or(t, |prev: u64| prev.min(t)));
+                }
+            }
             _ => {}
         }
     }
@@ -104,19 +191,61 @@ fn aggregate_checks(checks: &[CheckRollupItem]) -> Option<CheckState> {
     // If no active checks but some were skipped, treat as success (GitHub behavior)
     if total == 0 {
         return if skipped > 0 {
-            Some(CheckState::Success)
+            (Some(CheckState::Success), None)
         } else {
-            None
+            (None, None)
         };
     }
 
-    Some(if failed > 0 {
+    let state = if failed > 0 {
         CheckState::Failure { passed, total }
     } else if pending > 0 {
         CheckState::Pending { passed, total }
     } else {
         CheckState::Success
-    })
+    };
+
+    // Build metadata
+    let meta = if pending > 0 {
+        // Use earliest pending start, fall back to earliest any start
+        let started = earliest_pending_start.or(earliest_any_start);
+        if started.is_some() || failing_name.is_some() {
+            Some(CheckMeta {
+                started_at: started,
+                duration_secs: None,
+                failing_name,
+            })
+        } else {
+            None
+        }
+    } else if failed > 0 {
+        // For failures, compute duration if we know when checks started
+        let duration_secs = match (earliest_any_start, current_unix_timestamp()) {
+            (Some(start), Some(now)) => Some(now.saturating_sub(start)),
+            _ => None,
+        };
+        if failing_name.is_some() || duration_secs.is_some() {
+            Some(CheckMeta {
+                started_at: earliest_any_start,
+                duration_secs,
+                failing_name,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    (Some(state), meta)
+}
+
+/// Get current Unix timestamp in seconds
+fn current_unix_timestamp() -> Option<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 /// Internal struct for parsing PR list results with owner info
@@ -190,6 +319,7 @@ pub fn find_pr_by_head_ref(owner: &str, branch: &str) -> Result<Option<PrSummary
         state: pr.state,
         is_draft: pr.is_draft,
         checks: None,
+        check_meta: None,
         url: pr.url,
     }))
 }
@@ -293,17 +423,18 @@ pub fn list_prs() -> Result<HashMap<String, PrSummary>> {
     let pr_map = prs
         .into_iter()
         .map(|pr| {
-            (
-                pr.head_ref_name,
+            (pr.head_ref_name, {
+                let (checks, check_meta) = aggregate_checks(&pr.status_check_rollup);
                 PrSummary {
                     number: pr.number,
                     title: pr.title,
                     state: pr.state,
                     is_draft: pr.is_draft,
-                    checks: aggregate_checks(&pr.status_check_rollup),
+                    checks,
+                    check_meta,
                     url: Some(pr.url),
-                },
-            )
+                }
+            })
         })
         .collect();
 
@@ -348,7 +479,7 @@ fn build_branch_fragment(alias: &str, branch: &str) -> String {
       nodes {{
         number title state isDraft headRefName url
         commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ contexts(first: 100) {{
-          nodes {{ __typename ... on CheckRun {{ name status conclusion }} ... on StatusContext {{ context state }} }}
+          nodes {{ __typename ... on CheckRun {{ name status conclusion startedAt }} ... on StatusContext {{ context state createdAt }} }}
         }} }} }} }} }}
       }}
     }}"#
@@ -421,24 +552,43 @@ struct GraphqlCheckContexts {
 #[serde(tag = "__typename")]
 enum GraphqlCheckNode {
     CheckRun {
+        name: Option<String>,
         status: Option<String>,
         conclusion: Option<String>,
+        #[serde(rename = "startedAt")]
+        started_at: Option<String>,
     },
     StatusContext {
+        context: Option<String>,
         state: Option<String>,
+        #[serde(rename = "createdAt")]
+        created_at: Option<String>,
     },
 }
 
 impl GraphqlCheckNode {
     fn to_rollup_item(&self) -> CheckRollupItem {
         match self {
-            GraphqlCheckNode::CheckRun { status, conclusion } => CheckRollupItem {
+            GraphqlCheckNode::CheckRun {
+                name,
+                status,
+                conclusion,
+                started_at,
+            } => CheckRollupItem {
                 status: status.clone(),
                 conclusion: conclusion.clone(),
+                name: name.clone(),
+                started_at: started_at.clone(),
             },
-            GraphqlCheckNode::StatusContext { state } => CheckRollupItem {
+            GraphqlCheckNode::StatusContext {
+                context,
+                state,
+                created_at,
+            } => CheckRollupItem {
                 status: state.clone(),
                 conclusion: None,
+                name: context.clone(),
+                started_at: created_at.clone(),
             },
         }
     }
@@ -558,7 +708,7 @@ fn list_prs_for_branches_graphql(
     let mut map = HashMap::new();
     for (_alias, connection) in repo {
         for node in connection.nodes {
-            let checks: Vec<CheckRollupItem> = node
+            let check_items: Vec<CheckRollupItem> = node
                 .commits
                 .nodes
                 .first()
@@ -573,17 +723,18 @@ fn list_prs_for_branches_graphql(
                 })
                 .unwrap_or_default();
 
-            map.insert(
-                node.head_ref_name,
+            map.insert(node.head_ref_name, {
+                let (checks, check_meta) = aggregate_checks(&check_items);
                 PrSummary {
                     number: node.number,
                     title: node.title,
                     state: node.state,
                     is_draft: node.is_draft,
-                    checks: aggregate_checks(&checks),
+                    checks,
+                    check_meta,
                     url: Some(node.url),
-                },
-            );
+                }
+            });
         }
     }
 
@@ -628,6 +779,7 @@ fn list_prs_for_branches_rest(
         };
 
         if let Some(pr) = prs.into_iter().next() {
+            let (checks, check_meta) = aggregate_checks(&pr.status_check_rollup);
             map.insert(
                 pr.head_ref_name,
                 PrSummary {
@@ -635,7 +787,8 @@ fn list_prs_for_branches_rest(
                     title: pr.title,
                     state: pr.state,
                     is_draft: pr.is_draft,
-                    checks: aggregate_checks(&pr.status_check_rollup),
+                    checks,
+                    check_meta,
                     url: Some(pr.url),
                 },
             );
@@ -681,12 +834,14 @@ mod tests {
         CheckRollupItem {
             status: status.map(String::from),
             conclusion: conclusion.map(String::from),
+            name: None,
+            started_at: None,
         }
     }
 
     #[test]
     fn aggregate_checks_empty() {
-        assert_eq!(aggregate_checks(&[]), None);
+        assert_eq!(aggregate_checks(&[]).0, None);
     }
 
     #[test]
@@ -695,7 +850,7 @@ mod tests {
             check_item(Some("COMPLETED"), Some("SUCCESS")),
             check_item(Some("COMPLETED"), Some("SUCCESS")),
         ];
-        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+        assert_eq!(aggregate_checks(&checks).0, Some(CheckState::Success));
     }
 
     #[test]
@@ -705,7 +860,7 @@ mod tests {
             check_item(Some("COMPLETED"), Some("FAILURE")),
         ];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Failure {
                 passed: 1,
                 total: 2
@@ -720,7 +875,7 @@ mod tests {
             check_item(Some("IN_PROGRESS"), None),
         ];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 1,
                 total: 2
@@ -736,7 +891,7 @@ mod tests {
             check_item(Some("IN_PROGRESS"), None),
         ];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Failure {
                 passed: 1,
                 total: 3
@@ -748,14 +903,14 @@ mod tests {
     fn aggregate_checks_status_context_success() {
         // StatusContext uses "state" field (aliased to status) with values like SUCCESS
         let checks = vec![check_item(Some("SUCCESS"), None)];
-        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+        assert_eq!(aggregate_checks(&checks).0, Some(CheckState::Success));
     }
 
     #[test]
     fn aggregate_checks_status_context_pending() {
         let checks = vec![check_item(Some("PENDING"), None)];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 0,
                 total: 1
@@ -767,7 +922,7 @@ mod tests {
     fn aggregate_checks_status_context_error() {
         let checks = vec![check_item(Some("ERROR"), None)];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Failure {
                 passed: 0,
                 total: 1
@@ -781,7 +936,7 @@ mod tests {
             check_item(Some("COMPLETED"), Some("SKIPPED")),
             check_item(Some("COMPLETED"), Some("NEUTRAL")),
         ];
-        assert_eq!(aggregate_checks(&checks), Some(CheckState::Success));
+        assert_eq!(aggregate_checks(&checks).0, Some(CheckState::Success));
     }
 
     #[test]
@@ -793,7 +948,7 @@ mod tests {
         ];
         // Only SUCCESS and IN_PROGRESS count toward total (2), not SKIPPED
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 1,
                 total: 2
@@ -805,7 +960,7 @@ mod tests {
     fn aggregate_checks_cancelled_is_failure() {
         let checks = vec![check_item(Some("COMPLETED"), Some("CANCELLED"))];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Failure {
                 passed: 0,
                 total: 1
@@ -817,7 +972,7 @@ mod tests {
     fn aggregate_checks_timed_out_is_failure() {
         let checks = vec![check_item(Some("COMPLETED"), Some("TIMED_OUT"))];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Failure {
                 passed: 0,
                 total: 1
@@ -834,7 +989,7 @@ mod tests {
             check_item(Some("SUCCESS"), None),              // StatusContext success
         ];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 2,
                 total: 3
@@ -846,7 +1001,7 @@ mod tests {
     fn aggregate_checks_queued_is_pending() {
         let checks = vec![check_item(Some("QUEUED"), None)];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 0,
                 total: 1
@@ -858,7 +1013,7 @@ mod tests {
     fn aggregate_checks_waiting_is_pending() {
         let checks = vec![check_item(Some("WAITING"), None)];
         assert_eq!(
-            aggregate_checks(&checks),
+            aggregate_checks(&checks).0,
             Some(CheckState::Pending {
                 passed: 0,
                 total: 1
@@ -889,21 +1044,98 @@ mod tests {
     #[test]
     fn graphql_check_node_to_rollup_item_check_run() {
         let node = GraphqlCheckNode::CheckRun {
+            name: Some("build".to_string()),
             status: Some("COMPLETED".to_string()),
             conclusion: Some("SUCCESS".to_string()),
+            started_at: Some("2026-03-24T14:00:00Z".to_string()),
         };
         let item = node.to_rollup_item();
         assert_eq!(item.status.as_deref(), Some("COMPLETED"));
         assert_eq!(item.conclusion.as_deref(), Some("SUCCESS"));
+        assert_eq!(item.name.as_deref(), Some("build"));
+        assert_eq!(item.started_at.as_deref(), Some("2026-03-24T14:00:00Z"));
     }
 
     #[test]
     fn graphql_check_node_to_rollup_item_status_context() {
         let node = GraphqlCheckNode::StatusContext {
+            context: Some("ci/circleci".to_string()),
             state: Some("PENDING".to_string()),
+            created_at: Some("2026-03-24T14:00:00Z".to_string()),
         };
         let item = node.to_rollup_item();
         assert_eq!(item.status.as_deref(), Some("PENDING"));
         assert_eq!(item.conclusion, None);
+        assert_eq!(item.name.as_deref(), Some("ci/circleci"));
+        assert_eq!(item.started_at.as_deref(), Some("2026-03-24T14:00:00Z"));
+    }
+
+    #[test]
+    fn parse_github_timestamp_valid() {
+        assert_eq!(
+            parse_github_timestamp("2026-03-24T14:02:00Z"),
+            Some(1774360920)
+        );
+        // Unix epoch
+        assert_eq!(parse_github_timestamp("1970-01-01T00:00:00Z"), Some(0));
+    }
+
+    #[test]
+    fn parse_github_timestamp_invalid() {
+        assert_eq!(parse_github_timestamp(""), None);
+        assert_eq!(parse_github_timestamp("not a date"), None);
+        assert_eq!(parse_github_timestamp("2026-13-01T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn aggregate_checks_captures_failing_name() {
+        let checks = vec![
+            CheckRollupItem {
+                status: Some("COMPLETED".into()),
+                conclusion: Some("SUCCESS".into()),
+                name: Some("build".into()),
+                started_at: None,
+            },
+            CheckRollupItem {
+                status: Some("COMPLETED".into()),
+                conclusion: Some("FAILURE".into()),
+                name: Some("lint-check".into()),
+                started_at: None,
+            },
+        ];
+        let (state, meta) = aggregate_checks(&checks);
+        assert_eq!(
+            state,
+            Some(CheckState::Failure {
+                passed: 1,
+                total: 2
+            })
+        );
+        assert_eq!(
+            meta.as_ref().and_then(|m| m.failing_name.as_deref()),
+            Some("lint-check")
+        );
+    }
+
+    #[test]
+    fn aggregate_checks_captures_pending_started_at() {
+        let checks = vec![
+            CheckRollupItem {
+                status: Some("COMPLETED".into()),
+                conclusion: Some("SUCCESS".into()),
+                name: Some("build".into()),
+                started_at: Some("2026-03-24T14:00:00Z".into()),
+            },
+            CheckRollupItem {
+                status: Some("IN_PROGRESS".into()),
+                conclusion: None,
+                name: Some("test".into()),
+                started_at: Some("2026-03-24T14:05:00Z".into()),
+            },
+        ];
+        let (_state, meta) = aggregate_checks(&checks);
+        let meta = meta.unwrap();
+        // started_at should be the pending check's time (2026-03-24T14:05:00Z)
+        assert_eq!(meta.started_at, Some(1774361100));
     }
 }
