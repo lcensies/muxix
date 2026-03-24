@@ -68,9 +68,24 @@ impl SidebarApp {
         Ok(app)
     }
 
-    /// Lightweight update: just detect which window is focused.
+    /// Lightweight update: just detect which window is focused and move selection if it changed.
     pub fn update_active_window(&mut self) {
-        (self.active_session, self.active_window) = detect_active_window();
+        let (new_session, new_window) = detect_active_window();
+
+        // Only move selection when the active window actually changes
+        let changed = new_session != self.active_session || new_window != self.active_window;
+        self.active_session = new_session;
+        self.active_window = new_window;
+
+        if changed
+            && let (Some(session), Some(window)) = (&self.active_session, &self.active_window)
+            && let Some(idx) = self
+                .agents
+                .iter()
+                .position(|a| &a.session == session && &a.window_name == window)
+        {
+            self.list_state.select(Some(idx));
+        }
     }
 
     pub fn refresh(&mut self) {
