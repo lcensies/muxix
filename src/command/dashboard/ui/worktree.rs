@@ -522,6 +522,14 @@ fn render_info_panel(
             Span::styled("        ", label_style),
             Span::styled(truncated_title, Style::default().fg(color)),
         ]));
+
+        // Check detail: failing check name or pending elapsed time
+        let detail_spans = super::format::format_pr_details(pr, &app.palette);
+        if !detail_spans.is_empty() {
+            let mut line_spans = vec![Span::styled("        ", label_style)];
+            line_spans.extend(detail_spans);
+            lines.push(Line::from(line_spans));
+        }
     }
 
     // Agent status

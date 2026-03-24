@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::super::app::{App, DashboardTab};
 use super::super::spinner::SPINNER_FRAMES;
+use super::format;
 use super::format::{format_git_status, format_pr_status};
 use super::worktree::{render_worktree_preview, render_worktree_table};
 
@@ -325,7 +326,7 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             })
             .max()
             .unwrap_or(4)
-            .clamp(4, 16) // Increased from 12 to accommodate check icons + counts
+            .clamp(4, 20) // Accommodate check icons + counts + inline timer
             + 1
     } else {
         0
@@ -462,10 +463,23 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
         )
     };
 
-    let block = Block::bordered()
+    let mut block = Block::bordered()
         .title(title)
         .title_style(title_style)
         .border_style(border_style);
+
+    // Add right-aligned PR check detail to the preview border
+    if let Some(agent) = selected_agent
+        && let Some(pr) = app.get_pr_for_agent(agent)
+    {
+        let detail_spans = format::format_pr_details(pr, &app.palette);
+        if !detail_spans.is_empty() {
+            let mut title_spans = vec![Span::raw(" ")];
+            title_spans.extend(detail_spans);
+            title_spans.push(Span::raw(" "));
+            block = block.title_top(Line::from(title_spans).right_aligned());
+        }
+    }
 
     // Calculate the inner area to determine scroll offset
     let inner_area = block.inner(area);

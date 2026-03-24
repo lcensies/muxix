@@ -3,7 +3,7 @@
 use ratatui::style::{Modifier, Style};
 
 use crate::git::GitStatus;
-use crate::github::{CheckState, PrSummary};
+use crate::github::{CheckMeta, CheckState, PrSummary};
 use crate::nerdfont;
 
 use super::super::spinner::SPINNER_FRAMES;
@@ -204,10 +204,91 @@ pub fn format_pr_status(
                         Style::default().fg(check_color),
                     ));
                 }
+
+                // Show compact elapsed time for pending checks
+                if let Some(time_str) = format_check_elapsed(checks, pr.check_meta.as_ref()) {
+                    spans.push((
+                        format!(" {}", time_str),
+                        Style::default().fg(palette.dimmed),
+                    ));
+                }
             }
 
             spans
         }
         None => vec![("-".to_string(), Style::default().fg(palette.dimmed))],
+    }
+}
+
+/// Returns minimal PR detail spans for the preview title.
+/// - Pending: "◷ 12m" (dimmed)
+/// - Failure: "× lint-check" (danger color)
+/// - Success/None: empty
+pub fn format_pr_details(
+    pr: &PrSummary,
+    palette: &ThemePalette,
+) -> Vec<ratatui::text::Span<'static>> {
+    use ratatui::text::Span;
+
+    let Some(checks) = &pr.checks else {
+        return vec![];
+    };
+
+    match checks {
+        CheckState::Failure { .. } => {
+            let Some(meta) = &pr.check_meta else {
+                return vec![];
+            };
+            let Some(name) = &meta.failing_name else {
+                return vec![];
+            };
+            let icon = nerdfont::check_icons().failure;
+            vec![Span::styled(
+                format!("{} {}", icon, name),
+                Style::default().fg(palette.danger),
+            )]
+        }
+        CheckState::Pending { .. } => match format_check_elapsed(checks, pr.check_meta.as_ref()) {
+            Some(time_str) => {
+                let icon = nerdfont::check_icons().pending;
+                vec![Span::styled(
+                    format!("{} {}", icon, time_str),
+                    Style::default().fg(palette.dimmed),
+                )]
+            }
+            None => vec![],
+        },
+        CheckState::Success => vec![],
+    }
+}
+
+/// Format elapsed time for inline display in the PR column.
+/// Shows time for pending checks (live) only.
+fn format_check_elapsed(checks: &CheckState, meta: Option<&CheckMeta>) -> Option<String> {
+    let meta = meta?;
+    match checks {
+        CheckState::Pending { .. } => {
+            let start = meta.started_at?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_secs();
+            Some(format_compact_duration(now.saturating_sub(start)))
+        }
+        _ => None,
+    }
+}
+
+/// Format seconds into a compact string for inline display.
+/// Examples: "0s", "45s", "12m", "2h", "3d"
+fn format_compact_duration(secs: u64) -> String {
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h", secs / 3600)
+    } else {
+        format!("{}d", secs / 86400)
     }
 }
