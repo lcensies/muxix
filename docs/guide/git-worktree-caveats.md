@@ -52,7 +52,7 @@ In large monorepos, cleaning up `node_modules` during worktree removal can take 
 
 ## Rust projects
 
-Unlike `node_modules`, Rust's `target/` directory should **not** be symlinked between worktrees. Cargo locks the `target` directory during builds, so sharing it would block parallel builds and defeat the purpose of worktrees.
+Rust's `target/` directory should **not** be symlinked between worktrees. Cargo locks the `target` directory during builds, so sharing it would block parallel builds and defeat the purpose of worktrees.
 
 Instead, use [sccache](https://github.com/mozilla/sccache) to share compiled dependencies across worktrees:
 
