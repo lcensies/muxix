@@ -278,7 +278,7 @@ impl StateStore {
                 }
                 Some(live) => {
                     // Valid - include in dashboard
-                    let agent_pane = state.to_agent_pane(
+                    let mut agent_pane = state.to_agent_pane(
                         live.session
                             .clone()
                             .unwrap_or_else(|| state.session_name.clone().unwrap_or_default()),
@@ -286,6 +286,10 @@ impl StateStore {
                             .clone()
                             .unwrap_or_else(|| state.window_name.clone().unwrap_or_default()),
                     );
+                    // Prefer live pane title over stored (Claude Code updates title dynamically)
+                    if live.title.is_some() {
+                        agent_pane.pane_title = live.title.clone();
+                    }
                     valid_agents.push(agent_pane);
                 }
             }
