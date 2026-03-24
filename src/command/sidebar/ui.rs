@@ -104,7 +104,11 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
             let is_active = app
                 .active_window
                 .as_ref()
-                .is_some_and(|w| w == &agent.window_name);
+                .is_some_and(|w| w == &agent.window_name)
+                && app
+                    .active_session
+                    .as_ref()
+                    .is_some_and(|s| s == &agent.session);
 
             let name_style = if is_stale {
                 Style::default()

@@ -25,7 +25,8 @@ pub struct SidebarApp {
     pub stale_threshold_secs: u64,
     /// Window prefix from config
     window_prefix: String,
-    /// The currently active window name (used to highlight agents in the focused window)
+    /// The currently active session + window (used to highlight agents in the focused window)
+    pub active_session: Option<String>,
     pub active_window: Option<String>,
 }
 
@@ -54,6 +55,7 @@ impl SidebarApp {
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
             window_prefix,
+            active_session: None,
             active_window: None,
         };
 
@@ -68,11 +70,11 @@ impl SidebarApp {
 
     /// Lightweight update: just detect which window is focused.
     pub fn update_active_window(&mut self) {
-        self.active_window = detect_active_window();
+        (self.active_session, self.active_window) = detect_active_window();
     }
 
     pub fn refresh(&mut self) {
-        self.active_window = detect_active_window();
+        (self.active_session, self.active_window) = detect_active_window();
 
         let mut agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
@@ -183,12 +185,19 @@ impl SidebarApp {
     }
 }
 
-/// Detect the currently active window name.
-fn detect_active_window() -> Option<String> {
-    Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{window_name}"])
+/// Detect the currently active session and window name.
+fn detect_active_window() -> (Option<String>, Option<String>) {
+    let output = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{session_name}\t#{window_name}"])
         .run_and_capture_stdout()
         .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .unwrap_or_default();
+    let trimmed = output.trim();
+    if let Some((session, window)) = trimmed.split_once('\t') {
+        let s = (!session.is_empty()).then(|| session.to_string());
+        let w = (!window.is_empty()).then(|| window.to_string());
+        (s, w)
+    } else {
+        (None, None)
+    }
 }
