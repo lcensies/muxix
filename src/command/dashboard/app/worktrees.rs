@@ -490,6 +490,143 @@ impl App {
         }
     }
 
+    // ── Base branch picker methods ──────────────────────────────────
+
+    /// Open the base branch picker for the selected worktree.
+    pub fn show_base_branch_picker(&mut self) {
+        let Some(selected) = self.worktree_table_state.selected() else {
+            return;
+        };
+        let Some(worktree) = self.worktrees.get(selected) else {
+            return;
+        };
+
+        // Don't allow changing base for main worktree or detached HEAD
+        if worktree.is_main || worktree.branch == "(detached)" {
+            return;
+        }
+
+        let repo_path = worktree.path.clone();
+        let worktree_branch = worktree.branch.clone();
+        let current_base = worktree.base_branch.clone();
+
+        // List local branches, excluding the worktree's own branch
+        let branches = match git::list_local_branches_in(Some(&repo_path)) {
+            Ok(b) => b,
+            Err(_) => {
+                self.status_message = Some((
+                    "Failed to list branches".to_string(),
+                    std::time::Instant::now(),
+                ));
+                return;
+            }
+        };
+        let mut branches: Vec<_> = branches
+            .into_iter()
+            .filter(|b| *b != worktree_branch)
+            .collect();
+
+        // Pin current base to the top if it exists in the list
+        if let Some(ref base) = current_base
+            && let Some(pos) = branches.iter().position(|b| b == base)
+        {
+            let pinned = branches.remove(pos);
+            branches.insert(0, pinned);
+        }
+
+        let initial_cursor = 0;
+
+        self.pending_base_picker = Some(BaseBranchPicker {
+            branches,
+            cursor: initial_cursor,
+            filter: String::new(),
+            current_base,
+            worktree_branch,
+            repo_path,
+        });
+    }
+
+    /// Move cursor down in base branch picker.
+    pub fn base_picker_down(&mut self) {
+        if let Some(ref mut picker) = self.pending_base_picker {
+            let filtered = picker.filtered();
+            if !filtered.is_empty() && picker.cursor + 1 < filtered.len() {
+                picker.cursor += 1;
+            }
+        }
+    }
+
+    /// Move cursor up in base branch picker.
+    pub fn base_picker_up(&mut self) {
+        if let Some(ref mut picker) = self.pending_base_picker {
+            picker.cursor = picker.cursor.saturating_sub(1);
+        }
+    }
+
+    /// Append a character to the base branch picker filter.
+    pub fn base_picker_filter_append(&mut self, c: char) {
+        if let Some(ref mut picker) = self.pending_base_picker {
+            picker.filter.push(c);
+            picker.cursor = 0;
+        }
+    }
+
+    /// Delete the last character from the base branch picker filter.
+    pub fn base_picker_filter_delete(&mut self) {
+        if let Some(ref mut picker) = self.pending_base_picker {
+            picker.filter.pop();
+            picker.cursor = 0;
+        }
+    }
+
+    /// Confirm base branch picker selection: set the base and trigger refetch.
+    pub fn confirm_base_picker(&mut self) {
+        let Some(picker) = self.pending_base_picker.take() else {
+            return;
+        };
+        let filtered = picker.filtered();
+        let Some(&idx) = filtered.get(picker.cursor) else {
+            return;
+        };
+        let new_base = &picker.branches[idx];
+
+        if let Err(e) =
+            git::set_branch_base_in(&picker.worktree_branch, new_base, Some(&picker.repo_path))
+        {
+            self.status_message = Some((
+                format!("Failed to set base: {}", e),
+                std::time::Instant::now(),
+            ));
+            return;
+        }
+
+        // Update in-memory state immediately so the UI reflects the change
+        let new_base_owned = new_base.to_string();
+        for wt in self
+            .all_worktrees
+            .iter_mut()
+            .chain(self.worktrees.iter_mut())
+        {
+            if wt.branch == picker.worktree_branch {
+                wt.base_branch = Some(new_base_owned.clone());
+            }
+        }
+        // Also update the cached GitStatus so the Git column and detail panel refresh
+        if let Some(status) = self.git_statuses.get_mut(&picker.repo_path) {
+            status.base_branch = new_base_owned.clone();
+        }
+
+        self.status_message = Some((
+            format!(
+                "Base for '{}' set to '{}'",
+                picker.worktree_branch, new_base
+            ),
+            std::time::Instant::now(),
+        ));
+
+        self.trigger_worktree_refetch();
+    }
+
     /// Open a tmux window/session for the selected worktree via workflow::open,
     /// then close the dashboard.
     pub fn open_selected_worktree(&mut self) {

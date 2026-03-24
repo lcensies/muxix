@@ -130,6 +130,8 @@ pub struct App {
     pub pending_sweep: Option<SweepState>,
     /// Pending project picker state (shown in project picker modal)
     pub pending_project_picker: Option<ProjectPicker>,
+    /// Pending base branch picker state (shown in base picker modal)
+    pub pending_base_picker: Option<BaseBranchPicker>,
     /// Override which repo's worktrees are shown (name, git root path)
     pub worktree_project_override: Option<(String, PathBuf)>,
     /// Flag to prevent concurrent worktree fetches
@@ -242,6 +244,7 @@ impl App {
             pending_remove: None,
             pending_sweep: None,
             pending_project_picker: None,
+            pending_base_picker: None,
             worktree_project_override: None,
             is_worktree_fetching: Arc::new(AtomicBool::new(false)),
             // Set to past so first switch triggers immediate fetch

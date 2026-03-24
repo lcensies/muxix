@@ -105,6 +105,7 @@ fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('R') => Some(Action::StartSweep),
         KeyCode::Char('s') => Some(Action::CycleWorktreeSortMode),
         KeyCode::Char('p') => Some(Action::ShowProjectPicker),
+        KeyCode::Char('b') => Some(Action::ShowBaseBranchPicker),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
         KeyCode::Char('T') => Some(Action::CycleColorScheme),
         KeyCode::Char(c @ '1'..='9') => {
@@ -232,6 +233,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("c", "Close mux window"),
             ("R", "Sweep cleanup"),
             ("s", "Cycle sort mode"),
+            ("b", "Change base branch"),
             ("p", "Switch project"),
             ("/", "Filter worktrees"),
             ("T", "Cycle theme"),

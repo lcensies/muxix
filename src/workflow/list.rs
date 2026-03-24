@@ -207,6 +207,8 @@ pub fn list_in(
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs());
 
+            let base_branch = git::get_branch_base_in(&branch, repo).ok();
+
             WorktreeInfo {
                 handle,
                 branch,
@@ -218,6 +220,7 @@ pub fn list_in(
                 pr_info,
                 agent_status,
                 created_at,
+                base_branch,
             }
         })
         .collect();

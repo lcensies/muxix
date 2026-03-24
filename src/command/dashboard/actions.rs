@@ -75,6 +75,7 @@ pub enum Action {
     CycleWorktreeSortMode,
     JumpToSelectedWorktree,
     ShowProjectPicker,
+    ShowBaseBranchPicker,
 
     // Filter mode
     EnterFilterMode,
@@ -258,6 +259,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::ShowProjectPicker => {
             app.show_project_picker();
+            false
+        }
+        Action::ShowBaseBranchPicker => {
+            app.show_base_branch_picker();
             false
         }
 

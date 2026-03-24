@@ -302,6 +302,24 @@ fn handle_terminal_event(
         return;
     }
 
+    // Base branch picker modal
+    if app.pending_base_picker.is_some() {
+        match key.code {
+            crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Down => {
+                app.base_picker_down()
+            }
+            crossterm::event::KeyCode::Char('k') | crossterm::event::KeyCode::Up => {
+                app.base_picker_up()
+            }
+            crossterm::event::KeyCode::Enter => app.confirm_base_picker(),
+            crossterm::event::KeyCode::Backspace => app.base_picker_filter_delete(),
+            crossterm::event::KeyCode::Esc => app.pending_base_picker = None,
+            crossterm::event::KeyCode::Char(c) => app.base_picker_filter_append(c),
+            _ => {}
+        }
+        return;
+    }
+
     // Project picker modal
     if app.pending_project_picker.is_some() {
         match key.code {

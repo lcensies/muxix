@@ -105,6 +105,35 @@ impl ProjectPicker {
     }
 }
 
+/// State for the base branch picker modal.
+pub struct BaseBranchPicker {
+    pub branches: Vec<String>,
+    pub cursor: usize,
+    pub filter: String,
+    /// Current base branch of the selected worktree (highlighted in picker)
+    pub current_base: Option<String>,
+    /// Branch name of the worktree being edited
+    pub worktree_branch: String,
+    /// Path to the worktree's repo (for running git commands)
+    pub repo_path: PathBuf,
+}
+
+impl BaseBranchPicker {
+    /// Return indices into `branches` that match the current filter.
+    pub fn filtered(&self) -> Vec<usize> {
+        if self.filter.is_empty() {
+            return (0..self.branches.len()).collect();
+        }
+        let lower = self.filter.to_lowercase();
+        self.branches
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.to_lowercase().contains(&lower))
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
 /// Plan for a pending worktree removal (shown in confirmation modal).
 pub struct RemovePlan {
     pub handle: String,

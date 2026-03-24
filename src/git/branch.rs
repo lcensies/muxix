@@ -146,6 +146,31 @@ pub fn list_checkout_branches() -> Result<Vec<String>> {
         .collect())
 }
 
+/// List all local branches in a specific workdir, without excluding checked-out ones.
+/// Suitable for base branch selection where any local branch is a valid target.
+pub fn list_local_branches_in(workdir: Option<&Path>) -> Result<Vec<String>> {
+    let cmd = Cmd::new("git").args(&[
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "--sort=refname",
+        "refs/heads/",
+    ]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let output = cmd
+        .run_and_capture_stdout()
+        .context("Failed to list local branches")?;
+
+    Ok(output
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect())
+}
+
 /// Delete a local branch.
 pub fn delete_branch_in(branch_name: &str, force: bool, git_common_dir: &Path) -> Result<()> {
     let mut cmd = Cmd::new("git").workdir(git_common_dir).arg("branch");
@@ -290,15 +315,18 @@ pub(super) fn branch_has_upstream(branch_name: &str) -> Result<bool> {
 
 /// Store the base branch/commit that a branch was created from
 pub fn set_branch_base(branch: &str, base: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            &format!("branch.{}.workmux-base", branch),
-            base,
-        ])
-        .run()
-        .context("Failed to set workmux-base config")?;
+    set_branch_base_in(branch, base, None)
+}
+
+/// Store the base branch/commit in a specific workdir
+pub fn set_branch_base_in(branch: &str, base: &str, workdir: Option<&Path>) -> Result<()> {
+    let config_key = format!("branch.{}.workmux-base", branch);
+    let cmd = Cmd::new("git").args(&["config", "--local", &config_key, base]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run().context("Failed to set workmux-base config")?;
     Ok(())
 }
 

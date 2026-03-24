@@ -170,4 +170,6 @@ pub struct WorktreeInfo {
     pub agent_status: Option<AgentStatusSummary>,
     /// Worktree directory creation time (Unix timestamp in seconds)
     pub created_at: Option<u64>,
+    /// The base branch this worktree was created from (from git config)
+    pub base_branch: Option<String>,
 }
