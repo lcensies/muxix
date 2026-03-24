@@ -37,9 +37,17 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
         return Err(anyhow!("Sidebar requires tmux"));
     }
 
-    // Check if sidebar is currently enabled AND any sidebar panes actually exist
-    if is_sidebar_enabled() && any_sidebar_panes_exist() {
-        // Toggling OFF: kill all sidebar panes, restore layouts, remove hooks, unset options
+    // Determine intent based on the current window's state
+    let current_window = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_id}"])
+        .run_and_capture_stdout()?
+        .trim()
+        .to_string();
+
+    let current_has_sidebar = find_sidebar_in_window(&current_window).unwrap_or(false);
+
+    if current_has_sidebar {
+        // Current window has sidebar → toggle OFF globally
         kill_all_sidebars_and_restore_layouts();
         remove_hooks();
         let _ = Cmd::new("tmux")
@@ -51,7 +59,7 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
         return Ok(());
     }
 
-    // Toggling ON: set global options, create sidebars in all windows, install hooks
+    // Current window missing sidebar → enable/repair globally
     let width_str = width.to_string();
     Cmd::new("tmux")
         .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
@@ -99,14 +107,6 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn any_sidebar_panes_exist() -> bool {
-    Cmd::new("tmux")
-        .args(&["list-panes", "-a", "-F", "#{@workmux_role}"])
-        .run_and_capture_stdout()
-        .map(|s| s.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
-        .unwrap_or(false)
-}
-
 fn is_sidebar_enabled() -> bool {
     Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
@@ -133,8 +133,12 @@ fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
     Ok(output.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
 }
 
-/// Create a sidebar pane in a specific window.
+/// Create a sidebar pane in a specific window (idempotent).
 fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
+    if find_sidebar_in_window(window_id).unwrap_or(false) {
+        return Ok(());
+    }
+
     let exe = std::env::current_exe()?;
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
     let width_str = width.to_string();
