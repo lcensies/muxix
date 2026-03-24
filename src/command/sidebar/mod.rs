@@ -37,10 +37,10 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
         return Err(anyhow!("Sidebar requires tmux"));
     }
 
-    // Check if sidebar is currently enabled
-    if is_sidebar_enabled() {
-        // Toggling OFF: kill all sidebar panes, remove hooks, unset options
-        kill_all_sidebars();
+    // Check if sidebar is currently enabled AND any sidebar panes actually exist
+    if is_sidebar_enabled() && any_sidebar_panes_exist() {
+        // Toggling OFF: kill all sidebar panes, restore layouts, remove hooks, unset options
+        kill_all_sidebars_and_restore_layouts();
         remove_hooks();
         let _ = Cmd::new("tmux")
             .args(&["set-option", "-gu", "@workmux_sidebar_enabled"])
@@ -85,6 +85,14 @@ pub fn sync() -> Result<()> {
     Ok(())
 }
 
+fn any_sidebar_panes_exist() -> bool {
+    Cmd::new("tmux")
+        .args(&["list-panes", "-a", "-F", "#{@workmux_role}"])
+        .run_and_capture_stdout()
+        .map(|s| s.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
+        .unwrap_or(false)
+}
+
 fn is_sidebar_enabled() -> bool {
     Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
@@ -123,6 +131,14 @@ fn create_sidebar_in_current_window(width: u16) -> Result<()> {
     let exe = std::env::current_exe()?;
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
     let width_str = width.to_string();
+
+    // Save layout before adding sidebar
+    if let Ok(window_id) = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_id}"])
+        .run_and_capture_stdout()
+    {
+        save_window_layout(window_id.trim());
+    }
 
     let new_pane_id = Cmd::new("tmux")
         .args(&[
@@ -182,6 +198,9 @@ fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
             continue;
         }
 
+        // Save layout before adding sidebar so we can restore it later
+        save_window_layout(window_id);
+
         // Get the first pane in the window as split target
         let target = Cmd::new("tmux")
             .args(&["list-panes", "-t", window_id, "-F", "#{pane_id}"])
@@ -228,17 +247,83 @@ fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
     Ok(())
 }
 
-/// Kill all sidebar panes across all windows.
-fn kill_all_sidebars() {
+/// Kill all sidebar panes and restore the original layout in each window.
+fn kill_all_sidebars_and_restore_layouts() {
+    // Find all sidebar panes with their window IDs
     let output = Cmd::new("tmux")
-        .args(&["list-panes", "-a", "-F", "#{pane_id} #{@workmux_role}"])
+        .args(&[
+            "list-panes",
+            "-a",
+            "-F",
+            "#{window_id} #{pane_id} #{@workmux_role}",
+        ])
         .run_and_capture_stdout()
         .unwrap_or_default();
 
+    let mut windows_with_sidebars = Vec::new();
+
     for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(2, ' ').collect();
-        if parts.len() == 2 && parts[1].trim() == SIDEBAR_ROLE_VALUE {
-            let _ = Cmd::new("tmux").args(&["kill-pane", "-t", parts[0]]).run();
+        let parts: Vec<&str> = line.splitn(3, ' ').collect();
+        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
+            windows_with_sidebars.push(parts[0].to_string());
+            let _ = Cmd::new("tmux").args(&["kill-pane", "-t", parts[1]]).run();
+        }
+    }
+
+    // Restore saved layouts
+    for window_id in &windows_with_sidebars {
+        restore_window_layout(window_id);
+    }
+}
+
+/// Save a window's layout to a tmux window option.
+fn save_window_layout(window_id: &str) {
+    if let Ok(layout) = Cmd::new("tmux")
+        .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
+        .run_and_capture_stdout()
+    {
+        let layout = layout.trim();
+        if !layout.is_empty() {
+            let _ = Cmd::new("tmux")
+                .args(&[
+                    "set-option",
+                    "-w",
+                    "-t",
+                    window_id,
+                    "@workmux_sidebar_layout",
+                    layout,
+                ])
+                .run();
+        }
+    }
+}
+
+/// Restore a window's layout from the saved tmux window option.
+fn restore_window_layout(window_id: &str) {
+    if let Ok(layout) = Cmd::new("tmux")
+        .args(&[
+            "show-option",
+            "-wqv",
+            "-t",
+            window_id,
+            "@workmux_sidebar_layout",
+        ])
+        .run_and_capture_stdout()
+    {
+        let layout = layout.trim();
+        if !layout.is_empty() {
+            let _ = Cmd::new("tmux")
+                .args(&["select-layout", "-t", window_id, layout])
+                .run();
+            let _ = Cmd::new("tmux")
+                .args(&[
+                    "set-option",
+                    "-wu",
+                    "-t",
+                    window_id,
+                    "@workmux_sidebar_layout",
+                ])
+                .run();
         }
     }
 }
@@ -251,12 +336,7 @@ fn install_hooks() -> Result<()> {
     let sync_cmd = format!("run-shell -b '{} _sidebar-sync'", exe_str);
 
     Cmd::new("tmux")
-        .args(&[
-            "set-hook",
-            "-g",
-            "after-new-window[workmux_sidebar]",
-            &sync_cmd,
-        ])
+        .args(&["set-hook", "-g", "after-new-window[99]", &sync_cmd])
         .run()?;
 
     Ok(())
@@ -265,8 +345,17 @@ fn install_hooks() -> Result<()> {
 /// Remove tmux hooks.
 fn remove_hooks() {
     let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-new-window[workmux_sidebar]"])
+        .args(&["set-hook", "-gu", "after-new-window[99]"])
         .run();
+}
+
+/// Check if the sidebar is the only pane left in its window.
+fn is_last_pane_in_window() -> bool {
+    Cmd::new("tmux")
+        .args(&["list-panes", "-F", "#{pane_id}"])
+        .run_and_capture_stdout()
+        .map(|s| s.lines().count() <= 1)
+        .unwrap_or(false)
 }
 
 /// Drop guard that restores terminal state on panic or early return.
@@ -319,23 +408,25 @@ pub fn run_sidebar() -> Result<()> {
                 continue;
             }
 
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('q'), _)
+                | (KeyCode::Esc, _)
+                | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
                     app.should_quit = true;
                 }
-                KeyCode::Char('j') | KeyCode::Down => {
+                (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
                     app.next();
                 }
-                KeyCode::Char('k') | KeyCode::Up => {
+                (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
                     app.previous();
                 }
-                KeyCode::Enter => {
+                (KeyCode::Enter, _) => {
                     app.jump_to_selected();
                 }
-                KeyCode::Char('G') => {
+                (KeyCode::Char('G'), _) => {
                     app.select_last();
                 }
-                KeyCode::Char('g') => {
+                (KeyCode::Char('g'), _) => {
                     app.select_first();
                 }
                 _ => {}
@@ -351,6 +442,11 @@ pub fn run_sidebar() -> Result<()> {
         if last_refresh.elapsed() >= refresh_interval {
             app.refresh();
             last_refresh = std::time::Instant::now();
+
+            // Quit if we're the last pane in the window
+            if is_last_pane_in_window() {
+                app.should_quit = true;
+            }
         }
 
         if app.should_quit {
