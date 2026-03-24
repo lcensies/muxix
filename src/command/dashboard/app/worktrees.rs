@@ -492,23 +492,42 @@ impl App {
 
     // ── Base branch picker methods ──────────────────────────────────
 
-    /// Open the base branch picker for the selected worktree.
+    /// Open the base branch picker for the selected worktree (works from both tabs).
     pub fn show_base_branch_picker(&mut self) {
-        let Some(selected) = self.worktree_table_state.selected() else {
-            return;
+        // Resolve repo path, branch, and current base from whichever tab is active
+        let (repo_path, worktree_branch, current_base) = match self.active_tab {
+            DashboardTab::Worktrees => {
+                let Some(selected) = self.worktree_table_state.selected() else {
+                    return;
+                };
+                let Some(worktree) = self.worktrees.get(selected) else {
+                    return;
+                };
+                if worktree.is_main || worktree.branch == "(detached)" {
+                    return;
+                }
+                (
+                    worktree.path.clone(),
+                    worktree.branch.clone(),
+                    worktree.base_branch.clone(),
+                )
+            }
+            DashboardTab::Agents => {
+                let Some(selected) = self.table_state.selected() else {
+                    return;
+                };
+                let Some(agent) = self.agents.get(selected) else {
+                    return;
+                };
+                let path = agent.path.clone();
+                let branch = match git::get_current_branch_in(&path) {
+                    Ok(b) if !b.is_empty() && b != "(detached)" => b,
+                    _ => return,
+                };
+                let base = git::get_branch_base_in(&branch, Some(&path)).ok();
+                (path, branch, base)
+            }
         };
-        let Some(worktree) = self.worktrees.get(selected) else {
-            return;
-        };
-
-        // Don't allow changing base for main worktree or detached HEAD
-        if worktree.is_main || worktree.branch == "(detached)" {
-            return;
-        }
-
-        let repo_path = worktree.path.clone();
-        let worktree_branch = worktree.branch.clone();
-        let current_base = worktree.base_branch.clone();
 
         // List local branches, excluding the worktree's own branch
         let branches = match git::list_local_branches_in(Some(&repo_path)) {

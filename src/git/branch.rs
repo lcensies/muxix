@@ -117,6 +117,14 @@ pub fn get_current_branch() -> Result<String> {
         .run_and_capture_stdout()
 }
 
+/// Get the current branch in a specific workdir
+pub fn get_current_branch_in(workdir: &Path) -> Result<String> {
+    Cmd::new("git")
+        .workdir(workdir)
+        .args(&["branch", "--show-current"])
+        .run_and_capture_stdout()
+}
+
 /// List all checkout-able branches (local and remote) for shell completion.
 /// Excludes branches that are already checked out in existing worktrees.
 pub fn list_checkout_branches() -> Result<Vec<String>> {

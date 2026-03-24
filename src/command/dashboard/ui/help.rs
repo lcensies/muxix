@@ -468,10 +468,27 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
 
     let filtered = picker.filtered();
 
+    // Fixed dimensions: filter line + blank + visible slots + blank + footer + borders
+    let max_visible: usize = picker.branches.len().clamp(1, 15);
+    let content_width = picker
+        .branches
+        .iter()
+        .map(|b| 2 + b.len())
+        .max()
+        .unwrap_or(20);
+    let width = (content_width as u16 + 4).clamp(36, 60);
+    // 1 filter + 1 blank + max_visible items + 1 blank + 1 footer + 2 borders
+    let height = (max_visible as u16) + 6;
+
     let mut lines: Vec<Line> = Vec::new();
 
-    // Filter input line (shown when typing)
-    if !picker.filter.is_empty() {
+    // Filter input line (always present to keep layout stable)
+    if picker.filter.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(" /", Style::default().fg(palette.dimmed)),
+            Span::styled("_", Style::default().fg(palette.dimmed)),
+        ]));
+    } else {
         lines.push(Line::from(vec![
             Span::styled(" /", Style::default().fg(palette.dimmed)),
             Span::styled(picker.filter.clone(), Style::default().fg(palette.text)),
@@ -486,8 +503,23 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
             " No matching branches.",
             Style::default().fg(palette.dimmed),
         )]));
+        // Fill remaining slots so height stays fixed
+        for _ in 1..max_visible {
+            lines.push(Line::from(""));
+        }
     } else {
-        for (fi, &idx) in filtered.iter().enumerate() {
+        // Compute a window of items around the cursor
+        let total = filtered.len();
+        let start = if total <= max_visible || picker.cursor < max_visible / 2 {
+            0
+        } else if picker.cursor + max_visible / 2 >= total {
+            total.saturating_sub(max_visible)
+        } else {
+            picker.cursor - max_visible / 2
+        };
+        let end = (start + max_visible).min(total);
+
+        for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
             let branch = &picker.branches[idx];
             let cursor = if fi == picker.cursor { "> " } else { "  " };
 
@@ -504,6 +536,11 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
                 Span::styled(branch.clone(), name_style),
             ]));
         }
+
+        // Fill remaining slots so height stays fixed
+        for _ in (end - start)..max_visible {
+            lines.push(Line::from(""));
+        }
     }
 
     lines.push(Line::from(""));
@@ -516,16 +553,6 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
         bold("Esc"),
         dim(" cancel"),
     ]));
-
-    // Calculate dimensions
-    let height = lines.len() as u16 + 2;
-    let content_width = picker
-        .branches
-        .iter()
-        .map(|b| 2 + b.len())
-        .max()
-        .unwrap_or(20);
-    let width = (content_width as u16 + 4).clamp(36, 60);
 
     let area = f.area();
     let popup_area = Rect {
