@@ -1265,6 +1265,9 @@ worktrees at once.
   a deleted `.env` file.
 - `-p, --prompt <text>`: Provide an inline prompt for AI agent panes.
 - `-P, --prompt-file <path>`: Provide a path to a file containing the prompt.
+- `-c, --continue`: Resume the agent's most recent conversation in this
+  worktree. Injects the appropriate flag for the configured agent (e.g.,
+  `--continue` for Claude, `--resume` for Gemini).
 - `-e, --prompt-editor`: Open your editor to write the prompt interactively.
 - `--prompt-file-only`: Write the prompt file without injecting it into agent
   commands.
@@ -1293,8 +1296,11 @@ workmux open --new
 # Open in session mode (converts from window mode if needed)
 workmux open user-auth --session
 
-# Open with a prompt for AI agents
-workmux open user-auth -p "Continue implementing the login flow"
+# Resume the agent's last conversation
+workmux open user-auth --continue
+
+# Resume and send a follow-up prompt
+workmux open user-auth --continue -p "Continue implementing the login flow"
 
 # Open and re-run dependency installation
 workmux open user-auth --run-hooks

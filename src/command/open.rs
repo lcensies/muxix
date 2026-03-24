@@ -12,6 +12,7 @@ pub fn run(
     force_files: bool,
     new_window: bool,
     session: bool,
+    continue_session: bool,
     prompt_args: PromptArgs,
 ) -> Result<()> {
     // Resolve names: use provided names, or infer from current directory with --new
@@ -90,6 +91,7 @@ pub fn run(
         let mut options = SetupOptions::new(run_hooks, force_files, true);
         options.mode = preliminary_mode;
         options.prompt_file_path = prompt_file_path;
+        options.continue_session = continue_session;
 
         // Only announce hooks if we're forcing a new target (otherwise we might just switch)
         if new_window {

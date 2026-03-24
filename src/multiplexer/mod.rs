@@ -299,7 +299,7 @@ pub trait Multiplexer: Send + Sync {
                 &shell,
             );
 
-            let pane_id = if let Some(resolved) = adjusted_command {
+            let pane_id = if let Some(mut resolved) = adjusted_command {
                 // Use per-pane agent if set, otherwise fall back to window-level agent
                 let pane_agent = resolved.effective_agent.as_deref().or(effective_agent);
 
@@ -333,6 +333,20 @@ pub trait Multiplexer: Send + Sync {
                         || agent::is_known_agent(cmd)
                         || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
                 });
+
+                // Inject continue/resume flag for agent panes when requested
+                if options.continue_session && is_agent_pane {
+                    let profile = agent::resolve_profile(pane_agent);
+                    if let Some(flag) = profile.continue_flag() {
+                        resolved.command =
+                            util::inject_skip_permissions_flag(&resolved.command, flag);
+                    } else {
+                        tracing::warn!(
+                            agent = profile.name(),
+                            "agent does not support --continue, flag ignored"
+                        );
+                    }
+                }
 
                 // Apply sandbox wrapping if enabled for this pane type
                 let final_command = if config.sandbox.is_enabled() {

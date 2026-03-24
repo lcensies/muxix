@@ -94,6 +94,8 @@ pub struct PaneSetupOptions<'a> {
     pub worktree_root: Option<&'a std::path::Path>,
     /// Pre-booted Lima VM name (if sandbox backend is Lima and VM was booted before window creation)
     pub lima_vm_name: Option<&'a str>,
+    /// If true, inject the agent's continue/resume flag to resume the last conversation.
+    pub continue_session: bool,
 }
 
 /// Backend type for multiplexer selection

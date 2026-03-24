@@ -160,6 +160,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             config_root: options.config_root.clone(),
             open_if_exists: false,
             mode: options.mode,
+            continue_session: options.continue_session,
         };
 
         // In file-only mode, pass the prompt so open can write it to the worktree

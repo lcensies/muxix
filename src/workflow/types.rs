@@ -94,6 +94,8 @@ pub struct SetupOptions {
     pub open_if_exists: bool,
     /// Mode for tmux operations: window (default) or session
     pub mode: MuxMode,
+    /// If true, inject the agent's continue/resume flag to resume the last conversation.
+    pub continue_session: bool,
 }
 
 impl SetupOptions {
@@ -110,6 +112,7 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            continue_session: false,
         }
     }
 
@@ -125,6 +128,7 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            continue_session: false,
         }
     }
 
@@ -146,6 +150,7 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            continue_session: false,
         }
     }
 }

@@ -320,6 +320,10 @@ enum Commands {
         #[arg(short = 's', long)]
         session: bool,
 
+        /// Resume the agent's most recent conversation in this worktree
+        #[arg(short = 'c', long = "continue")]
+        continue_session: bool,
+
         #[command(flatten)]
         prompt: PromptArgs,
     },
@@ -735,8 +739,17 @@ pub fn run() -> Result<()> {
             force_files,
             new,
             session,
+            continue_session,
             prompt,
-        } => command::open::run(&names, run_hooks, force_files, new, session, prompt),
+        } => command::open::run(
+            &names,
+            run_hooks,
+            force_files,
+            new,
+            session,
+            continue_session,
+            prompt,
+        ),
         Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Merge {
             name,
