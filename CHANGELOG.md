@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.149 (2026-03-24)
+
+- Dashboard: show elapsed time for pending PR checks and the name of failing
+  checks across all views (PR column, agents pane, worktree info panel)
+
 ## v0.1.148 (2026-03-24)
 
 - Dashboard: add base branch picker (`b`) to change a worktree's base branch
