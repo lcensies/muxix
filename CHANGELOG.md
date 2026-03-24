@@ -17,6 +17,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.148 (2026-03-24)
+
+- Dashboard: add base branch picker (`b`) to change a worktree's base branch
+  from either the worktrees or agents tab
+- Dashboard: open PR checks page in browser with `O` (shift-o) to quickly see
+  why checks failed
+- Dashboard: agent task descriptions now stay up to date in real time instead of
+  showing the initial title
+- Fix a crash caused by mouse coordinate overflow when using tmux 3.6a
+
 ## v0.1.147 (2026-03-23)
 
 - Dashboard: open a worktree's pull request in the browser with `o`
