@@ -436,6 +436,7 @@ pub fn run_sidebar() -> Result<()> {
         if last_tick.elapsed() >= tick_rate {
             last_tick = std::time::Instant::now();
             app.tick();
+            app.update_active_window();
         }
 
         // Auto-refresh agent list

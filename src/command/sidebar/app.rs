@@ -5,9 +5,10 @@ use ratatui::widgets::ListState;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::cmd::Cmd;
 use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
 use crate::config::{Config, StatusIcons};
-use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
+use crate::multiplexer::{AgentPane, Multiplexer};
 use crate::state::StateStore;
 
 use crate::command::dashboard::ui::theme::ThemePalette;
@@ -24,6 +25,8 @@ pub struct SidebarApp {
     pub stale_threshold_secs: u64,
     /// Window prefix from config
     window_prefix: String,
+    /// The currently active window name (used to highlight agents in the focused window)
+    pub active_window: Option<String>,
 }
 
 impl SidebarApp {
@@ -51,6 +54,7 @@ impl SidebarApp {
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
             window_prefix,
+            active_window: None,
         };
 
         app.refresh();
@@ -62,33 +66,25 @@ impl SidebarApp {
         Ok(app)
     }
 
+    /// Lightweight update: just detect which window is focused.
+    pub fn update_active_window(&mut self) {
+        self.active_window = detect_active_window();
+    }
+
     pub fn refresh(&mut self) {
+        self.active_window = detect_active_window();
+
         let mut agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
 
-        // Sort by priority (same logic as dashboard)
-        let stale_threshold = self.stale_threshold_secs;
+        // Sort by recency (most recent status change first)
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
         agents.sort_by_cached_key(|a| {
-            let is_stale = a
-                .status_ts
-                .map(|ts| now.saturating_sub(ts) > stale_threshold)
-                .unwrap_or(false);
-            let priority = if is_stale {
-                3u8
-            } else {
-                match a.status {
-                    Some(AgentStatus::Waiting) => 0,
-                    Some(AgentStatus::Done) => 1,
-                    Some(AgentStatus::Working) => 2,
-                    None => 3,
-                }
-            };
             let elapsed = a
                 .status_ts
                 .map(|ts| now.saturating_sub(ts))
@@ -99,7 +95,7 @@ impl SidebarApp {
                 .unwrap_or(&a.pane_id)
                 .parse()
                 .unwrap_or(u64::MAX);
-            (priority, elapsed, pane_num)
+            (elapsed, pane_num)
         });
 
         // Preserve selection by pane_id
@@ -185,4 +181,14 @@ impl SidebarApp {
             format!("{}/{}", project, worktree)
         }
     }
+}
+
+/// Detect the currently active window name.
+fn detect_active_window() -> Option<String> {
+    Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_name}"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }

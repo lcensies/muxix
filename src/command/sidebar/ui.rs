@@ -90,6 +90,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
             } else {
                 String::new()
             };
+
             // Calculate available width for the name
             // Layout: "{icon}{pad} {name} {elapsed}"
             let elapsed_width = elapsed.len();
@@ -100,10 +101,19 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
             let display_name = truncate_to_width(&worktree_name, name_width);
             let padding = name_width.saturating_sub(display_width(&display_name));
 
+            let is_active = app
+                .active_window
+                .as_ref()
+                .is_some_and(|w| w == &agent.window_name);
+
             let name_style = if is_stale {
                 Style::default()
                     .fg(app.palette.dimmed)
                     .add_modifier(Modifier::DIM)
+            } else if is_active {
+                Style::default()
+                    .fg(app.palette.current_worktree_fg)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(app.palette.text)
             };
