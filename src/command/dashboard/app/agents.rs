@@ -478,6 +478,16 @@ impl App {
 
     /// Open the PR associated with the selected agent or worktree in the browser.
     pub fn open_pr_for_selected(&mut self) {
+        self.open_pr_url(|url| url.to_string());
+    }
+
+    /// Open the PR checks page for the selected agent or worktree in the browser.
+    pub fn open_pr_checks_for_selected(&mut self) {
+        self.open_pr_url(|url| format!("{url}/checks"));
+    }
+
+    /// Open a URL derived from the selected item's PR URL.
+    fn open_pr_url(&mut self, make_url: impl FnOnce(&str) -> String) {
         let pr = match self.active_tab {
             DashboardTab::Agents => self
                 .table_state
@@ -494,14 +504,14 @@ impl App {
 
         match pr {
             Some(ref pr) if pr.url.is_some() => {
-                let url = pr.url.as_ref().unwrap();
+                let url = make_url(pr.url.as_ref().unwrap());
 
                 #[cfg(target_os = "macos")]
                 let cmd = "open";
                 #[cfg(not(target_os = "macos"))]
                 let cmd = "xdg-open";
 
-                if let Err(e) = std::process::Command::new(cmd).arg(url).spawn() {
+                if let Err(e) = std::process::Command::new(cmd).arg(&url).spawn() {
                     self.status_message = Some((
                         format!("Failed to open browser: {e}"),
                         std::time::Instant::now(),

@@ -63,6 +63,7 @@ pub enum Action {
 
     // Shared (both tabs)
     OpenPr,
+    OpenPrChecks,
 
     // Worktree view
     WorktreeNext,
@@ -209,6 +210,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         // Shared (both tabs)
         Action::OpenPr => {
             app.open_pr_for_selected();
+            false
+        }
+        Action::OpenPrChecks => {
+            app.open_pr_checks_for_selected();
             false
         }
 
