@@ -21,7 +21,7 @@ workmux list [options] [worktree-or-branch...]
 | Flag     | Description                                                                                                                                                                                                                                          |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--pr`   | Show GitHub PR status for each worktree. Requires the `gh` CLI to be installed and authenticated. Note that it shows pull requests' statuses with [Nerd Font](https://www.nerdfonts.com/) icons, which requires Nerd Font compatible font installed. |
-| `--json` | Output as JSON. Produces a JSON array of objects with fields: `handle`, `branch`, `path`, `is_main`, `mode`, `has_uncommitted_changes`, `is_open`.                                                                                                   |
+| `--json` | Output as JSON. Produces a JSON array of objects with fields: `handle`, `branch`, `path`, `is_main`, `mode`, `has_uncommitted_changes`, `is_open`, `created_at`.                                                                                     |
 
 ## Examples
 
@@ -45,15 +45,16 @@ workmux list feature-auth feature-api
 ## Example output
 
 ```
-BRANCH      AGENT  MUX  UNMERGED  PATH
-main        -      -    -         ~/project
-user-auth   🤖     ✓    -         ~/project__worktrees/user-auth
-bug-fix     ✅     ✓    ●         ~/project__worktrees/bug-fix
-api-work    -      ✓    -         ~/project__worktrees/api-work
+BRANCH      AGE  AGENT  MUX  UNMERGED  PATH
+main        -    -      -    -         ~/project
+user-auth   2h   🤖     ✓    -         ~/project__worktrees/user-auth
+bug-fix     3d   ✅     ✓    ●         ~/project__worktrees/bug-fix
+api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 ```
 
 ## Key
 
+- AGE column shows how old the worktree is, based on directory creation time. Uses compact units: `m`, `h`, `d`, `w`, `mo`, `y`. Shows `-` for the main worktree or when creation time is unavailable.
 - AGENT column shows the current agent status using [status icons](/guide/status-tracking):
   - `🤖` = agent is working
   - `💬` = agent is waiting for user input

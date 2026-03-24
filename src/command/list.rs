@@ -3,6 +3,7 @@ use std::io::IsTerminal;
 use crate::config;
 use crate::config::MuxMode;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
+use crate::util::format_compact_age;
 use crate::workflow::types::AgentStatusSummary;
 use crate::{git, nerdfont, workflow};
 use anyhow::Result;
@@ -10,13 +11,15 @@ use pathdiff::diff_paths;
 use serde::Serialize;
 use tabled::{
     Table, Tabled,
-    settings::{Padding, Style, disable::Remove, object::Columns},
+    settings::{Padding, Style, disable::Remove, location::ByColumnName, object::Columns},
 };
 
 #[derive(Tabled)]
 struct WorktreeRow {
     #[tabled(rename = "BRANCH")]
     branch: String,
+    #[tabled(rename = "AGE")]
+    age: String,
     #[tabled(rename = "PR")]
     pr_status: String,
     #[tabled(rename = "AGENT")]
@@ -120,6 +123,7 @@ struct JsonWorktree {
     mode: String,
     has_uncommitted_changes: bool,
     is_open: bool,
+    created_at: Option<u64>,
 }
 
 pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
@@ -151,6 +155,7 @@ pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
                 },
                 has_uncommitted_changes: git::has_uncommitted_changes(&wt.path).unwrap_or(false),
                 is_open: wt.has_mux_window,
+                created_at: wt.created_at,
             })
             .collect();
         println!("{}", serde_json::to_string(&entries)?);
@@ -160,6 +165,10 @@ pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
     // Use icons when outputting to a terminal, text labels when piped (for agents)
     let use_icons = std::io::stdout().is_terminal();
     let current_dir = std::env::current_dir()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
     let display_data: Vec<WorktreeRow> = worktrees
         .into_iter()
@@ -175,8 +184,17 @@ pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
                 })
                 .unwrap_or_else(|| wt.path.display().to_string());
 
+            let age = if wt.is_main {
+                "-".to_string()
+            } else {
+                wt.created_at
+                    .map(|ts| format_compact_age(now.saturating_sub(ts)))
+                    .unwrap_or_else(|| "-".to_string())
+            };
+
             WorktreeRow {
                 branch: wt.branch,
+                age,
                 pr_status: format_pr_status(wt.pr_info),
                 agent_status: format_agent_status(wt.agent_status.as_ref(), &config, use_icons),
                 mux_status: if wt.has_mux_window {
@@ -197,11 +215,11 @@ pub fn run(show_pr: bool, json: bool, filter: &[String]) -> Result<()> {
     let mut table = Table::new(display_data);
     table
         .with(Style::blank())
-        .modify(Columns::new(0..6), Padding::new(0, 1, 0, 0));
+        .modify(Columns::new(0..7), Padding::new(0, 1, 0, 0));
 
-    // Hide PR column if --pr flag not used (column 1)
+    // Hide PR column if --pr flag not used
     if !show_pr {
-        table.with(Remove::column(Columns::new(1..2)));
+        table.with(Remove::column(ByColumnName::new("PR")));
     }
 
     println!("{table}");

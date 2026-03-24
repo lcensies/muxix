@@ -1170,7 +1170,7 @@ merge status. Supports filtering by worktree handle or branch name.
   compatible font installed.
 - `--json`: Output as JSON. Produces a JSON array of objects with fields:
   `handle`, `branch`, `path`, `is_main`, `mode`, `has_uncommitted_changes`,
-  `is_open`.
+  `is_open`, `created_at`.
 
 #### Examples
 
@@ -1192,15 +1192,16 @@ workmux list feature-auth feature-api
 #### Example output
 
 ```
-BRANCH      AGENT  MUX  UNMERGED  PATH
-main        -      -    -         ~/project
-user-auth   🤖     ✓    -         ~/project__worktrees/user-auth
-bug-fix     ✅     ✓    ●         ~/project__worktrees/bug-fix
-api-work    -      ✓    -         ~/project__worktrees/api-work
+BRANCH      AGE  AGENT  MUX  UNMERGED  PATH
+main        -    -      -    -         ~/project
+user-auth   2h   🤖     ✓    -         ~/project__worktrees/user-auth
+bug-fix     3d   ✅     ✓    ●         ~/project__worktrees/bug-fix
+api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 ```
 
 #### Key
 
+- AGE shows how old the worktree is (e.g., `2h`, `3d`, `1w`, `2mo`)
 - AGENT shows the current agent status (see
   [status tracking](https://workmux.dev/guide/status-tracking/)):
   - `🤖` = working, `💬` = waiting for input, `✅` = finished

@@ -113,8 +113,9 @@ def test_list_output_format(
     parsed_output = parse_list_output(output)
     assert len(parsed_output) == 2
 
-    # Verify header is present (including new AGENT column)
+    # Verify header is present
     assert "BRANCH" in output
+    assert "AGE" in output
     assert "AGENT" in output
     assert "MUX" in output
     assert "UNMERGED" in output
@@ -123,6 +124,7 @@ def test_list_output_format(
     # Verify main branch entry - should show "(here)" when run from mux_repo_path
     main_entry = next((r for r in parsed_output if r["BRANCH"] == "main"), None)
     assert main_entry is not None
+    assert main_entry["AGE"] == "-"
     assert main_entry["AGENT"] == "-"
     assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
@@ -131,6 +133,7 @@ def test_list_output_format(
     # Verify feature branch entry - shows as relative path
     feature_entry = next((r for r in parsed_output if r["BRANCH"] == branch_name), None)
     assert feature_entry is not None
+    assert feature_entry["AGE"] != ""  # age is populated (value depends on timing)
     assert feature_entry["AGENT"] == "-"
     assert feature_entry["MUX"] == "✓"
     assert feature_entry["UNMERGED"] == "-"
@@ -151,6 +154,7 @@ def test_list_initial_state(
 
     main_entry = parsed_output[0]
     assert main_entry["BRANCH"] == "main"
+    assert main_entry["AGE"] == "-"
     assert main_entry["AGENT"] == "-"
     assert main_entry["MUX"] == "-"
     assert main_entry["UNMERGED"] == "-"
@@ -386,6 +390,7 @@ def test_list_json_output(
         "mode",
         "has_uncommitted_changes",
         "is_open",
+        "created_at",
     }
     for entry in data:
         assert set(entry.keys()) == expected_fields

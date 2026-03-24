@@ -6,6 +6,32 @@ pub fn canon_or_self(p: &Path) -> PathBuf {
     p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
 }
 
+/// Format an age in seconds as a compact relative string (e.g., "2h", "3d", "1w", "2mo").
+pub fn format_compact_age(secs: u64) -> String {
+    let mins = secs / 60;
+    let hours = secs / 3600;
+    let days = secs / 86400;
+    let weeks = days / 7;
+    let months = days / 30;
+    let years = days / 365;
+
+    if years > 0 {
+        format!("{}y", years)
+    } else if months > 0 {
+        format!("{}mo", months)
+    } else if weeks > 0 {
+        format!("{}w", weeks)
+    } else if days > 0 {
+        format!("{}d", days)
+    } else if hours > 0 {
+        format!("{}h", hours)
+    } else if mins > 0 {
+        format!("{}m", mins)
+    } else {
+        "<1m".to_string()
+    }
+}
+
 /// Format a duration as a human-readable elapsed time string.
 /// Used by `status` and `wait` commands.
 pub fn format_elapsed_secs(secs: u64) -> String {
@@ -92,5 +118,52 @@ mod tests {
         assert_eq!(format_elapsed_duration(Duration::from_secs(3600)), "1h 00m");
         assert_eq!(format_elapsed_duration(Duration::from_secs(3661)), "1h 01m");
         assert_eq!(format_elapsed_duration(Duration::from_secs(7260)), "2h 01m");
+    }
+
+    #[test]
+    fn format_compact_age_sub_minute() {
+        assert_eq!(format_compact_age(0), "<1m");
+        assert_eq!(format_compact_age(30), "<1m");
+        assert_eq!(format_compact_age(59), "<1m");
+    }
+
+    #[test]
+    fn format_compact_age_minutes() {
+        assert_eq!(format_compact_age(60), "1m");
+        assert_eq!(format_compact_age(300), "5m");
+        assert_eq!(format_compact_age(3599), "59m");
+    }
+
+    #[test]
+    fn format_compact_age_hours() {
+        assert_eq!(format_compact_age(3600), "1h");
+        assert_eq!(format_compact_age(7200), "2h");
+        assert_eq!(format_compact_age(86399), "23h");
+    }
+
+    #[test]
+    fn format_compact_age_days() {
+        assert_eq!(format_compact_age(86400), "1d");
+        assert_eq!(format_compact_age(259200), "3d");
+        assert_eq!(format_compact_age(604799), "6d");
+    }
+
+    #[test]
+    fn format_compact_age_weeks() {
+        assert_eq!(format_compact_age(604800), "1w");
+        assert_eq!(format_compact_age(1209600), "2w");
+    }
+
+    #[test]
+    fn format_compact_age_months() {
+        assert_eq!(format_compact_age(30 * 86400), "1mo");
+        assert_eq!(format_compact_age(60 * 86400), "2mo");
+        assert_eq!(format_compact_age(364 * 86400), "12mo");
+    }
+
+    #[test]
+    fn format_compact_age_years() {
+        assert_eq!(format_compact_age(365 * 86400), "1y");
+        assert_eq!(format_compact_age(730 * 86400), "2y");
     }
 }
