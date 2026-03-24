@@ -167,7 +167,7 @@ impl AgentProfile for CodexProfile {
     }
 
     fn continue_flag(&self) -> Option<&'static str> {
-        Some("--continue")
+        Some("resume --last")
     }
 }
 
@@ -208,6 +208,10 @@ impl AgentProfile for VibeProfile {
 
     fn prompt_argument(&self, prompt_path: &str) -> String {
         format!("\"$(cat {})\"", prompt_path)
+    }
+
+    fn continue_flag(&self) -> Option<&'static str> {
+        Some("--continue")
     }
 }
 
@@ -373,7 +377,7 @@ mod tests {
             profile.auto_name_command(),
             Some(r#"codex exec --config model_reasoning_effort="low" -m gpt-5.1-codex-mini"#)
         );
-        assert_eq!(profile.continue_flag(), Some("--continue"));
+        assert_eq!(profile.continue_flag(), Some("resume --last"));
     }
 
     #[test]
@@ -404,7 +408,7 @@ mod tests {
             Some("--agent auto-approve")
         );
         assert_eq!(profile.auto_name_command(), None);
-        assert_eq!(profile.continue_flag(), None);
+        assert_eq!(profile.continue_flag(), Some("--continue"));
     }
 
     #[test]
