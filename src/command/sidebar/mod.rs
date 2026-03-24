@@ -395,6 +395,9 @@ pub fn run_sidebar() -> Result<()> {
                 (KeyCode::Char('g'), _) => {
                     app.select_first();
                 }
+                (KeyCode::Char('v'), _) => {
+                    app.toggle_layout_mode();
+                }
                 _ => {}
             }
         }
@@ -405,9 +408,10 @@ pub fn run_sidebar() -> Result<()> {
             app.update_active_window();
         }
 
-        // Auto-refresh agent list
+        // Auto-refresh agent list and sync layout mode
         if last_refresh.elapsed() >= refresh_interval {
             app.refresh();
+            app.sync_layout_mode();
             last_refresh = std::time::Instant::now();
 
             // Quit if we're the last pane in the window

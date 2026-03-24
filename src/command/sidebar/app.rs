@@ -13,6 +13,23 @@ use crate::state::StateStore;
 
 use crate::command::dashboard::ui::theme::ThemePalette;
 
+/// Sidebar layout mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SidebarLayoutMode {
+    #[default]
+    Compact,
+    Tiles,
+}
+
+impl SidebarLayoutMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Tiles => "tiles",
+        }
+    }
+}
+
 /// Lightweight sidebar app state. No preview, git, PR, diff, or input mode.
 pub struct SidebarApp {
     pub mux: Arc<dyn Multiplexer>,
@@ -23,6 +40,7 @@ pub struct SidebarApp {
     pub status_icons: StatusIcons,
     pub spinner_frame: u8,
     pub stale_threshold_secs: u64,
+    pub layout_mode: SidebarLayoutMode,
     /// Window prefix from config
     window_prefix: String,
     /// The currently active session + window (used to highlight agents in the focused window)
@@ -54,6 +72,7 @@ impl SidebarApp {
             status_icons,
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
+            layout_mode: read_sidebar_layout_mode().unwrap_or_default(),
             window_prefix,
             active_session: None,
             active_window: None,
@@ -186,6 +205,33 @@ impl SidebarApp {
         }
     }
 
+    pub fn toggle_layout_mode(&mut self) {
+        self.layout_mode = match self.layout_mode {
+            SidebarLayoutMode::Compact => SidebarLayoutMode::Tiles,
+            SidebarLayoutMode::Tiles => SidebarLayoutMode::Compact,
+        };
+        // Persist to tmux so all sidebar instances pick it up
+        let _ = Cmd::new("tmux")
+            .args(&[
+                "set-option",
+                "-g",
+                "@workmux_sidebar_layout",
+                self.layout_mode.as_str(),
+            ])
+            .run();
+    }
+
+    /// Sync layout mode from the tmux global option (set by any sidebar instance).
+    pub fn sync_layout_mode(&mut self) {
+        if let Some(mode) = read_sidebar_layout_mode() {
+            self.layout_mode = mode;
+        }
+    }
+
+    pub fn window_prefix(&self) -> &str {
+        &self.window_prefix
+    }
+
     /// Display name for an agent: "project/worktree" or just "project" for main.
     pub fn display_name(&self, agent: &AgentPane) -> String {
         let project = extract_project_name(&agent.path);
@@ -197,6 +243,19 @@ impl SidebarApp {
         } else {
             format!("{}/{}", project, worktree)
         }
+    }
+}
+
+/// Read the sidebar layout mode from the tmux global option.
+fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
+    let output = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_layout"])
+        .run_and_capture_stdout()
+        .ok()?;
+    match output.trim() {
+        "tiles" => Some(SidebarLayoutMode::Tiles),
+        "compact" => Some(SidebarLayoutMode::Compact),
+        _ => None,
     }
 }
 
