@@ -10,7 +10,6 @@ use unicode_width::UnicodeWidthChar;
 use crate::multiplexer::AgentStatus;
 
 use super::app::SidebarApp;
-use crate::command::dashboard::spinner::SPINNER_FRAMES;
 
 /// Render the sidebar UI.
 pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
@@ -52,19 +51,19 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
 
             // Status icon
             let (icon, icon_style) = if is_stale {
-                (" ".to_string(), Style::default().fg(app.palette.dimmed))
+                ("  ".to_string(), Style::default().fg(app.palette.dimmed))
             } else {
                 match agent.status {
                     Some(AgentStatus::Working) => {
-                        let frame =
-                            SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
-                        (
-                            app.status_icons
-                                .working
-                                .clone()
-                                .unwrap_or_else(|| frame.to_string()),
-                            Style::default().fg(app.palette.info),
-                        )
+                        let icon = app.status_icons.working.clone().unwrap_or_else(|| {
+                            // 3-dot comet orbiting the 4x4 braille grid
+                            let frames: &[&str] = &[
+                                "⠃⠀", "⠋⠀", "⠈⠃", "⠀⠋", "⠀⠙", "⠀⠸", "⠀⣰", "⠀⣠", "⢀⡄", "⡄⠂", "⠆⠁",
+                                "⠇⠀",
+                            ];
+                            frames[app.spinner_frame as usize % frames.len()].to_string()
+                        });
+                        (icon, Style::default().fg(app.palette.info))
                     }
                     Some(AgentStatus::Waiting) => (
                         app.status_icons.waiting().to_string(),
@@ -74,7 +73,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
                         app.status_icons.done().to_string(),
                         Style::default().fg(app.palette.success),
                     ),
-                    None => (" ".to_string(), Style::default().fg(app.palette.dimmed)),
+                    None => ("  ".to_string(), Style::default().fg(app.palette.dimmed)),
                 }
             };
 
@@ -84,12 +83,18 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
                 .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
                 .unwrap_or_default();
 
+            // Pad icon to fixed 2-column width so emoji and spinners align
+            let icon_cols = display_width(&icon);
+            let icon_pad = if icon_cols < 2 {
+                " ".repeat(2 - icon_cols)
+            } else {
+                String::new()
+            };
             // Calculate available width for the name
-            // Layout: "{icon} {name} {elapsed}"
-            let icon_width = display_width(&icon);
+            // Layout: "{icon}{pad} {name} {elapsed}"
             let elapsed_width = elapsed.len();
-            // Reserve: icon + space + space + elapsed
-            let reserved = icon_width + 1 + 1 + elapsed_width;
+            // Reserve: 2 (icon slot) + 1 (space) + 1 (space) + elapsed
+            let reserved = 2 + 1 + 1 + elapsed_width;
             let name_width = (inner.width as usize).saturating_sub(reserved);
 
             let display_name = truncate_to_width(&worktree_name, name_width);
@@ -107,6 +112,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
 
             let line = Line::from(vec![
                 Span::styled(icon, icon_style),
+                Span::raw(icon_pad),
                 Span::raw(" "),
                 Span::styled(display_name, name_style),
                 Span::raw(" ".repeat(padding)),
@@ -118,11 +124,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
         })
         .collect();
 
-    let list = List::new(items).highlight_style(
-        Style::default()
-            .bg(app.palette.highlight_row_bg)
-            .add_modifier(Modifier::BOLD),
-    );
+    let list = List::new(items).highlight_style(Style::default().bg(app.palette.highlight_row_bg));
 
     f.render_stateful_widget(list, inner, &mut app.list_state);
 }
