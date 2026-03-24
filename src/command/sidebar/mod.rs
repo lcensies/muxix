@@ -66,21 +66,35 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
     Ok(())
 }
 
-/// Sync sidebar into the current window (called by tmux hooks for new windows).
-pub fn sync() -> Result<()> {
+/// Sync sidebar into a window (called by tmux hooks for new windows/sessions).
+pub fn sync(window_id: Option<&str>) -> Result<()> {
     if !is_sidebar_enabled() {
         return Ok(());
     }
 
     let width = sidebar_width();
 
-    // Check if current window already has a sidebar
-    if find_sidebar_in_current_window()?.is_some() {
+    // Use the provided window ID or fall back to current window
+    let target = match window_id {
+        Some(id) => id.to_string(),
+        None => Cmd::new("tmux")
+            .args(&["display-message", "-p", "#{window_id}"])
+            .run_and_capture_stdout()?
+            .trim()
+            .to_string(),
+    };
+
+    if target.is_empty() {
         return Ok(());
     }
 
-    // Create sidebar in current window
-    create_sidebar_in_current_window(width)?;
+    // Check if this window already has a sidebar
+    if find_sidebar_in_window(&target)? {
+        return Ok(());
+    }
+
+    // Create sidebar in the target window
+    create_sidebar_in_window(&target, width)?;
 
     Ok(())
 }
@@ -110,34 +124,30 @@ fn sidebar_width() -> u16 {
         .unwrap_or(DEFAULT_WIDTH)
 }
 
-/// Find a sidebar pane in the current tmux window.
-fn find_sidebar_in_current_window() -> Result<Option<String>> {
+/// Check if a window already has a sidebar pane.
+fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
     let output = Cmd::new("tmux")
-        .args(&["list-panes", "-F", "#{pane_id} #{@workmux_role}"])
+        .args(&["list-panes", "-t", window_id, "-F", "#{@workmux_role}"])
         .run_and_capture_stdout()?;
 
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(2, ' ').collect();
-        if parts.len() == 2 && parts[1].trim() == SIDEBAR_ROLE_VALUE {
-            return Ok(Some(parts[0].to_string()));
-        }
-    }
-
-    Ok(None)
+    Ok(output.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
 }
 
-/// Create a sidebar pane in the current window.
-fn create_sidebar_in_current_window(width: u16) -> Result<()> {
+/// Create a sidebar pane in a specific window.
+fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
     let exe = std::env::current_exe()?;
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
     let width_str = width.to_string();
 
-    // Save layout before adding sidebar
-    if let Ok(window_id) = Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{window_id}"])
-        .run_and_capture_stdout()
-    {
-        save_window_layout(window_id.trim());
+    save_window_layout(window_id);
+
+    // Get the first pane in the window as split target
+    let target_pane = Cmd::new("tmux")
+        .args(&["list-panes", "-t", window_id, "-F", "#{pane_id}"])
+        .run_and_capture_stdout()?;
+    let target_pane = target_pane.lines().next().map(|l| l.trim()).unwrap_or("");
+    if target_pane.is_empty() {
+        return Ok(());
     }
 
     let new_pane_id = Cmd::new("tmux")
@@ -146,6 +156,8 @@ fn create_sidebar_in_current_window(width: u16) -> Result<()> {
             "-hbf",
             "-l",
             &width_str,
+            "-t",
+            target_pane,
             "-d",
             "-P",
             "-F",
@@ -173,11 +185,6 @@ fn create_sidebar_in_current_window(width: u16) -> Result<()> {
 
 /// Create sidebars in all existing tmux windows.
 fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
-    let exe = std::env::current_exe()?;
-    let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
-    let width_str = width.to_string();
-
-    // Get all window IDs
     let output = Cmd::new("tmux")
         .args(&["list-windows", "-a", "-F", "#{window_id}"])
         .run_and_capture_stdout()?;
@@ -187,61 +194,7 @@ fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
         if window_id.is_empty() {
             continue;
         }
-
-        // Check if this window already has a sidebar
-        let panes = Cmd::new("tmux")
-            .args(&["list-panes", "-t", window_id, "-F", "#{@workmux_role}"])
-            .run_and_capture_stdout()
-            .unwrap_or_default();
-
-        if panes.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE) {
-            continue;
-        }
-
-        // Save layout before adding sidebar so we can restore it later
-        save_window_layout(window_id);
-
-        // Get the first pane in the window as split target
-        let target = Cmd::new("tmux")
-            .args(&["list-panes", "-t", window_id, "-F", "#{pane_id}"])
-            .run_and_capture_stdout()
-            .ok()
-            .and_then(|s| s.lines().next().map(|l| l.trim().to_string()));
-
-        let Some(target_pane) = target else {
-            continue;
-        };
-
-        let new_pane_id = Cmd::new("tmux")
-            .args(&[
-                "split-window",
-                "-hbf",
-                "-l",
-                &width_str,
-                "-d",
-                "-t",
-                &target_pane,
-                "-P",
-                "-F",
-                "#{pane_id}",
-                exe_str,
-                "_sidebar-run",
-            ])
-            .run_and_capture_stdout();
-
-        if let Ok(pane_id) = new_pane_id {
-            let pane_id = pane_id.trim();
-            let _ = Cmd::new("tmux")
-                .args(&[
-                    "set-option",
-                    "-p",
-                    "-t",
-                    pane_id,
-                    "@workmux_role",
-                    SIDEBAR_ROLE_VALUE,
-                ])
-                .run();
-        }
+        let _ = create_sidebar_in_window(window_id, width);
     }
 
     Ok(())
@@ -333,7 +286,10 @@ fn install_hooks() -> Result<()> {
     let exe = std::env::current_exe()?;
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
 
-    let sync_cmd = format!("run-shell -b '{} _sidebar-sync'", exe_str);
+    let sync_cmd = format!(
+        "run-shell -b '{} _sidebar-sync --window #{{window_id}}'",
+        exe_str
+    );
 
     Cmd::new("tmux")
         .args(&["set-hook", "-g", "after-new-window[99]", &sync_cmd])

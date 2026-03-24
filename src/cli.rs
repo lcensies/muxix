@@ -600,9 +600,13 @@ enum Commands {
     #[command(hide = true, name = "_sidebar-run")]
     SidebarRun,
 
-    /// Sync sidebar into the current window (internal use, called by tmux hooks)
+    /// Sync sidebar into a window (internal use, called by tmux hooks)
     #[command(hide = true, name = "_sidebar-sync")]
-    SidebarSync,
+    SidebarSync {
+        /// Target window ID (from tmux hook context)
+        #[arg(long)]
+        window: Option<String>,
+    },
 
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard {
@@ -883,7 +887,7 @@ pub fn run() -> Result<()> {
         Commands::Update => command::update::run(),
         Commands::Sidebar { width } => command::sidebar::toggle(width),
         Commands::SidebarRun => command::sidebar::run_sidebar(),
-        Commands::SidebarSync => command::sidebar::sync(),
+        Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
         Commands::Dashboard {
             preview_size,
             diff,
