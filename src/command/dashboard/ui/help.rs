@@ -468,17 +468,18 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
 
     let filtered = picker.filtered();
 
-    // Fixed dimensions: filter line + blank + visible slots + blank + footer + borders
-    let max_visible: usize = picker.branches.len().clamp(1, 15);
     let content_width = picker
         .branches
         .iter()
         .map(|b| 2 + b.len())
         .max()
         .unwrap_or(20);
-    let width = (content_width as u16 + 4).clamp(36, 60);
-    // 1 filter + 1 blank + max_visible items + 1 blank + 1 footer + 2 borders
-    let height = (max_visible as u16) + 6;
+    let width = (content_width as u16 + 4).clamp(44, 60);
+    // Fixed height: ~40% of terminal, matching add-worktree modal
+    let area = f.area();
+    let height = (area.height * 2 / 5).clamp(10, 25);
+    // 1 filter + 1 blank + visible items + 1 blank + 1 footer + 2 borders
+    let max_visible: usize = height.saturating_sub(6) as usize;
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -554,7 +555,6 @@ pub fn render_base_picker(f: &mut Frame, app: &App) {
         dim(" cancel"),
     ]));
 
-    let area = f.area();
     let popup_area = Rect {
         x: area.width.saturating_sub(width) / 2,
         y: area.height.saturating_sub(height) / 2,
@@ -710,7 +710,7 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
 
     let filtered = state.filtered();
 
-    let max_visible: usize = state.branches.len().clamp(1, 15);
+    let has_create_row = !state.filter.trim().is_empty();
     let content_width = state
         .branches
         .iter()
@@ -719,8 +719,13 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
         .unwrap_or(20)
         .max(30);
     let width = (content_width as u16 + 4).clamp(44, 60);
-    // filter + blank + create row + max_visible branch rows + base line + blank + footer + borders
-    let height = (max_visible as u16) + 8;
+
+    // Fixed height: ~60% of terminal, clamped to reasonable range
+    let area = f.area();
+    let height = (area.height * 2 / 5).clamp(10, 25);
+    // Branch rows available: total - filter - blank - create_row - blank - footer - blank_after_footer - borders(2)
+    let overhead: u16 = 7 + if has_create_row { 1 } else { 0 };
+    let max_visible: usize = height.saturating_sub(overhead) as usize;
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -773,7 +778,6 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
             lines.push(Line::from(""));
         }
     } else {
-        let has_create_row = !state.filter.trim().is_empty();
         let branch_cursor = if has_create_row {
             state.cursor.checked_sub(1)
         } else {
@@ -821,29 +825,9 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
         }
     }
 
-    // Base branch indicator
-    if state.editing_base {
-        lines.push(Line::from(vec![
-            Span::styled(" base: ", Style::default().fg(palette.dimmed)),
-            Span::styled(
-                state.base_filter.clone(),
-                Style::default().fg(palette.accent),
-            ),
-            Span::styled("_", Style::default().fg(palette.accent)),
-        ]));
-    } else {
-        lines.push(Line::from(vec![
-            Span::styled(" base: ", Style::default().fg(palette.dimmed)),
-            Span::styled(
-                state.base_branch.clone(),
-                Style::default().fg(palette.dimmed),
-            ),
-        ]));
-    }
-
     lines.push(Line::from(""));
 
-    // Footer
+    // Footer with blank line after (before bottom border)
     lines.push(Line::from(vec![
         Span::raw(" "),
         bold("Enter"),
@@ -853,13 +837,33 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
         bold("Esc"),
         dim(" cancel"),
     ]));
+    lines.push(Line::from(""));
 
-    let area = f.area();
     let popup_area = Rect {
         x: area.width.saturating_sub(width) / 2,
         y: area.height.saturating_sub(height) / 2,
         width: width.min(area.width),
         height: height.min(area.height),
+    };
+
+    // Base branch shown on the bottom border
+    let base_title = if state.editing_base {
+        Line::from(vec![
+            Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
+            Span::styled(
+                state.base_filter.clone(),
+                Style::default().fg(palette.accent),
+            ),
+            Span::styled("_ ", Style::default().fg(palette.accent)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
+            Span::styled(
+                format!("{} ", state.base_branch),
+                Style::default().fg(palette.text),
+            ),
+        ])
     };
 
     let block = Block::bordered()
@@ -874,7 +878,8 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ", Style::default()),
-        ]));
+        ]))
+        .title_bottom(base_title);
 
     let paragraph = Paragraph::new(Text::from(lines)).block(block);
 
