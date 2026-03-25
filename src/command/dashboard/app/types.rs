@@ -136,30 +136,26 @@ impl BaseBranchPicker {
     }
 }
 
-/// Phase of the add-worktree modal.
-pub enum AddWorktreePhase {
-    /// Unified picker: filter text doubles as new branch name, existing branches shown below.
-    /// Cursor 0 = "Create new branch", cursor 1..N = existing branch matches.
-    SelectOrCreate,
-    /// Base branch picker (only shown when creating a new branch).
-    BaseBranch,
-}
-
 /// State for the add-worktree modal.
 pub struct AddWorktreeState {
-    pub phase: AddWorktreePhase,
-    /// The confirmed branch name (set when advancing from SelectOrCreate to BaseBranch).
-    pub name: String,
     /// All local branches (fetched once when modal opens).
     pub branches: Vec<String>,
     /// Branches that already have worktrees (cannot create another).
     pub occupied_branches: std::collections::HashSet<String>,
     /// Cursor position: 0 = "Create new", 1..N = filtered branch index.
     pub cursor: usize,
-    /// Filter text (doubles as new branch name in SelectOrCreate phase).
+    /// Filter text (doubles as new branch name).
     pub filter: String,
     /// Original typed prefix preserved during Tab cycling (cleared on typing).
     pub tab_prefix: Option<String>,
+    /// Base branch for new worktree creation (defaults to main/master).
+    pub base_branch: String,
+    /// Whether the base branch field is being edited (Ctrl+b toggles).
+    pub editing_base: bool,
+    /// Filter/input text for the base branch field.
+    pub base_filter: String,
+    /// Tab prefix for base branch cycling.
+    pub base_tab_prefix: Option<String>,
     pub repo_path: PathBuf,
 }
 
@@ -204,6 +200,21 @@ impl AddWorktreeState {
             .iter()
             .take_while(|&&idx| !self.occupied_branches.contains(&self.branches[idx]))
             .count()
+    }
+
+    /// Return indices into `branches` that match the base branch filter.
+    pub fn base_filtered(&self) -> Vec<usize> {
+        let text = self.base_tab_prefix.as_deref().unwrap_or(&self.base_filter);
+        if text.is_empty() {
+            return (0..self.branches.len()).collect();
+        }
+        let lower = text.to_lowercase();
+        self.branches
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.to_lowercase().contains(&lower))
+            .map(|(i, _)| i)
+            .collect()
     }
 }
 

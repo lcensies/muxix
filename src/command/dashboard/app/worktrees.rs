@@ -723,18 +723,23 @@ impl App {
             }
         };
 
+        let default_branch =
+            git::get_default_branch_in(Some(&repo_path)).unwrap_or_else(|_| "main".to_string());
+
         // Collect branches that already have worktrees
         let occupied_branches: std::collections::HashSet<String> =
             self.worktrees.iter().map(|w| w.branch.clone()).collect();
 
         self.pending_add_worktree = Some(AddWorktreeState {
-            phase: AddWorktreePhase::SelectOrCreate,
-            name: String::new(),
             branches,
             occupied_branches,
             cursor: 0,
             filter: String::new(),
             tab_prefix: None,
+            base_branch: default_branch,
+            editing_base: false,
+            base_filter: String::new(),
+            base_tab_prefix: None,
             repo_path,
         });
     }
@@ -817,11 +822,96 @@ impl App {
         state.cursor = next + 1; // +1 because cursor 0 is "Create" row
     }
 
-    /// Handle Enter in the SelectOrCreate phase.
+    /// Toggle base branch editing mode (Ctrl+b).
+    pub fn add_worktree_toggle_base(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            if state.editing_base {
+                // Accept current base_filter as the base branch if non-empty
+                let text = state.base_filter.trim().to_string();
+                if !text.is_empty() {
+                    state.base_branch = text;
+                }
+                state.editing_base = false;
+                state.base_filter.clear();
+                state.base_tab_prefix = None;
+            } else {
+                state.editing_base = true;
+                state.base_filter = state.base_branch.clone();
+                state.base_tab_prefix = None;
+            }
+        }
+    }
+
+    /// Tab-complete for the base branch field.
+    pub fn add_worktree_base_tab_complete(&mut self) {
+        let Some(ref mut state) = self.pending_add_worktree else {
+            return;
+        };
+
+        if state.base_tab_prefix.is_none() {
+            state.base_tab_prefix = Some(state.base_filter.clone());
+        }
+
+        let candidates = state.base_filtered();
+        if candidates.is_empty() {
+            return;
+        }
+
+        let current_pos = candidates
+            .iter()
+            .position(|&idx| state.branches[idx] == state.base_filter);
+
+        let next = match current_pos {
+            Some(pos) => (pos + 1) % candidates.len(),
+            None => 0,
+        };
+
+        state.base_filter = state.branches[candidates[next]].clone();
+    }
+
+    /// Append a character to the base branch filter.
+    pub fn add_worktree_base_append(&mut self, c: char) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.base_filter.push(c);
+            state.base_tab_prefix = None;
+        }
+    }
+
+    /// Delete last character from the base branch filter.
+    pub fn add_worktree_base_delete(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.base_filter.pop();
+            state.base_tab_prefix = None;
+        }
+    }
+
+    /// Delete last word from the base branch filter (Ctrl+w).
+    pub fn add_worktree_base_delete_word(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            delete_word_backward(&mut state.base_filter);
+            state.base_tab_prefix = None;
+        }
+    }
+
+    /// Clear the base branch filter (Ctrl+u).
+    pub fn add_worktree_base_clear(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.base_filter.clear();
+            state.base_tab_prefix = None;
+        }
+    }
+
+    /// Handle Enter - create the worktree.
     pub fn add_worktree_confirm_selection(&mut self) {
         let Some(ref mut state) = self.pending_add_worktree else {
             return;
         };
+
+        // If editing base, confirm the base field first
+        if state.editing_base {
+            self.add_worktree_toggle_base();
+            return;
+        }
 
         if state.cursor == 0 {
             // "Create new branch" selected
@@ -829,10 +919,10 @@ impl App {
             if name.is_empty() {
                 return;
             }
-            state.name = name;
-            state.filter.clear();
-            state.cursor = 0;
-            state.phase = AddWorktreePhase::BaseBranch;
+            let base = state.base_branch.clone();
+            let repo_path = state.repo_path.clone();
+            self.pending_add_worktree = None;
+            self.do_create_worktree(name, Some(base), repo_path);
         } else {
             // Existing branch selected
             let filtered = state.filtered();
@@ -844,27 +934,6 @@ impl App {
             self.pending_add_worktree = None;
             self.do_create_worktree(branch, None, repo_path);
         }
-    }
-
-    /// Create the worktree with the selected base branch (from BaseBranch phase).
-    pub fn confirm_add_worktree(&mut self, skip_base: bool) {
-        let Some(state) = self.pending_add_worktree.take() else {
-            return;
-        };
-
-        let base_branch = if skip_base {
-            None
-        } else {
-            let filtered = state.filtered();
-            filtered
-                .get(state.cursor)
-                .map(|&idx| state.branches[idx].clone())
-        };
-
-        let name = state.name.clone();
-        let repo_path = state.repo_path.clone();
-
-        self.do_create_worktree(name, base_branch, repo_path);
     }
 
     /// Execute worktree creation in a background thread.

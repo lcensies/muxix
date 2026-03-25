@@ -351,30 +351,70 @@ fn handle_terminal_event(
 
     // Add worktree modal
     if let Some(ref state) = app.pending_add_worktree {
-        match state.phase {
-            app::AddWorktreePhase::SelectOrCreate => match key.code {
+        if state.editing_base {
+            // Base branch editing mode
+            match key.code {
+                crossterm::event::KeyCode::Tab => app.add_worktree_base_tab_complete(),
+                crossterm::event::KeyCode::Enter => app.add_worktree_toggle_base(),
+                crossterm::event::KeyCode::Backspace => app.add_worktree_base_delete(),
+                crossterm::event::KeyCode::Esc => app.add_worktree_toggle_base(),
+                crossterm::event::KeyCode::Char('w')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_base_delete_word()
+                }
+                crossterm::event::KeyCode::Char('u')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_base_clear()
+                }
+                crossterm::event::KeyCode::Char('b')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_toggle_base()
+                }
+                crossterm::event::KeyCode::Char(c) => app.add_worktree_base_append(c),
+                _ => {}
+            }
+        } else {
+            // Main picker mode
+            match key.code {
                 crossterm::event::KeyCode::Down => app.add_worktree_down(),
                 crossterm::event::KeyCode::Up => app.add_worktree_up(),
                 crossterm::event::KeyCode::Tab => app.add_worktree_tab_complete(),
                 crossterm::event::KeyCode::Enter => app.add_worktree_confirm_selection(),
                 crossterm::event::KeyCode::Backspace => app.add_worktree_delete(),
                 crossterm::event::KeyCode::Esc => app.pending_add_worktree = None,
+                crossterm::event::KeyCode::Char('w')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_delete_word()
+                }
+                crossterm::event::KeyCode::Char('u')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_clear()
+                }
+                crossterm::event::KeyCode::Char('b')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_toggle_base()
+                }
                 crossterm::event::KeyCode::Char(c) => app.add_worktree_append(c),
                 _ => {}
-            },
-            app::AddWorktreePhase::BaseBranch => match key.code {
-                crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Down => {
-                    app.add_worktree_down()
-                }
-                crossterm::event::KeyCode::Char('k') | crossterm::event::KeyCode::Up => {
-                    app.add_worktree_up()
-                }
-                crossterm::event::KeyCode::Enter => app.confirm_add_worktree(false),
-                crossterm::event::KeyCode::Backspace => app.add_worktree_delete(),
-                crossterm::event::KeyCode::Esc => app.confirm_add_worktree(true),
-                crossterm::event::KeyCode::Char(c) => app.add_worktree_append(c),
-                _ => {}
-            },
+            }
         }
         return;
     }
