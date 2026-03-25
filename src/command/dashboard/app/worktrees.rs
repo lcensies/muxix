@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use anyhow::Context as _;
+
 use crate::git;
 use crate::workflow;
 
@@ -754,6 +756,9 @@ impl App {
             base_filter: String::new(),
             base_tab_prefix: None,
             repo_path,
+            mode: AddWorktreeMode::Branch,
+            pr_list: None,
+            pr_request_counter: 0,
         });
     }
 
@@ -796,11 +801,16 @@ impl App {
     /// Move cursor down in the add-worktree picker.
     pub fn add_worktree_down(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
-            let has_create_row = !state.filter.trim().is_empty();
-            let max_idx = if has_create_row {
-                state.selectable_count() // 0=Create, 1..count=branches
-            } else {
-                state.selectable_count().saturating_sub(1)
+            let max_idx = match state.mode {
+                AddWorktreeMode::Branch => {
+                    let has_create_row = !state.filter.trim().is_empty();
+                    if has_create_row {
+                        state.selectable_count()
+                    } else {
+                        state.selectable_count().saturating_sub(1)
+                    }
+                }
+                AddWorktreeMode::Pr => state.filtered_prs().len().saturating_sub(1),
             };
             if state.cursor < max_idx {
                 state.cursor += 1;
@@ -822,6 +832,9 @@ impl App {
         let Some(ref mut state) = self.pending_add_worktree else {
             return;
         };
+        if state.mode == AddWorktreeMode::Pr {
+            return;
+        }
 
         // Save the original typed text on first Tab press
         if state.tab_prefix.is_none() {
@@ -859,9 +872,54 @@ impl App {
         state.cursor = next + 1; // +1 because cursor 0 is "Create" row
     }
 
+    /// Toggle between Branch and PR modes (Ctrl+p).
+    pub fn add_worktree_toggle_pr_mode(&mut self) {
+        let Some(ref mut state) = self.pending_add_worktree else {
+            return;
+        };
+
+        match state.mode {
+            AddWorktreeMode::Branch => {
+                state.mode = AddWorktreeMode::Pr;
+                state.cursor = 0;
+                state.editing_base = false;
+                // Start async fetch if not already loaded
+                if state.pr_list.is_none() {
+                    state.pr_request_counter += 1;
+                    let request_id = state.pr_request_counter;
+                    state.pr_list = Some(PrListState::Loading);
+                    let tx = self.event_tx.clone();
+                    let repo_path = state.repo_path.clone();
+                    std::thread::spawn(move || {
+                        let result = crate::github::list_open_prs(&repo_path);
+                        match result {
+                            Ok(prs) => {
+                                let _ = tx.send(AppEvent::AddWorktreePrList(request_id, Ok(prs)));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(AppEvent::AddWorktreePrList(
+                                    request_id,
+                                    Err(e.to_string()),
+                                ));
+                            }
+                        }
+                    });
+                }
+            }
+            AddWorktreeMode::Pr => {
+                state.mode = AddWorktreeMode::Branch;
+                state.cursor = 0;
+            }
+        }
+    }
+
     /// Toggle base branch editing mode (Ctrl+b).
     pub fn add_worktree_toggle_base(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
+            // No base editing in PR mode
+            if state.mode == AddWorktreeMode::Pr {
+                return;
+            }
             if state.editing_base {
                 // Accept current base_filter as the base branch if non-empty
                 let text = state.base_filter.trim().to_string();
@@ -949,7 +1007,7 @@ impl App {
         }
     }
 
-    /// Handle Enter - create the worktree.
+    /// Handle Enter - create the worktree or checkout a PR.
     pub fn add_worktree_confirm_selection(&mut self) {
         let Some(ref mut state) = self.pending_add_worktree else {
             return;
@@ -961,27 +1019,123 @@ impl App {
             return;
         }
 
-        if state.cursor == 0 {
-            // "Create new branch" selected
-            let name = state.filter.trim().to_string();
-            if name.is_empty() {
-                return;
+        match state.mode {
+            AddWorktreeMode::Branch => {
+                if state.cursor == 0 {
+                    // Check for PR number detection (e.g. "#123" or "123")
+                    if let Some(pr_number) = state.detected_pr_number() {
+                        let repo_path = state.repo_path.clone();
+                        self.pending_add_worktree = None;
+                        self.do_checkout_pr(pr_number, repo_path);
+                        return;
+                    }
+
+                    // "Create new branch" selected
+                    let name = state.filter.trim().to_string();
+                    if name.is_empty() {
+                        return;
+                    }
+                    let base = state.base_branch.clone();
+                    let repo_path = state.repo_path.clone();
+                    self.pending_add_worktree = None;
+                    self.do_create_worktree(name, Some(base), repo_path);
+                } else {
+                    // Existing branch selected
+                    let filtered = state.filtered();
+                    let Some(&idx) = filtered.get(state.cursor - 1) else {
+                        return;
+                    };
+                    let branch = state.branches[idx].clone();
+                    let repo_path = state.repo_path.clone();
+                    self.pending_add_worktree = None;
+                    self.do_create_worktree(branch, None, repo_path);
+                }
             }
-            let base = state.base_branch.clone();
-            let repo_path = state.repo_path.clone();
-            self.pending_add_worktree = None;
-            self.do_create_worktree(name, Some(base), repo_path);
-        } else {
-            // Existing branch selected
-            let filtered = state.filtered();
-            let Some(&idx) = filtered.get(state.cursor - 1) else {
-                return;
-            };
-            let branch = state.branches[idx].clone();
-            let repo_path = state.repo_path.clone();
-            self.pending_add_worktree = None;
-            self.do_create_worktree(branch, None, repo_path);
+            AddWorktreeMode::Pr => {
+                let filtered = state.filtered_prs();
+                let Some(&idx) = filtered.get(state.cursor) else {
+                    return;
+                };
+                let prs = match &state.pr_list {
+                    Some(PrListState::Loaded { prs, .. }) => prs,
+                    _ => return,
+                };
+                let pr_number = prs[idx].number;
+                let repo_path = state.repo_path.clone();
+                self.pending_add_worktree = None;
+                self.do_checkout_pr(pr_number, repo_path);
+            }
         }
+    }
+
+    /// Checkout a PR in a background thread (quiet, no stdout/spinner).
+    fn do_checkout_pr(&mut self, pr_number: u32, repo_path: PathBuf) {
+        let config = self.config.clone();
+        let mux = self.mux.clone();
+        let tx = self.event_tx.clone();
+
+        std::thread::spawn(move || {
+            let result = (|| -> anyhow::Result<String> {
+                std::env::set_current_dir(&repo_path)?;
+
+                // Quiet PR resolution (no println/spinner like resolve_pr_ref)
+                let pr_details = crate::github::get_pr_details(pr_number)
+                    .with_context(|| format!("Failed to fetch PR #{}", pr_number))?;
+
+                let current_repo_owner =
+                    git::get_repo_owner().context("Failed to determine repository owner")?;
+                let is_fork = pr_details.is_fork(&current_repo_owner);
+                let fork_owner = &pr_details.head_repository_owner.login;
+
+                let remote_name = if is_fork {
+                    git::ensure_fork_remote(fork_owner)?
+                } else {
+                    "origin".to_string()
+                };
+
+                let local_branch = if is_fork {
+                    format!("{}-{}", fork_owner, pr_details.head_ref_name)
+                } else {
+                    pr_details.head_ref_name.clone()
+                };
+                let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
+
+                let ctx = workflow::WorkflowContext::new(config.clone(), mux, None)?;
+                let handle = crate::naming::derive_handle(&local_branch, None, &config)?;
+                let mut options = workflow::types::SetupOptions::new(true, true, true);
+                options.focus_window = false;
+
+                let result = workflow::create(
+                    &ctx,
+                    workflow::CreateArgs {
+                        branch_name: &local_branch,
+                        handle: &handle,
+                        base_branch: None,
+                        remote_branch: Some(&remote_branch),
+                        prompt: None,
+                        options,
+                        agent: None,
+                        is_explicit_name: false,
+                        prompt_file_only: false,
+                    },
+                )?;
+                Ok(result.branch_name)
+            })();
+
+            match result {
+                Ok(branch) => {
+                    let _ = tx.send(AppEvent::AddWorktreeResult(Ok(branch)));
+                }
+                Err(e) => {
+                    let _ = tx.send(AppEvent::AddWorktreeResult(Err(e.to_string())));
+                }
+            }
+        });
+
+        self.status_message = Some((
+            format!("Checking out PR #{}...", pr_number),
+            std::time::Instant::now(),
+        ));
     }
 
     /// Execute worktree creation in a background thread.

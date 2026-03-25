@@ -1,7 +1,7 @@
 //! Event dispatching for background events.
 
 use super::App;
-use super::types::AppEvent;
+use super::types::{AppEvent, PrListState};
 
 impl App {
     /// Apply a background event to app state.
@@ -42,6 +42,16 @@ impl App {
             }
             AppEvent::AddWorktreeResult(result) => {
                 self.handle_add_worktree_result(result);
+            }
+            AppEvent::AddWorktreePrList(request_id, result) => {
+                if let Some(ref mut state) = self.pending_add_worktree
+                    && request_id == state.pr_request_counter
+                {
+                    state.pr_list = Some(match result {
+                        Ok(prs) => PrListState::Loaded { prs },
+                        Err(msg) => PrListState::Error { message: msg },
+                    });
+                }
             }
         }
     }

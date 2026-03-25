@@ -693,6 +693,8 @@ pub fn render_project_picker(f: &mut Frame, app: &App) {
 
 /// Render the add-worktree modal.
 pub fn render_add_worktree(f: &mut Frame, app: &App) {
+    use super::super::app::{AddWorktreeMode, PrListState};
+
     let Some(ref state) = app.pending_add_worktree else {
         return;
     };
@@ -708,28 +710,21 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
     };
     let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette.dimmed));
 
-    let filtered = state.filtered();
+    let is_pr_mode = state.mode == AddWorktreeMode::Pr;
 
-    let has_create_row = !state.filter.trim().is_empty();
-    let content_width = state
-        .branches
-        .iter()
-        .map(|b| 2 + b.len())
-        .max()
-        .unwrap_or(20)
-        .max(30);
-    let width = (content_width as u16 + 4).clamp(44, 60);
+    let area = f.area();
+    let width = (area.width * 3 / 5).clamp(44, 80);
 
-    // Fixed height: ~60% of terminal, clamped to reasonable range
     let area = f.area();
     let height = (area.height * 2 / 5).clamp(10, 25);
-    // Branch rows available: total - filter - blank - create_row - blank - footer - blank_after_footer - borders(2)
-    let overhead: u16 = 7 + if has_create_row { 1 } else { 0 };
+    // overhead: filter + blank + action_row + blank + footer + blank_after_footer + borders(2)
+    let has_action_row = !is_pr_mode && !state.filter.trim().is_empty();
+    let overhead: u16 = 7 + if has_action_row { 1 } else { 0 };
     let max_visible: usize = height.saturating_sub(overhead) as usize;
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Filter/name input line
+    // Filter input line
     if state.filter.is_empty() {
         lines.push(Line::from(vec![
             Span::styled(" /", Style::default().fg(palette.dimmed)),
@@ -745,98 +740,205 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
 
     lines.push(Line::from(""));
 
-    // Row 0: "Create new branch" (only when filter is non-empty)
-    if !state.filter.trim().is_empty() {
-        let cursor_str = if state.cursor == 0 { "> " } else { "  " };
-        let create_style = if state.cursor == 0 {
-            Style::default()
-                .fg(palette.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(palette.text)
-        };
-        lines.push(Line::from(vec![
-            Span::styled(cursor_str, Style::default().fg(palette.text)),
-            Span::styled(
-                format!("+ Create \"{}\"", state.filter.trim()),
-                create_style,
-            ),
-        ]));
-    }
+    if is_pr_mode {
+        // PR mode: show PR list
+        match &state.pr_list {
+            Some(PrListState::Loading) => {
+                lines.push(Line::from(vec![Span::styled(
+                    " Loading PRs...",
+                    Style::default().fg(palette.dimmed),
+                )]));
+                for _ in 1..max_visible {
+                    lines.push(Line::from(""));
+                }
+            }
+            Some(PrListState::Loaded { prs, .. }) => {
+                let filtered = state.filtered_prs();
+                if filtered.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(
+                        if state.filter.is_empty() {
+                            " No open PRs."
+                        } else {
+                            " No matching PRs."
+                        },
+                        Style::default().fg(palette.dimmed),
+                    )]));
+                    for _ in 1..max_visible {
+                        lines.push(Line::from(""));
+                    }
+                } else {
+                    let total = filtered.len();
+                    let start = if total <= max_visible || state.cursor < max_visible / 2 {
+                        0
+                    } else if state.cursor + max_visible / 2 >= total {
+                        total.saturating_sub(max_visible)
+                    } else {
+                        state.cursor - max_visible / 2
+                    };
+                    let end = (start + max_visible).min(total);
 
-    // Rows 1..N: Existing branches
-    if filtered.is_empty() && state.filter.trim().is_empty() {
-        lines.push(Line::from(vec![Span::styled(
-            " Type to search or create...",
-            Style::default().fg(palette.dimmed),
-        )]));
-        for _ in 1..max_visible {
-            lines.push(Line::from(""));
-        }
-    } else if filtered.is_empty() {
-        for _ in 0..max_visible {
-            lines.push(Line::from(""));
+                    for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
+                        let pr = &prs[idx];
+                        let is_selected = fi == state.cursor;
+                        let cursor_str = if is_selected { "> " } else { "  " };
+
+                        let title_style = if is_selected {
+                            Style::default().fg(palette.accent)
+                        } else {
+                            Style::default().fg(palette.text)
+                        };
+
+                        let mut spans = vec![
+                            Span::styled(cursor_str, Style::default().fg(palette.text)),
+                            Span::styled(
+                                format!("#{} ", pr.number),
+                                Style::default().fg(palette.dimmed),
+                            ),
+                            Span::styled(pr.title.clone(), title_style),
+                        ];
+                        if pr.is_draft {
+                            spans.push(dim(" [draft]"));
+                        }
+
+                        lines.push(Line::from(spans));
+                    }
+
+                    for _ in (end - start)..max_visible {
+                        lines.push(Line::from(""));
+                    }
+                }
+            }
+            Some(PrListState::Error { message }) => {
+                lines.push(Line::from(vec![Span::styled(
+                    format!(" {}", message),
+                    Style::default().fg(palette.danger),
+                )]));
+                for _ in 1..max_visible {
+                    lines.push(Line::from(""));
+                }
+            }
+            None => {
+                for _ in 0..max_visible {
+                    lines.push(Line::from(""));
+                }
+            }
         }
     } else {
-        let branch_cursor = if has_create_row {
-            state.cursor.checked_sub(1)
-        } else {
-            Some(state.cursor)
-        };
+        // Branch mode
+        let filtered = state.filtered();
 
-        let total = filtered.len();
-        let effective_cursor = branch_cursor.unwrap_or(0);
-        let start = if total <= max_visible || effective_cursor < max_visible / 2 {
-            0
-        } else if effective_cursor + max_visible / 2 >= total {
-            total.saturating_sub(max_visible)
-        } else {
-            effective_cursor - max_visible / 2
-        };
-        let end = (start + max_visible).min(total);
-
-        for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
-            let branch = &state.branches[idx];
-            let is_selected = branch_cursor == Some(fi);
-            let cursor_str = if is_selected { "> " } else { "  " };
-            let is_occupied = state.occupied_branches.contains(branch);
-
-            let branch_style = if is_occupied {
-                Style::default().fg(palette.dimmed)
-            } else if is_selected {
-                Style::default().fg(palette.accent)
+        // Action row: "Create" or "Checkout PR #N"
+        if !state.filter.trim().is_empty() {
+            let cursor_str = if state.cursor == 0 { "> " } else { "  " };
+            let action_style = if state.cursor == 0 {
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(palette.text)
             };
 
-            let mut spans = vec![
-                Span::styled(cursor_str, Style::default().fg(palette.text)),
-                Span::styled(branch.clone(), branch_style),
-            ];
-            if is_occupied {
-                spans.push(dim(" (in use)"));
-            }
+            let label = if let Some(pr_num) = state.detected_pr_number() {
+                format!("+ Checkout PR #{}", pr_num)
+            } else {
+                format!("+ Create \"{}\"", state.filter.trim())
+            };
 
-            lines.push(Line::from(spans));
+            lines.push(Line::from(vec![
+                Span::styled(cursor_str, Style::default().fg(palette.text)),
+                Span::styled(label, action_style),
+            ]));
         }
 
-        for _ in (end - start)..max_visible {
-            lines.push(Line::from(""));
+        // Branch rows
+        if filtered.is_empty() && state.filter.trim().is_empty() {
+            lines.push(Line::from(vec![Span::styled(
+                " Type to search or create...",
+                Style::default().fg(palette.dimmed),
+            )]));
+            for _ in 1..max_visible {
+                lines.push(Line::from(""));
+            }
+        } else if filtered.is_empty() {
+            for _ in 0..max_visible {
+                lines.push(Line::from(""));
+            }
+        } else {
+            let has_create_row = !state.filter.trim().is_empty();
+            let branch_cursor = if has_create_row {
+                state.cursor.checked_sub(1)
+            } else {
+                Some(state.cursor)
+            };
+
+            let total = filtered.len();
+            let effective_cursor = branch_cursor.unwrap_or(0);
+            let start = if total <= max_visible || effective_cursor < max_visible / 2 {
+                0
+            } else if effective_cursor + max_visible / 2 >= total {
+                total.saturating_sub(max_visible)
+            } else {
+                effective_cursor - max_visible / 2
+            };
+            let end = (start + max_visible).min(total);
+
+            for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
+                let branch = &state.branches[idx];
+                let is_selected = branch_cursor == Some(fi);
+                let cursor_str = if is_selected { "> " } else { "  " };
+                let is_occupied = state.occupied_branches.contains(branch);
+
+                let branch_style = if is_occupied {
+                    Style::default().fg(palette.dimmed)
+                } else if is_selected {
+                    Style::default().fg(palette.accent)
+                } else {
+                    Style::default().fg(palette.text)
+                };
+
+                let mut spans = vec![
+                    Span::styled(cursor_str, Style::default().fg(palette.text)),
+                    Span::styled(branch.clone(), branch_style),
+                ];
+                if is_occupied {
+                    spans.push(dim(" (in use)"));
+                }
+
+                lines.push(Line::from(spans));
+            }
+
+            for _ in (end - start)..max_visible {
+                lines.push(Line::from(""));
+            }
         }
     }
 
     lines.push(Line::from(""));
 
-    // Footer with blank line after (before bottom border)
-    lines.push(Line::from(vec![
-        Span::raw(" "),
-        bold("Enter"),
-        dim(" select  "),
-        bold("^b"),
-        dim(" base  "),
-        bold("Esc"),
-        dim(" cancel"),
-    ]));
+    // Footer (mode-dependent)
+    if is_pr_mode {
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            bold("Enter"),
+            dim(" checkout  "),
+            bold("^p"),
+            dim(" branches  "),
+            bold("Esc"),
+            dim(" cancel"),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            bold("Enter"),
+            dim(" select  "),
+            bold("^b"),
+            dim(" base  "),
+            bold("^p"),
+            dim(" PRs  "),
+            bold("Esc"),
+            dim(" cancel"),
+        ]));
+    }
     lines.push(Line::from(""));
 
     let popup_area = Rect {
@@ -846,40 +948,49 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
         height: height.min(area.height),
     };
 
-    // Base branch shown on the bottom border
-    let base_title = if state.editing_base {
-        Line::from(vec![
-            Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
-            Span::styled(
-                state.base_filter.clone(),
-                Style::default().fg(palette.accent),
-            ),
-            Span::styled("_ ", Style::default().fg(palette.accent)),
-        ])
+    // Title and bottom border
+    let title_text = if is_pr_mode {
+        "Checkout PR"
     } else {
-        Line::from(vec![
-            Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
-            Span::styled(
-                format!("{} ", state.base_branch),
-                Style::default().fg(palette.text),
-            ),
-        ])
+        "Add Worktree"
     };
 
-    let block = Block::bordered()
+    let mut block = Block::bordered()
         .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(Style::default().fg(palette.help_border))
         .title(Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled(
-                "Add Worktree",
+                title_text,
                 Style::default()
                     .fg(palette.header)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ", Style::default()),
-        ]))
-        .title_bottom(base_title);
+        ]));
+
+    // Show base branch on bottom border only in branch mode
+    if !is_pr_mode {
+        let base_title = if state.editing_base {
+            Line::from(vec![
+                Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
+                Span::styled(
+                    state.base_filter.clone(),
+                    Style::default().fg(palette.accent),
+                ),
+                Span::styled("_ ", Style::default().fg(palette.accent)),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(" Base: ", Style::default().fg(palette.dimmed)),
+                Span::styled(
+                    format!("{} ", state.base_branch),
+                    Style::default().fg(palette.text),
+                ),
+            ])
+        };
+        block = block.title_bottom(base_title);
+    }
 
     let paragraph = Paragraph::new(Text::from(lines)).block(block);
 

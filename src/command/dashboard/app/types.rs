@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::git::GitStatus;
-use crate::github::PrSummary;
+use crate::github::{PrListEntry, PrSummary};
 use crate::workflow::types::WorktreeInfo;
 
 use super::super::diff::DiffView;
@@ -24,6 +24,8 @@ pub enum AppEvent {
     WorktreeLog(PathBuf, String),
     /// Result of a background add-worktree operation
     AddWorktreeResult(Result<String, String>),
+    /// Result of fetching open PRs for the add-worktree modal
+    AddWorktreePrList(u64, Result<Vec<PrListEntry>, String>),
 }
 
 /// Which tab is active in the dashboard
@@ -136,6 +138,21 @@ impl BaseBranchPicker {
     }
 }
 
+/// Mode for the add-worktree modal.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum AddWorktreeMode {
+    #[default]
+    Branch,
+    Pr,
+}
+
+/// Loading state for the PR list in the add-worktree modal.
+pub enum PrListState {
+    Loading,
+    Loaded { prs: Vec<PrListEntry> },
+    Error { message: String },
+}
+
 /// State for the add-worktree modal.
 pub struct AddWorktreeState {
     /// All local branches (fetched once when modal opens).
@@ -157,6 +174,12 @@ pub struct AddWorktreeState {
     /// Tab prefix for base branch cycling.
     pub base_tab_prefix: Option<String>,
     pub repo_path: PathBuf,
+    /// Current mode: Branch picker or PR list.
+    pub mode: AddWorktreeMode,
+    /// PR list state (loaded async when switching to PR mode).
+    pub pr_list: Option<PrListState>,
+    /// Monotonic counter to discard stale PR list results.
+    pub pr_request_counter: u64,
 }
 
 impl AddWorktreeState {
@@ -200,6 +223,40 @@ impl AddWorktreeState {
             .iter()
             .take_while(|&&idx| !self.occupied_branches.contains(&self.branches[idx]))
             .count()
+    }
+
+    /// If the filter text looks like a PR number, return it.
+    /// Matches "#123" or bare "123" (only digits).
+    pub fn detected_pr_number(&self) -> Option<u32> {
+        let text = self.filter.trim();
+        let digits = text.strip_prefix('#').unwrap_or(text);
+        if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+            digits.parse().ok()
+        } else {
+            None
+        }
+    }
+
+    /// Return indices into the PR list that match the current filter.
+    pub fn filtered_prs(&self) -> Vec<usize> {
+        let prs = match &self.pr_list {
+            Some(PrListState::Loaded { prs, .. }) => prs,
+            _ => return Vec::new(),
+        };
+        if self.filter.is_empty() {
+            return (0..prs.len()).collect();
+        }
+        let lower = self.filter.to_lowercase();
+        prs.iter()
+            .enumerate()
+            .filter(|(_, pr)| {
+                pr.title.to_lowercase().contains(&lower)
+                    || pr.head_ref_name.to_lowercase().contains(&lower)
+                    || pr.number.to_string().contains(&lower)
+                    || pr.author.to_lowercase().contains(&lower)
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
 }
 

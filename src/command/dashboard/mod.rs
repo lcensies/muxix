@@ -412,6 +412,13 @@ fn handle_terminal_event(
                 {
                     app.add_worktree_toggle_base()
                 }
+                crossterm::event::KeyCode::Char('p')
+                    if key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    app.add_worktree_toggle_pr_mode()
+                }
                 crossterm::event::KeyCode::Char(c) => app.add_worktree_append(c),
                 _ => {}
             }

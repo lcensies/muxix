@@ -324,6 +324,70 @@ pub fn find_pr_by_head_ref(owner: &str, branch: &str) -> Result<Option<PrSummary
     }))
 }
 
+/// An open PR entry for display in the add-worktree modal.
+pub struct PrListEntry {
+    pub number: u32,
+    pub title: String,
+    pub head_ref_name: String,
+    pub author: String,
+    pub is_draft: bool,
+}
+
+/// List open PRs for a repository using the GitHub CLI.
+pub fn list_open_prs(repo_root: &Path) -> Result<Vec<PrListEntry>> {
+    #[derive(Deserialize)]
+    struct RawPr {
+        number: u32,
+        title: String,
+        #[serde(rename = "headRefName")]
+        head_ref_name: String,
+        #[serde(rename = "isDraft")]
+        is_draft: bool,
+        author: Author,
+    }
+
+    let output = Command::new("gh")
+        .current_dir(repo_root)
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "number,title,headRefName,isDraft,author",
+            "--limit",
+            "100",
+        ])
+        .output();
+
+    let output = match output {
+        Ok(out) => out,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(anyhow!("GitHub CLI (gh) not found"));
+        }
+        Err(e) => return Err(e).context("Failed to execute gh command"),
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("gh pr list failed: {}", stderr.trim()));
+    }
+
+    let raw: Vec<RawPr> =
+        serde_json::from_slice(&output.stdout).context("Failed to parse gh pr list output")?;
+
+    Ok(raw
+        .into_iter()
+        .map(|pr| PrListEntry {
+            number: pr.number,
+            title: pr.title,
+            head_ref_name: pr.head_ref_name,
+            author: pr.author.login,
+            is_draft: pr.is_draft,
+        })
+        .collect())
+}
+
 /// Fetches pull request details using the GitHub CLI
 pub fn get_pr_details(pr_number: u32) -> Result<PrDetails> {
     // Fetch PR details using gh CLI
