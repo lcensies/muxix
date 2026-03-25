@@ -108,6 +108,12 @@ pub struct AgentState {
     /// Stored here for consistency with window_name.
     #[serde(default)]
     pub session_name: Option<String>,
+
+    /// Multiplexer server boot identifier (e.g., tmux start_time).
+    /// Used to distinguish intentional pane closes from server crashes:
+    /// if this doesn't match the current server's boot_id, the server restarted.
+    #[serde(default)]
+    pub boot_id: Option<String>,
 }
 
 impl AgentState {

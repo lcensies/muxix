@@ -473,6 +473,7 @@ alias wm='workmux'
 - [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
 - [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
   worktree)
+- [`resurrect`](#workmux-resurrect) - Restore worktree windows after a crash
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
 - [`config edit`](#workmux-config-edit) - Edit the global configuration file
@@ -1337,6 +1338,36 @@ To reopen the window later, use [`workmux open`](#workmux-open-name).
 
 **Tip**: You can also use tmux's native kill-window command (default:
 `prefix + &`) to close a worktree's window with the same effect.
+
+---
+
+### `workmux resurrect`
+
+Restores worktree windows after a tmux or computer crash. Uses persisted agent
+state files to detect which worktrees had active agents before the crash, then
+reopens them with `--continue` to resume agent conversations.
+
+#### Options
+
+- `--dry-run`: Show what would be restored without doing it.
+
+#### Examples
+
+```bash
+# See what would be restored after a crash
+workmux resurrect --dry-run
+
+# Restore all worktrees that had agents running
+workmux resurrect
+```
+
+#### How it works
+
+1. Reads agent state files from `~/.local/state/workmux/agents/`
+2. Matches each state file's working directory to a git worktree in the current
+   repo
+3. Skips worktrees that are already open or no longer exist
+4. Opens each matched worktree with `--continue` to resume the agent
 
 ---
 

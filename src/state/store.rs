@@ -220,6 +220,9 @@ impl StateStore {
         // Fetch all live pane info in a single batched query
         let live_panes = mux.get_all_live_pane_info()?;
 
+        // Get current server boot ID for crash detection
+        let current_boot_id = mux.server_boot_id().unwrap_or(None);
+
         let mut valid_agents = Vec::new();
         let backend = mux.name();
         let instance = mux.instance_id();
@@ -243,6 +246,13 @@ impl StateStore {
                             state.window_name.clone().unwrap_or_default(),
                         );
                         valid_agents.push(agent_pane);
+                    } else if state.boot_id.is_some() && state.boot_id != current_boot_id {
+                        // Server restarted since this state was written. Preserve
+                        // the state file for `workmux resurrect` to use.
+                        info!(
+                            pane_id,
+                            "reconcile: preserving agent from previous server lifecycle for resurrect"
+                        );
                     } else {
                         info!(pane_id, "reconcile: removing agent, pane no longer exists");
                         self.delete_agent(&state.pane_key)?;
@@ -250,15 +260,23 @@ impl StateStore {
                     }
                 }
                 Some(live) if live.pid.is_some_and(|pid| pid != state.pane_pid) => {
-                    // PID mismatch - pane ID was recycled by a new process
-                    info!(
-                        pane_id,
-                        stored_pid = state.pane_pid,
-                        live_pid = live.pid.unwrap_or(0),
-                        "reconcile: removing agent, pane PID changed (pane ID recycled)"
-                    );
-                    self.delete_agent(&state.pane_key)?;
-                    let _ = mux.clear_status(&state.pane_key.pane_id);
+                    if state.boot_id.is_some() && state.boot_id != current_boot_id {
+                        // Pane ID recycled after server restart - preserve for resurrect
+                        info!(
+                            pane_id,
+                            "reconcile: preserving agent from previous server lifecycle for resurrect"
+                        );
+                    } else {
+                        // PID mismatch - pane ID was recycled by a new process
+                        info!(
+                            pane_id,
+                            stored_pid = state.pane_pid,
+                            live_pid = live.pid.unwrap_or(0),
+                            "reconcile: removing agent, pane PID changed (pane ID recycled)"
+                        );
+                        self.delete_agent(&state.pane_key)?;
+                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                    }
                 }
                 Some(live)
                     if live
@@ -266,15 +284,23 @@ impl StateStore {
                         .as_ref()
                         .is_some_and(|cmd| *cmd != state.command) =>
                 {
-                    // Command changed - agent exited (e.g., "node" -> "zsh")
-                    info!(
-                        pane_id,
-                        stored_command = state.command,
-                        live_command = live.current_command.as_deref().unwrap_or(""),
-                        "reconcile: removing agent, foreground command changed"
-                    );
-                    self.delete_agent(&state.pane_key)?;
-                    let _ = mux.clear_status(&state.pane_key.pane_id);
+                    if state.boot_id.is_some() && state.boot_id != current_boot_id {
+                        // Command changed after server restart - preserve for resurrect
+                        info!(
+                            pane_id,
+                            "reconcile: preserving agent from previous server lifecycle for resurrect"
+                        );
+                    } else {
+                        // Command changed - agent exited (e.g., "node" -> "zsh")
+                        info!(
+                            pane_id,
+                            stored_command = state.command,
+                            live_command = live.current_command.as_deref().unwrap_or(""),
+                            "reconcile: removing agent, foreground command changed"
+                        );
+                        self.delete_agent(&state.pane_key)?;
+                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                    }
                 }
                 Some(live) => {
                     // Valid - include in dashboard
@@ -375,6 +401,7 @@ mod tests {
             updated_ts: 1234567890,
             window_name: Some("wm-test".to_string()),
             session_name: Some("main".to_string()),
+            boot_id: None,
         }
     }
 

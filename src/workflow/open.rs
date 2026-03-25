@@ -121,12 +121,15 @@ pub fn open(
             };
             let _ = git::set_worktree_meta(&base_handle, "mode", mode_str);
         }
-        target.select()?;
+        if options.focus_window {
+            target.select()?;
+        }
         info!(
             handle = base_handle,
             branch = branch_name,
             path = %worktree_path.display(),
             kind = target.kind(),
+            focus = options.focus_window,
             "open:switched to existing target"
         );
         return Ok(CreateResult {

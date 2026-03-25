@@ -335,6 +335,16 @@ enum Commands {
         name: Option<String>,
     },
 
+    /// Restore worktree windows after a tmux or computer crash
+    ///
+    /// Uses persisted agent state files to detect which worktrees had active
+    /// agents before the crash.
+    Resurrect {
+        /// Show what would be restored without doing it
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Merge a branch, then clean up the worktree and tmux window
     Merge {
         /// Worktree name or branch (defaults to current directory)
@@ -751,6 +761,7 @@ pub fn run() -> Result<()> {
             prompt,
         ),
         Commands::Close { name } => command::close::run(name.as_deref()),
+        Commands::Resurrect { dry_run } => command::resurrect::run(dry_run),
         Commands::Merge {
             name,
             into,

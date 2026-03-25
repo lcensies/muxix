@@ -73,6 +73,9 @@ pub fn persist_agent_update(
         .or(existing.and_then(|e| e.pane_title))
         .or(live_info.title);
 
+    // Get server boot ID for crash detection (best-effort)
+    let boot_id = mux.server_boot_id().unwrap_or(None);
+
     let state = AgentState {
         pane_key,
         workdir: live_info.working_dir,
@@ -84,6 +87,7 @@ pub fn persist_agent_update(
         updated_ts: now,
         window_name: live_info.window,
         session_name: live_info.session,
+        boot_id,
     };
 
     if let Ok(store) = StateStore::new()

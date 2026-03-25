@@ -10,6 +10,7 @@ mod open;
 pub mod pr;
 pub mod prompt_loader;
 mod remove;
+pub mod resurrect;
 mod setup;
 pub mod types;
 

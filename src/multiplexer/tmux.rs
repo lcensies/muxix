@@ -763,6 +763,21 @@ impl Multiplexer for TmuxBackend {
         }))
     }
 
+    fn server_boot_id(&self) -> Result<Option<String>> {
+        // #{start_time} is the Unix timestamp when the tmux server started.
+        // Stable across the server's lifetime, changes on restart.
+        self.tmux_query(&["display-message", "-p", "#{start_time}"])
+            .map(|s| {
+                let trimmed = s.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .or_else(|_| Ok(None))
+    }
+
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>> {
         use std::collections::HashMap;
 

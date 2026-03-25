@@ -510,6 +510,17 @@ pub trait Multiplexer: Send + Sync {
     /// than calling get_live_pane_info repeatedly when validating many panes.
     fn get_all_live_pane_info(&self) -> Result<std::collections::HashMap<String, LivePaneInfo>>;
 
+    /// Get the server's boot identifier for crash detection.
+    ///
+    /// Returns a stable identifier that changes when the multiplexer server restarts.
+    /// Used to distinguish intentional pane closes from server crashes: if a pane's
+    /// stored boot_id differs from the current one, the server restarted.
+    ///
+    /// Default returns None (no crash detection for this backend).
+    fn server_boot_id(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Validate if an agent is still alive and should be kept in the dashboard.
     ///
     /// Called when a pane is not found in the batched `get_all_live_pane_info()` result.
