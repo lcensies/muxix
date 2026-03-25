@@ -151,6 +151,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 
     let sep_width = area.width as usize;
     let selected_idx = app.list_state.selected();
+    let agent_count = app.agents.len();
 
     let items: Vec<ListItem> = app
         .agents
@@ -319,6 +320,14 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                     Span::styled(title_display, body_style),
                     Span::styled(" ".repeat(title_padding), pad_style),
                 ]));
+            }
+
+            // Bottom separator after the last item
+            if idx == agent_count - 1 {
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(sep_width),
+                    Style::default().fg(app.palette.border),
+                )));
             }
 
             ListItem::new(lines)
