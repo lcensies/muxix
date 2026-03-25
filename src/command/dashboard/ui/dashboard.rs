@@ -693,6 +693,8 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     let sort = app.worktree_sort_mode.label();
 
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
+    s.extend(cmd("a".into(), "Add".into()));
+    s.push(pipe());
     s.extend(cmd("o".into(), "PR".into()));
     s.push(pipe());
     s.extend(cmd("r".into(), "Remove".into()));
