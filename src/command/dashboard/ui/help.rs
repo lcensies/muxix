@@ -913,7 +913,38 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
         }
     }
 
-    lines.push(Line::from(""));
+    // Contextual hint based on current selection
+    if !is_pr_mode {
+        let has_create_row = !state.filter.trim().is_empty();
+        let hint = if has_create_row && state.cursor == 0 {
+            if state.detected_pr_number().is_some() {
+                None // PR checkout is self-explanatory
+            } else {
+                Some(format!("New branch from {}", state.base_branch))
+            }
+        } else {
+            // Existing branch selected
+            let branch_cursor = if has_create_row {
+                state.cursor.checked_sub(1)
+            } else {
+                Some(state.cursor)
+            };
+            let filtered = state.filtered();
+            branch_cursor
+                .and_then(|bc| filtered.get(bc))
+                .map(|&idx| format!("Worktree for existing branch '{}'", state.branches[idx]))
+        };
+        if let Some(hint) = hint {
+            lines.push(Line::from(vec![Span::styled(
+                format!(" {}", hint),
+                Style::default().fg(palette.dimmed),
+            )]));
+        } else {
+            lines.push(Line::from(""));
+        }
+    } else {
+        lines.push(Line::from(""));
+    }
 
     // Footer (mode-dependent)
     if is_pr_mode {
