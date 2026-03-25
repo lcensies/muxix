@@ -745,6 +745,21 @@ def assert_symlink_to(worktree_path: Path, relative_path: str) -> Path:
 # =============================================================================
 
 
+def wait_for_window_ready(
+    env: MuxEnvironment, window_name: str, timeout: float = 3.0
+) -> None:
+    """Poll until a window exists and its pane has visible content (shell prompt)."""
+
+    def _ready() -> bool:
+        if window_name not in env.list_windows():
+            return False
+        content = env.capture_pane(window_name)
+        return content is not None and content.strip() != ""
+
+    if not poll_until(_ready, timeout=timeout):
+        assert False, f"Window {window_name!r} not ready within {timeout}s"
+
+
 def wait_for_pane_output(
     env: MuxEnvironment, window_name: str, text: str, timeout: float = 2.0
 ) -> None:

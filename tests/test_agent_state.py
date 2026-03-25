@@ -13,7 +13,6 @@ verify the state files have the fields needed for reconciliation to work.
 """
 
 import json
-import time
 from pathlib import Path
 
 
@@ -23,6 +22,7 @@ from .conftest import (
     make_env_script,
     poll_until,
     run_workmux_add,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -88,7 +88,7 @@ def test_set_window_status_creates_state_file(
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
 
     # Wait for window/shell to be ready
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Send set-window-status command to the pane using tab title
     # This simulates what Claude hooks do when agent starts working
@@ -122,7 +122,7 @@ def test_state_file_has_correct_fields(
     )
 
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Trigger state file creation using tab title
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -180,7 +180,7 @@ def test_state_file_contains_pane_info(
     )
 
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create state file
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -228,7 +228,7 @@ def test_status_update_overwrites_state(
     )
 
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create initial state with "working" status
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -245,8 +245,7 @@ def test_status_update_overwrites_state(
     state = read_agent_state(state_files[0])
     assert state["status"] == "working", f"Expected 'working', got '{state['status']}'"
 
-    # Wait a bit and update to "done" status
-    time.sleep(0.5)
+    # Update to "done" status
     status_cmd = build_status_cmd(env, workmux_exe_path, "done")
     env.send_keys(window_name, status_cmd)
 

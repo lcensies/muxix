@@ -4,7 +4,6 @@ Tests for `workmux capture` command.
 Tests error paths and happy-path capture from a live agent pane.
 """
 
-import time
 from pathlib import Path
 
 from .conftest import (
@@ -13,6 +12,8 @@ from .conftest import (
     poll_until,
     run_workmux_add,
     run_workmux_command,
+    wait_for_pane_output,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -61,11 +62,11 @@ def test_capture_output_from_agent(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Put some recognizable text in the pane
     env.send_keys(window_name, "echo CAPTURE_MARKER_12345")
-    time.sleep(0.5)
+    wait_for_pane_output(env, window_name, "CAPTURE_MARKER_12345")
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -95,7 +96,7 @@ def test_capture_strips_ansi(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -126,7 +127,7 @@ def test_capture_custom_line_count(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")

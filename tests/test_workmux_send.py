@@ -6,7 +6,6 @@ a live agent pane) require a reconciled agent with matching backend/instance,
 which is set up via set-window-status.
 """
 
-import time
 from pathlib import Path
 
 from .conftest import (
@@ -15,6 +14,7 @@ from .conftest import (
     poll_until,
     run_workmux_add,
     run_workmux_command,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -77,7 +77,7 @@ def test_send_inline_text_to_agent(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "waiting")
@@ -106,7 +106,7 @@ def test_send_from_file_to_agent(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "waiting")

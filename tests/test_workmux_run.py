@@ -10,7 +10,6 @@ are already tested in test_workmux_send/capture/wait.
 import json
 import re
 import shlex
-import time
 from pathlib import Path
 
 from .conftest import (
@@ -21,6 +20,7 @@ from .conftest import (
     poll_until,
     poll_until_file_has_content,
     run_workmux_add,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -49,7 +49,7 @@ def setup_worktree_with_agent(
     window_name = get_window_name(branch_name)
     write_workmux_config(repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     status_cmd = build_status_cmd(env, workmux_exe_path, "waiting")
     env.send_keys(window_name, status_cmd)

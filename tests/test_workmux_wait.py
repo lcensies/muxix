@@ -4,7 +4,6 @@ Tests for `workmux wait` command.
 Tests error handling, timeout behavior, and waiting for real agent state.
 """
 
-import time
 from pathlib import Path
 
 from .conftest import (
@@ -13,6 +12,7 @@ from .conftest import (
     poll_until,
     run_workmux_add,
     run_workmux_command,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -56,12 +56,12 @@ def test_wait_timeout_exits_with_code_1(
 ):
     """Wait with --timeout exits with code 1 when timeout is reached."""
     env = mux_server
+    window_name = get_window_name("feature-wait-to")
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, "feature-wait-to")
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create agent state with "working" status
-    window_name = get_window_name("feature-wait-to")
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
     env.send_keys(window_name, status_cmd)
     assert poll_until(lambda: len(list_agent_state_files(env)) > 0, timeout=5.0), (
@@ -90,7 +90,7 @@ def test_wait_succeeds_when_already_in_target_status(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create agent state with "done" status
     status_cmd = build_status_cmd(env, workmux_exe_path, "done")

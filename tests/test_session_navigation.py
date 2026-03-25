@@ -22,7 +22,6 @@ session can't be detected when running from inside the source session.
 """
 
 import shlex
-import time
 from pathlib import Path
 
 import pytest
@@ -35,6 +34,7 @@ from .conftest import (
     get_scripts_dir,
     get_session_name,
     get_worktree_path,
+    poll_until,
     poll_until_file_has_content,
     run_workmux_command,
     write_workmux_config,
@@ -43,9 +43,6 @@ from .test_workmux_add.conftest import add_branch_and_get_worktree
 
 # Session navigation is tmux-specific (other backends don't support sessions)
 pytestmark = pytest.mark.tmux_only
-
-# Time to wait for deferred scripts to complete (300ms sleep + execution)
-DEFERRED_SCRIPT_WAIT = 2.0
 
 
 def run_workmux_in_session(
@@ -220,14 +217,11 @@ class TestRemoveFromInsideSession:
             f"kill-session (pos {kill_pos}) in the deferred script"
         )
 
-        # Wait for deferred script to complete
-        time.sleep(DEFERRED_SCRIPT_WAIT)
-
-        # Verify end state: session killed and worktree removed
-        assert_session_not_exists(env, session_name)
-        assert not worktree_path.exists(), (
+        # Wait for deferred script to complete (session killed, worktree removed)
+        assert poll_until(lambda: not worktree_path.exists(), timeout=5.0), (
             "Worktree should be removed by deferred cleanup"
         )
+        assert_session_not_exists(env, session_name)
 
 
 class TestCreateAndSwitch:

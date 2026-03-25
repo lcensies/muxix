@@ -5,7 +5,6 @@ Tests output format, JSON mode, filtering, and behavior with real agent state.
 """
 
 import json
-import time
 from pathlib import Path
 
 from .conftest import (
@@ -14,6 +13,7 @@ from .conftest import (
     poll_until,
     run_workmux_add,
     run_workmux_command,
+    wait_for_window_ready,
     write_workmux_config,
 )
 
@@ -49,7 +49,7 @@ def test_status_with_active_agent(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -75,7 +75,7 @@ def test_status_json_with_active_agent(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create real agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "done")
@@ -107,7 +107,7 @@ def test_status_filter_by_worktree(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
@@ -140,7 +140,7 @@ def test_status_filter_no_match(
 
     write_workmux_config(mux_repo_path, panes=[{"focus": True}])
     run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
-    time.sleep(1.5)
+    wait_for_window_ready(env, window_name)
 
     # Create agent state
     status_cmd = build_status_cmd(env, workmux_exe_path, "working")
