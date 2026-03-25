@@ -691,6 +691,212 @@ impl App {
         self.open_selected_worktree();
     }
 
+    // ── Add worktree methods ───────────────────────────────────────
+
+    /// Get the repo path for the current worktree view context.
+    fn worktree_repo_path(&self) -> Option<PathBuf> {
+        self.worktree_project_override
+            .as_ref()
+            .map(|(_, p)| p.clone())
+            .or_else(|| self.worktrees.first().map(|w| w.path.clone()))
+            .or_else(|| self.current_worktree.clone())
+    }
+
+    /// Open the add-worktree modal.
+    pub fn show_add_worktree(&mut self) {
+        let Some(repo_path) = self.worktree_repo_path() else {
+            self.status_message = Some((
+                "No project context available".to_string(),
+                std::time::Instant::now(),
+            ));
+            return;
+        };
+
+        self.pending_add_worktree = Some(AddWorktreeState {
+            phase: AddWorktreePhase::NameInput,
+            name: String::new(),
+            branches: Vec::new(),
+            cursor: 0,
+            filter: String::new(),
+            repo_path,
+        });
+    }
+
+    /// Append a character to the worktree name input.
+    pub fn add_worktree_append(&mut self, c: char) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.name.push(c);
+        }
+    }
+
+    /// Delete the last character from the worktree name input.
+    pub fn add_worktree_delete(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.name.pop();
+        }
+    }
+
+    /// Confirm the name and advance to branch selection phase.
+    pub fn add_worktree_confirm_name(&mut self) {
+        let Some(ref mut state) = self.pending_add_worktree else {
+            return;
+        };
+
+        let name = state.name.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+
+        // List branches for the branch picker
+        let branches = match git::list_local_branches_in(Some(&state.repo_path)) {
+            Ok(b) => b,
+            Err(_) => {
+                self.status_message = Some((
+                    "Failed to list branches".to_string(),
+                    std::time::Instant::now(),
+                ));
+                self.pending_add_worktree = None;
+                return;
+            }
+        };
+
+        state.name = name;
+        state.branches = branches;
+        state.cursor = 0;
+        state.filter.clear();
+        state.phase = AddWorktreePhase::BranchSelect;
+    }
+
+    /// Move cursor down in add-worktree branch picker.
+    pub fn add_worktree_branch_down(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            let filtered = state.filtered();
+            if !filtered.is_empty() && state.cursor + 1 < filtered.len() {
+                state.cursor += 1;
+            }
+        }
+    }
+
+    /// Move cursor up in add-worktree branch picker.
+    pub fn add_worktree_branch_up(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.cursor = state.cursor.saturating_sub(1);
+        }
+    }
+
+    /// Append a character to the add-worktree branch filter.
+    pub fn add_worktree_branch_filter_append(&mut self, c: char) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.filter.push(c);
+            state.cursor = 0;
+        }
+    }
+
+    /// Delete the last character from the add-worktree branch filter.
+    pub fn add_worktree_branch_filter_delete(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.filter.pop();
+            state.cursor = 0;
+        }
+    }
+
+    /// Create the worktree with the selected base branch.
+    pub fn confirm_add_worktree(&mut self, skip_base: bool) {
+        let Some(state) = self.pending_add_worktree.take() else {
+            return;
+        };
+
+        let base_branch = if skip_base {
+            None
+        } else {
+            let filtered = state.filtered();
+            filtered
+                .get(state.cursor)
+                .map(|&idx| state.branches[idx].clone())
+        };
+
+        let name = state.name.clone();
+        let repo_path = state.repo_path.clone();
+
+        self.do_create_worktree(name, base_branch, repo_path);
+    }
+
+    /// Execute worktree creation in a background thread.
+    fn do_create_worktree(
+        &mut self,
+        name: String,
+        base_branch: Option<String>,
+        repo_path: PathBuf,
+    ) {
+        let config = self.config.clone();
+        let mux = self.mux.clone();
+        let tx = self.event_tx.clone();
+        let status_name = name.clone();
+
+        std::thread::spawn(move || {
+            let result = (|| -> anyhow::Result<String> {
+                let ctx = workflow::WorkflowContext::new(config.clone(), mux, None)?;
+                let handle = crate::naming::derive_handle(&name, None, &config)?;
+                let mut options = workflow::types::SetupOptions::new(true, true, true);
+                options.focus_window = false;
+
+                // Set working directory for git operations
+                std::env::set_current_dir(&repo_path)?;
+
+                let result = workflow::create(
+                    &ctx,
+                    workflow::CreateArgs {
+                        branch_name: &name,
+                        handle: &handle,
+                        base_branch: base_branch.as_deref(),
+                        remote_branch: None,
+                        prompt: None,
+                        options,
+                        agent: None,
+                        is_explicit_name: false,
+                        prompt_file_only: false,
+                    },
+                )?;
+                Ok(result.branch_name)
+            })();
+
+            match result {
+                Ok(branch) => {
+                    // Trigger worktree list refresh by sending a refetch
+                    // The main loop will pick this up and refresh
+                    let _ = tx.send(AppEvent::AddWorktreeResult(Ok(branch)));
+                }
+                Err(e) => {
+                    let _ = tx.send(AppEvent::AddWorktreeResult(Err(e.to_string())));
+                }
+            }
+        });
+
+        self.status_message = Some((
+            format!("Creating worktree '{}'...", status_name),
+            std::time::Instant::now(),
+        ));
+    }
+
+    /// Handle the result of a background add-worktree operation.
+    pub fn handle_add_worktree_result(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(branch) => {
+                self.status_message = Some((
+                    format!("Created worktree '{}'", branch),
+                    std::time::Instant::now(),
+                ));
+                self.trigger_worktree_refetch();
+            }
+            Err(e) => {
+                self.status_message = Some((
+                    format!("Failed to create worktree: {}", e),
+                    std::time::Instant::now(),
+                ));
+            }
+        }
+    }
+
     /// Update the preview for the selected worktree (git log)
     fn update_worktree_preview(&mut self) {
         let current_path = self

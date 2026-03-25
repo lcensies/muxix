@@ -22,6 +22,8 @@ pub enum AppEvent {
     WorktreeList(Vec<WorktreeInfo>),
     /// Git log preview for a worktree path
     WorktreeLog(PathBuf, String),
+    /// Result of a background add-worktree operation
+    AddWorktreeResult(Result<String, String>),
 }
 
 /// Which tab is active in the dashboard
@@ -119,6 +121,38 @@ pub struct BaseBranchPicker {
 }
 
 impl BaseBranchPicker {
+    /// Return indices into `branches` that match the current filter.
+    pub fn filtered(&self) -> Vec<usize> {
+        if self.filter.is_empty() {
+            return (0..self.branches.len()).collect();
+        }
+        let lower = self.filter.to_lowercase();
+        self.branches
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.to_lowercase().contains(&lower))
+            .map(|(i, _)| i)
+            .collect()
+    }
+}
+
+/// Phase of the add-worktree modal.
+pub enum AddWorktreePhase {
+    NameInput,
+    BranchSelect,
+}
+
+/// State for the add-worktree modal.
+pub struct AddWorktreeState {
+    pub phase: AddWorktreePhase,
+    pub name: String,
+    pub branches: Vec<String>,
+    pub cursor: usize,
+    pub filter: String,
+    pub repo_path: PathBuf,
+}
+
+impl AddWorktreeState {
     /// Return indices into `branches` that match the current filter.
     pub fn filtered(&self) -> Vec<usize> {
         if self.filter.is_empty() {

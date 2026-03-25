@@ -77,6 +77,7 @@ The dashboard has two views, toggled with `Tab`:
 | `Enter`   | Jump to worktree (agent or mux window) |
 | `o`       | Open PR in browser                     |
 | `O`       | Open PR checks in browser              |
+| `a`       | Add worktree                           |
 | `r`       | Remove worktree                        |
 | `c`       | Close mux window (keeps worktree)      |
 | `R`       | Sweep (bulk remove merged/gone)        |

@@ -690,3 +690,184 @@ pub fn render_project_picker(f: &mut Frame, app: &App) {
     f.render_widget(Clear, popup_area);
     f.render_widget(paragraph, popup_area);
 }
+
+/// Render the add-worktree modal.
+pub fn render_add_worktree(f: &mut Frame, app: &App) {
+    use super::super::app::AddWorktreePhase;
+
+    let Some(ref state) = app.pending_add_worktree else {
+        return;
+    };
+    let palette = &app.palette;
+
+    let bold = |s: &str| {
+        Span::styled(
+            s.to_string(),
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
+    let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette.dimmed));
+
+    match state.phase {
+        AddWorktreePhase::NameInput => {
+            let mut lines: Vec<Line> = Vec::new();
+
+            lines.push(Line::from(""));
+            if state.name.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled("_", Style::default().fg(palette.dimmed)),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(state.name.clone(), Style::default().fg(palette.text)),
+                    Span::styled("_", Style::default().fg(palette.text)),
+                ]));
+            }
+
+            lines.push(Line::from(""));
+
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                bold("Enter"),
+                dim(" next  "),
+                bold("Esc"),
+                dim(" cancel"),
+            ]));
+
+            let height = lines.len() as u16 + 2;
+            let width: u16 = 40;
+
+            let area = f.area();
+            let popup_area = Rect {
+                x: area.width.saturating_sub(width) / 2,
+                y: area.height.saturating_sub(height) / 2,
+                width: width.min(area.width),
+                height: height.min(area.height),
+            };
+
+            let block = Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Rounded)
+                .border_style(Style::default().fg(palette.help_border))
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(
+                        "Add Worktree",
+                        Style::default()
+                            .fg(palette.header)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(" ", Style::default()),
+                ]));
+
+            let paragraph = Paragraph::new(Text::from(lines)).block(block);
+
+            f.render_widget(Clear, popup_area);
+            f.render_widget(paragraph, popup_area);
+        }
+        AddWorktreePhase::BranchSelect => {
+            let filtered = state.filtered();
+
+            let max_visible: usize = state.branches.len().clamp(1, 15);
+            let content_width = state
+                .branches
+                .iter()
+                .map(|b| 2 + b.len())
+                .max()
+                .unwrap_or(20);
+            let width = (content_width as u16 + 4).clamp(40, 60);
+            let height = (max_visible as u16) + 6;
+
+            let mut lines: Vec<Line> = Vec::new();
+
+            if state.filter.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled(" /", Style::default().fg(palette.dimmed)),
+                    Span::styled("_", Style::default().fg(palette.dimmed)),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled(" /", Style::default().fg(palette.dimmed)),
+                    Span::styled(state.filter.clone(), Style::default().fg(palette.text)),
+                    Span::styled("_", Style::default().fg(palette.text)),
+                ]));
+            }
+
+            lines.push(Line::from(""));
+
+            if filtered.is_empty() {
+                lines.push(Line::from(vec![Span::styled(
+                    " No matching branches.",
+                    Style::default().fg(palette.dimmed),
+                )]));
+                for _ in 1..max_visible {
+                    lines.push(Line::from(""));
+                }
+            } else {
+                let total = filtered.len();
+                let start = if total <= max_visible || state.cursor < max_visible / 2 {
+                    0
+                } else if state.cursor + max_visible / 2 >= total {
+                    total.saturating_sub(max_visible)
+                } else {
+                    state.cursor - max_visible / 2
+                };
+                let end = (start + max_visible).min(total);
+
+                for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
+                    let branch = &state.branches[idx];
+                    let cursor = if fi == state.cursor { "> " } else { "  " };
+
+                    lines.push(Line::from(vec![
+                        Span::styled(cursor, Style::default().fg(palette.text)),
+                        Span::styled(branch.clone(), Style::default().fg(palette.text)),
+                    ]));
+                }
+
+                for _ in (end - start)..max_visible {
+                    lines.push(Line::from(""));
+                }
+            }
+
+            lines.push(Line::from(""));
+
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                bold("Enter"),
+                dim(" select  "),
+                bold("Esc"),
+                dim(" skip"),
+            ]));
+
+            let area = f.area();
+            let popup_area = Rect {
+                x: area.width.saturating_sub(width) / 2,
+                y: area.height.saturating_sub(height) / 2,
+                width: width.min(area.width),
+                height: height.min(area.height),
+            };
+
+            let block = Block::bordered()
+                .border_type(ratatui::widgets::BorderType::Rounded)
+                .border_style(Style::default().fg(palette.help_border))
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(
+                        format!("Base Branch for '{}'", state.name),
+                        Style::default()
+                            .fg(palette.header)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(" ", Style::default()),
+                ]));
+
+            let paragraph = Paragraph::new(Text::from(lines)).block(block);
+
+            f.render_widget(Clear, popup_area);
+            f.render_widget(paragraph, popup_area);
+        }
+    }
+}

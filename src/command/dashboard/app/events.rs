@@ -40,6 +40,9 @@ impl App {
                     self.worktree_preview = Some(log);
                 }
             }
+            AppEvent::AddWorktreeResult(result) => {
+                self.handle_add_worktree_result(result);
+            }
         }
     }
 }
