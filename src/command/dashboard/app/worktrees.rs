@@ -13,6 +13,19 @@ use super::super::sort::WorktreeSortMode;
 use super::App;
 use super::types::*;
 
+/// Delete the last word from a string (Emacs Ctrl+w behavior).
+fn delete_word_backward(s: &mut String) {
+    // Trim trailing whitespace first
+    let trimmed_len = s.trim_end().len();
+    s.truncate(trimmed_len);
+    // Then delete back to the previous word boundary
+    if let Some(pos) = s.rfind(|c: char| c == '/' || c == '-' || c.is_whitespace()) {
+        s.truncate(pos);
+    } else {
+        s.clear();
+    }
+}
+
 impl App {
     /// Reset the worktree fetch timer to trigger an immediate refetch
     pub fn trigger_worktree_refetch(&mut self) {
@@ -762,16 +775,32 @@ impl App {
         }
     }
 
+    /// Delete the last word from the add-worktree filter (Ctrl+w).
+    pub fn add_worktree_delete_word(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            delete_word_backward(&mut state.filter);
+            state.tab_prefix = None;
+            state.cursor = 0;
+        }
+    }
+
+    /// Clear the add-worktree filter (Ctrl+u).
+    pub fn add_worktree_clear(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.filter.clear();
+            state.tab_prefix = None;
+            state.cursor = 0;
+        }
+    }
+
     /// Move cursor down in the add-worktree picker.
     pub fn add_worktree_down(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
             let has_create_row = !state.filter.trim().is_empty();
-            // Cursor 0 = "Create" row (when present), then 1..N = branch rows
-            // Cap so cursor can't reach occupied branches at the end
             let max_idx = if has_create_row {
                 state.selectable_count() // 0=Create, 1..count=branches
             } else {
-                state.selectable_count().saturating_sub(1) // 0..count-1=branches
+                state.selectable_count().saturating_sub(1)
             };
             if state.cursor < max_idx {
                 state.cursor += 1;
