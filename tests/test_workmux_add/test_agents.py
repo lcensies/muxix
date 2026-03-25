@@ -242,13 +242,16 @@ printf '%s' "$2" > "{output_filename}"
         branch_name = "feature-agent-override"
         window_name = get_window_name(branch_name)
         prompt_text = "This is for the override agent"
-        output_filename = "agent_output.txt"
+
+        # Use absolute paths for output files to avoid cwd/shell-init races
+        agent_output = env.tmp_path / "agent_output.txt"
+        default_agent_output = env.tmp_path / "default_agent.txt"
 
         # Create two fake agents: a default one and the one we'll specify via the flag.
         # Default agent (claude)
         fake_agent_installer.install(
             "claude",
-            "#!/bin/sh\necho 'default agent ran' > default_agent.txt",
+            f"#!/bin/sh\necho 'default agent ran' > {default_agent_output}",
         )
 
         # Override agent (gemini)
@@ -256,7 +259,7 @@ printf '%s' "$2" > "{output_filename}"
             "gemini",
             f"""#!/bin/sh
 # Gemini gets a -i flag, then the prompt as $2
-printf '%s' "$2" > "{output_filename}"
+printf '%s' "$2" > "{agent_output}"
 """,
         )
 
@@ -272,12 +275,10 @@ printf '%s' "$2" > "{output_filename}"
             extra_args=f"--agent {shlex.quote(str(fake_gemini_path))} --prompt {shlex.quote(prompt_text)}",
         )
 
-        agent_output = worktree_path / output_filename
-        default_agent_output = worktree_path / "default_agent.txt"
-
         wait_for_file(
             env,
             agent_output,
+            timeout=10.0,
             window_name=window_name,
             worktree_path=worktree_path,
         )

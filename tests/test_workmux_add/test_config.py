@@ -281,19 +281,22 @@ class TestGlobalAgentDefault:
         env = mux_server
         branch_name = "feature-global-agent-default"
         window_name = get_window_name(branch_name)
-        output_filename = "global_agent_ran.txt"
 
         # Ensure CLAUDE.md does not exist so we isolate the global agent config behavior
         assert not (mux_repo_path / "CLAUDE.md").exists()
 
-        # Install fake agent using absolute path to avoid shell RC/PATH dependencies
-        fake_agent_installer.install(
+        # Use absolute path for output to avoid cwd/shell-init races
+        agent_output = env.tmp_path / "global_agent_ran.txt"
+
+        # Install fake agent; use absolute path for both agent command and output
+        # to avoid PATH resolution issues when the login shell re-initializes PATH
+        agent_path = fake_agent_installer.install(
             "global_agent",
-            f"#!/bin/sh\necho ran > {output_filename}\n",
+            f"#!/bin/sh\necho ran > {agent_output}\n",
         )
 
-        # Write global config with agent but NO explicit panes
-        write_global_workmux_config(env, agent="global_agent")
+        # Write global config with absolute agent path but NO explicit panes
+        write_global_workmux_config(env, agent=str(agent_path))
 
         # Do NOT write project-level .workmux.yaml
 
@@ -301,11 +304,10 @@ class TestGlobalAgentDefault:
             env, workmux_exe_path, mux_repo_path, branch_name
         )
 
-        agent_output = worktree_path / output_filename
         wait_for_file(
             env,
             agent_output,
-            timeout=5.0,
+            timeout=10.0,
             window_name=window_name,
             worktree_path=worktree_path,
         )
