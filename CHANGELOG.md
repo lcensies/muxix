@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.151 (2026-03-25)
+
+- Dashboard: fix immediate exit on startup caused by a stray Enter keypress from
+  launching the command being processed before the UI was ready
+
 ## v0.1.150 (2026-03-25)
 
 - Add `--continue` flag to `workmux open` to resume the last agent conversation
