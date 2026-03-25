@@ -802,17 +802,25 @@ pub fn render_add_worktree(f: &mut Frame, app: &App) {
                     let branch = &state.branches[idx];
                     let is_selected = branch_cursor == Some(fi);
                     let cursor_str = if is_selected { "> " } else { "  " };
+                    let is_occupied = state.occupied_branches.contains(branch);
 
-                    let branch_style = if is_selected {
+                    let branch_style = if is_occupied {
+                        Style::default().fg(palette.dimmed)
+                    } else if is_selected {
                         Style::default().fg(palette.accent)
                     } else {
                         Style::default().fg(palette.text)
                     };
 
-                    lines.push(Line::from(vec![
+                    let mut spans = vec![
                         Span::styled(cursor_str, Style::default().fg(palette.text)),
                         Span::styled(branch.clone(), branch_style),
-                    ]));
+                    ];
+                    if is_occupied {
+                        spans.push(dim(" (in use)"));
+                    }
+
+                    lines.push(Line::from(spans));
                 }
 
                 for _ in (end - start)..max_visible {

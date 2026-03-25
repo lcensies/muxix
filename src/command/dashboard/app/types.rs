@@ -166,27 +166,44 @@ pub struct AddWorktreeState {
 impl AddWorktreeState {
     /// Return indices into `branches` that match the current filter.
     /// During tab cycling, uses the original typed prefix so all matches stay visible.
-    /// Occupied branches (already have worktrees) are excluded.
+    /// Available branches appear first, occupied branches (already have worktrees) last.
     pub fn filtered(&self) -> Vec<usize> {
         let text = self.tab_prefix.as_deref().unwrap_or(&self.filter);
-        if text.is_empty() {
-            return self
-                .branches
+        let matches: Vec<usize> = if text.is_empty() {
+            (0..self.branches.len()).collect()
+        } else {
+            let lower = text.to_lowercase();
+            self.branches
                 .iter()
                 .enumerate()
-                .filter(|(_, b)| !self.occupied_branches.contains(*b))
+                .filter(|(_, b)| b.to_lowercase().contains(&lower))
                 .map(|(i, _)| i)
-                .collect();
+                .collect()
+        };
+
+        // Sort: available branches first, occupied last
+        let mut available: Vec<usize> = Vec::new();
+        let mut occupied: Vec<usize> = Vec::new();
+        for idx in matches {
+            if self.occupied_branches.contains(&self.branches[idx]) {
+                occupied.push(idx);
+            } else {
+                available.push(idx);
+            }
         }
-        let lower = text.to_lowercase();
-        self.branches
+        available.extend(occupied);
+        available
+    }
+
+    /// Number of selectable (non-occupied) entries in `filtered()`.
+    /// Since `filtered()` places available branches before occupied ones,
+    /// this is the count of leading non-occupied entries.
+    pub fn selectable_count(&self) -> usize {
+        let filtered = self.filtered();
+        filtered
             .iter()
-            .enumerate()
-            .filter(|(_, b)| {
-                b.to_lowercase().contains(&lower) && !self.occupied_branches.contains(*b)
-            })
-            .map(|(i, _)| i)
-            .collect()
+            .take_while(|&&idx| !self.occupied_branches.contains(&self.branches[idx]))
+            .count()
     }
 }
 

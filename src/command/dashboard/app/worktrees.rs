@@ -760,9 +760,14 @@ impl App {
     /// Move cursor down in the add-worktree picker.
     pub fn add_worktree_down(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
-            let filtered = state.filtered();
-            // Max index: filtered.len() because cursor 0 is "Create new"
-            let max_idx = filtered.len();
+            let has_create_row = !state.filter.trim().is_empty();
+            // Cursor 0 = "Create" row (when present), then 1..N = branch rows
+            // Cap so cursor can't reach occupied branches at the end
+            let max_idx = if has_create_row {
+                state.selectable_count() // 0=Create, 1..count=branches
+            } else {
+                state.selectable_count().saturating_sub(1) // 0..count-1=branches
+            };
             if state.cursor < max_idx {
                 state.cursor += 1;
             }
@@ -789,7 +794,11 @@ impl App {
             state.tab_prefix = Some(state.filter.clone());
         }
 
-        let candidates = state.filtered();
+        let candidates: Vec<usize> = state
+            .filtered()
+            .into_iter()
+            .filter(|&idx| !state.occupied_branches.contains(&state.branches[idx]))
+            .collect();
         if candidates.is_empty() {
             return;
         }
