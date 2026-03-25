@@ -138,18 +138,10 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
     // Unified event channel: all background threads and the input thread send here
     let (event_tx, event_rx) = mpsc::channel::<AppEvent>();
 
-    // Dedicated input thread: reads crossterm events and forwards them
-    let input_tx = event_tx.clone();
-    std::thread::spawn(move || {
-        while let Ok(ev) = event::read() {
-            if input_tx.send(AppEvent::Terminal(ev)).is_err() {
-                break; // receiver dropped, app is shutting down
-            }
-        }
-    });
-
-    // Create app state
-    let mut app = App::new(mux, session_filter, event_tx)?;
+    // Create app state before spawning the input thread to avoid a race condition
+    // where stray terminal events (e.g. the Enter key used to launch the command)
+    // get queued and processed before the app is ready.
+    let mut app = App::new(mux, session_filter, event_tx.clone())?;
 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {
@@ -164,6 +156,25 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
             app.load_diff(false); // WIP diff (uncommitted changes)
         }
     }
+
+    // Discard any terminal events buffered during startup (e.g. the Enter used to
+    // launch the command from the shell). Intentionally discards typeahead.
+    while crossterm::event::poll(Duration::ZERO).unwrap_or(false) {
+        if crossterm::event::read().is_err() {
+            break;
+        }
+    }
+
+    // Dedicated input thread: reads crossterm events and forwards them.
+    // Spawned after init + drain so stray keypresses can't trigger actions.
+    let input_tx = event_tx;
+    std::thread::spawn(move || {
+        while let Ok(ev) = event::read() {
+            if input_tx.send(AppEvent::Terminal(ev)).is_err() {
+                break; // receiver dropped, app is shutting down
+            }
+        }
+    });
 
     // Main loop
     let tick_rate = Duration::from_millis(250);
