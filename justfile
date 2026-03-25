@@ -22,8 +22,8 @@ check-ci: check
         exit 1
     fi
 
-# Rust: format → clippy-fix → clippy → test (sequential)
-_rust-pipeline: format-rust clippy-fix clippy unit-tests
+# Rust: format → clippy → test (sequential)
+_rust-pipeline: format-rust clippy unit-tests
 
 # Python: format → lint → typecheck (sequential)
 _python-pipeline: format-python ruff-check pyright
@@ -39,13 +39,9 @@ format-rust:
 format-python:
     @ruff format tests --quiet
 
-# Run clippy and fail on any warnings
+# Auto-fix clippy warnings, then fail on any remaining
 clippy:
-    @cargo clippy --quiet -- -D clippy::all 2>&1 | { grep -v "^0 errors" || true; }
-
-# Auto-fix clippy warnings
-clippy-fix:
-    @cargo clippy --fix --allow-dirty --quiet -- -W clippy::all 2>&1 | { grep -v "^0 errors" || true; }
+    @cargo clippy --fix --allow-dirty --quiet -- -D clippy::all 2>&1 | { grep -v "^0 errors" || true; }
 
 # Build the project
 build:
