@@ -182,10 +182,21 @@ pub struct AddWorktreeState {
     pub pr_request_counter: u64,
 }
 
+/// Fuzzy subsequence match: every character in `query` must appear in `target` in order.
+/// "mergefail" matches "merge-fail-delete" because m-e-r-g-e-f-a-i-l appear in sequence.
+pub fn fuzzy_match(query: &str, target: &str) -> bool {
+    let mut target_chars = target.chars();
+    for qc in query.chars() {
+        if !target_chars.any(|tc| tc == qc) {
+            return false;
+        }
+    }
+    true
+}
+
 impl AddWorktreeState {
     /// Return indices into `branches` that match the current filter.
-    /// During tab cycling, uses the original typed prefix so all matches stay visible.
-    /// Available branches appear first, occupied branches (already have worktrees) last.
+    /// Uses fuzzy subsequence matching. Available branches appear first, occupied last.
     pub fn filtered(&self) -> Vec<usize> {
         let text = self.tab_prefix.as_deref().unwrap_or(&self.filter);
         let matches: Vec<usize> = if text.is_empty() {
@@ -195,7 +206,7 @@ impl AddWorktreeState {
             self.branches
                 .iter()
                 .enumerate()
-                .filter(|(_, b)| b.to_lowercase().contains(&lower))
+                .filter(|(_, b)| fuzzy_match(&lower, &b.to_lowercase()))
                 .map(|(i, _)| i)
                 .collect()
         };
@@ -250,10 +261,10 @@ impl AddWorktreeState {
         prs.iter()
             .enumerate()
             .filter(|(_, pr)| {
-                pr.title.to_lowercase().contains(&lower)
-                    || pr.head_ref_name.to_lowercase().contains(&lower)
+                fuzzy_match(&lower, &pr.title.to_lowercase())
+                    || fuzzy_match(&lower, &pr.head_ref_name.to_lowercase())
                     || pr.number.to_string().contains(&lower)
-                    || pr.author.to_lowercase().contains(&lower)
+                    || fuzzy_match(&lower, &pr.author.to_lowercase())
             })
             .map(|(i, _)| i)
             .collect()

@@ -844,13 +844,14 @@ impl App {
         let prefix = state.tab_prefix.as_deref().unwrap_or(&state.filter);
         let lower = prefix.to_lowercase();
 
-        // Tab uses prefix matching (not substring) for shell-like behavior
+        // Tab uses the same fuzzy matching as the filter list
         let candidates: Vec<usize> = state
             .branches
             .iter()
             .enumerate()
             .filter(|(_, b)| {
-                b.to_lowercase().starts_with(&lower) && !state.occupied_branches.contains(*b)
+                crate::command::dashboard::app::types::fuzzy_match(&lower, &b.to_lowercase())
+                    && !state.occupied_branches.contains(*b)
             })
             .map(|(i, _)| i)
             .collect();
@@ -956,7 +957,9 @@ impl App {
             .branches
             .iter()
             .enumerate()
-            .filter(|(_, b)| b.to_lowercase().starts_with(&lower))
+            .filter(|(_, b)| {
+                crate::command::dashboard::app::types::fuzzy_match(&lower, &b.to_lowercase())
+            })
             .map(|(i, _)| i)
             .collect();
         if candidates.is_empty() {
