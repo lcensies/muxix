@@ -352,24 +352,30 @@ fn handle_terminal_event(
     // Add worktree modal
     if let Some(ref state) = app.pending_add_worktree {
         match state.phase {
-            app::AddWorktreePhase::NameInput => match key.code {
-                crossterm::event::KeyCode::Enter => app.add_worktree_confirm_name(),
+            app::AddWorktreePhase::SelectOrCreate => match key.code {
+                crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Down => {
+                    app.add_worktree_down()
+                }
+                crossterm::event::KeyCode::Char('k') | crossterm::event::KeyCode::Up => {
+                    app.add_worktree_up()
+                }
+                crossterm::event::KeyCode::Enter => app.add_worktree_confirm_selection(),
                 crossterm::event::KeyCode::Backspace => app.add_worktree_delete(),
                 crossterm::event::KeyCode::Esc => app.pending_add_worktree = None,
                 crossterm::event::KeyCode::Char(c) => app.add_worktree_append(c),
                 _ => {}
             },
-            app::AddWorktreePhase::BranchSelect => match key.code {
+            app::AddWorktreePhase::BaseBranch => match key.code {
                 crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Down => {
-                    app.add_worktree_branch_down()
+                    app.add_worktree_down()
                 }
                 crossterm::event::KeyCode::Char('k') | crossterm::event::KeyCode::Up => {
-                    app.add_worktree_branch_up()
+                    app.add_worktree_up()
                 }
                 crossterm::event::KeyCode::Enter => app.confirm_add_worktree(false),
-                crossterm::event::KeyCode::Backspace => app.add_worktree_branch_filter_delete(),
+                crossterm::event::KeyCode::Backspace => app.add_worktree_delete(),
                 crossterm::event::KeyCode::Esc => app.confirm_add_worktree(true),
-                crossterm::event::KeyCode::Char(c) => app.add_worktree_branch_filter_append(c),
+                crossterm::event::KeyCode::Char(c) => app.add_worktree_append(c),
                 _ => {}
             },
         }

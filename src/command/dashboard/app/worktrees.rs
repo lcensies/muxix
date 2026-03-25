@@ -702,7 +702,7 @@ impl App {
             .or_else(|| self.current_worktree.clone())
     }
 
-    /// Open the add-worktree modal.
+    /// Open the add-worktree modal with unified picker (branches pre-fetched).
     pub fn show_add_worktree(&mut self) {
         let Some(repo_path) = self.worktree_repo_path() else {
             self.status_message = Some((
@@ -712,95 +712,103 @@ impl App {
             return;
         };
 
-        self.pending_add_worktree = Some(AddWorktreeState {
-            phase: AddWorktreePhase::NameInput,
-            name: String::new(),
-            branches: Vec::new(),
-            cursor: 0,
-            filter: String::new(),
-            repo_path,
-        });
-    }
-
-    /// Append a character to the worktree name input.
-    pub fn add_worktree_append(&mut self, c: char) {
-        if let Some(ref mut state) = self.pending_add_worktree {
-            state.name.push(c);
-        }
-    }
-
-    /// Delete the last character from the worktree name input.
-    pub fn add_worktree_delete(&mut self) {
-        if let Some(ref mut state) = self.pending_add_worktree {
-            state.name.pop();
-        }
-    }
-
-    /// Confirm the name and advance to branch selection phase.
-    pub fn add_worktree_confirm_name(&mut self) {
-        let Some(ref mut state) = self.pending_add_worktree else {
-            return;
-        };
-
-        let name = state.name.trim().to_string();
-        if name.is_empty() {
-            return;
-        }
-
-        // List branches for the branch picker
-        let branches = match git::list_local_branches_in(Some(&state.repo_path)) {
+        let branches = match git::list_local_branches_in(Some(&repo_path)) {
             Ok(b) => b,
             Err(_) => {
                 self.status_message = Some((
                     "Failed to list branches".to_string(),
                     std::time::Instant::now(),
                 ));
-                self.pending_add_worktree = None;
                 return;
             }
         };
 
-        state.name = name;
-        state.branches = branches;
-        state.cursor = 0;
-        state.filter.clear();
-        state.phase = AddWorktreePhase::BranchSelect;
+        // Collect branches that already have worktrees
+        let occupied_branches: std::collections::HashSet<String> =
+            self.worktrees.iter().map(|w| w.branch.clone()).collect();
+
+        self.pending_add_worktree = Some(AddWorktreeState {
+            phase: AddWorktreePhase::SelectOrCreate,
+            name: String::new(),
+            branches,
+            occupied_branches,
+            cursor: 0,
+            filter: String::new(),
+            repo_path,
+        });
     }
 
-    /// Move cursor down in add-worktree branch picker.
-    pub fn add_worktree_branch_down(&mut self) {
-        if let Some(ref mut state) = self.pending_add_worktree {
-            let filtered = state.filtered();
-            if !filtered.is_empty() && state.cursor + 1 < filtered.len() {
-                state.cursor += 1;
-            }
-        }
-    }
-
-    /// Move cursor up in add-worktree branch picker.
-    pub fn add_worktree_branch_up(&mut self) {
-        if let Some(ref mut state) = self.pending_add_worktree {
-            state.cursor = state.cursor.saturating_sub(1);
-        }
-    }
-
-    /// Append a character to the add-worktree branch filter.
-    pub fn add_worktree_branch_filter_append(&mut self, c: char) {
+    /// Append a character to the add-worktree filter/name input.
+    pub fn add_worktree_append(&mut self, c: char) {
         if let Some(ref mut state) = self.pending_add_worktree {
             state.filter.push(c);
             state.cursor = 0;
         }
     }
 
-    /// Delete the last character from the add-worktree branch filter.
-    pub fn add_worktree_branch_filter_delete(&mut self) {
+    /// Delete the last character from the add-worktree filter/name input.
+    pub fn add_worktree_delete(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
             state.filter.pop();
             state.cursor = 0;
         }
     }
 
-    /// Create the worktree with the selected base branch.
+    /// Move cursor down in the add-worktree picker.
+    pub fn add_worktree_down(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            let filtered = state.filtered();
+            // Max index: filtered.len() because cursor 0 is "Create new"
+            let max_idx = filtered.len();
+            if state.cursor < max_idx {
+                state.cursor += 1;
+            }
+        }
+    }
+
+    /// Move cursor up in the add-worktree picker.
+    pub fn add_worktree_up(&mut self) {
+        if let Some(ref mut state) = self.pending_add_worktree {
+            state.cursor = state.cursor.saturating_sub(1);
+        }
+    }
+
+    /// Handle Enter in the SelectOrCreate phase.
+    pub fn add_worktree_confirm_selection(&mut self) {
+        let Some(ref mut state) = self.pending_add_worktree else {
+            return;
+        };
+
+        if state.cursor == 0 {
+            // "Create new branch" selected
+            let name = state.filter.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            state.name = name;
+            state.filter.clear();
+            state.cursor = 0;
+            state.phase = AddWorktreePhase::BaseBranch;
+        } else {
+            // Existing branch selected
+            let filtered = state.filtered();
+            let Some(&idx) = filtered.get(state.cursor - 1) else {
+                return;
+            };
+            let branch = state.branches[idx].clone();
+
+            // Check if branch already has a worktree
+            if state.occupied_branches.contains(&branch) {
+                return;
+            }
+
+            let repo_path = state.repo_path.clone();
+            self.pending_add_worktree = None;
+            self.do_create_worktree(branch, None, repo_path);
+        }
+    }
+
+    /// Create the worktree with the selected base branch (from BaseBranch phase).
     pub fn confirm_add_worktree(&mut self, skip_base: bool) {
         let Some(state) = self.pending_add_worktree.take() else {
             return;

@@ -138,16 +138,25 @@ impl BaseBranchPicker {
 
 /// Phase of the add-worktree modal.
 pub enum AddWorktreePhase {
-    NameInput,
-    BranchSelect,
+    /// Unified picker: filter text doubles as new branch name, existing branches shown below.
+    /// Cursor 0 = "Create new branch", cursor 1..N = existing branch matches.
+    SelectOrCreate,
+    /// Base branch picker (only shown when creating a new branch).
+    BaseBranch,
 }
 
 /// State for the add-worktree modal.
 pub struct AddWorktreeState {
     pub phase: AddWorktreePhase,
+    /// The confirmed branch name (set when advancing from SelectOrCreate to BaseBranch).
     pub name: String,
+    /// All local branches (fetched once when modal opens).
     pub branches: Vec<String>,
+    /// Branches that already have worktrees (cannot create another).
+    pub occupied_branches: std::collections::HashSet<String>,
+    /// Cursor position: 0 = "Create new", 1..N = filtered branch index.
     pub cursor: usize,
+    /// Filter text (doubles as new branch name in SelectOrCreate phase).
     pub filter: String,
     pub repo_path: PathBuf,
 }
