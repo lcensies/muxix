@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use tracing::info;
 
 use crate::config;
 use crate::multiplexer::{create_backend, detect_backend};
@@ -74,15 +75,38 @@ pub fn run(dry_run: bool) -> Result<()> {
             continue_session: true,
         };
 
+        info!(
+            handle = candidate.handle,
+            mode = ?candidate.mode,
+            stale_keys = candidate.stale_pane_keys.len(),
+            "resurrect:exec opening worktree"
+        );
+
         match workflow::open(&candidate.handle, &context, options, false, false, None) {
-            Ok(_) => {
+            Ok(result) => {
+                info!(
+                    handle = candidate.handle,
+                    resolved = result.resolved_handle,
+                    branch = result.branch_name,
+                    path = %result.worktree_path.display(),
+                    "resurrect:exec restored successfully"
+                );
                 // Clean up stale state files by specific PaneKey
                 for key in &candidate.stale_pane_keys {
+                    info!(
+                        pane_id = %key.pane_id,
+                        "resurrect:exec deleting stale state file"
+                    );
                     let _ = store.delete_agent(key);
                 }
                 restored.push(candidate.handle.clone());
             }
             Err(e) => {
+                info!(
+                    handle = candidate.handle,
+                    error = %e,
+                    "resurrect:exec failed to restore"
+                );
                 eprintln!("  Failed to restore '{}': {}", candidate.handle, e);
                 failed.push(candidate.handle.clone());
             }

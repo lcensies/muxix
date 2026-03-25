@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use tracing::info;
 
 use crate::config::{self, MuxMode};
 use crate::git;
@@ -39,11 +40,21 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
     let backend = mux.name();
     let instance = mux.instance_id();
 
+    info!(
+        total_state_files = all_agents.len(),
+        backend, instance, "resurrect:plan loading agent state files"
+    );
+
     // Filter to current backend/instance
     let relevant: Vec<_> = all_agents
         .into_iter()
         .filter(|a| a.pane_key.backend == backend && a.pane_key.instance == instance)
         .collect();
+
+    info!(
+        relevant_count = relevant.len(),
+        "resurrect:plan filtered to current backend/instance"
+    );
 
     // Get worktrees for current repo
     let worktrees = git::list_worktrees()?;
@@ -88,6 +99,14 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
 
         match matched {
             Some((_canon_wt, handle)) => {
+                info!(
+                    pane_id = %agent.pane_key.pane_id,
+                    workdir = %agent.workdir.display(),
+                    handle,
+                    boot_id = ?agent.boot_id,
+                    status = ?agent.status,
+                    "resurrect:plan matched agent to worktree"
+                );
                 let mode = git::get_worktree_mode_opt(handle).unwrap_or(default_mode);
                 by_handle
                     .entry(handle.clone())
@@ -96,6 +115,11 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
                     .push(agent.pane_key);
             }
             None => {
+                info!(
+                    pane_id = %agent.pane_key.pane_id,
+                    workdir = %agent.workdir.display(),
+                    "resurrect:plan no matching worktree (other project or removed)"
+                );
                 unmatched_states += 1;
             }
         }
@@ -125,6 +149,14 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
                 ResurrectAction::Restore
             }
         };
+
+        info!(
+            handle,
+            action = ?action,
+            mode = ?mode,
+            pane_count = pane_keys.len(),
+            "resurrect:plan determined action for handle"
+        );
 
         candidates.push(ResurrectCandidate {
             handle,
