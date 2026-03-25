@@ -695,26 +695,23 @@ fn render_worktree_footer_normal(f: &mut Frame, app: &App, area: Rect) {
     let mut s: Vec<Span<'static>> = vec![Span::raw("  ")];
     s.extend(cmd("a".into(), "Add".into()));
     s.push(pipe());
-    s.extend(cmd("o".into(), "PR".into()));
-    s.push(pipe());
     s.extend(cmd("r".into(), "Remove".into()));
+    s.push(pipe());
+    s.extend(cmd("R".into(), "Sweep".into()));
     s.push(pipe());
     s.extend(cmd("c".into(), "Close".into()));
     s.push(pipe());
-    s.extend(cmd("R".into(), "Sweep".into()));
+    s.extend(cmd("o".into(), "PR".into()));
     s.push(pipe());
     s.extend(cmd("1-9".into(), "Jump".into()));
     s.push(pipe());
     s.extend(toggle("s".into(), "Sort".into(), sort.to_string(), true));
+    s.push(pipe());
+    s.extend(cmd("p".into(), "Project".into()));
     if !app.worktree_filter_text.is_empty() {
         s.push(pipe());
         s.extend(cmd("/".into(), app.worktree_filter_text.clone()));
-    } else {
-        s.push(pipe());
-        s.extend(cmd("/".into(), "Filter".into()));
     }
-    s.push(pipe());
-    s.extend(cmd("p".into(), "Project".into()));
     s.push(pipe());
     s.extend(cmd("Tab".into(), "Agents".into()));
     s.push(pipe());
