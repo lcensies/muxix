@@ -17,6 +17,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.150 (2026-03-25)
+
+- Add `--continue` flag to `workmux open` to resume the last agent conversation
+  when opening a worktree
+- List: show worktree age in `wm ls` output as a new AGE column with
+  human-friendly relative time (e.g., 2h, 3d, 1w)
+
 ## v0.1.149 (2026-03-24)
 
 - Dashboard: show elapsed time for pending PR checks and the name of failing
