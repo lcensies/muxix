@@ -1208,19 +1208,26 @@ def poll_until(
     """
     Poll until a condition is met or timeout is reached.
 
+    Uses adaptive backoff: checks immediately, then ramps up the interval.
+    The poll_interval parameter is kept for API compatibility but the adaptive
+    schedule is always used.
+
     Args:
         condition: A callable that returns True when the condition is met
         timeout: Maximum time to wait in seconds
-        poll_interval: Time to wait between checks in seconds
+        poll_interval: Time to wait between checks in seconds (ignored, adaptive used)
 
     Returns:
         True if condition was met, False if timeout was reached
     """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    end = time.monotonic() + timeout
+    intervals = [0.0, 0.01, 0.02, 0.05, 0.1]
+    i = 0
+    while time.monotonic() < end:
         if condition():
             return True
-        time.sleep(poll_interval)
+        time.sleep(intervals[min(i, len(intervals) - 1)])
+        i += 1
     return False
 
 
