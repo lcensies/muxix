@@ -259,7 +259,12 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             // Get PR status for this agent (only if column is shown)
             let pr_spans = if show_pr_column {
                 let pr = app.get_pr_for_agent(agent);
-                Some(format_pr_status(pr, show_check_counts, &app.palette))
+                Some(format_pr_status(
+                    pr,
+                    show_check_counts,
+                    app.spinner_frame,
+                    &app.palette,
+                ))
             } else {
                 None
             };
@@ -472,7 +477,7 @@ fn render_preview(f: &mut Frame, app: &mut App, area: Rect) {
     if let Some(agent) = selected_agent
         && let Some(pr) = app.get_pr_for_agent(agent)
     {
-        let detail_spans = format::format_pr_details(pr, &app.palette);
+        let detail_spans = format::format_pr_details(pr, app.spinner_frame, &app.palette);
         if !detail_spans.is_empty() {
             let mut title_spans = vec![Span::raw(" ")];
             title_spans.extend(detail_spans);

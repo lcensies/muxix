@@ -160,6 +160,7 @@ pub fn format_git_status(
 pub fn format_pr_status(
     pr: Option<&PrSummary>,
     show_check_counts: bool,
+    spinner_frame: u8,
     palette: &ThemePalette,
 ) -> Vec<(String, Style)> {
     match pr {
@@ -184,19 +185,20 @@ pub fn format_pr_status(
             if let Some(ref checks) = pr.checks {
                 let check_icons = nerdfont::check_icons();
                 let (check_icon, check_color, counts) = match checks {
-                    CheckState::Success => (check_icons.success, palette.success, None),
-                    CheckState::Failure { passed, total } => {
-                        (check_icons.failure, palette.danger, Some((*passed, *total)))
-                    }
-                    CheckState::Pending { passed, total } => (
-                        check_icons.pending,
-                        palette.warning,
+                    CheckState::Success => (check_icons.success.to_string(), palette.success, None),
+                    CheckState::Failure { passed, total } => (
+                        check_icons.failure.to_string(),
+                        palette.danger,
                         Some((*passed, *total)),
                     ),
+                    CheckState::Pending { passed, total } => {
+                        let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
+                        (frame.to_string(), palette.accent, Some((*passed, *total)))
+                    }
                 };
 
                 spans.push((" ".to_string(), Style::default()));
-                spans.push((check_icon.to_string(), Style::default().fg(check_color)));
+                spans.push((check_icon, Style::default().fg(check_color)));
 
                 if show_check_counts && let Some((passed, total)) = counts {
                     spans.push((
@@ -226,6 +228,7 @@ pub fn format_pr_status(
 /// - Success/None: empty
 pub fn format_pr_details(
     pr: &PrSummary,
+    spinner_frame: u8,
     palette: &ThemePalette,
 ) -> Vec<ratatui::text::Span<'static>> {
     use ratatui::text::Span;
@@ -250,9 +253,9 @@ pub fn format_pr_details(
         }
         CheckState::Pending { .. } => match format_check_elapsed(checks, pr.check_meta.as_ref()) {
             Some(time_str) => {
-                let icon = nerdfont::check_icons().pending;
+                let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
                 vec![Span::styled(
-                    format!("{} {}", icon, time_str),
+                    format!("{} {}", frame, time_str),
                     Style::default().fg(palette.dimmed),
                 )]
             }
