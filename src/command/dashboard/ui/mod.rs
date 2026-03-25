@@ -8,8 +8,22 @@ pub mod theme;
 pub mod worktree;
 
 use ratatui::Frame;
+use ratatui::style::{Modifier, Style};
 
 use super::app::{App, ViewMode};
+
+/// Dim all cells in the buffer to create a backdrop effect behind modals.
+fn dim_buffer(f: &mut Frame) {
+    let area = f.area();
+    let buf = f.buffer_mut();
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_style(Style::default().add_modifier(Modifier::DIM));
+            }
+        }
+    }
+}
 
 pub use self::dashboard::render_dashboard;
 pub use self::diff::render_diff_view;
@@ -27,6 +41,18 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
 
     // Render overlays on top
+    let has_modal = app.show_help
+        || app.pending_kill_pane_id.is_some()
+        || app.pending_remove.is_some()
+        || app.pending_base_picker.is_some()
+        || app.pending_project_picker.is_some()
+        || app.pending_sweep.is_some()
+        || app.pending_add_worktree.is_some();
+
+    if has_modal {
+        dim_buffer(f);
+    }
+
     if app.show_help {
         render_help(f, app);
     } else if app.pending_kill_pane_id.is_some() {
