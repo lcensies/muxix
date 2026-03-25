@@ -831,12 +831,6 @@ impl App {
                 return;
             };
             let branch = state.branches[idx].clone();
-
-            // Check if branch already has a worktree
-            if state.occupied_branches.contains(&branch) {
-                return;
-            }
-
             let repo_path = state.repo_path.clone();
             self.pending_add_worktree = None;
             self.do_create_worktree(branch, None, repo_path);
