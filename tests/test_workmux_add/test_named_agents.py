@@ -1,5 +1,6 @@
 """Tests for known agent auto-detection and prompt injection."""
 
+import os
 import shlex
 from pathlib import Path
 
@@ -11,6 +12,15 @@ from ..conftest import (
     write_workmux_config,
 )
 from .conftest import add_branch_and_get_worktree
+
+
+def _write_rc_with_fake_path(env: MuxEnvironment, bin_dir: Path) -> None:
+    """Write a shell RC file that prepends the fake agent bin dir to PATH."""
+    shell = os.environ.get("SHELL", "/bin/zsh")
+    rc_filename = ".zshrc" if "zsh" in shell else ".bashrc"
+    rc_path = env.home_path / rc_filename
+    rc_path.parent.mkdir(parents=True, exist_ok=True)
+    rc_path.write_text(f'export PATH="{bin_dir}:$PATH"\n')
 
 
 class TestKnownAgentAutoDetection:
@@ -36,6 +46,9 @@ set -e
 printf '%s' "$2" > claude_received.txt
 """,
         )
+
+        # Write RC file so new panes find the fake agent on PATH
+        _write_rc_with_fake_path(env, fake_agent_installer.bin_dir)
 
         # Use literal "claude" in panes -- no <agent:> placeholder, no global agent
         write_workmux_config(
@@ -95,6 +108,9 @@ fi
 printf '%s' "$2" > gemini_received.txt
 """,
         )
+
+        # Write RC file so new panes find the fake agents on PATH
+        _write_rc_with_fake_path(env, fake_agent_installer.bin_dir)
 
         write_workmux_config(
             mux_repo_path,
