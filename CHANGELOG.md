@@ -17,6 +17,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.152 (2026-03-25)
+
+- Add `workmux resurrect` command to restore worktree windows after a tmux or
+  computer crash, automatically resuming agent conversations from where they
+  left off
+- Dashboard: add worktree creation modal with fzf-style branch picker, fuzzy
+  search, tab completion, and the ability to checkout open pull requests
+  directly via Ctrl+p or by typing a PR number
+- Dashboard: dim background behind modal overlays for better visual focus
+
 ## v0.1.151 (2026-03-25)
 
 - Dashboard: fix immediate exit on startup caused by a stray Enter keypress from
