@@ -33,19 +33,19 @@ format: format-rust format-python
 
 # Format Rust files
 format-rust:
-    cargo fmt --all
+    @cargo fmt --all
 
 # Format Python test files
 format-python:
-    ruff format tests --quiet
+    @ruff format tests --quiet
 
 # Run clippy and fail on any warnings
 clippy:
-    cargo clippy -- -D clippy::all
+    @cargo clippy --quiet -- -D clippy::all 2>&1 | { grep -v "^0 errors" || true; }
 
 # Auto-fix clippy warnings
 clippy-fix:
-    cargo clippy --fix --allow-dirty -- -W clippy::all
+    @cargo clippy --fix --allow-dirty --quiet -- -W clippy::all 2>&1 | { grep -v "^0 errors" || true; }
 
 # Build the project
 build:
@@ -61,18 +61,22 @@ install-dev:
 
 # Run unit tests
 unit-tests:
-    cargo test --bin workmux --quiet
+    #!/usr/bin/env bash
+    set -euo pipefail
+    output=$(cargo test --bin workmux --quiet 2>&1) || { echo "$output"; exit 1; }
+    echo "$output" | tail -1
 
 # Run ruff linter on Python tests
 ruff-check:
-    ruff check tests --fix
+    @ruff check tests --fix --quiet
 
 # Run pyright type checker on Python tests
 pyright:
     #!/usr/bin/env bash
     set -euo pipefail
     source tests/venv/bin/activate
-    pyright tests
+    output=$(pyright tests 2>&1) || { echo "$output"; exit 1; }
+    echo "$output" | grep -v "^0 errors" || true
 
 # Check that all docs pages have meta descriptions
 docs-check:
@@ -89,7 +93,6 @@ docs-check:
         printf '  %s\n' "${missing[@]}"
         exit 1
     fi
-    echo "All docs have descriptions"
 
 # Run the application
 run *ARGS:
