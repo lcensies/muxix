@@ -246,7 +246,52 @@ impl clap::builder::TypedValueParser for GitBranchParser {
 #[command(author, version, about, long_about = None)]
 #[command(name = "workmux")]
 #[command(about = "An opinionated workflow tool that orchestrates git worktrees and tmux")]
-#[command(after_help = "Run 'workmux docs' for detailed documentation.")]
+#[command(help_template = "\
+{about}
+
+{usage-heading} {usage}
+
+Worktree lifecycle:
+  add          Create a new worktree and tmux window
+  remove       Remove a worktree, tmux window, and branch without merging [rm]
+  merge        Merge a branch, then clean up the worktree and tmux window
+  open         Open a tmux window for an existing worktree
+  close        Close a worktree's tmux window (keeps the worktree and branch)
+  resurrect    Restore worktree windows after a tmux or computer crash
+
+Monitoring:
+  dashboard    Show a TUI dashboard of all active workmux agents
+  list         List all worktrees [ls]
+  path         Get the filesystem path of a worktree
+  status       Query agent status for worktrees
+
+Setup and configuration:
+  init         Generate example .workmux.yaml configuration file
+  setup        Set up agent status tracking hooks and install skills
+  config       Manage global configuration
+  sandbox      Manage sandbox settings
+  sync-files   Re-apply file operations (copy/symlink) to worktrees
+  claude       Claude Code integration commands
+
+Agent interaction:
+  send         Send a prompt or instruction to a running agent
+  capture      Capture terminal output from a running agent
+  wait         Wait for agents to reach a target status
+  run          Run a command in a worktree's window
+
+Help and updates:
+  docs         Show detailed documentation (renders README.md)
+  changelog    Show the changelog (what's new in each version)
+  update       Update workmux to the latest version
+  completions  Generate shell completions
+  help         Print help for a command
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+Run 'workmux docs' for detailed documentation.
+")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
