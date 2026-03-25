@@ -201,21 +201,6 @@ impl AddWorktreeState {
             .take_while(|&&idx| !self.occupied_branches.contains(&self.branches[idx]))
             .count()
     }
-
-    /// Return indices into `branches` that match the base branch filter.
-    pub fn base_filtered(&self) -> Vec<usize> {
-        let text = self.base_tab_prefix.as_deref().unwrap_or(&self.base_filter);
-        if text.is_empty() {
-            return (0..self.branches.len()).collect();
-        }
-        let lower = text.to_lowercase();
-        self.branches
-            .iter()
-            .enumerate()
-            .filter(|(_, b)| b.to_lowercase().contains(&lower))
-            .map(|(i, _)| i)
-            .collect()
-    }
 }
 
 /// Plan for a pending worktree removal (shown in confirmation modal).

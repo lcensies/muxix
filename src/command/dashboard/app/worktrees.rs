@@ -828,10 +828,18 @@ impl App {
             state.tab_prefix = Some(state.filter.clone());
         }
 
+        let prefix = state.tab_prefix.as_deref().unwrap_or(&state.filter);
+        let lower = prefix.to_lowercase();
+
+        // Tab uses prefix matching (not substring) for shell-like behavior
         let candidates: Vec<usize> = state
-            .filtered()
-            .into_iter()
-            .filter(|&idx| !state.occupied_branches.contains(&state.branches[idx]))
+            .branches
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| {
+                b.to_lowercase().starts_with(&lower) && !state.occupied_branches.contains(*b)
+            })
+            .map(|(i, _)| i)
             .collect();
         if candidates.is_empty() {
             return;
@@ -881,7 +889,18 @@ impl App {
             state.base_tab_prefix = Some(state.base_filter.clone());
         }
 
-        let candidates = state.base_filtered();
+        let prefix = state
+            .base_tab_prefix
+            .as_deref()
+            .unwrap_or(&state.base_filter);
+        let lower = prefix.to_lowercase();
+        let candidates: Vec<usize> = state
+            .branches
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.to_lowercase().starts_with(&lower))
+            .map(|(i, _)| i)
+            .collect();
         if candidates.is_empty() {
             return;
         }
