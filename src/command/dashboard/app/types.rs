@@ -158,20 +158,33 @@ pub struct AddWorktreeState {
     pub cursor: usize,
     /// Filter text (doubles as new branch name in SelectOrCreate phase).
     pub filter: String,
+    /// Original typed prefix preserved during Tab cycling (cleared on typing).
+    pub tab_prefix: Option<String>,
     pub repo_path: PathBuf,
 }
 
 impl AddWorktreeState {
     /// Return indices into `branches` that match the current filter.
+    /// During tab cycling, uses the original typed prefix so all matches stay visible.
+    /// Occupied branches (already have worktrees) are excluded.
     pub fn filtered(&self) -> Vec<usize> {
-        if self.filter.is_empty() {
-            return (0..self.branches.len()).collect();
+        let text = self.tab_prefix.as_deref().unwrap_or(&self.filter);
+        if text.is_empty() {
+            return self
+                .branches
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| !self.occupied_branches.contains(*b))
+                .map(|(i, _)| i)
+                .collect();
         }
-        let lower = self.filter.to_lowercase();
+        let lower = text.to_lowercase();
         self.branches
             .iter()
             .enumerate()
-            .filter(|(_, b)| b.to_lowercase().contains(&lower))
+            .filter(|(_, b)| {
+                b.to_lowercase().contains(&lower) && !self.occupied_branches.contains(*b)
+            })
             .map(|(i, _)| i)
             .collect()
     }

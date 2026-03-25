@@ -734,6 +734,7 @@ impl App {
             occupied_branches,
             cursor: 0,
             filter: String::new(),
+            tab_prefix: None,
             repo_path,
         });
     }
@@ -742,6 +743,7 @@ impl App {
     pub fn add_worktree_append(&mut self, c: char) {
         if let Some(ref mut state) = self.pending_add_worktree {
             state.filter.push(c);
+            state.tab_prefix = None;
             state.cursor = 0;
         }
     }
@@ -750,6 +752,7 @@ impl App {
     pub fn add_worktree_delete(&mut self) {
         if let Some(ref mut state) = self.pending_add_worktree {
             state.filter.pop();
+            state.tab_prefix = None;
             state.cursor = 0;
         }
     }
@@ -771,6 +774,38 @@ impl App {
         if let Some(ref mut state) = self.pending_add_worktree {
             state.cursor = state.cursor.saturating_sub(1);
         }
+    }
+
+    /// Tab-complete: cycle through matching branch names.
+    /// First press saves the typed prefix and fills the first match.
+    /// Subsequent presses cycle to the next match, wrapping around.
+    pub fn add_worktree_tab_complete(&mut self) {
+        let Some(ref mut state) = self.pending_add_worktree else {
+            return;
+        };
+
+        // Save the original typed text on first Tab press
+        if state.tab_prefix.is_none() {
+            state.tab_prefix = Some(state.filter.clone());
+        }
+
+        let candidates = state.filtered();
+        if candidates.is_empty() {
+            return;
+        }
+
+        // Find current position among candidates
+        let current_pos = candidates
+            .iter()
+            .position(|&idx| state.branches[idx] == state.filter);
+
+        let next = match current_pos {
+            Some(pos) => (pos + 1) % candidates.len(),
+            None => 0,
+        };
+
+        state.filter = state.branches[candidates[next]].clone();
+        state.cursor = next + 1; // +1 because cursor 0 is "Create" row
     }
 
     /// Handle Enter in the SelectOrCreate phase.
