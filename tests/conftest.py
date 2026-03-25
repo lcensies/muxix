@@ -1172,15 +1172,32 @@ def setup_git_repo(path: Path, env_vars: Optional[dict] = None):
     )
 
 
+@pytest.fixture(scope="session")
+def _template_git_repo(tmp_path_factory) -> Path:
+    """Create a pristine git repository once per test session.
+
+    This avoids running 5 git subprocess calls (init, config x2, add, commit)
+    per test. Tests copy .git/ and .gitignore from this template instead.
+    """
+    path = tmp_path_factory.mktemp("template_repo")
+    setup_git_repo(path)
+    return path
+
+
 @pytest.fixture
-def repo_path(mux_server: MuxEnvironment) -> Path:
+def repo_path(mux_server: MuxEnvironment, _template_git_repo: Path) -> Path:
     """Initializes a git repo in the test env and returns its path.
+
+    Copies from a session-scoped template repo instead of running git init
+    per test. The git config (user.name, user.email) is stored in .git/config
+    and survives the copy.
 
     This fixture is backend-agnostic and will run tests against all
     configured backends (tmux by default, or --backend=wezterm).
     """
     path = mux_server.tmp_path
-    setup_git_repo(path, mux_server.env)
+    shutil.copytree(_template_git_repo / ".git", path / ".git")
+    shutil.copy(_template_git_repo / ".gitignore", path / ".gitignore")
     return path
 
 
