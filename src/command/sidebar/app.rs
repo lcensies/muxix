@@ -8,7 +8,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::cmd::Cmd;
 use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
 use crate::config::{Config, StatusIcons};
-use crate::multiplexer::{AgentPane, Multiplexer};
+use std::collections::HashMap;
+
+use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
 use crate::state::StateStore;
 
 use crate::command::dashboard::ui::theme::ThemePalette;
@@ -113,6 +115,27 @@ impl SidebarApp {
         let mut agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
+
+        // Suppress Done/Waiting when tmux's auto-clear hook has already cleared
+        // the window status. @workmux_status is the view-layer source of truth
+        // for whether the user has "seen" a transient notification.
+        let tmux_statuses = query_window_statuses();
+        let done_icon = self.status_icons.done();
+        let waiting_icon = self.status_icons.waiting();
+        for agent in &mut agents {
+            let Some(observed) = tmux_statuses.get(&agent.pane_id) else {
+                continue;
+            };
+            match agent.status {
+                Some(AgentStatus::Done) if observed.as_deref() != Some(done_icon) => {
+                    agent.status = None;
+                }
+                Some(AgentStatus::Waiting) if observed.as_deref() != Some(waiting_icon) => {
+                    agent.status = None;
+                }
+                _ => {}
+            }
+        }
 
         // Sort by recency (most recent status change first)
         let now = SystemTime::now()
@@ -257,6 +280,28 @@ fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
         "compact" => Some(SidebarLayoutMode::Compact),
         _ => None,
     }
+}
+
+/// Query @workmux_status for each pane (inherited from the window option).
+/// Returns pane_id -> Option<status_string>. Missing panes are not included.
+fn query_window_statuses() -> HashMap<String, Option<String>> {
+    let output = Cmd::new("tmux")
+        .args(&["list-panes", "-a", "-F", "#{pane_id}\t#{@workmux_status}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let mut map = HashMap::new();
+    for line in output.lines() {
+        if let Some((pane_id, status)) = line.split_once('\t') {
+            let val = if status.is_empty() {
+                None
+            } else {
+                Some(status.to_string())
+            };
+            map.insert(pane_id.to_string(), val);
+        }
+    }
+    map
 }
 
 /// Detect the currently active session and window name.
