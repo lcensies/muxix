@@ -27,11 +27,28 @@ use self::app::SidebarApp;
 use self::ui::render_sidebar;
 
 const SIDEBAR_ROLE_VALUE: &str = "sidebar";
-const DEFAULT_WIDTH: u16 = 30;
+const MIN_WIDTH: u16 = 25;
+const MAX_WIDTH: u16 = 50;
+
+/// Compute sidebar width as ~10% of terminal width, clamped to [MIN_WIDTH, MAX_WIDTH].
+fn default_width() -> u16 {
+    let client_width: u16 = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{client_width}"])
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+
+    if client_width == 0 {
+        return MIN_WIDTH;
+    }
+
+    (client_width * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH)
+}
 
 /// Toggle the sidebar globally across all tmux windows.
 pub fn toggle(width: Option<u16>) -> Result<()> {
-    let width = width.unwrap_or(DEFAULT_WIDTH).max(10);
+    let width = width.unwrap_or_else(default_width).max(10);
 
     if std::env::var("TMUX").is_err() {
         return Err(anyhow!("Sidebar requires tmux"));
@@ -121,7 +138,7 @@ fn sidebar_width() -> u16 {
         .run_and_capture_stdout()
         .ok()
         .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(DEFAULT_WIDTH)
+        .unwrap_or_else(default_width)
 }
 
 /// Check if a window already has a sidebar pane.
@@ -302,6 +319,17 @@ fn install_hooks() -> Result<()> {
         .args(&["set-hook", "-g", "after-new-session[99]", &sync_cmd])
         .run()?;
 
+    // Snap sidebar panes to responsive width on terminal resize (10% of client width, clamped)
+    let resize_script = format!(
+        r#"cw=$(tmux display-message -p '#{{client_width}}'); w=$((cw * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux set-option -g @workmux_sidebar_width "$w"; tmux list-panes -a -F '#{{pane_id}} #{{@workmux_role}}' | while read id role; do [ "$role" = "sidebar" ] && tmux resize-pane -t "$id" -x "$w"; done"#,
+        min = MIN_WIDTH,
+        max = MAX_WIDTH,
+    );
+    let resize_cmd = format!("run-shell -b \"{}\"", resize_script);
+    Cmd::new("tmux")
+        .args(&["set-hook", "-g", "client-resized[99]", &resize_cmd])
+        .run()?;
+
     Ok(())
 }
 
@@ -312,6 +340,9 @@ fn remove_hooks() {
         .run();
     let _ = Cmd::new("tmux")
         .args(&["set-hook", "-gu", "after-new-session[99]"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-hook", "-gu", "client-resized[99]"])
         .run();
 }
 
