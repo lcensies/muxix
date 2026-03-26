@@ -14,7 +14,12 @@
           pname = "workmux";
           version = self.shortRev or self.dirtyShortRev or "dev";
           src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes = {
+              "crossterm-0.29.0" = "sha256-rfAaqGylDaxx3bjmofifnzSh7Hmh21BzHp5fS/w2Z6I=";
+            };
+          };
           nativeBuildInputs = [ pkgs.installShellFiles pkgs.git ];
           postInstall = ''
             export HOME=$TMPDIR
