@@ -5,13 +5,40 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
+use std::collections::{BTreeMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
 use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
-use crate::multiplexer::AgentStatus;
+use crate::multiplexer::{AgentPane, AgentStatus};
 
 use super::app::{SidebarApp, SidebarLayoutMode};
+
+/// Compute pane suffixes like " [1]", " [2]" for agents sharing the same window.
+fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
+    let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (idx, agent) in agents.iter().enumerate() {
+        let key = (agent.session.clone(), agent.window_name.clone());
+        window_groups.entry(key).or_default().push(idx);
+    }
+    let multi_pane: HashSet<(String, String)> = window_groups
+        .iter()
+        .filter(|(_, indices)| indices.len() > 1)
+        .map(|(key, _)| key.clone())
+        .collect();
+
+    let mut suffixes = vec![String::new(); agents.len()];
+    let mut positions: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for (idx, agent) in agents.iter().enumerate() {
+        let key = (agent.session.clone(), agent.window_name.clone());
+        if multi_pane.contains(&key) {
+            let pos = positions.entry(key).or_insert(0);
+            *pos += 1;
+            suffixes[idx] = format!(" [{}]", pos);
+        }
+    }
+    suffixes
+}
 
 /// Render the sidebar UI.
 pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
@@ -52,11 +79,14 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .unwrap_or_default()
         .as_secs();
 
+    let pane_suffixes = compute_pane_suffixes(&app.agents);
+
     let items: Vec<ListItem> = app
         .agents
         .iter()
-        .map(|agent| {
-            let worktree_name = app.display_name(agent);
+        .enumerate()
+        .map(|(idx, agent)| {
+            let worktree_name = format!("{}{}", app.display_name(agent), pane_suffixes[idx]);
 
             let is_stale = agent
                 .status_ts
@@ -152,6 +182,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     let sep_width = area.width as usize;
     let selected_idx = app.list_state.selected();
     let agent_count = app.agents.len();
+    let pane_suffixes = compute_pane_suffixes(&app.agents);
 
     let items: Vec<ListItem> = app
         .agents
@@ -164,9 +195,9 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 extract_worktree_name(&agent.session, &agent.window_name, app.window_prefix());
 
             let display_worktree = if is_main {
-                project.clone()
+                format!("main{}", pane_suffixes[idx])
             } else {
-                worktree.clone()
+                format!("{}{}", worktree, pane_suffixes[idx])
             };
 
             let is_stale = agent
