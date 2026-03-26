@@ -91,11 +91,63 @@ pub fn determine_git_common_dir(worktree: &Path) -> Result<PathBuf> {
 
 /// Get the Lima guest home directory.
 ///
-/// Lima creates a user named `<host-username>.linux` with home at
-/// `/home/<host-username>.linux/`.
+/// Lima <2.1.0 creates a user with home at `/home/<user>.linux/`.
+/// Lima >=2.1.0 changed this to `/home/<user>.guest/`.
 fn lima_guest_home() -> Option<PathBuf> {
     let username = std::env::var("USER").ok()?;
-    Some(PathBuf::from(format!("/home/{}.linux", username)))
+    let suffix = lima_guest_home_suffix();
+    Some(PathBuf::from(format!("/home/{}.{}", username, suffix)))
+}
+
+/// Determine the guest home directory suffix based on Lima version.
+///
+/// Returns "guest" for Lima >=2.1.0, "linux" for older versions.
+fn lima_guest_home_suffix() -> &'static str {
+    let version = Command::new("limactl")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        });
+
+    match version {
+        Some(v) => {
+            // Output format: "limactl version 2.1.0"
+            if let Some(ver_str) = v.trim().rsplit(' ').next()
+                && lima_version_gte(ver_str, "2.1.0")
+            {
+                return "guest";
+            }
+            "linux"
+        }
+        None => "linux",
+    }
+}
+
+/// Check if version `a` is >= version `b` using simple numeric comparison.
+fn lima_version_gte(a: &str, b: &str) -> bool {
+    let parse = |v: &str| -> Vec<u32> {
+        v.split('.')
+            .map(|s| s.parse::<u32>().unwrap_or(0))
+            .collect()
+    };
+    let va = parse(a);
+    let vb = parse(b);
+    for i in 0..va.len().max(vb.len()) {
+        let a_part = va.get(i).copied().unwrap_or(0);
+        let b_part = vb.get(i).copied().unwrap_or(0);
+        match a_part.cmp(&b_part) {
+            std::cmp::Ordering::Greater => return true,
+            std::cmp::Ordering::Less => return false,
+            std::cmp::Ordering::Equal => continue,
+        }
+    }
+    true // equal
 }
 
 /// Calculate the standard worktrees directory for a project.
@@ -342,5 +394,29 @@ mod tests {
         let path = lima_state_dir_path("wm-myproject-abc12345").unwrap();
         // Should end with the expected suffix regardless of XDG_STATE_HOME
         assert!(path.ends_with("workmux/lima/wm-myproject-abc12345"));
+    }
+
+    #[test]
+    fn test_lima_version_gte() {
+        // Equal
+        assert!(lima_version_gte("2.1.0", "2.1.0"));
+        // Greater
+        assert!(lima_version_gte("2.1.1", "2.1.0"));
+        assert!(lima_version_gte("2.2.0", "2.1.0"));
+        assert!(lima_version_gte("3.0.0", "2.1.0"));
+        // Less
+        assert!(!lima_version_gte("2.0.3", "2.1.0"));
+        assert!(!lima_version_gte("1.9.9", "2.1.0"));
+        assert!(!lima_version_gte("2.0.99", "2.1.0"));
+    }
+
+    #[test]
+    fn test_lima_guest_home_suffix_returns_valid_suffix() {
+        let suffix = lima_guest_home_suffix();
+        assert!(
+            suffix == "linux" || suffix == "guest",
+            "unexpected suffix: {}",
+            suffix
+        );
     }
 }
