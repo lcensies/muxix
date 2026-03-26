@@ -324,6 +324,84 @@ fn is_last_pane_in_window() -> bool {
         .unwrap_or(false)
 }
 
+/// Shut down all sidebars globally (called when any sidebar quits).
+/// Kills all other sidebar panes immediately, then defers our own window's
+/// layout restore so it fires after our process exits and the pane closes.
+fn shutdown_all_sidebars() {
+    let our_pane = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{pane_id}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let our_window = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_id}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let output = Cmd::new("tmux")
+        .args(&[
+            "list-panes",
+            "-a",
+            "-F",
+            "#{window_id} #{pane_id} #{@workmux_role}",
+        ])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let mut other_windows = Vec::new();
+
+    for line in output.lines() {
+        let parts: Vec<&str> = line.splitn(3, ' ').collect();
+        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
+            let pane_id = parts[1].trim();
+            if pane_id != our_pane {
+                other_windows.push(parts[0].to_string());
+                let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
+            }
+        }
+    }
+
+    // Restore layouts for other windows
+    for window_id in &other_windows {
+        restore_window_layout(window_id);
+    }
+
+    // Remove hooks and global options
+    remove_hooks();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sidebar_enabled"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sidebar_width"])
+        .run();
+
+    // Defer our own window's layout restore until after our pane closes
+    if !our_window.is_empty()
+        && let Ok(layout) = Cmd::new("tmux")
+            .args(&[
+                "show-option",
+                "-wqv",
+                "-t",
+                &our_window,
+                "@workmux_sidebar_layout",
+            ])
+            .run_and_capture_stdout()
+    {
+        let layout = layout.trim().to_string();
+        if !layout.is_empty() {
+            let cmd = format!(
+                "sleep 0.1 && tmux select-layout -t {win} '{layout}' && tmux set-option -wu -t {win} @workmux_sidebar_layout",
+                win = our_window,
+                layout = layout,
+            );
+            let _ = Cmd::new("tmux").args(&["run-shell", "-b", &cmd]).run();
+        }
+    }
+}
+
 /// Drop guard that restores terminal state on panic or early return.
 struct TerminalGuard;
 
@@ -421,6 +499,7 @@ pub fn run_sidebar() -> Result<()> {
         }
 
         if app.should_quit {
+            shutdown_all_sidebars();
             break;
         }
     }
