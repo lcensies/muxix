@@ -197,11 +197,32 @@ impl App {
 
     /// Show the remove confirmation modal for the selected worktree.
     /// Always shows the modal (even for clean worktrees). Skips main worktree.
+    /// Works from both the worktrees tab (uses selected worktree) and agents tab
+    /// (finds the worktree matching the selected agent's path).
     pub fn remove_selected_worktree(&mut self) {
-        let Some(selected) = self.worktree_table_state.selected() else {
-            return;
+        let worktree = match self.active_tab {
+            DashboardTab::Worktrees => {
+                let Some(selected) = self.worktree_table_state.selected() else {
+                    return;
+                };
+                self.worktrees.get(selected).cloned()
+            }
+            DashboardTab::Agents => {
+                let Some(selected) = self.table_state.selected() else {
+                    return;
+                };
+                let Some(agent) = self.agents.get(selected) else {
+                    return;
+                };
+                let agent_path = &agent.path;
+                self.worktrees
+                    .iter()
+                    .find(|w| w.path == *agent_path)
+                    .cloned()
+            }
         };
-        let Some(worktree) = self.worktrees.get(selected) else {
+
+        let Some(worktree) = worktree else {
             return;
         };
 
