@@ -351,6 +351,13 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                     Span::styled(title_display, body_style),
                     Span::styled(" ".repeat(title_padding), pad_style),
                 ]));
+            } else {
+                let empty_padding = body_width;
+                lines.push(Line::from(vec![
+                    Span::styled("▌ ", stripe_bg_style),
+                    Span::styled(body_indent, pad_style),
+                    Span::styled(" ".repeat(empty_padding), pad_style),
+                ]));
             }
 
             // Bottom separator after the last item
