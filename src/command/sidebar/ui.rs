@@ -141,7 +141,11 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Style::default().fg(app.palette.text)
             };
 
-            let elapsed_style = Style::default().fg(app.palette.dimmed);
+            let elapsed_style = if is_stale {
+                Style::default().fg(app.palette.dimmed)
+            } else {
+                Style::default().fg(app.palette.text)
+            };
 
             let line = Line::from(vec![
                 Span::styled(icon, icon_style),
@@ -277,7 +281,11 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Style::default().fg(app.palette.dimmed)
             };
 
-            let mut elapsed_style = Style::default().fg(app.palette.dimmed);
+            let mut elapsed_style = if is_stale {
+                Style::default().fg(app.palette.dimmed)
+            } else {
+                Style::default().fg(app.palette.text)
+            };
 
             let mut stripe_bg_style = stripe_style;
             let mut icon_bg_style = icon_style;
