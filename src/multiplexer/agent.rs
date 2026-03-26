@@ -286,13 +286,37 @@ pub fn resolve_profile(agent_command: Option<&str>) -> &'static dyn AgentProfile
         .unwrap_or(&DefaultProfile)
 }
 
-/// Extract the executable stem from a command string.
+/// Resolve an agent profile with an optional type override.
+///
+/// First tries normal stem-based detection. If that yields `DefaultProfile`
+/// and a type override is provided, uses the override to find the profile.
+/// This allows opaque wrapper scripts to inherit agent-specific behavior.
+pub fn resolve_profile_with_type(
+    agent_command: Option<&str>,
+    type_override: Option<&str>,
+) -> &'static dyn AgentProfile {
+    let profile = resolve_profile(agent_command);
+    if profile.name() != "default" {
+        return profile;
+    }
+    if let Some(type_name) = type_override
+        && let Some(&p) = PROFILES.iter().find(|p| p.name() == type_name)
+    {
+        return p;
+    }
+    profile
+}
+
+/// Extract the executable stem from a command string, looking past
+/// `env` wrappers and `VAR=value` assignments.
 ///
 /// Examples:
 /// - "claude --verbose" -> "claude"
 /// - "/usr/bin/gemini" -> "gemini"
+/// - "env -u FOO claude" -> "claude"
+/// - "env VAR=value claude --flag" -> "claude"
 fn extract_executable_stem(command: &str) -> String {
-    let (token, _) = crate::config::split_first_token(command).unwrap_or((command, ""));
+    let token = find_executable_token(command);
 
     // Resolve the path to handle symlinks and aliases
     let resolved =
@@ -304,6 +328,73 @@ fn extract_executable_stem(command: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string()
+}
+
+/// Find the real executable token in a command string, skipping past
+/// `env` wrappers and `VAR=value` assignments.
+///
+/// Returns a reference into the original command string.
+pub(crate) fn find_executable_token(command: &str) -> &str {
+    let mut iter = command.split_whitespace();
+
+    let first = match iter.next() {
+        Some(t) => t,
+        None => return "",
+    };
+
+    // Check if first token is a VAR=value assignment
+    if is_env_assignment(first) {
+        for token in iter {
+            if is_env_assignment(token) {
+                continue;
+            }
+            return token;
+        }
+        return first; // fallback
+    }
+
+    // Check if first token is `env`
+    let first_stem = Path::new(first)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+
+    if first_stem != "env" {
+        return first; // not a wrapper
+    }
+
+    // Skip env's own flags and arguments
+    let mut skip_next = false;
+    for token in iter {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if token.starts_with('-') {
+            // Flags that take a value argument
+            if matches!(token, "-u" | "-S" | "-P" | "--unset") {
+                skip_next = true;
+            }
+            continue;
+        }
+        if is_env_assignment(token) {
+            continue;
+        }
+        return token; // found the real executable
+    }
+
+    first // fallback to "env" if nothing found
+}
+
+/// Check if a token looks like an environment variable assignment (VAR=value).
+fn is_env_assignment(token: &str) -> bool {
+    token.contains('=')
+        && !token.starts_with('-')
+        && !token.starts_with('/')
+        && token
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
 }
 
 #[cfg(test)]
@@ -534,5 +625,114 @@ mod tests {
         assert!(!is_known_agent("npm run dev"));
         assert!(!is_known_agent("clear"));
         assert!(!is_known_agent("unknown-agent"));
+    }
+
+    // === find_executable_token tests ===
+
+    #[test]
+    fn test_find_executable_token_simple() {
+        assert_eq!(find_executable_token("claude"), "claude");
+        assert_eq!(find_executable_token("claude --verbose"), "claude");
+        assert_eq!(find_executable_token("/usr/bin/gemini"), "/usr/bin/gemini");
+    }
+
+    #[test]
+    fn test_find_executable_token_env_wrapper() {
+        assert_eq!(find_executable_token("env claude"), "claude");
+        assert_eq!(
+            find_executable_token("env -u CLAUDE_CODE_USE_BEDROCK claude"),
+            "claude"
+        );
+        assert_eq!(
+            find_executable_token("env -u FOO -u BAR claude --flag"),
+            "claude"
+        );
+        assert_eq!(find_executable_token("env FOO=bar claude"), "claude");
+        assert_eq!(find_executable_token("env -u FOO BAR=baz claude"), "claude");
+    }
+
+    #[test]
+    fn test_find_executable_token_env_assignments() {
+        assert_eq!(find_executable_token("FOO=bar claude"), "claude");
+        assert_eq!(
+            find_executable_token("FOO=bar BAR=baz codex --yolo"),
+            "codex"
+        );
+    }
+
+    #[test]
+    fn test_find_executable_token_empty() {
+        assert_eq!(find_executable_token(""), "");
+    }
+
+    #[test]
+    fn test_find_executable_token_env_only() {
+        // env with no real executable falls back to "env"
+        assert_eq!(find_executable_token("env -u FOO"), "env");
+    }
+
+    // === env-wrapped resolve_profile tests ===
+
+    #[test]
+    fn test_resolve_profile_env_wrapped_claude() {
+        let profile = resolve_profile(Some("env -u FOO claude"));
+        assert_eq!(profile.name(), "claude");
+    }
+
+    #[test]
+    fn test_resolve_profile_env_wrapped_with_assignments() {
+        let profile = resolve_profile(Some(
+            "env -u CLAUDE_CODE_USE_BEDROCK -u AWS_REGION AWS_PROFILE=prod claude",
+        ));
+        assert_eq!(profile.name(), "claude");
+    }
+
+    #[test]
+    fn test_resolve_profile_leading_assignments() {
+        let profile = resolve_profile(Some("FOO=bar claude --verbose"));
+        assert_eq!(profile.name(), "claude");
+    }
+
+    // === env-wrapped is_known_agent tests ===
+
+    #[test]
+    fn test_is_known_agent_env_wrapped() {
+        assert!(is_known_agent("env -u FOO claude"));
+        assert!(is_known_agent("env FOO=bar codex --yolo"));
+        assert!(is_known_agent("FOO=bar gemini -i foo"));
+    }
+
+    #[test]
+    fn test_is_known_agent_env_wrapped_unknown() {
+        assert!(!is_known_agent("env -u FOO vim"));
+        assert!(!is_known_agent("env FOO=bar npm run dev"));
+    }
+
+    // === resolve_profile_with_type tests ===
+
+    #[test]
+    fn test_type_override_for_wrapper_script() {
+        // Wrapper script stem doesn't match any profile
+        let profile = resolve_profile_with_type(Some("/path/to/smart-picker"), Some("claude"));
+        assert_eq!(profile.name(), "claude");
+    }
+
+    #[test]
+    fn test_type_override_ignored_when_stem_matches() {
+        // codex stem matches CodexProfile, type override should be ignored
+        let profile = resolve_profile_with_type(Some("codex --yolo"), Some("gemini"));
+        assert_eq!(profile.name(), "codex");
+    }
+
+    #[test]
+    fn test_type_override_none() {
+        let profile = resolve_profile_with_type(Some("/path/to/wrapper"), None);
+        assert_eq!(profile.name(), "default");
+    }
+
+    #[test]
+    fn test_type_override_invalid() {
+        let profile = resolve_profile_with_type(Some("/path/to/wrapper"), Some("nonexistent"));
+        assert_eq!(profile.name(), "default");
     }
 }

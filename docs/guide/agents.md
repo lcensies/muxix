@@ -51,6 +51,45 @@ workmux add feature/task -P task.md --prompt-file-only
 
 Your editor can then detect the prompt file on startup and pass it to its embedded agent. Set `prompt_file_only: true` in `.workmux.yaml` to make this the default.
 
+## Named agents
+
+Define short names for agent commands in your global config. This is useful when you have multiple accounts, custom wrapper scripts, or commands with long environment variable overrides:
+
+```yaml
+# ~/.config/workmux/config.yaml
+agents:
+  cc-work: "claude"
+  cc-personal: "env CLAUDE_CONFIG_DIR=~/.claude-personal claude"
+  cc-bedrock: "env -u CLAUDE_CODE_USE_BEDROCK -u AWS_REGION AWS_PROFILE=prod claude"
+  cc-yolo: "claude --dangerously-skip-permissions"
+  cod: "codex --yolo"
+```
+
+Use named agents anywhere you'd use an agent name:
+
+```bash
+# CLI
+workmux add feature/auth -a cc-work -p "Implement OAuth"
+
+# In .workmux.yaml
+agent: cc-work
+```
+
+workmux resolves the name to the full command at load time. The agent profile (prompt injection format, continue/resume flags, skip-permissions flags) is automatically detected from the resolved command, even through `env` wrappers.
+
+For wrapper scripts where the executable name doesn't match a known agent, use the map form with an explicit `type`:
+
+```yaml
+agents:
+  cc-smart:
+    command: "/path/to/smart-picker"
+    type: claude
+```
+
+::: tip
+Named agents are global-only for security. Define them in `~/.config/workmux/config.yaml`, not in project `.workmux.yaml` files. Project configs can reference them but not define them.
+:::
+
 ## Per-pane agents
 
 workmux automatically recognizes built-in agent commands (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`, `pi`) in pane commands. This means prompt injection works without the `<agent>` placeholder or a matching `agent` config:

@@ -256,16 +256,17 @@ customize.
 
 #### Basic options
 
-| Option           | Description                                          | Default                     |
-| ---------------- | ---------------------------------------------------- | --------------------------- |
-| `main_branch`    | Branch to merge into                                 | Auto-detected               |
-| `base_branch`    | Default base branch for new worktrees                | Current branch              |
-| `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/`     |
-| `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                       |
-| `mode`           | Tmux mode (`window` or `session`)                    | `window`                    |
-| `agent`          | Default agent for `<agent>` placeholder              | `claude`                    |
-| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                     |
-| `theme`          | Dashboard color scheme                               | `default` (auto dark/light) |
+| Option           | Description                                                                                     | Default                     |
+| ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------- |
+| `main_branch`    | Branch to merge into                                                                            | Auto-detected               |
+| `base_branch`    | Default base branch for new worktrees                                                           | Current branch              |
+| `worktree_dir`   | Directory for worktrees (absolute or relative)                                                  | `<project>__worktrees/`     |
+| `window_prefix`  | Prefix for tmux window/session names                                                            | `wm-`                       |
+| `mode`           | Tmux mode (`window` or `session`)                                                               | `window`                    |
+| `agent`          | Default agent for `<agent>` placeholder                                                         | `claude`                    |
+| `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only) | `{}`                        |
+| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                            | `merge`                     |
+| `theme`          | Dashboard color scheme                                                                          | `default` (auto dark/light) |
 
 #### Naming options
 
@@ -2372,18 +2373,15 @@ to `.gitignore`:
 
 **Skip permission prompts (yolo mode)**
 
-To skip prompts entirely, either configure the agent with the flag:
+To skip prompts entirely, define a [named agent](https://workmux.raine.dev/guide/agents#named-agents) that shadows `claude`:
 
 ```yaml
-agent: 'claude --dangerously-skip-permissions'
+# ~/.config/workmux/config.yaml
+agents:
+  claude: "claude --dangerously-skip-permissions"
 ```
 
-This only affects workmux-created worktrees. Alternatively, use a global shell
-alias:
-
-```bash
-alias claude="claude --dangerously-skip-permissions"
-```
+This makes all workmux-created worktrees use the flag automatically, without affecting `claude` outside of workmux. You can also use a separate name and reference it per-project with `agent: cc-yolo`.
 
 ### Delegating tasks with `/worktree`
 

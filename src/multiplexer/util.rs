@@ -49,6 +49,7 @@ pub fn rewrite_agent_command(
     working_dir: &Path,
     effective_agent: Option<&str>,
     shell: &str,
+    type_override: Option<&str>,
 ) -> Option<String> {
     let agent_command = effective_agent?;
     let trimmed_command = command.trim();
@@ -77,7 +78,7 @@ pub fn rewrite_agent_command(
 
     // Build the inner command step-by-step to ensure correct order:
     // [executable] [default_subcommand?] [user_args] [prompt_argument]
-    let profile = super::agent::resolve_profile(effective_agent);
+    let profile = super::agent::resolve_profile_with_type(effective_agent, type_override);
     let mut inner_cmd = pane_token.to_string();
 
     // Insert default subcommand (e.g., "chat" for kiro-cli) if the user
@@ -132,6 +133,7 @@ pub fn resolve_pane_command(
     working_dir: &Path,
     effective_agent: Option<&str>,
     shell: &str,
+    type_override: Option<&str>,
 ) -> Option<ResolvedCommand> {
     let raw_command = pane_command?;
 
@@ -158,6 +160,7 @@ pub fn resolve_pane_command(
         working_dir,
         pane_effective_agent,
         shell,
+        type_override,
     );
     let prompt_injected = matches!(result, Cow::Owned(_));
     Some(ResolvedCommand {
@@ -177,10 +180,17 @@ pub fn adjust_command<'a>(
     working_dir: &Path,
     effective_agent: Option<&str>,
     shell: &str,
+    type_override: Option<&str>,
 ) -> Cow<'a, str> {
     if let Some(prompt_path) = prompt_file_path
-        && let Some(rewritten) =
-            rewrite_agent_command(command, prompt_path, working_dir, effective_agent, shell)
+        && let Some(rewritten) = rewrite_agent_command(
+            command,
+            prompt_path,
+            working_dir,
+            effective_agent,
+            shell,
+            type_override,
+        )
     {
         return Cow::Owned(rewritten);
     }
@@ -188,7 +198,7 @@ pub fn adjust_command<'a>(
     // Even without a prompt, insert the default subcommand if needed
     // (e.g., "kiro-cli" -> "kiro-cli chat"). Only applies when the
     // command itself is the agent (stem must match).
-    let profile = super::agent::resolve_profile(effective_agent);
+    let profile = super::agent::resolve_profile_with_type(effective_agent, type_override);
     if let Some(subcmd) = profile.default_subcommand()
         && let Some((token, rest_with_leading)) = crate::config::split_first_token(command)
     {
@@ -268,7 +278,8 @@ pub fn wrap_for_non_posix_shell(command: &str) -> String {
 
 /// Inject a permissions flag into an agent command string.
 ///
-/// Inserts the flag after the executable token but before any existing arguments.
+/// Inserts the flag after the real agent executable, looking past `env`
+/// wrappers and `VAR=value` assignments.
 /// For commands like ` claude -- "$(cat PROMPT.md)"`, produces
 /// ` claude --dangerously-skip-permissions -- "$(cat PROMPT.md)"`.
 ///
@@ -283,7 +294,7 @@ pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
     if trimmed.starts_with("sh -c '") && trimmed.ends_with('\'') {
         let inner = &trimmed[7..trimmed.len() - 1];
         let inner_unescaped = inner.replace("'\\''", "'");
-        let injected = inject_flag_after_executable(&inner_unescaped, flag);
+        let injected = inject_flag_after_agent_executable(&inner_unescaped, flag);
         let re_escaped = injected.replace('\'', "'\\''");
         return format!("{}sh -c '{}'", leading_spaces, re_escaped);
     }
@@ -291,17 +302,29 @@ pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
     format!(
         "{}{}",
         leading_spaces,
-        inject_flag_after_executable(trimmed, flag)
+        inject_flag_after_agent_executable(trimmed, flag)
     )
 }
 
-/// Insert a flag after the first token (executable) in a simple command.
-fn inject_flag_after_executable(command: &str, flag: &str) -> String {
-    if let Some(space_idx) = command.find(' ') {
-        let (exe, rest) = command.split_at(space_idx);
-        format!("{} {}{}", exe, flag, rest)
+/// Insert a flag after the real agent executable in a command,
+/// handling `env` wrappers and `VAR=value` assignments.
+fn inject_flag_after_agent_executable(command: &str, flag: &str) -> String {
+    let exe_token = super::agent::find_executable_token(command);
+    if exe_token.is_empty() {
+        return format!("{} {}", command, flag);
+    }
+
+    // Use pointer arithmetic to find the token's position in the original string
+    let exe_start = exe_token.as_ptr() as usize - command.as_ptr() as usize;
+    let exe_end = exe_start + exe_token.len();
+
+    let before = &command[..exe_end];
+    let after = &command[exe_end..];
+
+    if after.is_empty() {
+        format!("{} {}", before, flag)
     } else {
-        format!("{} {}", command, flag)
+        format!("{} {}{}", before, flag, after)
     }
 }
 
@@ -363,6 +386,7 @@ mod tests {
             &working_dir,
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         // POSIX shell: no wrapper, prefixed with space to prevent history
         assert_eq!(result, Some(" claude -- \"$(cat PROMPT.md)\"".to_string()));
@@ -379,6 +403,7 @@ mod tests {
             &working_dir,
             Some("gemini"),
             "/bin/bash",
+            None,
         );
         assert_eq!(result, Some(" gemini -i \"$(cat PROMPT.md)\"".to_string()));
     }
@@ -394,6 +419,7 @@ mod tests {
             &working_dir,
             Some("opencode"),
             "/bin/zsh",
+            None,
         );
         assert_eq!(
             result,
@@ -413,6 +439,7 @@ mod tests {
             &working_dir,
             Some("kiro-cli"),
             "/bin/zsh",
+            None,
         );
         assert_eq!(
             result,
@@ -432,6 +459,7 @@ mod tests {
             &working_dir,
             Some("kiro-cli chat"),
             "/bin/zsh",
+            None,
         );
         assert_eq!(
             result,
@@ -451,6 +479,7 @@ mod tests {
             &working_dir,
             Some("kiro-cli chat --model sonnet"),
             "/bin/zsh",
+            None,
         );
         assert_eq!(
             result,
@@ -469,6 +498,7 @@ mod tests {
             &working_dir,
             Some("claude"),
             "/bin/bash",
+            None,
         );
         assert_eq!(
             result,
@@ -489,6 +519,7 @@ mod tests {
             &working_dir,
             Some("claude"),
             "/opt/homebrew/bin/nu",
+            None,
         );
         // Non-POSIX shell: wrap in sh -c, prefixed with space
         assert_eq!(
@@ -509,6 +540,7 @@ mod tests {
             &working_dir,
             Some("gemini"),
             "/bin/zsh",
+            None,
         );
         assert_eq!(result, None);
     }
@@ -518,8 +550,14 @@ mod tests {
         let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
         let working_dir = PathBuf::from("/tmp/worktree");
 
-        let result =
-            rewrite_agent_command("", &prompt_file, &working_dir, Some("claude"), "/bin/zsh");
+        let result = rewrite_agent_command(
+            "",
+            &prompt_file,
+            &working_dir,
+            Some("claude"),
+            "/bin/zsh",
+            None,
+        );
         assert_eq!(result, None);
     }
 
@@ -665,11 +703,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_inject_skip_permissions_env_wrapped() {
+        let result = inject_skip_permissions_flag(
+            " env -u FOO claude -- \"$(cat PROMPT.md)\"",
+            "--dangerously-skip-permissions",
+        );
+        assert_eq!(
+            result,
+            " env -u FOO claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\""
+        );
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_env_with_assignments() {
+        let result =
+            inject_skip_permissions_flag("env FOO=bar claude", "--dangerously-skip-permissions");
+        assert_eq!(result, "env FOO=bar claude --dangerously-skip-permissions");
+    }
+
     // --- resolve_pane_command tests ---
 
     #[test]
     fn test_resolve_pane_command_none_when_no_command() {
-        let result = resolve_pane_command(None, true, None, Path::new("/tmp"), None, "/bin/zsh");
+        let result =
+            resolve_pane_command(None, true, None, Path::new("/tmp"), None, "/bin/zsh", None);
         assert!(result.is_none());
     }
 
@@ -682,14 +740,22 @@ mod tests {
             Path::new("/tmp"),
             None,
             "/bin/zsh",
+            None,
         );
         assert!(result.is_none());
     }
 
     #[test]
     fn test_resolve_pane_command_returns_command_as_is() {
-        let result =
-            resolve_pane_command(Some("vim"), true, None, Path::new("/tmp"), None, "/bin/zsh");
+        let result = resolve_pane_command(
+            Some("vim"),
+            true,
+            None,
+            Path::new("/tmp"),
+            None,
+            "/bin/zsh",
+            None,
+        );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "vim");
         assert!(!resolved.prompt_injected);
@@ -704,6 +770,7 @@ mod tests {
             Path::new("/tmp"),
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "claude");
@@ -719,6 +786,7 @@ mod tests {
             Path::new("/tmp"),
             None,
             "/bin/zsh",
+            None,
         );
         assert!(result.is_none());
     }
@@ -734,6 +802,7 @@ mod tests {
             &working_dir,
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert!(resolved.prompt_injected);
@@ -751,6 +820,7 @@ mod tests {
             &working_dir,
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert!(!resolved.prompt_injected);
@@ -766,6 +836,7 @@ mod tests {
             Path::new("/tmp"),
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "claude");
@@ -781,6 +852,7 @@ mod tests {
             Path::new("/tmp"),
             Some("claude"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "vim");
@@ -801,6 +873,7 @@ mod tests {
             Path::new("/tmp"),
             Some("claude"), // window-level agent is claude
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "codex --yolo");
@@ -819,6 +892,7 @@ mod tests {
             &working_dir,
             Some("claude"), // window-level is claude, pane is codex
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert!(resolved.prompt_injected);
@@ -838,6 +912,7 @@ mod tests {
             &working_dir,
             None, // no window-level agent at all
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert!(resolved.prompt_injected);
@@ -858,6 +933,7 @@ mod tests {
             Path::new("/tmp"),
             Some("kiro-cli"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "kiro-cli chat");
@@ -873,6 +949,7 @@ mod tests {
             Path::new("/tmp"),
             Some("kiro-cli chat"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "kiro-cli chat");
@@ -888,6 +965,7 @@ mod tests {
             Path::new("/tmp"),
             Some("kiro-cli"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "vim");
@@ -905,6 +983,7 @@ mod tests {
             &working_dir,
             Some("kiro-cli"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert!(resolved.prompt_injected);
@@ -921,6 +1000,7 @@ mod tests {
             Path::new("/tmp"),
             Some("kiro-cli --verbose"),
             "/bin/zsh",
+            None,
         );
         let resolved = result.unwrap();
         assert_eq!(resolved.command, "kiro-cli chat --verbose");

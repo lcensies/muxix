@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -323,9 +324,65 @@ pub struct Config {
     #[serde(default)]
     pub prompt_file_only: Option<bool>,
 
+    /// Named agent commands. Maps short names to command strings or
+    /// `{ command, type }` objects. Global-only for security.
+    #[serde(default)]
+    pub agents: BTreeMap<String, AgentEntry>,
+
+    /// Resolved agent type override from the agents map.
+    /// Set internally during config loading, not deserialized.
+    #[serde(skip)]
+    pub agent_type: Option<String>,
+
     /// Container sandbox configuration
     #[serde(default)]
     pub sandbox: SandboxConfig,
+}
+
+/// A named agent entry: either a plain command string or a `{ command, type }` object.
+///
+/// Deserializes from:
+/// - `"claude --flags"` (string shorthand)
+/// - `{ command: "/path/to/wrapper", type: "claude" }` (explicit type override)
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentEntry {
+    pub command: String,
+    /// Explicit agent type override for profile detection.
+    /// When set, profile resolution uses this instead of the executable stem.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for AgentEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawEntry {
+            String(String),
+            Map {
+                command: String,
+                #[serde(rename = "type")]
+                agent_type: Option<String>,
+            },
+        }
+
+        match RawEntry::deserialize(deserializer)? {
+            RawEntry::String(s) => Ok(AgentEntry {
+                command: s,
+                agent_type: None,
+            }),
+            RawEntry::Map {
+                command,
+                agent_type,
+            } => Ok(AgentEntry {
+                command,
+                agent_type,
+            }),
+        }
+    }
 }
 
 /// Configuration for a single tmux pane
@@ -1380,7 +1437,14 @@ impl Config {
             .unwrap_or_else(|| "claude".to_string());
 
         let mut config = global_config.merge(project_config);
-        config.agent = Some(final_agent);
+
+        // Resolve agent name through agents map
+        if let Some(entry) = config.agents.get(&final_agent) {
+            config.agent_type = entry.agent_type.clone();
+            config.agent = Some(entry.command.clone());
+        } else {
+            config.agent = Some(final_agent);
+        }
 
         // After merging, apply sensible defaults for any values that are not configured.
         if let Ok(repo_root) = git::get_repo_root() {
@@ -1511,7 +1575,14 @@ impl Config {
             .unwrap_or_else(|| "claude".to_string());
 
         let mut config = global_config.merge(project_config);
-        config.agent = Some(final_agent);
+
+        // Resolve agent name through agents map
+        if let Some(entry) = config.agents.get(&final_agent) {
+            config.agent_type = entry.agent_type.clone();
+            config.agent = Some(entry.command.clone());
+        } else {
+            config.agent = Some(final_agent);
+        }
 
         if !defaults_root.as_os_str().is_empty() {
             let has_node_modules = defaults_root.join("pnpm-lock.yaml").exists()
@@ -1872,6 +1943,19 @@ impl Config {
             dangerously_allow_unsandboxed_host_exec: self
                 .sandbox
                 .dangerously_allow_unsandboxed_host_exec,
+        };
+
+        // Security: agents is global-only. Project config cannot define agents
+        // -- this prevents a malicious repo from executing arbitrary commands
+        // via .workmux.yaml.
+        merged.agents = if !project.agents.is_empty() {
+            tracing::warn!(
+                "agents in project config (.workmux.yaml) is ignored -- \
+                move it to your global config (~/.config/workmux/config.yaml)"
+            );
+            self.agents
+        } else {
+            self.agents
         };
 
         merged
@@ -2252,21 +2336,27 @@ pub fn split_first_token(command: &str) -> Option<(&str, &str)> {
 /// 1. The command is the literal placeholder "<agent>"
 /// 2. The command's executable stem matches the agent's executable stem
 ///    (e.g., "claude" matches "/usr/bin/claude")
+///
+/// Looks past `env` wrappers and `VAR=value` assignments to find the
+/// real executable in both the command and agent strings.
 pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
-    let trimmed = command_line.trim();
+    use crate::multiplexer::agent::find_executable_token;
 
-    let Some((cmd_token, _)) = split_first_token(trimmed) else {
+    let trimmed = command_line.trim();
+    if trimmed.is_empty() {
         return false;
-    };
+    }
 
     // Allow <agent> token regardless of what follows (e.g., "<agent> --verbose")
+    let cmd_token = find_executable_token(trimmed);
     if cmd_token == "<agent>" {
         return true;
     }
 
-    let Some((agent_token, _)) = split_first_token(agent_command) else {
+    let agent_token = find_executable_token(agent_command);
+    if agent_token.is_empty() {
         return false;
-    };
+    }
 
     let resolved_cmd = resolve_executable_path(cmd_token).unwrap_or_else(|| cmd_token.to_string());
     let resolved_agent =
@@ -2357,6 +2447,68 @@ mod tests {
     fn is_agent_command_empty() {
         assert!(!is_agent_command("", "claude"));
         assert!(!is_agent_command("   ", "claude"));
+    }
+
+    #[test]
+    fn is_agent_command_env_wrapped() {
+        assert!(is_agent_command("env -u FOO claude", "claude"));
+        assert!(is_agent_command("claude", "env -u FOO claude"));
+        assert!(is_agent_command("env -u FOO claude", "env -u BAR claude"));
+        assert!(is_agent_command("FOO=bar claude", "claude"));
+    }
+
+    #[test]
+    fn is_agent_command_env_wrapped_mismatch() {
+        assert!(!is_agent_command("env -u FOO claude", "gemini"));
+        assert!(!is_agent_command("env -u FOO vim", "claude"));
+    }
+
+    #[test]
+    fn agents_deserialize_string_form() {
+        let yaml = r#"
+agents:
+  cc-work: "claude --dangerously-skip-permissions"
+  cc-bedrock: "env -u CLAUDE_CODE_USE_BEDROCK claude"
+  cod: "codex --yolo"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.agents.len(), 3);
+        assert_eq!(
+            config.agents.get("cc-work").unwrap().command,
+            "claude --dangerously-skip-permissions"
+        );
+        assert!(config.agents.get("cc-work").unwrap().agent_type.is_none());
+        assert_eq!(
+            config.agents.get("cc-bedrock").unwrap().command,
+            "env -u CLAUDE_CODE_USE_BEDROCK claude"
+        );
+        assert_eq!(config.agents.get("cod").unwrap().command, "codex --yolo");
+    }
+
+    #[test]
+    fn agents_deserialize_map_form_with_type() {
+        let yaml = r#"
+agents:
+  cc-smart:
+    command: "/path/to/smart-picker"
+    type: claude
+  cod-plain: "codex"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.agents.len(), 2);
+        let smart = config.agents.get("cc-smart").unwrap();
+        assert_eq!(smart.command, "/path/to/smart-picker");
+        assert_eq!(smart.agent_type.as_deref(), Some("claude"));
+        let cod = config.agents.get("cod-plain").unwrap();
+        assert_eq!(cod.command, "codex");
+        assert!(cod.agent_type.is_none());
+    }
+
+    #[test]
+    fn agents_empty_by_default() {
+        let yaml = "agent: claude";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.agents.is_empty());
     }
 
     use super::find_project_config;

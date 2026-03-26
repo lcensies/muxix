@@ -154,7 +154,11 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
     let vm_name = lima::ensure_vm_running(config, worktree)?;
     info!(vm_name = %vm_name, "Lima VM ready");
 
-    let agent = crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name();
+    let agent = crate::multiplexer::agent::resolve_profile_with_type(
+        config.agent.as_deref(),
+        config.agent_type.as_deref(),
+    )
+    .name();
 
     if agent == "claude"
         && let Err(e) = lima::mounts::seed_claude_json(&vm_name)
@@ -380,7 +384,11 @@ fn run_container(
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
 
-    let agent = crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name();
+    let agent = crate::multiplexer::agent::resolve_profile_with_type(
+        config.agent.as_deref(),
+        config.agent_type.as_deref(),
+    )
+    .name();
 
     let user_command = command.join(" ");
     let shim_host_dir = _shim_dir.as_ref().map(|d| d.path().join("shims/bin"));

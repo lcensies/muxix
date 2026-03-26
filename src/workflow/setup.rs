@@ -36,6 +36,15 @@ pub fn setup_environment(
     agent: Option<&str>,
     after_window: Option<String>,
 ) -> Result<CreateResult> {
+    // Resolve agent name through the agents map once, use everywhere
+    let agent = agent.map(|a| {
+        config
+            .agents
+            .get(a)
+            .map(|e| e.command.as_str())
+            .unwrap_or(a)
+    });
+
     debug!(
         branch = branch_name,
         handle = handle,
@@ -338,6 +347,7 @@ fn pre_boot_lima_vm(
             working_dir,
             effective_agent,
             &shell,
+            config.agent_type.as_deref(),
         );
         if resolved.is_none() {
             return false;
@@ -884,7 +894,15 @@ fn validate_prompt_consumption(
     }
 
     // For non-named panes, require a global agent
-    let effective_agent = cli_agent.or(config.agent.as_deref());
+    // Resolve agent name through the agents map
+    let resolved_cli_agent = cli_agent.map(|a| {
+        config
+            .agents
+            .get(a)
+            .map(|e| e.command.as_str())
+            .unwrap_or(a)
+    });
+    let effective_agent = resolved_cli_agent.or(config.agent.as_deref());
 
     let Some(agent_cmd) = effective_agent else {
         return Err(anyhow!(

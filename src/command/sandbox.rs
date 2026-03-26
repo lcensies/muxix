@@ -114,7 +114,11 @@ pub enum SandboxCommand {
 
 /// Resolve the canonical agent name from config.
 fn resolve_agent(config: &Config) -> &'static str {
-    crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).name()
+    crate::multiplexer::agent::resolve_profile_with_type(
+        config.agent.as_deref(),
+        config.agent_type.as_deref(),
+    )
+    .name()
 }
 
 fn run_agent(command: Vec<String>) -> Result<()> {

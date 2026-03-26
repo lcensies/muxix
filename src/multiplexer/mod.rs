@@ -278,7 +278,15 @@ pub trait Multiplexer: Send + Sync {
 
         let mut focus_pane_id: Option<String> = None;
         let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
-        let effective_agent = task_agent.or(config.agent.as_deref());
+        // Resolve agent name through the agents map
+        let resolved_task_agent = task_agent.map(|a| {
+            config
+                .agents
+                .get(a)
+                .map(|e| e.command.as_str())
+                .unwrap_or(a)
+        });
+        let effective_agent = resolved_task_agent.or(config.agent.as_deref());
         let shell = self.get_default_shell()?;
 
         for (i, pane_config) in panes.iter().enumerate() {
@@ -297,6 +305,7 @@ pub trait Multiplexer: Send + Sync {
                 working_dir,
                 effective_agent,
                 &shell,
+                config.agent_type.as_deref(),
             );
 
             let pane_id = if let Some(mut resolved) = adjusted_command {
@@ -336,7 +345,8 @@ pub trait Multiplexer: Send + Sync {
 
                 // Inject continue/resume flag for agent panes when requested
                 if options.continue_session && is_agent_pane {
-                    let profile = agent::resolve_profile(pane_agent);
+                    let profile =
+                        agent::resolve_profile_with_type(pane_agent, config.agent_type.as_deref());
                     if let Some(flag) = profile.continue_flag() {
                         resolved.command =
                             util::inject_skip_permissions_flag(&resolved.command, flag);
@@ -362,7 +372,10 @@ pub trait Multiplexer: Send + Sync {
                         // (sandbox provides the security boundary, so permission
                         // prompts are unnecessary and break autonomous workflow)
                         let command_to_wrap = if is_agent_pane {
-                            let profile = crate::multiplexer::agent::resolve_profile(pane_agent);
+                            let profile = crate::multiplexer::agent::resolve_profile_with_type(
+                                pane_agent,
+                                config.agent_type.as_deref(),
+                            );
                             if let Some(flag) = profile.skip_permissions_flag() {
                                 util::inject_skip_permissions_flag(&resolved.command, flag)
                             } else {
@@ -421,7 +434,8 @@ pub trait Multiplexer: Send + Sync {
 
                 // Set working status for agent panes with injected prompts
                 if resolved.prompt_injected
-                    && agent::resolve_profile(pane_agent).needs_auto_status()
+                    && agent::resolve_profile_with_type(pane_agent, config.agent_type.as_deref())
+                        .needs_auto_status()
                 {
                     let icon = config.status_icons.working();
                     if config.status_format.unwrap_or(true) {

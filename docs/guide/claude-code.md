@@ -26,16 +26,25 @@ Add this to your global config (`~/.config/workmux/config.yaml`) or project's `.
 
 ### Skip permission prompts (yolo mode)
 
-To skip prompts entirely, either configure the agent with the flag:
+To skip prompts entirely, define a named agent with the flag:
 
 ```yaml
-agent: "claude --dangerously-skip-permissions"
+# ~/.config/workmux/config.yaml
+agents:
+  claude: "claude --dangerously-skip-permissions"
 ```
 
-This only affects workmux-created worktrees. Alternatively, use a global shell alias:
+This shadows the built-in `claude` name so all workmux-created worktrees use the flag automatically, without affecting `claude` outside of workmux.
 
-```bash
-alias claude="claude --dangerously-skip-permissions"
+You can also use a separate name and reference it per-project:
+
+```yaml
+# ~/.config/workmux/config.yaml
+agents:
+  cc-yolo: "claude --dangerously-skip-permissions"
+
+# .workmux.yaml (in projects that need it)
+agent: cc-yolo
 ```
 
 ## Continuing a conversation in a worktree
@@ -52,29 +61,29 @@ Select a conversation and press `Ctrl+F` to fork it. When the conversation belon
 
 ## Multiple Claude configurations (work/personal)
 
-If you use separate Claude configurations for work and personal projects, you can use [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) to control which config directory Claude uses.
+If you use separate Claude configurations for work and personal projects, define [named agents](/guide/agents#named-agents) in your global config:
 
-For example, to use a separate config directory for work projects, use [direnv](https://direnv.net/) to automatically switch configurations per directory. Add an `.envrc` in your work directory:
+```yaml
+# ~/.config/workmux/config.yaml
+agents:
+  cc-work: "env CLAUDE_CONFIG_DIR=~/.claude-work claude"
+  cc-personal: "env CLAUDE_CONFIG_DIR=~/.claude-personal claude"
+```
+
+Then set the agent per project:
+
+```yaml
+# work project .workmux.yaml
+agent: cc-work
+```
+
+Or use it directly: `workmux add feature -a cc-work`.
+
+### Alternative: direnv
+
+You can also use [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) with [direnv](https://direnv.net/) to switch configurations per directory. This affects `claude` everywhere, not just workmux:
 
 ```bash
 # .envrc
 export CLAUDE_CONFIG_DIR=~/.claude-work
 ```
-
-With this setup, running `claude` in work projects automatically uses the work configuration, while personal projects use the default `~/.claude`. Claude creates the directory automatically on first run.
-
-Another option is to create a wrapper script that gives you full control over how Claude is launched per project. Add a `PATH_add` to your `.envrc`:
-
-```bash
-# .envrc
-PATH_add .direnv/bin
-```
-
-Then create `.direnv/bin/claude` with whatever customization you need:
-
-```bash
-#!/usr/bin/env bash
-exec /usr/local/bin/claude --dangerously-skip-permissions "$@"
-```
-
-This approach lets you customize flags, environment variables, or any other behavior on a per-project basis.

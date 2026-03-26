@@ -57,19 +57,20 @@ Most options have sensible defaults. You only need to configure what you want to
 
 ### Basic options
 
-| Option             | Description                                                                 | Default                     |
-| ------------------ | --------------------------------------------------------------------------- | --------------------------- |
-| `main_branch`      | Branch to merge into                                                        | Auto-detected               |
-| `base_branch`      | Default base branch for new worktrees (overridden by `--base`)              | Current branch              |
-| `worktree_dir`     | Directory for worktrees (absolute or relative)                              | `<project>__worktrees/`     |
-| `nerdfont`         | Enable nerdfont icons (prompted on first run)                               | Prompted                    |
-| `window_prefix`    | Override tmux window/session prefix                                         | Icon or `wm-`               |
-| `agent`            | Default agent for `<agent>` placeholder                                     | `claude`                    |
-| `prompt_file_only` | Write prompt files without injecting into agent commands                    | `false`                     |
-| `layouts`          | Named pane layouts, selectable with `-l/--layout`                           | --                          |
-| `merge_strategy`   | Default merge strategy (`merge`, `rebase`, `squash`)                        | `merge`                     |
-| `theme`            | Dashboard color scheme (see [themes](#themes))                              | `default` (auto dark/light) |
-| `mode`             | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode). | `window`                    |
+| Option             | Description                                                                         | Default                     |
+| ------------------ | ----------------------------------------------------------------------------------- | --------------------------- |
+| `main_branch`      | Branch to merge into                                                                | Auto-detected               |
+| `base_branch`      | Default base branch for new worktrees (overridden by `--base`)                      | Current branch              |
+| `worktree_dir`     | Directory for worktrees (absolute or relative)                                      | `<project>__worktrees/`     |
+| `nerdfont`         | Enable nerdfont icons (prompted on first run)                                       | Prompted                    |
+| `window_prefix`    | Override tmux window/session prefix                                                 | Icon or `wm-`               |
+| `agent`            | Default agent for `<agent>` placeholder                                             | `claude`                    |
+| `agents`           | Named agent commands (global-only). See [named agents](/guide/agents#named-agents). | `{}`                        |
+| `prompt_file_only` | Write prompt files without injecting into agent commands                            | `false`                     |
+| `layouts`          | Named pane layouts, selectable with `-l/--layout`                                   | --                          |
+| `merge_strategy`   | Default merge strategy (`merge`, `rebase`, `squash`)                                | `merge`                     |
+| `theme`            | Dashboard color scheme (see [themes](#themes))                                      | `default` (auto dark/light) |
+| `mode`             | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode).         | `window`                    |
 
 ### Themes
 
