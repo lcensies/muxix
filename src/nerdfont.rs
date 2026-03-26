@@ -48,16 +48,19 @@ const FALLBACK_PR_ICONS: PrIcons = PrIcons {
 pub struct CheckIcons {
     pub success: &'static str,
     pub failure: &'static str,
+    pub pending: &'static str,
 }
 
 const NERDFONT_CHECK_ICONS: CheckIcons = CheckIcons {
     success: "\u{f0134}", // 󰄴 nf-md-check_circle
     failure: "\u{f0159}", // 󰅙 nf-md-close_circle
+    pending: "\u{f0520}", // 󰔠 nf-md-timer_sand
 };
 
 const FALLBACK_CHECK_ICONS: CheckIcons = CheckIcons {
     success: "✓",
     failure: "×",
+    pending: "◷",
 };
 
 const NERDFONT_GIT_ICONS: GitIcons = GitIcons {

@@ -514,10 +514,7 @@ fn render_info_panel(
             let (check_icon, check_color) = match checks {
                 CheckState::Success => (check_icons.success.to_string(), app.palette.success),
                 CheckState::Failure { .. } => (check_icons.failure.to_string(), app.palette.danger),
-                CheckState::Pending { .. } => {
-                    let frame = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
-                    (frame.to_string(), app.palette.accent)
-                }
+                CheckState::Pending { .. } => (check_icons.pending.to_string(), app.palette.accent),
             };
             pr_spans.push(Span::styled(" ", text_style));
             pr_spans.push(Span::styled(check_icon, Style::default().fg(check_color)));
