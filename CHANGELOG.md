@@ -17,6 +17,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.153 (2026-03-26)
+
+- Fix incorrect guest home directory with Lima 2.1.0, which changed the path
+  from `.linux` to `.guest` ([#92](https://github.com/raine/workmux/issues/92))
+- Dashboard: add `r` hotkey to remove worktree from the agents tab
+- Dashboard: show spinner on PR column header while fetching
+- Fix Nix build by adding missing output hashes for crossterm git dependency
+
 ## v0.1.152 (2026-03-25)
 
 - Add `workmux resurrect` command to restore worktree windows after a tmux or
