@@ -449,10 +449,9 @@ fn sanitize_pane_title<'a>(raw: Option<&'a str>, worktree: &str, project: &str) 
 
 /// Format elapsed seconds compactly: "5s", "2m", "1h", "3d"
 fn format_compact_elapsed(secs: u64) -> String {
-    if secs < 60 {
-        format!("{}s", secs)
-    } else if secs < 3600 {
-        format!("{}m", secs / 60)
+    if secs < 3600 {
+        // MM:SS timer for agents under 1 hour
+        format!("{:02}:{:02}", secs / 60, secs % 60)
     } else if secs < 86400 {
         format!("{}h", secs / 3600)
     } else {
