@@ -53,7 +53,20 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
         Cell::from(git_header),
     ];
     if show_pr_column {
-        header_cells.push(Cell::from("PR").style(header_style));
+        let is_pr_fetching = app.is_pr_fetching();
+        let pr_header = if is_pr_fetching {
+            let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
+            Line::from(vec![
+                Span::styled("PR ", Style::default().fg(app.palette.header).bold()),
+                Span::styled(spinner.to_string(), Style::default().fg(app.palette.dimmed)),
+            ])
+        } else {
+            Line::from(Span::styled(
+                "PR",
+                Style::default().fg(app.palette.header).bold(),
+            ))
+        };
+        header_cells.push(Cell::from(pr_header));
     }
     header_cells.extend([
         Cell::from("Mux").style(header_style),
