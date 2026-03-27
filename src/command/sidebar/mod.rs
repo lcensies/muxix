@@ -535,6 +535,17 @@ fn kill_daemon() {
         .run();
 }
 
+/// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
+fn signal_daemon() {
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+}
+
 /// Drop guard that restores terminal state on panic or early return.
 struct TerminalGuard;
 
@@ -558,6 +569,9 @@ pub fn run_sidebar() -> Result<()> {
 
     // Connect to daemon (retries in background thread)
     let receiver = client::SnapshotReceiver::connect(&sock_path);
+
+    // Signal daemon to push an immediate snapshot for the newly connected client
+    signal_daemon();
 
     // Setup terminal
     enable_raw_mode()?;
