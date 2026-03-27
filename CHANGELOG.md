@@ -18,6 +18,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.156 (2026-03-27)
+
+- Dashboard now uses configured `main_branch` for diff base detection
+  ([#97](https://github.com/raine/workmux/issues/97))
+- Fix PR status fetch being delayed 30 seconds on dashboard open
+- `workmux last-done` now includes waiting agents
+
 ## v0.1.154 (2026-03-27)
 
 - Add Codex status tracking support, showing working/done states in the tmux
