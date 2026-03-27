@@ -254,7 +254,7 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
 /// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
 /// This is designed for dashboard display and prioritizes speed over completeness.
 /// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
-pub fn get_git_status(worktree_path: &Path) -> GitStatus {
+pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitStatus {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -292,9 +292,10 @@ pub fn get_git_status(worktree_path: &Path) -> GitStatus {
     };
 
     // Determine base branch for conflict check and diff stats
-    // First try workmux-base config, then fall back to default branch
+    // Priority: workmux-base config > configured main_branch > auto-detected default > "main"
     let base_branch = get_branch_base_in(&branch, Some(worktree_path))
         .ok()
+        .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
         .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
         .unwrap_or_else(|| "main".to_string());
 

@@ -25,6 +25,7 @@ impl App {
 
         let tx = self.event_tx.clone();
         let is_fetching = self.is_git_fetching.clone();
+        let main_branch = self.config.main_branch.clone();
         // Include both agent paths and worktree paths so the worktree view gets git status too
         let mut paths: Vec<PathBuf> = self.all_agents.iter().map(|a| a.path.clone()).collect();
         for wt in &self.worktrees {
@@ -44,7 +45,7 @@ impl App {
             let _reset = ResetFlag(is_fetching);
 
             for path in paths {
-                let status = git::get_git_status(&path);
+                let status = git::get_git_status(&path, main_branch.as_deref());
                 let _ = tx.send(AppEvent::GitStatus(path, status));
             }
         });

@@ -402,12 +402,13 @@ impl DiffOps for App {
         let worktree_name = self.extract_worktree_name(agent).0;
 
         let (diff_arg, title) = if branch_diff {
-            // Get the base branch from git status if available, fallback to "main"
+            // Get the base branch from git status if available, then config, then "main"
             let base = self
                 .git_statuses
                 .get(path)
                 .map(|s| s.base_branch.as_str())
                 .filter(|b| !b.is_empty())
+                .or_else(|| self.config.main_branch.as_deref().filter(|s| !s.is_empty()))
                 .unwrap_or("main");
             (
                 format!("{}...HEAD", base),
