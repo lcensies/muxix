@@ -121,11 +121,11 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let padding = name_width.saturating_sub(display_width(&display_name));
 
             let is_active = app
-                .active_window
+                .host_window
                 .as_ref()
                 .is_some_and(|w| w == &agent.window_name)
                 && app
-                    .active_session
+                    .host_session
                     .as_ref()
                     .is_some_and(|s| s == &agent.session);
 
@@ -210,11 +210,11 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .unwrap_or(false);
 
             let is_active = app
-                .active_window
+                .host_window
                 .as_ref()
                 .is_some_and(|w| w == &agent.window_name)
                 && app
-                    .active_session
+                    .host_session
                     .as_ref()
                     .is_some_and(|s| s == &agent.session);
 

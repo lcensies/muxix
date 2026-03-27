@@ -3314,6 +3314,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "shlex",
+ "signal-hook",
  "similar",
  "slug",
  "tabled",

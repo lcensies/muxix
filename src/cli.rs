@@ -608,6 +608,10 @@ enum Commands {
         window: Option<String>,
     },
 
+    /// Run the sidebar daemon (internal use)
+    #[command(hide = true, name = "_sidebar-daemon")]
+    SidebarDaemon,
+
     /// Show a TUI dashboard of all active workmux agents across all sessions
     Dashboard {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
@@ -888,6 +892,7 @@ pub fn run() -> Result<()> {
         Commands::Sidebar { width } => command::sidebar::toggle(width),
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
+        Commands::SidebarDaemon => command::sidebar::run_daemon(),
         Commands::Dashboard {
             preview_size,
             diff,

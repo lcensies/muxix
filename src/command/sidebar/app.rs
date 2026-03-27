@@ -2,21 +2,22 @@
 
 use anyhow::Result;
 use ratatui::widgets::ListState;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
 use crate::config::{Config, StatusIcons};
-use std::collections::HashMap;
 
-use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer};
-use crate::state::StateStore;
+use crate::multiplexer::{AgentPane, Multiplexer};
 
 use crate::command::dashboard::ui::theme::ThemePalette;
 
+use super::snapshot::SidebarSnapshot;
+
 /// Sidebar layout mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SidebarLayoutMode {
     #[default]
     Compact,
@@ -32,6 +33,13 @@ impl SidebarLayoutMode {
     }
 }
 
+/// Whether the sidebar auto-follows its host window or the user is navigating manually.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SelectionMode {
+    FollowHost,
+    Manual,
+}
+
 /// Lightweight sidebar app state. No preview, git, PR, diff, or input mode.
 pub struct SidebarApp {
     pub mux: Arc<dyn Multiplexer>,
@@ -45,13 +53,19 @@ pub struct SidebarApp {
     pub layout_mode: SidebarLayoutMode,
     /// Window prefix from config
     window_prefix: String,
-    /// The currently active session + window (used to highlight agents in the focused window)
-    pub active_session: Option<String>,
-    pub active_window: Option<String>,
+    /// The sidebar's own host window (immutable, detected once at startup via TMUX_PANE)
+    pub host_session: Option<String>,
+    pub host_window: Option<String>,
+    /// Stable tmux window ID (e.g., @42) for active-window detection
+    host_window_id: Option<String>,
+    /// Whether this sidebar's host window is the active window in the session
+    host_window_active: bool,
+    selection_mode: SelectionMode,
 }
 
 impl SidebarApp {
-    pub fn new(mux: Arc<dyn Multiplexer>) -> Result<Self> {
+    /// Create a new sidebar client. Does config + host detection only, no tmux polling.
+    pub fn new_client(mux: Arc<dyn Multiplexer>) -> Result<Self> {
         let config = Config::load(None)?;
 
         let theme_mode = config
@@ -65,7 +79,9 @@ impl SidebarApp {
         let window_prefix = config.window_prefix().to_string();
         let status_icons = config.status_icons.clone();
 
-        let mut app = Self {
+        let (host_session, host_window, host_window_id) = detect_host_window();
+
+        Ok(Self {
             mux,
             agents: Vec::new(),
             list_state: ListState::default(),
@@ -74,88 +90,37 @@ impl SidebarApp {
             status_icons,
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
-            layout_mode: read_sidebar_layout_mode().unwrap_or_default(),
+            layout_mode: SidebarLayoutMode::default(),
             window_prefix,
-            active_session: None,
-            active_window: None,
-        };
-
-        app.refresh();
-
-        if !app.agents.is_empty() {
-            app.list_state.select(Some(0));
-        }
-
-        Ok(app)
+            host_session,
+            host_window,
+            host_window_id,
+            host_window_active: true,
+            selection_mode: SelectionMode::FollowHost,
+        })
     }
 
-    /// Lightweight update: just detect which window is focused and move selection if it changed.
-    pub fn update_active_window(&mut self) {
-        let (new_session, new_window) = detect_active_window();
+    /// Apply a snapshot received from the daemon.
+    pub fn apply_snapshot(&mut self, snapshot: &SidebarSnapshot) {
+        self.layout_mode = snapshot.layout_mode;
 
-        // Only move selection when the active window actually changes
-        let changed = new_session != self.active_session || new_window != self.active_window;
-        self.active_session = new_session;
-        self.active_window = new_window;
+        let agents: Vec<AgentPane> = snapshot.agents.iter().map(|a| a.to_agent_pane()).collect();
 
-        if changed
-            && let (Some(session), Some(window)) = (&self.active_session, &self.active_window)
-            && let Some(idx) = self
-                .agents
-                .iter()
-                .position(|a| &a.session == session && &a.window_name == window)
-        {
-            self.list_state.select(Some(idx));
-        }
-    }
-
-    pub fn refresh(&mut self) {
-        (self.active_session, self.active_window) = detect_active_window();
-
-        let mut agents = StateStore::new()
-            .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
-            .unwrap_or_default();
-
-        // Suppress Done/Waiting when tmux's auto-clear hook has already cleared
-        // the window status. @workmux_status is the view-layer source of truth
-        // for whether the user has "seen" a transient notification.
-        let tmux_statuses = query_window_statuses();
-        let done_icon = self.status_icons.done();
-        let waiting_icon = self.status_icons.waiting();
-        for agent in &mut agents {
-            let Some(observed) = tmux_statuses.get(&agent.pane_id) else {
-                continue;
+        // Check if host window is active
+        let was_active = self.host_window_active;
+        self.host_window_active =
+            if let (Some(session), Some(window_id)) = (&self.host_session, &self.host_window_id) {
+                snapshot
+                    .active_windows
+                    .contains(&(session.clone(), window_id.clone()))
+            } else {
+                true
             };
-            match agent.status {
-                Some(AgentStatus::Done) if observed.as_deref() != Some(done_icon) => {
-                    agent.status = None;
-                }
-                Some(AgentStatus::Waiting) if observed.as_deref() != Some(waiting_icon) => {
-                    agent.status = None;
-                }
-                _ => {}
-            }
+
+        // Re-arm FollowHost when window becomes active
+        if !was_active && self.host_window_active {
+            self.selection_mode = SelectionMode::FollowHost;
         }
-
-        // Sort by recency (most recent status change first)
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        agents.sort_by_cached_key(|a| {
-            let elapsed = a
-                .status_ts
-                .map(|ts| now.saturating_sub(ts))
-                .unwrap_or(u64::MAX);
-            let pane_num: u64 = a
-                .pane_id
-                .strip_prefix('%')
-                .unwrap_or(&a.pane_id)
-                .parse()
-                .unwrap_or(u64::MAX);
-            (elapsed, pane_num)
-        });
 
         // Preserve selection by pane_id
         let selected_pane = self
@@ -183,6 +148,23 @@ impl SidebarApp {
         } else if !self.agents.is_empty() && self.list_state.selected().is_none() {
             self.list_state.select(Some(0));
         }
+
+        self.sync_selection();
+    }
+
+    /// Select the agent belonging to this sidebar's host window (only in FollowHost mode).
+    pub fn sync_selection(&mut self) {
+        if self.selection_mode != SelectionMode::FollowHost {
+            return;
+        }
+        if let (Some(session), Some(window)) = (&self.host_session, &self.host_window)
+            && let Some(idx) = self
+                .agents
+                .iter()
+                .position(|a| &a.session == session && &a.window_name == window)
+        {
+            self.list_state.select(Some(idx));
+        }
     }
 
     pub fn tick(&mut self) {
@@ -190,6 +172,7 @@ impl SidebarApp {
     }
 
     pub fn next(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
         if self.agents.is_empty() {
             return;
         }
@@ -199,6 +182,7 @@ impl SidebarApp {
     }
 
     pub fn previous(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
         if self.agents.is_empty() {
             return;
         }
@@ -208,12 +192,14 @@ impl SidebarApp {
     }
 
     pub fn select_first(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
         if !self.agents.is_empty() {
             self.list_state.select(Some(0));
         }
     }
 
     pub fn select_last(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
         if !self.agents.is_empty() {
             self.list_state.select(Some(self.agents.len() - 1));
         }
@@ -244,13 +230,6 @@ impl SidebarApp {
             .run();
     }
 
-    /// Sync layout mode from the tmux global option (set by any sidebar instance).
-    pub fn sync_layout_mode(&mut self) {
-        if let Some(mode) = read_sidebar_layout_mode() {
-            self.layout_mode = mode;
-        }
-    }
-
     pub fn window_prefix(&self) -> &str {
         &self.window_prefix
     }
@@ -269,54 +248,37 @@ impl SidebarApp {
     }
 }
 
-/// Read the sidebar layout mode from the tmux global option.
-fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
-    let output = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_layout"])
-        .run_and_capture_stdout()
-        .ok()?;
-    match output.trim() {
-        "tiles" => Some(SidebarLayoutMode::Tiles),
-        "compact" => Some(SidebarLayoutMode::Compact),
-        _ => None,
+/// Detect this sidebar's host window using TMUX_PANE (stable, one-time).
+/// Returns (session, window_name, window_id).
+fn detect_host_window() -> (Option<String>, Option<String>, Option<String>) {
+    let pane_id = std::env::var("TMUX_PANE").ok().unwrap_or_default();
+    let target = if pane_id.is_empty() {
+        None
+    } else {
+        Some(pane_id)
+    };
+    let mut args = vec!["display-message", "-p"];
+    if let Some(ref t) = target {
+        args.extend_from_slice(&["-t", t]);
     }
-}
-
-/// Query @workmux_status for each pane (inherited from the window option).
-/// Returns pane_id -> Option<status_string>. Missing panes are not included.
-fn query_window_statuses() -> HashMap<String, Option<String>> {
+    args.push("#{session_name}\t#{window_name}\t#{window_id}");
     let output = Cmd::new("tmux")
-        .args(&["list-panes", "-a", "-F", "#{pane_id}\t#{@workmux_status}"])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
-
-    let mut map = HashMap::new();
-    for line in output.lines() {
-        if let Some((pane_id, status)) = line.split_once('\t') {
-            let val = if status.is_empty() {
-                None
-            } else {
-                Some(status.to_string())
-            };
-            map.insert(pane_id.to_string(), val);
-        }
-    }
-    map
-}
-
-/// Detect the currently active session and window name.
-fn detect_active_window() -> (Option<String>, Option<String>) {
-    let output = Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{session_name}\t#{window_name}"])
+        .args(&args)
         .run_and_capture_stdout()
         .ok()
         .unwrap_or_default();
     let trimmed = output.trim();
-    if let Some((session, window)) = trimmed.split_once('\t') {
-        let s = (!session.is_empty()).then(|| session.to_string());
-        let w = (!window.is_empty()).then(|| window.to_string());
-        (s, w)
+    let parts: Vec<&str> = trimmed.split('\t').collect();
+    if parts.len() >= 3 {
+        let s = (!parts[0].is_empty()).then(|| parts[0].to_string());
+        let w = (!parts[1].is_empty()).then(|| parts[1].to_string());
+        let id = (!parts[2].is_empty()).then(|| parts[2].to_string());
+        (s, w, id)
+    } else if parts.len() == 2 {
+        let s = (!parts[0].is_empty()).then(|| parts[0].to_string());
+        let w = (!parts[1].is_empty()).then(|| parts[1].to_string());
+        (s, w, None)
     } else {
-        (None, None)
+        (None, None, None)
     }
 }
