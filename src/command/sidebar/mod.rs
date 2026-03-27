@@ -235,6 +235,24 @@ fn create_sidebars_in_all_windows(_width: u16) -> Result<()> {
         .args(&["list-windows", "-a", "-F", "#{window_id}"])
         .run_and_capture_stdout()?;
 
+    // Clear stale saved layouts from previous cycles before querying window widths.
+    // Stale layouts can have dimensions from a different terminal size, and tmux
+    // may briefly apply them during restore, skewing #{window_width} queries.
+    for window_id in output.lines() {
+        let window_id = window_id.trim();
+        if !window_id.is_empty() {
+            let _ = Cmd::new("tmux")
+                .args(&[
+                    "set-option",
+                    "-wu",
+                    "-t",
+                    window_id,
+                    "@workmux_sidebar_layout",
+                ])
+                .run();
+        }
+    }
+
     for window_id in output.lines() {
         let window_id = window_id.trim();
         if window_id.is_empty() {
