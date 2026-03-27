@@ -120,14 +120,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let display_name = truncate_to_width(&worktree_name, name_width);
             let padding = name_width.saturating_sub(display_width(&display_name));
 
-            let is_active = app
-                .host_window
-                .as_ref()
-                .is_some_and(|w| w == &agent.window_name)
-                && app
-                    .host_session
-                    .as_ref()
-                    .is_some_and(|s| s == &agent.session);
+            let is_active = app.host_agent_idx == Some(idx);
 
             let name_style = if is_stale {
                 Style::default()
@@ -209,14 +202,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
 
-            let is_active = app
-                .host_window
-                .as_ref()
-                .is_some_and(|w| w == &agent.window_name)
-                && app
-                    .host_session
-                    .as_ref()
-                    .is_some_and(|s| s == &agent.session);
+            let is_active = app.host_agent_idx == Some(idx);
 
             // Status icon and color
             let (icon, icon_style) = status_icon_and_style(app, agent.status, is_stale);

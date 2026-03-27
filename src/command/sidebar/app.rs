@@ -53,11 +53,12 @@ pub struct SidebarApp {
     pub layout_mode: SidebarLayoutMode,
     /// Window prefix from config
     window_prefix: String,
-    /// The sidebar's own host window (immutable, detected once at startup via TMUX_PANE)
-    pub host_session: Option<String>,
-    pub host_window: Option<String>,
+    /// The sidebar's own host session (immutable, detected once at startup via TMUX_PANE)
+    host_session: Option<String>,
     /// Stable tmux window ID (e.g., @42) for active-window detection
     host_window_id: Option<String>,
+    /// Index of the agent in the sidebar's host window (updated each snapshot)
+    pub host_agent_idx: Option<usize>,
     /// Whether this sidebar's host window is the active window in the session
     host_window_active: bool,
     selection_mode: SelectionMode,
@@ -79,7 +80,7 @@ impl SidebarApp {
         let window_prefix = config.window_prefix().to_string();
         let status_icons = config.status_icons.clone();
 
-        let (host_session, host_window, host_window_id) = detect_host_window();
+        let (host_session, _host_window, host_window_id) = detect_host_window();
 
         Ok(Self {
             mux,
@@ -93,8 +94,8 @@ impl SidebarApp {
             layout_mode: SidebarLayoutMode::default(),
             window_prefix,
             host_session,
-            host_window,
             host_window_id,
+            host_agent_idx: None,
             host_window_active: true,
             selection_mode: SelectionMode::FollowHost,
         })
@@ -103,6 +104,12 @@ impl SidebarApp {
     /// Apply a snapshot received from the daemon.
     pub fn apply_snapshot(&mut self, snapshot: &SidebarSnapshot) {
         self.layout_mode = snapshot.layout_mode;
+
+        // Find host agent by window_id (stable tmux ID, survives renames)
+        self.host_agent_idx = self
+            .host_window_id
+            .as_ref()
+            .and_then(|wid| snapshot.agents.iter().position(|a| a.window_id == *wid));
 
         let agents: Vec<AgentPane> = snapshot.agents.iter().map(|a| a.to_agent_pane()).collect();
 
@@ -157,12 +164,7 @@ impl SidebarApp {
         if self.selection_mode != SelectionMode::FollowHost {
             return;
         }
-        if let (Some(session), Some(window)) = (&self.host_session, &self.host_window)
-            && let Some(idx) = self
-                .agents
-                .iter()
-                .position(|a| &a.session == session && &a.window_name == window)
-        {
+        if let Some(idx) = self.host_agent_idx {
             self.list_state.select(Some(idx));
         }
     }
