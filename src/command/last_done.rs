@@ -4,11 +4,11 @@ use tracing::debug;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
 use crate::state::StateStore;
 
-/// Switch to the agent that most recently completed its task.
+/// Switch to the agent that most recently completed or is waiting for input.
 ///
-/// Finds all agents with "done" status from the StateStore and switches to the
-/// one with the most recent timestamp. Cycles through completed agents on
-/// repeated invocations.
+/// Finds all agents with "done" or "waiting" status from the StateStore and
+/// switches to the one with the most recent timestamp. Cycles through matching
+/// agents on repeated invocations.
 pub fn run() -> Result<()> {
     let mux = create_backend(detect_backend());
     let store = StateStore::new()?;
@@ -17,22 +17,24 @@ pub fn run() -> Result<()> {
     // This avoids O(n) tmux queries. Dead panes are handled during switch.
     let agents = store.list_all_agents()?;
 
-    // Filter to done agents for current backend/instance
+    // Filter to done/waiting agents for current backend/instance
     let backend_name = mux.name();
     let instance_id = mux.instance_id();
     let mut done_agents: Vec<_> = agents
         .into_iter()
         .filter(|a| {
-            a.status == Some(AgentStatus::Done)
-                && a.pane_key.backend == backend_name
+            matches!(
+                a.status,
+                Some(AgentStatus::Done) | Some(AgentStatus::Waiting)
+            ) && a.pane_key.backend == backend_name
                 && a.pane_key.instance == instance_id
         })
         .collect();
 
-    debug!(count = done_agents.len(), "done agents");
+    debug!(count = done_agents.len(), "done/waiting agents");
 
     if done_agents.is_empty() {
-        println!("No completed agents found");
+        println!("No completed or waiting agents found");
         return Ok(());
     }
 
@@ -67,6 +69,6 @@ pub fn run() -> Result<()> {
         }
     }
 
-    println!("No active completed agents found");
+    println!("No active completed or waiting agents found");
     Ok(())
 }

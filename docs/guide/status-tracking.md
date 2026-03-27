@@ -148,9 +148,9 @@ set -g window-status-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?win
 set -g window-status-current-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
 ```
 
-## Jump to completed agents
+## Jump to completed or waiting agents
 
-Use `workmux last-done` to quickly switch to the agent that most recently finished its task. Repeated invocations cycle through all completed agents in reverse chronological order (most recent first).
+Use `workmux last-done` to quickly switch to the agent that most recently finished its task or is waiting for user input. Repeated invocations cycle through all completed and waiting agents in reverse chronological order (most recent first).
 
 Add a tmux keybinding for quick access:
 
@@ -159,7 +159,7 @@ Add a tmux keybinding for quick access:
 bind l run-shell "workmux last-done"
 ```
 
-Then press `prefix + l` to jump to the last completed agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to review their work in the order they finished.
+Then press `prefix + l` to jump to the last completed or waiting agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to quickly attend to agents that need your attention.
 
 ## Toggle between agents
 

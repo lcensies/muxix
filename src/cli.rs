@@ -639,7 +639,7 @@ enum Commands {
         run_dir: std::path::PathBuf,
     },
 
-    /// Switch to the agent that most recently completed its task
+    /// Switch to the agent that most recently completed or is waiting for input
     #[command(hide = true, name = "last-done")]
     LastDone,
 
