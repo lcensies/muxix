@@ -370,17 +370,19 @@ fn install_hooks() -> Result<()> {
         .args(&["set-hook", "-g", "after-new-session[99]", &sync_cmd])
         .run()?;
 
-    // Snap sidebar panes to responsive width on terminal resize (10% of client width, clamped)
+    // Snap sidebar panes to responsive width when any window resizes.
+    // window-resized fires on terminal resize AND when switching to an unattached
+    // session (window-size=latest resizes windows to match the new client).
+    // Scoped to the specific window that resized using ##{{window_id}}.
     // Double ## escapes tmux format expansion in hook values: ## → literal #
-    // So ##{{x}} in Rust → ##{x} after Rust fmt → #{x} after tmux expansion
     let resize_script = format!(
-        r#"cw=$(tmux display-message -p '##{{client_width}}'); w=$((cw * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux set-option -g @workmux_sidebar_width "$w"; tmux list-panes -a -F '##{{pane_id}} ##{{@workmux_role}}' | while read id role; do [ "$role" = sidebar ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
+        r#"ww=$(tmux display-message -t '##{{window_id}}' -p '##{{window_width}}'); w=$((ww * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux list-panes -t '##{{window_id}}' -F '##{{pane_id}} ##{{@workmux_role}}' | while read id role; do [ "$role" = sidebar ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
         min = MIN_WIDTH,
         max = MAX_WIDTH,
     );
     let resize_cmd = format!("run-shell -b \"{}\"", resize_script);
     Cmd::new("tmux")
-        .args(&["set-hook", "-g", "client-resized[99]", &resize_cmd])
+        .args(&["set-hook", "-g", "window-resized[99]", &resize_cmd])
         .run()?;
 
     // Dirty signal hooks: send SIGUSR1 to daemon on window/session/pane changes
@@ -407,7 +409,7 @@ fn remove_hooks() {
         .args(&["set-hook", "-gu", "after-new-session[99]"])
         .run();
     let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "client-resized[99]"])
+        .args(&["set-hook", "-gu", "window-resized[99]"])
         .run();
     // Dirty signal hooks
     let _ = Cmd::new("tmux")
