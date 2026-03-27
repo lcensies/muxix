@@ -15,12 +15,12 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Agent        | Status                                                                      |
 | ------------ | --------------------------------------------------------------------------- |
 | Claude Code  | ✅ Supported                                                                |
-| Copilot CLI  | ✅ Supported\*                                                              |
 | OpenCode     | ✅ Supported                                                                |
+| Codex        | ✅ Supported\*                                                              |
+| Copilot CLI  | ✅ Supported\*                                                              |
 | Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
-| Codex        | ✅ Supported\*                                                              |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
 **Notes:**
