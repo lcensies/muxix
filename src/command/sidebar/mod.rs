@@ -636,16 +636,15 @@ pub fn navigate(action: NavAction) -> Result<()> {
         anyhow::bail!("no sidebar agents found");
     }
 
-    // Find current agent by active window ID
-    let current_window_id = Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{window_id}"])
+    // Find current agent by active pane ID (window_id would fail when
+    // multiple agents share the same window)
+    let current_pane_id = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{pane_id}"])
         .run_and_capture_stdout()
         .unwrap_or_default();
-    let current_window_id = current_window_id.trim();
+    let current_pane_id = current_pane_id.trim();
 
-    let current_idx = entries
-        .iter()
-        .position(|(_, wid)| *wid == current_window_id);
+    let current_idx = entries.iter().position(|(pid, _)| *pid == current_pane_id);
 
     let len = entries.len();
     let target_idx = match &action {
