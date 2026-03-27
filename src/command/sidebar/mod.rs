@@ -580,12 +580,12 @@ pub fn run_sidebar() -> Result<()> {
     let mut last_pane_check = std::time::Instant::now();
 
     loop {
-        terminal.draw(|f| render_sidebar(f, &mut app))?;
-
-        // Apply latest snapshot from daemon
+        // Apply latest snapshot before drawing so we never render stale state
         if let Some(snapshot) = receiver.take() {
             app.apply_snapshot(&snapshot);
         }
+
+        terminal.draw(|f| render_sidebar(f, &mut app))?;
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
 

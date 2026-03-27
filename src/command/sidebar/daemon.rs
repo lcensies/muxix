@@ -197,7 +197,11 @@ pub fn run() -> Result<()> {
             break;
         }
 
-        thread::sleep(Duration::from_millis(50));
+        // Skip sleep after processing a dirty signal to minimize latency;
+        // Rust's thread::sleep retries on EINTR so SIGUSR1 can't interrupt it
+        if !dirty {
+            thread::sleep(Duration::from_millis(50));
+        }
     }
 
     // Cleanup
