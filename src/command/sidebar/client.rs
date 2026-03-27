@@ -5,7 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::snapshot::SidebarSnapshot;
 
@@ -36,16 +36,26 @@ impl SnapshotReceiver {
     }
 
     fn connection_loop(path: &Path, latest: &Latest) {
-        let mut backoff = Duration::from_millis(50);
+        let min_backoff = Duration::from_millis(50);
         let max_backoff = Duration::from_secs(2);
+        // PID-based jitter to prevent 12 clients from phase-locking reconnects
+        let jitter = Duration::from_millis((std::process::id() % 100) as u64);
+        let mut backoff = min_backoff;
 
         loop {
+            let connected_at = Instant::now();
+
             if let Ok(stream) = UnixStream::connect(path) {
-                backoff = Duration::from_millis(50);
                 Self::read_loop(stream, latest);
-                // read_loop returned = disconnected, retry
+                // Only reset backoff if connection was stable (lasted >5s).
+                // Short-lived connections (daemon accept-then-close) keep
+                // exponential backoff to prevent synchronized churn.
+                if connected_at.elapsed() > Duration::from_secs(5) {
+                    backoff = min_backoff;
+                }
             }
-            thread::sleep(backoff);
+
+            thread::sleep(backoff + jitter);
             backoff = (backoff * 2).min(max_backoff);
         }
     }
@@ -68,7 +78,6 @@ impl SnapshotReceiver {
             }
 
             if let Ok(snapshot) = serde_json::from_slice::<SidebarSnapshot>(&buf) {
-                // Always overwrite with latest
                 *latest.lock().unwrap() = Some(snapshot);
             }
         }

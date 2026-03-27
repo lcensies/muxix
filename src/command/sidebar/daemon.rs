@@ -176,13 +176,23 @@ pub fn run() -> Result<()> {
     let mut version = 0u64;
     let mut last_refresh = Instant::now();
     let mut last_client_seen = Instant::now();
+    let mut dirty_pending = false;
     let refresh_interval = Duration::from_secs(2);
+    let debounce_interval = Duration::from_millis(50);
 
     while !term.load(Ordering::Relaxed) {
-        let dirty = dirty_flag.swap(false, Ordering::Relaxed);
-        let timer_expired = last_refresh.elapsed() >= refresh_interval;
+        // Coalesce dirty signals: SIGUSR1 sets the flag, we service it once
+        // per debounce interval to prevent signal floods from causing CPU storms
+        if dirty_flag.swap(false, Ordering::Relaxed) {
+            dirty_pending = true;
+        }
 
-        if dirty || timer_expired {
+        let time_since_refresh = last_refresh.elapsed();
+        let debounce_cleared = dirty_pending && time_since_refresh >= debounce_interval;
+        let timer_expired = time_since_refresh >= refresh_interval;
+
+        if debounce_cleared || timer_expired {
+            dirty_pending = false;
             last_refresh = Instant::now();
 
             if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &mut version) {
@@ -197,11 +207,8 @@ pub fn run() -> Result<()> {
             break;
         }
 
-        // Skip sleep after processing a dirty signal to minimize latency;
-        // Rust's thread::sleep retries on EINTR so SIGUSR1 can't interrupt it
-        if !dirty {
-            thread::sleep(Duration::from_millis(10));
-        }
+        // Always sleep to prevent CPU spinning (never skip on dirty)
+        thread::sleep(Duration::from_millis(10));
     }
 
     // Cleanup

@@ -376,7 +376,7 @@ fn install_hooks() -> Result<()> {
     // Scoped to the specific window that resized using ##{{window_id}}.
     // Double ## escapes tmux format expansion in hook values: ## → literal #
     let resize_script = format!(
-        r#"ww=$(tmux display-message -t '##{{window_id}}' -p '##{{window_width}}'); w=$((ww * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux list-panes -t '##{{window_id}}' -F '##{{pane_id}} ##{{@workmux_role}}' | while read id role; do [ "$role" = sidebar ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
+        r#"ww=$(tmux display-message -t '##{{window_id}}' -p '##{{window_width}}'); w=$((ww * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux list-panes -t '##{{window_id}}' -F '##{{pane_id}} ##{{@workmux_role}} ##{{pane_width}}' | while read id role cur; do [ "$role" = sidebar ] && [ "$cur" != "$w" ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
         min = MIN_WIDTH,
         max = MAX_WIDTH,
     );
@@ -635,49 +635,58 @@ pub fn run_sidebar() -> Result<()> {
     let last_pane_check_interval = Duration::from_secs(2);
     let mut last_pane_check = std::time::Instant::now();
 
+    let mut needs_render = true; // Draw on first iteration
+
     loop {
-        // Apply latest snapshot before drawing so we never render stale state
+        // Apply latest snapshot
         if let Some(snapshot) = receiver.take() {
             app.apply_snapshot(&snapshot);
+            needs_render = true;
         }
 
-        terminal.draw(|f| render_sidebar(f, &mut app))?;
+        // Only redraw when state changed (snapshot, key press, spinner tick, resize)
+        if needs_render {
+            terminal.draw(|f| render_sidebar(f, &mut app))?;
+            needs_render = false;
+        }
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
 
         if event::poll(timeout)? {
-            let event = event::read()?;
-
-            let Event::Key(key) = event else { continue };
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-
-            match (key.code, key.modifiers) {
-                (KeyCode::Char('q'), _)
-                | (KeyCode::Esc, _)
-                | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
-                    app.should_quit = true;
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    match (key.code, key.modifiers) {
+                        (KeyCode::Char('q'), _)
+                        | (KeyCode::Esc, _)
+                        | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
+                            app.should_quit = true;
+                        }
+                        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
+                            app.next();
+                        }
+                        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
+                            app.previous();
+                        }
+                        (KeyCode::Enter, _) => {
+                            app.jump_to_selected();
+                        }
+                        (KeyCode::Char('G'), _) => {
+                            app.select_last();
+                        }
+                        (KeyCode::Char('g'), _) => {
+                            app.select_first();
+                        }
+                        (KeyCode::Char('v'), _) => {
+                            app.toggle_layout_mode();
+                        }
+                        _ => {}
+                    }
+                    needs_render = true;
                 }
-                (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
-                    app.next();
+                Event::Resize(_, _) => {
+                    needs_render = true;
                 }
-                (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
-                    app.previous();
-                }
-                (KeyCode::Enter, _) => {
-                    app.jump_to_selected();
-                }
-                (KeyCode::Char('G'), _) => {
-                    app.select_last();
-                }
-                (KeyCode::Char('g'), _) => {
-                    app.select_first();
-                }
-                (KeyCode::Char('v'), _) => {
-                    app.toggle_layout_mode();
-                }
-                _ => {}
+                _ => {} // Non-key events: no continue, bookkeeping always runs
             }
         }
 
@@ -687,6 +696,7 @@ pub fn run_sidebar() -> Result<()> {
             // Tick spinner every ~250ms (every 25th tick at 10ms)
             if spin_counter.is_multiple_of(25) {
                 app.tick();
+                needs_render = true;
             }
         }
 
