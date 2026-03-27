@@ -5,6 +5,7 @@
 //! `workmux setup` command and the first-run wizard.
 
 pub mod claude;
+pub mod codex;
 pub mod copilot;
 pub mod opencode;
 pub mod pi;
@@ -22,6 +23,7 @@ use std::path::PathBuf;
 #[serde(rename_all = "lowercase")]
 pub enum Agent {
     Claude,
+    Codex,
     Copilot,
     OpenCode,
     Pi,
@@ -31,6 +33,7 @@ impl Agent {
     pub fn name(&self) -> &'static str {
         match self {
             Agent::Claude => "Claude Code",
+            Agent::Codex => "Codex",
             Agent::Copilot => "Copilot CLI",
             Agent::OpenCode => "OpenCode",
             Agent::Pi => "pi",
@@ -70,6 +73,18 @@ pub fn check_all() -> Vec<AgentCheck> {
         };
         results.push(AgentCheck {
             agent: Agent::Claude,
+            reason,
+            status,
+        });
+    }
+
+    if let Some(reason) = codex::detect() {
+        let status = match codex::check() {
+            Ok(s) => s,
+            Err(e) => StatusCheck::Error(e.to_string()),
+        };
+        results.push(AgentCheck {
+            agent: Agent::Codex,
             reason,
             status,
         });
@@ -118,6 +133,7 @@ pub fn check_all() -> Vec<AgentCheck> {
 pub fn install(agent: Agent) -> Result<String> {
     match agent {
         Agent::Claude => claude::install(),
+        Agent::Codex => codex::install(),
         Agent::Copilot => copilot::install(),
         Agent::OpenCode => opencode::install(),
         Agent::Pi => pi::install(),
@@ -375,6 +391,7 @@ mod tests {
     #[test]
     fn test_agent_name() {
         assert_eq!(Agent::Claude.name(), "Claude Code");
+        assert_eq!(Agent::Codex.name(), "Codex");
         assert_eq!(Agent::Copilot.name(), "Copilot CLI");
         assert_eq!(Agent::OpenCode.name(), "OpenCode");
         assert_eq!(Agent::Pi.name(), "pi");
@@ -383,6 +400,7 @@ mod tests {
     #[test]
     fn test_agent_serialization() {
         assert_eq!(serde_json::to_string(&Agent::Claude).unwrap(), "\"claude\"");
+        assert_eq!(serde_json::to_string(&Agent::Codex).unwrap(), "\"codex\"");
         assert_eq!(
             serde_json::to_string(&Agent::Copilot).unwrap(),
             "\"copilot\""
@@ -398,6 +416,8 @@ mod tests {
     fn test_agent_deserialization() {
         let agent: Agent = serde_json::from_str("\"claude\"").unwrap();
         assert_eq!(agent, Agent::Claude);
+        let agent: Agent = serde_json::from_str("\"codex\"").unwrap();
+        assert_eq!(agent, Agent::Codex);
         let agent: Agent = serde_json::from_str("\"copilot\"").unwrap();
         assert_eq!(agent, Agent::Copilot);
         let agent: Agent = serde_json::from_str("\"opencode\"").unwrap();
@@ -424,16 +444,18 @@ mod tests {
     }
 
     #[test]
-    fn test_setup_state_round_trip_both_agents() {
+    fn test_setup_state_round_trip_multiple_agents() {
         let mut state = SetupState::default();
         state.declined.insert(Agent::Claude);
+        state.declined.insert(Agent::Codex);
         state.declined.insert(Agent::OpenCode);
         state.declined.insert(Agent::Pi);
 
         let json = serde_json::to_string_pretty(&state).unwrap();
         let deserialized: SetupState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.declined.len(), 3);
+        assert_eq!(deserialized.declined.len(), 4);
         assert!(deserialized.declined.contains(&Agent::Claude));
+        assert!(deserialized.declined.contains(&Agent::Codex));
         assert!(deserialized.declined.contains(&Agent::OpenCode));
     }
 

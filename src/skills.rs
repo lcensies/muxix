@@ -59,7 +59,7 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
             };
             Some(pi_dir.join("skills"))
         }
-        Agent::Copilot => None,
+        Agent::Codex | Agent::Copilot => None,
     }
 }
 
@@ -248,6 +248,11 @@ mod tests {
         assert!(dir.is_some());
         let path = dir.unwrap();
         assert!(path.ends_with(".pi/agent/skills"));
+    }
+
+    #[test]
+    fn test_skills_dir_codex_none() {
+        assert!(skills_dir(Agent::Codex).is_none());
     }
 
     #[test]

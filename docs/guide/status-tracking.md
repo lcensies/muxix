@@ -20,11 +20,12 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
-| Codex        | [Tracking issue](https://github.com/openai/codex/issues/2109)               |
+| Codex        | ✅ Supported\*                                                              |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
 **Notes:**
 
+- **Codex**: No 💬 waiting state. Requires `codex_hooks = true` in `~/.codex/config.toml` (see [Codex setup](#codex-setup))
 - **Copilot CLI**: No 💬 waiting state
 - **Pi**: No 💬 waiting state
 - **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
@@ -81,6 +82,27 @@ curl -o ~/.config/opencode/plugin/workmux-status.ts \
 ```
 
 Restart OpenCode for the plugin to take effect.
+
+## Codex setup
+
+If you prefer manual setup, first ensure hooks are enabled in your Codex config:
+
+```toml
+# ~/.codex/config.toml
+[features]
+codex_hooks = true
+```
+
+Then download the hooks configuration:
+
+```bash
+curl -o ~/.codex/hooks.json \
+  https://raw.githubusercontent.com/raine/workmux/main/.codex/hooks/workmux-status.json
+```
+
+If you already have a `~/.codex/hooks.json`, merge the hook entries from the downloaded file into your existing configuration.
+
+Note: Codex hooks do not support detecting permission prompts, so only working/done states are tracked (no waiting state).
 
 ## Copilot CLI setup
 

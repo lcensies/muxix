@@ -1697,11 +1697,12 @@ at-a-glance visibility into what the agent in each window doing.
 | Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
-| Codex        | [Tracking issue](https://github.com/openai/codex/issues/2109)               |
+| Codex        | ✅ Supported\*                                                              |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
 **Notes:**
 
+- **Codex**: No 💬 waiting state
 - **Copilot CLI**: No 💬 waiting state
 - **Pi**: No 💬 waiting state
 - **Kiro**: Hooks support is messy: requires a custom agent since the default
