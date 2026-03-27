@@ -21,6 +21,8 @@ use ratatui::backend::CrosstermBackend;
 use std::io;
 use std::time::Duration;
 
+use tracing::debug;
+
 use crate::cmd::Cmd;
 use crate::multiplexer::{create_backend, detect_backend};
 
@@ -156,6 +158,10 @@ fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
 /// Create a sidebar pane in a specific window (idempotent).
 fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
     if find_sidebar_in_window(window_id).unwrap_or(false) {
+        debug!(
+            window_id,
+            "create_sidebar_in_window: already exists, skipping"
+        );
         return Ok(());
     }
 
@@ -163,6 +169,7 @@ fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
     let width_str = width.to_string();
 
+    debug!(window_id, width, "create_sidebar_in_window: creating");
     save_window_layout(window_id);
 
     // Get the first pane in the window as split target
@@ -210,23 +217,43 @@ fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
         .args(&["resize-pane", "-t", &new_pane_id, "-x", &width_str])
         .run();
 
+    // Log the actual resulting width for debugging
+    let actual_width = Cmd::new("tmux")
+        .args(&["display-message", "-t", &new_pane_id, "-p", "#{pane_width}"])
+        .run_and_capture_stdout()
+        .ok()
+        .unwrap_or_default();
+    debug!(
+        window_id,
+        pane_id = new_pane_id.as_str(),
+        requested_width = width,
+        actual_width = actual_width.trim(),
+        "create_sidebar_in_window: done"
+    );
+
     Ok(())
 }
 
 /// Compute sidebar width for a specific window based on its width.
 fn width_for_window(window_id: &str) -> u16 {
-    let window_width: u16 = Cmd::new("tmux")
+    let raw = Cmd::new("tmux")
         .args(&["display-message", "-t", window_id, "-p", "#{window_width}"])
         .run_and_capture_stdout()
         .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
+        .unwrap_or_default();
+    let window_width: u16 = raw.trim().parse().unwrap_or(0);
 
     if window_width == 0 {
+        debug!(
+            window_id,
+            "width_for_window: got 0, using MIN_WIDTH={}", MIN_WIDTH
+        );
         return MIN_WIDTH;
     }
 
-    (window_width * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH)
+    let sidebar_width = (window_width * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH);
+    debug!(window_id, window_width, sidebar_width, "width_for_window");
+    sidebar_width
 }
 
 /// Create sidebars in all existing tmux windows.
@@ -234,6 +261,8 @@ fn create_sidebars_in_all_windows(_width: u16) -> Result<()> {
     let output = Cmd::new("tmux")
         .args(&["list-windows", "-a", "-F", "#{window_id}"])
         .run_and_capture_stdout()?;
+
+    debug!("create_sidebars_in_all_windows: clearing stale layouts and creating sidebars");
 
     // Clear stale saved layouts from previous cycles before querying window widths.
     // Stale layouts can have dimensions from a different terminal size, and tmux
