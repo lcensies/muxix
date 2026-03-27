@@ -616,6 +616,10 @@ fn compute_nav_target(action: &NavAction, current_idx: Option<usize>, len: usize
 
 /// Navigate to an agent by reading the daemon's ordered agent list from tmux.
 pub fn navigate(action: NavAction) -> Result<()> {
+    if std::env::var("TMUX").is_err() {
+        return Err(anyhow!("Sidebar requires tmux"));
+    }
+
     let agents_str = Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_agents"])
         .run_and_capture_stdout()
