@@ -333,8 +333,10 @@ fn install_hooks() -> Result<()> {
         .run()?;
 
     // Snap sidebar panes to responsive width on terminal resize (10% of client width, clamped)
+    // Double ## escapes tmux format expansion in hook values: ## → literal #
+    // So ##{{x}} in Rust → ##{x} after Rust fmt → #{x} after tmux expansion
     let resize_script = format!(
-        r#"cw=$(tmux display-message -p '#{{client_width}}'); w=$((cw * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux set-option -g @workmux_sidebar_width "$w"; tmux list-panes -a -F '#{{pane_id}} #{{@workmux_role}}' | while read id role; do [ "$role" = sidebar ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
+        r#"cw=$(tmux display-message -p '##{{client_width}}'); w=$((cw * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux set-option -g @workmux_sidebar_width "$w"; tmux list-panes -a -F '##{{pane_id}} ##{{@workmux_role}}' | while read id role; do [ "$role" = sidebar ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
         min = MIN_WIDTH,
         max = MAX_WIDTH,
     );
