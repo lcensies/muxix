@@ -214,6 +214,12 @@ fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
         ])
         .run()?;
 
+    // Explicitly resize to target width (split-window -l can be inexact
+    // depending on existing layout geometry)
+    let _ = Cmd::new("tmux")
+        .args(&["resize-pane", "-t", &new_pane_id, "-x", &width_str])
+        .run();
+
     Ok(())
 }
 
