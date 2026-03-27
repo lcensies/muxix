@@ -213,6 +213,8 @@ impl SidebarApp {
         {
             let pane_id = agent.pane_id.clone();
             let _ = self.mux.switch_to_pane(&pane_id, None);
+            // Signal daemon directly to bypass tmux hook round-trip latency
+            signal_daemon();
         }
     }
 
@@ -248,6 +250,17 @@ impl SidebarApp {
             format!("{}/{}", project, worktree)
         }
     }
+}
+
+/// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
+fn signal_daemon() {
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }
 
 /// Detect this sidebar's host window using TMUX_PANE (stable, one-time).

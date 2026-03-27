@@ -572,8 +572,8 @@ pub fn run_sidebar() -> Result<()> {
 
     let mut app = SidebarApp::new_client(mux)?;
 
-    // Main loop: 50ms tick for responsive input, spinner every ~250ms
-    let tick_rate = Duration::from_millis(50);
+    // Main loop: 10ms tick for responsive snapshot pickup, spinner every ~250ms
+    let tick_rate = Duration::from_millis(10);
     let mut last_tick = std::time::Instant::now();
     let mut spin_counter = 0u32;
     let last_pane_check_interval = Duration::from_secs(2);
@@ -628,8 +628,8 @@ pub fn run_sidebar() -> Result<()> {
         if last_tick.elapsed() >= tick_rate {
             last_tick = std::time::Instant::now();
             spin_counter += 1;
-            // Tick spinner every ~250ms (every 5th tick at 50ms)
-            if spin_counter.is_multiple_of(5) {
+            // Tick spinner every ~250ms (every 25th tick at 10ms)
+            if spin_counter.is_multiple_of(25) {
                 app.tick();
             }
         }
