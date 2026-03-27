@@ -17,6 +17,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.154 (2026-03-27)
+
+- Add Codex status tracking support, showing working/done states in the tmux
+  window list
+
 ## v0.1.153 (2026-03-26)
 
 - Fix incorrect guest home directory with Lima 2.1.0, which changed the path
