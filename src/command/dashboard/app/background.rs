@@ -63,8 +63,10 @@ impl App {
         }
 
         // Collect branches per repo root from agents
+        // Use all_agents (not filtered agents) because apply_filters() runs after
+        // this in refresh(), so self.agents may still be empty on first call.
         let mut repo_branches: HashMap<PathBuf, Vec<String>> = HashMap::new();
-        for agent in &self.agents {
+        for agent in &self.all_agents {
             let Some(status) = self.git_statuses.get(&agent.path) else {
                 continue;
             };
@@ -114,7 +116,10 @@ impl App {
 
         if repo_branches.is_empty() {
             self.is_pr_fetching.store(false, Ordering::SeqCst);
-            return true;
+            // Return false so the caller doesn't reset the timer — no fetch
+            // was actually started, and we want to retry once git statuses
+            // or worktree data arrive.
+            return false;
         }
 
         let tx = self.event_tx.clone();
