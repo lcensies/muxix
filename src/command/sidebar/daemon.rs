@@ -31,11 +31,12 @@ struct TmuxState {
     active_windows: HashSet<(String, String)>,
     window_pane_counts: HashMap<String, usize>,
     pane_window_ids: HashMap<String, String>,
+    active_pane_ids: HashSet<String>,
 }
 
 /// Query all sidebar-relevant tmux state in a single command.
 fn query_tmux_state() -> TmuxState {
-    let format = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{@workmux_status}\t#{window_active}\t#{session_attached}";
+    let format = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{@workmux_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
@@ -45,10 +46,11 @@ fn query_tmux_state() -> TmuxState {
     let mut active_windows = HashSet::new();
     let mut window_pane_counts: HashMap<String, usize> = HashMap::new();
     let mut pane_window_ids = HashMap::new();
+    let mut active_pane_ids = HashSet::new();
 
     for line in output.lines() {
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 7 {
+        if parts.len() < 8 {
             continue;
         }
 
@@ -59,6 +61,7 @@ fn query_tmux_state() -> TmuxState {
         let status = parts[4];
         let win_active = parts[5] == "1";
         let sess_attached = parts[6] == "1";
+        let pane_active = parts[7] == "1";
 
         let status_val = if status.is_empty() {
             None
@@ -73,6 +76,9 @@ fn query_tmux_state() -> TmuxState {
         if win_active && sess_attached {
             active_windows.insert((session.to_string(), window_id.to_string()));
         }
+        if pane_active {
+            active_pane_ids.insert(pane_id.to_string());
+        }
     }
 
     TmuxState {
@@ -80,6 +86,7 @@ fn query_tmux_state() -> TmuxState {
         active_windows,
         window_pane_counts,
         pane_window_ids,
+        active_pane_ids,
     }
 }
 
@@ -261,6 +268,7 @@ fn try_build_snapshot(
         &tmux_state.window_statuses,
         &tmux_state.pane_window_ids,
         tmux_state.active_windows,
+        tmux_state.active_pane_ids,
         tmux_state.window_pane_counts,
         layout_mode,
         status_icons,
