@@ -589,8 +589,10 @@ enum Commands {
     /// Update workmux to the latest version
     Update,
 
-    /// Toggle a compact agent status sidebar in the current tmux window
+    /// Toggle a compact agent status sidebar across all tmux windows
     Sidebar {
+        #[command(subcommand)]
+        action: Option<SidebarAction>,
         /// Width of the sidebar pane in columns
         #[arg(long, short = 'w')]
         width: Option<u16>,
@@ -713,6 +715,20 @@ enum Commands {
     /// Background update check (internal use)
     #[command(hide = true, name = "_check-update")]
     CheckUpdate,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SidebarAction {
+    /// Switch to the next agent in sidebar order
+    Next,
+    /// Switch to the previous agent in sidebar order
+    Prev,
+    /// Jump to the Nth agent in sidebar order (1-indexed)
+    Jump {
+        /// Agent number (1-9)
+        #[arg(value_name = "N", value_parser = clap::value_parser!(u64).range(1..))]
+        index: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -889,7 +905,18 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
-        Commands::Sidebar { width } => command::sidebar::toggle(width),
+        Commands::Sidebar { action, width } => match action {
+            Some(SidebarAction::Next) => {
+                command::sidebar::navigate(command::sidebar::NavAction::Next)
+            }
+            Some(SidebarAction::Prev) => {
+                command::sidebar::navigate(command::sidebar::NavAction::Prev)
+            }
+            Some(SidebarAction::Jump { index }) => {
+                command::sidebar::navigate(command::sidebar::NavAction::Jump(index as usize))
+            }
+            None => command::sidebar::toggle(width),
+        },
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
         Commands::SidebarDaemon => command::sidebar::run_daemon(),

@@ -177,6 +177,7 @@ pub fn run() -> Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
+    let mut last_agent_list = String::new();
     let refresh_interval = Duration::from_secs(2);
     let debounce_interval = Duration::from_millis(50);
 
@@ -197,6 +198,26 @@ pub fn run() -> Result<()> {
 
             if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &mut version) {
                 server.broadcast(&snapshot);
+
+                let agent_list: String = snapshot
+                    .agents
+                    .iter()
+                    .map(|a| format!("{}:{}", a.pane_id, a.window_id))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                if agent_list != last_agent_list {
+                    if !agent_list.is_empty() {
+                        let _ = Cmd::new("tmux")
+                            .args(&["set-option", "-g", "@workmux_sidebar_agents", &agent_list])
+                            .run();
+                    } else {
+                        let _ = Cmd::new("tmux")
+                            .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+                            .run();
+                    }
+                    last_agent_list = agent_list;
+                }
             }
         }
 
@@ -215,6 +236,9 @@ pub fn run() -> Result<()> {
     let _ = std::fs::remove_file(&sock_path);
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
         .run();
     Ok(())
 }

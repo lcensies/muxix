@@ -77,6 +77,9 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
         let _ = Cmd::new("tmux")
             .args(&["set-option", "-gu", "@workmux_sidebar_width"])
             .run();
+        let _ = Cmd::new("tmux")
+            .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+            .run();
         return Ok(());
     }
 
@@ -488,6 +491,9 @@ fn shutdown_all_sidebars() {
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_width"])
         .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+        .run();
 
     // Defer our own window's layout restore until after our pane closes
     if !our_window.is_empty()
@@ -575,6 +581,87 @@ fn kill_daemon() {
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
         .run();
+}
+
+/// Navigation action for sidebar hotkeys.
+pub enum NavAction {
+    Next,
+    Prev,
+    Jump(usize),
+}
+
+/// Compute the target index for a navigation action given the current index and list length.
+fn compute_nav_target(action: &NavAction, current_idx: Option<usize>, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    Some(match action {
+        NavAction::Next => {
+            let i = current_idx.unwrap_or(len - 1);
+            if i >= len - 1 { 0 } else { i + 1 }
+        }
+        NavAction::Prev => {
+            let i = current_idx.unwrap_or(0);
+            if i == 0 { len - 1 } else { i - 1 }
+        }
+        NavAction::Jump(n) => {
+            let idx = n - 1;
+            if idx >= len {
+                return None;
+            }
+            idx
+        }
+    })
+}
+
+/// Navigate to an agent by reading the daemon's ordered agent list from tmux.
+pub fn navigate(action: NavAction) -> Result<()> {
+    let agents_str = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_agents"])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+    let agents_str = agents_str.trim();
+
+    if agents_str.is_empty() {
+        anyhow::bail!("no sidebar agents found (is the sidebar running?)");
+    }
+
+    // Parse "pane_id:window_id pane_id:window_id ..."
+    let entries: Vec<(&str, &str)> = agents_str
+        .split_whitespace()
+        .filter_map(|entry| entry.split_once(':'))
+        .collect();
+
+    if entries.is_empty() {
+        anyhow::bail!("no sidebar agents found");
+    }
+
+    // Find current agent by active window ID
+    let current_window_id = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_id}"])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+    let current_window_id = current_window_id.trim();
+
+    let current_idx = entries
+        .iter()
+        .position(|(_, wid)| *wid == current_window_id);
+
+    let len = entries.len();
+    let target_idx = match &action {
+        NavAction::Jump(n) => compute_nav_target(&action, current_idx, len)
+            .ok_or_else(|| anyhow::anyhow!("agent {} out of range (1-{})", n, len))?,
+        _ => compute_nav_target(&action, current_idx, len)
+            .expect("len > 0 guarantees a result for Next/Prev"),
+    };
+
+    let (target_pane, _) = entries[target_idx];
+    Cmd::new("tmux")
+        .args(&["switch-client", "-t", target_pane])
+        .run()?;
+
+    signal_daemon();
+    Ok(())
 }
 
 /// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
@@ -716,4 +803,73 @@ pub fn run_sidebar() -> Result<()> {
 
     // _guard handles cleanup on drop (including the normal exit path)
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_wraps_from_last_to_first() {
+        assert_eq!(compute_nav_target(&NavAction::Next, Some(2), 3), Some(0));
+    }
+
+    #[test]
+    fn next_advances_normally() {
+        assert_eq!(compute_nav_target(&NavAction::Next, Some(0), 3), Some(1));
+        assert_eq!(compute_nav_target(&NavAction::Next, Some(1), 3), Some(2));
+    }
+
+    #[test]
+    fn next_without_current_wraps_from_last() {
+        // No current window match: starts from last, wraps to first
+        assert_eq!(compute_nav_target(&NavAction::Next, None, 3), Some(0));
+    }
+
+    #[test]
+    fn prev_wraps_from_first_to_last() {
+        assert_eq!(compute_nav_target(&NavAction::Prev, Some(0), 3), Some(2));
+    }
+
+    #[test]
+    fn prev_goes_back_normally() {
+        assert_eq!(compute_nav_target(&NavAction::Prev, Some(2), 3), Some(1));
+        assert_eq!(compute_nav_target(&NavAction::Prev, Some(1), 3), Some(0));
+    }
+
+    #[test]
+    fn prev_without_current_wraps_to_last() {
+        // No current window match: starts from 0, wraps to last
+        assert_eq!(compute_nav_target(&NavAction::Prev, None, 3), Some(2));
+    }
+
+    #[test]
+    fn jump_converts_1_indexed_to_0_indexed() {
+        assert_eq!(compute_nav_target(&NavAction::Jump(1), None, 3), Some(0));
+        assert_eq!(compute_nav_target(&NavAction::Jump(2), None, 3), Some(1));
+        assert_eq!(compute_nav_target(&NavAction::Jump(3), None, 3), Some(2));
+    }
+
+    #[test]
+    fn jump_out_of_range_returns_none() {
+        assert_eq!(compute_nav_target(&NavAction::Jump(4), None, 3), None);
+        assert_eq!(compute_nav_target(&NavAction::Jump(10), None, 3), None);
+    }
+
+    #[test]
+    fn empty_list_returns_none() {
+        assert_eq!(compute_nav_target(&NavAction::Next, None, 0), None);
+        assert_eq!(compute_nav_target(&NavAction::Prev, None, 0), None);
+        assert_eq!(compute_nav_target(&NavAction::Jump(1), None, 0), None);
+    }
+
+    #[test]
+    fn single_agent_next_stays() {
+        assert_eq!(compute_nav_target(&NavAction::Next, Some(0), 1), Some(0));
+    }
+
+    #[test]
+    fn single_agent_prev_stays() {
+        assert_eq!(compute_nav_target(&NavAction::Prev, Some(0), 1), Some(0));
+    }
 }

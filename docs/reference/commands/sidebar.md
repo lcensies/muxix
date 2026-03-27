@@ -10,7 +10,7 @@ updates.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
-workmux sidebar --width 40 # Custom width (default: 30)
+workmux sidebar --width 40 # Custom width (default: ~10% of terminal, 25-50 cols)
 ```
 
 ## What it shows
@@ -30,6 +30,35 @@ Each agent row displays:
 | `g`/`G` | Jump to first/last |
 | `q`     | Quit sidebar       |
 
+## Navigation commands
+
+Switch between agents from any tmux pane, in the same order shown in the
+sidebar:
+
+| Command                    | Action                               |
+| -------------------------- | ------------------------------------ |
+| `workmux sidebar next`     | Switch to the next agent (wraps)     |
+| `workmux sidebar prev`     | Switch to the previous agent (wraps) |
+| `workmux sidebar jump <N>` | Jump to the Nth agent (1-indexed)    |
+
+### Example tmux keybindings
+
+```bash
+# Alt+j / Alt+k to cycle agents (no prefix needed)
+bind -n M-j run-shell "workmux sidebar next"
+bind -n M-k run-shell "workmux sidebar prev"
+
+# Alt+1..9 to jump directly
+bind -n M-1 run-shell "workmux sidebar jump 1"
+bind -n M-2 run-shell "workmux sidebar jump 2"
+bind -n M-3 run-shell "workmux sidebar jump 3"
+# ...
+
+# Or with prefix key (avoids terminal conflicts)
+bind C-j run-shell "workmux sidebar next"
+bind C-k run-shell "workmux sidebar prev"
+```
+
 ## Options
 
 | Option          | Description                          |
@@ -38,13 +67,14 @@ Each agent row displays:
 
 ## How it works
 
-When enabled, the sidebar creates a narrow tmux pane on the left side of every
-existing window using a full-height split. Each pane runs a lightweight TUI that
-polls agent state every 2 seconds. A tmux hook (`after-new-window`) ensures
-newly created windows also get a sidebar automatically.
+When enabled, a background daemon polls tmux state every 2 seconds and pushes
+snapshots to each sidebar pane over a Unix socket. The sidebar creates a narrow
+tmux pane on the left side of every existing window using a full-height split.
+A tmux hook (`after-new-window`) ensures newly created windows also get a
+sidebar automatically.
 
 Running `workmux sidebar` again disables the sidebar globally, killing all
-sidebar panes and removing the hook.
+sidebar panes, the daemon, and removing hooks.
 
 ## Limitations
 
