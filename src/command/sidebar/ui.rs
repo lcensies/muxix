@@ -379,7 +379,7 @@ fn status_icon_and_style(
     is_stale: bool,
 ) -> (String, Style) {
     if is_stale {
-        return ("  ".to_string(), Style::default().fg(app.palette.dimmed));
+        return ("💤".to_string(), Style::default().fg(app.palette.dimmed));
     }
     match status {
         Some(AgentStatus::Working) => {
