@@ -126,8 +126,7 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Compute width based on the target window's actual size
-    let width = width_for_window(&target);
+    let width = default_width();
     create_sidebar_in_window(&target, width)?;
 
     Ok(())
@@ -234,39 +233,16 @@ fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
     Ok(())
 }
 
-/// Compute sidebar width for a specific window based on its width.
-fn width_for_window(window_id: &str) -> u16 {
-    let raw = Cmd::new("tmux")
-        .args(&["display-message", "-t", window_id, "-p", "#{window_width}"])
-        .run_and_capture_stdout()
-        .ok()
-        .unwrap_or_default();
-    let window_width: u16 = raw.trim().parse().unwrap_or(0);
-
-    if window_width == 0 {
-        debug!(
-            window_id,
-            "width_for_window: got 0, using MIN_WIDTH={}", MIN_WIDTH
-        );
-        return MIN_WIDTH;
-    }
-
-    let sidebar_width = (window_width * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH);
-    debug!(window_id, window_width, sidebar_width, "width_for_window");
-    sidebar_width
-}
-
 /// Create sidebars in all existing tmux windows.
-fn create_sidebars_in_all_windows(_width: u16) -> Result<()> {
+fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
     let output = Cmd::new("tmux")
         .args(&["list-windows", "-a", "-F", "#{window_id}"])
         .run_and_capture_stdout()?;
 
-    debug!("create_sidebars_in_all_windows: clearing stale layouts and creating sidebars");
+    debug!(width, "create_sidebars_in_all_windows: creating sidebars");
 
-    // Clear stale saved layouts from previous cycles before querying window widths.
-    // Stale layouts can have dimensions from a different terminal size, and tmux
-    // may briefly apply them during restore, skewing #{window_width} queries.
+    // Clear stale saved layouts from previous cycles that could interfere
+    // with layout restore on toggle off.
     for window_id in output.lines() {
         let window_id = window_id.trim();
         if !window_id.is_empty() {
@@ -287,7 +263,9 @@ fn create_sidebars_in_all_windows(_width: u16) -> Result<()> {
         if window_id.is_empty() {
             continue;
         }
-        let width = width_for_window(window_id);
+        // Use client-based width for all windows. Unattached sessions have stale
+        // #{window_width} from their last-seen client (window-size=latest), so
+        // per-window sizing gives wrong results for those sessions.
         let _ = create_sidebar_in_window(window_id, width);
     }
 
