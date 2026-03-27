@@ -354,9 +354,6 @@ fn install_hooks() -> Result<()> {
     Cmd::new("tmux")
         .args(&["set-hook", "-g", "after-kill-pane[98]", dirty_cmd])
         .run()?;
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "after-kill-window[98]", dirty_cmd])
-        .run()?;
 
     Ok(())
 }
@@ -381,9 +378,6 @@ fn remove_hooks() {
         .run();
     let _ = Cmd::new("tmux")
         .args(&["set-hook", "-gu", "after-kill-pane[98]"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-kill-window[98]"])
         .run();
 }
 
