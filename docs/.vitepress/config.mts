@@ -139,6 +139,7 @@ export default defineConfig({
           { text: "completions", link: "/reference/commands/completions" },
           { text: "docs", link: "/reference/commands/docs" },
           { text: "update", link: "/reference/commands/update" },
+          { text: "last-done", link: "/reference/commands/last-done" },
         ],
       },
     ],

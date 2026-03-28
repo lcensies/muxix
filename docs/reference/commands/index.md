@@ -24,3 +24,4 @@ description: Complete reference for all workmux commands
 | [`completions`](./completions) | Generate shell completions                      |
 | [`docs`](./docs)               | Show detailed documentation                     |
 | [`update`](./update)           | Update workmux to the latest version            |
+| [`last-done`](./last-done)     | Switch to the most recently completed agent     |
