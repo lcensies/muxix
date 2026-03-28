@@ -384,9 +384,7 @@ fn status_icon_and_style(
     match status {
         Some(AgentStatus::Working) => {
             let icon = app.status_icons.working.clone().unwrap_or_else(|| {
-                let frames: &[&str] = &[
-                    "⠃⠀", "⠋⠀", "⠈⠃", "⠀⠋", "⠀⠙", "⠀⠸", "⠀⣰", "⠀⣠", "⢀⡄", "⡄⠂", "⠆⠁", "⠇⠀",
-                ];
+                let frames: &[&str] = &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
                 frames[app.spinner_frame as usize % frames.len()].to_string()
             });
             (icon, Style::default().fg(app.palette.info))
