@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{info, trace, warn};
 
 use super::types::{AgentState, GlobalSettings, PaneKey};
 use crate::config::SandboxRuntime;
@@ -249,7 +249,7 @@ impl StateStore {
                     } else if state.boot_id.is_some() && state.boot_id != current_boot_id {
                         // Server restarted since this state was written. Preserve
                         // the state file for `workmux resurrect` to use.
-                        debug!(
+                        trace!(
                             pane_id,
                             "reconcile: preserving agent from previous server lifecycle for resurrect"
                         );
@@ -262,7 +262,7 @@ impl StateStore {
                 Some(live) if live.pid.is_some_and(|pid| pid != state.pane_pid) => {
                     if state.boot_id.is_some() && state.boot_id != current_boot_id {
                         // Pane ID recycled after server restart - preserve for resurrect
-                        debug!(
+                        trace!(
                             pane_id,
                             "reconcile: preserving agent from previous server lifecycle for resurrect"
                         );
@@ -286,7 +286,7 @@ impl StateStore {
                 {
                     if state.boot_id.is_some() && state.boot_id != current_boot_id {
                         // Command changed after server restart - preserve for resurrect
-                        debug!(
+                        trace!(
                             pane_id,
                             "reconcile: preserving agent from previous server lifecycle for resurrect"
                         );
