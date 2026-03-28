@@ -243,6 +243,31 @@ fn serialize_layout(root: &LayoutNode) -> String {
 
 // ── Reflow ──────────────────────────────────────────────────────
 
+/// Distribute `available` width among items proportionally to their old widths.
+/// The last item gets the remainder to avoid rounding gaps.
+fn proportional_widths(old_widths: &[u16], available: u16) -> Vec<u16> {
+    let old_total: u16 = old_widths.iter().sum();
+    if old_total == 0 || old_widths.is_empty() {
+        return vec![0; old_widths.len()];
+    }
+    let mut remaining = available;
+    let last = old_widths.len() - 1;
+    old_widths
+        .iter()
+        .enumerate()
+        .map(|(i, &old_w)| {
+            if i == last {
+                remaining
+            } else {
+                let scaled = (old_w as f64 * available as f64 / old_total as f64).round() as u16;
+                let scaled = scaled.min(remaining);
+                remaining = remaining.saturating_sub(scaled);
+                scaled
+            }
+        })
+        .collect()
+}
+
 /// Recursively scale a subtree's width, preserving internal proportions.
 ///
 /// For horizontal splits, children's widths are scaled proportionally.
@@ -258,30 +283,11 @@ fn scale_width(node: &mut LayoutNode, new_w: u16, new_x: u16) {
             // Children share width with 1-char separators between them.
             // parent.w = sum(child.w) + (num_children - 1)
             let seps = children.len().saturating_sub(1) as u16;
-            let old_child_total: u16 = children.iter().map(|c| c.width()).sum();
-            let new_avail = new_w.saturating_sub(seps);
-
-            let mut remaining = new_avail;
-            let mut cx = new_x;
-            let last_idx = children.len().saturating_sub(1);
-
-            // Collect old widths before mutating
             let old_widths: Vec<u16> = children.iter().map(|c| c.width()).collect();
+            let new_widths = proportional_widths(&old_widths, new_w.saturating_sub(seps));
 
-            for (i, child) in children.iter_mut().enumerate() {
-                let child_w = if i == last_idx {
-                    // Last child gets remainder to avoid rounding gaps
-                    remaining
-                } else if old_child_total > 0 {
-                    let scaled = ((old_widths[i] as f64) * (new_avail as f64)
-                        / (old_child_total as f64))
-                        .round() as u16;
-                    let scaled = scaled.min(remaining);
-                    remaining = remaining.saturating_sub(scaled);
-                    scaled
-                } else {
-                    0
-                };
+            let mut cx = new_x;
+            for (child, &child_w) in children.iter_mut().zip(&new_widths) {
                 scale_width(child, child_w, cx);
                 cx = cx.saturating_add(child_w).saturating_add(1);
             }
@@ -389,31 +395,19 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         .map(|(i, c)| (i, c.width()))
         .collect();
 
-    let old_total: u16 = old_content.iter().map(|(_, w)| *w).sum();
+    let old_widths: Vec<u16> = old_content.iter().map(|(_, w)| *w).collect();
 
-    debug!(
-        window_w,
-        available, num_content, old_total, "reflow: scaling content"
-    );
+    debug!(window_w, available, num_content, "reflow: scaling content");
 
-    if old_total == 0 || available == 0 {
+    if available == 0 {
         return;
     }
 
-    // Scale each content child proportionally
-    let mut remaining = available;
-    let content_count = old_content.len();
+    // Scale content children proportionally
+    let new_widths = proportional_widths(&old_widths, available);
     let mut cx = sidebar_width + 1; // start after sidebar + separator
 
-    for (j, &(idx, old_w)) in old_content.iter().enumerate() {
-        let new_w = if j == content_count - 1 {
-            remaining
-        } else {
-            let scaled = (old_w as f64 * available as f64 / old_total as f64).round() as u16;
-            let scaled = scaled.min(remaining);
-            remaining = remaining.saturating_sub(scaled);
-            scaled
-        };
+    for (&(idx, _), &new_w) in old_content.iter().zip(&new_widths) {
         scale_width(&mut children[idx], new_w, cx);
         cx = cx.saturating_add(new_w).saturating_add(1);
     }
