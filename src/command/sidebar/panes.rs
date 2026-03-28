@@ -218,7 +218,7 @@ pub(super) fn shutdown_all_sidebars() {
         let layout = layout.trim().to_string();
         if !layout.is_empty() {
             let cmd = format!(
-                "sleep 0.1 && tmux select-layout -t {win} '{layout}' && tmux set-option -wu -t {win} @workmux_sidebar_layout",
+                "sleep 0.1; tmux select-layout -t {win} '{layout}' 2>/dev/null; tmux set-option -wu -t {win} @workmux_sidebar_layout 2>/dev/null",
                 win = our_window,
                 layout = layout,
             );
