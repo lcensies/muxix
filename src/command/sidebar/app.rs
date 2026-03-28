@@ -130,8 +130,6 @@ impl SidebarApp {
             }
         });
 
-        let agents: Vec<AgentPane> = snapshot.agents.iter().map(|a| a.to_agent_pane()).collect();
-
         // Check if host window is active
         let was_active = self.host_window_active;
         self.host_window_active =
@@ -155,7 +153,7 @@ impl SidebarApp {
             .and_then(|i| self.agents.get(i))
             .map(|a| a.pane_id.clone());
 
-        self.agents = agents;
+        self.agents = snapshot.agents.clone();
 
         // Restore selection
         if let Some(ref pane_id) = selected_pane {

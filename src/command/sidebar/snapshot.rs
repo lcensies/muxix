@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::StatusIcons;
@@ -19,35 +18,7 @@ pub struct SidebarSnapshot {
     #[serde(default)]
     pub active_pane_ids: HashSet<String>,
     pub window_pane_counts: HashMap<String, usize>,
-    pub agents: Vec<SnapshotAgent>,
-}
-
-/// Agent data within a snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SnapshotAgent {
-    pub pane_id: String,
-    pub session: String,
-    pub window_name: String,
-    pub window_id: String,
-    pub path: PathBuf,
-    pub pane_title: Option<String>,
-    pub status: Option<AgentStatus>,
-    pub status_ts: Option<u64>,
-}
-
-impl SnapshotAgent {
-    /// Convert back to AgentPane for rendering.
-    pub fn to_agent_pane(&self) -> AgentPane {
-        AgentPane {
-            pane_id: self.pane_id.clone(),
-            session: self.session.clone(),
-            window_name: self.window_name.clone(),
-            path: self.path.clone(),
-            pane_title: self.pane_title.clone(),
-            status: self.status,
-            status_ts: self.status_ts,
-        }
-    }
+    pub agents: Vec<AgentPane>,
 }
 
 /// Build a snapshot from reconciled agents and tmux state.
@@ -101,22 +72,12 @@ pub fn build_snapshot(
         (elapsed, pane_num)
     });
 
-    let snapshot_agents: Vec<SnapshotAgent> = agents
-        .iter()
-        .map(|a| {
-            let window_id = pane_window_ids.get(&a.pane_id).cloned().unwrap_or_default();
-            SnapshotAgent {
-                pane_id: a.pane_id.clone(),
-                session: a.session.clone(),
-                window_name: a.window_name.clone(),
-                window_id,
-                path: a.path.clone(),
-                pane_title: a.pane_title.clone(),
-                status: a.status,
-                status_ts: a.status_ts,
-            }
-        })
-        .collect();
+    // Populate window_id from the tmux state lookup
+    for agent in &mut agents {
+        if let Some(wid) = pane_window_ids.get(&agent.pane_id) {
+            agent.window_id = wid.clone();
+        }
+    }
 
     SidebarSnapshot {
         version,
@@ -124,6 +85,6 @@ pub fn build_snapshot(
         active_windows,
         active_pane_ids,
         window_pane_counts,
-        agents: snapshot_agents,
+        agents,
     }
 }

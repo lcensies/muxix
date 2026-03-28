@@ -21,7 +21,7 @@ pub enum AgentStatus {
 }
 
 /// Information about a specific pane running a workmux agent
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPane {
     /// Session name (tmux session or WezTerm workspace)
     pub session: String,
@@ -29,6 +29,9 @@ pub struct AgentPane {
     pub window_name: String,
     /// Pane ID (e.g., %0 for tmux, numeric for WezTerm)
     pub pane_id: String,
+    /// Stable window ID (e.g., @42 in tmux). Empty when not yet resolved.
+    #[serde(default)]
+    pub window_id: String,
     /// Working directory path of the pane
     pub path: PathBuf,
     /// Pane title (set by Claude Code to show session summary)
