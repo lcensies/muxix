@@ -137,6 +137,18 @@ pub fn toggle() -> Result<()> {
     Ok(())
 }
 
+/// Resolve window ID from an optional argument, falling back to current window.
+fn resolve_target_window(window_id: Option<&str>) -> Result<String> {
+    match window_id {
+        Some(id) => Ok(id.to_string()),
+        None => Ok(Cmd::new("tmux")
+            .args(&["display-message", "-p", "#{window_id}"])
+            .run_and_capture_stdout()?
+            .trim()
+            .to_string()),
+    }
+}
+
 /// Sync sidebar into a window (called by tmux hooks for new windows/sessions).
 pub fn sync(window_id: Option<&str>) -> Result<()> {
     if !is_sidebar_enabled() {
@@ -146,16 +158,7 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
     // Ensure daemon is running (may have auto-exited or crashed)
     let _ = ensure_daemon_running();
 
-    // Use the provided window ID or fall back to current window
-    let target = match window_id {
-        Some(id) => id.to_string(),
-        None => Cmd::new("tmux")
-            .args(&["display-message", "-p", "#{window_id}"])
-            .run_and_capture_stdout()?
-            .trim()
-            .to_string(),
-    };
-
+    let target = resolve_target_window(window_id)?;
     if target.is_empty() {
         return Ok(());
     }
@@ -189,15 +192,7 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    let target = match window_id {
-        Some(id) => id.to_string(),
-        None => Cmd::new("tmux")
-            .args(&["display-message", "-p", "#{window_id}"])
-            .run_and_capture_stdout()?
-            .trim()
-            .to_string(),
-    };
-
+    let target = resolve_target_window(window_id)?;
     if target.is_empty() {
         return Ok(());
     }
