@@ -4,30 +4,41 @@
 //! render-only sidebar clients via Unix socket. Each sidebar pane connects
 //! to the daemon and receives updates, enabling instant window-switch response
 //! without per-pane polling.
+//!
+//! # Module structure
+//!
+//! - `app` - application state and selection logic
+//! - `client` - Unix socket client for receiving daemon snapshots
+//! - `daemon` - background process that polls tmux and broadcasts snapshots
+//! - `daemon_ctrl` - daemon lifecycle (spawn, kill, signal, health checks)
+//! - `hooks` - tmux hook installation and removal
+//! - `layout` - window layout save/restore for toggle cycles
+//! - `panes` - sidebar pane creation, destruction, and shutdown
+//! - `runtime` - TUI event loop
+//! - `snapshot` - snapshot data types and builder
+//! - `ui` - ratatui rendering (compact and tile layouts)
 
 mod app;
 mod client;
 mod daemon;
+mod daemon_ctrl;
+mod hooks;
+mod layout;
+mod panes;
+mod runtime;
 mod snapshot;
 mod ui;
 
 use anyhow::{Result, anyhow};
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use ratatui::backend::CrosstermBackend;
-use std::io;
-use std::time::Duration;
-
-use tracing::debug;
 
 use crate::cmd::Cmd;
-use crate::multiplexer::{create_backend, detect_backend};
 
-use self::app::SidebarApp;
-use self::ui::render_sidebar;
+use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
+use self::hooks::{install_hooks, remove_hooks};
+use self::panes::{
+    create_sidebar_in_window, create_sidebars_in_all_windows, find_sidebar_in_window,
+    kill_all_sidebars_and_restore_layouts,
+};
 
 const SIDEBAR_ROLE_VALUE: &str = "sidebar";
 const MIN_WIDTH: u16 = 25;
@@ -143,447 +154,17 @@ pub fn run_daemon() -> Result<()> {
     daemon::run()
 }
 
+/// Run the sidebar TUI (called by the hidden `_sidebar-run` command).
+pub fn run_sidebar() -> Result<()> {
+    runtime::run_sidebar()
+}
+
 fn is_sidebar_enabled() -> bool {
     Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
         .run_and_capture_stdout()
         .map(|s| s.trim() == "1")
         .unwrap_or(false)
-}
-
-/// Check if a window already has a sidebar pane.
-fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
-    let output = Cmd::new("tmux")
-        .args(&["list-panes", "-t", window_id, "-F", "#{@workmux_role}"])
-        .run_and_capture_stdout()?;
-
-    Ok(output.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
-}
-
-/// Create a sidebar pane in a specific window (idempotent).
-fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
-    if find_sidebar_in_window(window_id).unwrap_or(false) {
-        debug!(
-            window_id,
-            "create_sidebar_in_window: already exists, skipping"
-        );
-        return Ok(());
-    }
-
-    let exe = std::env::current_exe()?;
-    let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
-    let width_str = width.to_string();
-
-    debug!(window_id, width, "create_sidebar_in_window: creating");
-    save_window_layout(window_id);
-
-    // Get the first pane in the window as split target
-    let target_pane = Cmd::new("tmux")
-        .args(&["list-panes", "-t", window_id, "-F", "#{pane_id}"])
-        .run_and_capture_stdout()?;
-    let target_pane = target_pane.lines().next().map(|l| l.trim()).unwrap_or("");
-    if target_pane.is_empty() {
-        return Ok(());
-    }
-
-    let new_pane_id = Cmd::new("tmux")
-        .args(&[
-            "split-window",
-            "-hbf",
-            "-l",
-            &width_str,
-            "-t",
-            target_pane,
-            "-d",
-            "-P",
-            "-F",
-            "#{pane_id}",
-            exe_str,
-            "_sidebar-run",
-        ])
-        .run_and_capture_stdout()?
-        .trim()
-        .to_string();
-
-    Cmd::new("tmux")
-        .args(&[
-            "set-option",
-            "-p",
-            "-t",
-            &new_pane_id,
-            "@workmux_role",
-            SIDEBAR_ROLE_VALUE,
-        ])
-        .run()?;
-
-    // Explicitly resize to target width (split-window -l can be inexact
-    // depending on existing layout geometry)
-    let _ = Cmd::new("tmux")
-        .args(&["resize-pane", "-t", &new_pane_id, "-x", &width_str])
-        .run();
-
-    // Log the actual resulting width for debugging
-    let actual_width = Cmd::new("tmux")
-        .args(&["display-message", "-t", &new_pane_id, "-p", "#{pane_width}"])
-        .run_and_capture_stdout()
-        .ok()
-        .unwrap_or_default();
-    debug!(
-        window_id,
-        pane_id = new_pane_id.as_str(),
-        requested_width = width,
-        actual_width = actual_width.trim(),
-        "create_sidebar_in_window: done"
-    );
-
-    Ok(())
-}
-
-/// Create sidebars in all existing tmux windows.
-fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
-    let output = Cmd::new("tmux")
-        .args(&["list-windows", "-a", "-F", "#{window_id}"])
-        .run_and_capture_stdout()?;
-
-    debug!(width, "create_sidebars_in_all_windows: creating sidebars");
-
-    // Clear stale saved layouts from previous cycles that could interfere
-    // with layout restore on toggle off.
-    for window_id in output.lines() {
-        let window_id = window_id.trim();
-        if !window_id.is_empty() {
-            let _ = Cmd::new("tmux")
-                .args(&[
-                    "set-option",
-                    "-wu",
-                    "-t",
-                    window_id,
-                    "@workmux_sidebar_layout",
-                ])
-                .run();
-        }
-    }
-
-    for window_id in output.lines() {
-        let window_id = window_id.trim();
-        if window_id.is_empty() {
-            continue;
-        }
-        // Use client-based width for all windows. Unattached sessions have stale
-        // #{window_width} from their last-seen client (window-size=latest), so
-        // per-window sizing gives wrong results for those sessions.
-        let _ = create_sidebar_in_window(window_id, width);
-    }
-
-    Ok(())
-}
-
-/// Kill all sidebar panes and restore the original layout in each window.
-fn kill_all_sidebars_and_restore_layouts() {
-    // Find all sidebar panes with their window IDs
-    let output = Cmd::new("tmux")
-        .args(&[
-            "list-panes",
-            "-a",
-            "-F",
-            "#{window_id} #{pane_id} #{@workmux_role}",
-        ])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
-
-    let mut windows_with_sidebars = Vec::new();
-
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
-            windows_with_sidebars.push(parts[0].to_string());
-            let _ = Cmd::new("tmux").args(&["kill-pane", "-t", parts[1]]).run();
-        }
-    }
-
-    // Restore saved layouts
-    for window_id in &windows_with_sidebars {
-        restore_window_layout(window_id);
-    }
-}
-
-/// Save a window's layout to a tmux window option.
-fn save_window_layout(window_id: &str) {
-    if let Ok(layout) = Cmd::new("tmux")
-        .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
-        .run_and_capture_stdout()
-    {
-        let layout = layout.trim();
-        if !layout.is_empty() {
-            let _ = Cmd::new("tmux")
-                .args(&[
-                    "set-option",
-                    "-w",
-                    "-t",
-                    window_id,
-                    "@workmux_sidebar_layout",
-                    layout,
-                ])
-                .run();
-        }
-    }
-}
-
-/// Restore a window's layout from the saved tmux window option.
-fn restore_window_layout(window_id: &str) {
-    if let Ok(layout) = Cmd::new("tmux")
-        .args(&[
-            "show-option",
-            "-wqv",
-            "-t",
-            window_id,
-            "@workmux_sidebar_layout",
-        ])
-        .run_and_capture_stdout()
-    {
-        let layout = layout.trim();
-        if !layout.is_empty() {
-            let _ = Cmd::new("tmux")
-                .args(&["select-layout", "-t", window_id, layout])
-                .run();
-            let _ = Cmd::new("tmux")
-                .args(&[
-                    "set-option",
-                    "-wu",
-                    "-t",
-                    window_id,
-                    "@workmux_sidebar_layout",
-                ])
-                .run();
-        }
-    }
-}
-
-/// Install tmux hooks so new windows automatically get a sidebar.
-fn install_hooks() -> Result<()> {
-    let exe = std::env::current_exe()?;
-    let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
-
-    let sync_cmd = format!(
-        "run-shell -b '{} _sidebar-sync --window #{{window_id}}'",
-        exe_str
-    );
-
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "after-new-window[99]", &sync_cmd])
-        .run()?;
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "after-new-session[99]", &sync_cmd])
-        .run()?;
-
-    // Snap sidebar panes to responsive width when any window resizes.
-    // window-resized fires on terminal resize AND when switching to an unattached
-    // session (window-size=latest resizes windows to match the new client).
-    // Scoped to the specific window that resized using ##{{window_id}}.
-    // Double ## escapes tmux format expansion in hook values: ## → literal #
-    let resize_script = format!(
-        r#"ww=$(tmux display-message -t '##{{window_id}}' -p '##{{window_width}}'); w=$((ww * 10 / 100)); [ "$w" -lt {min} ] && w={min}; [ "$w" -gt {max} ] && w={max}; tmux list-panes -t '##{{window_id}}' -F '##{{pane_id}} ##{{@workmux_role}} ##{{pane_width}}' | while read id role cur; do [ "$role" = sidebar ] && [ "$cur" != "$w" ] && tmux resize-pane -t "$id" -x "$w"; done; true"#,
-        min = MIN_WIDTH,
-        max = MAX_WIDTH,
-    );
-    let resize_cmd = format!("run-shell -b \"{}\"", resize_script);
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "window-resized[99]", &resize_cmd])
-        .run()?;
-
-    // Dirty signal hooks: send SIGUSR1 to daemon on window/session/pane changes
-    let dirty_cmd = "run-shell -b 'kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null'";
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "after-select-window[98]", dirty_cmd])
-        .run()?;
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "client-session-changed[98]", dirty_cmd])
-        .run()?;
-    Cmd::new("tmux")
-        .args(&["set-hook", "-g", "after-kill-pane[98]", dirty_cmd])
-        .run()?;
-
-    Ok(())
-}
-
-/// Remove tmux hooks.
-fn remove_hooks() {
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-new-window[99]"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-new-session[99]"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "window-resized[99]"])
-        .run();
-    // Dirty signal hooks
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-select-window[98]"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "client-session-changed[98]"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-hook", "-gu", "after-kill-pane[98]"])
-        .run();
-}
-
-/// Check if the sidebar is the only pane left in its window.
-fn is_last_pane_in_window() -> bool {
-    Cmd::new("tmux")
-        .args(&["list-panes", "-F", "#{pane_id}"])
-        .run_and_capture_stdout()
-        .map(|s| s.lines().count() <= 1)
-        .unwrap_or(false)
-}
-
-/// Shut down all sidebars globally (called when any sidebar quits).
-/// Kills all other sidebar panes immediately, then defers our own window's
-/// layout restore so it fires after our process exits and the pane closes.
-fn shutdown_all_sidebars() {
-    let our_pane = Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{pane_id}"])
-        .run_and_capture_stdout()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let our_window = Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{window_id}"])
-        .run_and_capture_stdout()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-
-    let output = Cmd::new("tmux")
-        .args(&[
-            "list-panes",
-            "-a",
-            "-F",
-            "#{window_id} #{pane_id} #{@workmux_role}",
-        ])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
-
-    let mut other_windows = Vec::new();
-
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
-            let pane_id = parts[1].trim();
-            if pane_id != our_pane {
-                other_windows.push(parts[0].to_string());
-                let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
-            }
-        }
-    }
-
-    // Restore layouts for other windows
-    for window_id in &other_windows {
-        restore_window_layout(window_id);
-    }
-
-    // Kill daemon
-    kill_daemon();
-
-    // Remove hooks and global options
-    remove_hooks();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_enabled"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_width"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
-        .run();
-
-    // Defer our own window's layout restore until after our pane closes
-    if !our_window.is_empty()
-        && let Ok(layout) = Cmd::new("tmux")
-            .args(&[
-                "show-option",
-                "-wqv",
-                "-t",
-                &our_window,
-                "@workmux_sidebar_layout",
-            ])
-            .run_and_capture_stdout()
-    {
-        let layout = layout.trim().to_string();
-        if !layout.is_empty() {
-            let cmd = format!(
-                "sleep 0.1 && tmux select-layout -t {win} '{layout}' && tmux set-option -wu -t {win} @workmux_sidebar_layout",
-                win = our_window,
-                layout = layout,
-            );
-            let _ = Cmd::new("tmux").args(&["run-shell", "-b", &cmd]).run();
-        }
-    }
-}
-
-// === Daemon lifecycle helpers ===
-
-/// Ensure the daemon is running, spawning it if needed. Returns the socket path.
-fn ensure_daemon_running() -> Result<std::path::PathBuf> {
-    let mux = create_backend(detect_backend());
-    let instance_id = mux.instance_id();
-    let sock_path = daemon::socket_path(&instance_id);
-
-    if std::os::unix::net::UnixStream::connect(&sock_path).is_ok() {
-        return Ok(sock_path);
-    }
-
-    // Stale socket from a crashed daemon
-    let _ = std::fs::remove_file(&sock_path);
-    spawn_daemon()?;
-    if !wait_for_socket(&instance_id, Duration::from_secs(2)) {
-        return Err(anyhow!("Sidebar daemon failed to start"));
-    }
-    Ok(sock_path)
-}
-
-/// Spawn the sidebar daemon as a detached background process.
-fn spawn_daemon() -> Result<()> {
-    let exe = std::env::current_exe()?;
-    std::process::Command::new(exe)
-        .arg("_sidebar-daemon")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-    Ok(())
-}
-
-/// Wait for the daemon's Unix socket to appear.
-fn wait_for_socket(instance_id: &str, timeout: Duration) -> bool {
-    let path = daemon::socket_path(instance_id);
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if path.exists() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    false
-}
-
-/// Kill the sidebar daemon (sends SIGTERM, cleans up tmux option).
-fn kill_daemon() {
-    if let Ok(pid_str) = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_daemon_pid"])
-        .run_and_capture_stdout()
-    {
-        let pid = pid_str.trim();
-        if !pid.is_empty() {
-            let _ = std::process::Command::new("kill")
-                .args(["-TERM", pid])
-                .status();
-        }
-    }
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
-        .run();
 }
 
 /// Navigation action for sidebar hotkeys.
@@ -667,147 +248,6 @@ pub fn navigate(action: NavAction) -> Result<()> {
         .run()?;
 
     signal_daemon();
-    Ok(())
-}
-
-/// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
-fn signal_daemon() {
-    let _ = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-}
-
-/// Drop guard that restores terminal state on panic or early return.
-struct TerminalGuard;
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
-    }
-}
-
-/// Run the sidebar TUI (called by the hidden `_sidebar-run` command).
-pub fn run_sidebar() -> Result<()> {
-    let mux = create_backend(detect_backend());
-
-    if !mux.is_running().unwrap_or(false) {
-        return Ok(());
-    }
-
-    // Ensure daemon is running (may have auto-exited or crashed)
-    let sock_path = ensure_daemon_running()?;
-
-    // Connect to daemon (retries in background thread)
-    let receiver = client::SnapshotReceiver::connect(&sock_path);
-
-    // Signal daemon to push an immediate snapshot for the newly connected client
-    signal_daemon();
-
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-
-    // Drop guard ensures terminal is restored even on panic/error
-    let _guard = TerminalGuard;
-
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = ratatui::Terminal::new(backend)?;
-
-    let mut app = SidebarApp::new_client(mux)?;
-
-    // Main loop: 10ms tick for responsive snapshot pickup, spinner every ~250ms
-    let tick_rate = Duration::from_millis(10);
-    let mut last_tick = std::time::Instant::now();
-    let mut spin_counter = 0u32;
-    let last_pane_check_interval = Duration::from_secs(2);
-    let mut last_pane_check = std::time::Instant::now();
-
-    let mut needs_render = true; // Draw on first iteration
-
-    loop {
-        // Apply latest snapshot
-        if let Some(snapshot) = receiver.take() {
-            app.apply_snapshot(&snapshot);
-            needs_render = true;
-        }
-
-        // Only redraw when state changed (snapshot, key press, spinner tick, resize)
-        if needs_render {
-            terminal.draw(|f| render_sidebar(f, &mut app))?;
-            needs_render = false;
-        }
-
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-
-        if event::poll(timeout)? {
-            match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    match (key.code, key.modifiers) {
-                        (KeyCode::Char('q'), _)
-                        | (KeyCode::Esc, _)
-                        | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
-                            app.should_quit = true;
-                        }
-                        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
-                            app.next();
-                        }
-                        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
-                            app.previous();
-                        }
-                        (KeyCode::Enter, _) => {
-                            app.jump_to_selected();
-                        }
-                        (KeyCode::Char('G'), _) => {
-                            app.select_last();
-                        }
-                        (KeyCode::Char('g'), _) => {
-                            app.select_first();
-                        }
-                        (KeyCode::Char('v'), _) => {
-                            app.toggle_layout_mode();
-                        }
-                        _ => {}
-                    }
-                    needs_render = true;
-                }
-                Event::Resize(_, _) => {
-                    needs_render = true;
-                }
-                _ => {} // Non-key events: no continue, bookkeeping always runs
-            }
-        }
-
-        if last_tick.elapsed() >= tick_rate {
-            last_tick = std::time::Instant::now();
-            spin_counter += 1;
-            // Tick spinner every ~250ms (every 25th tick at 10ms)
-            if spin_counter.is_multiple_of(25) {
-                app.tick();
-                needs_render = true;
-            }
-        }
-
-        // Check if last pane periodically
-        if last_pane_check.elapsed() >= last_pane_check_interval {
-            last_pane_check = std::time::Instant::now();
-            if is_last_pane_in_window() {
-                app.should_quit = true;
-            }
-        }
-
-        if app.should_quit {
-            shutdown_all_sidebars();
-            break;
-        }
-    }
-
-    // _guard handles cleanup on drop (including the normal exit path)
     Ok(())
 }
 

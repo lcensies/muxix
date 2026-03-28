@@ -233,7 +233,7 @@ impl SidebarApp {
             let pane_id = agent.pane_id.clone();
             let _ = self.mux.switch_to_pane(&pane_id, None);
             // Signal daemon directly to bypass tmux hook round-trip latency
-            super::signal_daemon();
+            super::daemon_ctrl::signal_daemon();
         }
     }
 
