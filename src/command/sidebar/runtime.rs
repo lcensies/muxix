@@ -70,7 +70,7 @@ pub fn run_sidebar() -> Result<()> {
     loop {
         // Apply latest snapshot
         if let Some(snapshot) = receiver.take() {
-            app.apply_snapshot(&snapshot);
+            app.apply_snapshot(snapshot);
             needs_render = true;
         }
 

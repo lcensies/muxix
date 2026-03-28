@@ -102,7 +102,7 @@ impl SidebarApp {
     }
 
     /// Apply a snapshot received from the daemon.
-    pub fn apply_snapshot(&mut self, snapshot: &SidebarSnapshot) {
+    pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
         self.layout_mode = snapshot.layout_mode;
 
         // Find host agent by window_id (stable tmux ID, survives renames).
@@ -153,7 +153,7 @@ impl SidebarApp {
             .and_then(|i| self.agents.get(i))
             .map(|a| a.pane_id.clone());
 
-        self.agents = snapshot.agents.clone();
+        self.agents = snapshot.agents;
 
         // Restore selection
         if let Some(ref pane_id) = selected_pane {
