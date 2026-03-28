@@ -5,7 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
@@ -16,28 +16,27 @@ use super::app::{SidebarApp, SidebarLayoutMode};
 
 /// Compute pane suffixes like " [1]", " [2]" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
-    let mut window_groups: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
-    for (idx, agent) in agents.iter().enumerate() {
-        let key = (agent.session.clone(), agent.window_name.clone());
-        window_groups.entry(key).or_default().push(idx);
+    let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
+    for agent in agents {
+        *counts
+            .entry((&agent.session, &agent.window_name))
+            .or_default() += 1;
     }
-    let multi_pane: HashSet<(String, String)> = window_groups
-        .iter()
-        .filter(|(_, indices)| indices.len() > 1)
-        .map(|(key, _)| key.clone())
-        .collect();
 
-    let mut suffixes = vec![String::new(); agents.len()];
-    let mut positions: BTreeMap<(String, String), usize> = BTreeMap::new();
-    for (idx, agent) in agents.iter().enumerate() {
-        let key = (agent.session.clone(), agent.window_name.clone());
-        if multi_pane.contains(&key) {
-            let pos = positions.entry(key).or_insert(0);
-            *pos += 1;
-            suffixes[idx] = format!(" [{}]", pos);
-        }
-    }
-    suffixes
+    let mut positions: HashMap<(&str, &str), usize> = HashMap::new();
+    agents
+        .iter()
+        .map(|agent| {
+            let key = (agent.session.as_str(), agent.window_name.as_str());
+            if counts[&key] > 1 {
+                let pos = positions.entry(key).or_default();
+                *pos += 1;
+                format!(" [{}]", pos)
+            } else {
+                String::new()
+            }
+        })
+        .collect()
 }
 
 /// Render the sidebar UI.
