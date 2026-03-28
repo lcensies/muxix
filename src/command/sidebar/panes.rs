@@ -218,15 +218,7 @@ pub(super) fn shutdown_all_sidebars() {
 
     // Remove hooks and global options
     remove_hooks();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_enabled"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_width"])
-        .run();
-    let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
-        .run();
+    super::clear_sidebar_globals();
 
     // Defer our own window's layout restore until after our pane closes
     if !our_window.is_empty()

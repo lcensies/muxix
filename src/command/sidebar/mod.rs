@@ -46,6 +46,20 @@ const SIDEBAR_ROLE_VALUE: &str = "sidebar";
 const MIN_WIDTH: u16 = 25;
 const MAX_WIDTH: u16 = 50;
 
+/// Global tmux options set while the sidebar is active.
+const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
+    "@workmux_sidebar_enabled",
+    "@workmux_sidebar_width",
+    "@workmux_sidebar_agents",
+];
+
+/// Unset all sidebar global tmux options.
+fn clear_sidebar_globals() {
+    for opt in SIDEBAR_GLOBAL_OPTIONS {
+        let _ = Cmd::new("tmux").args(&["set-option", "-gu", opt]).run();
+    }
+}
+
 /// Get the tmux client width in columns.
 fn terminal_width() -> u16 {
     Cmd::new("tmux")
@@ -98,15 +112,7 @@ pub fn toggle() -> Result<()> {
         kill_all_sidebars_and_restore_layouts();
         kill_daemon();
         remove_hooks();
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-gu", "@workmux_sidebar_enabled"])
-            .run();
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-gu", "@workmux_sidebar_width"])
-            .run();
-        let _ = Cmd::new("tmux")
-            .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
-            .run();
+        clear_sidebar_globals();
         return Ok(());
     }
 
