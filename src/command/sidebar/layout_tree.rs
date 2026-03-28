@@ -330,53 +330,107 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         Err(_) => return,
     };
 
+    debug!(
+        window_id,
+        sidebar_pane_id,
+        sidebar_width,
+        layout = layout_str.as_str(),
+        "reflow: starting"
+    );
+
     let mut root = match parse_layout(&layout_str) {
         Some(node) => node,
         None => {
-            debug!(layout = layout_str.as_str(), "failed to parse layout");
+            debug!(
+                layout = layout_str.as_str(),
+                "reflow: failed to parse layout"
+            );
             return;
         }
     };
 
-    // After split-window -hbf, root is HSplit with [sidebar, content_tree]
+    // After split-window -hbf, root should be an HSplit with the sidebar as
+    // the first child. If the root was already an HSplit, tmux may insert the
+    // sidebar as an additional sibling rather than nesting.
     let LayoutNode::HSplit { rect, children } = &mut root else {
+        debug!("reflow: root is not HSplit, skipping");
         return;
     };
 
-    if children.len() != 2 {
-        debug!(
-            count = children.len(),
-            "expected 2 children at root after sidebar split"
-        );
-        return;
-    }
-
-    // Verify first child is the sidebar by pane ID
+    // Find the sidebar among root children by pane ID
     let sidebar_num: u32 = sidebar_pane_id
         .strip_prefix('%')
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    let is_sidebar =
-        matches!(&children[0], LayoutNode::Leaf { pane_id, .. } if *pane_id == sidebar_num);
-    if !is_sidebar {
+    let sidebar_idx = children.iter().position(
+        |child| matches!(child, LayoutNode::Leaf { pane_id, .. } if *pane_id == sidebar_num),
+    );
+
+    let Some(sidebar_idx) = sidebar_idx else {
         debug!(
             sidebar_pane_id,
-            "first child is not the expected sidebar pane"
+            "reflow: sidebar pane not found among {} root children",
+            children.len()
         );
+        return;
+    };
+
+    debug!(
+        sidebar_idx,
+        root_children = children.len(),
+        "reflow: found sidebar"
+    );
+
+    // Fix sidebar to exact desired width
+    children[sidebar_idx].rect_mut().w = sidebar_width;
+    children[sidebar_idx].rect_mut().x = 0;
+
+    // Scale all content children (everything except sidebar) to share remaining space
+    let window_w = rect.w;
+    let num_content = children.len() - 1;
+    // Separators: one between each pair of root children
+    let total_seps = (children.len() as u16).saturating_sub(1);
+    let available = window_w
+        .saturating_sub(sidebar_width)
+        .saturating_sub(total_seps);
+
+    // Collect old content widths before mutating
+    let old_content: Vec<(usize, u16)> = children
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != sidebar_idx)
+        .map(|(i, c)| (i, c.width()))
+        .collect();
+
+    let old_total: u16 = old_content.iter().map(|(_, w)| *w).sum();
+
+    debug!(
+        window_w,
+        available, num_content, old_total, "reflow: scaling content"
+    );
+
+    if old_total == 0 || available == 0 {
         return;
     }
 
-    // Fix sidebar to exact desired width
-    children[0].rect_mut().w = sidebar_width;
-    children[0].rect_mut().x = 0;
+    // Scale each content child proportionally
+    let mut remaining = available;
+    let content_count = old_content.len();
+    let mut cx = sidebar_width + 1; // start after sidebar + separator
 
-    // Scale content tree to fill remaining space
-    let window_w = rect.w;
-    let content_w = window_w.saturating_sub(sidebar_width).saturating_sub(1); // -1 for separator
-    let content_x = sidebar_width + 1;
-
-    scale_width(&mut children[1], content_w, content_x);
+    for (j, &(idx, old_w)) in old_content.iter().enumerate() {
+        let new_w = if j == content_count - 1 {
+            remaining
+        } else {
+            let scaled = (old_w as f64 * available as f64 / old_total as f64).round() as u16;
+            let scaled = scaled.min(remaining);
+            remaining = remaining.saturating_sub(scaled);
+            scaled
+        };
+        scale_width(&mut children[idx], new_w, cx);
+        cx = cx.saturating_add(new_w).saturating_add(1);
+    }
 
     // Apply the rebalanced layout
     let new_layout = serialize_layout(&root);
@@ -384,7 +438,7 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         window_id,
         old = layout_str.as_str(),
         new = new_layout.as_str(),
-        "reflow_after_sidebar_add"
+        "reflow: applying"
     );
 
     let _ = Cmd::new("tmux")
@@ -674,45 +728,88 @@ mod tests {
         }
     }
 
-    /// Test reflow on a real layout: HSplit with two nested VSplits.
-    /// Simulates sidebar insertion stealing width from the left VSplit only.
+    /// Test reflow where root HSplit has 2 children (sidebar nested old root).
     #[test]
-    fn test_reflow_real_complex_layout() {
-        // Original: 186x44 {100x44[2 panes], 85x44[2 panes]}
-        // After sidebar(25) added via split-window -hbf on first pane:
-        // Root becomes: {25x44(sidebar), 160x44{75x44[2 panes], 85x44[2 panes]}}
-        // The left VSplit shrunk from 100 to 75, but right stayed at 85. Lopsided!
-        //
-        // After reflow: content tree gets 186-25-1=160 wide.
-        // Old content was {75 + 85} = 160 (already fits, but was already in this case).
-        // In a real scenario where old content is squeezed, scale preserves ratios.
-
-        // Simulate a case where sidebar stole more from left:
-        // Window=200, sidebar=30, content was originally {90, 79} (total 169+1sep=170)
-        // After split-window: {30(sidebar), 169{60, 79}} - left shrunk from 90 to 60
-        // Reflow should give content 200-30-1=169, distribute: 60+79=139 old -> 168 new
-        // Scale: 60*(168/139)=72.5->73, 79*(168/139)=95.6->95. Total=168. With sep: 169.
+    fn test_reflow_two_children() {
+        // Window=200, sidebar=30, content is nested HSplit{60, 79}
         let layout = "0000,200x50,0,0{30x50,0,0,100,169x50,31,0{60x50,31,0,101,79x50,92,0,102}}";
         let mut root = parse_layout(layout).unwrap();
 
         if let LayoutNode::HSplit { children, .. } = &mut root {
             assert_eq!(children.len(), 2);
 
-            // Reflow content
-            let content_w = 200u16 - 30 - 1;
+            let content_w = 200u16 - 30 - 1; // 169
             scale_width(&mut children[1], content_w, 31);
 
-            assert_eq!(children[1].width(), content_w); // 169
+            assert_eq!(children[1].width(), content_w);
             if let LayoutNode::HSplit {
                 children: content, ..
             } = &children[1]
             {
-                // Children should sum to 169-1=168 (minus 1 separator)
                 let sum: u16 = content.iter().map(|c| c.width()).sum();
-                assert_eq!(sum, 168);
-                // Proportions should be roughly preserved (60:79 -> ~73:95)
+                assert_eq!(sum, 168); // 169 - 1 separator
+                // Proportions roughly preserved (60:79 -> ~73:95)
                 assert!(content[0].width() > 70 && content[0].width() < 76);
                 assert!(content[1].width() > 92 && content[1].width() < 98);
+            }
+        }
+    }
+
+    /// Test reflow where sidebar is inserted as sibling in existing root HSplit
+    /// (3 children: sidebar + 2 original panes). This is the case that was
+    /// previously broken because we only handled 2 children.
+    #[test]
+    fn test_reflow_three_children_at_root() {
+        // Original: {100x44[vsplit], 85x44} (186 wide, 2 children + 1 sep)
+        // After split-window -hbf, sidebar inserted as 3rd sibling:
+        // {25x44(sidebar), 75x44[vsplit], 85x44} - left shrunk, right untouched
+        let layout =
+            "0000,186x44,0,0{25x44,0,0,999,75x44,26,0[75x22,26,0,1,75x21,26,23,2],85x44,102,0,3}";
+        let mut root = parse_layout(layout).unwrap();
+
+        if let LayoutNode::HSplit { rect, children } = &mut root {
+            assert_eq!(children.len(), 3);
+
+            let sidebar_width: u16 = 25;
+            children[0].rect_mut().w = sidebar_width;
+            children[0].rect_mut().x = 0;
+
+            // Available: 186 - 25 - 2 separators = 159
+            let total_seps = 2u16;
+            let available = rect.w - sidebar_width - total_seps;
+            assert_eq!(available, 159);
+
+            // Old content widths: 75 + 85 = 160
+            // Scale preserves proportions: 75:85 ratio in 159 cols
+            let old_total: u16 = 75 + 85;
+            let mut remaining = available;
+            let mut cx = sidebar_width + 1;
+
+            let scaled = (75.0 * available as f64 / old_total as f64).round() as u16;
+            remaining -= scaled;
+            scale_width(&mut children[1], scaled, cx);
+            cx += scaled + 1;
+            scale_width(&mut children[2], remaining, cx);
+
+            // Content fills all available space
+            let w1 = children[1].width();
+            let w2 = children[2].width();
+            assert_eq!(w1 + w2, available);
+
+            // Proportions preserved: original ratio 75:85 (~0.88)
+            let original_ratio = 75.0 / 85.0;
+            let result_ratio = w1 as f64 / w2 as f64;
+            assert!(
+                (result_ratio - original_ratio).abs() < 0.05,
+                "proportions not preserved: original={:.2}, result={:.2}",
+                original_ratio,
+                result_ratio
+            );
+
+            // VSplit children should have matching width
+            if let LayoutNode::VSplit { children: vc, .. } = &children[1] {
+                assert_eq!(vc[0].width(), w1);
+                assert_eq!(vc[1].width(), w1);
             }
         }
     }
