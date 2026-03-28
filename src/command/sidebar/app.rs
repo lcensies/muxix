@@ -108,26 +108,17 @@ impl SidebarApp {
         // Find host agent by window_id (stable tmux ID, survives renames).
         // When multiple agents share a window, prefer the active pane.
         self.host_agent_idx = self.host_window_id.as_ref().and_then(|wid| {
-            let candidates: Vec<usize> = snapshot
-                .agents
-                .iter()
-                .enumerate()
-                .filter(|(_, a)| a.window_id == *wid)
-                .map(|(i, _)| i)
-                .collect();
-            match candidates.len() {
-                0 => None,
-                1 => Some(candidates[0]),
-                _ => candidates
-                    .iter()
-                    .find(|&&i| {
-                        snapshot
-                            .active_pane_ids
-                            .contains(&snapshot.agents[i].pane_id)
-                    })
-                    .copied()
-                    .or(Some(candidates[0])),
+            let mut first_match = None;
+            for (i, agent) in snapshot.agents.iter().enumerate() {
+                if agent.window_id != *wid {
+                    continue;
+                }
+                if snapshot.active_pane_ids.contains(&agent.pane_id) {
+                    return Some(i);
+                }
+                first_match.get_or_insert(i);
             }
+            first_match
         });
 
         // Check if host window is active
