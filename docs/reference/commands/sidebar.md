@@ -10,7 +10,6 @@ updates.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
-workmux sidebar --width 40 # Custom width (default: ~10% of terminal, 25-50 cols)
 ```
 
 ## What it shows
@@ -58,12 +57,6 @@ bind -n M-3 run-shell "workmux sidebar jump 3"
 bind C-j run-shell "workmux sidebar next"
 bind C-k run-shell "workmux sidebar prev"
 ```
-
-## Options
-
-| Option          | Description                          |
-| --------------- | ------------------------------------ |
-| `-w`, `--width` | Width of the sidebar pane in columns |
 
 ## How it works
 

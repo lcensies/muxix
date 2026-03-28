@@ -594,9 +594,6 @@ enum Commands {
     Sidebar {
         #[command(subcommand)]
         action: Option<SidebarAction>,
-        /// Width of the sidebar pane in columns
-        #[arg(long, short = 'w')]
-        width: Option<u16>,
     },
 
     /// Run the sidebar TUI (internal use)
@@ -906,7 +903,7 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
-        Commands::Sidebar { action, width } => match action {
+        Commands::Sidebar { action } => match action {
             Some(SidebarAction::Next) => {
                 command::sidebar::navigate(command::sidebar::NavAction::Next)
             }
@@ -916,7 +913,7 @@ pub fn run() -> Result<()> {
             Some(SidebarAction::Jump { index }) => {
                 command::sidebar::navigate(command::sidebar::NavAction::Jump(index as usize))
             }
-            None => command::sidebar::toggle(width),
+            None => command::sidebar::toggle(),
         },
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),

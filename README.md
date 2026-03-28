@@ -1580,7 +1580,6 @@ full screen like the dashboard.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
-workmux sidebar --width 40 # Toggle with custom width
 ```
 
 The sidebar displays:

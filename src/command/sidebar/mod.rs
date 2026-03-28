@@ -50,8 +50,8 @@ fn default_width() -> u16 {
 }
 
 /// Toggle the sidebar globally across all tmux windows.
-pub fn toggle(width: Option<u16>) -> Result<()> {
-    let width = width.unwrap_or_else(default_width).max(10);
+pub fn toggle() -> Result<()> {
+    let width = default_width();
 
     if std::env::var("TMUX").is_err() {
         return Err(anyhow!("Sidebar requires tmux"));
