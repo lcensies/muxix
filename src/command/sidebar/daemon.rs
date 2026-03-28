@@ -231,7 +231,7 @@ pub fn run() -> Result<()> {
                 let agent_list: String = snapshot
                     .agents
                     .iter()
-                    .map(|a| format!("{}:{}", a.pane_id, a.window_id))
+                    .map(|a| a.pane_id.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
 

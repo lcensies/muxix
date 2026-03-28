@@ -296,27 +296,23 @@ pub fn navigate(action: NavAction) -> Result<()> {
         anyhow::bail!("no sidebar agents found (is the sidebar running?)");
     }
 
-    // Parse "pane_id:window_id pane_id:window_id ..."
-    let entries: Vec<(&str, &str)> = agents_str
-        .split_whitespace()
-        .filter_map(|entry| entry.split_once(':'))
-        .collect();
+    // Parse space-separated pane IDs
+    let panes: Vec<&str> = agents_str.split_whitespace().collect();
 
-    if entries.is_empty() {
+    if panes.is_empty() {
         anyhow::bail!("no sidebar agents found");
     }
 
-    // Find current agent by active pane ID (window_id would fail when
-    // multiple agents share the same window)
+    // Find current agent by active pane ID
     let current_pane_id = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{pane_id}"])
         .run_and_capture_stdout()
         .unwrap_or_default();
     let current_pane_id = current_pane_id.trim();
 
-    let current_idx = entries.iter().position(|(pid, _)| *pid == current_pane_id);
+    let current_idx = panes.iter().position(|&pid| pid == current_pane_id);
 
-    let len = entries.len();
+    let len = panes.len();
     let target_idx = match &action {
         NavAction::Jump(n) => compute_nav_target(&action, current_idx, len)
             .ok_or_else(|| anyhow::anyhow!("agent {} out of range (1-{})", n, len))?,
@@ -324,7 +320,7 @@ pub fn navigate(action: NavAction) -> Result<()> {
             .expect("len > 0 guarantees a result for Next/Prev"),
     };
 
-    let (target_pane, _) = entries[target_idx];
+    let target_pane = panes[target_idx];
     Cmd::new("tmux")
         .args(&["switch-client", "-t", target_pane])
         .run()?;
