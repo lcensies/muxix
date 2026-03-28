@@ -99,8 +99,8 @@ pub fn run_sidebar() -> Result<()> {
     let startup_grace = Duration::from_secs(3);
 
     loop {
-        // Render before blocking (only when visible and state changed)
-        if needs_render && app.host_window_active() {
+        // Render before blocking (redraws only when state changed)
+        if needs_render {
             terminal.draw(|f| render_sidebar(f, &mut app))?;
             needs_render = false;
         }
