@@ -80,7 +80,7 @@ impl SidebarApp {
         let window_prefix = config.window_prefix().to_string();
         let status_icons = config.status_icons.clone();
 
-        let (host_session, _host_window, host_window_id) = detect_host_window();
+        let (host_session, host_window_id) = detect_host_window();
 
         Ok(Self {
             mux,
@@ -268,36 +268,24 @@ impl SidebarApp {
 }
 
 /// Detect this sidebar's host window using TMUX_PANE (stable, one-time).
-/// Returns (session, window_name, window_id).
-fn detect_host_window() -> (Option<String>, Option<String>, Option<String>) {
+/// Returns (session, window_id).
+fn detect_host_window() -> (Option<String>, Option<String>) {
     let pane_id = std::env::var("TMUX_PANE").ok().unwrap_or_default();
-    let target = if pane_id.is_empty() {
-        None
-    } else {
-        Some(pane_id)
-    };
     let mut args = vec!["display-message", "-p"];
-    if let Some(ref t) = target {
-        args.extend_from_slice(&["-t", t]);
+    if !pane_id.is_empty() {
+        args.extend_from_slice(&["-t", &pane_id]);
     }
-    args.push("#{session_name}\t#{window_name}\t#{window_id}");
+    args.push("#{session_name}\t#{window_id}");
     let output = Cmd::new("tmux")
         .args(&args)
         .run_and_capture_stdout()
         .ok()
         .unwrap_or_default();
     let trimmed = output.trim();
-    let parts: Vec<&str> = trimmed.split('\t').collect();
-    if parts.len() >= 3 {
-        let s = (!parts[0].is_empty()).then(|| parts[0].to_string());
-        let w = (!parts[1].is_empty()).then(|| parts[1].to_string());
-        let id = (!parts[2].is_empty()).then(|| parts[2].to_string());
-        (s, w, id)
-    } else if parts.len() == 2 {
-        let s = (!parts[0].is_empty()).then(|| parts[0].to_string());
-        let w = (!parts[1].is_empty()).then(|| parts[1].to_string());
-        (s, w, None)
-    } else {
-        (None, None, None)
-    }
+    let mut parts = trimmed
+        .split('\t')
+        .map(|s| (!s.is_empty()).then(|| s.to_string()));
+    let session = parts.next().flatten();
+    let window_id = parts.next().flatten();
+    (session, window_id)
 }
