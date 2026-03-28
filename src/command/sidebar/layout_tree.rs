@@ -387,15 +387,12 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         .saturating_sub(sidebar_width)
         .saturating_sub(total_seps);
 
-    // Collect old content widths before mutating
-    let old_content: Vec<(usize, u16)> = children
+    // Collect content child indices and widths before mutating
+    let content_indices: Vec<usize> = (0..children.len()).filter(|&i| i != sidebar_idx).collect();
+    let old_widths: Vec<u16> = content_indices
         .iter()
-        .enumerate()
-        .filter(|(i, _)| *i != sidebar_idx)
-        .map(|(i, c)| (i, c.width()))
+        .map(|&i| children[i].width())
         .collect();
-
-    let old_widths: Vec<u16> = old_content.iter().map(|(_, w)| *w).collect();
 
     debug!(window_w, available, num_content, "reflow: scaling content");
 
@@ -407,7 +404,7 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
     let new_widths = proportional_widths(&old_widths, available);
     let mut cx = sidebar_width + 1; // start after sidebar + separator
 
-    for (&(idx, _), &new_w) in old_content.iter().zip(&new_widths) {
+    for (&idx, &new_w) in content_indices.iter().zip(&new_widths) {
         scale_width(&mut children[idx], new_w, cx);
         cx = cx.saturating_add(new_w).saturating_add(1);
     }
