@@ -261,6 +261,7 @@ Worktree lifecycle:
 
 Monitoring:
   dashboard    Show a TUI dashboard of all active workmux agents
+  sidebar      Toggle a live agent status sidebar in tmux
   list         List all worktrees [ls]
   path         Get the filesystem path of a worktree
   status       Query agent status for worktrees
@@ -589,7 +590,7 @@ enum Commands {
     /// Update workmux to the latest version
     Update,
 
-    /// Toggle a compact agent status sidebar across all tmux windows
+    /// Toggle a live agent status sidebar in tmux
     Sidebar {
         #[command(subcommand)]
         action: Option<SidebarAction>,
