@@ -140,8 +140,8 @@ impl SocketServer {
     }
 }
 
-/// Read the sidebar layout mode from tmux global, falling back to settings.json.
-fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
+/// Read the sidebar layout mode from tmux global, falling back to settings.json, then config.
+fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
     // Check tmux global first (set by toggle_layout_mode during this session)
     if let Ok(output) = Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_layout"])
@@ -154,7 +154,7 @@ fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
         }
     }
 
-    // Fall back to persisted setting
+    // Fall back to persisted setting (user toggled layout in a previous tmux session)
     if let Ok(store) = StateStore::new()
         && let Ok(settings) = store.load_settings()
     {
@@ -163,6 +163,13 @@ fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
             Some("compact") => return Some(SidebarLayoutMode::Compact),
             _ => {}
         }
+    }
+
+    // Fall back to config file
+    match config.sidebar.layout.as_deref() {
+        Some("tiles") => return Some(SidebarLayoutMode::Tiles),
+        Some("compact") => return Some(SidebarLayoutMode::Compact),
+        _ => {}
     }
 
     None
@@ -218,7 +225,7 @@ pub fn run() -> Result<()> {
             dirty_pending = false;
             last_refresh = Instant::now();
 
-            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &mut version) {
+            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config, &mut version) {
                 server.broadcast(&snapshot);
 
                 let agent_list: String = snapshot
@@ -269,13 +276,14 @@ pub fn run() -> Result<()> {
 fn try_build_snapshot(
     mux: &Arc<dyn Multiplexer>,
     status_icons: &crate::config::StatusIcons,
+    config: &Config,
     version: &mut u64,
 ) -> Option<super::snapshot::SidebarSnapshot> {
     let tmux_state = query_tmux_state();
     let agents = StateStore::new()
         .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
         .ok()?;
-    let layout_mode = read_sidebar_layout_mode().unwrap_or_default();
+    let layout_mode = read_sidebar_layout_mode(config).unwrap_or_default();
 
     *version += 1;
     Some(build_snapshot(

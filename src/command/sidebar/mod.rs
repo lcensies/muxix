@@ -44,25 +44,36 @@ const SIDEBAR_ROLE_VALUE: &str = "sidebar";
 const MIN_WIDTH: u16 = 25;
 const MAX_WIDTH: u16 = 50;
 
-/// Compute sidebar width as ~10% of terminal width, clamped to [MIN_WIDTH, MAX_WIDTH].
-fn default_width() -> u16 {
-    let client_width: u16 = Cmd::new("tmux")
+/// Get the tmux client width in columns.
+fn terminal_width() -> u16 {
+    Cmd::new("tmux")
         .args(&["display-message", "-p", "#{client_width}"])
         .run_and_capture_stdout()
         .ok()
         .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
 
-    if client_width == 0 {
-        return MIN_WIDTH;
+/// Resolve sidebar width from config, falling back to 10% of terminal (clamped 25-50).
+fn resolve_width(config: &crate::config::Config) -> u16 {
+    let tw = terminal_width();
+
+    if let Some(ref w) = config.sidebar.width {
+        // Explicit config: respect it, only enforce a minimum of 10
+        return w.resolve(tw).max(10);
     }
 
-    (client_width * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH)
+    // Default: 10% of terminal, clamped to [MIN_WIDTH, MAX_WIDTH]
+    if tw == 0 {
+        return MIN_WIDTH;
+    }
+    (tw * 10 / 100).clamp(MIN_WIDTH, MAX_WIDTH)
 }
 
 /// Toggle the sidebar globally across all tmux windows.
 pub fn toggle() -> Result<()> {
-    let width = default_width();
+    let config = crate::config::Config::load(None)?;
+    let width = resolve_width(&config);
 
     if std::env::var("TMUX").is_err() {
         return Err(anyhow!("Sidebar requires tmux"));
@@ -143,7 +154,16 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    let width = default_width();
+    // Read width from tmux global (set by toggle) or fall back to config
+    let width = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_width"])
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse::<u16>().ok())
+        .unwrap_or_else(|| {
+            let config = crate::config::Config::load(None).unwrap_or_default();
+            resolve_width(&config)
+        });
     create_sidebar_in_window(&target, width)?;
 
     Ok(())

@@ -115,6 +115,98 @@ impl DashboardConfig {
     }
 }
 
+/// Configuration for the sidebar.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SidebarConfig {
+    /// Width of the sidebar. Can be an absolute column count (e.g. 40)
+    /// or a percentage of terminal width (e.g. "15%").
+    /// Default: "10%" (clamped to 25-50 columns)
+    pub width: Option<SidebarWidth>,
+
+    /// Layout mode: "compact" or "tiles". Default: "tiles"
+    pub layout: Option<String>,
+}
+
+/// Sidebar width: either absolute columns or a percentage of terminal width.
+#[derive(Debug, Clone)]
+pub enum SidebarWidth {
+    Absolute(u16),
+    Percent(u16),
+}
+
+impl SidebarWidth {
+    /// Resolve to an absolute column count given the terminal width.
+    pub fn resolve(&self, terminal_width: u16) -> u16 {
+        match self {
+            SidebarWidth::Absolute(w) => *w,
+            SidebarWidth::Percent(p) => {
+                if terminal_width == 0 {
+                    25
+                } else {
+                    terminal_width * p / 100
+                }
+            }
+        }
+    }
+}
+
+impl Serialize for SidebarWidth {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SidebarWidth::Absolute(w) => serializer.serialize_u16(*w),
+            SidebarWidth::Percent(p) => serializer.serialize_str(&format!("{}%", p)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SidebarWidth {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de;
+
+        struct SidebarWidthVisitor;
+
+        impl<'de> de::Visitor<'de> for SidebarWidthVisitor {
+            type Value = SidebarWidth;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a number (columns) or a string like \"15%\"")
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(SidebarWidth::Absolute(v as u16))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                if v < 0 {
+                    return Err(de::Error::custom("width cannot be negative"));
+                }
+                Ok(SidebarWidth::Absolute(v as u16))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                if let Some(pct) = v.strip_suffix('%') {
+                    let p: u16 = pct
+                        .trim()
+                        .parse()
+                        .map_err(|_| de::Error::custom("invalid percentage"))?;
+                    if p == 0 || p > 100 {
+                        return Err(de::Error::custom("percentage must be 1-100"));
+                    }
+                    Ok(SidebarWidth::Percent(p))
+                } else {
+                    let w: u16 = v
+                        .trim()
+                        .parse()
+                        .map_err(|_| de::Error::custom("invalid width"))?;
+                    Ok(SidebarWidth::Absolute(w))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(SidebarWidthVisitor)
+    }
+}
+
 /// Configuration for a single window within a session (session mode only)
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct WindowConfig {
@@ -204,6 +296,10 @@ pub struct Config {
     /// Dashboard actions configuration
     #[serde(default)]
     pub dashboard: DashboardConfig,
+
+    /// Sidebar configuration
+    #[serde(default)]
+    pub sidebar: SidebarConfig,
 
     /// Whether to use nerdfont icons (None = prompt user on first run)
     #[serde(default)]
@@ -2043,6 +2139,21 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   commit: "Commit staged changes with a descriptive message"
 #   merge: "!workmux merge"
 #   preview_size: 60
+
+#-------------------------------------------------------------------------------
+# Sidebar
+#-------------------------------------------------------------------------------
+
+# sidebar:
+#   # Width: absolute columns or percentage of terminal width.
+#   # Default: "10%" (clamped to 25-50 columns).
+#   # Explicit values are not clamped (minimum 10 columns).
+#   width: 40       # absolute columns
+#   # width: "15%"  # percentage of terminal width
+#
+#   # Layout mode: "compact" (single line per agent) or "tiles" (cards).
+#   # Default: "tiles". Can be toggled at runtime with 'v' key.
+#   layout: tiles
 
 #-------------------------------------------------------------------------------
 # Sandbox
