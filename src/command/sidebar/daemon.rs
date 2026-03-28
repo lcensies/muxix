@@ -29,7 +29,6 @@ pub fn socket_path(instance_id: &str) -> PathBuf {
 struct TmuxState {
     window_statuses: HashMap<String, Option<String>>,
     active_windows: HashSet<(String, String)>,
-    window_pane_counts: HashMap<String, usize>,
     pane_window_ids: HashMap<String, String>,
     active_pane_ids: HashSet<String>,
 }
@@ -44,7 +43,6 @@ fn query_tmux_state() -> TmuxState {
 
     let mut window_statuses = HashMap::new();
     let mut active_windows = HashSet::new();
-    let mut window_pane_counts: HashMap<String, usize> = HashMap::new();
     let mut pane_window_ids = HashMap::new();
     let mut active_pane_ids = HashSet::new();
 
@@ -71,8 +69,6 @@ fn query_tmux_state() -> TmuxState {
         window_statuses.insert(pane_id.to_string(), status_val);
         pane_window_ids.insert(pane_id.to_string(), window_id.to_string());
 
-        *window_pane_counts.entry(window_id.to_string()).or_default() += 1;
-
         if win_active && sess_attached {
             active_windows.insert((session.to_string(), window_id.to_string()));
         }
@@ -84,7 +80,6 @@ fn query_tmux_state() -> TmuxState {
     TmuxState {
         window_statuses,
         active_windows,
-        window_pane_counts,
         pane_window_ids,
         active_pane_ids,
     }
@@ -202,7 +197,6 @@ pub fn run() -> Result<()> {
         ])
         .run()?;
 
-    let mut version = 0u64;
     let mut last_refresh = Instant::now();
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
@@ -225,7 +219,7 @@ pub fn run() -> Result<()> {
             dirty_pending = false;
             last_refresh = Instant::now();
 
-            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config, &mut version) {
+            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config) {
                 server.broadcast(&snapshot);
 
                 let agent_list: String = snapshot
@@ -277,7 +271,6 @@ fn try_build_snapshot(
     mux: &Arc<dyn Multiplexer>,
     status_icons: &crate::config::StatusIcons,
     config: &Config,
-    version: &mut u64,
 ) -> Option<super::snapshot::SidebarSnapshot> {
     let tmux_state = query_tmux_state();
     let agents = StateStore::new()
@@ -285,16 +278,13 @@ fn try_build_snapshot(
         .ok()?;
     let layout_mode = read_sidebar_layout_mode(config).unwrap_or_default();
 
-    *version += 1;
     Some(build_snapshot(
         agents,
         &tmux_state.window_statuses,
         &tmux_state.pane_window_ids,
         tmux_state.active_windows,
         tmux_state.active_pane_ids,
-        tmux_state.window_pane_counts,
         layout_mode,
         status_icons,
-        *version,
     ))
 }

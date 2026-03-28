@@ -12,27 +12,22 @@ use super::app::SidebarLayoutMode;
 /// A complete sidebar state snapshot, pushed from daemon to clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidebarSnapshot {
-    pub version: u64,
     pub layout_mode: SidebarLayoutMode,
     pub active_windows: HashSet<(String, String)>,
     #[serde(default)]
     pub active_pane_ids: HashSet<String>,
-    pub window_pane_counts: HashMap<String, usize>,
     pub agents: Vec<AgentPane>,
 }
 
 /// Build a snapshot from reconciled agents and tmux state.
-#[allow(clippy::too_many_arguments)]
 pub fn build_snapshot(
     mut agents: Vec<AgentPane>,
     tmux_statuses: &HashMap<String, Option<String>>,
     pane_window_ids: &HashMap<String, String>,
     active_windows: HashSet<(String, String)>,
     active_pane_ids: HashSet<String>,
-    window_pane_counts: HashMap<String, usize>,
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
-    version: u64,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
     let waiting_icon = status_icons.waiting();
@@ -80,11 +75,9 @@ pub fn build_snapshot(
     }
 
     SidebarSnapshot {
-        version,
         layout_mode,
         active_windows,
         active_pane_ids,
-        window_pane_counts,
         agents,
     }
 }
