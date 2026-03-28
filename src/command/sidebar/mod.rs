@@ -208,12 +208,8 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
         .run_and_capture_stdout()?;
 
     let sidebar_pane_id = output.lines().find_map(|line| {
-        let parts: Vec<&str> = line.splitn(2, ' ').collect();
-        if parts.len() == 2 && parts[1].trim() == SIDEBAR_ROLE_VALUE {
-            Some(parts[0].to_string())
-        } else {
-            None
-        }
+        let (id, role) = line.split_once(' ')?;
+        (role.trim() == SIDEBAR_ROLE_VALUE).then(|| id.to_string())
     });
 
     let Some(sidebar_pane_id) = sidebar_pane_id else {
