@@ -31,6 +31,7 @@ struct TmuxState {
     active_windows: HashSet<(String, String)>,
     pane_window_ids: HashMap<String, String>,
     active_pane_ids: HashSet<String>,
+    window_pane_counts: HashMap<String, usize>,
 }
 
 /// Query all sidebar-relevant tmux state in a single command.
@@ -45,6 +46,7 @@ fn query_tmux_state() -> TmuxState {
     let mut active_windows = HashSet::new();
     let mut pane_window_ids = HashMap::new();
     let mut active_pane_ids = HashSet::new();
+    let mut window_pane_counts: HashMap<String, usize> = HashMap::new();
 
     for line in output.lines() {
         let mut parts = line.split('\t');
@@ -79,6 +81,7 @@ fn query_tmux_state() -> TmuxState {
         };
         window_statuses.insert(pane_id.to_string(), status_val);
         pane_window_ids.insert(pane_id.to_string(), window_id.to_string());
+        *window_pane_counts.entry(window_id.to_string()).or_default() += 1;
 
         if win_active && sess_attached {
             active_windows.insert((session.to_string(), window_id.to_string()));
@@ -93,6 +96,7 @@ fn query_tmux_state() -> TmuxState {
         active_windows,
         pane_window_ids,
         active_pane_ids,
+        window_pane_counts,
     }
 }
 
@@ -295,6 +299,7 @@ fn try_build_snapshot(
         &tmux_state.pane_window_ids,
         tmux_state.active_windows,
         tmux_state.active_pane_ids,
+        tmux_state.window_pane_counts,
         layout_mode,
         status_icons,
     ))

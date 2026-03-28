@@ -8,6 +8,8 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use std::io;
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use crate::multiplexer::{create_backend, detect_backend};
@@ -15,7 +17,7 @@ use crate::multiplexer::{create_backend, detect_backend};
 use super::app::SidebarApp;
 use super::client;
 use super::daemon_ctrl::{ensure_daemon_running, signal_daemon};
-use super::panes::{is_last_pane_in_window, shutdown_all_sidebars};
+use super::panes::shutdown_all_sidebars;
 use super::ui::render_sidebar;
 
 /// Drop guard that restores terminal state on panic or early return.
@@ -26,6 +28,26 @@ impl Drop for TerminalGuard {
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
     }
+}
+
+enum AppEvent {
+    /// A new snapshot is available in the SnapshotHandle.
+    SnapshotReady,
+    /// A terminal input event (key press, resize, etc.).
+    Input(Event),
+}
+
+/// Spawn a thread that reads terminal events and forwards them.
+/// Must be called AFTER terminal raw mode is enabled.
+fn spawn_input_thread(tx: mpsc::Sender<AppEvent>) {
+    thread::spawn(move || {
+        // event::read() blocks until input is available - zero CPU
+        while let Ok(ev) = event::read() {
+            if tx.send(AppEvent::Input(ev)).is_err() {
+                break;
+            }
+        }
+    });
 }
 
 /// Run the sidebar TUI (called by the hidden `_sidebar-run` command).
@@ -39,103 +61,95 @@ pub fn run_sidebar() -> Result<()> {
     // Ensure daemon is running (may have auto-exited or crashed)
     let sock_path = ensure_daemon_running()?;
 
-    // Connect to daemon (retries in background thread)
-    let receiver = client::SnapshotReceiver::connect(&sock_path);
+    // Setup terminal FIRST (raw mode required before spawning input thread)
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let _guard = TerminalGuard;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = ratatui::Terminal::new(backend)?;
+
+    // Channel for all events
+    let (tx, rx) = mpsc::channel();
+
+    // Snapshot receiver: overwrites latest, sends SnapshotReady wake via
+    // a thin forwarding thread that converts () -> AppEvent::SnapshotReady
+    let snapshot_handle = {
+        let (wake_tx, wake_rx) = mpsc::channel::<()>();
+        let event_tx = tx.clone();
+        thread::spawn(move || {
+            for () in wake_rx {
+                if event_tx.send(AppEvent::SnapshotReady).is_err() {
+                    break;
+                }
+            }
+        });
+        client::connect(&sock_path, wake_tx)
+    };
+
+    // Input reader thread (terminal is already in raw mode)
+    spawn_input_thread(tx);
 
     // Signal daemon to push an immediate snapshot for the newly connected client
     signal_daemon();
 
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-
-    // Drop guard ensures terminal is restored even on panic/error
-    let _guard = TerminalGuard;
-
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = ratatui::Terminal::new(backend)?;
-
     let mut app = SidebarApp::new_client(mux)?;
-
-    // Main loop: 10ms tick for responsive snapshot pickup, spinner every ~250ms
-    let tick_rate = Duration::from_millis(10);
-    let mut last_tick = std::time::Instant::now();
-    let mut spin_counter = 0u32;
-    let last_pane_check_interval = Duration::from_secs(2);
-    let mut last_pane_check = std::time::Instant::now();
-
-    let mut needs_render = true; // Draw on first iteration
+    let mut needs_render = true;
+    let startup = std::time::Instant::now();
+    let startup_grace = Duration::from_secs(3);
 
     loop {
-        // Apply latest snapshot
-        if let Some(snapshot) = receiver.take() {
-            app.apply_snapshot(snapshot);
-            needs_render = true;
-        }
-
-        // Only redraw when state changed (snapshot, key press, spinner tick, resize)
-        if needs_render {
+        // Render before blocking (only when visible and state changed)
+        if needs_render && app.host_window_active() {
             terminal.draw(|f| render_sidebar(f, &mut app))?;
             needs_render = false;
         }
 
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        // Adaptive timeout: 250ms when active (for spinner), block when hidden
+        let timeout = if app.host_window_active() {
+            Duration::from_millis(250)
+        } else {
+            // Block until a snapshot or input wakes us. Use a large timeout
+            // since recv() without timeout would prevent clean shutdown if
+            // all senders drop.
+            Duration::from_secs(3600)
+        };
 
-        if event::poll(timeout)? {
-            match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    match (key.code, key.modifiers) {
-                        (KeyCode::Char('q'), _)
-                        | (KeyCode::Esc, _)
-                        | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
-                            app.should_quit = true;
-                        }
-                        (KeyCode::Char('j'), _) | (KeyCode::Down, _) => {
-                            app.next();
-                        }
-                        (KeyCode::Char('k'), _) | (KeyCode::Up, _) => {
-                            app.previous();
-                        }
-                        (KeyCode::Enter, _) => {
-                            app.jump_to_selected();
-                        }
-                        (KeyCode::Char('G'), _) => {
-                            app.select_last();
-                        }
-                        (KeyCode::Char('g'), _) => {
-                            app.select_first();
-                        }
-                        (KeyCode::Char('v'), _) => {
-                            app.toggle_layout_mode();
-                        }
-                        _ => {}
-                    }
+        let first_event = match rx.recv_timeout(timeout) {
+            Ok(ev) => Some(ev),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Spinner tick (only fires when active, guaranteed by timeout choice)
+                if app.host_window_active() {
+                    app.tick();
                     needs_render = true;
                 }
-                Event::Resize(_, _) => {
-                    needs_render = true;
-                }
-                _ => {} // Non-key events: no continue, bookkeeping always runs
+                continue;
             }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+
+        // Process first event
+        if let Some(ev) = first_event {
+            process_event(
+                ev,
+                &mut app,
+                &snapshot_handle,
+                &startup,
+                startup_grace,
+                &mut needs_render,
+            );
         }
 
-        if last_tick.elapsed() >= tick_rate {
-            last_tick = std::time::Instant::now();
-            spin_counter += 1;
-            // Tick spinner every ~250ms (every 25th tick at 10ms)
-            if spin_counter.is_multiple_of(25) {
-                app.tick();
-                needs_render = true;
-            }
-        }
-
-        // Check if last pane periodically
-        if last_pane_check.elapsed() >= last_pane_check_interval {
-            last_pane_check = std::time::Instant::now();
-            if is_last_pane_in_window() {
-                app.should_quit = true;
-            }
+        // Drain all pending events to coalesce (avoids multiple redraws)
+        while let Ok(ev) = rx.try_recv() {
+            process_event(
+                ev,
+                &mut app,
+                &snapshot_handle,
+                &startup,
+                startup_grace,
+                &mut needs_render,
+            );
         }
 
         if app.should_quit {
@@ -146,4 +160,50 @@ pub fn run_sidebar() -> Result<()> {
 
     // _guard handles cleanup on drop (including the normal exit path)
     Ok(())
+}
+
+fn process_event(
+    event: AppEvent,
+    app: &mut SidebarApp,
+    snapshot_handle: &client::SnapshotHandle,
+    startup: &std::time::Instant,
+    startup_grace: Duration,
+    needs_render: &mut bool,
+) {
+    match event {
+        AppEvent::SnapshotReady => {
+            if let Some(snapshot) = snapshot_handle.take() {
+                // Check last-pane using snapshot data (with startup grace period)
+                if startup.elapsed() > startup_grace
+                    && let Some(wid) = app.host_window_id()
+                    && snapshot.window_pane_counts.get(wid).copied().unwrap_or(2) <= 1
+                {
+                    app.should_quit = true;
+                }
+                app.apply_snapshot(snapshot);
+                *needs_render = true;
+            }
+        }
+        AppEvent::Input(Event::Key(key)) if key.kind == KeyEventKind::Press => {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('q'), _)
+                | (KeyCode::Esc, _)
+                | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
+                    app.should_quit = true;
+                }
+                (KeyCode::Char('j'), _) | (KeyCode::Down, _) => app.next(),
+                (KeyCode::Char('k'), _) | (KeyCode::Up, _) => app.previous(),
+                (KeyCode::Enter, _) => app.jump_to_selected(),
+                (KeyCode::Char('G'), _) => app.select_last(),
+                (KeyCode::Char('g'), _) => app.select_first(),
+                (KeyCode::Char('v'), _) => app.toggle_layout_mode(),
+                _ => {}
+            }
+            *needs_render = true;
+        }
+        AppEvent::Input(Event::Resize(_, _)) => {
+            *needs_render = true;
+        }
+        AppEvent::Input(_) => {}
+    }
 }

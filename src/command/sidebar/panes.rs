@@ -164,15 +164,6 @@ pub(super) fn kill_all_sidebars_and_restore_layouts() {
     }
 }
 
-/// Check if the sidebar is the only pane left in its window.
-pub(super) fn is_last_pane_in_window() -> bool {
-    Cmd::new("tmux")
-        .args(&["list-panes", "-F", "#{pane_id}"])
-        .run_and_capture_stdout()
-        .map(|s| s.lines().count() <= 1)
-        .unwrap_or(false)
-}
-
 /// Shut down all sidebars globally (called when any sidebar quits).
 /// Kills all other sidebar panes immediately, then defers our own window's
 /// layout restore so it fires after our process exits and the pane closes.

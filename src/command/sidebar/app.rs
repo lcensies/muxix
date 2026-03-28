@@ -177,6 +177,14 @@ impl SidebarApp {
         }
     }
 
+    pub fn host_window_id(&self) -> Option<&str> {
+        self.host_window_id.as_deref()
+    }
+
+    pub fn host_window_active(&self) -> bool {
+        self.host_window_active
+    }
+
     pub fn tick(&mut self) {
         self.spinner_frame = self.spinner_frame.wrapping_add(1) % 10;
     }

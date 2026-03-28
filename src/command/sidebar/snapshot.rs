@@ -16,16 +16,21 @@ pub struct SidebarSnapshot {
     pub active_windows: HashSet<(String, String)>,
     #[serde(default)]
     pub active_pane_ids: HashSet<String>,
+    /// Number of panes per window (used by clients to detect last-pane condition).
+    #[serde(default)]
+    pub window_pane_counts: HashMap<String, usize>,
     pub agents: Vec<AgentPane>,
 }
 
 /// Build a snapshot from reconciled agents and tmux state.
+#[allow(clippy::too_many_arguments)]
 pub fn build_snapshot(
     mut agents: Vec<AgentPane>,
     tmux_statuses: &HashMap<String, Option<String>>,
     pane_window_ids: &HashMap<String, String>,
     active_windows: HashSet<(String, String)>,
     active_pane_ids: HashSet<String>,
+    window_pane_counts: HashMap<String, usize>,
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
 ) -> SidebarSnapshot {
@@ -78,6 +83,7 @@ pub fn build_snapshot(
         layout_mode,
         active_windows,
         active_pane_ids,
+        window_pane_counts,
         agents,
     }
 }
