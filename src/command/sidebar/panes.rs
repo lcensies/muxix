@@ -130,9 +130,8 @@ pub(super) fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
     Ok(())
 }
 
-/// Kill all sidebar panes and restore the original layout in each window.
-pub(super) fn kill_all_sidebars_and_restore_layouts() {
-    // Find all sidebar panes with their window IDs
+/// Find all sidebar panes across all windows. Returns (window_id, pane_id) pairs.
+fn list_sidebar_panes() -> Vec<(String, String)> {
     let output = Cmd::new("tmux")
         .args(&[
             "list-panes",
@@ -143,18 +142,24 @@ pub(super) fn kill_all_sidebars_and_restore_layouts() {
         .run_and_capture_stdout()
         .unwrap_or_default();
 
-    let mut windows_with_sidebars = Vec::new();
+    output
+        .lines()
+        .filter_map(|line| {
+            let (window_id, rest) = line.split_once(' ')?;
+            let (pane_id, role) = rest.split_once(' ')?;
+            (role.trim() == SIDEBAR_ROLE_VALUE)
+                .then(|| (window_id.to_string(), pane_id.to_string()))
+        })
+        .collect()
+}
 
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
-            windows_with_sidebars.push(parts[0].to_string());
-            let _ = Cmd::new("tmux").args(&["kill-pane", "-t", parts[1]]).run();
-        }
+/// Kill all sidebar panes and restore the original layout in each window.
+pub(super) fn kill_all_sidebars_and_restore_layouts() {
+    let sidebars = list_sidebar_panes();
+    for (_, pane_id) in &sidebars {
+        let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
     }
-
-    // Restore saved layouts
-    for window_id in &windows_with_sidebars {
+    for (window_id, _) in &sidebars {
         restore_window_layout(window_id);
     }
 }
@@ -185,26 +190,13 @@ pub(super) fn shutdown_all_sidebars() {
         .trim()
         .to_string();
 
-    let output = Cmd::new("tmux")
-        .args(&[
-            "list-panes",
-            "-a",
-            "-F",
-            "#{window_id} #{pane_id} #{@workmux_role}",
-        ])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
-
+    let sidebars = list_sidebar_panes();
     let mut other_windows = Vec::new();
 
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        if parts.len() == 3 && parts[2].trim() == SIDEBAR_ROLE_VALUE {
-            let pane_id = parts[1].trim();
-            if pane_id != our_pane {
-                other_windows.push(parts[0].to_string());
-                let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
-            }
+    for (window_id, pane_id) in &sidebars {
+        if pane_id != &our_pane {
+            other_windows.push(window_id.clone());
+            let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
         }
     }
 
