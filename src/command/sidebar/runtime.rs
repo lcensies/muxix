@@ -8,9 +8,23 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use std::io;
+use std::io::Write as IoWrite;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+
+fn dbg_log(msg: &str) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/workmux-sidebar-debug.log")
+    {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let _ = writeln!(f, "[{:.3}] {}", now.as_secs_f64(), msg);
+    }
+}
 
 use crate::multiplexer::{create_backend, detect_backend};
 
@@ -92,8 +106,15 @@ pub fn run_sidebar() -> Result<()> {
 
     // Signal daemon to push an immediate snapshot for the newly connected client
     signal_daemon();
+    dbg_log("signal_daemon() called");
 
     let mut app = SidebarApp::new_client(mux)?;
+    dbg_log(&format!(
+        "app created: agents={} host_active={} host_wid={:?}",
+        app.agents.len(),
+        app.host_window_active(),
+        app.host_window_id(),
+    ));
     let mut needs_render = true;
     let startup = std::time::Instant::now();
     let startup_grace = Duration::from_secs(3);
@@ -101,6 +122,14 @@ pub fn run_sidebar() -> Result<()> {
     loop {
         // Render before blocking (redraws only when state changed)
         if needs_render {
+            dbg_log(&format!(
+                "RENDER: agents={} selected={:?} host_active={} term={}x{}",
+                app.agents.len(),
+                app.list_state.selected(),
+                app.host_window_active(),
+                terminal.size().map(|s| s.width).unwrap_or(0),
+                terminal.size().map(|s| s.height).unwrap_or(0),
+            ));
             terminal.draw(|f| render_sidebar(f, &mut app))?;
             needs_render = false;
         }
@@ -173,6 +202,12 @@ fn process_event(
     match event {
         AppEvent::SnapshotReady => {
             if let Some(snapshot) = snapshot_handle.take() {
+                dbg_log(&format!(
+                    "SNAPSHOT: agents={} active_windows={:?} host_active_before={}",
+                    snapshot.agents.len(),
+                    snapshot.active_windows,
+                    app.host_window_active(),
+                ));
                 // Check last-pane using snapshot data (with startup grace period)
                 if startup.elapsed() > startup_grace
                     && let Some(wid) = app.host_window_id()
@@ -181,10 +216,19 @@ fn process_event(
                     app.should_quit = true;
                 }
                 app.apply_snapshot(snapshot);
+                dbg_log(&format!(
+                    "APPLIED: agents={} host_active={} host_idx={:?}",
+                    app.agents.len(),
+                    app.host_window_active(),
+                    app.host_agent_idx,
+                ));
                 *needs_render = true;
+            } else {
+                dbg_log("SNAPSHOT: take() returned None");
             }
         }
         AppEvent::Input(Event::Key(key)) if key.kind == KeyEventKind::Press => {
+            dbg_log(&format!("KEY: {:?}", key.code));
             match (key.code, key.modifiers) {
                 (KeyCode::Char('q'), _)
                 | (KeyCode::Esc, _)
