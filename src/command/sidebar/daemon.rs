@@ -35,7 +35,7 @@ struct TmuxState {
 
 /// Query all sidebar-relevant tmux state in a single command.
 fn query_tmux_state() -> TmuxState {
-    let format = "#{pane_id}\t#{session_name}\t#{window_name}\t#{window_id}\t#{@workmux_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
+    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
@@ -47,19 +47,30 @@ fn query_tmux_state() -> TmuxState {
     let mut active_pane_ids = HashSet::new();
 
     for line in output.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 8 {
+        let mut parts = line.split('\t');
+        let (
+            Some(pane_id),
+            Some(session),
+            Some(window_id),
+            Some(status),
+            Some(win_active),
+            Some(sess_attached),
+            Some(pane_active),
+        ) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        )
+        else {
             continue;
-        }
-
-        let pane_id = parts[0];
-        let session = parts[1];
-        let _window_name = parts[2];
-        let window_id = parts[3];
-        let status = parts[4];
-        let win_active = parts[5] == "1";
-        let sess_attached = parts[6] == "1";
-        let pane_active = parts[7] == "1";
+        };
+        let win_active = win_active == "1";
+        let sess_attached = sess_attached == "1";
+        let pane_active = pane_active == "1";
 
         let status_val = if status.is_empty() {
             None
