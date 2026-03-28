@@ -140,17 +140,32 @@ impl SocketServer {
     }
 }
 
-/// Read the sidebar layout mode from the tmux global option.
+/// Read the sidebar layout mode from tmux global, falling back to settings.json.
 fn read_sidebar_layout_mode() -> Option<SidebarLayoutMode> {
-    let output = Cmd::new("tmux")
+    // Check tmux global first (set by toggle_layout_mode during this session)
+    if let Ok(output) = Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_layout"])
         .run_and_capture_stdout()
-        .ok()?;
-    match output.trim() {
-        "tiles" => Some(SidebarLayoutMode::Tiles),
-        "compact" => Some(SidebarLayoutMode::Compact),
-        _ => None,
+    {
+        match output.trim() {
+            "tiles" => return Some(SidebarLayoutMode::Tiles),
+            "compact" => return Some(SidebarLayoutMode::Compact),
+            _ => {}
+        }
     }
+
+    // Fall back to persisted setting
+    if let Ok(store) = StateStore::new()
+        && let Ok(settings) = store.load_settings()
+    {
+        match settings.sidebar_layout.as_deref() {
+            Some("tiles") => return Some(SidebarLayoutMode::Tiles),
+            Some("compact") => return Some(SidebarLayoutMode::Compact),
+            _ => {}
+        }
+    }
+
+    None
 }
 
 /// Run the sidebar daemon (headless, no TUI).

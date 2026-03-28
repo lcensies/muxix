@@ -160,6 +160,10 @@ pub struct GlobalSettings {
     /// Cycle state for the last-done command
     #[serde(default)]
     pub last_done_cycle: Option<LastDoneCycleState>,
+
+    /// Sidebar layout mode: "compact" or "tiles"
+    #[serde(default)]
+    pub sidebar_layout: Option<String>,
 }
 
 /// Tracks which pane last-done navigated to, so repeated presses cycle

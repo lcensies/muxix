@@ -19,8 +19,8 @@ use super::snapshot::SidebarSnapshot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SidebarLayoutMode {
-    #[default]
     Compact,
+    #[default]
     Tiles,
 }
 
@@ -242,7 +242,7 @@ impl SidebarApp {
             SidebarLayoutMode::Compact => SidebarLayoutMode::Tiles,
             SidebarLayoutMode::Tiles => SidebarLayoutMode::Compact,
         };
-        // Persist to tmux so all sidebar instances pick it up
+        // Persist to tmux so all sidebar instances pick it up immediately
         let _ = Cmd::new("tmux")
             .args(&[
                 "set-option",
@@ -251,6 +251,13 @@ impl SidebarApp {
                 self.layout_mode.as_str(),
             ])
             .run();
+        // Persist to settings.json so it survives tmux restarts
+        if let Ok(store) = crate::state::StateStore::new()
+            && let Ok(mut settings) = store.load_settings()
+        {
+            settings.sidebar_layout = Some(self.layout_mode.as_str().to_string());
+            let _ = store.save_settings(&settings);
+        }
     }
 
     pub fn window_prefix(&self) -> &str {

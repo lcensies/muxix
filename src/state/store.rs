@@ -519,6 +519,7 @@ mod tests {
             dashboard_scope: Some("session".to_string()),
             worktree_sort_mode: Some("age".to_string()),
             last_done_cycle: None,
+            sidebar_layout: None,
         };
 
         store.save_settings(&settings).unwrap();
