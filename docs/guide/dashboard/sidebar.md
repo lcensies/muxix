@@ -40,8 +40,23 @@ Each agent is displayed as a tile showing:
 - Project and worktree name (e.g. `myproject/fix-bug`)
 - Elapsed time since last status change
 
-The width is auto-computed as ~10% of terminal width (clamped between 25 and 50
-columns).
+## Configuration
+
+Configure the sidebar in your global `~/.config/workmux/config.yaml` or project
+`.workmux.yaml`:
+
+```yaml
+sidebar:
+  # Width: absolute columns or percentage of terminal width
+  width: 40 # absolute columns
+  # width: "15%"  # percentage of terminal width
+
+  # Layout mode: "compact" or "tiles" (default)
+  layout: tiles
+```
+
+Width defaults to 10% of terminal width, clamped between 25 and 50 columns.
+When set explicitly, the clamp is removed (minimum 10 columns).
 
 ## Layout modes
 

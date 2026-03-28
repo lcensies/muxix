@@ -1,10 +1,10 @@
 ---
-description: Toggle a compact agent status sidebar across all tmux windows
+description: Toggle a live agent status sidebar in tmux
 ---
 
 # sidebar
 
-Toggles a compact agent status sidebar on the left side of all tmux windows.
+Toggles a live agent status sidebar on the left side of all tmux windows.
 Shows all active agents across all sessions and projects with live status
 updates.
 
@@ -57,6 +57,19 @@ bind -n M-3 run-shell "workmux sidebar jump 3"
 bind C-j run-shell "workmux sidebar next"
 bind C-k run-shell "workmux sidebar prev"
 ```
+
+## Configuration
+
+```yaml
+sidebar:
+  width: 40 # absolute columns (default: "10%", clamped 25-50)
+  # width: "15%"  # or percentage of terminal width
+  layout: tiles # "compact" or "tiles" (default)
+```
+
+Explicit width values bypass the default 25-50 column clamp (minimum 10
+columns). Layout preference can also be toggled at runtime with `v` and is
+persisted across restarts.
 
 ## How it works
 

@@ -1573,10 +1573,10 @@ Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 ### `workmux sidebar`
 
-Toggles a compact agent status sidebar on the left side of all tmux windows.
-The sidebar shows all active agents across all sessions and projects with live
-status updates, providing an always-visible overview without taking over the
-full screen like the dashboard.
+Toggles a live agent status sidebar on the left side of all tmux windows. Shows
+all active agents across all sessions and projects with live status updates,
+providing an always-visible overview without taking over the full screen like the
+dashboard.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
@@ -1593,7 +1593,16 @@ The sidebar displays:
 | `j`/`k` | Navigate up/down    |
 | `Enter` | Jump to agent       |
 | `g`/`G` | Jump to first/last  |
+| `v`     | Toggle layout mode  |
 | `q`     | Quit sidebar        |
+
+Configure width and layout in `.workmux.yaml`:
+
+```yaml
+sidebar:
+  width: 40       # absolute columns, or "15%" for percentage
+  layout: tiles   # "compact" or "tiles" (default)
+```
 
 #### Example tmux binding
 
