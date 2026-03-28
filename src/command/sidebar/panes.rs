@@ -9,6 +9,7 @@ use super::SIDEBAR_ROLE_VALUE;
 use super::daemon_ctrl::kill_daemon;
 use super::hooks::remove_hooks;
 use super::layout::{restore_window_layout, save_window_layout};
+use super::layout_tree::reflow_after_sidebar_add;
 
 /// Check if a window already has a sidebar pane.
 pub(super) fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
@@ -75,23 +76,15 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
         ])
         .run()?;
 
-    // Explicitly resize to target width (split-window -l can be inexact
-    // depending on existing layout geometry)
-    let _ = Cmd::new("tmux")
-        .args(&["resize-pane", "-t", &new_pane_id, "-x", &width_str])
-        .run();
+    // Reflow the layout tree so content panes share the remaining width
+    // proportionally. This is an atomic select-layout operation that avoids
+    // the lopsided splits caused by split-window stealing from one pane only.
+    reflow_after_sidebar_add(window_id, &new_pane_id, width);
 
-    // Log the actual resulting width for debugging
-    let actual_width = Cmd::new("tmux")
-        .args(&["display-message", "-t", &new_pane_id, "-p", "#{pane_width}"])
-        .run_and_capture_stdout()
-        .ok()
-        .unwrap_or_default();
     debug!(
         window_id,
         pane_id = new_pane_id.as_str(),
         requested_width = width,
-        actual_width = actual_width.trim(),
         "create_sidebar_in_window: done"
     );
 

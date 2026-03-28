@@ -13,6 +13,7 @@
 //! - `daemon_ctrl` - daemon lifecycle (spawn, kill, signal, health checks)
 //! - `hooks` - tmux hook installation and removal
 //! - `layout` - window layout save/restore for toggle cycles
+//! - `layout_tree` - tmux layout tree parser and reflow for balanced pane widths
 //! - `panes` - sidebar pane creation, destruction, and shutdown
 //! - `runtime` - TUI event loop
 //! - `snapshot` - snapshot data types and builder
@@ -24,6 +25,7 @@ mod daemon;
 mod daemon_ctrl;
 mod hooks;
 mod layout;
+mod layout_tree;
 mod panes;
 mod runtime;
 mod snapshot;
