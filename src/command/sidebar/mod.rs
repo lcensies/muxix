@@ -58,8 +58,11 @@ fn terminal_width() -> u16 {
 
 /// Resolve sidebar width from config, falling back to 10% of terminal (clamped 25-50).
 fn resolve_width(config: &crate::config::Config) -> u16 {
-    let tw = terminal_width();
+    resolve_width_for(config, terminal_width())
+}
 
+/// Resolve sidebar width for a given terminal/window width.
+fn resolve_width_for(config: &crate::config::Config, tw: u16) -> u16 {
     if let Some(ref w) = config.sidebar.width {
         // Explicit config: respect it, only enforce a minimum of 10
         return w.resolve(tw).max(10);
@@ -168,6 +171,67 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         });
     create_sidebar_in_window(&target, width)?;
 
+    Ok(())
+}
+
+/// Reflow sidebar layout after a window resize (called by tmux hook).
+///
+/// Finds the sidebar pane in the target window and runs the layout tree
+/// reflow to keep the sidebar at the correct width and content panes balanced.
+pub fn reflow(window_id: Option<&str>) -> Result<()> {
+    if !is_sidebar_enabled() {
+        return Ok(());
+    }
+
+    let target = match window_id {
+        Some(id) => id.to_string(),
+        None => Cmd::new("tmux")
+            .args(&["display-message", "-p", "#{window_id}"])
+            .run_and_capture_stdout()?
+            .trim()
+            .to_string(),
+    };
+
+    if target.is_empty() {
+        return Ok(());
+    }
+
+    // Find the sidebar pane ID in this window
+    let output = Cmd::new("tmux")
+        .args(&[
+            "list-panes",
+            "-t",
+            &target,
+            "-F",
+            "#{pane_id} #{@workmux_role}",
+        ])
+        .run_and_capture_stdout()?;
+
+    let sidebar_pane_id = output.lines().find_map(|line| {
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() == 2 && parts[1].trim() == SIDEBAR_ROLE_VALUE {
+            Some(parts[0].to_string())
+        } else {
+            None
+        }
+    });
+
+    let Some(sidebar_pane_id) = sidebar_pane_id else {
+        return Ok(());
+    };
+
+    // Compute sidebar width based on the target window's width (not the client's,
+    // since the window may belong to a different session with different dimensions)
+    let config = crate::config::Config::load(None).unwrap_or_default();
+    let window_w: u16 = Cmd::new("tmux")
+        .args(&["display-message", "-t", &target, "-p", "#{window_width}"])
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let width = resolve_width_for(&config, window_w);
+
+    layout_tree::reflow_after_sidebar_add(&target, &sidebar_pane_id, width);
     Ok(())
 }
 
