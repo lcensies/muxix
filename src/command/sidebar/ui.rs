@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
@@ -376,27 +377,31 @@ fn status_icon_and_style(
     app: &SidebarApp,
     status: Option<AgentStatus>,
     is_stale: bool,
-) -> (String, Style) {
+) -> (Cow<'static, str>, Style) {
     if is_stale {
-        return ("💤".to_string(), Style::default().fg(app.palette.dimmed));
+        return (Cow::Borrowed("💤"), Style::default().fg(app.palette.dimmed));
     }
     match status {
         Some(AgentStatus::Working) => {
-            let icon = app.status_icons.working.clone().unwrap_or_else(|| {
-                let frames: &[&str] = &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
-                frames[app.spinner_frame as usize % frames.len()].to_string()
-            });
+            let icon = match &app.status_icons.working {
+                Some(custom) => Cow::Owned(custom.clone()),
+                None => {
+                    let frames: &[&str] =
+                        &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
+                    Cow::Borrowed(frames[app.spinner_frame as usize % frames.len()])
+                }
+            };
             (icon, Style::default().fg(app.palette.info))
         }
         Some(AgentStatus::Waiting) => (
-            app.status_icons.waiting().to_string(),
+            Cow::Owned(app.status_icons.waiting().to_string()),
             Style::default().fg(app.palette.accent),
         ),
         Some(AgentStatus::Done) => (
-            app.status_icons.done().to_string(),
+            Cow::Owned(app.status_icons.done().to_string()),
             Style::default().fg(app.palette.success),
         ),
-        None => ("  ".to_string(), Style::default().fg(app.palette.dimmed)),
+        None => (Cow::Borrowed("  "), Style::default().fg(app.palette.dimmed)),
     }
 }
 
