@@ -91,6 +91,7 @@ export default defineConfig({
           { text: "Diff view", link: "/guide/dashboard/diff-view" },
           { text: "Patch mode", link: "/guide/dashboard/patch-mode" },
           { text: "Configuration", link: "/guide/dashboard/configuration" },
+          { text: 'Sidebar <span style="font-size:0.75em;background:var(--vp-c-green-soft);color:var(--vp-c-green-1);padding:2px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;font-weight:500">New</span>', link: "/guide/dashboard/sidebar" },
         ],
       },
       {
@@ -133,6 +134,7 @@ export default defineConfig({
           { text: "sync-files", link: "/reference/commands/sync-files" },
           { text: "path", link: "/reference/commands/path" },
           { text: "dashboard", link: "/reference/commands/dashboard" },
+          { text: "sidebar", link: "/reference/commands/sidebar" },
           { text: "init", link: "/reference/commands/init" },
           { text: "claude prune", link: "/reference/commands/claude" },
           { text: "sandbox", link: "/reference/commands/sandbox" },
