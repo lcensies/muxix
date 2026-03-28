@@ -53,18 +53,22 @@ fn wait_for_socket(instance_id: &str, timeout: Duration) -> bool {
     false
 }
 
-/// Kill the sidebar daemon (sends SIGTERM, cleans up tmux option).
-pub(super) fn kill_daemon() {
-    if let Ok(pid_str) = Cmd::new("tmux")
+/// Read the daemon PID from the tmux global option.
+fn daemon_pid() -> Option<String> {
+    Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@workmux_sidebar_daemon_pid"])
         .run_and_capture_stdout()
-    {
-        let pid = pid_str.trim();
-        if !pid.is_empty() {
-            let _ = std::process::Command::new("kill")
-                .args(["-TERM", pid])
-                .status();
-        }
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Kill the sidebar daemon (sends SIGTERM, cleans up tmux option).
+pub(super) fn kill_daemon() {
+    if let Some(pid) = daemon_pid() {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid])
+            .status();
     }
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
@@ -73,11 +77,9 @@ pub(super) fn kill_daemon() {
 
 /// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
 pub(super) fn signal_daemon() {
-    let _ = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    if let Some(pid) = daemon_pid() {
+        let _ = std::process::Command::new("kill")
+            .args(["-USR1", &pid])
+            .status();
+    }
 }
