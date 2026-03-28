@@ -97,21 +97,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_u16(&mut self) -> Option<u16> {
-        let start = self.pos;
-        while self.peek().is_some_and(|b| b.is_ascii_digit()) {
-            self.advance();
-        }
-        if self.pos == start {
-            return None;
-        }
-        std::str::from_utf8(&self.input[start..self.pos])
-            .ok()?
-            .parse()
-            .ok()
-    }
-
-    fn parse_u32(&mut self) -> Option<u32> {
+    fn parse_num<T: std::str::FromStr>(&mut self) -> Option<T> {
         let start = self.pos;
         while self.peek().is_some_and(|b| b.is_ascii_digit()) {
             self.advance();
@@ -127,13 +113,13 @@ impl<'a> Parser<'a> {
 
     /// Parse `WxH,X,Y` prefix shared by all node types.
     fn parse_rect(&mut self) -> Option<Rect> {
-        let w = self.parse_u16()?;
+        let w = self.parse_num()?;
         self.expect(b'x')?;
-        let h = self.parse_u16()?;
+        let h = self.parse_num()?;
         self.expect(b',')?;
-        let x = self.parse_u16()?;
+        let x = self.parse_num()?;
         self.expect(b',')?;
-        let y = self.parse_u16()?;
+        let y = self.parse_num()?;
         Some(Rect { w, h, x, y })
     }
 
@@ -154,7 +140,7 @@ impl<'a> Parser<'a> {
             }
             Some(b',') => {
                 self.advance();
-                let pane_id = self.parse_u32()?;
+                let pane_id = self.parse_num()?;
                 Some(LayoutNode::Leaf { rect, pane_id })
             }
             _ => None,
