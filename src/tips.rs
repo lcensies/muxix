@@ -47,6 +47,10 @@ fn save_tips(state: &TipsState) {
 /// - sidebar has not been used before
 /// - tip has been shown fewer than 5 times
 pub fn should_show_sidebar_tip() -> bool {
+    // TODO: enable when sidebar is ready for promotion
+    if true {
+        return false;
+    }
     if std::env::var("TMUX").is_err() {
         return false;
     }
