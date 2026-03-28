@@ -18,6 +18,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.157 (2026-03-28)
+
+- Fix `last-done` sometimes navigating to the wrong agent when multiple agents
+  finish close together
+- `last-done` cycling is now reliable across repeated invocations, persisting
+  state so the cycle survives even if the sorted order shifts
+
 ## v0.1.156 (2026-03-27)
 
 - Dashboard now uses configured `main_branch` for diff base detection
