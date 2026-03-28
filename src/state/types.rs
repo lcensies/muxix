@@ -156,6 +156,24 @@ pub struct GlobalSettings {
     /// Worktree sort mode: "natural", "age", "name", "project"
     #[serde(default)]
     pub worktree_sort_mode: Option<String>,
+
+    /// Cycle state for the last-done command
+    #[serde(default)]
+    pub last_done_cycle: Option<LastDoneCycleState>,
+}
+
+/// Tracks which pane last-done navigated to, so repeated presses cycle
+/// through the list instead of always jumping to index 0.
+///
+/// The cycle resets when a new agent appears at the top of the sorted list
+/// (detected by `head_ts` changing).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct LastDoneCycleState {
+    /// The pane that last-done most recently switched to.
+    pub target: PaneKey,
+    /// status_ts of the most recent done/waiting agent when the cycle started.
+    /// If this changes, a new agent has finished and the cycle resets.
+    pub head_ts: Option<u64>,
 }
 
 #[cfg(test)]

@@ -518,6 +518,7 @@ mod tests {
             last_pane_id: Some("%5".to_string()),
             dashboard_scope: Some("session".to_string()),
             worktree_sort_mode: Some("age".to_string()),
+            last_done_cycle: None,
         };
 
         store.save_settings(&settings).unwrap();
