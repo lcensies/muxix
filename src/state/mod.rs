@@ -4,7 +4,7 @@
 //! terminal multiplexer backends (tmux, WezTerm, Zellij).
 
 pub mod run;
-pub(crate) mod store;
+pub mod store;
 mod types;
 
 use std::time::{SystemTime, UNIX_EPOCH};

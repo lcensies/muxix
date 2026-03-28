@@ -19,6 +19,7 @@ mod skills;
 mod spinner;
 mod state;
 mod template;
+mod tips;
 mod util;
 mod workflow;
 

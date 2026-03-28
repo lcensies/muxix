@@ -83,6 +83,9 @@ pub fn toggle(width: Option<u16>) -> Result<()> {
         return Ok(());
     }
 
+    // Mark sidebar as used so the dashboard tip is dismissed
+    let _ = std::thread::spawn(crate::tips::mark_sidebar_used);
+
     // Current window missing sidebar → enable/repair globally
     let width_str = width.to_string();
     Cmd::new("tmux")

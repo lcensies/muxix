@@ -30,18 +30,38 @@ fn render_tab_header(f: &mut Frame, app: &App, area: Rect) {
         DashboardTab::Worktrees => (inactive_style, active_style),
     };
 
-    let tabs = Line::from(vec![
+    let tabs_spans = vec![
         Span::raw("  "),
         Span::styled("Agents", agents_style),
         Span::styled(" \u{2502} ", pipe_style),
         Span::styled("Worktrees", worktrees_style),
-    ]);
+    ];
     let rule = Line::from(Span::styled(
         "\u{2500}".repeat(area.width as usize),
         rule_style,
     ));
 
-    f.render_widget(Paragraph::new(vec![tabs, rule]), area);
+    if app.show_sidebar_tip {
+        let tip_new = Style::default().fg(app.palette.header);
+        let tip_text = Style::default().fg(app.palette.text);
+        let tip_accent = Style::default().fg(app.palette.accent);
+        let tip_line = Line::from(vec![
+            Span::styled("New: ", tip_new),
+            Span::styled("Check out ", tip_text),
+            Span::styled("workmux sidebar ", tip_accent),
+        ]);
+        let tip_width = 32u16;
+        let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(tip_width)])
+            .split(Rect::new(area.x, area.y, area.width, 1));
+        f.render_widget(Paragraph::new(Line::from(tabs_spans)), cols[0]);
+        f.render_widget(Paragraph::new(tip_line), cols[1]);
+        f.render_widget(
+            Paragraph::new(rule),
+            Rect::new(area.x, area.y + 1, area.width, 1),
+        );
+    } else {
+        f.render_widget(Paragraph::new(vec![Line::from(tabs_spans), rule]), area);
+    }
 }
 
 /// Render the dashboard view (table + preview + footer).

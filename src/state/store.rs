@@ -338,7 +338,7 @@ fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
 /// Get the XDG state directory.
 ///
 /// Checks XDG_STATE_HOME first, falls back to ~/.local/state.
-pub(crate) fn get_state_dir() -> Result<PathBuf> {
+pub fn get_state_dir() -> Result<PathBuf> {
     if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
         return Ok(PathBuf::from(state_home));
     }
