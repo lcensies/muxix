@@ -75,7 +75,7 @@ pub fn run_sidebar() -> Result<()> {
     // Snapshot receiver: overwrites latest, sends SnapshotReady wake via
     // a thin forwarding thread that converts () -> AppEvent::SnapshotReady
     let snapshot_handle = {
-        let (wake_tx, wake_rx) = mpsc::channel::<()>();
+        let (wake_tx, wake_rx) = mpsc::sync_channel::<()>(1);
         let event_tx = tx.clone();
         thread::spawn(move || {
             for () in wake_rx {

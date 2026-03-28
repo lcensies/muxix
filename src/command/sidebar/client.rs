@@ -29,7 +29,7 @@ impl SnapshotHandle {
 ///
 /// Returns the handle for taking snapshots. The caller should select on
 /// `wake_rx` to know when new data is available.
-pub fn connect(socket_path: &Path, wake_tx: mpsc::Sender<()>) -> SnapshotHandle {
+pub fn connect(socket_path: &Path, wake_tx: mpsc::SyncSender<()>) -> SnapshotHandle {
     let latest: Latest = Arc::new(Mutex::new(None));
     let latest_clone = latest.clone();
     let path = socket_path.to_path_buf();
@@ -41,7 +41,7 @@ pub fn connect(socket_path: &Path, wake_tx: mpsc::Sender<()>) -> SnapshotHandle 
     SnapshotHandle { latest }
 }
 
-fn connection_loop(path: &Path, latest: &Latest, wake_tx: &mpsc::Sender<()>) {
+fn connection_loop(path: &Path, latest: &Latest, wake_tx: &mpsc::SyncSender<()>) {
     let min_backoff = Duration::from_millis(50);
     let max_backoff = Duration::from_secs(2);
     // PID-based jitter to prevent 12 clients from phase-locking reconnects
@@ -72,7 +72,7 @@ fn connection_loop(path: &Path, latest: &Latest, wake_tx: &mpsc::Sender<()>) {
 fn read_loop(
     mut stream: UnixStream,
     latest: &Latest,
-    wake_tx: &mpsc::Sender<()>,
+    wake_tx: &mpsc::SyncSender<()>,
 ) -> Result<(), mpsc::SendError<()>> {
     const MAX_PAYLOAD: usize = 1024 * 1024; // 1MB sanity limit
     loop {
@@ -92,7 +92,11 @@ fn read_loop(
 
         if let Ok(snapshot) = serde_json::from_slice::<SidebarSnapshot>(&buf) {
             *latest.lock().unwrap() = Some(snapshot);
-            wake_tx.send(())?; // Err = main thread exited
+            // try_send: if a wake is already pending, skip (coalesces)
+            // Full = no-op (wake already queued), Disconnected = main exited
+            if let Err(mpsc::TrySendError::Disconnected(())) = wake_tx.try_send(()) {
+                return Err(mpsc::SendError(()));
+            }
         }
     }
 }
