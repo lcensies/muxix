@@ -5,13 +5,13 @@ use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::agent_display::{extract_project_name, extract_worktree_name};
 use crate::cmd::Cmd;
-use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
 use crate::config::{Config, StatusIcons};
 
 use crate::multiplexer::{AgentPane, Multiplexer};
 
-use crate::command::dashboard::ui::theme::ThemePalette;
+use crate::ui::theme::ThemePalette;
 
 use super::snapshot::SidebarSnapshot;
 

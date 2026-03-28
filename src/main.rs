@@ -1,3 +1,4 @@
+mod agent_display;
 mod agent_setup;
 mod claude;
 mod cli;
@@ -20,6 +21,7 @@ mod spinner;
 mod state;
 mod template;
 mod tips;
+mod ui;
 mod util;
 mod workflow;
 

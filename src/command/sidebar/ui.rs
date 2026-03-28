@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
-use crate::command::dashboard::agent::{extract_project_name, extract_worktree_name};
+use crate::agent_display::{extract_project_name, extract_worktree_name};
 use crate::multiplexer::{AgentPane, AgentStatus};
 
 use super::app::{SidebarApp, SidebarLayoutMode};
