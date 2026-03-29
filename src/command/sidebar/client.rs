@@ -20,7 +20,9 @@ fn client_log(msg: &str) {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
         let pid = std::process::id();
-        let _ = writeln!(f, "[{:.3}] CLIENT({}): {}", now.as_secs_f64(), pid, msg);
+        // Format entire line first, then single write_all for atomic O_APPEND
+        let line = format!("[{:.3}] CLIENT({}): {}\n", now.as_secs_f64(), pid, msg);
+        let _ = f.write_all(line.as_bytes());
     }
 }
 

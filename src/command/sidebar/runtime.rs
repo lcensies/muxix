@@ -25,7 +25,10 @@ fn dbg_log(msg: &str) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        let _ = writeln!(f, "[{:.3}] {}", now.as_secs_f64(), msg);
+        let pid = std::process::id();
+        // Format entire line first, then single write_all for atomic O_APPEND
+        let line = format!("[{:.3}] P{}: {}\n", now.as_secs_f64(), pid, msg);
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
@@ -75,10 +78,20 @@ pub fn run_sidebar() -> Result<()> {
         return Ok(());
     }
 
+    // Create app BEFORE entering raw mode: terminal_light::luma() queries
+    // the terminal via stdin, which would race with the input reader thread.
+    let mut app = SidebarApp::new_client(mux)?;
+    dbg_log(&format!(
+        "app created: agents={} host_active={} host_wid={:?}",
+        app.agents.len(),
+        app.host_window_active(),
+        app.host_window_id(),
+    ));
+
     // Ensure daemon is running (may have auto-exited or crashed)
     let sock_path = ensure_daemon_running()?;
 
-    // Setup terminal FIRST (raw mode required before spawning input thread)
+    // Setup terminal (raw mode required before spawning input thread)
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -107,17 +120,7 @@ pub fn run_sidebar() -> Result<()> {
     // Input reader thread (terminal is already in raw mode)
     spawn_input_thread(tx);
 
-    // The client thread signals the daemon after connecting (see client::connection_loop),
-    // so the snapshot arrives only after this client is registered.
-    dbg_log("client connected, waiting for snapshot");
-
-    let mut app = SidebarApp::new_client(mux)?;
-    dbg_log(&format!(
-        "app created: agents={} host_active={} host_wid={:?}",
-        app.agents.len(),
-        app.host_window_active(),
-        app.host_window_id(),
-    ));
+    dbg_log("input thread started, waiting for snapshot");
     let mut needs_render = true;
     let startup = std::time::Instant::now();
     let startup_grace = Duration::from_secs(3);

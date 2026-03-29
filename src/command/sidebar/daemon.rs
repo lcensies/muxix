@@ -30,7 +30,9 @@ fn daemon_log(msg: &str) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
-        let _ = writeln!(f, "[{:.3}] DAEMON: {}", now.as_secs_f64(), msg);
+        // Format entire line first, then single write_all for atomic O_APPEND
+        let line = format!("[{:.3}] DAEMON: {}\n", now.as_secs_f64(), msg);
+        let _ = f.write_all(line.as_bytes());
     }
 }
 
