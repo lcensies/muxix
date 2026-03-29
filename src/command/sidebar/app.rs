@@ -1,6 +1,7 @@
 //! Application state for the sidebar TUI.
 
 use anyhow::Result;
+use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -51,6 +52,8 @@ pub struct SidebarApp {
     pub spinner_frame: u8,
     pub stale_threshold_secs: u64,
     pub layout_mode: SidebarLayoutMode,
+    /// Area where the list was last rendered (for mouse hit testing)
+    pub list_area: Rect,
     /// Window prefix from config
     window_prefix: String,
     /// The sidebar's own host session (immutable, detected once at startup via TMUX_PANE)
@@ -92,6 +95,7 @@ impl SidebarApp {
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
             layout_mode: SidebarLayoutMode::default(),
+            list_area: Rect::default(),
             window_prefix,
             host_session,
             host_window_id,
@@ -223,6 +227,59 @@ impl SidebarApp {
         }
     }
 
+    pub fn select_index(&mut self, idx: usize) {
+        self.selection_mode = SelectionMode::Manual;
+        if !self.agents.is_empty() {
+            self.list_state.select(Some(idx.min(self.agents.len() - 1)));
+        }
+    }
+
+    pub fn scroll_up(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
+        if let Some(i) = self.list_state.selected() {
+            self.list_state.select(Some(i.saturating_sub(1)));
+        }
+    }
+
+    pub fn scroll_down(&mut self) {
+        self.selection_mode = SelectionMode::Manual;
+        if let Some(i) = self.list_state.selected() {
+            let last = self.agents.len().saturating_sub(1);
+            self.list_state.select(Some((i + 1).min(last)));
+        }
+    }
+
+    pub fn hit_test(&self, _column: u16, row: u16) -> Option<usize> {
+        if self.agents.is_empty() {
+            return None;
+        }
+        let area = self.list_area;
+        if row < area.y || row >= area.y + area.height {
+            return None;
+        }
+
+        let relative_row = (row - area.y) as usize;
+        let offset = self.list_state.offset();
+
+        match self.layout_mode {
+            SidebarLayoutMode::Compact => {
+                let idx = offset + relative_row;
+                (idx < self.agents.len()).then_some(idx)
+            }
+            SidebarLayoutMode::Tiles => {
+                let mut y = 0;
+                for idx in offset..self.agents.len() {
+                    let h = tile_item_height(idx, self.agents.len());
+                    if relative_row < y + h {
+                        return Some(idx);
+                    }
+                    y += h;
+                }
+                None
+            }
+        }
+    }
+
     pub fn jump_to_selected(&mut self) {
         if let Some(idx) = self.list_state.selected()
             && let Some(agent) = self.agents.get(idx)
@@ -273,6 +330,19 @@ impl SidebarApp {
             format!("{}/{}", project, worktree)
         }
     }
+}
+
+/// Height in rows of a tile-mode ListItem at the given index.
+/// Must stay in sync with the line-building logic in `ui::render_tile_list`.
+fn tile_item_height(idx: usize, agent_count: usize) -> usize {
+    let mut h = 3; // line1 (worktree) + line2 (project) + line3 (title or empty)
+    if idx > 0 {
+        h += 1; // top separator
+    }
+    if idx == agent_count - 1 {
+        h += 1; // bottom separator
+    }
+    h
 }
 
 /// Detect this sidebar's host window using TMUX_PANE (stable, one-time).

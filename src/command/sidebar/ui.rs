@@ -55,6 +55,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
 
     let inner = block.inner(area);
     f.render_widget(block, area);
+    app.list_area = inner;
 
     match app.layout_mode {
         SidebarLayoutMode::Compact => render_compact_list(f, app, inner),

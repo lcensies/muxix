@@ -2,7 +2,10 @@
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
+        MouseEventKind,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -40,7 +43,7 @@ struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
     }
 }
 
@@ -78,7 +81,7 @@ pub fn run_sidebar() -> Result<()> {
     // Setup terminal FIRST (raw mode required before spawning input thread)
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let _guard = TerminalGuard;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = ratatui::Terminal::new(backend)?;
@@ -241,6 +244,24 @@ fn process_event(
                 (KeyCode::Char('G'), _) => app.select_last(),
                 (KeyCode::Char('g'), _) => app.select_first(),
                 (KeyCode::Char('v'), _) => app.toggle_layout_mode(),
+                _ => {}
+            }
+            *needs_render = true;
+        }
+        AppEvent::Input(Event::Mouse(mouse)) => {
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(idx) = app.hit_test(mouse.column, mouse.row) {
+                        app.select_index(idx);
+                        app.jump_to_selected();
+                    }
+                }
+                MouseEventKind::ScrollUp => {
+                    app.scroll_up();
+                }
+                MouseEventKind::ScrollDown => {
+                    app.scroll_down();
+                }
                 _ => {}
             }
             *needs_render = true;
