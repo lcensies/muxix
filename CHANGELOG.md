@@ -18,6 +18,19 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.158 (2026-03-29)
+
+- Add `sidebar`: an always-visible agent status panel in a tmux side pane,
+  showing live status, git diff stats, and elapsed timers for all agents across
+  windows. Toggle with `workmux sidebar`. See the
+  [sidebar guide](https://workmux.raine.dev/guide/dashboard/sidebar)
+  - Two layout modes: tiles (default) and compact, switchable with `v` or via
+    `sidebar.layout` in config
+  - Click, scroll, or use keyboard navigation (`j`/`k`/`Enter`) to jump between
+    agents
+  - Width adapts to terminal size and reflows on resize
+- Show a rebase indicator icon when a git rebase is in progress
+
 ## v0.1.157 (2026-03-28)
 
 - Fix `last-done` sometimes navigating to the wrong agent when multiple agents
