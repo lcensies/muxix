@@ -9,10 +9,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
+use crate::git::GitStatus;
 use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
 use crate::state::StateStore;
 
@@ -185,6 +186,67 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
     None
 }
 
+/// Shared git status cache, updated by a background worker thread.
+type GitCache = Arc<Mutex<HashMap<PathBuf, GitStatus>>>;
+
+/// Spawn a background thread that periodically fetches git status for active agent paths.
+/// Returns the shared cache and a channel sender to update the set of active paths.
+fn spawn_git_worker(term: Arc<AtomicBool>) -> (GitCache, std::sync::mpsc::Sender<Vec<PathBuf>>) {
+    let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
+    let cache_clone = cache.clone();
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
+
+    thread::spawn(move || {
+        let mut active_paths: Vec<PathBuf> = Vec::new();
+        let git_ttl_secs = 5;
+
+        while !term.load(Ordering::Relaxed) {
+            // Drain channel to get the latest set of active paths
+            while let Ok(paths) = rx.try_recv() {
+                active_paths = paths;
+            }
+
+            // Deduplicate paths (multiple panes can share a worktree)
+            let mut unique_paths: Vec<PathBuf> = active_paths.clone();
+            unique_paths.sort();
+            unique_paths.dedup();
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            for path in &unique_paths {
+                // Skip if cached and still fresh
+                let is_stale = cache_clone
+                    .lock()
+                    .ok()
+                    .and_then(|c| c.get(path).and_then(|s| s.cached_at))
+                    .map(|ts| now.saturating_sub(ts) >= git_ttl_secs)
+                    .unwrap_or(true);
+
+                if !is_stale {
+                    continue;
+                }
+
+                let status = crate::git::get_git_status(path, None);
+                if let Ok(mut c) = cache_clone.lock() {
+                    c.insert(path.clone(), status);
+                }
+            }
+
+            // Prune paths no longer in the active set
+            if let Ok(mut c) = cache_clone.lock() {
+                c.retain(|p, _| unique_paths.contains(p));
+            }
+
+            thread::sleep(Duration::from_secs(2));
+        }
+    });
+
+    (cache, tx)
+}
+
 /// Run the sidebar daemon (headless, no TUI).
 pub fn run() -> Result<()> {
     let mux = create_backend(detect_backend());
@@ -201,6 +263,9 @@ pub fn run() -> Result<()> {
     let dirty_flag = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
     signal_hook::flag::register(signal_hook::consts::SIGUSR1, dirty_flag.clone())?;
+
+    // Background git status worker
+    let (git_cache, git_path_tx) = spawn_git_worker(term.clone());
 
     // Store PID so toggle-off can kill us and hooks can signal us
     Cmd::new("tmux")
@@ -234,7 +299,11 @@ pub fn run() -> Result<()> {
             dirty_pending = false;
             last_refresh = Instant::now();
 
-            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config) {
+            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache) {
+                // Update git worker with current agent paths
+                let paths: Vec<PathBuf> = snapshot.agents.iter().map(|a| a.path.clone()).collect();
+                let _ = git_path_tx.send(paths);
+
                 server.broadcast(&snapshot);
 
                 let agent_list: String = snapshot
@@ -286,12 +355,15 @@ fn try_build_snapshot(
     mux: &Arc<dyn Multiplexer>,
     status_icons: &crate::config::StatusIcons,
     config: &Config,
+    git_cache: &GitCache,
 ) -> Option<super::snapshot::SidebarSnapshot> {
     let tmux_state = query_tmux_state();
     let agents = StateStore::new()
         .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
         .ok()?;
     let layout_mode = read_sidebar_layout_mode(config).unwrap_or_default();
+
+    let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
 
     Some(build_snapshot(
         agents,
@@ -302,5 +374,6 @@ fn try_build_snapshot(
         tmux_state.window_pane_counts,
         layout_mode,
         status_icons,
+        git_statuses,
     ))
 }

@@ -2,9 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::StatusIcons;
+use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 
 use super::app::SidebarLayoutMode;
@@ -19,6 +21,9 @@ pub struct SidebarSnapshot {
     /// Number of panes per window (used by clients to detect last-pane condition).
     #[serde(default)]
     pub window_pane_counts: HashMap<String, usize>,
+    /// Git status per worktree path (computed by daemon background worker).
+    #[serde(default)]
+    pub git_statuses: HashMap<PathBuf, GitStatus>,
     pub agents: Vec<AgentPane>,
 }
 
@@ -33,6 +38,7 @@ pub fn build_snapshot(
     window_pane_counts: HashMap<String, usize>,
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
+    git_statuses: HashMap<PathBuf, GitStatus>,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
     let waiting_icon = status_icons.waiting();
@@ -84,6 +90,7 @@ pub fn build_snapshot(
         active_windows,
         active_pane_ids,
         window_pane_counts,
+        git_statuses,
         agents,
     }
 }

@@ -4,11 +4,14 @@ use anyhow::Result;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name};
 use crate::cmd::Cmd;
 use crate::config::{Config, StatusIcons};
+use crate::git::GitStatus;
 
 use crate::multiplexer::{AgentPane, Multiplexer};
 
@@ -65,6 +68,8 @@ pub struct SidebarApp {
     /// Whether this sidebar's host window is the active window in the session
     host_window_active: bool,
     selection_mode: SelectionMode,
+    /// Git status per worktree path (received from daemon snapshots).
+    pub git_statuses: HashMap<PathBuf, GitStatus>,
 }
 
 impl SidebarApp {
@@ -102,12 +107,14 @@ impl SidebarApp {
             host_agent_idx: None,
             host_window_active: true,
             selection_mode: SelectionMode::FollowHost,
+            git_statuses: HashMap::new(),
         })
     }
 
     /// Apply a snapshot received from the daemon.
     pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
         self.layout_mode = snapshot.layout_mode;
+        self.git_statuses = snapshot.git_statuses;
 
         // Find host agent by window_id (stable tmux ID, survives renames).
         // When multiple agents share a window, prefer the active pane.

@@ -11,7 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name};
+use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
+use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
 
@@ -38,6 +40,94 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
             }
         })
         .collect()
+}
+
+/// Format git diff stats for sidebar display.
+/// Uses same colors as dashboard: DIM committed stats, bright uncommitted stats.
+/// Returns pre-built spans (without background) and total display width.
+fn format_sidebar_git_stats(
+    status: Option<&GitStatus>,
+    palette: &ThemePalette,
+) -> (Vec<(String, Style)>, usize) {
+    let Some(status) = status else {
+        return (vec![], 0);
+    };
+
+    let icons = crate::nerdfont::git_icons();
+    let mut spans: Vec<(String, Style)> = Vec::new();
+
+    let has_committed = status.lines_added > 0 || status.lines_removed > 0;
+    let has_uncommitted =
+        status.uncommitted_added > 0 || status.uncommitted_removed > 0 || status.is_dirty;
+
+    // Same logic as dashboard: if all changes are uncommitted, skip the dimmed committed section
+    let all_uncommitted = has_uncommitted
+        && status.uncommitted_added == status.lines_added
+        && status.uncommitted_removed == status.lines_removed;
+
+    if !has_committed && !has_uncommitted {
+        return (vec![], 0);
+    }
+
+    if has_uncommitted && all_uncommitted {
+        // All changes are uncommitted: icon + bright numbers only
+        spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
+        if status.uncommitted_added > 0 {
+            spans.push((
+                format!("+{}", status.uncommitted_added),
+                Style::default().fg(palette.success),
+            ));
+        }
+        if status.uncommitted_removed > 0 {
+            spans.push((
+                format!("-{}", status.uncommitted_removed),
+                Style::default().fg(palette.danger),
+            ));
+        }
+    } else {
+        // Show dimmed committed stats
+        if has_committed {
+            if status.lines_added > 0 {
+                spans.push((
+                    format!("+{}", status.lines_added),
+                    Style::default()
+                        .fg(palette.success)
+                        .add_modifier(Modifier::DIM),
+                ));
+            }
+            if status.lines_removed > 0 {
+                spans.push((
+                    format!("-{}", status.lines_removed),
+                    Style::default()
+                        .fg(palette.danger)
+                        .add_modifier(Modifier::DIM),
+                ));
+            }
+        }
+
+        // Show bright uncommitted stats with icon separator
+        if has_uncommitted {
+            spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
+            if status.uncommitted_added > 0 {
+                spans.push((
+                    format!("+{}", status.uncommitted_added),
+                    Style::default().fg(palette.success),
+                ));
+            }
+            if status.uncommitted_removed > 0 {
+                spans.push((
+                    format!("-{}", status.uncommitted_removed),
+                    Style::default().fg(palette.danger),
+                ));
+            }
+        }
+    }
+
+    // Calculate total width (each span separated by a space)
+    let total_width: usize =
+        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len().saturating_sub(1); // spaces between spans
+
+    (spans, total_width)
 }
 
 /// Render the sidebar UI.
@@ -312,15 +402,45 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Span::styled(" ".repeat(line1_trail), pad_style),
             ]);
 
-            // Line 2: ▌   project name
-            let project_display = truncate_with_ellipsis(&project, body_width);
-            let project_padding = body_width.saturating_sub(display_width(&project_display));
-            let line2 = Line::from(vec![
+            // Line 2: ▌   project name          +N -M *+X -Y
+            let git_status = app.git_statuses.get(&agent.path);
+            let (git_spans, git_width) = format_sidebar_git_stats(git_status, &app.palette);
+
+            // Reserve space for git stats on the right (+ 1 space gap minimum)
+            let project_max_width = if git_width > 0 {
+                body_width.saturating_sub(git_width + 1)
+            } else {
+                body_width
+            };
+            let project_display = truncate_with_ellipsis(&project, project_max_width);
+            let project_display_width = display_width(&project_display);
+
+            // Padding between project name and git stats
+            let middle_padding = body_width
+                .saturating_sub(project_display_width)
+                .saturating_sub(git_width);
+
+            let mut line2_spans = vec![
                 Span::styled("▌ ", stripe_bg_style),
                 Span::styled(body_indent, pad_style),
                 Span::styled(project_display, body_style),
-                Span::styled(" ".repeat(project_padding), pad_style),
-            ]);
+                Span::styled(" ".repeat(middle_padding), pad_style),
+            ];
+
+            // Append git stat spans with proper background
+            let mut first_git = true;
+            for (text, mut style) in git_spans {
+                if !first_git {
+                    line2_spans.push(Span::styled(" ", pad_style));
+                }
+                first_git = false;
+                if let Some(bg_color) = bg {
+                    style = style.bg(bg_color);
+                }
+                line2_spans.push(Span::styled(text, style));
+            }
+
+            let line2 = Line::from(line2_spans);
 
             // Optional: pane_title (task description) when available
             let title = sanitize_pane_title(agent.pane_title.as_deref(), &worktree, &project);
