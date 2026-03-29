@@ -70,6 +70,11 @@ The sidebar supports two layout modes, toggled with `v`:
 
 Your preference is persisted across tmux restarts.
 
+## Mouse support
+
+Click an agent tile to jump to its pane, or scroll to navigate the list. Requires
+`set -g mouse on` in your `~/.tmux.conf`.
+
 ## Keybindings
 
 | Key     | Action             |
