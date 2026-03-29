@@ -510,7 +510,9 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             lines.push(line2);
 
             if let Some(title_text) = title {
-                let title_display = truncate_with_ellipsis(title_text, body_width);
+                // Reserve 1 char for right padding so ellipsis doesn't touch the edge
+                let title_max = body_width.saturating_sub(1);
+                let title_display = truncate_with_ellipsis(title_text, title_max);
                 let title_padding = body_width.saturating_sub(display_width(&title_display));
                 lines.push(Line::from(vec![
                     Span::styled("▌ ", stripe_bg_style),
