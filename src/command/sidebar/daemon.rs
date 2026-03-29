@@ -750,6 +750,7 @@ pub fn run() -> Result<()> {
 
     let mut inactivity_tracker = InactivityTracker::new(Duration::from_secs(10));
     let mut last_interrupted: HashSet<String> = HashSet::new();
+    let mut last_runtime_write = Instant::now();
     let backend_name = mux.name().to_string();
 
     let mut last_refresh = Instant::now();
@@ -780,9 +781,14 @@ pub fn run() -> Result<()> {
                 let interrupted = inactivity_tracker.check(&snapshot.agents, mux.as_ref());
                 snapshot.interrupted_pane_ids = interrupted.clone();
 
-                // Persist to runtime file so dashboard can read it (only on change)
-                if interrupted != last_interrupted {
+                // Persist to runtime file so dashboard can read it.
+                // Write on change, or periodically to keep updated_ts fresh
+                // (dashboard ignores files older than 15s).
+                let set_changed = interrupted != last_interrupted;
+                let heartbeat_due = last_runtime_write.elapsed() >= Duration::from_secs(10);
+                if set_changed || heartbeat_due {
                     last_interrupted = interrupted;
+                    last_runtime_write = Instant::now();
                     if let Ok(store) = StateStore::new() {
                         let now_ts = SystemTime::now()
                             .duration_since(UNIX_EPOCH)

@@ -329,10 +329,8 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            if agent.status == Some(AgentStatus::Working)
-                && !self.interrupted_pane_ids.contains(&agent.pane_id)
-            {
-                // Show confirmation popup for actively working agents
+            if agent.status == Some(AgentStatus::Working) {
+                // Show confirmation popup
                 self.pending_kill_pane_id = Some(agent.pane_id.clone());
             } else {
                 self.do_kill(&agent.pane_id.clone());
