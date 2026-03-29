@@ -450,9 +450,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let line1_trail = (area.width as usize).saturating_sub(line1_used);
 
             // Suffix style: slightly dimmed relative to the name
-            let mut suffix_style = Style::default()
-                .fg(app.palette.dimmed)
-                .add_modifier(Modifier::DIM);
+            let mut suffix_style = Style::default().fg(app.palette.dimmed);
             if let Some(bg_color) = bg {
                 suffix_style = suffix_style.bg(bg_color);
             }
