@@ -27,6 +27,23 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
   </div>
 </section>
 
+<section class="ed-hero-screenshot">
+  <div class="ed-container ed-showcase">
+    <div class="ed-window-glow"></div>
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <div class="window-controls">
+          <span class="control red"></span>
+          <span class="control yellow"></span>
+          <span class="control green"></span>
+        </div>
+        <div class="window-title">Terminal</div>
+      </div>
+      <img src="/hero-screenshot.webp" alt="workmux in action: multiple AI agents working in parallel across tmux windows" class="dashboard-img">
+    </div>
+  </div>
+</section>
+
 <section class="ed-why">
   <div class="ed-container">
     <div class="ed-accent-rule"></div>
@@ -718,6 +735,12 @@ onMounted(() => {
 
 .ed-sandbox-link:hover {
   text-decoration: underline !important;
+}
+
+/* ===== Hero screenshot ===== */
+.ed-hero-screenshot {
+  margin-top: -4rem;
+  padding-bottom: 6rem;
 }
 
 /* ===== Dashboard section ===== */
