@@ -1756,6 +1756,12 @@ impl Config {
                 .or(self.dashboard.show_check_counts),
         };
 
+        // Sidebar config: per-field override
+        merged.sidebar = SidebarConfig {
+            width: project.sidebar.width.or(self.sidebar.width),
+            layout: project.sidebar.layout.or(self.sidebar.layout),
+        };
+
         // Sandbox config: per-field override with nested struct merging
         merged.sandbox = SandboxConfig {
             enabled: project.sandbox.enabled.or(self.sandbox.enabled),
