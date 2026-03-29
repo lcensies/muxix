@@ -21,21 +21,6 @@ use crate::state::StateStore;
 use super::app::SidebarLayoutMode;
 use super::snapshot::build_snapshot;
 
-fn daemon_log(msg: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/workmux-sidebar-debug.log")
-    {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        // Format entire line first, then single write_all for atomic O_APPEND
-        let line = format!("[{:.3}] DAEMON: {}\n", now.as_secs_f64(), msg);
-        let _ = f.write_all(line.as_bytes());
-    }
-}
-
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
     let safe_id = instance_id.replace(['/', '\\'], "-");
@@ -137,15 +122,10 @@ impl SocketServer {
                     Ok((stream, _)) => {
                         // 1ms write timeout: local Unix sockets shouldn't block
                         let _ = stream.set_write_timeout(Some(Duration::from_millis(1)));
-                        let count = {
-                            let mut c = clients_clone.lock().unwrap();
-                            c.push(stream);
-                            c.len()
-                        };
+                        clients_clone.lock().unwrap().push(stream);
                         // Trigger an immediate broadcast so the new client gets
                         // the current snapshot without waiting for the next timer.
                         dirty_flag.store(true, Ordering::Relaxed);
-                        daemon_log(&format!("ACCEPT: new client, total={}", count));
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(50));
@@ -164,24 +144,10 @@ impl SocketServer {
 
         // Take clients out of mutex to avoid holding lock during writes
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
-        let before = clients.len();
         clients
             .retain_mut(|stream| stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok());
-        let after = clients.len();
         // Merge surviving clients back (append to preserve any new connections accepted during writes)
-        let new_during = {
-            let mut c = self.clients.lock().unwrap();
-            let new_during = c.len();
-            c.append(&mut clients);
-            new_during
-        };
-        daemon_log(&format!(
-            "BROADCAST: agents={} clients_before={} clients_after={} new_during_broadcast={}",
-            snapshot.agents.len(),
-            before,
-            after,
-            new_during,
-        ));
+        self.clients.lock().unwrap().append(&mut clients);
     }
 
     fn client_count(&self) -> usize {
@@ -727,12 +693,6 @@ pub fn run() -> Result<()> {
         let timer_expired = time_since_refresh >= refresh_interval;
 
         if debounce_cleared || timer_expired {
-            let reason = if debounce_cleared { "dirty" } else { "timer" };
-            daemon_log(&format!(
-                "REFRESH: reason={} clients={}",
-                reason,
-                server.client_count()
-            ));
             dirty_pending = false;
             last_refresh = Instant::now();
 
