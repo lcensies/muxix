@@ -423,6 +423,83 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         .run();
 }
 
+// ── Sidebar removal ────────────────────────────────────────────
+
+/// Remove a pane from the layout tree by its numeric ID.
+/// Collapses any split that ends up with a single child.
+fn prune_pane(node: LayoutNode, target: u32) -> Option<LayoutNode> {
+    match node {
+        LayoutNode::Leaf { pane_id, .. } if pane_id == target => None,
+        leaf @ LayoutNode::Leaf { .. } => Some(leaf),
+        LayoutNode::HSplit { rect, children } => {
+            let mut children: Vec<_> = children
+                .into_iter()
+                .filter_map(|child| prune_pane(child, target))
+                .collect();
+            match children.len() {
+                0 => None,
+                1 => Some(children.remove(0)),
+                _ => Some(LayoutNode::HSplit { rect, children }),
+            }
+        }
+        LayoutNode::VSplit { rect, children } => {
+            let mut children: Vec<_> = children
+                .into_iter()
+                .filter_map(|child| prune_pane(child, target))
+                .collect();
+            match children.len() {
+                0 => None,
+                1 => Some(children.remove(0)),
+                _ => Some(LayoutNode::VSplit { rect, children }),
+            }
+        }
+    }
+}
+
+/// Compute the layout string for a window after removing the sidebar pane.
+///
+/// Reads the current live layout, prunes the sidebar node from the tree,
+/// and scales the remaining content to fill the full window width. This
+/// preserves whatever pane arrangement the user created while the sidebar
+/// was open, unlike the old save/restore approach which used a stale snapshot.
+pub(super) fn layout_after_sidebar_remove(
+    window_id: &str,
+    sidebar_pane_id: &str,
+) -> Option<String> {
+    let layout_str = Cmd::new("tmux")
+        .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
+        .run_and_capture_stdout()
+        .ok()?;
+    let layout_str = layout_str.trim();
+
+    debug!(
+        window_id,
+        sidebar_pane_id,
+        layout = layout_str,
+        "layout_after_sidebar_remove: starting"
+    );
+
+    let root = parse_layout(layout_str)?;
+    let window_rect = *root.rect();
+
+    let sidebar_num: u32 = sidebar_pane_id
+        .strip_prefix('%')
+        .and_then(|s| s.parse().ok())?;
+
+    let mut content = prune_pane(root, sidebar_num)?;
+    scale_width(&mut content, window_rect.w, window_rect.x);
+
+    let result = serialize_layout(&content);
+    debug!(
+        window_id,
+        old = layout_str,
+        new = result.as_str(),
+        "layout_after_sidebar_remove: computed"
+    );
+
+    Some(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,6 +865,236 @@ mod tests {
                 assert_eq!(vc[0].width(), w1);
                 assert_eq!(vc[1].width(), w1);
             }
+        }
+    }
+
+    // ── prune_pane / sidebar removal tests ─────────────────────
+
+    #[test]
+    fn test_prune_removes_target_leaf() {
+        let node = LayoutNode::Leaf {
+            rect: Rect {
+                w: 80,
+                h: 24,
+                x: 0,
+                y: 0,
+            },
+            pane_id: 42,
+        };
+        assert_eq!(prune_pane(node, 42), None);
+    }
+
+    #[test]
+    fn test_prune_keeps_other_leaf() {
+        let node = LayoutNode::Leaf {
+            rect: Rect {
+                w: 80,
+                h: 24,
+                x: 0,
+                y: 0,
+            },
+            pane_id: 42,
+        };
+        assert!(prune_pane(node, 99).is_some());
+    }
+
+    #[test]
+    fn test_prune_collapses_single_child_hsplit() {
+        // HSplit{sidebar, content} -> content (collapsed)
+        let node = LayoutNode::HSplit {
+            rect: Rect {
+                w: 186,
+                h: 44,
+                x: 0,
+                y: 0,
+            },
+            children: vec![
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 25,
+                        h: 44,
+                        x: 0,
+                        y: 0,
+                    },
+                    pane_id: 999,
+                },
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 160,
+                        h: 44,
+                        x: 26,
+                        y: 0,
+                    },
+                    pane_id: 100,
+                },
+            ],
+        };
+        let result = prune_pane(node, 999).unwrap();
+        assert!(matches!(result, LayoutNode::Leaf { pane_id: 100, .. }));
+    }
+
+    #[test]
+    fn test_prune_preserves_multi_child_hsplit() {
+        // HSplit{sidebar, a, b} -> HSplit{a, b}
+        let node = LayoutNode::HSplit {
+            rect: Rect {
+                w: 186,
+                h: 44,
+                x: 0,
+                y: 0,
+            },
+            children: vec![
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 25,
+                        h: 44,
+                        x: 0,
+                        y: 0,
+                    },
+                    pane_id: 999,
+                },
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 80,
+                        h: 44,
+                        x: 26,
+                        y: 0,
+                    },
+                    pane_id: 1,
+                },
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 79,
+                        h: 44,
+                        x: 107,
+                        y: 0,
+                    },
+                    pane_id: 2,
+                },
+            ],
+        };
+        let result = prune_pane(node, 999).unwrap();
+        match result {
+            LayoutNode::HSplit { children, .. } => {
+                assert_eq!(children.len(), 2);
+                assert!(matches!(&children[0], LayoutNode::Leaf { pane_id: 1, .. }));
+                assert!(matches!(&children[1], LayoutNode::Leaf { pane_id: 2, .. }));
+            }
+            _ => panic!("expected HSplit"),
+        }
+    }
+
+    /// Simulate the reported bug: sidebar + single pane, user splits content,
+    /// then sidebar is removed. The two content panes should fill the window
+    /// proportionally (near-equal since they were split evenly).
+    #[test]
+    fn test_remove_sidebar_two_content_panes_fill_window() {
+        // State after: sidebar=25, content split into 80+79=159, +2 seps = 186
+        let layout = "0000,186x44,0,0{25x44,0,0,999,80x44,26,0,100,79x44,107,0,101}";
+        let root = parse_layout(layout).unwrap();
+        let window_w = root.rect().w;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_width(&mut content, window_w, 0);
+
+        // Should be an HSplit with 2 children filling 186 cols
+        match &content {
+            LayoutNode::HSplit { rect, children } => {
+                assert_eq!(rect.w, 186);
+                assert_eq!(children.len(), 2);
+                let w0 = children[0].width();
+                let w1 = children[1].width();
+                // children_total + 1 separator = 186
+                assert_eq!(w0 + w1 + 1, 186);
+                // Near-equal split (within 1 col of each other)
+                assert!(
+                    (w0 as i32 - w1 as i32).abs() <= 1,
+                    "panes should be near-equal: {} vs {}",
+                    w0,
+                    w1,
+                );
+            }
+            _ => panic!("expected HSplit"),
+        }
+    }
+
+    /// Remove sidebar when content is a VSplit (sidebar + vsplit{a,b}).
+    #[test]
+    fn test_remove_sidebar_vsplit_content_fills_window() {
+        // HSplit{sidebar(25), vsplit(160){a,b}} -> vsplit at full 186 width
+        let layout = "0000,186x44,0,0{25x44,0,0,999,160x44,26,0[160x22,26,0,100,160x21,26,23,101]}";
+        let root = parse_layout(layout).unwrap();
+        let window_w = root.rect().w;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_width(&mut content, window_w, 0);
+
+        match &content {
+            LayoutNode::VSplit { rect, children } => {
+                assert_eq!(rect.w, 186);
+                // Both children get the full width
+                assert_eq!(children[0].width(), 186);
+                assert_eq!(children[1].width(), 186);
+            }
+            _ => panic!("expected VSplit"),
+        }
+    }
+
+    /// Remove sidebar from 3-sibling root: {sidebar, hsplit{a,b}, c}.
+    /// Content should scale proportionally to fill the window.
+    #[test]
+    fn test_remove_sidebar_nested_content_proportional() {
+        // sidebar=25, hsplit{60,50}=111, leaf=48, +2 seps = 186
+        let layout =
+            "0000,186x44,0,0{25x44,0,0,999,111x44,26,0{60x44,26,0,1,50x44,87,0,2},48x44,138,0,3}";
+        let root = parse_layout(layout).unwrap();
+        let window_w = root.rect().w;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_width(&mut content, window_w, 0);
+
+        match &content {
+            LayoutNode::HSplit { rect, children } => {
+                assert_eq!(rect.w, 186);
+                assert_eq!(children.len(), 2);
+                // First child is the nested HSplit, second is the leaf
+                let w0 = children[0].width();
+                let w1 = children[1].width();
+                // Total + 1 sep = 186
+                assert_eq!(w0 + w1 + 1, 186);
+                // Proportions preserved: original 111:48 ratio
+                let orig_ratio = 111.0 / 48.0;
+                let result_ratio = w0 as f64 / w1 as f64;
+                assert!(
+                    (result_ratio - orig_ratio).abs() < 0.1,
+                    "proportions not preserved: original={:.2}, result={:.2}",
+                    orig_ratio,
+                    result_ratio,
+                );
+            }
+            _ => panic!("expected HSplit"),
+        }
+    }
+
+    /// Remove sidebar leaving only a single content pane (the original bug scenario
+    /// step 1-2 without the user splitting).
+    #[test]
+    fn test_remove_sidebar_single_content_fills_window() {
+        // HSplit{sidebar(25), content(160)} -> content at full 186
+        let layout = "0000,186x44,0,0{25x44,0,0,999,160x44,26,0,100}";
+        let root = parse_layout(layout).unwrap();
+        let window_w = root.rect().w;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_width(&mut content, window_w, 0);
+
+        match &content {
+            LayoutNode::Leaf { rect, pane_id } => {
+                assert_eq!(*pane_id, 100);
+                assert_eq!(rect.w, 186);
+                assert_eq!(rect.x, 0);
+            }
+            _ => panic!("expected Leaf"),
         }
     }
 }

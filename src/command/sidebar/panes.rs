@@ -8,8 +8,7 @@ use crate::cmd::Cmd;
 use super::SIDEBAR_ROLE_VALUE;
 use super::daemon_ctrl::kill_daemon;
 use super::hooks::remove_hooks;
-use super::layout::{restore_window_layout, save_window_layout};
-use super::layout_tree::reflow_after_sidebar_add;
+use super::layout_tree::{layout_after_sidebar_remove, reflow_after_sidebar_add};
 
 /// Check if a window already has a sidebar pane.
 pub(super) fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
@@ -35,7 +34,6 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
     let width_str = width.to_string();
 
     debug!(window_id, width, "create_sidebar_in_window: creating");
-    save_window_layout(window_id);
 
     // Get the first pane in the window as split target
     let target_pane = Cmd::new("tmux")
@@ -99,23 +97,6 @@ pub(super) fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
 
     debug!(width, "create_sidebars_in_all_windows: creating sidebars");
 
-    // Clear stale saved layouts from previous cycles that could interfere
-    // with layout restore on toggle off.
-    for window_id in output.lines() {
-        let window_id = window_id.trim();
-        if !window_id.is_empty() {
-            let _ = Cmd::new("tmux")
-                .args(&[
-                    "set-option",
-                    "-wu",
-                    "-t",
-                    window_id,
-                    "@workmux_sidebar_layout",
-                ])
-                .run();
-        }
-    }
-
     for window_id in output.lines() {
         let window_id = window_id.trim();
         if window_id.is_empty() {
@@ -153,20 +134,36 @@ fn list_sidebar_panes() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Kill all sidebar panes and restore the original layout in each window.
+/// Kill all sidebar panes and reflow content to fill the window.
+///
+/// Computes the target layout from the live tree BEFORE killing panes,
+/// then applies it after. This preserves pane arrangements the user
+/// created while the sidebar was open.
 pub(super) fn kill_all_sidebars_and_restore_layouts() {
     let sidebars = list_sidebar_panes();
+
+    // Compute target layouts from the live tree before destroying any panes
+    let layouts: Vec<_> = sidebars
+        .iter()
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .collect();
+
     for (_, pane_id) in &sidebars {
         let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
     }
-    for (window_id, _) in &sidebars {
-        restore_window_layout(window_id);
+
+    for (i, (window_id, _)) in sidebars.iter().enumerate() {
+        if let Some(layout) = &layouts[i] {
+            let _ = Cmd::new("tmux")
+                .args(&["select-layout", "-t", window_id, layout])
+                .run();
+        }
     }
 }
 
 /// Shut down all sidebars globally (called when any sidebar quits).
 /// Kills all other sidebar panes immediately, then defers our own window's
-/// layout restore so it fires after our process exits and the pane closes.
+/// layout reflow so it fires after our process exits and the pane closes.
 pub(super) fn shutdown_all_sidebars() {
     let our_pane = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{pane_id}"])
@@ -182,18 +179,32 @@ pub(super) fn shutdown_all_sidebars() {
         .to_string();
 
     let sidebars = list_sidebar_panes();
-    let mut other_windows = Vec::new();
 
-    for (window_id, pane_id) in &sidebars {
+    // Compute target layouts from the live tree before destroying any panes
+    let computed_layouts: Vec<_> = sidebars
+        .iter()
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .collect();
+
+    let mut other_window_layouts = Vec::new();
+    let mut our_layout = None;
+
+    for (i, (window_id, pane_id)) in sidebars.iter().enumerate() {
         if pane_id != &our_pane {
-            other_windows.push(window_id.clone());
+            other_window_layouts.push((window_id.clone(), computed_layouts[i].clone()));
             let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
+        } else {
+            our_layout = computed_layouts[i].clone();
         }
     }
 
-    // Restore layouts for other windows
-    for window_id in &other_windows {
-        restore_window_layout(window_id);
+    // Apply layouts for other windows
+    for (window_id, layout) in &other_window_layouts {
+        if let Some(layout) = layout {
+            let _ = Cmd::new("tmux")
+                .args(&["select-layout", "-t", window_id, layout])
+                .run();
+        }
     }
 
     // Kill daemon
@@ -203,26 +214,15 @@ pub(super) fn shutdown_all_sidebars() {
     remove_hooks();
     super::clear_sidebar_globals();
 
-    // Defer our own window's layout restore until after our pane closes
+    // Defer our own window's layout reflow until after our pane closes
     if !our_window.is_empty()
-        && let Ok(layout) = Cmd::new("tmux")
-            .args(&[
-                "show-option",
-                "-wqv",
-                "-t",
-                &our_window,
-                "@workmux_sidebar_layout",
-            ])
-            .run_and_capture_stdout()
+        && let Some(layout) = our_layout
     {
-        let layout = layout.trim().to_string();
-        if !layout.is_empty() {
-            let cmd = format!(
-                "sleep 0.1; tmux select-layout -t {win} '{layout}' 2>/dev/null; tmux set-option -wu -t {win} @workmux_sidebar_layout 2>/dev/null",
-                win = our_window,
-                layout = layout,
-            );
-            let _ = Cmd::new("tmux").args(&["run-shell", "-b", &cmd]).run();
-        }
+        let cmd = format!(
+            "sleep 0.1; tmux select-layout -t {win} '{layout}' 2>/dev/null",
+            win = our_window,
+            layout = layout,
+        );
+        let _ = Cmd::new("tmux").args(&["run-shell", "-b", &cmd]).run();
     }
 }
