@@ -34,7 +34,7 @@ pub struct StatusIcons {
     pub waiting: Option<String>,
     /// Icon shown when agent is done. Default: ✅
     pub done: Option<String>,
-    /// Icon shown when agent appears interrupted (no output for timeout period). Default: ⚠️
+    /// Icon shown when agent appears interrupted (no output for timeout period). Default: 🛑
     pub interrupted: Option<String>,
 }
 
@@ -52,7 +52,7 @@ impl StatusIcons {
     }
 
     pub fn interrupted(&self) -> &str {
-        self.interrupted.as_deref().unwrap_or("⚠️")
+        self.interrupted.as_deref().unwrap_or("🛑")
     }
 }
 

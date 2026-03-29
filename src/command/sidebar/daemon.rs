@@ -650,15 +650,18 @@ fn spawn_git_worker(
 /// hashes them, and records when the hash was first seen unchanged. If the hash
 /// stays the same for longer than the timeout, the agent is considered interrupted.
 ///
-/// Once interrupted, the state is sticky: it persists until the agent's status
-/// changes away from Working (e.g., via an RPC status update). Trivial pane
-/// changes like cursor movement don't clear the interrupted state.
+/// Once interrupted, the state is sticky: trivial one-off pane changes (cursor
+/// movement) don't clear it. It only clears when the agent leaves Working status,
+/// or when sustained new output is detected (content changing on 2+ consecutive
+/// polls, indicating the agent is actually working again).
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at)
     entries: HashMap<String, (u64, Instant)>,
-    /// Pane IDs that have been detected as interrupted. Sticky: only cleared
-    /// when the agent leaves Working status.
+    /// Pane IDs confirmed as interrupted.
     confirmed: HashSet<String>,
+    /// For confirmed panes: count of consecutive polls with changed content.
+    /// Requires 2+ to clear (filters out one-off cursor movements).
+    activity_streak: HashMap<String, u8>,
     /// How long content must be unchanged before marking as interrupted.
     timeout: Duration,
 }
@@ -668,6 +671,7 @@ impl InactivityTracker {
         Self {
             entries: HashMap::new(),
             confirmed: HashSet::new(),
+            activity_streak: HashMap::new(),
             timeout,
         }
     }
@@ -695,13 +699,10 @@ impl InactivityTracker {
             .retain(|id, _| working_pane_ids.contains(id.as_str()));
         self.confirmed
             .retain(|id| working_pane_ids.contains(id.as_str()));
+        self.activity_streak
+            .retain(|id, _| working_pane_ids.contains(id.as_str()));
 
         for pane_id in &working_pane_ids {
-            // Already confirmed interrupted - skip capture
-            if self.confirmed.contains(*pane_id) {
-                continue;
-            }
-
             let Some(raw) = mux.capture_pane(pane_id, 5) else {
                 continue;
             };
@@ -714,16 +715,34 @@ impl InactivityTracker {
             normalized.hash(&mut hasher);
             let hash = hasher.finish();
 
-            match self.entries.get(*pane_id) {
-                Some(&(prev_hash, first_seen)) if prev_hash == hash => {
-                    // Content unchanged since first_seen
-                    if now.duration_since(first_seen) >= self.timeout {
-                        self.confirmed.insert(pane_id.to_string());
-                    }
-                }
-                _ => {
-                    // New or changed content - reset hash tracker
+            if self.confirmed.contains(*pane_id) {
+                // Already interrupted: check for sustained activity to clear
+                let prev_hash = self.entries.get(*pane_id).map(|e| e.0);
+                if prev_hash != Some(hash) {
+                    // Content changed
                     self.entries.insert(pane_id.to_string(), (hash, now));
+                    let streak = self.activity_streak.entry(pane_id.to_string()).or_insert(0);
+                    *streak += 1;
+                    if *streak >= 2 {
+                        // Sustained activity: agent is working again
+                        self.confirmed.remove(*pane_id);
+                        self.activity_streak.remove(*pane_id);
+                    }
+                } else {
+                    // Content same again - reset activity streak
+                    self.activity_streak.remove(*pane_id);
+                }
+            } else {
+                // Not yet interrupted: check for inactivity
+                match self.entries.get(*pane_id) {
+                    Some(&(prev_hash, first_seen)) if prev_hash == hash => {
+                        if now.duration_since(first_seen) >= self.timeout {
+                            self.confirmed.insert(pane_id.to_string());
+                        }
+                    }
+                    _ => {
+                        self.entries.insert(pane_id.to_string(), (hash, now));
+                    }
                 }
             }
         }
