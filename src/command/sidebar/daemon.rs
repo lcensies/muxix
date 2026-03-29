@@ -649,9 +649,16 @@ fn spawn_git_worker(
 /// For each agent in `Working` status, captures the last few lines of the pane,
 /// hashes them, and records when the hash was first seen unchanged. If the hash
 /// stays the same for longer than the timeout, the agent is considered interrupted.
+///
+/// Once interrupted, the state is sticky: it persists until the agent's status
+/// changes away from Working (e.g., via an RPC status update). Trivial pane
+/// changes like cursor movement don't clear the interrupted state.
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at)
     entries: HashMap<String, (u64, Instant)>,
+    /// Pane IDs that have been detected as interrupted. Sticky: only cleared
+    /// when the agent leaves Working status.
+    confirmed: HashSet<String>,
     /// How long content must be unchanged before marking as interrupted.
     timeout: Duration,
 }
@@ -660,6 +667,7 @@ impl InactivityTracker {
     fn new(timeout: Duration) -> Self {
         Self {
             entries: HashMap::new(),
+            confirmed: HashSet::new(),
             timeout,
         }
     }
@@ -674,7 +682,6 @@ impl InactivityTracker {
         use std::hash::{Hash, Hasher};
 
         let now = Instant::now();
-        let mut interrupted = HashSet::new();
 
         // Collect pane_ids of currently working agents
         let working_pane_ids: HashSet<&str> = agents
@@ -686,8 +693,15 @@ impl InactivityTracker {
         // Remove entries for agents no longer in Working status
         self.entries
             .retain(|id, _| working_pane_ids.contains(id.as_str()));
+        self.confirmed
+            .retain(|id| working_pane_ids.contains(id.as_str()));
 
         for pane_id in &working_pane_ids {
+            // Already confirmed interrupted - skip capture
+            if self.confirmed.contains(*pane_id) {
+                continue;
+            }
+
             let Some(raw) = mux.capture_pane(pane_id, 5) else {
                 continue;
             };
@@ -704,17 +718,17 @@ impl InactivityTracker {
                 Some(&(prev_hash, first_seen)) if prev_hash == hash => {
                     // Content unchanged since first_seen
                     if now.duration_since(first_seen) >= self.timeout {
-                        interrupted.insert(pane_id.to_string());
+                        self.confirmed.insert(pane_id.to_string());
                     }
                 }
                 _ => {
-                    // New or changed content - reset tracker
+                    // New or changed content - reset hash tracker
                     self.entries.insert(pane_id.to_string(), (hash, now));
                 }
             }
         }
 
-        interrupted
+        self.confirmed.clone()
     }
 }
 
