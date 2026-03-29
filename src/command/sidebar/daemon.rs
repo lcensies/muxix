@@ -285,7 +285,11 @@ fn spawn_git_worker(
         let mut mtimes: HashMap<PathBuf, GitMtimes> = HashMap::new();
         let mut git_dirs: HashMap<PathBuf, PathBuf> = HashMap::new();
         let mut last_full_sweep = Instant::now();
+        let mut last_dirty_probe = Instant::now();
         let full_sweep_interval = Duration::from_secs(30);
+        // Working tree dirty probe runs every 3s (subprocess is expensive).
+        // Mtime checks still run every 1s (free stat() calls).
+        let dirty_probe_interval = Duration::from_secs(3);
 
         while !term.load(Ordering::Relaxed) {
             // Drain channel to get the latest set of active paths
@@ -310,6 +314,12 @@ fn spawn_git_worker(
                 last_full_sweep = Instant::now();
             }
 
+            // Only run the working tree dirty probe every 3s to limit subprocess spawns
+            let run_dirty_probe = last_dirty_probe.elapsed() >= dirty_probe_interval;
+            if run_dirty_probe {
+                last_dirty_probe = Instant::now();
+            }
+
             let mut any_changed = false;
 
             for path in &unique_paths {
@@ -329,17 +339,21 @@ fn spawn_git_worker(
                     .map(|c| !c.contains_key(path))
                     .unwrap_or(true);
 
-                // Cheap working tree dirty probe (~5ms, one subprocess).
-                // `git diff --quiet HEAD` exits 1 if tracked files differ from HEAD.
-                // This catches file edits that don't touch .git internals.
-                // For clean worktrees this exits instantly; for dirty ones we'll
-                // run the full pipeline which is the desired behavior anyway.
-                let worktree_changed = Cmd::new("git")
-                    .workdir(path)
-                    .args(&["diff", "--quiet", "HEAD"])
-                    .run_as_check()
-                    .map(|clean| !clean)
-                    .unwrap_or(false);
+                // Working tree dirty probe using `git diff-files --quiet`.
+                // Cheaper than `git diff --quiet HEAD`: only compares index stat
+                // cache vs working tree metadata, no git object reads needed.
+                // Staging is already caught by .git/index mtime checks.
+                // Only run every 3s to limit subprocess spawns.
+                let worktree_changed = run_dirty_probe
+                    && !mtimes_changed
+                    && !is_new
+                    && !force_full
+                    && Cmd::new("git")
+                        .workdir(path)
+                        .args(&["diff-files", "--quiet"])
+                        .run_as_check()
+                        .map(|clean| !clean)
+                        .unwrap_or(false);
 
                 if !mtimes_changed && !is_new && !force_full && !worktree_changed {
                     continue;
@@ -379,7 +393,8 @@ fn spawn_git_worker(
                 dirty_flag.store(true, Ordering::Relaxed);
             }
 
-            // Poll every 1s. Cheap: only stat() calls when nothing changed.
+            // Poll every 1s for mtime checks (free stat() calls).
+            // Working tree dirty probe only runs every 3s (see above).
             thread::sleep(Duration::from_secs(1));
         }
     });
