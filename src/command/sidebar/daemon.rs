@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
@@ -266,6 +266,14 @@ fn git_mtimes_changed(worktree_path: &Path, git_dir: &Path, prev: &GitMtimes) ->
     (changed, current)
 }
 
+/// Info about an active agent path sent to the git worker.
+struct GitWorkerPath {
+    path: PathBuf,
+    /// Whether this agent is stale (idle > threshold). Stale agents only
+    /// get git status on the full sweep, not on every poll cycle.
+    is_stale: bool,
+}
+
 /// Spawn a background thread that watches for git changes and updates the cache.
 ///
 /// Uses mtime-based change detection on .git internals (index, HEAD, branch ref)
@@ -275,13 +283,13 @@ fn git_mtimes_changed(worktree_path: &Path, git_dir: &Path, prev: &GitMtimes) ->
 fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
-) -> (GitCache, std::sync::mpsc::Sender<Vec<PathBuf>>) {
+) -> (GitCache, std::sync::mpsc::Sender<Vec<GitWorkerPath>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<GitWorkerPath>>();
 
     thread::spawn(move || {
-        let mut active_paths: Vec<PathBuf> = Vec::new();
+        let mut active_entries: Vec<GitWorkerPath> = Vec::new();
         let mut mtimes: HashMap<PathBuf, GitMtimes> = HashMap::new();
         let mut git_dirs: HashMap<PathBuf, PathBuf> = HashMap::new();
         let mut last_full_sweep = Instant::now();
@@ -293,14 +301,21 @@ fn spawn_git_worker(
 
         while !term.load(Ordering::Relaxed) {
             // Drain channel to get the latest set of active paths
-            while let Ok(paths) = rx.try_recv() {
-                active_paths = paths;
+            while let Ok(entries) = rx.try_recv() {
+                active_entries = entries;
             }
 
-            // Deduplicate paths (multiple panes can share a worktree)
-            let mut unique_paths: Vec<PathBuf> = active_paths.clone();
+            // Deduplicate paths (multiple panes can share a worktree).
+            // A path is stale only if ALL agents at that path are stale.
+            let mut path_stale: HashMap<PathBuf, bool> = HashMap::new();
+            for entry in &active_entries {
+                let e = path_stale.entry(entry.path.clone()).or_insert(true);
+                if !entry.is_stale {
+                    *e = false;
+                }
+            }
+            let mut unique_paths: Vec<PathBuf> = path_stale.keys().cloned().collect();
             unique_paths.sort();
-            unique_paths.dedup();
 
             // Resolve git dirs for any new paths
             for path in &unique_paths {
@@ -323,6 +338,15 @@ fn spawn_git_worker(
             let mut any_changed = false;
 
             for path in &unique_paths {
+                let is_stale = path_stale.get(path).copied().unwrap_or(false);
+
+                // Stale worktrees (all agents idle > threshold): only refresh
+                // on the 30s full sweep. Skip mtime checks and dirty probes
+                // to avoid wasting CPU on inactive projects.
+                if is_stale && !force_full {
+                    continue;
+                }
+
                 let git_dir = match git_dirs.get(path) {
                     Some(d) => d,
                     None => continue,
@@ -455,9 +479,25 @@ pub fn run() -> Result<()> {
             last_refresh = Instant::now();
 
             if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache) {
-                // Update git worker with current agent paths
-                let paths: Vec<PathBuf> = snapshot.agents.iter().map(|a| a.path.clone()).collect();
-                let _ = git_path_tx.send(paths);
+                // Update git worker with current agent paths and stale status.
+                // Stale agents (idle > 1 hour) are polled less frequently.
+                let now_secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let stale_threshold = 60 * 60; // 1 hour, matches sidebar UI
+                let entries: Vec<GitWorkerPath> = snapshot
+                    .agents
+                    .iter()
+                    .map(|a| GitWorkerPath {
+                        path: a.path.clone(),
+                        is_stale: a
+                            .status_ts
+                            .map(|ts| now_secs.saturating_sub(ts) > stale_threshold)
+                            .unwrap_or(false),
+                    })
+                    .collect();
+                let _ = git_path_tx.send(entries);
 
                 server.broadcast(&snapshot);
 
