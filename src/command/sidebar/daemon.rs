@@ -329,7 +329,19 @@ fn spawn_git_worker(
                     .map(|c| !c.contains_key(path))
                     .unwrap_or(true);
 
-                if !mtimes_changed && !is_new && !force_full {
+                // Cheap working tree dirty probe (~5ms, one subprocess).
+                // `git diff --quiet HEAD` exits 1 if tracked files differ from HEAD.
+                // This catches file edits that don't touch .git internals.
+                // For clean worktrees this exits instantly; for dirty ones we'll
+                // run the full pipeline which is the desired behavior anyway.
+                let worktree_changed = Cmd::new("git")
+                    .workdir(path)
+                    .args(&["diff", "--quiet", "HEAD"])
+                    .run_as_check()
+                    .map(|clean| !clean)
+                    .unwrap_or(false);
+
+                if !mtimes_changed && !is_new && !force_full && !worktree_changed {
                     continue;
                 }
 
