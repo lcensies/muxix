@@ -52,6 +52,11 @@ impl StateStore {
         self.base_path.join("containers")
     }
 
+    /// Path to runtime directory (for daemon-produced ephemeral state).
+    fn runtime_dir(&self) -> PathBuf {
+        self.base_path.join("runtime")
+    }
+
     /// Path to settings file.
     fn settings_path(&self) -> PathBuf {
         self.base_path.join("settings.json")
@@ -204,6 +209,54 @@ impl StateStore {
                 Some((name, runtime))
             })
             .collect()
+    }
+
+    // ── Runtime state management ────────────────────────────────────────────
+
+    /// Write runtime state for a multiplexer instance.
+    ///
+    /// File path: `runtime/<backend>__<instance>.json`
+    pub fn write_runtime(
+        &self,
+        backend: &str,
+        instance: &str,
+        state: &super::types::RuntimeState,
+    ) -> Result<()> {
+        let dir = self.runtime_dir();
+        fs::create_dir_all(&dir).context("Failed to create runtime directory")?;
+        let safe_instance =
+            percent_encoding::utf8_percent_encode(instance, super::types::FILENAME_ENCODE_SET)
+                .to_string();
+        let path = dir.join(format!("{}__{}.json", backend, safe_instance));
+        let content = serde_json::to_string(state)?;
+        write_atomic(&path, content.as_bytes())
+    }
+
+    /// Read runtime state for a multiplexer instance.
+    ///
+    /// Returns default if missing or corrupted.
+    pub fn read_runtime(&self, backend: &str, instance: &str) -> super::types::RuntimeState {
+        let safe_instance =
+            percent_encoding::utf8_percent_encode(instance, super::types::FILENAME_ENCODE_SET)
+                .to_string();
+        let path = self
+            .runtime_dir()
+            .join(format!("{}__{}.json", backend, safe_instance));
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => super::types::RuntimeState::default(),
+        }
+    }
+
+    /// Delete runtime state for a multiplexer instance.
+    pub fn delete_runtime(&self, backend: &str, instance: &str) {
+        let safe_instance =
+            percent_encoding::utf8_percent_encode(instance, super::types::FILENAME_ENCODE_SET)
+                .to_string();
+        let path = self
+            .runtime_dir()
+            .join(format!("{}__{}.json", backend, safe_instance));
+        let _ = fs::remove_file(path);
     }
 
     /// Load agents with reconciliation against live multiplexer state.

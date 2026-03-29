@@ -127,7 +127,11 @@ impl App {
                 .unwrap_or(false);
 
             if is_stale {
-                return 3; // Stale: lowest priority
+                return 4; // Stale: lowest priority
+            }
+
+            if self.interrupted_pane_ids.contains(&agent.pane_id) {
+                return 1; // Interrupted: needs attention
             }
 
             match agent.status {
@@ -325,8 +329,10 @@ impl App {
         if let Some(selected) = self.table_state.selected()
             && let Some(agent) = self.agents.get(selected)
         {
-            if agent.status == Some(AgentStatus::Working) {
-                // Show confirmation popup
+            if agent.status == Some(AgentStatus::Working)
+                && !self.interrupted_pane_ids.contains(&agent.pane_id)
+            {
+                // Show confirmation popup for actively working agents
                 self.pending_kill_pane_id = Some(agent.pane_id.clone());
             } else {
                 self.do_kill(&agent.pane_id.clone());
@@ -397,21 +403,30 @@ impl App {
 
     pub fn get_status_display(&self, agent: &AgentPane) -> Vec<(String, Style)> {
         let is_stale = self.is_stale(agent);
+        let is_interrupted = self.interrupted_pane_ids.contains(&agent.pane_id);
 
         // Map status enum to icon and color
-        let (icon, base_color, is_working) = match agent.status {
-            Some(AgentStatus::Working) => {
-                (self.config.status_icons.working(), self.palette.info, true)
-            }
-            Some(AgentStatus::Waiting) => (
-                self.config.status_icons.waiting(),
-                self.palette.accent,
+        let (icon, base_color, is_working) = if is_interrupted {
+            (
+                self.config.status_icons.interrupted(),
+                self.palette.warning,
                 false,
-            ),
-            Some(AgentStatus::Done) => {
-                (self.config.status_icons.done(), self.palette.success, false)
+            )
+        } else {
+            match agent.status {
+                Some(AgentStatus::Working) => {
+                    (self.config.status_icons.working(), self.palette.info, true)
+                }
+                Some(AgentStatus::Waiting) => (
+                    self.config.status_icons.waiting(),
+                    self.palette.accent,
+                    false,
+                ),
+                Some(AgentStatus::Done) => {
+                    (self.config.status_icons.done(), self.palette.success, false)
+                }
+                None => ("", self.palette.text, false),
             }
-            None => ("", self.palette.text, false),
         };
 
         let base_style = Style::default().fg(base_color);

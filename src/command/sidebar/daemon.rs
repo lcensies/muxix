@@ -644,6 +644,80 @@ fn spawn_git_worker(
     (cache, tx)
 }
 
+/// Tracks pane content hashes to detect agents that stopped producing output.
+///
+/// For each agent in `Working` status, captures the last few lines of the pane,
+/// hashes them, and records when the hash was first seen unchanged. If the hash
+/// stays the same for longer than the timeout, the agent is considered interrupted.
+struct InactivityTracker {
+    /// pane_id -> (content_hash, first_seen_at)
+    entries: HashMap<String, (u64, Instant)>,
+    /// How long content must be unchanged before marking as interrupted.
+    timeout: Duration,
+}
+
+impl InactivityTracker {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            entries: HashMap::new(),
+            timeout,
+        }
+    }
+
+    /// Check all working agents for inactivity. Returns the set of pane IDs
+    /// that appear interrupted (content unchanged for longer than timeout).
+    fn check(
+        &mut self,
+        agents: &[crate::multiplexer::AgentPane],
+        mux: &dyn crate::multiplexer::Multiplexer,
+    ) -> HashSet<String> {
+        use std::hash::{Hash, Hasher};
+
+        let now = Instant::now();
+        let mut interrupted = HashSet::new();
+
+        // Collect pane_ids of currently working agents
+        let working_pane_ids: HashSet<&str> = agents
+            .iter()
+            .filter(|a| a.status == Some(crate::multiplexer::AgentStatus::Working))
+            .map(|a| a.pane_id.as_str())
+            .collect();
+
+        // Remove entries for agents no longer in Working status
+        self.entries
+            .retain(|id, _| working_pane_ids.contains(id.as_str()));
+
+        for pane_id in &working_pane_ids {
+            let Some(raw) = mux.capture_pane(pane_id, 5) else {
+                continue;
+            };
+
+            // Strip ANSI escapes and normalize whitespace for stable hashing
+            let stripped = console::strip_ansi_codes(&raw);
+            let normalized = stripped.trim();
+
+            let mut hasher = std::hash::DefaultHasher::new();
+            normalized.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            match self.entries.get(*pane_id) {
+                Some(&(prev_hash, first_seen)) if prev_hash == hash => {
+                    // Content unchanged since first_seen
+                    if now.duration_since(first_seen) >= self.timeout {
+                        interrupted.insert(pane_id.to_string());
+                    }
+                }
+                _ => {
+                    // New or changed content - reset tracker
+                    self.entries.insert(pane_id.to_string(), (hash, now));
+                }
+            }
+        }
+
+        interrupted
+    }
+}
+
 /// Run the sidebar daemon (headless, no TUI).
 pub fn run() -> Result<()> {
     let mux = create_backend(detect_backend());
@@ -674,6 +748,10 @@ pub fn run() -> Result<()> {
         ])
         .run()?;
 
+    let mut inactivity_tracker = InactivityTracker::new(Duration::from_secs(10));
+    let mut last_interrupted: HashSet<String> = HashSet::new();
+    let backend_name = mux.name().to_string();
+
     let mut last_refresh = Instant::now();
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
@@ -696,7 +774,28 @@ pub fn run() -> Result<()> {
             dirty_pending = false;
             last_refresh = Instant::now();
 
-            if let Some(snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache) {
+            if let Some(mut snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache)
+            {
+                // Detect interrupted agents (working but no pane output change)
+                let interrupted = inactivity_tracker.check(&snapshot.agents, mux.as_ref());
+                snapshot.interrupted_pane_ids = interrupted.clone();
+
+                // Persist to runtime file so dashboard can read it (only on change)
+                if interrupted != last_interrupted {
+                    last_interrupted = interrupted;
+                    if let Ok(store) = StateStore::new() {
+                        let now_ts = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        let runtime = crate::state::RuntimeState {
+                            interrupted_pane_ids: last_interrupted.clone(),
+                            updated_ts: now_ts,
+                        };
+                        let _ = store.write_runtime(&backend_name, &instance_id, &runtime);
+                    }
+                }
+
                 // Update git worker with current agent paths and stale status.
                 // Stale agents (idle > 1 hour) are polled less frequently.
                 let now_secs = SystemTime::now()
@@ -754,6 +853,9 @@ pub fn run() -> Result<()> {
 
     // Cleanup
     let _ = std::fs::remove_file(&sock_path);
+    if let Ok(store) = StateStore::new() {
+        store.delete_runtime(&backend_name, &instance_id);
+    }
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
         .run();

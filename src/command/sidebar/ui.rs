@@ -220,9 +220,11 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
+            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
 
             // Status icon
-            let (icon, icon_style) = status_icon_and_style(app, agent.status, is_stale);
+            let (icon, icon_style) =
+                status_icon_and_style(app, agent.status, is_stale, is_interrupted);
 
             // Elapsed time
             let elapsed = agent
@@ -326,11 +328,13 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
+            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
 
             let is_active = app.host_agent_idx == Some(idx);
 
             // Status icon and color
-            let (icon, icon_style) = status_icon_and_style(app, agent.status, is_stale);
+            let (icon, icon_style) =
+                status_icon_and_style(app, agent.status, is_stale, is_interrupted);
             let status_color = icon_style.fg.unwrap_or(ratatui::style::Color::Reset);
 
             // Stripe color on all lines; stale forces dimmed
@@ -566,9 +570,16 @@ fn status_icon_and_style(
     app: &SidebarApp,
     status: Option<AgentStatus>,
     is_stale: bool,
+    is_interrupted: bool,
 ) -> (Cow<'static, str>, Style) {
     if is_stale {
         return (Cow::Borrowed("💤"), Style::default().fg(app.palette.dimmed));
+    }
+    if is_interrupted {
+        return (
+            Cow::Owned(app.status_icons.interrupted().to_string()),
+            Style::default().fg(app.palette.warning),
+        );
     }
     match status {
         Some(AgentStatus::Working) => {

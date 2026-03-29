@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::git::{self, GitStatus};
@@ -148,6 +148,8 @@ pub struct App {
     pub status_message: Option<(String, std::time::Instant)>,
     /// Whether to show the "New: workmux sidebar" tip in the tab header
     pub show_sidebar_tip: bool,
+    /// Pane IDs of agents detected as interrupted by the sidebar daemon.
+    pub interrupted_pane_ids: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -258,6 +260,7 @@ impl App {
             worktree_preview_path: None,
             status_message: None,
             show_sidebar_tip: crate::tips::should_show_sidebar_tip(),
+            interrupted_pane_ids: std::collections::HashSet::new(),
         };
 
         app.refresh();
@@ -282,6 +285,23 @@ impl App {
         self.all_agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
+
+        // Load interrupted pane IDs from daemon runtime state
+        if let Ok(store) = StateStore::new() {
+            let backend = self.mux.name();
+            let instance = self.mux.instance_id();
+            let runtime = store.read_runtime(backend, &instance);
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            // Ignore stale runtime state (daemon not running for >15s)
+            if now.saturating_sub(runtime.updated_ts) <= 15 {
+                self.interrupted_pane_ids = runtime.interrupted_pane_ids;
+            } else {
+                self.interrupted_pane_ids.clear();
+            }
+        }
 
         // Cache repo roots for ALL agents before filtering (project picker needs all projects)
         let paths_to_resolve: Vec<PathBuf> = self

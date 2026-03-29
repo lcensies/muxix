@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 /// Characters that need encoding in filenames (beyond control chars).
 /// Includes path separators and other filesystem-unsafe characters.
-const FILENAME_ENCODE_SET: &AsciiSet = &CONTROLS.add(b'/').add(b'\\').add(b':').add(b'%');
+pub(crate) const FILENAME_ENCODE_SET: &AsciiSet =
+    &CONTROLS.add(b'/').add(b'\\').add(b':').add(b'%');
 
 use crate::multiplexer::types::{AgentPane, AgentStatus};
 
@@ -179,6 +180,22 @@ pub struct LastDoneCycleState {
     /// status_ts of the most recent done/waiting agent when the cycle started.
     /// If this changes, a new agent has finished and the cycle resets.
     pub head_ts: Option<u64>,
+}
+
+/// Ephemeral runtime state produced by the sidebar daemon.
+///
+/// Persisted to `runtime/<backend>__<instance>.json` so that the dashboard
+/// (a separate process) can read daemon-derived signals without the daemon
+/// writing to per-agent state files.
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct RuntimeState {
+    /// Pane IDs of agents detected as interrupted (working but no pane output change).
+    #[serde(default)]
+    pub interrupted_pane_ids: std::collections::HashSet<String>,
+
+    /// Unix timestamp when this file was last written.
+    /// Consumers should ignore the file if this is too old (daemon not running).
+    pub updated_ts: u64,
 }
 
 #[cfg(test)]
