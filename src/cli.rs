@@ -1,6 +1,7 @@
 use crate::command::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
 use crate::{claude, command, config, git, nerdfont};
 use anyhow::{Context, Result};
+use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 
@@ -769,7 +770,35 @@ fn should_check_update(cmd: &Commands) -> bool {
 
 // --- Public Entry Point ---
 pub fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(mut e) => {
+            // Filter hidden (underscore-prefixed) commands from "similar subcommands" suggestions.
+            // Workaround for https://github.com/clap-rs/clap/issues/4853
+            if e.kind() == ErrorKind::InvalidSubcommand {
+                let visible = e
+                    .get(ContextKind::SuggestedSubcommand)
+                    .and_then(|v| match v {
+                        ContextValue::Strings(suggestions) => {
+                            let filtered: Vec<String> = suggestions
+                                .iter()
+                                .filter(|s| !s.starts_with('_'))
+                                .cloned()
+                                .collect();
+                            Some(filtered)
+                        }
+                        _ => None,
+                    });
+                if let Some(visible) = visible {
+                    e.insert(
+                        ContextKind::SuggestedSubcommand,
+                        ContextValue::Strings(visible),
+                    );
+                }
+            }
+            e.exit()
+        }
+    };
 
     // Always initialize nerdfont setting for prefix consistency across commands.
     // Only prompt interactively for commands that display icons.
