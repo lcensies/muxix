@@ -44,10 +44,12 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
 
 /// Format git diff stats for sidebar display.
 /// Uses same colors as dashboard: DIM committed stats, bright uncommitted stats.
+/// When `is_stale` is true, all colors are forced to dimmed.
 /// Returns pre-built spans (without background) and total display width.
 fn format_sidebar_git_stats(
     status: Option<&GitStatus>,
     palette: &ThemePalette,
+    is_stale: bool,
 ) -> (Vec<(String, Style)>, usize) {
     let Some(status) = status else {
         return (vec![], 0);
@@ -55,6 +57,23 @@ fn format_sidebar_git_stats(
 
     let icons = crate::nerdfont::git_icons();
     let mut spans: Vec<(String, Style)> = Vec::new();
+
+    // When stale, force all colors to dimmed
+    let success = if is_stale {
+        palette.dimmed
+    } else {
+        palette.success
+    };
+    let danger = if is_stale {
+        palette.dimmed
+    } else {
+        palette.danger
+    };
+    let accent = if is_stale {
+        palette.dimmed
+    } else {
+        palette.accent
+    };
 
     let has_committed = status.lines_added > 0 || status.lines_removed > 0;
     let has_uncommitted =
@@ -71,17 +90,17 @@ fn format_sidebar_git_stats(
 
     if has_uncommitted && all_uncommitted {
         // All changes are uncommitted: icon + bright numbers only
-        spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
+        spans.push((icons.diff.to_string(), Style::default().fg(accent)));
         if status.uncommitted_added > 0 {
             spans.push((
                 format!("+{}", status.uncommitted_added),
-                Style::default().fg(palette.success),
+                Style::default().fg(success),
             ));
         }
         if status.uncommitted_removed > 0 {
             spans.push((
                 format!("-{}", status.uncommitted_removed),
-                Style::default().fg(palette.danger),
+                Style::default().fg(danger),
             ));
         }
     } else {
@@ -90,42 +109,38 @@ fn format_sidebar_git_stats(
             if status.lines_added > 0 {
                 spans.push((
                     format!("+{}", status.lines_added),
-                    Style::default()
-                        .fg(palette.success)
-                        .add_modifier(Modifier::DIM),
+                    Style::default().fg(success).add_modifier(Modifier::DIM),
                 ));
             }
             if status.lines_removed > 0 {
                 spans.push((
                     format!("-{}", status.lines_removed),
-                    Style::default()
-                        .fg(palette.danger)
-                        .add_modifier(Modifier::DIM),
+                    Style::default().fg(danger).add_modifier(Modifier::DIM),
                 ));
             }
         }
 
         // Show bright uncommitted stats with icon separator
         if has_uncommitted {
-            spans.push((icons.diff.to_string(), Style::default().fg(palette.accent)));
+            spans.push((icons.diff.to_string(), Style::default().fg(accent)));
             if status.uncommitted_added > 0 {
                 spans.push((
                     format!("+{}", status.uncommitted_added),
-                    Style::default().fg(palette.success),
+                    Style::default().fg(success),
                 ));
             }
             if status.uncommitted_removed > 0 {
                 spans.push((
                     format!("-{}", status.uncommitted_removed),
-                    Style::default().fg(palette.danger),
+                    Style::default().fg(danger),
                 ));
             }
         }
     }
 
-    // Calculate total width (each span separated by a space)
+    // Calculate total width (each span separated by a space, plus 1 trailing space for right padding)
     let total_width: usize =
-        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len().saturating_sub(1); // spaces between spans
+        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len(); // spaces between spans + trailing space
 
     (spans, total_width)
 }
@@ -404,7 +419,8 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 
             // Line 2: ▌   project name          +N -M *+X -Y
             let git_status = app.git_statuses.get(&agent.path);
-            let (git_spans, git_width) = format_sidebar_git_stats(git_status, &app.palette);
+            let (git_spans, git_width) =
+                format_sidebar_git_stats(git_status, &app.palette, is_stale);
 
             // Reserve space for git stats on the right (+ 1 space gap minimum)
             let project_max_width = if git_width > 0 {
@@ -427,7 +443,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Span::styled(" ".repeat(middle_padding), pad_style),
             ];
 
-            // Append git stat spans with proper background
+            // Append git stat spans with proper background + trailing space for right padding
             let mut first_git = true;
             for (text, mut style) in git_spans {
                 if !first_git {
@@ -438,6 +454,10 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                     style = style.bg(bg_color);
                 }
                 line2_spans.push(Span::styled(text, style));
+            }
+            if !first_git {
+                // Add trailing space for right padding
+                line2_spans.push(Span::styled(" ", pad_style));
             }
 
             let line2 = Line::from(line2_spans);
