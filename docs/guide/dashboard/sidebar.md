@@ -140,3 +140,11 @@ well. It uses a daemon + client architecture with event-driven rendering:
 
 6. **Toggle off**: kills all sidebar panes, restores original window layouts from
    saved state, stops the daemon, and removes hooks.
+
+## Resource usage
+
+Because tmux has no concept of a pane that persists across all windows, each
+window runs its own `_sidebar-run` process. Each one uses roughly 15 MB of
+resident memory, and the shared daemon (`_sidebar-daemon`) uses about 16 MB. With
+five agents running, total memory footprint is around 90 MB. CPU usage is near
+zero when idle thanks to the event-driven architecture.
