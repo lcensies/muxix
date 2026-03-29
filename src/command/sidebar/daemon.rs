@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::cmd::Cmd;
 use crate::config::Config;
@@ -189,16 +189,103 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
 /// Shared git status cache, updated by a background worker thread.
 type GitCache = Arc<Mutex<HashMap<PathBuf, GitStatus>>>;
 
-/// Spawn a background thread that periodically fetches git status for active agent paths.
-/// Returns the shared cache and a channel sender to update the set of active paths.
-fn spawn_git_worker(term: Arc<AtomicBool>) -> (GitCache, std::sync::mpsc::Sender<Vec<PathBuf>>) {
+/// Tracked mtime state for a worktree's git internals.
+#[derive(Default)]
+struct GitMtimes {
+    /// mtime of .git/index (changes on stage/unstage/commit)
+    index: Option<SystemTime>,
+    /// mtime of .git/HEAD (changes on commit/checkout/branch switch)
+    head: Option<SystemTime>,
+    /// mtime of the branch ref file (changes on commit)
+    branch_ref: Option<SystemTime>,
+}
+
+/// Get the mtime of a file, returning None if the file doesn't exist.
+fn file_mtime(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
+
+/// Resolve the .git directory for a worktree path.
+/// For linked worktrees, .git is a file containing "gitdir: /path/to/real/gitdir".
+fn resolve_git_dir(worktree_path: &Path) -> Option<PathBuf> {
+    let dot_git = worktree_path.join(".git");
+    if dot_git.is_dir() {
+        return Some(dot_git);
+    }
+    if dot_git.is_file() {
+        // Linked worktree: read the gitdir pointer
+        let content = std::fs::read_to_string(&dot_git).ok()?;
+        let gitdir = content.strip_prefix("gitdir: ")?.trim();
+        let path = PathBuf::from(gitdir);
+        if path.is_absolute() {
+            return Some(path);
+        }
+        // Relative path: resolve relative to worktree
+        Some(worktree_path.join(path))
+    } else {
+        None
+    }
+}
+
+/// Check if any tracked git internal files have changed since last check.
+fn git_mtimes_changed(worktree_path: &Path, git_dir: &Path, prev: &GitMtimes) -> (bool, GitMtimes) {
+    let index = file_mtime(&git_dir.join("index"));
+    let head = file_mtime(&git_dir.join("HEAD"));
+
+    // Try to find the branch ref file for commit detection
+    let branch_ref = std::fs::read_to_string(git_dir.join("HEAD"))
+        .ok()
+        .and_then(|content| {
+            let trimmed = content.trim();
+            let ref_path = trimmed.strip_prefix("ref: ")?;
+            // Check worktree-specific refs first, then shared git dir
+            let worktree_ref = git_dir.join(ref_path);
+            if worktree_ref.exists() {
+                return file_mtime(&worktree_ref);
+            }
+            // For linked worktrees, check the common dir
+            let common_dir = git_dir.join("commondir");
+            if let Ok(common) = std::fs::read_to_string(&common_dir) {
+                let common_path = git_dir.join(common.trim()).join(ref_path);
+                return file_mtime(&common_path);
+            }
+            // Direct path
+            file_mtime(&worktree_path.join(".git").join(ref_path))
+        });
+
+    let current = GitMtimes {
+        index,
+        head,
+        branch_ref,
+    };
+
+    let changed = current.index != prev.index
+        || current.head != prev.head
+        || current.branch_ref != prev.branch_ref;
+
+    (changed, current)
+}
+
+/// Spawn a background thread that watches for git changes and updates the cache.
+///
+/// Uses mtime-based change detection on .git internals (index, HEAD, branch ref)
+/// to avoid running expensive git subprocesses when nothing changed. When mtimes
+/// change, immediately refreshes and sets dirty_flag for instant broadcast.
+/// Falls back to a periodic full sweep every 30s for uncommitted file edits.
+fn spawn_git_worker(
+    term: Arc<AtomicBool>,
+    dirty_flag: Arc<AtomicBool>,
+) -> (GitCache, std::sync::mpsc::Sender<Vec<PathBuf>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
 
     thread::spawn(move || {
         let mut active_paths: Vec<PathBuf> = Vec::new();
-        let git_ttl_secs = 5;
+        let mut mtimes: HashMap<PathBuf, GitMtimes> = HashMap::new();
+        let mut git_dirs: HashMap<PathBuf, PathBuf> = HashMap::new();
+        let mut last_full_sweep = Instant::now();
+        let full_sweep_interval = Duration::from_secs(30);
 
         while !term.load(Ordering::Relaxed) {
             // Drain channel to get the latest set of active paths
@@ -211,36 +298,77 @@ fn spawn_git_worker(term: Arc<AtomicBool>) -> (GitCache, std::sync::mpsc::Sender
             unique_paths.sort();
             unique_paths.dedup();
 
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
+            // Resolve git dirs for any new paths
+            for path in &unique_paths {
+                git_dirs
+                    .entry(path.clone())
+                    .or_insert_with(|| resolve_git_dir(path).unwrap_or_else(|| path.join(".git")));
+            }
+
+            let force_full = last_full_sweep.elapsed() >= full_sweep_interval;
+            if force_full {
+                last_full_sweep = Instant::now();
+            }
+
+            let mut any_changed = false;
 
             for path in &unique_paths {
-                // Skip if cached and still fresh
-                let is_stale = cache_clone
+                let git_dir = match git_dirs.get(path) {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                let prev_mtimes = mtimes.remove(path).unwrap_or_default();
+                let (mtimes_changed, new_mtimes) = git_mtimes_changed(path, git_dir, &prev_mtimes);
+                mtimes.insert(path.clone(), new_mtimes);
+
+                // First time seeing this path (no cached status yet)
+                let is_new = cache_clone
                     .lock()
                     .ok()
-                    .and_then(|c| c.get(path).and_then(|s| s.cached_at))
-                    .map(|ts| now.saturating_sub(ts) >= git_ttl_secs)
+                    .map(|c| !c.contains_key(path))
                     .unwrap_or(true);
 
-                if !is_stale {
+                if !mtimes_changed && !is_new && !force_full {
                     continue;
                 }
 
-                let status = crate::git::get_git_status(path, None);
+                let new_status = crate::git::get_git_status(path, None);
+
+                // Check if the status actually changed before flagging dirty
+                let status_changed = cache_clone
+                    .lock()
+                    .ok()
+                    .map(|c| c.get(path) != Some(&new_status))
+                    .unwrap_or(true);
+
                 if let Ok(mut c) = cache_clone.lock() {
-                    c.insert(path.clone(), status);
+                    c.insert(path.clone(), new_status);
+                }
+
+                if status_changed {
+                    any_changed = true;
                 }
             }
 
             // Prune paths no longer in the active set
             if let Ok(mut c) = cache_clone.lock() {
+                let before = c.len();
                 c.retain(|p, _| unique_paths.contains(p));
+                if c.len() != before {
+                    any_changed = true;
+                }
+            }
+            mtimes.retain(|p, _| unique_paths.contains(p));
+            git_dirs.retain(|p, _| unique_paths.contains(p));
+
+            // Signal daemon for immediate broadcast when cache changed
+            if any_changed {
+                dirty_flag.store(true, Ordering::Relaxed);
             }
 
-            thread::sleep(Duration::from_secs(2));
+            // Poll every 1s. Cheap: only stat() calls when nothing changed.
+            thread::sleep(Duration::from_secs(1));
         }
     });
 
@@ -264,8 +392,8 @@ pub fn run() -> Result<()> {
     signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
     signal_hook::flag::register(signal_hook::consts::SIGUSR1, dirty_flag.clone())?;
 
-    // Background git status worker
-    let (git_cache, git_path_tx) = spawn_git_worker(term.clone());
+    // Background git status worker (shares dirty_flag for immediate broadcast on changes)
+    let (git_cache, git_path_tx) = spawn_git_worker(term.clone(), dirty_flag.clone());
 
     // Store PID so toggle-off can kill us and hooks can signal us
     Cmd::new("tmux")
