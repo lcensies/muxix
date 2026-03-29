@@ -41,8 +41,9 @@ windows. Running the command again disables it globally.
 Each agent is displayed as a tile showing:
 
 - Status icon with spinner animation (working/waiting/done)
-- Project and worktree name (e.g. `myproject/fix-bug`)
-- Elapsed time since last status change
+- Worktree name and elapsed time since last status change
+- Project name and git diff stats (committed + uncommitted lines)
+- Agent task description
 
 ## Configuration
 
