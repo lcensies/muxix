@@ -1,7 +1,7 @@
 //! Rendering for the sidebar TUI.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
@@ -198,12 +198,7 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
 /// Compact single-line-per-agent list (original layout).
 fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     if app.agents.is_empty() {
-        let empty_line = Line::from(Span::styled(
-            "No agents",
-            Style::default().fg(app.palette.dimmed),
-        ));
-        let list = List::new(vec![ListItem::new(empty_line)]);
-        f.render_widget(list, area);
+        render_empty_state(f, app, area);
         return;
     }
 
@@ -295,12 +290,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 /// Tile layout: variable-height cards per agent with status stripe.
 fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     if app.agents.is_empty() {
-        let empty_line = Line::from(Span::styled(
-            "No agents",
-            Style::default().fg(app.palette.dimmed),
-        ));
-        let list = List::new(vec![ListItem::new(empty_line)]);
-        f.render_widget(list, area);
+        render_empty_state(f, app, area);
         return;
     }
 
@@ -652,6 +642,17 @@ fn format_compact_elapsed(secs: u64) -> String {
     } else {
         format!("{}d", secs / 86400)
     }
+}
+
+fn render_empty_state(f: &mut Frame, app: &SidebarApp, area: Rect) {
+    let text = Line::from(Span::styled(
+        "No agents running",
+        Style::default().fg(app.palette.dimmed),
+    ))
+    .alignment(Alignment::Center);
+    let y = area.y + area.height / 2;
+    let centered = Rect::new(area.x, y, area.width, 1);
+    f.render_widget(text, centered);
 }
 
 /// Get the display width of a string, counting wide chars as 2.
