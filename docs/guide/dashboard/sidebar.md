@@ -141,8 +141,8 @@ well. It uses a daemon + client architecture with event-driven rendering:
    `select-layout`. This preserves existing pane proportions (e.g. a 70/30 split
    stays 70/30).
 
-6. **Toggle off**: kills all sidebar panes, restores original window layouts from
-   saved state, stops the daemon, and removes hooks.
+6. **Toggle off**: kills all sidebar panes, reflows content panes to fill the
+   freed space, stops the daemon, and removes hooks.
 
 ## Resource usage
 
