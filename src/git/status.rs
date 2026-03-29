@@ -8,9 +8,15 @@ use crate::cmd::Cmd;
 use super::GitStatus;
 use super::branch::{get_branch_base_in, get_default_branch_in};
 
+/// Create a git command that won't contend for index.lock.
+/// Background monitoring should never block the user's git operations.
+fn bg_git<'a>() -> Cmd<'a> {
+    Cmd::new("git").arg("--no-optional-locks")
+}
+
 /// Check if the worktree has uncommitted changes
 pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
-    let output = Cmd::new("git")
+    let output = bg_git()
         .workdir(worktree_path)
         .args(&["status", "--porcelain"])
         .run_and_capture_stdout()?;
@@ -21,7 +27,7 @@ pub fn has_uncommitted_changes(worktree_path: &Path) -> Result<bool> {
 /// Check if the worktree has tracked changes (staged or modified)
 /// This excludes untracked files
 pub fn has_tracked_changes(worktree_path: &Path) -> Result<bool> {
-    let output = Cmd::new("git")
+    let output = bg_git()
         .workdir(worktree_path)
         .args(&["status", "--porcelain"])
         .run_and_capture_stdout()?;
@@ -37,7 +43,7 @@ pub fn has_tracked_changes(worktree_path: &Path) -> Result<bool> {
 
 /// Check if the worktree has untracked files
 pub fn has_untracked_files(worktree_path: &Path) -> Result<bool> {
-    let output = Cmd::new("git")
+    let output = bg_git()
         .workdir(worktree_path)
         .args(&["status", "--porcelain"])
         .run_and_capture_stdout()?;
@@ -55,7 +61,7 @@ pub fn has_untracked_files(worktree_path: &Path) -> Result<bool> {
 pub fn has_staged_changes(worktree_path: &Path) -> Result<bool> {
     // Exit code 0 = no changes, 1 = has changes
     // So we invert the result of run_as_check
-    let no_changes = Cmd::new("git")
+    let no_changes = bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--cached", "--quiet"])
         .run_as_check()?;
@@ -66,7 +72,7 @@ pub fn has_staged_changes(worktree_path: &Path) -> Result<bool> {
 pub fn has_unstaged_changes(worktree_path: &Path) -> Result<bool> {
     // Exit code 0 = no changes, 1 = has changes
     // So we invert the result of run_as_check
-    let no_changes = Cmd::new("git")
+    let no_changes = bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--quiet"])
         .run_as_check()?;
@@ -193,7 +199,7 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
     };
 
     // 1. Committed changes (base...HEAD)
-    if let Ok(output) = Cmd::new("git")
+    if let Ok(output) = bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--numstat", &format!("{}...HEAD", base_ref)])
         .run_and_capture_stdout()
@@ -205,7 +211,7 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
 
     // 2. Uncommitted changes (HEAD vs working tree)
     // This covers both staged and unstaged changes to tracked files
-    if let Ok(output) = Cmd::new("git")
+    if let Ok(output) = bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--numstat", "HEAD"])
         .run_and_capture_stdout()
@@ -217,7 +223,7 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
 
     // 3. Untracked files (all lines count as added to uncommitted)
     // Use -z to separate paths with null bytes, handling spaces/special chars correctly
-    if let Ok(output) = Cmd::new("git")
+    if let Ok(output) = bg_git()
         .workdir(worktree_path)
         .args(&["ls-files", "--others", "--exclude-standard", "-z"])
         .run_and_capture_stdout()
@@ -293,7 +299,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
     let is_rebasing = is_rebasing(worktree_path);
 
     // Get branch info, ahead/behind, and dirty state in one command
-    let (branch, ahead, behind, is_dirty, has_upstream) = match Cmd::new("git")
+    let (branch, ahead, behind, is_dirty, has_upstream) = match bg_git()
         .workdir(worktree_path)
         .args(&["status", "--porcelain=v2", "--branch"])
         .run_and_capture_stdout()
@@ -360,7 +366,13 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
     let has_conflict = {
         let status = Command::new("git")
             .current_dir(worktree_path)
-            .args(["merge-tree", "--write-tree", &base_ref, "HEAD"])
+            .args([
+                "--no-optional-locks",
+                "merge-tree",
+                "--write-tree",
+                &base_ref,
+                "HEAD",
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
