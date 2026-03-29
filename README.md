@@ -41,7 +41,7 @@ configuration reference.
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
 quick overview.
 
-![workmux screenshot](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/screenshot.webp)
+![workmux screenshot](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/screenshot_20260329_165534.webp)
 
 ## Why workmux?
 
@@ -72,9 +72,11 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
   one command (`merge`)
 - [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
   sending commands
+- [Sidebar](https://workmux.raine.dev/guide/dashboard/sidebar) for a persistent,
+  at-a-glance view of all agents across tmux windows
 - [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
   `/worktree` skill
-- [Display Claude agent status in tmux window names](#agent-status-tracking)
+- [Display agent status in tmux window names](#agent-status-tracking)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
