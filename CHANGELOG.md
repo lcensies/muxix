@@ -21,6 +21,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.162 (2026-03-29)
+
+- Add named agents: define short names for agent commands in your global config
+  and use them anywhere you'd specify an agent. Useful for multiple accounts,
+  wrapper scripts, or commands with long environment variable overrides
+
 ## v0.1.158 (2026-03-29)
 
 - Add `sidebar`: an always-visible agent status panel in a tmux side pane,
