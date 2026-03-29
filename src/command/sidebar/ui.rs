@@ -42,21 +42,26 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
         .collect()
 }
 
-/// Format git diff stats for sidebar display.
+/// Format git diff stats for sidebar display, fitting within `available_width`.
 /// Uses same colors as dashboard: DIM committed stats, bright uncommitted stats.
 /// When `is_stale` is true, all colors are forced to dimmed.
+///
+/// Priority when space is limited:
+/// 1. Uncommitted diff stats (bright +N -M with diff icon)
+/// 2. Committed/branch diff stats (dimmed +N -M)
+///
 /// Returns pre-built spans (without background) and total display width.
 fn format_sidebar_git_stats(
     status: Option<&GitStatus>,
     palette: &ThemePalette,
     is_stale: bool,
+    available_width: usize,
 ) -> (Vec<(String, Style)>, usize) {
     let Some(status) = status else {
         return (vec![], 0);
     };
 
     let icons = crate::nerdfont::git_icons();
-    let mut spans: Vec<(String, Style)> = Vec::new();
 
     // When stale, force all colors to dimmed
     let success = if is_stale {
@@ -88,71 +93,83 @@ fn format_sidebar_git_stats(
         return (vec![], 0);
     }
 
-    // Rebase indicator (shown first)
+    // Width of a set of spans: text widths + spaces between + trailing space
+    let calc_width = |spans: &[(String, Style)]| -> usize {
+        if spans.is_empty() {
+            return 0;
+        }
+        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len()
+    };
+
+    // Build rebase indicator (shown first, highest priority)
+    let mut rebase_spans: Vec<(String, Style)> = Vec::new();
     if status.is_rebasing {
         let rebase_color = if is_stale {
             palette.dimmed
         } else {
             palette.warning
         };
-        spans.push((icons.rebase.to_string(), Style::default().fg(rebase_color)));
+        rebase_spans.push((icons.rebase.to_string(), Style::default().fg(rebase_color)));
     }
 
-    if has_uncommitted && all_uncommitted {
-        // All changes are uncommitted: icon + bright numbers only
-        spans.push((icons.diff.to_string(), Style::default().fg(accent)));
+    // Build uncommitted spans (bright, with diff icon)
+    let mut uncommitted_spans: Vec<(String, Style)> = Vec::new();
+    if has_uncommitted {
+        uncommitted_spans.push((icons.diff.to_string(), Style::default().fg(accent)));
         if status.uncommitted_added > 0 {
-            spans.push((
+            uncommitted_spans.push((
                 format!("+{}", status.uncommitted_added),
                 Style::default().fg(success),
             ));
         }
         if status.uncommitted_removed > 0 {
-            spans.push((
+            uncommitted_spans.push((
                 format!("-{}", status.uncommitted_removed),
                 Style::default().fg(danger),
             ));
         }
-    } else {
-        // Show dimmed committed stats
-        if has_committed {
-            if status.lines_added > 0 {
-                spans.push((
-                    format!("+{}", status.lines_added),
-                    Style::default().fg(success).add_modifier(Modifier::DIM),
-                ));
-            }
-            if status.lines_removed > 0 {
-                spans.push((
-                    format!("-{}", status.lines_removed),
-                    Style::default().fg(danger).add_modifier(Modifier::DIM),
-                ));
-            }
-        }
+    }
 
-        // Show bright uncommitted stats with icon separator
-        if has_uncommitted {
-            spans.push((icons.diff.to_string(), Style::default().fg(accent)));
-            if status.uncommitted_added > 0 {
-                spans.push((
-                    format!("+{}", status.uncommitted_added),
-                    Style::default().fg(success),
-                ));
-            }
-            if status.uncommitted_removed > 0 {
-                spans.push((
-                    format!("-{}", status.uncommitted_removed),
-                    Style::default().fg(danger),
-                ));
-            }
+    // Build committed spans (dimmed) - skip if all changes are uncommitted
+    let mut committed_spans: Vec<(String, Style)> = Vec::new();
+    if has_committed && !all_uncommitted {
+        if status.lines_added > 0 {
+            committed_spans.push((
+                format!("+{}", status.lines_added),
+                Style::default().fg(success).add_modifier(Modifier::DIM),
+            ));
+        }
+        if status.lines_removed > 0 {
+            committed_spans.push((
+                format!("-{}", status.lines_removed),
+                Style::default().fg(danger).add_modifier(Modifier::DIM),
+            ));
         }
     }
 
-    // Calculate total width (each span separated by a space, plus 1 trailing space for right padding)
-    let total_width: usize =
-        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len(); // spaces between spans + trailing space
+    let rebase_width = calc_width(&rebase_spans);
+    let committed_width = calc_width(&committed_spans);
+    let uncommitted_width = calc_width(&uncommitted_spans);
 
-    (spans, total_width)
+    // Trailing space of each group acts as separator when concatenated
+    let full_width = rebase_width + committed_width + uncommitted_width;
+    let no_committed_width = rebase_width + uncommitted_width;
+
+    // Priority: full > drop committed > drop uncommitted > rebase only > nothing
+    if full_width > 0 && full_width <= available_width {
+        let mut spans = rebase_spans;
+        spans.extend(committed_spans);
+        spans.extend(uncommitted_spans);
+        (spans, full_width)
+    } else if no_committed_width > 0 && no_committed_width <= available_width {
+        let mut spans = rebase_spans;
+        spans.extend(uncommitted_spans);
+        (spans, no_committed_width)
+    } else if rebase_width > 0 && rebase_width <= available_width {
+        (rebase_spans, rebase_width)
+    } else {
+        (vec![], 0)
+    }
 }
 
 /// Render the sidebar UI.
@@ -428,11 +445,16 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             ]);
 
             // Line 2: ▌   project name          +N -M *+X -Y
+            // Priority: project name > uncommitted stats > committed stats
+            // Give project a minimum width, then let git stats use what remains
             let git_status = app.git_statuses.get(&agent.path);
+            let project_full_width = display_width(&project);
+            let min_project_width = 5.min(project_full_width);
+            let git_available = body_width.saturating_sub(min_project_width + 1); // +1 for gap
             let (git_spans, git_width) =
-                format_sidebar_git_stats(git_status, &app.palette, is_stale);
+                format_sidebar_git_stats(git_status, &app.palette, is_stale, git_available);
 
-            // Reserve space for git stats on the right (+ 1 space gap minimum)
+            // Project gets remaining space after git stats
             let project_max_width = if git_width > 0 {
                 body_width.saturating_sub(git_width + 1)
             } else {
