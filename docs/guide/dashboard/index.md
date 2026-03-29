@@ -14,6 +14,8 @@ The dashboard is entirely optional. It becomes especially useful when running mu
   <img src="/dashboard.webp" alt="workmux dashboard" style="border-radius: 4px;">
 </div>
 
+For an always-visible, non-intrusive alternative, see the [sidebar](/guide/dashboard/sidebar).
+
 ## Setup
 
 ::: warning Prerequisites

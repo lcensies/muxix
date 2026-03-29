@@ -8,6 +8,10 @@ The sidebar provides an always-visible agent overview pinned to the left edge of
 every tmux window. Unlike the dashboard (which is a full-screen TUI you open on
 demand), the sidebar stays on screen while you work.
 
+<div style="display: flex; justify-content: center; margin: 1.5rem 0;">
+  <img src="/sidebar.webp" alt="workmux sidebar" style="border-radius: 4px;">
+</div>
+
 ## Setup
 
 ::: warning Prerequisites
