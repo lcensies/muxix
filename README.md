@@ -101,6 +101,10 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 > git, without getting in the way or obscuring the underlying tooling."  
 > — @cisaacstern [🔗](https://github.com/raine/workmux/issues/33)
 
+> "I have to mention workmux at every opportunity because it's the perfect glue
+> between worktrees, agents and tmux windows."  
+> — @dedbrizz [🔗](https://www.threads.com/@dedbrizz/post/DVt1DtLkr_l)
+
 ## Installation
 
 ### Bash YOLO
@@ -252,16 +256,16 @@ customize.
 
 #### Basic options
 
-| Option           | Description                                          | Default                 |
-| ---------------- | ---------------------------------------------------- | ----------------------- |
-| `main_branch`    | Branch to merge into                                 | Auto-detected           |
-| `base_branch`    | Default base branch for new worktrees                | Current branch          |
-| `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/` |
-| `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                   |
-| `mode`           | Tmux mode (`window` or `session`)                    | `window`                |
-| `agent`          | Default agent for `<agent>` placeholder              | `claude`                |
-| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                 |
-| `theme`          | Dashboard color scheme          | `default` (auto dark/light) |
+| Option           | Description                                          | Default                     |
+| ---------------- | ---------------------------------------------------- | --------------------------- |
+| `main_branch`    | Branch to merge into                                 | Auto-detected               |
+| `base_branch`    | Default base branch for new worktrees                | Current branch              |
+| `worktree_dir`   | Directory for worktrees (absolute or relative)       | `<project>__worktrees/`     |
+| `window_prefix`  | Prefix for tmux window/session names                 | `wm-`                       |
+| `mode`           | Tmux mode (`window` or `session`)                    | `window`                    |
+| `agent`          | Default agent for `<agent>` placeholder              | `claude`                    |
+| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`) | `merge`                     |
+| `theme`          | Dashboard color scheme                               | `default` (auto dark/light) |
 
 #### Naming options
 
@@ -307,9 +311,9 @@ Each pane supports:
   flag)
 
 Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`,
-`pi`) are auto-detected when used as literal commands and receive prompt injection
-automatically, without needing the `<agent>` placeholder or a matching `agent`
-config:
+`pi`) are auto-detected when used as literal commands and receive prompt
+injection automatically, without needing the `<agent>` placeholder or a matching
+`agent` config:
 
 ```yaml
 panes:
@@ -674,9 +678,9 @@ done
 
 When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
 workmux automatically injects the prompt into panes running the configured agent
-command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`, `pi`,
-or whatever you've set via the `agent` config or `--agent` flag) without requiring any
-`.workmux.yaml` changes:
+command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`,
+`pi`, or whatever you've set via the `agent` config or `--agent` flag) without
+requiring any `.workmux.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started
   with the given prompt.
@@ -688,9 +692,10 @@ This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
 
 If your editor has an embedded agent (e.g., neovim with an agent plugin), use
-`--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md` without
-requiring an agent pane. Your editor can then detect and consume the file on
-startup. This can also be set permanently in config with `prompt_file_only: true`.
+`--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md`
+without requiring an agent pane. Your editor can then detect and consume the
+file on startup. This can also be set permanently in config with
+`prompt_file_only: true`.
 
 #### Automatic branch name generation
 
@@ -1232,8 +1237,8 @@ Prints the path to the global configuration file. Useful for scripting.
 
 ### `workmux config reference`
 
-Prints the default configuration file with all options documented. Useful
-for discovering available options or piping to an AI agent for context.
+Prints the default configuration file with all options documented. Useful for
+discovering available options or piping to an AI agent for context.
 
 ---
 
@@ -1577,8 +1582,8 @@ Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 Toggles a live agent status sidebar on the left side of all tmux windows. Shows
 all active agents across all sessions and projects with live status updates,
-providing an always-visible overview without taking over the full screen like the
-dashboard.
+providing an always-visible overview without taking over the full screen like
+the dashboard.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off
@@ -1590,20 +1595,20 @@ The sidebar displays:
 - Project and worktree name (e.g. `myproject/fix-bug`)
 - Elapsed time since last status change
 
-| Key     | Action              |
-| ------- | ------------------- |
-| `j`/`k` | Navigate up/down    |
-| `Enter` | Jump to agent       |
-| `g`/`G` | Jump to first/last  |
-| `v`     | Toggle layout mode  |
-| `q`     | Quit sidebar        |
+| Key     | Action             |
+| ------- | ------------------ |
+| `j`/`k` | Navigate up/down   |
+| `Enter` | Jump to agent      |
+| `g`/`G` | Jump to first/last |
+| `v`     | Toggle layout mode |
+| `q`     | Quit sidebar       |
 
 Configure width and layout in `.workmux.yaml`:
 
 ```yaml
 sidebar:
-  width: 40       # absolute columns, or "15%" for percentage
-  layout: tiles   # "compact" or "tiles" (default)
+  width: 40 # absolute columns, or "15%" for percentage
+  layout: tiles # "compact" or "tiles" (default)
 ```
 
 #### Example tmux binding
