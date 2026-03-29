@@ -19,22 +19,20 @@ The sidebar requires [status tracking hooks](/guide/status-tracking) to be
 configured and tmux as the backend.
 :::
 
-Add this binding to your `~/.tmux.conf`:
+Toggle the sidebar with:
 
 ```bash
-bind C-t run-shell "workmux sidebar"
-```
-
-Then press `prefix + Ctrl-t` to toggle the sidebar on or off.
-
-## Usage
-
-```bash
-workmux sidebar            # Toggle sidebar on/off
+workmux sidebar
 ```
 
 The sidebar automatically appears in all existing and newly created tmux
 windows. Running the command again disables it globally.
+
+Optionally, add a tmux binding for quick access:
+
+```bash
+bind C-t run-shell "workmux sidebar"
+```
 
 ## What it shows
 
