@@ -147,6 +147,7 @@ pub fn run_sidebar() -> Result<()> {
             Duration::from_secs(3600)
         };
 
+        let wait_start = std::time::Instant::now();
         let first_event = match rx.recv_timeout(timeout) {
             Ok(ev) => Some(ev),
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -155,10 +156,28 @@ pub fn run_sidebar() -> Result<()> {
                     app.tick();
                     needs_render = true;
                 }
+                // Log if we've been waiting a long time with no agents
+                if app.agents.is_empty() && startup.elapsed() > Duration::from_secs(1) {
+                    dbg_log(&format!(
+                        "TIMEOUT: still empty after {:.0}ms, host_active={}, timeout={:?}",
+                        startup.elapsed().as_secs_f64() * 1000.0,
+                        app.host_window_active(),
+                        timeout,
+                    ));
+                }
                 continue;
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
+
+        // Log how long we waited (only when agents are empty to avoid spam)
+        if app.agents.is_empty() {
+            dbg_log(&format!(
+                "EVENT: waited {:.0}ms, agents=0, since_start={:.0}ms",
+                wait_start.elapsed().as_secs_f64() * 1000.0,
+                startup.elapsed().as_secs_f64() * 1000.0,
+            ));
+        }
 
         // Process first event
         if let Some(ev) = first_event {
@@ -206,10 +225,11 @@ fn process_event(
         AppEvent::SnapshotReady => {
             if let Some(snapshot) = snapshot_handle.take() {
                 dbg_log(&format!(
-                    "SNAPSHOT: agents={} active_windows={:?} host_active_before={}",
+                    "SNAPSHOT: agents={} active_windows={:?} host_active_before={} since_start={:.0}ms",
                     snapshot.agents.len(),
                     snapshot.active_windows,
                     app.host_window_active(),
+                    startup.elapsed().as_secs_f64() * 1000.0,
                 ));
                 // Check last-pane using snapshot data (with startup grace period)
                 if startup.elapsed() > startup_grace

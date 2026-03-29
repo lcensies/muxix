@@ -1,6 +1,6 @@
 //! Unix socket client for receiving snapshots from the sidebar daemon.
 
-use std::io::Read;
+use std::io::{Read, Write as _};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::mpsc;
@@ -9,6 +9,20 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::snapshot::SidebarSnapshot;
+
+fn client_log(msg: &str) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/workmux-sidebar-debug.log")
+    {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let pid = std::process::id();
+        let _ = writeln!(f, "[{:.3}] CLIENT({}): {}", now.as_secs_f64(), pid, msg);
+    }
+}
 
 type Latest = Arc<Mutex<Option<SidebarSnapshot>>>;
 
@@ -48,23 +62,41 @@ fn connection_loop(path: &Path, latest: &Latest, wake_tx: &mpsc::SyncSender<()>)
     let jitter = Duration::from_millis((std::process::id() % 100) as u64);
     let mut backoff = min_backoff;
 
+    client_log("connection_loop started");
+
     loop {
         let connected_at = Instant::now();
 
-        if let Ok(stream) = UnixStream::connect(path) {
-            if read_loop(stream, latest, wake_tx).is_err() {
-                break; // Wake channel closed, main thread exited
+        match UnixStream::connect(path) {
+            Ok(stream) => {
+                client_log("connected to daemon socket");
+                backoff = min_backoff; // Reset on any successful connect
+                if read_loop(stream, latest, wake_tx).is_err() {
+                    client_log("wake channel closed, exiting");
+                    break; // Wake channel closed, main thread exited
+                }
+                let duration = connected_at.elapsed();
+                client_log(&format!(
+                    "socket closed after {:.1}s, reconnecting",
+                    duration.as_secs_f64()
+                ));
+                // Only reset backoff if connection was stable (lasted >5s).
+                // Short-lived connections (daemon accept-then-close) keep
+                // exponential backoff to prevent synchronized churn.
+                if duration <= Duration::from_secs(5) {
+                    backoff = (backoff * 2).min(max_backoff);
+                }
             }
-            // Only reset backoff if connection was stable (lasted >5s).
-            // Short-lived connections (daemon accept-then-close) keep
-            // exponential backoff to prevent synchronized churn.
-            if connected_at.elapsed() > Duration::from_secs(5) {
-                backoff = min_backoff;
+            Err(e) => {
+                client_log(&format!(
+                    "connect failed: {}, backoff={:?}",
+                    e,
+                    backoff + jitter
+                ));
             }
         }
 
         thread::sleep(backoff + jitter);
-        backoff = (backoff * 2).min(max_backoff);
     }
 }
 
@@ -75,27 +107,66 @@ fn read_loop(
     wake_tx: &mpsc::SyncSender<()>,
 ) -> Result<(), mpsc::SendError<()>> {
     const MAX_PAYLOAD: usize = 1024 * 1024; // 1MB sanity limit
+    let mut msg_count = 0u64;
     loop {
         let mut len_buf = [0u8; 4];
-        if stream.read_exact(&mut len_buf).is_err() {
+        if let Err(e) = stream.read_exact(&mut len_buf) {
+            client_log(&format!(
+                "read_loop: read len failed: {} (after {} msgs)",
+                e, msg_count
+            ));
             return Ok(()); // Socket closed, reconnect
         }
         let len = u32::from_be_bytes(len_buf) as usize;
         if len > MAX_PAYLOAD {
+            client_log(&format!("read_loop: payload too large: {} bytes", len));
             return Ok(()); // Corrupt stream, reconnect
         }
 
         let mut buf = vec![0u8; len];
-        if stream.read_exact(&mut buf).is_err() {
+        if let Err(e) = stream.read_exact(&mut buf) {
+            client_log(&format!(
+                "read_loop: read payload failed: {} (after {} msgs)",
+                e, msg_count
+            ));
             return Ok(());
         }
 
-        if let Ok(snapshot) = serde_json::from_slice::<SidebarSnapshot>(&buf) {
-            *latest.lock().unwrap() = Some(snapshot);
-            // try_send: if a wake is already pending, skip (coalesces)
-            // Full = no-op (wake already queued), Disconnected = main exited
-            if let Err(mpsc::TrySendError::Disconnected(())) = wake_tx.try_send(()) {
-                return Err(mpsc::SendError(()));
+        match serde_json::from_slice::<SidebarSnapshot>(&buf) {
+            Ok(snapshot) => {
+                msg_count += 1;
+                let agents = snapshot.agents.len();
+                *latest.lock().unwrap() = Some(snapshot);
+                // try_send: if a wake is already pending, skip (coalesces)
+                // Full = no-op (wake already queued), Disconnected = main exited
+                match wake_tx.try_send(()) {
+                    Ok(()) => {
+                        client_log(&format!(
+                            "read_loop: snapshot #{} agents={} wake=sent",
+                            msg_count, agents
+                        ));
+                    }
+                    Err(mpsc::TrySendError::Full(())) => {
+                        client_log(&format!(
+                            "read_loop: snapshot #{} agents={} wake=coalesced",
+                            msg_count, agents
+                        ));
+                    }
+                    Err(mpsc::TrySendError::Disconnected(())) => {
+                        client_log(&format!(
+                            "read_loop: snapshot #{} agents={} wake=disconnected",
+                            msg_count, agents
+                        ));
+                        return Err(mpsc::SendError(()));
+                    }
+                }
+            }
+            Err(e) => {
+                client_log(&format!(
+                    "read_loop: deserialize failed: {} ({} bytes)",
+                    e,
+                    buf.len()
+                ));
             }
         }
     }
