@@ -84,8 +84,18 @@ fn format_sidebar_git_stats(
         && status.uncommitted_added == status.lines_added
         && status.uncommitted_removed == status.lines_removed;
 
-    if !has_committed && !has_uncommitted {
+    if !has_committed && !has_uncommitted && !status.is_rebasing {
         return (vec![], 0);
+    }
+
+    // Rebase indicator (shown first)
+    if status.is_rebasing {
+        let rebase_color = if is_stale {
+            palette.dimmed
+        } else {
+            palette.warning
+        };
+        spans.push((icons.rebase.to_string(), Style::default().fg(rebase_color)));
     }
 
     if has_uncommitted && all_uncommitted {

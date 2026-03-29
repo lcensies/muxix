@@ -50,4 +50,7 @@ pub struct GitStatus {
     /// Whether the branch has an upstream tracking branch
     #[serde(default)]
     pub has_upstream: bool,
+    /// Whether a rebase is currently in progress
+    #[serde(default)]
+    pub is_rebasing: bool,
 }

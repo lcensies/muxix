@@ -28,6 +28,14 @@ pub fn format_git_status(
         let all_uncommitted = status.uncommitted_added == status.lines_added
             && status.uncommitted_removed == status.lines_removed;
 
+        // Rebase indicator (shown first, before everything else)
+        if status.is_rebasing {
+            spans.push((
+                icons.rebase.to_string(),
+                Style::default().fg(palette.warning),
+            ));
+        }
+
         // Base branch (dimmed) - only show if not default (main/master)
         if !status.base_branch.is_empty()
             && status.base_branch != "main"

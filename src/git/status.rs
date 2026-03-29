@@ -251,6 +251,35 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
     }
 }
 
+/// Check if a rebase is in progress by looking for rebase state directories in the git dir.
+/// For linked worktrees, resolves the actual gitdir from the `.git` file.
+fn is_rebasing(worktree_path: &Path) -> bool {
+    let dot_git = worktree_path.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        dot_git
+    } else if dot_git.is_file() {
+        // Linked worktree: .git is a file containing "gitdir: /path/to/real/gitdir"
+        let content = std::fs::read_to_string(&dot_git).unwrap_or_default();
+        match content.strip_prefix("gitdir: ") {
+            Some(gitdir) => {
+                let path = std::path::PathBuf::from(gitdir.trim());
+                if path.is_absolute() {
+                    path
+                } else {
+                    worktree_path.join(path)
+                }
+            }
+            None => return false,
+        }
+    } else {
+        return false;
+    };
+
+    // Interactive rebase: rebase-merge/
+    // Non-interactive rebase or git am: rebase-apply/
+    git_dir.join("rebase-merge").is_dir() || git_dir.join("rebase-apply").is_dir()
+}
+
 /// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
 /// This is designed for dashboard display and prioritizes speed over completeness.
 /// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
@@ -260,6 +289,8 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .ok();
+
+    let is_rebasing = is_rebasing(worktree_path);
 
     // Get branch info, ahead/behind, and dirty state in one command
     let (branch, ahead, behind, is_dirty, has_upstream) = match Cmd::new("git")
@@ -272,6 +303,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
             return GitStatus {
                 cached_at: now,
                 branch: None,
+                is_rebasing,
                 ..Default::default()
             };
         }
@@ -286,6 +318,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
                 cached_at: now,
                 branch: None,
                 has_upstream,
+                is_rebasing,
                 ..Default::default()
             };
         }
@@ -313,6 +346,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
             base_branch,
             branch: Some(branch),
             has_upstream,
+            is_rebasing,
             ..Default::default()
         };
     }
@@ -349,6 +383,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
         base_branch,
         branch: Some(branch),
         has_upstream,
+        is_rebasing,
     }
 }
 

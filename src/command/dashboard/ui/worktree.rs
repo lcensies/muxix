@@ -477,6 +477,19 @@ fn render_info_panel(
             lines.push(Line::from(uc_spans));
         }
 
+        // Rebase indicator
+        if status.is_rebasing {
+            let git_icons = crate::nerdfont::git_icons();
+            lines.push(Line::from(vec![
+                Span::styled("        ", label_style),
+                Span::styled(
+                    format!("{} ", git_icons.rebase),
+                    Style::default().fg(app.palette.warning),
+                ),
+                Span::styled("rebase in progress", label_style),
+            ]));
+        }
+
         // Conflict indicator
         if status.has_conflict {
             lines.push(Line::from(vec![

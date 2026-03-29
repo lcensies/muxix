@@ -1474,7 +1474,7 @@ to the agent without leaving the dashboard.
 - **Project**: Project name (from `__worktrees` path or directory name)
 - **Agent**: Worktree/window name
 - **Git**: Diff stats showing branch changes (dim) and uncommitted changes
-  (bright)
+  (bright). Shows a rebase icon when a rebase is in progress.
 - **Status**: Agent status icon (🤖 working, 💬 waiting, ✅ done, or "stale")
 - **Time**: Time since last status change
 - **Title**: Claude Code session title (auto-generated summary)

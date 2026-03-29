@@ -27,6 +27,7 @@ pub struct PrIcons {
 pub struct GitIcons {
     pub diff: &'static str,
     pub conflict: &'static str,
+    pub rebase: &'static str,
 }
 
 const NERDFONT_PR_ICONS: PrIcons = PrIcons {
@@ -66,11 +67,13 @@ const FALLBACK_CHECK_ICONS: CheckIcons = CheckIcons {
 const NERDFONT_GIT_ICONS: GitIcons = GitIcons {
     diff: "\u{f03eb}",     // nf-md-file_document_edit_outline
     conflict: "\u{f002a}", // nf-md-alert
+    rebase: "\u{f47f}",    // nf-oct-git_compare
 };
 
 const FALLBACK_GIT_ICONS: GitIcons = GitIcons {
     diff: "*",
     conflict: "!",
+    rebase: "R",
 };
 
 /// Git branch icon used in the setup prompt.
