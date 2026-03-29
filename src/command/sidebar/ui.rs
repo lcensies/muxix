@@ -17,7 +17,7 @@ use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
 
-/// Compute pane suffixes like " [1]", " [2]" for agents sharing the same window.
+/// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
     let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
     for agent in agents {
@@ -34,7 +34,7 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
             if counts[&key] > 1 {
                 let pos = positions.entry(key).or_default();
                 *pos += 1;
-                format!(" [{}]", pos)
+                format!(" ({})", pos)
             } else {
                 String::new()
             }
@@ -324,11 +324,13 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let (worktree, is_main) =
                 extract_worktree_name(&agent.session, &agent.window_name, app.window_prefix());
 
-            let display_worktree = if is_main {
-                format!("main{}", pane_suffixes[idx])
+            let base_worktree = if is_main {
+                "main".to_string()
             } else {
-                format!("{}{}", worktree, pane_suffixes[idx])
+                worktree.to_string()
             };
+            let pane_suffix = &pane_suffixes[idx];
+            let display_worktree = format!("{}{}", base_worktree, pane_suffix);
 
             let is_stale = agent
                 .status_ts
@@ -370,8 +372,23 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let body_indent = "   ";
             let body_width = (area.width as usize).saturating_sub(2 + body_indent.len());
 
-            let display_name = truncate_with_ellipsis(&display_worktree, line1_name_width);
-            let name_padding = line1_name_width.saturating_sub(display_width(&display_name));
+            // Truncate using the full string (base + suffix) for width calculation,
+            // then split back into name part and suffix part for separate styling.
+            let display_full = truncate_with_ellipsis(&display_worktree, line1_name_width);
+            let full_width = display_width(&display_full);
+            let name_padding = line1_name_width.saturating_sub(full_width);
+
+            // Split: if the suffix is still fully present in the truncated string, render it dimmed
+            let (display_name_part, display_suffix_part) =
+                if !pane_suffix.is_empty() && display_full.ends_with(pane_suffix) {
+                    let name_end = display_full.len() - pane_suffix.len();
+                    (
+                        display_full[..name_end].to_string(),
+                        pane_suffix.to_string(),
+                    )
+                } else {
+                    (display_full, String::new())
+                };
 
             // Styles - apply highlight background on selected tiles' content lines
             let bg = if is_selected {
@@ -420,24 +437,33 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             // Padding style (spaces that need background in selected state)
             let pad_style = bg.map(|c| Style::default().bg(c)).unwrap_or_default();
 
-            // Line 1: ▌ icon  worktree-name    elapsed
+            // Line 1: ▌ icon  worktree-name (N)    elapsed
             // Compute used width to pad trailing space
             let line1_used = 2
                 + display_width(&icon)
                 + (2usize.saturating_sub(icon_cols))
                 + 1
-                + display_width(&display_name)
+                + full_width
                 + name_padding
                 + 1
                 + elapsed.len();
             let line1_trail = (area.width as usize).saturating_sub(line1_used);
+
+            // Suffix style: slightly dimmed relative to the name
+            let mut suffix_style = Style::default()
+                .fg(app.palette.dimmed)
+                .add_modifier(Modifier::DIM);
+            if let Some(bg_color) = bg {
+                suffix_style = suffix_style.bg(bg_color);
+            }
 
             let line1 = Line::from(vec![
                 Span::styled("▌ ", stripe_bg_style),
                 Span::styled(icon, icon_bg_style),
                 Span::styled(icon_pad, pad_style),
                 Span::styled(" ", pad_style),
-                Span::styled(display_name, name_style),
+                Span::styled(display_name_part, name_style),
+                Span::styled(display_suffix_part, suffix_style),
                 Span::styled(" ".repeat(name_padding), pad_style),
                 Span::styled(" ", pad_style),
                 Span::styled(elapsed, elapsed_style),
