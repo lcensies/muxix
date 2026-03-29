@@ -675,6 +675,9 @@ fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
         out.push(c);
         width += char_width;
     }
-    out.push('\u{2026}');
-    out
+    // Trim trailing spaces so ellipsis attaches to the last word
+    let trimmed = out.trim_end();
+    let mut result = trimmed.to_string();
+    result.push('\u{2026}');
+    result
 }
