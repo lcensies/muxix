@@ -256,6 +256,7 @@ fn find_worktrees_for_path(
 
 /// Register a watch path and associate it with a worktree.
 /// If the path is already watched by another worktree, just adds the mapping.
+/// Only records the mapping after the OS watch succeeds (or was already active).
 fn add_watch(
     watcher: &mut notify::RecommendedWatcher,
     path: &Path,
@@ -264,14 +265,18 @@ fn add_watch(
     watch_to_worktrees: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     watched_for_worktree: &mut Vec<PathBuf>,
 ) {
-    let entry = watch_to_worktrees.entry(path.to_path_buf()).or_default();
-    let already_watching = !entry.is_empty();
-    entry.insert(worktree.to_path_buf());
-    watched_for_worktree.push(path.to_path_buf());
+    let already_watching = watch_to_worktrees.get(path).is_some_and(|s| !s.is_empty());
 
     if !already_watching && let Err(e) = watcher.watch(path, mode) {
         tracing::warn!("failed to watch {}: {}", path.display(), e);
+        return;
     }
+
+    watch_to_worktrees
+        .entry(path.to_path_buf())
+        .or_default()
+        .insert(worktree.to_path_buf());
+    watched_for_worktree.push(path.to_path_buf());
 }
 
 /// Remove watch association for a worktree. Unwatches the path if no other worktree needs it.
@@ -432,13 +437,17 @@ fn spawn_git_worker(
     thread::spawn(move || {
         // Filesystem event channel for notify
         let (fs_tx, fs_rx) = std::sync::mpsc::channel();
-        let mut watcher = match notify::RecommendedWatcher::new(fs_tx, notify::Config::default()) {
-            Ok(w) => w,
-            Err(e) => {
-                tracing::error!("failed to create filesystem watcher: {}", e);
-                return;
-            }
-        };
+        let mut watcher: Option<notify::RecommendedWatcher> =
+            match notify::RecommendedWatcher::new(fs_tx, notify::Config::default()) {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    tracing::warn!(
+                        "filesystem watcher unavailable, falling back to polling: {}",
+                        e
+                    );
+                    None
+                }
+            };
 
         let mut active_entries: Vec<GitWorkerPath> = Vec::new();
         // Maps: watched directory -> set of worktrees it covers
@@ -449,48 +458,63 @@ fn spawn_git_worker(
         let mut pending_worktrees: HashMap<PathBuf, Instant> = HashMap::new();
         // Stale status per path (true = all agents at path are stale)
         let mut path_stale: HashMap<PathBuf, bool> = HashMap::new();
+        // Track unique active paths for fallback polling
+        let mut unique_active: Vec<PathBuf> = Vec::new();
         let mut last_full_sweep = Instant::now();
-        let full_sweep_interval = Duration::from_secs(30);
+        // Watcher mode: 30s fallback sweep. Poll-only mode: 2s sweep interval.
+        let full_sweep_interval = if watcher.is_some() {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(2)
+        };
         let debounce_duration = Duration::from_millis(300);
 
         while !term.load(Ordering::Relaxed) {
-            // Block on filesystem events (zero CPU when idle)
-            let timeout = next_worker_timeout(
-                &pending_worktrees,
-                debounce_duration,
-                last_full_sweep,
-                full_sweep_interval,
-            );
-            match fs_rx.recv_timeout(timeout) {
-                Ok(Ok(event)) => {
-                    for path in &event.paths {
-                        for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
-                            pending_worktrees
-                                .entry(wt)
-                                .and_modify(|t| *t = Instant::now())
-                                .or_insert_with(Instant::now);
+            // Block on filesystem events (zero CPU when idle), or sleep briefly in poll mode
+            if watcher.is_some() {
+                let timeout = next_worker_timeout(
+                    &pending_worktrees,
+                    debounce_duration,
+                    last_full_sweep,
+                    full_sweep_interval,
+                );
+                match fs_rx.recv_timeout(timeout) {
+                    Ok(Ok(event)) => {
+                        for path in &event.paths {
+                            for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                                pending_worktrees
+                                    .entry(wt)
+                                    .and_modify(|t| *t = Instant::now())
+                                    .or_insert_with(Instant::now);
+                            }
                         }
                     }
+                    Ok(Err(e)) => {
+                        tracing::warn!("filesystem watch error: {}", e);
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
-                Ok(Err(e)) => {
-                    tracing::warn!("filesystem watch error: {}", e);
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-            }
 
-            // Drain any additional buffered events
-            while let Ok(event_result) = fs_rx.try_recv() {
-                if let Ok(event) = event_result {
-                    for path in &event.paths {
-                        for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
-                            pending_worktrees
-                                .entry(wt)
-                                .and_modify(|t| *t = Instant::now())
-                                .or_insert_with(Instant::now);
+                // Drain any additional buffered events
+                while let Ok(event_result) = fs_rx.try_recv() {
+                    if let Ok(event) = event_result {
+                        for path in &event.paths {
+                            for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                                pending_worktrees
+                                    .entry(wt)
+                                    .and_modify(|t| *t = Instant::now())
+                                    .or_insert_with(Instant::now);
+                            }
                         }
                     }
                 }
+            } else {
+                // Poll-only fallback: sleep until next sweep check
+                let sleep = full_sweep_interval
+                    .saturating_sub(last_full_sweep.elapsed())
+                    .min(Duration::from_secs(1));
+                thread::sleep(sleep);
             }
 
             // Check for path updates (non-blocking)
@@ -509,43 +533,64 @@ fn spawn_git_worker(
                         *e = false;
                     }
                 }
-                let mut unique_paths: Vec<PathBuf> = path_stale.keys().cloned().collect();
-                unique_paths.sort();
-                let unique_set: HashSet<PathBuf> = unique_paths.iter().cloned().collect();
+                unique_active = path_stale.keys().cloned().collect();
+                unique_active.sort();
+                let unique_set: HashSet<PathBuf> = unique_active.iter().cloned().collect();
 
-                // Remove watches for worktrees no longer active
-                let removed: Vec<PathBuf> = worktree_watches
-                    .keys()
-                    .filter(|p| !unique_set.contains(*p))
-                    .cloned()
-                    .collect();
-                for path in &removed {
-                    if let Some(watched_paths) = worktree_watches.remove(path) {
-                        for wp in &watched_paths {
-                            remove_worktree_watch(&mut watcher, wp, path, &mut watch_to_worktrees);
+                if let Some(ref mut w) = watcher {
+                    // Remove watches for worktrees no longer active
+                    let removed: Vec<PathBuf> = worktree_watches
+                        .keys()
+                        .filter(|p| !unique_set.contains(*p))
+                        .cloned()
+                        .collect();
+                    for path in &removed {
+                        if let Some(watched_paths) = worktree_watches.remove(path) {
+                            for wp in &watched_paths {
+                                remove_worktree_watch(w, wp, path, &mut watch_to_worktrees);
+                            }
+                        }
+                        pending_worktrees.remove(path);
+                    }
+
+                    // Add watches for new worktrees
+                    for path in &unique_active {
+                        if worktree_watches.contains_key(path) {
+                            continue;
+                        }
+                        let watched = setup_worktree_watches(w, path, &mut watch_to_worktrees);
+                        worktree_watches.insert(path.clone(), watched);
+                        // Trigger immediate status fetch for new worktrees
+                        pending_worktrees.insert(path.clone(), Instant::now() - debounce_duration);
+                    }
+
+                    // Prune cache for removed worktrees
+                    if !removed.is_empty() {
+                        if let Ok(mut c) = cache_clone.lock() {
+                            c.retain(|p, _| unique_set.contains(p));
+                        }
+                        dirty_flag.store(true, Ordering::Relaxed);
+                    }
+                } else {
+                    // Poll-only mode: just prune cache, no watches to manage
+                    if let Ok(mut c) = cache_clone.lock() {
+                        let before = c.len();
+                        c.retain(|p, _| unique_set.contains(p));
+                        if c.len() != before {
+                            dirty_flag.store(true, Ordering::Relaxed);
                         }
                     }
-                    pending_worktrees.remove(path);
-                }
-
-                // Add watches for new worktrees
-                for path in &unique_paths {
-                    if worktree_watches.contains_key(path) {
-                        continue;
+                    // Trigger immediate fetch for new paths
+                    for path in &unique_active {
+                        if !cache_clone
+                            .lock()
+                            .ok()
+                            .is_some_and(|c| c.contains_key(path))
+                        {
+                            pending_worktrees
+                                .insert(path.clone(), Instant::now() - debounce_duration);
+                        }
                     }
-                    let watched =
-                        setup_worktree_watches(&mut watcher, path, &mut watch_to_worktrees);
-                    worktree_watches.insert(path.clone(), watched);
-                    // Trigger immediate status fetch for new worktrees
-                    pending_worktrees.insert(path.clone(), Instant::now() - debounce_duration);
-                }
-
-                // Prune cache for removed worktrees
-                if !removed.is_empty() {
-                    if let Ok(mut c) = cache_clone.lock() {
-                        c.retain(|p, _| unique_set.contains(p));
-                    }
-                    dirty_flag.store(true, Ordering::Relaxed);
                 }
             }
 
@@ -569,10 +614,15 @@ fn spawn_git_worker(
                 }
             }
 
-            // Fallback full sweep every 30s (includes stale worktrees)
+            // Fallback full sweep (30s with watcher, 2s without; includes stale worktrees)
             if last_full_sweep.elapsed() >= full_sweep_interval {
                 last_full_sweep = Instant::now();
-                for path in worktree_watches.keys() {
+                let sweep_paths: Vec<PathBuf> = if watcher.is_some() {
+                    worktree_watches.keys().cloned().collect()
+                } else {
+                    unique_active.clone()
+                };
+                for path in &sweep_paths {
                     if pending_worktrees.contains_key(path) {
                         continue;
                     }
