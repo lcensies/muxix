@@ -1,6 +1,7 @@
 //! Sidebar daemon: single process that polls tmux and pushes snapshots to clients.
 
 use anyhow::Result;
+use notify::{RecursiveMode, Watcher};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -189,22 +190,6 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
 /// Shared git status cache, updated by a background worker thread.
 type GitCache = Arc<Mutex<HashMap<PathBuf, GitStatus>>>;
 
-/// Tracked mtime state for a worktree's git internals.
-#[derive(Default)]
-struct GitMtimes {
-    /// mtime of .git/index (changes on stage/unstage/commit)
-    index: Option<SystemTime>,
-    /// mtime of .git/HEAD (changes on commit/checkout/branch switch)
-    head: Option<SystemTime>,
-    /// mtime of the branch ref file (changes on commit)
-    branch_ref: Option<SystemTime>,
-}
-
-/// Get the mtime of a file, returning None if the file doesn't exist.
-fn file_mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).ok()?.modified().ok()
-}
-
 /// Resolve the .git directory for a worktree path.
 /// For linked worktrees, .git is a file containing "gitdir: /path/to/real/gitdir".
 fn resolve_git_dir(worktree_path: &Path) -> Option<PathBuf> {
@@ -227,43 +212,199 @@ fn resolve_git_dir(worktree_path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Check if any tracked git internal files have changed since last check.
-fn git_mtimes_changed(worktree_path: &Path, git_dir: &Path, prev: &GitMtimes) -> (bool, GitMtimes) {
-    let index = file_mtime(&git_dir.join("index"));
-    let head = file_mtime(&git_dir.join("HEAD"));
-
-    // Try to find the branch ref file for commit detection
-    let branch_ref = std::fs::read_to_string(git_dir.join("HEAD"))
-        .ok()
-        .and_then(|content| {
-            let trimmed = content.trim();
-            let ref_path = trimmed.strip_prefix("ref: ")?;
-            // Check worktree-specific refs first, then shared git dir
-            let worktree_ref = git_dir.join(ref_path);
-            if worktree_ref.exists() {
-                return file_mtime(&worktree_ref);
-            }
-            // For linked worktrees, check the common dir
-            let common_dir = git_dir.join("commondir");
-            if let Ok(common) = std::fs::read_to_string(&common_dir) {
-                let common_path = git_dir.join(common.trim()).join(ref_path);
-                return file_mtime(&common_path);
-            }
-            // Direct path
-            file_mtime(&worktree_path.join(".git").join(ref_path))
-        });
-
-    let current = GitMtimes {
-        index,
-        head,
-        branch_ref,
+/// Resolve the common git directory for linked worktrees.
+/// Returns None for normal (non-linked) worktrees.
+fn resolve_common_git_dir(gitdir: &Path) -> Option<PathBuf> {
+    let content = std::fs::read_to_string(gitdir.join("commondir")).ok()?;
+    let rel = content.trim();
+    let path = if Path::new(rel).is_absolute() {
+        PathBuf::from(rel)
+    } else {
+        gitdir.join(rel)
     };
+    path.canonicalize().ok().or(Some(path))
+}
 
-    let changed = current.index != prev.index
-        || current.head != prev.head
-        || current.branch_ref != prev.branch_ref;
+/// Compare two GitStatus values ignoring the cached_at timestamp.
+fn git_status_semantically_equal(a: &GitStatus, b: &GitStatus) -> bool {
+    a.ahead == b.ahead
+        && a.behind == b.behind
+        && a.has_conflict == b.has_conflict
+        && a.is_dirty == b.is_dirty
+        && a.lines_added == b.lines_added
+        && a.lines_removed == b.lines_removed
+        && a.uncommitted_added == b.uncommitted_added
+        && a.uncommitted_removed == b.uncommitted_removed
+        && a.base_branch == b.base_branch
+        && a.branch == b.branch
+        && a.has_upstream == b.has_upstream
+}
 
-    (changed, current)
+/// Find which worktrees are affected by a filesystem event at the given path.
+fn find_worktrees_for_path(
+    event_path: &Path,
+    watch_to_worktrees: &HashMap<PathBuf, HashSet<PathBuf>>,
+) -> Vec<PathBuf> {
+    let mut result = Vec::new();
+    for (watched_dir, worktrees) in watch_to_worktrees {
+        if event_path.starts_with(watched_dir) {
+            result.extend(worktrees.iter().cloned());
+        }
+    }
+    result
+}
+
+/// Register a watch path and associate it with a worktree.
+/// If the path is already watched by another worktree, just adds the mapping.
+fn add_watch(
+    watcher: &mut notify::RecommendedWatcher,
+    path: &Path,
+    mode: RecursiveMode,
+    worktree: &Path,
+    watch_to_worktrees: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+    watched_for_worktree: &mut Vec<PathBuf>,
+) {
+    let entry = watch_to_worktrees.entry(path.to_path_buf()).or_default();
+    let already_watching = !entry.is_empty();
+    entry.insert(worktree.to_path_buf());
+    watched_for_worktree.push(path.to_path_buf());
+
+    if !already_watching && let Err(e) = watcher.watch(path, mode) {
+        tracing::warn!("failed to watch {}: {}", path.display(), e);
+    }
+}
+
+/// Remove watch association for a worktree. Unwatches the path if no other worktree needs it.
+fn remove_worktree_watch(
+    watcher: &mut notify::RecommendedWatcher,
+    watch_path: &Path,
+    worktree: &Path,
+    watch_to_worktrees: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+) {
+    if let Some(worktrees) = watch_to_worktrees.get_mut(watch_path) {
+        worktrees.remove(worktree);
+        if worktrees.is_empty() {
+            watch_to_worktrees.remove(watch_path);
+            let _ = watcher.unwatch(watch_path);
+        }
+    }
+}
+
+/// Set up filesystem watches for a worktree.
+fn setup_worktree_watches(
+    watcher: &mut notify::RecommendedWatcher,
+    worktree: &Path,
+    watch_to_worktrees: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+) -> Vec<PathBuf> {
+    let mut watched = Vec::new();
+    let dot_git = worktree.join(".git");
+    let is_linked = dot_git.is_file();
+
+    if is_linked {
+        // Linked worktree: gitdir is outside the worktree root
+        if let Some(git_dir) = resolve_git_dir(worktree) {
+            // Watch per-worktree gitdir (HEAD, index)
+            add_watch(
+                watcher,
+                &git_dir,
+                RecursiveMode::Recursive,
+                worktree,
+                watch_to_worktrees,
+                &mut watched,
+            );
+
+            // Watch common dir's refs/ for shared branch updates
+            if let Some(common_dir) = resolve_common_git_dir(&git_dir) {
+                let refs_dir = common_dir.join("refs");
+                if refs_dir.is_dir() {
+                    add_watch(
+                        watcher,
+                        &refs_dir,
+                        RecursiveMode::Recursive,
+                        worktree,
+                        watch_to_worktrees,
+                        &mut watched,
+                    );
+                }
+                // Watch common dir non-recursively for packed-refs
+                add_watch(
+                    watcher,
+                    &common_dir,
+                    RecursiveMode::NonRecursive,
+                    worktree,
+                    watch_to_worktrees,
+                    &mut watched,
+                );
+            }
+        }
+        // Watch worktree root for file edits
+        add_watch(
+            watcher,
+            worktree,
+            RecursiveMode::Recursive,
+            worktree,
+            watch_to_worktrees,
+            &mut watched,
+        );
+    } else {
+        // Normal worktree: .git/ is inside, single recursive watch covers everything
+        add_watch(
+            watcher,
+            worktree,
+            RecursiveMode::Recursive,
+            worktree,
+            watch_to_worktrees,
+            &mut watched,
+        );
+    }
+
+    watched
+}
+
+/// Calculate the next timeout for the worker's recv_timeout.
+/// Returns the shortest wait until either a debounced worktree is ready,
+/// the full sweep is due, or a 1s cap for checking the term flag.
+fn next_worker_timeout(
+    pending: &HashMap<PathBuf, Instant>,
+    debounce: Duration,
+    last_sweep: Instant,
+    sweep_interval: Duration,
+) -> Duration {
+    let now = Instant::now();
+    let sweep_wait = sweep_interval.saturating_sub(last_sweep.elapsed());
+    let mut min_wait = sweep_wait;
+
+    for last_event in pending.values() {
+        let ready_at = *last_event + debounce;
+        if ready_at <= now {
+            return Duration::from_millis(1);
+        }
+        let wait = ready_at - now;
+        if wait < min_wait {
+            min_wait = wait;
+        }
+    }
+
+    // Cap at 1s to check term flag periodically
+    min_wait.min(Duration::from_secs(1))
+}
+
+/// Refresh git status for a worktree path, updating the cache.
+/// Returns true if the status actually changed (semantically, ignoring cached_at).
+fn refresh_git_status(path: &Path, cache: &GitCache) -> bool {
+    let new_status = crate::git::get_git_status(path, None);
+    let changed = cache
+        .lock()
+        .ok()
+        .map(|c| {
+            c.get(path)
+                .is_none_or(|old| !git_status_semantically_equal(old, &new_status))
+        })
+        .unwrap_or(true);
+    if let Ok(mut c) = cache.lock() {
+        c.insert(path.to_path_buf(), new_status);
+    }
+    changed
 }
 
 /// Info about an active agent path sent to the git worker.
@@ -276,10 +417,10 @@ struct GitWorkerPath {
 
 /// Spawn a background thread that watches for git changes and updates the cache.
 ///
-/// Uses mtime-based change detection on .git internals (index, HEAD, branch ref)
-/// to avoid running expensive git subprocesses when nothing changed. When mtimes
-/// change, immediately refreshes and sets dirty_flag for instant broadcast.
-/// Falls back to a periodic full sweep every 30s for uncommitted file edits.
+/// Uses the `notify` crate for OS-level filesystem event detection (FSEvents on macOS).
+/// Watches .git internals and worktree roots for each active worktree. Events are
+/// debounced per-worktree (300ms) before triggering `get_git_status()`. A fallback
+/// sweep runs every 30s for edge cases where the watcher might miss events.
 fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
@@ -289,137 +430,161 @@ fn spawn_git_worker(
     let (tx, rx) = std::sync::mpsc::channel::<Vec<GitWorkerPath>>();
 
     thread::spawn(move || {
+        // Filesystem event channel for notify
+        let (fs_tx, fs_rx) = std::sync::mpsc::channel();
+        let mut watcher = match notify::RecommendedWatcher::new(fs_tx, notify::Config::default()) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!("failed to create filesystem watcher: {}", e);
+                return;
+            }
+        };
+
         let mut active_entries: Vec<GitWorkerPath> = Vec::new();
-        let mut mtimes: HashMap<PathBuf, GitMtimes> = HashMap::new();
-        let mut git_dirs: HashMap<PathBuf, PathBuf> = HashMap::new();
+        // Maps: watched directory -> set of worktrees it covers
+        let mut watch_to_worktrees: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
+        // Maps: worktree path -> list of watched paths for it
+        let mut worktree_watches: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        // Per-worktree: timestamp of last fs event (for debouncing)
+        let mut pending_worktrees: HashMap<PathBuf, Instant> = HashMap::new();
+        // Stale status per path (true = all agents at path are stale)
+        let mut path_stale: HashMap<PathBuf, bool> = HashMap::new();
         let mut last_full_sweep = Instant::now();
-        let mut last_dirty_probe = Instant::now();
         let full_sweep_interval = Duration::from_secs(30);
-        // Working tree dirty probe runs every 3s (subprocess is expensive).
-        // Mtime checks still run every 1s (free stat() calls).
-        let dirty_probe_interval = Duration::from_secs(3);
+        let debounce_duration = Duration::from_millis(300);
 
         while !term.load(Ordering::Relaxed) {
-            // Drain channel to get the latest set of active paths
+            // Block on filesystem events (zero CPU when idle)
+            let timeout = next_worker_timeout(
+                &pending_worktrees,
+                debounce_duration,
+                last_full_sweep,
+                full_sweep_interval,
+            );
+            match fs_rx.recv_timeout(timeout) {
+                Ok(Ok(event)) => {
+                    for path in &event.paths {
+                        for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                            pending_worktrees
+                                .entry(wt)
+                                .and_modify(|t| *t = Instant::now())
+                                .or_insert_with(Instant::now);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("filesystem watch error: {}", e);
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+
+            // Drain any additional buffered events
+            while let Ok(event_result) = fs_rx.try_recv() {
+                if let Ok(event) = event_result {
+                    for path in &event.paths {
+                        for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                            pending_worktrees
+                                .entry(wt)
+                                .and_modify(|t| *t = Instant::now())
+                                .or_insert_with(Instant::now);
+                        }
+                    }
+                }
+            }
+
+            // Check for path updates (non-blocking)
+            let mut paths_changed = false;
             while let Ok(entries) = rx.try_recv() {
                 active_entries = entries;
+                paths_changed = true;
             }
 
-            // Deduplicate paths (multiple panes can share a worktree).
-            // A path is stale only if ALL agents at that path are stale.
-            let mut path_stale: HashMap<PathBuf, bool> = HashMap::new();
-            for entry in &active_entries {
-                let e = path_stale.entry(entry.path.clone()).or_insert(true);
-                if !entry.is_stale {
-                    *e = false;
+            if paths_changed {
+                // Deduplicate paths. A path is stale only if ALL agents at that path are stale.
+                path_stale.clear();
+                for entry in &active_entries {
+                    let e = path_stale.entry(entry.path.clone()).or_insert(true);
+                    if !entry.is_stale {
+                        *e = false;
+                    }
+                }
+                let mut unique_paths: Vec<PathBuf> = path_stale.keys().cloned().collect();
+                unique_paths.sort();
+                let unique_set: HashSet<PathBuf> = unique_paths.iter().cloned().collect();
+
+                // Remove watches for worktrees no longer active
+                let removed: Vec<PathBuf> = worktree_watches
+                    .keys()
+                    .filter(|p| !unique_set.contains(*p))
+                    .cloned()
+                    .collect();
+                for path in &removed {
+                    if let Some(watched_paths) = worktree_watches.remove(path) {
+                        for wp in &watched_paths {
+                            remove_worktree_watch(&mut watcher, wp, path, &mut watch_to_worktrees);
+                        }
+                    }
+                    pending_worktrees.remove(path);
+                }
+
+                // Add watches for new worktrees
+                for path in &unique_paths {
+                    if worktree_watches.contains_key(path) {
+                        continue;
+                    }
+                    let watched =
+                        setup_worktree_watches(&mut watcher, path, &mut watch_to_worktrees);
+                    worktree_watches.insert(path.clone(), watched);
+                    // Trigger immediate status fetch for new worktrees
+                    pending_worktrees.insert(path.clone(), Instant::now() - debounce_duration);
+                }
+
+                // Prune cache for removed worktrees
+                if !removed.is_empty() {
+                    if let Ok(mut c) = cache_clone.lock() {
+                        c.retain(|p, _| unique_set.contains(p));
+                    }
+                    dirty_flag.store(true, Ordering::Relaxed);
                 }
             }
-            let mut unique_paths: Vec<PathBuf> = path_stale.keys().cloned().collect();
-            unique_paths.sort();
 
-            // Resolve git dirs for any new paths
-            for path in &unique_paths {
-                git_dirs
-                    .entry(path.clone())
-                    .or_insert_with(|| resolve_git_dir(path).unwrap_or_else(|| path.join(".git")));
-            }
-
-            let force_full = last_full_sweep.elapsed() >= full_sweep_interval;
-            if force_full {
-                last_full_sweep = Instant::now();
-            }
-
-            // Only run the working tree dirty probe every 3s to limit subprocess spawns
-            let run_dirty_probe = last_dirty_probe.elapsed() >= dirty_probe_interval;
-            if run_dirty_probe {
-                last_dirty_probe = Instant::now();
-            }
+            // Process debounce-ready worktrees (skip stale ones, they only refresh on sweep)
+            let now = Instant::now();
+            let ready: Vec<PathBuf> = pending_worktrees
+                .iter()
+                .filter(|(_, last_event)| now.duration_since(**last_event) >= debounce_duration)
+                .map(|(path, _)| path.clone())
+                .collect();
 
             let mut any_changed = false;
-
-            for path in &unique_paths {
+            for path in &ready {
+                pending_worktrees.remove(path);
                 let is_stale = path_stale.get(path).copied().unwrap_or(false);
-
-                // Stale worktrees (all agents idle > threshold): only refresh
-                // on the 30s full sweep. Skip mtime checks and dirty probes
-                // to avoid wasting CPU on inactive projects.
-                if is_stale && !force_full {
+                if is_stale {
                     continue;
                 }
-
-                let git_dir = match git_dirs.get(path) {
-                    Some(d) => d,
-                    None => continue,
-                };
-
-                let prev_mtimes = mtimes.remove(path).unwrap_or_default();
-                let (mtimes_changed, new_mtimes) = git_mtimes_changed(path, git_dir, &prev_mtimes);
-                mtimes.insert(path.clone(), new_mtimes);
-
-                // First time seeing this path (no cached status yet)
-                let is_new = cache_clone
-                    .lock()
-                    .ok()
-                    .map(|c| !c.contains_key(path))
-                    .unwrap_or(true);
-
-                // Working tree dirty probe using `git diff-files --quiet`.
-                // Cheaper than `git diff --quiet HEAD`: only compares index stat
-                // cache vs working tree metadata, no git object reads needed.
-                // Staging is already caught by .git/index mtime checks.
-                // Only run every 3s to limit subprocess spawns.
-                let worktree_changed = run_dirty_probe
-                    && !mtimes_changed
-                    && !is_new
-                    && !force_full
-                    && Cmd::new("git")
-                        .workdir(path)
-                        .args(&["diff-files", "--quiet"])
-                        .run_as_check()
-                        .map(|clean| !clean)
-                        .unwrap_or(false);
-
-                if !mtimes_changed && !is_new && !force_full && !worktree_changed {
-                    continue;
-                }
-
-                let new_status = crate::git::get_git_status(path, None);
-
-                // Check if the status actually changed before flagging dirty
-                let status_changed = cache_clone
-                    .lock()
-                    .ok()
-                    .map(|c| c.get(path) != Some(&new_status))
-                    .unwrap_or(true);
-
-                if let Ok(mut c) = cache_clone.lock() {
-                    c.insert(path.clone(), new_status);
-                }
-
-                if status_changed {
+                if refresh_git_status(path, &cache_clone) {
                     any_changed = true;
                 }
             }
 
-            // Prune paths no longer in the active set
-            if let Ok(mut c) = cache_clone.lock() {
-                let before = c.len();
-                c.retain(|p, _| unique_paths.contains(p));
-                if c.len() != before {
-                    any_changed = true;
+            // Fallback full sweep every 30s (includes stale worktrees)
+            if last_full_sweep.elapsed() >= full_sweep_interval {
+                last_full_sweep = Instant::now();
+                for path in worktree_watches.keys() {
+                    if pending_worktrees.contains_key(path) {
+                        continue;
+                    }
+                    if refresh_git_status(path, &cache_clone) {
+                        any_changed = true;
+                    }
                 }
             }
-            mtimes.retain(|p, _| unique_paths.contains(p));
-            git_dirs.retain(|p, _| unique_paths.contains(p));
 
-            // Signal daemon for immediate broadcast when cache changed
             if any_changed {
                 dirty_flag.store(true, Ordering::Relaxed);
             }
-
-            // Poll every 1s for mtime checks (free stat() calls).
-            // Working tree dirty probe only runs every 3s (see above).
-            thread::sleep(Duration::from_secs(1));
         }
     });
 
