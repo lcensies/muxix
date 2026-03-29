@@ -108,7 +108,7 @@ struct SocketServer {
 }
 
 impl SocketServer {
-    fn bind(path: &Path) -> std::io::Result<Self> {
+    fn bind(path: &Path, dirty_flag: Arc<AtomicBool>) -> std::io::Result<Self> {
         let listener = UnixListener::bind(path)?;
         // Restrict socket to owner only (prevent other local users from reading snapshots)
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
@@ -123,6 +123,9 @@ impl SocketServer {
                         // 1ms write timeout: local Unix sockets shouldn't block
                         let _ = stream.set_write_timeout(Some(Duration::from_millis(1)));
                         clients_clone.lock().unwrap().push(stream);
+                        // Trigger an immediate broadcast so the new client gets
+                        // the current snapshot without waiting for the next timer.
+                        dirty_flag.store(true, Ordering::Relaxed);
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(50));
@@ -648,15 +651,15 @@ pub fn run() -> Result<()> {
     let config = Config::load(None)?;
     let status_icons = config.status_icons.clone();
 
-    let sock_path = socket_path(&instance_id);
-    let _ = std::fs::remove_file(&sock_path); // Clean stale
-    let server = SocketServer::bind(&sock_path)?;
-
     // Signal handlers for clean shutdown and dirty notification
     let term = Arc::new(AtomicBool::new(false));
     let dirty_flag = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
     signal_hook::flag::register(signal_hook::consts::SIGUSR1, dirty_flag.clone())?;
+
+    let sock_path = socket_path(&instance_id);
+    let _ = std::fs::remove_file(&sock_path); // Clean stale
+    let server = SocketServer::bind(&sock_path, dirty_flag.clone())?;
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
     let (git_cache, git_path_tx) = spawn_git_worker(term.clone(), dirty_flag.clone());

@@ -33,7 +33,7 @@ use crate::multiplexer::{create_backend, detect_backend};
 
 use super::app::SidebarApp;
 use super::client;
-use super::daemon_ctrl::{ensure_daemon_running, signal_daemon};
+use super::daemon_ctrl::ensure_daemon_running;
 use super::panes::shutdown_all_sidebars;
 use super::ui::render_sidebar;
 
@@ -107,9 +107,9 @@ pub fn run_sidebar() -> Result<()> {
     // Input reader thread (terminal is already in raw mode)
     spawn_input_thread(tx);
 
-    // Signal daemon to push an immediate snapshot for the newly connected client
-    signal_daemon();
-    dbg_log("signal_daemon() called");
+    // The client thread signals the daemon after connecting (see client::connection_loop),
+    // so the snapshot arrives only after this client is registered.
+    dbg_log("client connected, waiting for snapshot");
 
     let mut app = SidebarApp::new_client(mux)?;
     dbg_log(&format!(
