@@ -41,7 +41,7 @@ configuration reference.
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
 quick overview.
 
-![workmux demo](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/demo.gif)
+![workmux screenshot](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/screenshot.webp)
 
 ## Why workmux?
 
