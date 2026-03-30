@@ -814,89 +814,84 @@ pub fn run() -> Result<()> {
             dirty_pending = false;
             last_refresh = Instant::now();
 
-            if let Some(mut snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache)
+            // ── Gather inputs ──
+            let tmux_state = query_tmux_state();
+            let agents = StateStore::new()
+                .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
+                .ok();
+            let Some(agents) = agents else { continue };
+            let layout_mode = read_sidebar_layout_mode(&config).unwrap_or_default();
+            let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
+            let captured_panes = gather_captures(&agents, mux.as_ref());
+            let now = Instant::now();
+            let now_ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let heartbeat_due = last_runtime_write.elapsed() >= Duration::from_secs(10);
+
+            // ── Compute tick (no I/O) ──
+            let output = compute_tick(
+                TickInput {
+                    agents,
+                    tmux_state,
+                    captured_panes,
+                    now,
+                    now_ts,
+                    layout_mode,
+                    git_statuses,
+                },
+                &mut inactivity_tracker,
+                &mut last_interrupted,
+                &status_icons,
+                heartbeat_due,
+            );
+
+            // ── Apply side effects ──
+            if let Ok(store) = StateStore::new()
+                && apply_tick_effects(&output, &store, &backend_name, &instance_id)
             {
-                // Detect interrupted agents, reset timers for resumed ones,
-                // and persist runtime state.
-                let heartbeat_due = last_runtime_write.elapsed() >= Duration::from_secs(10);
-                if let Ok(store) = StateStore::new() {
-                    let now_ts = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let prev_interrupted = last_interrupted.clone();
-                    let (interrupted, wrote) = process_inactivity_tick(
-                        &mut inactivity_tracker,
-                        &snapshot.agents,
-                        &mut last_interrupted,
-                        &store,
-                        &backend_name,
-                        &instance_id,
-                        Instant::now(),
-                        now_ts,
-                        heartbeat_due,
-                        |pane_id| mux.capture_pane(pane_id, 5),
-                    );
-                    snapshot.interrupted_pane_ids = interrupted;
+                last_runtime_write = Instant::now();
+            }
 
-                    // Patch snapshot agents for just-resumed agents: the tick wrote
-                    // the new status_ts to the state file, but the snapshot was built
-                    // before that write. Without this, the sidebar would show a stale
-                    // timer for one tick before reading the corrected value.
-                    for agent in &mut snapshot.agents {
-                        if prev_interrupted.contains(&agent.pane_id)
-                            && !snapshot.interrupted_pane_ids.contains(&agent.pane_id)
-                        {
-                            agent.status_ts = Some(now_ts);
-                        }
-                    }
+            // ── Broadcast ──
+            server.broadcast(&output.snapshot);
 
-                    if wrote {
-                        last_runtime_write = Instant::now();
-                    }
+            // Update git worker with current agent paths and stale status
+            let stale_threshold = 60 * 60; // 1 hour, matches sidebar UI
+            let entries: Vec<GitWorkerPath> = output
+                .snapshot
+                .agents
+                .iter()
+                .map(|a| GitWorkerPath {
+                    path: a.path.clone(),
+                    is_stale: a
+                        .status_ts
+                        .map(|ts| now_ts.saturating_sub(ts) > stale_threshold)
+                        .unwrap_or(false),
+                })
+                .collect();
+            let _ = git_path_tx.send(entries);
+
+            let agent_list: String = output
+                .snapshot
+                .agents
+                .iter()
+                .map(|a| a.pane_id.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            if agent_list != last_agent_list {
+                if !agent_list.is_empty() {
+                    let _ = Cmd::new("tmux")
+                        .args(&["set-option", "-g", "@workmux_sidebar_agents", &agent_list])
+                        .run();
+                } else {
+                    let _ = Cmd::new("tmux")
+                        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+                        .run();
                 }
-
-                // Update git worker with current agent paths and stale status.
-                // Stale agents (idle > 1 hour) are polled less frequently.
-                let now_secs = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let stale_threshold = 60 * 60; // 1 hour, matches sidebar UI
-                let entries: Vec<GitWorkerPath> = snapshot
-                    .agents
-                    .iter()
-                    .map(|a| GitWorkerPath {
-                        path: a.path.clone(),
-                        is_stale: a
-                            .status_ts
-                            .map(|ts| now_secs.saturating_sub(ts) > stale_threshold)
-                            .unwrap_or(false),
-                    })
-                    .collect();
-                let _ = git_path_tx.send(entries);
-
-                server.broadcast(&snapshot);
-
-                let agent_list: String = snapshot
-                    .agents
-                    .iter()
-                    .map(|a| a.pane_id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ");
-
-                if agent_list != last_agent_list {
-                    if !agent_list.is_empty() {
-                        let _ = Cmd::new("tmux")
-                            .args(&["set-option", "-g", "@workmux_sidebar_agents", &agent_list])
-                            .run();
-                    } else {
-                        let _ = Cmd::new("tmux")
-                            .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
-                            .run();
-                    }
-                    last_agent_list = agent_list;
-                }
+                last_agent_list = agent_list;
             }
         }
 
@@ -925,22 +920,76 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// Try to build a snapshot. Returns None on transient failures.
-fn try_build_snapshot(
-    mux: &Arc<dyn Multiplexer>,
+// ── Tick core ────────────────────────────────────────────────────────────
+
+/// Inputs gathered from the environment for one daemon tick.
+struct TickInput {
+    agents: Vec<crate::multiplexer::AgentPane>,
+    tmux_state: TmuxState,
+    captured_panes: HashMap<String, String>,
+    now: Instant,
+    now_ts: u64,
+    layout_mode: SidebarLayoutMode,
+    git_statuses: HashMap<PathBuf, GitStatus>,
+}
+
+/// A state-file write to apply after computing the tick.
+struct AgentWrite {
+    pane_id: String,
+    status_ts: u64,
+}
+
+/// Output of a single tick computation.
+struct TickOutput {
+    snapshot: super::snapshot::SidebarSnapshot,
+    agent_writes: Vec<AgentWrite>,
+    runtime_write: Option<crate::state::RuntimeState>,
+}
+
+/// Compute one daemon tick from in-memory inputs.
+///
+/// 1. Runs inactivity detection
+/// 2. Mutates agents in memory (status_ts reset for resumed agents)
+/// 3. Builds the snapshot from the already-mutated agents
+/// 4. Returns side effects (state file writes, runtime file write)
+#[allow(clippy::too_many_arguments)]
+fn compute_tick(
+    input: TickInput,
+    tracker: &mut InactivityTracker,
+    last_interrupted: &mut HashSet<String>,
     status_icons: &crate::config::StatusIcons,
-    config: &Config,
-    git_cache: &GitCache,
-) -> Option<super::snapshot::SidebarSnapshot> {
-    let tmux_state = query_tmux_state();
-    let agents = StateStore::new()
-        .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
-        .ok()?;
-    let layout_mode = read_sidebar_layout_mode(config).unwrap_or_default();
+    heartbeat_due: bool,
+) -> TickOutput {
+    let TickInput {
+        mut agents,
+        tmux_state,
+        captured_panes,
+        now,
+        now_ts,
+        layout_mode,
+        git_statuses,
+    } = input;
 
-    let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
+    // Phase 1: Inactivity detection
+    let interrupted =
+        tracker.check_with(&agents, now, |pane_id| captured_panes.get(pane_id).cloned());
 
-    Some(build_snapshot(
+    // Phase 2: Mutate agents in memory for resumed agents
+    let mut agent_writes = Vec::new();
+    if !last_interrupted.is_empty() {
+        for agent in &mut agents {
+            if last_interrupted.contains(&agent.pane_id) && !interrupted.contains(&agent.pane_id) {
+                agent.status_ts = Some(now_ts);
+                agent_writes.push(AgentWrite {
+                    pane_id: agent.pane_id.clone(),
+                    status_ts: now_ts,
+                });
+            }
+        }
+    }
+
+    // Phase 3: Build snapshot from already-mutated agents
+    let mut snapshot = build_snapshot(
         agents,
         &tmux_state.window_statuses,
         &tmux_state.pane_window_ids,
@@ -950,58 +999,68 @@ fn try_build_snapshot(
         layout_mode,
         status_icons,
         git_statuses,
-    ))
+    );
+    snapshot.interrupted_pane_ids = interrupted.clone();
+
+    // Phase 4: Determine runtime write side effect
+    let runtime_write = if interrupted != *last_interrupted || heartbeat_due {
+        *last_interrupted = interrupted;
+        Some(crate::state::RuntimeState {
+            interrupted_pane_ids: last_interrupted.clone(),
+            updated_ts: now_ts,
+        })
+    } else {
+        None
+    };
+
+    TickOutput {
+        snapshot,
+        agent_writes,
+        runtime_write,
+    }
 }
 
-/// Process one inactivity detection cycle: run the tracker, reset status_ts for
-/// resumed agents, and persist runtime state when changed or heartbeat is due.
-///
-/// Returns `(interrupted_set, wrote_runtime)`.
-#[allow(clippy::too_many_arguments)]
-fn process_inactivity_tick(
-    tracker: &mut InactivityTracker,
-    agents: &[crate::multiplexer::AgentPane],
-    last_interrupted: &mut HashSet<String>,
+/// Apply side effects computed by `compute_tick`.
+/// Returns true if runtime state was written.
+fn apply_tick_effects(
+    output: &TickOutput,
     store: &StateStore,
     backend: &str,
     instance: &str,
-    now: Instant,
-    now_ts: u64,
-    heartbeat_due: bool,
-    capture: impl Fn(&str) -> Option<String>,
-) -> (HashSet<String>, bool) {
-    let interrupted = tracker.check_with(agents, now, capture);
-
-    // Reset status_ts for agents that just resumed from interruption
-    if !last_interrupted.is_empty() {
-        for id in last_interrupted
-            .iter()
-            .filter(|id| !interrupted.contains(*id))
-        {
-            let pane_key = crate::state::PaneKey {
-                backend: backend.to_string(),
-                instance: instance.to_string(),
-                pane_id: id.to_string(),
-            };
-            if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
-                state.status_ts = Some(now_ts);
-                let _ = store.upsert_agent(&state);
-            }
+) -> bool {
+    for write in &output.agent_writes {
+        let pane_key = crate::state::PaneKey {
+            backend: backend.to_string(),
+            instance: instance.to_string(),
+            pane_id: write.pane_id.clone(),
+        };
+        if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
+            state.status_ts = Some(write.status_ts);
+            let _ = store.upsert_agent(&state);
         }
     }
 
-    // Persist to runtime file on change or heartbeat
-    let wrote = interrupted != *last_interrupted || heartbeat_due;
-    if wrote {
-        *last_interrupted = interrupted.clone();
-        let runtime = crate::state::RuntimeState {
-            interrupted_pane_ids: last_interrupted.clone(),
-            updated_ts: now_ts,
-        };
-        let _ = store.write_runtime(backend, instance, &runtime);
+    if let Some(ref runtime) = output.runtime_write {
+        let _ = store.write_runtime(backend, instance, runtime);
+        true
+    } else {
+        false
     }
+}
 
-    (interrupted, wrote)
+/// Capture pane content for all working agents (called before compute_tick).
+fn gather_captures(
+    agents: &[crate::multiplexer::AgentPane],
+    mux: &dyn Multiplexer,
+) -> HashMap<String, String> {
+    agents
+        .iter()
+        .filter(|a| a.status == Some(crate::multiplexer::AgentStatus::Working))
+        .filter_map(|a| {
+            mux.capture_pane(&a.pane_id, 5)
+                .map(|content| (a.pane_id.clone(), content))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1325,6 +1384,7 @@ mod tests {
 
     mod tick {
         use super::*;
+        use crate::config::StatusIcons;
         use crate::multiplexer::AgentStatus;
         use crate::state::{PaneKey, StateStore};
 
@@ -1362,6 +1422,48 @@ mod tests {
             store.upsert_agent(&state).unwrap();
         }
 
+        fn do_tick(
+            tracker: &mut InactivityTracker,
+            last: &mut HashSet<String>,
+            agents: Vec<crate::multiplexer::AgentPane>,
+            captures: HashMap<String, String>,
+            now: Instant,
+            now_ts: u64,
+        ) -> TickOutput {
+            compute_tick(
+                TickInput {
+                    agents,
+                    tmux_state: TmuxState {
+                        window_statuses: HashMap::new(),
+                        active_windows: HashSet::new(),
+                        pane_window_ids: HashMap::new(),
+                        active_pane_ids: HashSet::new(),
+                        window_pane_counts: HashMap::new(),
+                    },
+                    captured_panes: captures,
+                    now,
+                    now_ts,
+                    layout_mode: SidebarLayoutMode::default(),
+                    git_statuses: HashMap::new(),
+                },
+                tracker,
+                last,
+                &StatusIcons::default(),
+                false,
+            )
+        }
+
+        fn cap(content: &str) -> HashMap<String, String> {
+            HashMap::from([("%1".to_string(), content.to_string())])
+        }
+
+        fn cap2(content: &str) -> HashMap<String, String> {
+            HashMap::from([
+                ("%1".to_string(), content.to_string()),
+                ("%2".to_string(), content.to_string()),
+            ])
+        }
+
         #[test]
         fn resumed_agent_gets_status_ts_reset() {
             let (store, _dir) = test_store();
@@ -1372,54 +1474,52 @@ mod tests {
             let t0 = Instant::now();
 
             // Tick 1: start observing
-            process_inactivity_tick(
+            do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0,
                 1000,
-                false,
-                |_| Some("hello".into()),
             );
 
-            // Tick 2: 11s later, same content -> interrupted
-            let (interrupted, _) = process_inactivity_tick(
+            // Tick 2: interrupted
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0 + Duration::from_secs(11),
                 1011,
-                false,
-                |_| Some("hello".into()),
             );
-            assert!(interrupted.contains("%1"));
-            // status_ts unchanged while interrupted
-            assert_eq!(
-                store.get_agent(&pane_key("%1")).unwrap().unwrap().status_ts,
-                Some(100)
-            );
+            assert!(output.snapshot.interrupted_pane_ids.contains("%1"));
 
-            // Tick 3: agent sends new RPC (updated_ts 1 -> 2) -> resumes
-            let (interrupted, _) = process_inactivity_tick(
+            // Tick 3: agent resumes (updated_ts 1 -> 2)
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 2)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 2)],
+                cap("hello"),
                 t0 + Duration::from_secs(12),
                 1012,
-                false,
-                |_| Some("hello".into()),
             );
-            assert!(interrupted.is_empty());
-            // status_ts reset to current time
+            assert!(output.snapshot.interrupted_pane_ids.is_empty());
+
+            // Snapshot has corrected status_ts (no stale one-tick race)
+            let agent = output
+                .snapshot
+                .agents
+                .iter()
+                .find(|a| a.pane_id == "%1")
+                .unwrap();
+            assert_eq!(agent.status_ts, Some(1012));
+
+            // Side effect says to write it to disk
+            assert_eq!(output.agent_writes.len(), 1);
+            assert_eq!(output.agent_writes[0].status_ts, 1012);
+
+            // Apply effects and verify store
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
             assert_eq!(
                 store.get_agent(&pane_key("%1")).unwrap().unwrap().status_ts,
                 Some(1012)
@@ -1438,50 +1538,41 @@ mod tests {
 
             let agents = vec![working_agent("%1", 1), working_agent("%2", 1)];
 
-            // Tick 1: start observing both
-            process_inactivity_tick(
+            // Tick 1 + 2: both interrupted
+            do_tick(
                 &mut tracker,
-                &agents,
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                agents.clone(),
+                cap2("hello"),
                 t0,
                 1000,
-                false,
-                |_| Some("hello".into()),
             );
-
-            // Tick 2: both interrupted
-            process_inactivity_tick(
+            do_tick(
                 &mut tracker,
-                &agents,
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                agents,
+                cap2("hello"),
                 t0 + Duration::from_secs(11),
                 1011,
-                false,
-                |_| Some("hello".into()),
             );
 
-            // Tick 3: only %1 resumes (updated_ts changes), %2 stays interrupted
+            // Tick 3: only %1 resumes
             let mixed = vec![working_agent("%1", 2), working_agent("%2", 1)];
-            process_inactivity_tick(
+            let output = do_tick(
                 &mut tracker,
-                &mixed,
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                mixed,
+                cap2("hello"),
                 t0 + Duration::from_secs(12),
                 1012,
-                false,
-                |_| Some("hello".into()),
             );
 
-            // %1 got reset, %2 did not
+            // Only %1 in agent_writes
+            assert_eq!(output.agent_writes.len(), 1);
+            assert_eq!(output.agent_writes[0].pane_id, "%1");
+
+            // Apply and verify
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
             assert_eq!(
                 store.get_agent(&pane_key("%1")).unwrap().unwrap().status_ts,
                 Some(1012)
@@ -1495,108 +1586,138 @@ mod tests {
         #[test]
         fn runtime_file_reflects_interrupted_set() {
             let (store, _dir) = test_store();
-            seed_agent(&store, "%1", 100, 1);
 
             let mut tracker = InactivityTracker::new(Duration::from_secs(10));
             let mut last = HashSet::new();
             let t0 = Instant::now();
 
             // Tick 1: not interrupted yet
-            process_inactivity_tick(
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0,
                 1000,
-                false,
-                |_| Some("hello".into()),
             );
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
 
             // Tick 2: interrupted
-            process_inactivity_tick(
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0 + Duration::from_secs(11),
                 1011,
-                false,
-                |_| Some("hello".into()),
             );
-            let runtime = store.read_runtime(BACKEND, INSTANCE);
-            assert!(runtime.interrupted_pane_ids.contains("%1"));
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
+            assert!(
+                store
+                    .read_runtime(BACKEND, INSTANCE)
+                    .interrupted_pane_ids
+                    .contains("%1")
+            );
 
             // Tick 3: resumes
-            process_inactivity_tick(
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 2)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 2)],
+                cap("hello"),
                 t0 + Duration::from_secs(12),
                 1012,
-                false,
-                |_| Some("hello".into()),
             );
-            let runtime = store.read_runtime(BACKEND, INSTANCE);
-            assert!(runtime.interrupted_pane_ids.is_empty());
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
+            assert!(
+                store
+                    .read_runtime(BACKEND, INSTANCE)
+                    .interrupted_pane_ids
+                    .is_empty()
+            );
         }
 
         #[test]
         fn missing_agent_file_does_not_panic() {
             let (store, _dir) = test_store();
-            // No agent seeded - file doesn't exist
 
             let mut tracker = InactivityTracker::new(Duration::from_secs(10));
             let mut last = HashSet::new();
             let t0 = Instant::now();
 
             // Tick 1 + 2: become interrupted
-            process_inactivity_tick(
+            do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0,
                 1000,
-                false,
-                |_| Some("hello".into()),
             );
-            process_inactivity_tick(
+            do_tick(
                 &mut tracker,
-                &[working_agent("%1", 1)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
                 t0 + Duration::from_secs(11),
                 1011,
-                false,
-                |_| Some("hello".into()),
             );
 
             // Tick 3: resume with no agent file - should not panic
-            let (interrupted, _) = process_inactivity_tick(
+            let output = do_tick(
                 &mut tracker,
-                &[working_agent("%1", 2)],
                 &mut last,
-                &store,
-                BACKEND,
-                INSTANCE,
+                vec![working_agent("%1", 2)],
+                cap("hello"),
                 t0 + Duration::from_secs(12),
                 1012,
-                false,
-                |_| Some("hello".into()),
             );
-            assert!(interrupted.is_empty());
+            assert!(output.snapshot.interrupted_pane_ids.is_empty());
+            apply_tick_effects(&output, &store, BACKEND, INSTANCE);
+        }
+
+        #[test]
+        fn snapshot_has_correct_status_ts_on_resume_tick() {
+            // Proves the one-tick race is structurally impossible: agents
+            // are mutated before build_snapshot, not patched after.
+            let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+            let mut last = HashSet::new();
+            let t0 = Instant::now();
+
+            do_tick(
+                &mut tracker,
+                &mut last,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
+                t0,
+                1000,
+            );
+            do_tick(
+                &mut tracker,
+                &mut last,
+                vec![working_agent("%1", 1)],
+                cap("hello"),
+                t0 + Duration::from_secs(11),
+                1011,
+            );
+
+            // Resume tick: snapshot must have the fresh status_ts, not the stale 100
+            let output = do_tick(
+                &mut tracker,
+                &mut last,
+                vec![working_agent("%1", 2)],
+                cap("hello"),
+                t0 + Duration::from_secs(12),
+                1012,
+            );
+            let agent = output
+                .snapshot
+                .agents
+                .iter()
+                .find(|a| a.pane_id == "%1")
+                .unwrap();
+            assert_eq!(agent.status_ts, Some(1012));
+            assert!(!output.snapshot.interrupted_pane_ids.contains("%1"));
         }
     }
 }
