@@ -830,6 +830,35 @@ pub fn run() -> Result<()> {
                 let interrupted = inactivity_tracker.check(&snapshot.agents, mux.as_ref());
                 snapshot.interrupted_pane_ids = interrupted.clone();
 
+                // Reset status_ts for agents that just resumed from interruption
+                // so their timer starts fresh.
+                if !last_interrupted.is_empty() {
+                    let resumed: Vec<&str> = last_interrupted
+                        .iter()
+                        .filter(|id| !interrupted.contains(*id))
+                        .map(|s| s.as_str())
+                        .collect();
+                    if !resumed.is_empty()
+                        && let Ok(store) = StateStore::new()
+                    {
+                        let now_ts = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        for pane_id in resumed {
+                            let pane_key = crate::state::PaneKey {
+                                backend: backend_name.clone(),
+                                instance: instance_id.clone(),
+                                pane_id: pane_id.to_string(),
+                            };
+                            if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
+                                state.status_ts = Some(now_ts);
+                                let _ = store.upsert_agent(&state);
+                            }
+                        }
+                    }
+                }
+
                 // Persist to runtime file so dashboard can read it.
                 // Write on change, or periodically to keep updated_ts fresh
                 // (dashboard ignores files older than 15s).
