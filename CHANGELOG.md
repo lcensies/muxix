@@ -22,6 +22,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.165 (2026-03-30)
+
+- Add `zoom: true` pane option to maximize a pane to fullscreen after creation,
+  useful for giving an agent pane the full window while keeping other panes
+  available in the background
+  ([#102](https://github.com/raine/workmux/issues/102))
+
 ## v0.1.163 (2026-03-30)
 
 - Add named layouts: define reusable pane layout presets in your config and
