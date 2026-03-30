@@ -61,8 +61,11 @@ pub fn persist_agent_update(
     // Resolve status: explicit update wins, otherwise preserve existing
     let final_status = status.or(existing.as_ref().and_then(|e| e.status));
 
-    // Preserve existing status_ts if status hasn't changed (avoids resetting timer)
-    let status_ts = if final_status == existing.as_ref().and_then(|e| e.status) {
+    // Reset status_ts when an explicit status is provided (new work phase).
+    // Preserve it only for implicit updates (e.g., title-only) where status is None.
+    let status_ts = if status.is_some() {
+        now
+    } else if final_status == existing.as_ref().and_then(|e| e.status) {
         existing.as_ref().and_then(|e| e.status_ts).unwrap_or(now)
     } else {
         now
