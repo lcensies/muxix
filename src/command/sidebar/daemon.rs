@@ -644,16 +644,17 @@ fn spawn_git_worker(
     (cache, tx)
 }
 
-/// Tracks pane content hashes to detect agents that stopped producing output.
+/// Detects working agents that have stopped producing output.
 ///
-/// For each agent in `Working` status, captures the last few lines of the pane,
-/// hashes them, and records when the hash was first seen unchanged. If the hash
-/// stays the same for longer than the timeout, the agent is considered interrupted.
-///
-/// Once interrupted, the state is sticky: it only clears when the agent's state
-/// is updated via RPC (detected by `updated_ts` changing) or when the agent
-/// leaves Working status. Pane content changes (cursor movement, typing) do not
-/// clear the interrupted state.
+/// # Behavior
+/// - A working agent with no pane output and no RPC activity for >= timeout
+///   is considered interrupted.
+/// - Interrupted state is sticky: only an RPC update from the agent clears
+///   it. User typing or cursor movement in the pane does not.
+/// - After clearing, the agent gets a fresh timeout window before it can
+///   be marked interrupted again.
+/// - Interrupted agents show no icon and no timer in the sidebar.
+/// - When an agent resumes, the timer resets to zero.
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at, updated_ts at recording time)
     entries: HashMap<String, (u64, Instant, u64)>,
