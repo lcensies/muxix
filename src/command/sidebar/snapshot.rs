@@ -24,9 +24,10 @@ pub struct SidebarSnapshot {
     /// Git status per worktree path (computed by daemon background worker).
     #[serde(default)]
     pub git_statuses: HashMap<PathBuf, GitStatus>,
-    /// Pane IDs of agents detected as interrupted (working but no pane output change).
+    /// Pane IDs of agents detected as interrupted, mapped to the unix timestamp
+    /// when interruption was confirmed.
     #[serde(default)]
-    pub interrupted_pane_ids: HashSet<String>,
+    pub interrupted_pane_ids: HashMap<String, u64>,
     pub agents: Vec<AgentPane>,
 }
 
@@ -94,7 +95,7 @@ pub fn build_snapshot(
         active_pane_ids,
         window_pane_counts,
         git_statuses,
-        interrupted_pane_ids: HashSet::new(),
+        interrupted_pane_ids: HashMap::new(),
         agents,
     }
 }

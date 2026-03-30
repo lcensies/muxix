@@ -657,9 +657,9 @@ fn spawn_git_worker(
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at)
     entries: HashMap<String, (u64, Instant)>,
-    /// pane_id -> updated_ts at the time interruption was confirmed.
+    /// pane_id -> (updated_ts at confirmation, unix timestamp when confirmed).
     /// Cleared when updated_ts changes (agent sent a new RPC status update).
-    confirmed: HashMap<String, u64>,
+    confirmed: HashMap<String, (u64, u64)>,
     /// How long content must be unchanged before marking as interrupted.
     timeout: Duration,
 }
@@ -673,13 +673,13 @@ impl InactivityTracker {
         }
     }
 
-    /// Check all working agents for inactivity. Returns the set of pane IDs
-    /// that appear interrupted (content unchanged for longer than timeout).
+    /// Check all working agents for inactivity. Returns a map of pane IDs
+    /// to the unix timestamp when interruption was confirmed.
     fn check(
         &mut self,
         agents: &[crate::multiplexer::AgentPane],
         mux: &dyn crate::multiplexer::Multiplexer,
-    ) -> HashSet<String> {
+    ) -> HashMap<String, u64> {
         use std::hash::{Hash, Hasher};
 
         let now = Instant::now();
@@ -699,7 +699,7 @@ impl InactivityTracker {
 
         // Clear interrupted state if the agent's state was updated via RPC
         // (updated_ts changed since we confirmed the interruption)
-        self.confirmed.retain(|id, confirmed_ts| {
+        self.confirmed.retain(|id, (confirmed_ts, _)| {
             if let Some(agent) = working.get(id.as_str()) {
                 agent.updated_ts.unwrap_or(0) <= *confirmed_ts
             } else {
@@ -728,9 +728,14 @@ impl InactivityTracker {
             match self.entries.get(*pane_id) {
                 Some(&(prev_hash, first_seen)) if prev_hash == hash => {
                     if now.duration_since(first_seen) >= self.timeout {
-                        // Record the agent's updated_ts at confirmation time
-                        let ts = agent.updated_ts.unwrap_or(0);
-                        self.confirmed.insert(pane_id.to_string(), ts);
+                        // Record the agent's updated_ts and current wall-clock time
+                        let agent_ts = agent.updated_ts.unwrap_or(0);
+                        let now_ts = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        self.confirmed
+                            .insert(pane_id.to_string(), (agent_ts, now_ts));
                     }
                 }
                 _ => {
@@ -739,7 +744,10 @@ impl InactivityTracker {
             }
         }
 
-        self.confirmed.keys().cloned().collect()
+        self.confirmed
+            .iter()
+            .map(|(k, (_, ts))| (k.clone(), *ts))
+            .collect()
     }
 }
 
@@ -774,7 +782,7 @@ pub fn run() -> Result<()> {
         .run()?;
 
     let mut inactivity_tracker = InactivityTracker::new(Duration::from_secs(10));
-    let mut last_interrupted: HashSet<String> = HashSet::new();
+    let mut last_interrupted: HashMap<String, u64> = HashMap::new();
     let mut last_runtime_write = Instant::now();
     let backend_name = mux.name().to_string();
 
