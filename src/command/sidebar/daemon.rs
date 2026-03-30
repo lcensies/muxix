@@ -674,6 +674,13 @@ impl InactivityTracker {
         }
     }
 
+    /// Whether this pane is confirmed interrupted and capture can be skipped.
+    fn is_confirmed(&self, pane_id: &str, updated_ts: u64) -> bool {
+        self.confirmed
+            .get(pane_id)
+            .is_some_and(|&ts| updated_ts <= ts)
+    }
+
     /// Check all working agents for inactivity. Returns the set of pane IDs
     /// that appear interrupted (content unchanged for longer than timeout).
     fn check_with(
@@ -822,7 +829,7 @@ pub fn run() -> Result<()> {
             let Some(agents) = agents else { continue };
             let layout_mode = read_sidebar_layout_mode(&config).unwrap_or_default();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
-            let captured_panes = gather_captures(&agents, mux.as_ref());
+            let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker);
             let now = Instant::now();
             let now_ts = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -842,17 +849,18 @@ pub fn run() -> Result<()> {
                     git_statuses,
                 },
                 &mut inactivity_tracker,
-                &mut last_interrupted,
+                &last_interrupted,
                 &status_icons,
                 heartbeat_due,
             );
 
-            // ── Apply side effects ──
+            // ── Apply side effects, then commit state ──
             if let Ok(store) = StateStore::new()
                 && apply_tick_effects(&output, &store, &backend_name, &instance_id)
             {
                 last_runtime_write = Instant::now();
             }
+            last_interrupted = output.next_interrupted;
 
             // ── Broadcast ──
             server.broadcast(&output.snapshot);
@@ -944,6 +952,9 @@ struct TickOutput {
     snapshot: super::snapshot::SidebarSnapshot,
     agent_writes: Vec<AgentWrite>,
     runtime_write: Option<crate::state::RuntimeState>,
+    /// The new interrupted set. Caller should commit to `last_interrupted`
+    /// only after side effects are applied successfully.
+    next_interrupted: HashSet<String>,
 }
 
 /// Compute one daemon tick from in-memory inputs.
@@ -956,7 +967,7 @@ struct TickOutput {
 fn compute_tick(
     input: TickInput,
     tracker: &mut InactivityTracker,
-    last_interrupted: &mut HashSet<String>,
+    last_interrupted: &HashSet<String>,
     status_icons: &crate::config::StatusIcons,
     heartbeat_due: bool,
 ) -> TickOutput {
@@ -1004,9 +1015,8 @@ fn compute_tick(
 
     // Phase 4: Determine runtime write side effect
     let runtime_write = if interrupted != *last_interrupted || heartbeat_due {
-        *last_interrupted = interrupted;
         Some(crate::state::RuntimeState {
-            interrupted_pane_ids: last_interrupted.clone(),
+            interrupted_pane_ids: interrupted.clone(),
             updated_ts: now_ts,
         })
     } else {
@@ -1017,6 +1027,7 @@ fn compute_tick(
         snapshot,
         agent_writes,
         runtime_write,
+        next_interrupted: interrupted,
     }
 }
 
@@ -1048,14 +1059,17 @@ fn apply_tick_effects(
     }
 }
 
-/// Capture pane content for all working agents (called before compute_tick).
+/// Capture pane content for working agents that need checking.
+/// Skips agents already confirmed as interrupted (no I/O needed until they resume).
 fn gather_captures(
     agents: &[crate::multiplexer::AgentPane],
     mux: &dyn Multiplexer,
+    tracker: &InactivityTracker,
 ) -> HashMap<String, String> {
     agents
         .iter()
         .filter(|a| a.status == Some(crate::multiplexer::AgentStatus::Working))
+        .filter(|a| !tracker.is_confirmed(&a.pane_id, a.updated_ts.unwrap_or(0)))
         .filter_map(|a| {
             mux.capture_pane(&a.pane_id, 5)
                 .map(|content| (a.pane_id.clone(), content))
@@ -1430,7 +1444,7 @@ mod tests {
             now: Instant,
             now_ts: u64,
         ) -> TickOutput {
-            compute_tick(
+            let output = compute_tick(
                 TickInput {
                     agents,
                     tmux_state: TmuxState {
@@ -1450,7 +1464,10 @@ mod tests {
                 last,
                 &StatusIcons::default(),
                 false,
-            )
+            );
+            // Commit state like the daemon loop does after apply_tick_effects
+            *last = output.next_interrupted.clone();
+            output
         }
 
         fn cap(content: &str) -> HashMap<String, String> {
