@@ -127,3 +127,16 @@ Press `F` to toggle the session filter. When active, only agents in the current 
 ## Stale filter
 
 Press `f` to toggle between showing all agents or hiding stale ones. The filter state persists across dashboard sessions within the same tmux server.
+
+## Sweep
+
+Press `R` in either view to open sweep mode, which identifies worktrees ready for cleanup and lets you remove them in bulk. Worktrees are flagged based on these conditions:
+
+- **PR merged**: The associated pull request has been merged
+- **PR closed**: The pull request was closed without merging
+- **Upstream gone**: The remote branch has been deleted
+- **Merged locally**: The branch is fully merged into the main branch with no upstream tracking
+
+The main worktree is never included.
+
+Clean worktrees are pre-selected and can be toggled with `Space`. Dirty worktrees (uncommitted changes) are shown greyed out and cannot be selected. Press `Enter` to remove all selected worktrees, or `Esc` to cancel.
