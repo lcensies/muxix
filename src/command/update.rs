@@ -6,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const REPO: &str = "raine/workmux";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
-const NOTIFY_INTERVAL_SECS: u64 = 24 * 60 * 60;
+const NOTIFY_COOLDOWN_SECS: u64 = 7 * 24 * 60 * 60;
+const NOTIFY_BURST_COUNT: u64 = 3;
 
 /// Map OS/arch to the release artifact suffix used in GitHub releases.
 fn platform_suffix() -> Result<&'static str> {
@@ -239,6 +240,7 @@ struct UpdateCache {
     latest_version: Option<String>,
     last_checked: Option<u64>,
     last_notified: Option<u64>,
+    notify_count: Option<u64>,
 }
 
 fn update_cache_path() -> Option<std::path::PathBuf> {
@@ -323,26 +325,42 @@ pub fn check_and_notify(config: &crate::config::Config) {
         }
     }
 
-    // Show notice if a newer version is available and we haven't notified recently
+    // Show notice if a newer version is available.
+    // Pattern: burst of 3 consecutive notifications, then 7-day cooldown, repeat.
     if let Some(ref latest) = cache.latest_version
         && is_newer_version(latest, CURRENT_VERSION)
-        && now.saturating_sub(cache.last_notified.unwrap_or(0)) > NOTIFY_INTERVAL_SECS
     {
-        let is_brew = std::env::current_exe()
-            .ok()
-            .and_then(|p| std::fs::canonicalize(&p).ok())
-            .is_some_and(|p| is_homebrew_install(&p));
+        let count = cache.notify_count.unwrap_or(0);
+        let in_cooldown = count >= NOTIFY_BURST_COUNT
+            && now.saturating_sub(cache.last_notified.unwrap_or(0)) <= NOTIFY_COOLDOWN_SECS;
 
-        let update_cmd = if is_brew {
-            "brew upgrade workmux"
-        } else {
-            "workmux update"
-        };
+        if !in_cooldown {
+            // Reset burst counter after cooldown expires
+            let count = if count >= NOTIFY_BURST_COUNT {
+                0
+            } else {
+                count
+            };
 
-        eprintln!("Update available: workmux v{CURRENT_VERSION} -> v{latest} (run `{update_cmd}`)");
+            let is_brew = std::env::current_exe()
+                .ok()
+                .and_then(|p| std::fs::canonicalize(&p).ok())
+                .is_some_and(|p| is_homebrew_install(&p));
 
-        cache.last_notified = Some(now);
-        save_cache(&cache_path, &cache);
+            let update_cmd = if is_brew {
+                "brew upgrade workmux"
+            } else {
+                "workmux update"
+            };
+
+            eprintln!(
+                "Update available: workmux v{CURRENT_VERSION} -> v{latest} (run `{update_cmd}`)"
+            );
+
+            cache.last_notified = Some(now);
+            cache.notify_count = Some(count + 1);
+            save_cache(&cache_path, &cache);
+        }
     }
 }
 
@@ -383,9 +401,9 @@ pub fn run_background_check() -> Result<()> {
     let cache_path = update_cache_path().context("Could not determine cache path")?;
     let mut cache = load_cache(&cache_path);
 
-    // Reset notification timer when a new version is discovered
+    // Reset notification counter when a new version is discovered
     if cache.latest_version.as_deref() != Some(&latest) {
-        cache.last_notified = Some(0);
+        cache.notify_count = Some(0);
     }
 
     cache.latest_version = Some(latest);
