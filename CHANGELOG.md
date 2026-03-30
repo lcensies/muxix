@@ -21,6 +21,18 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.163 (2026-03-30)
+
+- Add named layouts: define reusable pane layout presets in your config and
+  apply them with `workmux add -l/--layout <name>`
+  ([#101](https://github.com/raine/workmux/issues/101))
+- Add `sandbox.env` config option for setting explicit environment variables
+  inside sandboxed agents, with values redacted in debug logs
+  ([#100](https://github.com/raine/workmux/pull/100))
+- Detect interrupted agents via pane inactivity and show interruption status in
+  the sidebar and dashboard with elapsed time since interruption
+- Fix sidebar incorrectly showing all agents as done when only one finishes
+
 ## v0.1.162 (2026-03-29)
 
 - Add named agents: define short names for agent commands in your global config
