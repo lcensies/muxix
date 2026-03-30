@@ -95,9 +95,9 @@ pub struct AgentState {
     /// If this changes (e.g., "node" -> "zsh"), the agent has exited.
     pub command: String,
 
-    /// Unix timestamp of last state update (status change).
-    /// Note: This is NOT a heartbeat - only updated when status changes.
-    /// Used for staleness detection and recency sorting.
+    /// Unix timestamp of last persisted state update (any RPC call that writes state).
+    /// Updated on status changes, title changes, and repeated same-status updates.
+    /// Used for staleness detection, recency sorting, and interruption resume detection.
     pub updated_ts: u64,
 
     /// Window/tab name where this agent is running.
