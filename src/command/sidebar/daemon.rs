@@ -673,13 +673,16 @@ impl InactivityTracker {
         }
     }
 
-    /// Check all working agents for inactivity. Returns a map of pane IDs
-    /// to the unix timestamp when interruption was confirmed.
+    /// Check all working agents for inactivity.
+    ///
+    /// Returns `(interrupted, resumed)` where:
+    /// - `interrupted`: map of pane IDs to unix timestamp when interruption was confirmed
+    /// - `resumed`: pane IDs that just cleared from interrupted (agent sent new RPC)
     fn check(
         &mut self,
         agents: &[crate::multiplexer::AgentPane],
         mux: &dyn crate::multiplexer::Multiplexer,
-    ) -> HashMap<String, u64> {
+    ) -> (HashMap<String, u64>, Vec<String>) {
         use std::hash::{Hash, Hasher};
 
         let now = Instant::now();
@@ -698,7 +701,10 @@ impl InactivityTracker {
             .retain(|id, _| working.contains_key(id.as_str()));
 
         // Clear interrupted state if the agent's state was updated via RPC
-        // (updated_ts changed since we confirmed the interruption)
+        // (updated_ts changed since we confirmed the interruption).
+        // Track which agents just resumed so we can reset their status_ts.
+        let mut resumed = Vec::new();
+        let prev_confirmed: HashSet<String> = self.confirmed.keys().cloned().collect();
         self.confirmed.retain(|id, (confirmed_ts, _)| {
             if let Some(agent) = working.get(id.as_str()) {
                 agent.updated_ts.unwrap_or(0) <= *confirmed_ts
@@ -706,6 +712,11 @@ impl InactivityTracker {
                 false
             }
         });
+        for id in &prev_confirmed {
+            if !self.confirmed.contains_key(id) {
+                resumed.push(id.clone());
+            }
+        }
 
         for (pane_id, agent) in &working {
             // Already confirmed interrupted - skip capture
@@ -744,10 +755,12 @@ impl InactivityTracker {
             }
         }
 
-        self.confirmed
+        let interrupted = self
+            .confirmed
             .iter()
             .map(|(k, (_, ts))| (k.clone(), *ts))
-            .collect()
+            .collect();
+        (interrupted, resumed)
     }
 }
 
@@ -811,8 +824,31 @@ pub fn run() -> Result<()> {
             if let Some(mut snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache)
             {
                 // Detect interrupted agents (working but no pane output change)
-                let interrupted = inactivity_tracker.check(&snapshot.agents, mux.as_ref());
+                let (interrupted, resumed) =
+                    inactivity_tracker.check(&snapshot.agents, mux.as_ref());
                 snapshot.interrupted_pane_ids = interrupted.clone();
+
+                // Reset status_ts for agents that just resumed from interruption
+                // so their timer starts fresh from the new work phase.
+                if !resumed.is_empty()
+                    && let Ok(store) = StateStore::new()
+                {
+                    let now_ts = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    for pane_id in &resumed {
+                        let pane_key = crate::state::PaneKey {
+                            backend: backend_name.clone(),
+                            instance: instance_id.clone(),
+                            pane_id: pane_id.clone(),
+                        };
+                        if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
+                            state.status_ts = Some(now_ts);
+                            let _ = store.upsert_agent(&state);
+                        }
+                    }
+                }
 
                 // Persist to runtime file so dashboard can read it.
                 // Write on change, or periodically to keep updated_ts fresh
