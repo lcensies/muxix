@@ -40,6 +40,10 @@ pub struct AgentPane {
     pub status: Option<AgentStatus>,
     /// Unix timestamp when status was last set
     pub status_ts: Option<u64>,
+    /// Unix timestamp of last state update (any RPC call, not just status change).
+    /// Used by the inactivity tracker to detect when an agent resumes working.
+    #[serde(default)]
+    pub updated_ts: Option<u64>,
 }
 
 /// Parameters for creating a new window/tab

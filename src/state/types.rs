@@ -132,6 +132,7 @@ impl AgentState {
             pane_title: self.pane_title.clone(),
             status: self.status,
             status_ts: self.status_ts,
+            updated_ts: Some(self.updated_ts),
         }
     }
 }

@@ -650,18 +650,16 @@ fn spawn_git_worker(
 /// hashes them, and records when the hash was first seen unchanged. If the hash
 /// stays the same for longer than the timeout, the agent is considered interrupted.
 ///
-/// Once interrupted, the state is sticky: trivial one-off pane changes (cursor
-/// movement) don't clear it. It only clears when the agent leaves Working status,
-/// or when sustained new output is detected (content changing on 2+ consecutive
-/// polls, indicating the agent is actually working again).
+/// Once interrupted, the state is sticky: it only clears when the agent's state
+/// is updated via RPC (detected by `updated_ts` changing) or when the agent
+/// leaves Working status. Pane content changes (cursor movement, typing) do not
+/// clear the interrupted state.
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at)
     entries: HashMap<String, (u64, Instant)>,
-    /// Pane IDs confirmed as interrupted.
-    confirmed: HashSet<String>,
-    /// For confirmed panes: count of consecutive polls with changed content.
-    /// Requires 2+ to clear (filters out one-off cursor movements).
-    activity_streak: HashMap<String, u8>,
+    /// pane_id -> updated_ts at the time interruption was confirmed.
+    /// Cleared when updated_ts changes (agent sent a new RPC status update).
+    confirmed: HashMap<String, u64>,
     /// How long content must be unchanged before marking as interrupted.
     timeout: Duration,
 }
@@ -670,8 +668,7 @@ impl InactivityTracker {
     fn new(timeout: Duration) -> Self {
         Self {
             entries: HashMap::new(),
-            confirmed: HashSet::new(),
-            activity_streak: HashMap::new(),
+            confirmed: HashMap::new(),
             timeout,
         }
     }
@@ -687,22 +684,35 @@ impl InactivityTracker {
 
         let now = Instant::now();
 
-        // Collect pane_ids of currently working agents
-        let working_pane_ids: HashSet<&str> = agents
+        // Build lookup of working agents
+        let working: HashMap<&str, &crate::multiplexer::AgentPane> = agents
             .iter()
             .filter(|a| a.status == Some(crate::multiplexer::AgentStatus::Working))
-            .map(|a| a.pane_id.as_str())
+            .map(|a| (a.pane_id.as_str(), a))
             .collect();
 
         // Remove entries for agents no longer in Working status
         self.entries
-            .retain(|id, _| working_pane_ids.contains(id.as_str()));
+            .retain(|id, _| working.contains_key(id.as_str()));
         self.confirmed
-            .retain(|id| working_pane_ids.contains(id.as_str()));
-        self.activity_streak
-            .retain(|id, _| working_pane_ids.contains(id.as_str()));
+            .retain(|id, _| working.contains_key(id.as_str()));
 
-        for pane_id in &working_pane_ids {
+        // Clear interrupted state if the agent's state was updated via RPC
+        // (updated_ts changed since we confirmed the interruption)
+        self.confirmed.retain(|id, confirmed_ts| {
+            if let Some(agent) = working.get(id.as_str()) {
+                agent.updated_ts.unwrap_or(0) <= *confirmed_ts
+            } else {
+                false
+            }
+        });
+
+        for (pane_id, agent) in &working {
+            // Already confirmed interrupted - skip capture
+            if self.confirmed.contains_key(*pane_id) {
+                continue;
+            }
+
             let Some(raw) = mux.capture_pane(pane_id, 5) else {
                 continue;
             };
@@ -715,39 +725,21 @@ impl InactivityTracker {
             normalized.hash(&mut hasher);
             let hash = hasher.finish();
 
-            if self.confirmed.contains(*pane_id) {
-                // Already interrupted: check for sustained activity to clear
-                let prev_hash = self.entries.get(*pane_id).map(|e| e.0);
-                if prev_hash != Some(hash) {
-                    // Content changed
-                    self.entries.insert(pane_id.to_string(), (hash, now));
-                    let streak = self.activity_streak.entry(pane_id.to_string()).or_insert(0);
-                    *streak += 1;
-                    if *streak >= 2 {
-                        // Sustained activity: agent is working again
-                        self.confirmed.remove(*pane_id);
-                        self.activity_streak.remove(*pane_id);
+            match self.entries.get(*pane_id) {
+                Some(&(prev_hash, first_seen)) if prev_hash == hash => {
+                    if now.duration_since(first_seen) >= self.timeout {
+                        // Record the agent's updated_ts at confirmation time
+                        let ts = agent.updated_ts.unwrap_or(0);
+                        self.confirmed.insert(pane_id.to_string(), ts);
                     }
-                } else {
-                    // Content same again - reset activity streak
-                    self.activity_streak.remove(*pane_id);
                 }
-            } else {
-                // Not yet interrupted: check for inactivity
-                match self.entries.get(*pane_id) {
-                    Some(&(prev_hash, first_seen)) if prev_hash == hash => {
-                        if now.duration_since(first_seen) >= self.timeout {
-                            self.confirmed.insert(pane_id.to_string());
-                        }
-                    }
-                    _ => {
-                        self.entries.insert(pane_id.to_string(), (hash, now));
-                    }
+                _ => {
+                    self.entries.insert(pane_id.to_string(), (hash, now));
                 }
             }
         }
 
-        self.confirmed.clone()
+        self.confirmed.keys().cloned().collect()
     }
 }
 
