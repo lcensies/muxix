@@ -130,10 +130,6 @@ impl App {
                 return 4; // Stale: lowest priority
             }
 
-            if self.interrupted_pane_ids.contains(&agent.pane_id) {
-                return 1; // Interrupted: needs attention
-            }
-
             match agent.status {
                 Some(AgentStatus::Waiting) => 0, // Waiting: needs input
                 Some(AgentStatus::Done) => 1,    // Done: needs review
