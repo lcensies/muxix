@@ -190,10 +190,9 @@ pub struct LastDoneCycleState {
 /// writing to per-agent state files.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RuntimeState {
-    /// Pane IDs of agents detected as interrupted, mapped to the unix timestamp
-    /// when interruption was confirmed.
+    /// Pane IDs of agents detected as interrupted (working but no pane output change).
     #[serde(default)]
-    pub interrupted_pane_ids: std::collections::HashMap<String, u64>,
+    pub interrupted_pane_ids: std::collections::HashSet<String>,
 
     /// Unix timestamp when this file was last written.
     /// Consumers should ignore the file if this is too old (daemon not running).

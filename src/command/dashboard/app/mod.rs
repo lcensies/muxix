@@ -148,9 +148,8 @@ pub struct App {
     pub status_message: Option<(String, std::time::Instant)>,
     /// Whether to show the "New: workmux sidebar" tip in the tab header
     pub show_sidebar_tip: bool,
-    /// Pane IDs of agents detected as interrupted by the sidebar daemon,
-    /// mapped to the unix timestamp when interruption was confirmed.
-    pub interrupted_pane_ids: std::collections::HashMap<String, u64>,
+    /// Pane IDs of agents detected as interrupted by the sidebar daemon.
+    pub interrupted_pane_ids: std::collections::HashSet<String>,
 }
 
 impl App {
@@ -261,7 +260,7 @@ impl App {
             worktree_preview_path: None,
             status_message: None,
             show_sidebar_tip: crate::tips::should_show_sidebar_tip(),
-            interrupted_pane_ids: std::collections::HashMap::new(),
+            interrupted_pane_ids: std::collections::HashSet::new(),
         };
 
         app.refresh();

@@ -70,9 +70,8 @@ pub struct SidebarApp {
     selection_mode: SelectionMode,
     /// Git status per worktree path (received from daemon snapshots).
     pub git_statuses: HashMap<PathBuf, GitStatus>,
-    /// Pane IDs of agents detected as interrupted by the daemon,
-    /// mapped to the unix timestamp when interruption was confirmed.
-    pub interrupted_pane_ids: std::collections::HashMap<String, u64>,
+    /// Pane IDs of agents detected as interrupted by the daemon.
+    pub interrupted_pane_ids: std::collections::HashSet<String>,
 }
 
 impl SidebarApp {
@@ -111,7 +110,7 @@ impl SidebarApp {
             host_window_active: true,
             selection_mode: SelectionMode::FollowHost,
             git_statuses: HashMap::new(),
-            interrupted_pane_ids: std::collections::HashMap::new(),
+            interrupted_pane_ids: std::collections::HashSet::new(),
         })
     }
 

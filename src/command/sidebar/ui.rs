@@ -220,17 +220,20 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
-            let interrupted_ts = app.interrupted_pane_ids.get(&agent.pane_id).copied();
-            let is_interrupted = interrupted_ts.is_some();
+            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             // Status icon
             let (icon, icon_style) =
                 status_icon_and_style(app, agent.status, is_stale, is_interrupted);
 
-            // Elapsed time: for interrupted agents, show time since interruption
-            let elapsed_ts = interrupted_ts.or(agent.status_ts);
-            let elapsed = elapsed_ts
-                .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
-                .unwrap_or_default();
+            // Elapsed time: hide when interrupted
+            let elapsed = if is_interrupted {
+                String::new()
+            } else {
+                agent
+                    .status_ts
+                    .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
+                    .unwrap_or_default()
+            };
 
             // Pad icon to fixed 2-column width so emoji and spinners align
             let icon_cols = display_width(&icon);
@@ -328,8 +331,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
-            let interrupted_ts = app.interrupted_pane_ids.get(&agent.pane_id).copied();
-            let is_interrupted = interrupted_ts.is_some();
+            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             let is_active = app.host_agent_idx == Some(idx);
 
             // Status icon and color
@@ -345,11 +347,15 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             };
             let stripe_style = Style::default().fg(stripe_color);
 
-            // Elapsed time: for interrupted agents, show time since interruption
-            let elapsed_ts = interrupted_ts.or(agent.status_ts);
-            let elapsed = elapsed_ts
-                .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
-                .unwrap_or_default();
+            // Elapsed time: hide when interrupted
+            let elapsed = if is_interrupted {
+                String::new()
+            } else {
+                agent
+                    .status_ts
+                    .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
+                    .unwrap_or_default()
+            };
 
             // Pad icon to fixed 2-column width
             let icon_cols = display_width(&icon);

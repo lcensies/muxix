@@ -657,9 +657,9 @@ fn spawn_git_worker(
 struct InactivityTracker {
     /// pane_id -> (content_hash, first_seen_at)
     entries: HashMap<String, (u64, Instant)>,
-    /// pane_id -> (updated_ts at confirmation, unix timestamp when confirmed).
+    /// pane_id -> updated_ts at the time interruption was confirmed.
     /// Cleared when updated_ts changes (agent sent a new RPC status update).
-    confirmed: HashMap<String, (u64, u64)>,
+    confirmed: HashMap<String, u64>,
     /// How long content must be unchanged before marking as interrupted.
     timeout: Duration,
 }
@@ -673,16 +673,13 @@ impl InactivityTracker {
         }
     }
 
-    /// Check all working agents for inactivity.
-    ///
-    /// Returns `(interrupted, resumed)` where:
-    /// - `interrupted`: map of pane IDs to unix timestamp when interruption was confirmed
-    /// - `resumed`: pane IDs that just cleared from interrupted (agent sent new RPC)
+    /// Check all working agents for inactivity. Returns the set of pane IDs
+    /// that appear interrupted (content unchanged for longer than timeout).
     fn check(
         &mut self,
         agents: &[crate::multiplexer::AgentPane],
         mux: &dyn crate::multiplexer::Multiplexer,
-    ) -> (HashMap<String, u64>, Vec<String>) {
+    ) -> HashSet<String> {
         use std::hash::{Hash, Hasher};
 
         let now = Instant::now();
@@ -702,20 +699,21 @@ impl InactivityTracker {
 
         // Clear interrupted state if the agent's state was updated via RPC
         // (updated_ts changed since we confirmed the interruption).
-        // Track which agents just resumed so we can reset their status_ts.
-        let mut resumed = Vec::new();
-        let prev_confirmed: HashSet<String> = self.confirmed.keys().cloned().collect();
-        self.confirmed.retain(|id, (confirmed_ts, _)| {
-            if let Some(agent) = working.get(id.as_str()) {
-                agent.updated_ts.unwrap_or(0) <= *confirmed_ts
-            } else {
-                false
-            }
-        });
-        for id in &prev_confirmed {
-            if !self.confirmed.contains_key(id) {
-                resumed.push(id.clone());
-            }
+        // Collect resumed pane IDs first, then clear their entries for a fresh
+        // inactivity window.
+        let resumed: Vec<String> = self
+            .confirmed
+            .iter()
+            .filter(|(id, confirmed_ts)| {
+                working
+                    .get(id.as_str())
+                    .is_some_and(|a| a.updated_ts.unwrap_or(0) > **confirmed_ts)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &resumed {
+            self.confirmed.remove(id);
+            self.entries.remove(id);
         }
 
         for (pane_id, agent) in &working {
@@ -739,14 +737,8 @@ impl InactivityTracker {
             match self.entries.get(*pane_id) {
                 Some(&(prev_hash, first_seen)) if prev_hash == hash => {
                     if now.duration_since(first_seen) >= self.timeout {
-                        // Record the agent's updated_ts and current wall-clock time
-                        let agent_ts = agent.updated_ts.unwrap_or(0);
-                        let now_ts = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-                        self.confirmed
-                            .insert(pane_id.to_string(), (agent_ts, now_ts));
+                        let ts = agent.updated_ts.unwrap_or(0);
+                        self.confirmed.insert(pane_id.to_string(), ts);
                     }
                 }
                 _ => {
@@ -755,12 +747,7 @@ impl InactivityTracker {
             }
         }
 
-        let interrupted = self
-            .confirmed
-            .iter()
-            .map(|(k, (_, ts))| (k.clone(), *ts))
-            .collect();
-        (interrupted, resumed)
+        self.confirmed.keys().cloned().collect()
     }
 }
 
@@ -795,7 +782,7 @@ pub fn run() -> Result<()> {
         .run()?;
 
     let mut inactivity_tracker = InactivityTracker::new(Duration::from_secs(10));
-    let mut last_interrupted: HashMap<String, u64> = HashMap::new();
+    let mut last_interrupted: HashSet<String> = HashSet::new();
     let mut last_runtime_write = Instant::now();
     let backend_name = mux.name().to_string();
 
@@ -824,31 +811,8 @@ pub fn run() -> Result<()> {
             if let Some(mut snapshot) = try_build_snapshot(&mux, &status_icons, &config, &git_cache)
             {
                 // Detect interrupted agents (working but no pane output change)
-                let (interrupted, resumed) =
-                    inactivity_tracker.check(&snapshot.agents, mux.as_ref());
+                let interrupted = inactivity_tracker.check(&snapshot.agents, mux.as_ref());
                 snapshot.interrupted_pane_ids = interrupted.clone();
-
-                // Reset status_ts for agents that just resumed from interruption
-                // so their timer starts fresh from the new work phase.
-                if !resumed.is_empty()
-                    && let Ok(store) = StateStore::new()
-                {
-                    let now_ts = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    for pane_id in &resumed {
-                        let pane_key = crate::state::PaneKey {
-                            backend: backend_name.clone(),
-                            instance: instance_id.clone(),
-                            pane_id: pane_id.clone(),
-                        };
-                        if let Ok(Some(mut state)) = store.get_agent(&pane_key) {
-                            state.status_ts = Some(now_ts);
-                            let _ = store.upsert_agent(&state);
-                        }
-                    }
-                }
 
                 // Persist to runtime file so dashboard can read it.
                 // Write on change, or periodically to keep updated_ts fresh
