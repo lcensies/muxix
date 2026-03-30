@@ -655,8 +655,8 @@ fn spawn_git_worker(
 /// leaves Working status. Pane content changes (cursor movement, typing) do not
 /// clear the interrupted state.
 struct InactivityTracker {
-    /// pane_id -> (content_hash, first_seen_at)
-    entries: HashMap<String, (u64, Instant)>,
+    /// pane_id -> (content_hash, first_seen_at, updated_ts at recording time)
+    entries: HashMap<String, (u64, Instant, u64)>,
     /// pane_id -> updated_ts at the time interruption was confirmed.
     /// Cleared when updated_ts changes (agent sent a new RPC status update).
     confirmed: HashMap<String, u64>,
@@ -744,15 +744,21 @@ impl InactivityTracker {
             normalized.hash(&mut hasher);
             let hash = hasher.finish();
 
+            let current_rpc = agent.updated_ts.unwrap_or(0);
+
             match self.entries.get(*pane_id) {
-                Some(&(prev_hash, first_seen)) if prev_hash == hash => {
+                Some(&(prev_hash, first_seen, prev_rpc))
+                    if prev_hash == hash && prev_rpc == current_rpc =>
+                {
+                    // Same content and same RPC state: check timeout
                     if now.duration_since(first_seen) >= self.timeout {
-                        let ts = agent.updated_ts.unwrap_or(0);
-                        self.confirmed.insert(pane_id.to_string(), ts);
+                        self.confirmed.insert(pane_id.to_string(), current_rpc);
                     }
                 }
                 _ => {
-                    self.entries.insert(pane_id.to_string(), (hash, now));
+                    // Content changed or RPC updated: reset inactivity window
+                    self.entries
+                        .insert(pane_id.to_string(), (hash, now, current_rpc));
                 }
             }
         }
@@ -1179,7 +1185,83 @@ mod tests {
         let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |id| {
             content.borrow().get(id).cloned()
         });
-        assert!(result.contains("%1"));
-        assert!(!result.contains("%2"));
+        assert_eq!(result, HashSet::from(["%1".to_string()]));
+    }
+
+    #[test]
+    fn rpc_update_before_timeout_resets_window() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let t0 = Instant::now();
+
+        // Start tracking
+        tracker.check_with(&[working_agent("%1", 1)], t0, |_| Some("hello".into()));
+
+        // Agent sends RPC at 5s (updated_ts changes) but content unchanged
+        tracker.check_with(
+            &[working_agent("%1", 2)],
+            t0 + Duration::from_secs(5),
+            |_| Some("hello".into()),
+        );
+
+        // At 11s: only 6s since RPC update, should NOT be interrupted
+        let result = tracker.check_with(
+            &[working_agent("%1", 2)],
+            t0 + Duration::from_secs(11),
+            |_| Some("hello".into()),
+        );
+        assert!(result.is_empty());
+
+        // At 16s: 11s since RPC update, now interrupted
+        let result = tracker.check_with(
+            &[working_agent("%1", 2)],
+            t0 + Duration::from_secs(16),
+            |_| Some("hello".into()),
+        );
+        assert_eq!(result, HashSet::from(["%1".to_string()]));
+    }
+
+    #[test]
+    fn interruption_at_exact_timeout() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(10), |_| {
+            Some("hello".into())
+        });
+        assert_eq!(result, HashSet::from(["%1".to_string()]));
+    }
+
+    #[test]
+    fn ansi_and_whitespace_normalized() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Plain text first
+        tracker.check_with(&agents, t0, |_| Some("hello\n".into()));
+
+        // Same text wrapped in ANSI codes + trailing whitespace: should hash the same
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("\x1b[31mhello\x1b[0m   ".into())
+        });
+        assert_eq!(result, HashSet::from(["%1".to_string()]));
+    }
+
+    #[test]
+    fn capture_failure_does_not_create_baseline() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Capture fails: no baseline recorded
+        tracker.check_with(&agents, t0, |_| None);
+
+        // Capture succeeds later: this is the first successful capture, not a timeout
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
     }
 }
