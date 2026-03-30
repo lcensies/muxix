@@ -336,6 +336,10 @@ enum Commands {
         #[command(flatten)]
         multi: MultiArgs,
 
+        /// Use a named pane layout from config instead of default panes
+        #[arg(short = 'l', long, conflicts_with = "agent")]
+        layout: Option<String>,
+
         /// Block until the created tmux window is closed
         #[arg(short = 'W', long)]
         wait: bool,
@@ -847,6 +851,7 @@ pub fn run() -> Result<()> {
             setup,
             rescue,
             multi,
+            layout,
             wait,
             session,
         } => command::add::run(
@@ -859,6 +864,7 @@ pub fn run() -> Result<()> {
             setup,
             rescue,
             multi,
+            layout,
             wait,
             session,
         ),

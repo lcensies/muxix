@@ -245,6 +245,10 @@ pub struct Config {
     #[serde(default)]
     pub panes: Option<Vec<PaneConfig>>,
 
+    /// Named pane layouts, selectable with `-l/--layout`.
+    #[serde(default)]
+    pub layouts: Option<HashMap<String, LayoutConfig>>,
+
     /// Multiple window configuration (session mode only, mutually exclusive with `panes`)
     #[serde(default)]
     pub windows: Option<Vec<WindowConfig>>,
@@ -386,7 +390,7 @@ impl<'de> Deserialize<'de> for AgentEntry {
 }
 
 /// Configuration for a single tmux pane
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct PaneConfig {
     /// A command to run when the pane is created. The pane will remain open
     /// with an interactive shell after the command completes. If not provided,
@@ -417,6 +421,13 @@ pub struct PaneConfig {
     /// Only used when `split` is specified.
     #[serde(default)]
     pub target: Option<usize>,
+}
+
+/// A named pane layout, selectable with `-l/--layout` at add-time.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LayoutConfig {
+    /// Pane configuration for this layout.
+    pub panes: Vec<PaneConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1420,6 +1431,16 @@ pub fn validate_panes_config(panes: &[PaneConfig]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Validate layouts configuration by validating each layout's panes.
+#[cfg(test)]
+pub fn validate_layouts_config(layouts: &HashMap<String, LayoutConfig>) -> anyhow::Result<()> {
+    for (name, layout) in layouts {
+        validate_panes_config(&layout.panes)
+            .map_err(|e| anyhow::anyhow!("Invalid panes in layout '{}': {}", name, e))?;
+    }
+    Ok(())
+}
+
 /// Get the path to the global config file.
 /// Prefers existing .yml file to avoid shadowing, otherwise defaults to .yaml.
 pub fn global_config_path() -> Option<PathBuf> {
@@ -1743,6 +1764,15 @@ impl Config {
             auto_update_check,
             prompt_file_only,
         );
+
+        // Layouts: merge maps by key so project layouts extend global ones
+        merged.layouts = match (self.layouts, project.layouts) {
+            (Some(mut global), Some(proj)) => {
+                global.extend(proj);
+                Some(global)
+            }
+            (global, proj) => proj.or(global),
+        };
 
         // Deep merge auto_name. Security: command is global-only to prevent
         // a malicious .workmux.yaml from executing arbitrary commands on the host.
@@ -2399,9 +2429,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        Config, ContainerConfig, ExtraMount, LimaConfig, NetworkConfig, NetworkPolicy,
-        SandboxConfig, SandboxRuntime, SandboxTarget, ToolchainMode, is_agent_command,
-        split_first_token, validate_domain,
+        Config, ContainerConfig, ExtraMount, LayoutConfig, LimaConfig, NetworkConfig,
+        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SplitDirection,
+        ToolchainMode, is_agent_command, split_first_token, validate_domain,
+        validate_layouts_config,
     };
 
     #[test]
@@ -4117,5 +4148,152 @@ sandbox:
         let config: Config = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.theme.scheme, ThemeScheme::Default);
         assert_eq!(config.theme.mode, None);
+    }
+
+    // --- Layout tests ---
+
+    #[test]
+    fn deserialize_layouts() {
+        let yaml = r#"
+layouts:
+  design:
+    panes:
+      - command: "<agent:claude>"
+        focus: true
+      - command: "<agent:codex>"
+        split: vertical
+  review:
+    panes:
+      - command: "<agent:claude>"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let layouts = config.layouts.unwrap();
+        assert_eq!(layouts.len(), 2);
+        assert!(layouts.contains_key("design"));
+        assert_eq!(layouts["design"].panes.len(), 2);
+        assert_eq!(layouts["review"].panes.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_layouts_absent() {
+        let yaml = "agent: claude";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.layouts.is_none());
+    }
+
+    #[test]
+    fn validate_layouts_valid() {
+        let mut layouts = HashMap::new();
+        layouts.insert(
+            "test".to_string(),
+            LayoutConfig {
+                panes: vec![
+                    PaneConfig {
+                        command: Some("<agent:claude>".into()),
+                        focus: true,
+                        ..Default::default()
+                    },
+                    PaneConfig {
+                        command: Some("vim".into()),
+                        split: Some(SplitDirection::Horizontal),
+                        ..Default::default()
+                    },
+                ],
+            },
+        );
+        assert!(validate_layouts_config(&layouts).is_ok());
+    }
+
+    #[test]
+    fn validate_layouts_invalid_first_pane_has_split() {
+        let mut layouts = HashMap::new();
+        layouts.insert(
+            "bad".to_string(),
+            LayoutConfig {
+                panes: vec![PaneConfig {
+                    split: Some(SplitDirection::Horizontal),
+                    ..Default::default()
+                }],
+            },
+        );
+        let err = validate_layouts_config(&layouts).unwrap_err();
+        assert!(
+            err.to_string().contains("layout 'bad'"),
+            "error should mention layout name: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn merge_layouts_project_extends_global() {
+        let global = Config {
+            layouts: Some(HashMap::from([(
+                "a".into(),
+                LayoutConfig { panes: vec![] },
+            )])),
+            ..Default::default()
+        };
+        let project = Config {
+            layouts: Some(HashMap::from([(
+                "b".into(),
+                LayoutConfig { panes: vec![] },
+            )])),
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        let layouts = merged.layouts.unwrap();
+        // Project layouts extend global (both available)
+        assert!(layouts.contains_key("a"));
+        assert!(layouts.contains_key("b"));
+    }
+
+    #[test]
+    fn merge_layouts_project_overrides_collision() {
+        let global = Config {
+            layouts: Some(HashMap::from([(
+                "shared".into(),
+                LayoutConfig {
+                    panes: vec![PaneConfig {
+                        command: Some("global-cmd".into()),
+                        ..Default::default()
+                    }],
+                },
+            )])),
+            ..Default::default()
+        };
+        let project = Config {
+            layouts: Some(HashMap::from([(
+                "shared".into(),
+                LayoutConfig {
+                    panes: vec![PaneConfig {
+                        command: Some("project-cmd".into()),
+                        ..Default::default()
+                    }],
+                },
+            )])),
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        let layouts = merged.layouts.unwrap();
+        // Project wins on collision
+        assert_eq!(
+            layouts["shared"].panes[0].command.as_deref(),
+            Some("project-cmd")
+        );
+    }
+
+    #[test]
+    fn merge_layouts_global_used_when_project_has_none() {
+        let global = Config {
+            layouts: Some(HashMap::from([(
+                "a".into(),
+                LayoutConfig { panes: vec![] },
+            )])),
+            ..Default::default()
+        };
+        let project = Config::default();
+        let merged = global.merge(project);
+        let layouts = merged.layouts.unwrap();
+        assert!(layouts.contains_key("a"));
     }
 }

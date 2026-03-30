@@ -328,6 +328,32 @@ Each agent receives the prompt (via `-p`/`-P`/`-e`) using the correct format for
 that agent. Auto-detection matches the executable name regardless of flags or
 path.
 
+#### Named layouts
+
+Define reusable pane arrangements in the `layouts` map and select one at
+add-time with `-l/--layout`:
+
+```yaml
+layouts:
+  design:
+    panes:
+      - command: <agent>
+        focus: true
+      - command: <agent:codex>
+        split: vertical
+  review:
+    panes:
+      - command: <agent>
+```
+
+```bash
+workmux add my-feature -l design
+```
+
+When `-l` is used, the layout's `panes` replace the top-level `panes` for that
+worktree. All other config (hooks, files, agent, etc.) comes from the top-level
+as usual. The `-l` flag cannot be combined with `--agent`.
+
 #### File operations
 
 New worktrees are clean checkouts with no gitignored files (`.env`,
@@ -542,6 +568,8 @@ immediately. If the branch doesn't exist, it will be created automatically.
 - `--prompt-file-only`: Write the prompt file to the worktree without injecting
   it into agent commands. No agent pane is required. Useful when your editor has
   an embedded agent that reads `.workmux/PROMPT-*.md` directly.
+- `-l, --layout <name>`: Use a named pane layout from config instead of the
+  default panes. Cannot be combined with `--agent`.
 - `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
   specified multiple times to generate a worktree for each agent. Overrides the
   `agent` from your config file.

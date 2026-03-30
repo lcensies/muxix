@@ -106,6 +106,33 @@ Each agent receives the prompt using its native format (e.g., Claude uses `--`, 
 
 See [pane configuration](/guide/configuration#agent-placeholders) for details.
 
+## Named layouts with agents
+
+Use [named layouts](/guide/configuration#named-layouts) to define reusable pane arrangements with different agent combinations:
+
+```yaml
+layouts:
+  design:
+    panes:
+      - command: claude
+        focus: true
+      - command: codex
+        split: vertical
+  solo:
+    panes:
+      - command: claude
+```
+
+```bash
+# Two agents side by side
+workmux add my-feature -l design -p "Implement the new search API"
+
+# Single agent
+workmux add quick-fix -l solo -p "Fix the login bug"
+```
+
+When a layout is selected with `-l`, its panes replace the top-level `panes`. All other config (hooks, files, etc.) comes from the top-level as usual.
+
 ## Parallel workflows
 
 workmux can generate multiple worktrees from a single `add` command, which is ideal for running parallel experiments or delegating tasks to multiple AI agents.

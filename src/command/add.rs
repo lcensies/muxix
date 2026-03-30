@@ -128,6 +128,32 @@ fn check_preconditions() -> Result<()> {
     Err(anyhow!(errors.join("\n")))
 }
 
+/// Resolve a named layout by replacing `config.panes` with the layout's panes.
+fn resolve_layout(config: &mut config::Config, layout_name: &str) -> Result<()> {
+    let layouts = config.layouts.as_ref().ok_or_else(|| {
+        anyhow!(
+            "Layout '{}' requested but no layouts are defined in config",
+            layout_name
+        )
+    })?;
+    let layout = layouts.get(layout_name).ok_or_else(|| {
+        let mut available: Vec<_> = layouts.keys().collect();
+        available.sort();
+        anyhow!(
+            "Layout '{}' not found. Available layouts: {}",
+            layout_name,
+            available
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })?;
+    config.panes = Some(layout.panes.clone());
+    config.windows = None; // Layout overrides session windows
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     branch_name: Option<&str>,
@@ -139,11 +165,15 @@ pub fn run(
     setup: SetupFlags,
     rescue: RescueArgs,
     multi: MultiArgs,
+    layout: Option<String>,
     wait: bool,
     session: bool,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
+        if layout.is_some() {
+            bail!("--layout is not supported from inside a sandbox");
+        }
         return run_add_via_rpc(
             branch_name,
             auto_name,
@@ -166,12 +196,17 @@ pub fn run(
     let sandbox_override = setup.sandbox;
 
     // Load config early to determine mode (CLI flag overrides config)
-    let initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+    let mut initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
     let mode = if session {
         MuxMode::Session
     } else {
         initial_config.mode()
     };
+
+    // Validate layout early to fail fast before any LLM calls
+    if let Some(layout_name) = &layout {
+        resolve_layout(&mut initial_config, layout_name)?;
+    }
 
     // Construct setup options from flags
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
@@ -287,6 +322,9 @@ pub fn run(
             config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
         if sandbox_override {
             rescue_config.sandbox.enabled = Some(true);
+        }
+        if let Some(layout_name) = &layout {
+            resolve_layout(&mut rescue_config, layout_name)?;
         }
         let mux = create_backend(detect_backend());
         let rescue_context = workflow::WorkflowContext::new(rescue_config, mux, rescue_location)?;
@@ -415,6 +453,7 @@ pub fn run(
         max_concurrent: multi.max_concurrent,
         sandbox_override,
         prompt_file_only,
+        layout: layout.as_deref(),
     };
     plan.execute()
 }
@@ -544,6 +583,7 @@ struct CreationPlan<'a> {
     max_concurrent: Option<u32>,
     sandbox_override: bool,
     prompt_file_only: bool,
+    layout: Option<&'a str>,
 }
 
 impl<'a> CreationPlan<'a> {
@@ -592,6 +632,11 @@ impl<'a> CreationPlan<'a> {
                 config::Config::load_with_location(spec.agent.as_deref())?;
             if self.sandbox_override {
                 config.sandbox.enabled = Some(true);
+            }
+
+            // Resolve layout: replace top-level panes with layout's panes
+            if let Some(layout_name) = self.layout {
+                resolve_layout(&mut config, layout_name)?;
             }
 
             // Render prompt first (needed for deferred auto-name)

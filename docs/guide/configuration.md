@@ -140,6 +140,29 @@ panes:
 
 Each agent receives the prompt (via `-p`/`-P`/`-e`) using the correct format for that agent. Auto-detection matches the executable name regardless of flags or path.
 
+### Named layouts
+
+Define reusable pane arrangements in the `layouts` map and select one at add-time with `-l/--layout`:
+
+```yaml
+layouts:
+  design:
+    panes:
+      - command: <agent>
+        focus: true
+      - command: <agent:codex>
+        split: vertical
+  review:
+    panes:
+      - command: <agent>
+```
+
+```bash
+workmux add my-feature -l design
+```
+
+When `-l` is used, the layout's `panes` replace the top-level `panes` for that worktree. All other config (hooks, files, agent, etc.) comes from the top-level as usual. The `-l` flag cannot be combined with `--agent`.
+
 ### Windows
 
 When using [session mode](/guide/session-mode), you can configure multiple windows per session using the `windows` array. This is mutually exclusive with the top-level `panes` config. See [multiple windows per session](/guide/session-mode#multiple-windows-per-session) for full details.

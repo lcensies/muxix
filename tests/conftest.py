@@ -1325,6 +1325,7 @@ def write_workmux_config(
     worktree_prefix: Optional[str] = None,
     base_branch: Optional[str] = None,
     prompt_file_only: Optional[bool] = None,
+    layouts: Optional[Dict[str, Any]] = None,
 ):
     """Creates a .workmux.yaml file from structured data and optionally commits it."""
     # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
@@ -1332,6 +1333,8 @@ def write_workmux_config(
     config: Dict[str, Any] = {"nerdfont": False}
     if panes is not None:
         config["panes"] = panes
+    if layouts is not None:
+        config["layouts"] = layouts
     if post_create:
         config["post_create"] = post_create
     if pre_merge:
