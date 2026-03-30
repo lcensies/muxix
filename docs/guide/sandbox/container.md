@@ -51,6 +51,7 @@ workmux sandbox pull
 | `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent). **Global config only.**                                                                                                                               |
 | `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.**                           |
 | `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                                    |
+| `env`                     | `{}`                                    | Environment variables to set with explicit values (unlike `env_passthrough` which reads from host). **Global config only.**                                                                                       |
 | `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                                          |
 | `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                                            |
 | `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**                                    |
@@ -74,6 +75,8 @@ sandbox:
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
+  env:
+    GH_TOKEN: ghp_xxxxxxxxxxxx
   container:
     runtime: podman
 ```

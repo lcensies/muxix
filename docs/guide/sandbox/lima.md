@@ -34,6 +34,8 @@ sandbox:
   env_passthrough:
     - GITHUB_TOKEN
     - ANTHROPIC_API_KEY
+  env:
+    GH_TOKEN: ghp_xxxxxxxxxxxx
   lima:
     isolation: project # default: one VM per git repository
     cpus: 8
@@ -42,23 +44,24 @@ sandbox:
       sudo apt-get install -y ripgrep fd-find jq
 ```
 
-| Option                        | Default            | Description                                                                                              |
-| ----------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `backend`                     | `container`        | Set to `lima` for VM sandboxing                                                                          |
-| `lima.isolation`              | `project`          | `project` (one VM per repo) or `shared` (single global VM)                                               |
-| `lima.projects_dir`           | -                  | Required for `shared` isolation: parent directory of all projects                                        |
-| `image`                       | Debian 12          | Custom qcow2 image URL or `file://` path. **Global config only.**                                        |
-| `lima.skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                                                  |
-| `lima.cpus`                   | `4`                | Number of CPUs for Lima VMs                                                                              |
-| `lima.memory`                 | `4GiB`             | Memory for Lima VMs                                                                                      |
-| `lima.disk`                   | `100GiB`           | Disk size for Lima VMs                                                                                   |
-| `lima.provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps                               |
-| `toolchain`                   | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`                       |
-| `host_commands`               | `[]`               | Commands to proxy from guest to host via RPC (see [shared features](./features#host-command-proxying))   |
-| `env_passthrough`             | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM. **Global config only.**                                 |
-| `extra_mounts`                | `[]`               | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.** |
+| Option                        | Default            | Description                                                                                                                 |
+| ----------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `backend`                     | `container`        | Set to `lima` for VM sandboxing                                                                                             |
+| `lima.isolation`              | `project`          | `project` (one VM per repo) or `shared` (single global VM)                                                                  |
+| `lima.projects_dir`           | -                  | Required for `shared` isolation: parent directory of all projects                                                           |
+| `image`                       | Debian 12          | Custom qcow2 image URL or `file://` path. **Global config only.**                                                           |
+| `lima.skip_default_provision` | `false`            | Skip built-in provisioning (system deps + tool install)                                                                     |
+| `lima.cpus`                   | `4`                | Number of CPUs for Lima VMs                                                                                                 |
+| `lima.memory`                 | `4GiB`             | Memory for Lima VMs                                                                                                         |
+| `lima.disk`                   | `100GiB`           | Disk size for Lima VMs                                                                                                      |
+| `lima.provision`              | -                  | Custom user-mode shell script run once at VM creation after built-in steps                                                  |
+| `toolchain`                   | `auto`             | Toolchain mode: `auto` (detect devbox.json/flake.nix), `off`, `devbox`, or `flake`                                          |
+| `host_commands`               | `[]`               | Commands to proxy from guest to host via RPC (see [shared features](./features#host-command-proxying))                      |
+| `env_passthrough`             | `["GITHUB_TOKEN"]` | Environment variables to pass through to the VM. **Global config only.**                                                    |
+| `env`                         | `{}`               | Environment variables to set with explicit values (unlike `env_passthrough` which reads from host). **Global config only.** |
+| `extra_mounts`                | `[]`               | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                    |
 
-VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `memory`, `disk`, `provision`, `skip_default_provision`) are nested under `lima`. Settings shared by both backends (`toolchain`, `host_commands`, `env_passthrough`, `image`, `target`) remain at the `sandbox` level. Container-specific settings (`runtime`) are nested under `container`.
+VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `memory`, `disk`, `provision`, `skip_default_provision`) are nested under `lima`. Settings shared by both backends (`toolchain`, `host_commands`, `env_passthrough`, `env`, `image`, `target`) remain at the `sandbox` level. Container-specific settings (`runtime`) are nested under `container`.
 
 ## How it works
 
