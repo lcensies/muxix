@@ -670,20 +670,32 @@ impl Multiplexer for TmuxBackend {
     // === Status ===
 
     fn set_status(&self, pane_id: &str, icon: &str, auto_clear_on_focus: bool) -> Result<()> {
-        // Set Window Option for tmux status bar display.
-        // Agent state is stored in filesystem (StateStore), these window options
-        // are view-layer only for visual feedback in the status bar.
+        // Window-level option for tmux status bar display (shared across panes in a window).
         if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
         {
             eprintln!("workmux: failed to set window status: {}", e);
         }
 
-        // Set up hook to auto-clear status when window receives focus.
+        // Pane-level option for per-agent sidebar tracking. Unlike the window option,
+        // this is unique per pane so the sidebar can track individual agent statuses
+        // even when multiple agents share a window.
+        let _ = self.tmux_cmd(&[
+            "set-option",
+            "-p",
+            "-t",
+            pane_id,
+            "@workmux_pane_status",
+            icon,
+        ]);
+
+        // Set up hook to auto-clear status when a pane receives focus.
         // Used for "waiting" and "done" statuses so they clear once the user sees them.
         if auto_clear_on_focus {
-            // Only clear if status still matches this icon (avoids clearing a newer status)
+            // The pane-focus-in hook fires in the context of the focused pane, so
+            // `set-option -up` targets that specific pane's option. This makes
+            // auto-clear work per-agent even with multiple agents in one window.
             let hook_cmd = format!(
-                "if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \"set-option -uw @workmux_status\"",
+                "set-option -up @workmux_pane_status ; if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \"set-option -uw @workmux_status\"",
                 icon
             );
             let _ = self.tmux_cmd(&["set-hook", "-w", "-t", pane_id, "pane-focus-in", &hook_cmd]);
@@ -694,6 +706,7 @@ impl Multiplexer for TmuxBackend {
 
     fn clear_status(&self, pane_id: &str) -> Result<()> {
         self.clear_window_status_internal(pane_id);
+        let _ = self.tmux_cmd(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"]);
         Ok(())
     }
 

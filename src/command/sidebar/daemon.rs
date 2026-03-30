@@ -38,7 +38,7 @@ struct TmuxState {
 
 /// Query all sidebar-relevant tmux state in a single command.
 fn query_tmux_state() -> TmuxState {
-    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
+    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
