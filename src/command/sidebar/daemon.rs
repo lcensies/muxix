@@ -824,6 +824,7 @@ pub fn run() -> Result<()> {
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs();
+                    let prev_interrupted = last_interrupted.clone();
                     let (interrupted, wrote) = process_inactivity_tick(
                         &mut inactivity_tracker,
                         &snapshot.agents,
@@ -837,6 +838,19 @@ pub fn run() -> Result<()> {
                         |pane_id| mux.capture_pane(pane_id, 5),
                     );
                     snapshot.interrupted_pane_ids = interrupted;
+
+                    // Patch snapshot agents for just-resumed agents: the tick wrote
+                    // the new status_ts to the state file, but the snapshot was built
+                    // before that write. Without this, the sidebar would show a stale
+                    // timer for one tick before reading the corrected value.
+                    for agent in &mut snapshot.agents {
+                        if prev_interrupted.contains(&agent.pane_id)
+                            && !snapshot.interrupted_pane_ids.contains(&agent.pane_id)
+                        {
+                            agent.status_ts = Some(now_ts);
+                        }
+                    }
+
                     if wrote {
                         last_runtime_write = Instant::now();
                     }
