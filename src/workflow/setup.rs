@@ -167,8 +167,9 @@ pub fn setup_environment(
         continue_session: options.continue_session,
     };
 
-    // Track the focus pane across all windows
+    // Track the focus and zoom pane across all windows
     let mut focus_pane_id: Option<String> = None;
+    let mut zoom_pane_id: Option<String> = None;
 
     match options.mode {
         MuxMode::Window => {
@@ -206,6 +207,7 @@ pub fn setup_environment(
                 .context("Failed to setup panes")?;
 
             focus_pane_id = Some(result.focus_pane_id);
+            zoom_pane_id = result.zoom_pane_id;
         }
         MuxMode::Session => {
             let session_full_name = crate::multiplexer::util::prefixed(prefix, handle);
@@ -265,9 +267,13 @@ pub fn setup_environment(
 
                 // Track focus: last window with a focus: true pane wins.
                 // If no pane has focus: true, use the first window's default.
-                let has_explicit_focus = resolved_panes.iter().any(|p| p.focus);
+                let has_explicit_focus = resolved_panes.iter().any(|p| p.focus || p.zoom);
                 if i == 0 || has_explicit_focus {
                     focus_pane_id = Some(result.focus_pane_id);
+                }
+
+                if result.zoom_pane_id.is_some() {
+                    zoom_pane_id = result.zoom_pane_id;
                 }
             }
         }
@@ -297,6 +303,11 @@ pub fn setup_environment(
                 mux.switch_to_pane(&focus_pane_id, None)?;
             }
         }
+    }
+
+    // Zoom the pane after focus is applied
+    if let Some(ref zoom_id) = zoom_pane_id {
+        mux.zoom_pane(zoom_id)?;
     }
 
     Ok(CreateResult {
@@ -403,10 +414,7 @@ pub fn resolve_pane_configuration(
     vec![config::PaneConfig {
         command: Some(agent_cmd.to_string()),
         focus: true,
-        split: None,
-        size: None,
-        percentage: None,
-        target: None,
+        ..Default::default()
     }]
 }
 
@@ -496,10 +504,7 @@ mod tests {
         let original_panes = vec![config::PaneConfig {
             command: Some("vim".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
 
         let result = resolve_pane_configuration(&original_panes, None);
@@ -512,10 +517,7 @@ mod tests {
         let original_panes = vec![config::PaneConfig {
             command: Some("<agent>".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
 
         let result = resolve_pane_configuration(&original_panes, Some("claude"));
@@ -528,19 +530,12 @@ mod tests {
         let original_panes = vec![
             config::PaneConfig {
                 command: Some("vim".to_string()),
-                focus: false,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             config::PaneConfig {
                 command: Some("npm run dev".to_string()),
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
         ];
 
@@ -553,11 +548,7 @@ mod tests {
     fn resolve_pane_configuration_agent_sets_first_pane_when_no_focus() {
         let original_panes = vec![config::PaneConfig {
             command: Some("vim".to_string()),
-            focus: false,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
 
         let result = resolve_pane_configuration(&original_panes, Some("claude"));
@@ -601,10 +592,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("<agent>".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(Some("claude"));
         let options = make_options_with_prompt(false); // pane commands disabled
@@ -624,10 +612,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("vim".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(None); // no agent
         let options = make_options_with_prompt(true);
@@ -646,20 +631,13 @@ mod tests {
     fn validate_prompt_errors_when_no_pane_runs_agent() {
         let panes = vec![
             config::PaneConfig {
-                command: None, // shell
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             config::PaneConfig {
                 command: Some("clear".to_string()),
-                focus: false,
                 split: Some(config::SplitDirection::Horizontal),
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
         ];
         let config = make_config_with_agent(Some("claude"));
@@ -677,10 +655,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("<agent>".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(Some("claude"));
         let options = make_options_with_prompt(true);
@@ -694,10 +669,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("claude".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(Some("claude"));
         let options = make_options_with_prompt(true);
@@ -711,10 +683,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("my-custom-agent".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(Some("claude")); // config says claude
         let options = make_options_with_prompt(true);
@@ -734,19 +703,13 @@ mod tests {
         let panes = vec![
             config::PaneConfig {
                 command: Some("vim".to_string()), // doesn't match
-                focus: false,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             config::PaneConfig {
                 command: Some("claude --verbose".to_string()), // matches
                 focus: true,
                 split: Some(config::SplitDirection::Horizontal),
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
         ];
         let config = make_config_with_agent(Some("claude"));
@@ -761,10 +724,7 @@ mod tests {
         let panes = vec![config::PaneConfig {
             command: Some("codex --yolo".to_string()),
             focus: true,
-            split: None,
-            size: None,
-            percentage: None,
-            target: None,
+            ..Default::default()
         }];
         let config = make_config_with_agent(None); // no global agent
         let options = make_options_with_prompt(true);
@@ -780,18 +740,12 @@ mod tests {
             config::PaneConfig {
                 command: Some("claude --dangerously-skip-permissions".to_string()),
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             config::PaneConfig {
                 command: Some("codex --yolo".to_string()),
-                focus: false,
                 split: Some(config::SplitDirection::Vertical),
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
         ];
 

@@ -163,6 +163,12 @@ pub trait Multiplexer: Send + Sync {
     /// Select (focus) a pane by ID
     fn select_pane(&self, pane_id: &str) -> Result<()>;
 
+    /// Zoom (fullscreen) a pane by ID.
+    /// Only supported by tmux. Other backends silently ignore this.
+    fn zoom_pane(&self, _pane_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     /// Switch to a pane (may also switch windows/tabs as needed).
     ///
     /// `window_hint` provides the window/tab name for backends that need it
@@ -273,10 +279,12 @@ pub trait Multiplexer: Send + Sync {
         if panes.is_empty() {
             return Ok(PaneSetupResult {
                 focus_pane_id: initial_pane_id.to_string(),
+                zoom_pane_id: None,
             });
         }
 
         let mut focus_pane_id: Option<String> = None;
+        let mut zoom_pane_id: Option<String> = None;
         let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
         // Resolve agent name through the agents map
         let resolved_task_agent = task_agent.map(|a| {
@@ -471,13 +479,18 @@ pub trait Multiplexer: Send + Sync {
                 pane_ids.push(pane_id.clone());
             }
 
-            if pane_config.focus {
-                focus_pane_id = Some(pane_id);
+            if pane_config.zoom || pane_config.focus {
+                focus_pane_id = Some(pane_id.clone());
+            }
+
+            if pane_config.zoom {
+                zoom_pane_id = Some(pane_id);
             }
         }
 
         Ok(PaneSetupResult {
             focus_pane_id: focus_pane_id.unwrap_or_else(|| pane_ids[0].clone()),
+            zoom_pane_id,
         })
     }
 

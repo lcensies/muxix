@@ -302,6 +302,7 @@ Each pane supports:
 | ------------ | -------------------------------------------------------------- | ------- |
 | `command`    | Command to run (see [agent placeholders](#agent-placeholders)) | Shell   |
 | `focus`      | Whether this pane receives focus                               | `false` |
+| `zoom`       | Zoom pane to fullscreen (implies `focus: true`)                | `false` |
 | `split`      | Split direction (`horizontal` or `vertical`)                   | —       |
 | `size`       | Absolute size in lines/cells                                   | 50%     |
 | `percentage` | Size as percentage (1-100)                                     | 50%     |

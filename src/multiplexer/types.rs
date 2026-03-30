@@ -88,6 +88,8 @@ pub struct CreateWindowInSessionParams<'a> {
 pub struct PaneSetupResult {
     /// The ID of the pane that should receive focus
     pub focus_pane_id: String,
+    /// The ID of the pane that should be zoomed, if any
+    pub zoom_pane_id: Option<String>,
 }
 
 /// Options for pane setup

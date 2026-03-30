@@ -421,6 +421,11 @@ pub struct PaneConfig {
     /// Only used when `split` is specified.
     #[serde(default)]
     pub target: Option<usize>,
+
+    /// Whether this pane should be zoomed (fullscreen) after creation.
+    /// Implies `focus: true`.
+    #[serde(default)]
+    pub zoom: bool,
 }
 
 /// A named pane layout, selectable with `-l/--layout` at add-time.
@@ -1428,6 +1433,16 @@ pub fn validate_panes_config(panes: &[PaneConfig]) -> anyhow::Result<()> {
             );
         }
     }
+
+    // Only one pane can have zoom
+    let zoom_count = panes.iter().filter(|p| p.zoom).count();
+    if zoom_count > 1 {
+        anyhow::bail!(
+            "Only one pane can have 'zoom: true' (found {}).",
+            zoom_count
+        );
+    }
+
     Ok(())
 }
 
@@ -2023,18 +2038,12 @@ impl Config {
             PaneConfig {
                 command: None, // Default shell
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             PaneConfig {
                 command: Some("clear".to_string()),
-                focus: false,
                 split: Some(SplitDirection::Horizontal),
-                size: None,
-                percentage: None,
-                target: None, // Splits most recent (pane 0)
+                ..Default::default()
             },
         ]
     }
@@ -2045,18 +2054,12 @@ impl Config {
             PaneConfig {
                 command: Some("<agent>".to_string()),
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             },
             PaneConfig {
                 command: Some("clear".to_string()),
-                focus: false,
                 split: Some(SplitDirection::Horizontal),
-                size: None,
-                percentage: None,
-                target: None, // Splits most recent (pane 0)
+                ..Default::default()
             },
         ]
     }
@@ -3793,21 +3796,14 @@ windows:
                 panes: Some(vec![super::PaneConfig {
                     command: Some("<agent>".to_string()),
                     focus: true,
-                    split: None,
-                    size: None,
-                    percentage: None,
-                    target: None,
+                    ..Default::default()
                 }]),
             },
             WindowConfig {
                 name: None,
                 panes: Some(vec![super::PaneConfig {
                     command: Some("tail -f app.log".to_string()),
-                    focus: false,
-                    split: None,
-                    size: None,
-                    percentage: None,
-                    target: None,
+                    ..Default::default()
                 }]),
             },
         ];
@@ -3819,12 +3815,8 @@ windows:
         let windows = vec![WindowConfig {
             name: Some("bad".to_string()),
             panes: Some(vec![super::PaneConfig {
-                command: None,
-                focus: false,
                 split: Some(super::SplitDirection::Horizontal), // first pane cannot have split
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             }]),
         }];
         let result = validate_windows_config(&windows);
@@ -3838,10 +3830,7 @@ windows:
             panes: Some(vec![super::PaneConfig {
                 command: Some("vim".to_string()),
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             }]),
             ..Default::default()
         };
@@ -3879,10 +3868,7 @@ windows:
             panes: Some(vec![super::PaneConfig {
                 command: Some("vim".to_string()),
                 focus: true,
-                split: None,
-                size: None,
-                percentage: None,
-                target: None,
+                ..Default::default()
             }]),
             ..Default::default()
         };
@@ -4202,6 +4188,57 @@ layouts:
             },
         );
         assert!(validate_layouts_config(&layouts).is_ok());
+    }
+
+    #[test]
+    fn validate_panes_multiple_zoom_fails() {
+        let panes = vec![
+            PaneConfig {
+                command: Some("vim".to_string()),
+                zoom: true,
+                ..Default::default()
+            },
+            PaneConfig {
+                command: Some("echo hi".to_string()),
+                split: Some(SplitDirection::Horizontal),
+                zoom: true,
+                ..Default::default()
+            },
+        ];
+        let err = super::validate_panes_config(&panes).unwrap_err();
+        assert!(err.to_string().contains("Only one pane"));
+    }
+
+    #[test]
+    fn validate_panes_single_zoom_ok() {
+        let panes = vec![
+            PaneConfig {
+                command: Some("vim".to_string()),
+                zoom: true,
+                ..Default::default()
+            },
+            PaneConfig {
+                command: Some("echo hi".to_string()),
+                split: Some(SplitDirection::Horizontal),
+                ..Default::default()
+            },
+        ];
+        assert!(super::validate_panes_config(&panes).is_ok());
+    }
+
+    #[test]
+    fn zoom_deserializes_from_yaml() {
+        let yaml = r#"
+panes:
+  - command: vim
+    zoom: true
+  - command: echo hi
+    split: horizontal
+"#;
+        let config: super::Config = serde_yaml::from_str(yaml).unwrap();
+        let panes = config.panes.unwrap();
+        assert!(panes[0].zoom);
+        assert!(!panes[1].zoom);
     }
 
     #[test]
