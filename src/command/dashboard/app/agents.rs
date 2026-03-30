@@ -401,30 +401,21 @@ impl App {
 
     pub fn get_status_display(&self, agent: &AgentPane) -> Vec<(String, Style)> {
         let is_stale = self.is_stale(agent);
-        let is_interrupted = self.interrupted_pane_ids.contains(&agent.pane_id);
 
         // Map status enum to icon and color
-        let (icon, base_color, is_working) = if is_interrupted {
-            (
-                self.config.status_icons.interrupted(),
-                self.palette.warning,
-                false,
-            )
-        } else {
-            match agent.status {
-                Some(AgentStatus::Working) => {
-                    (self.config.status_icons.working(), self.palette.info, true)
-                }
-                Some(AgentStatus::Waiting) => (
-                    self.config.status_icons.waiting(),
-                    self.palette.accent,
-                    false,
-                ),
-                Some(AgentStatus::Done) => {
-                    (self.config.status_icons.done(), self.palette.success, false)
-                }
-                None => ("", self.palette.text, false),
+        let (icon, base_color, is_working) = match agent.status {
+            Some(AgentStatus::Working) => {
+                (self.config.status_icons.working(), self.palette.info, true)
             }
+            Some(AgentStatus::Waiting) => (
+                self.config.status_icons.waiting(),
+                self.palette.accent,
+                false,
+            ),
+            Some(AgentStatus::Done) => {
+                (self.config.status_icons.done(), self.palette.success, false)
+            }
+            None => ("", self.palette.text, false),
         };
 
         let base_style = Style::default().fg(base_color);

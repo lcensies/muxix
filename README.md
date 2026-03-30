@@ -385,12 +385,10 @@ status_icons:
   working: '🤖' # Agent is processing
   waiting: '💬' # Agent needs input (auto-clears on focus)
   done: '✅' # Agent finished (auto-clears on focus)
-  interrupted: '🟡' # Agent appears interrupted (no output for 10s)
 ```
 
 Agents in "working" status that produce no pane output for 10 seconds are
-automatically detected as interrupted and shown with the interrupted icon in both
-the sidebar and dashboard.
+automatically detected as interrupted.
 
 Set `status_format: false` to disable automatic tmux format modification
 
@@ -1834,7 +1832,6 @@ status_icons:
   working: '🔄'
   waiting: '⏸️'
   done: '✔️'
-  interrupted: '🟡'
 ```
 
 If you prefer to manage the tmux format yourself, disable auto-modification and

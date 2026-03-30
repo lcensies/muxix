@@ -35,7 +35,6 @@ Workmux can display the status of the agent in your tmux window list, giving you
 - 🤖 = agent is working
 - 💬 = agent is waiting for user input
 - ✅ = agent finished (auto-clears on window focus)
-- 🟡 = agent appears interrupted (no output for 10s)
 
 ## Automated setup
 
@@ -127,12 +126,11 @@ status_icons:
   working: "🔄"
   waiting: "⏸️"
   done: "✔️"
-  interrupted: "🟡"
 ```
 
 ## Interrupted agent detection
 
-When an agent is in "working" status but its pane output hasn't changed for 10 seconds, workmux automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent. The interrupted status is shown in both the sidebar and dashboard with the interrupted icon (default: 🟡).
+When an agent is in "working" status but its pane output hasn't changed for 10 seconds, workmux automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
 
 The detection runs in the sidebar daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
 

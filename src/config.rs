@@ -34,8 +34,6 @@ pub struct StatusIcons {
     pub waiting: Option<String>,
     /// Icon shown when agent is done. Default: ✅
     pub done: Option<String>,
-    /// Icon shown when agent appears interrupted (no output for timeout period). Default: 🟡
-    pub interrupted: Option<String>,
 }
 
 impl StatusIcons {
@@ -49,10 +47,6 @@ impl StatusIcons {
 
     pub fn done(&self) -> &str {
         self.done.as_deref().unwrap_or("✅")
-    }
-
-    pub fn interrupted(&self) -> &str {
-        self.interrupted.as_deref().unwrap_or("🟡")
     }
 }
 
@@ -1817,10 +1811,6 @@ impl Config {
             working: project.status_icons.working.or(self.status_icons.working),
             waiting: project.status_icons.waiting.or(self.status_icons.waiting),
             done: project.status_icons.done.or(self.status_icons.done),
-            interrupted: project
-                .status_icons
-                .interrupted
-                .or(self.status_icons.interrupted),
         };
 
         // Dashboard actions: per-field override
