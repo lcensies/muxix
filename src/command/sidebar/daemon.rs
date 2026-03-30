@@ -680,9 +680,19 @@ impl InactivityTracker {
         agents: &[crate::multiplexer::AgentPane],
         mux: &dyn crate::multiplexer::Multiplexer,
     ) -> HashSet<String> {
-        use std::hash::{Hash, Hasher};
+        self.check_with(agents, Instant::now(), |pane_id| {
+            mux.capture_pane(pane_id, 5)
+        })
+    }
 
-        let now = Instant::now();
+    /// Testable core: accepts an explicit `now` and a capture function.
+    fn check_with(
+        &mut self,
+        agents: &[crate::multiplexer::AgentPane],
+        now: Instant,
+        capture: impl Fn(&str) -> Option<String>,
+    ) -> HashSet<String> {
+        use std::hash::{Hash, Hasher};
 
         // Build lookup of working agents
         let working: HashMap<&str, &crate::multiplexer::AgentPane> = agents
@@ -722,7 +732,7 @@ impl InactivityTracker {
                 continue;
             }
 
-            let Some(raw) = mux.capture_pane(pane_id, 5) else {
+            let Some(raw) = capture(pane_id) else {
                 continue;
             };
 
@@ -930,4 +940,246 @@ fn try_build_snapshot(
         status_icons,
         git_statuses,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::multiplexer::{AgentPane, AgentStatus};
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+
+    fn working_agent(pane_id: &str, updated_ts: u64) -> AgentPane {
+        AgentPane {
+            session: String::new(),
+            window_name: String::new(),
+            pane_id: pane_id.to_string(),
+            window_id: String::new(),
+            path: PathBuf::new(),
+            pane_title: None,
+            status: Some(AgentStatus::Working),
+            status_ts: Some(100),
+            updated_ts: Some(updated_ts),
+        }
+    }
+
+    fn done_agent(pane_id: &str) -> AgentPane {
+        AgentPane {
+            status: Some(AgentStatus::Done),
+            ..working_agent(pane_id, 1)
+        }
+    }
+
+    #[test]
+    fn no_interruption_before_timeout() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // First check: records the hash
+        let result = tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        assert!(result.is_empty());
+
+        // 5s later, same content: not yet interrupted
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(5), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn interruption_after_timeout() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // First check records hash
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+
+        // 11s later, same content: interrupted
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+        assert!(result.contains("%1"));
+    }
+
+    #[test]
+    fn changing_content_resets_window() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // First check
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+
+        // 8s later, content changes: resets the window
+        tracker.check_with(&agents, t0 + Duration::from_secs(8), |_| {
+            Some("world".into())
+        });
+
+        // 5s after the change (13s total): not interrupted (only 5s since reset)
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(13), |_| {
+            Some("world".into())
+        });
+        assert!(result.is_empty());
+
+        // 11s after the change (19s total): now interrupted
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(19), |_| {
+            Some("world".into())
+        });
+        assert!(result.contains("%1"));
+    }
+
+    #[test]
+    fn sticky_despite_content_change() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Become interrupted
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+        assert!(result.contains("%1"));
+
+        // Content changes (user typing): still interrupted
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(12), |_| {
+            Some("user typed something".into())
+        });
+        assert!(result.contains("%1"));
+    }
+
+    #[test]
+    fn clears_on_updated_ts_change() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Become interrupted
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+
+        // Agent sends new RPC (updated_ts changes): clears interrupted
+        let resumed_agents = vec![working_agent("%1", 2)];
+        let result = tracker.check_with(&resumed_agents, t0 + Duration::from_secs(12), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn fresh_window_after_resume() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Become interrupted
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+
+        // Resume (updated_ts changes) at t=12s
+        let resumed = vec![working_agent("%1", 2)];
+        tracker.check_with(&resumed, t0 + Duration::from_secs(12), |_| {
+            Some("hello".into())
+        });
+
+        // 5s after resume (t=17s): same content but not interrupted yet (fresh window)
+        let result = tracker.check_with(&resumed, t0 + Duration::from_secs(17), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
+
+        // 11s after resume (t=23s): now interrupted again
+        let result = tracker.check_with(&resumed, t0 + Duration::from_secs(23), |_| {
+            Some("hello".into())
+        });
+        assert!(result.contains("%1"));
+    }
+
+    #[test]
+    fn non_working_agents_ignored() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![done_agent("%1")];
+        let t0 = Instant::now();
+
+        tracker.check_with(&agents, t0, |_| Some("hello".into()));
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn leaves_working_clears_tracking() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let working = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Become interrupted
+        tracker.check_with(&working, t0, |_| Some("hello".into()));
+        tracker.check_with(&working, t0 + Duration::from_secs(11), |_| {
+            Some("hello".into())
+        });
+
+        // Agent transitions to Done
+        let done = vec![done_agent("%1")];
+        let result = tracker.check_with(&done, t0 + Duration::from_secs(12), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty());
+
+        // Comes back as Working: starts fresh
+        let working_again = vec![working_agent("%1", 3)];
+        let result = tracker.check_with(&working_again, t0 + Duration::from_secs(13), |_| {
+            Some("hello".into())
+        });
+        assert!(result.is_empty()); // just recorded, not yet timed out
+    }
+
+    #[test]
+    fn capture_failure_skips_pane() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1)];
+        let t0 = Instant::now();
+
+        // Capture fails: no entry recorded
+        tracker.check_with(&agents, t0, |_| None);
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |_| None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn multiple_agents_tracked_independently() {
+        let mut tracker = InactivityTracker::new(Duration::from_secs(10));
+        let agents = vec![working_agent("%1", 1), working_agent("%2", 1)];
+        let t0 = Instant::now();
+
+        let content = RefCell::new(HashMap::from([
+            ("%1".to_string(), "static".to_string()),
+            ("%2".to_string(), "changing".to_string()),
+        ]));
+
+        // First check
+        tracker.check_with(&agents, t0, |id| content.borrow().get(id).cloned());
+
+        // Change %2's content at 5s
+        content
+            .borrow_mut()
+            .insert("%2".to_string(), "new output".into());
+        tracker.check_with(&agents, t0 + Duration::from_secs(5), |id| {
+            content.borrow().get(id).cloned()
+        });
+
+        // At 11s: %1 is interrupted (11s unchanged), %2 is not (only 6s since change)
+        let result = tracker.check_with(&agents, t0 + Duration::from_secs(11), |id| {
+            content.borrow().get(id).cloned()
+        });
+        assert!(result.contains("%1"));
+        assert!(!result.contains("%2"));
+    }
 }
