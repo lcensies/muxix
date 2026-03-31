@@ -22,6 +22,19 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.166 (2026-03-31)
+
+- Fix relative `worktree_dir` paths (e.g. `../wm/`) being passed literally to
+  sandbox commands instead of resolving `..` segments
+  ([#105](https://github.com/raine/workmux/issues/105))
+- Fix sidebar daemon signal error appearing in tmux panes on window/session
+  changes ([#107](https://github.com/raine/workmux/issues/107))
+- Fix Codex binary not found in Apple Container sandbox
+  ([#106](https://github.com/raine/workmux/issues/106))
+- Improve worktree name detection in the dashboard and sidebar, especially when
+  running in generic tmux sessions
+  ([#103](https://github.com/raine/workmux/pull/103))
+
 ## v0.1.165 (2026-03-30)
 
 - Add `zoom: true` pane option to maximize a pane to fullscreen after creation,
