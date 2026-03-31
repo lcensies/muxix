@@ -272,8 +272,9 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             // Use absolute path as-is
             path.to_path_buf()
         } else {
-            // Relative path: resolve from main worktree root
-            context.main_worktree_root.join(path)
+            // Relative path: resolve from main worktree root and normalize
+            // to collapse any ".." segments (e.g. "../wm/" -> clean absolute path)
+            crate::util::normalize_path(&context.main_worktree_root.join(path))
         }
     } else {
         // Default behavior: <main_worktree_root>/../<project_name>__worktrees

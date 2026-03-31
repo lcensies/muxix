@@ -174,11 +174,11 @@ fn expand_worktree_template(template: &str, project_root: &Path) -> Result<PathB
 
     let expanded = template.replace("{project}", &project_name);
 
-    // Handle relative paths
+    // Handle relative paths, normalizing to collapse ".." segments
     if Path::new(&expanded).is_absolute() {
-        Ok(PathBuf::from(expanded))
+        Ok(crate::util::normalize_path(Path::new(&expanded)))
     } else {
-        Ok(project_root.join(expanded))
+        Ok(crate::util::normalize_path(&project_root.join(expanded)))
     }
 }
 

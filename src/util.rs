@@ -1,9 +1,35 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 /// Canonicalize a path, falling back to the original if canonicalization fails.
 pub fn canon_or_self(p: &Path) -> PathBuf {
     p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Lexically normalize a path by resolving `.` and `..` components without
+/// touching the filesystem.  Unlike `canonicalize()` this works even when the
+/// target path does not exist yet.
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut components: Vec<Component> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(components.last(), Some(Component::Normal(_))) {
+                    components.pop();
+                } else if matches!(
+                    components.last(),
+                    Some(Component::RootDir) | Some(Component::Prefix(_))
+                ) {
+                    // Already at root, ignore the ".."
+                } else {
+                    components.push(component);
+                }
+            }
+            _ => components.push(component),
+        }
+    }
+    components.iter().collect()
 }
 
 /// Format an age in seconds as a compact relative string (e.g., "2h", "3d", "1w", "2mo").
@@ -165,5 +191,41 @@ mod tests {
     fn format_compact_age_years() {
         assert_eq!(format_compact_age(365 * 86400), "1y");
         assert_eq!(format_compact_age(730 * 86400), "2y");
+    }
+
+    #[test]
+    fn normalize_path_collapses_parent_dir() {
+        let p = Path::new("/Users/test/repo/../wm/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/wm/handle"));
+    }
+
+    #[test]
+    fn normalize_path_collapses_multiple_parent_dirs() {
+        let p = Path::new("/a/b/c/../../d");
+        assert_eq!(normalize_path(p), PathBuf::from("/a/d"));
+    }
+
+    #[test]
+    fn normalize_path_strips_cur_dir() {
+        let p = Path::new("/a/./b/./c");
+        assert_eq!(normalize_path(p), PathBuf::from("/a/b/c"));
+    }
+
+    #[test]
+    fn normalize_path_preserves_leading_parent() {
+        let p = Path::new("../wm/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("../wm/handle"));
+    }
+
+    #[test]
+    fn normalize_path_no_op_for_clean_path() {
+        let p = Path::new("/Users/test/wm/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/wm/handle"));
+    }
+
+    #[test]
+    fn normalize_path_root_parent_stays_at_root() {
+        let p = Path::new("/../foo");
+        assert_eq!(normalize_path(p), PathBuf::from("/foo"));
     }
 }
