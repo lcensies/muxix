@@ -20,36 +20,37 @@ pub fn extract_worktree_name(
     } else if let Some(stripped) = session_name.strip_prefix(window_prefix) {
         // Session mode: worktree name is in the session name
         (stripped.to_string(), false)
-    } else if !is_generic_mux_name(window_name) {
-        let is_main = matches!(window_name, "main" | "master");
-        (window_name.to_string(), is_main)
-    } else if !is_generic_mux_name(session_name) {
-        let is_main = matches!(session_name, "main" | "master");
-        (session_name.to_string(), is_main)
     } else {
+        // Non-workmux agent: derive from filesystem path
         derive_worktree_name_from_path(path)
     }
 }
 
-fn is_generic_mux_name(name: &str) -> bool {
-    let trimmed = name.trim();
-    trimmed.is_empty()
-        || trimmed.chars().all(|c| c.is_ascii_digit())
-        || matches!(trimmed, "zsh" | "bash" | "sh" | "fish" | "nu" | "nushell")
-}
-
+/// Derive a worktree name from a filesystem path by matching known worktree
+/// directory patterns. Pure string/path-component parsing, no filesystem I/O.
 fn derive_worktree_name_from_path(path: &Path) -> (String, bool) {
-    let project = extract_project_name(path);
-    let basename = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string_lossy().to_string());
+    let components: Vec<_> = path
+        .components()
+        .filter_map(|c| c.as_os_str().to_str())
+        .collect();
 
-    if basename == project {
-        ("main".to_string(), true)
-    } else {
-        (basename, false)
+    for (i, comp) in components.iter().enumerate().rev() {
+        // Pattern: project__worktrees/<name>[/...]
+        if comp.ends_with("__worktrees")
+            && let Some(&name) = components.get(i + 1)
+        {
+            return (name.to_string(), false);
+        }
+
+        // Pattern: project/.worktrees/<name>[/...]
+        if *comp == ".worktrees"
+            && let Some(&name) = components.get(i + 1)
+        {
+            return (name.to_string(), false);
+        }
     }
+
+    ("main".to_string(), true)
 }
 
 /// Extract project name from a worktree path.
@@ -120,15 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_worktree_name_plain_window_name() {
-        let path = Path::new("/home/user/myproject__worktrees/reforge");
-        let (name, is_main) = extract_worktree_name("0", "reforge", "workmux:", path);
-        assert_eq!(name, "reforge");
-        assert!(!is_main);
-    }
-
-    #[test]
-    fn test_extract_worktree_name_path_fallback_for_generic_names() {
+    fn test_extract_worktree_name_path_fallback_sibling() {
         let path = Path::new("/home/user/myproject__worktrees/fix-bug");
         let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
         assert_eq!(name, "fix-bug");
@@ -136,7 +129,24 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_worktree_name_main_from_path_fallback() {
+    fn test_extract_worktree_name_path_fallback_subdir() {
+        let path = Path::new("/home/user/myproject/.worktrees/fix-bug");
+        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        assert_eq!(name, "fix-bug");
+        assert!(!is_main);
+    }
+
+    #[test]
+    fn test_extract_worktree_name_path_fallback_nested_cwd() {
+        // Agent cwd is a subdirectory of the worktree
+        let path = Path::new("/home/user/myproject__worktrees/fix-bug/src/lib");
+        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        assert_eq!(name, "fix-bug");
+        assert!(!is_main);
+    }
+
+    #[test]
+    fn test_extract_worktree_name_path_fallback_main() {
         let path = Path::new("/home/user/myproject");
         let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
         assert_eq!(name, "main");
