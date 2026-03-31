@@ -1,8 +1,11 @@
 ARG BASE=ghcr.io/raine/workmux-sandbox:base
 FROM ${BASE}
 
-# Install Codex CLI from GitHub releases
-ARG TARGETARCH
-RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "aarch64" || echo "x86_64") && \
-    curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-gnu.tar.gz" | \
-    tar xz -C /usr/local/bin/
+# Install Codex CLI from GitHub releases (musl for glibc-independent static binary)
+RUN ARCH=$(uname -m) && \
+    mkdir /tmp/codex-install && \
+    curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${ARCH}-unknown-linux-musl.tar.gz" | \
+    tar xz -C /tmp/codex-install && \
+    install -m 0755 /tmp/codex-install/codex* /usr/local/bin/codex && \
+    rm -rf /tmp/codex-install && \
+    codex --version
