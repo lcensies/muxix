@@ -33,7 +33,7 @@ pub(super) fn install_hooks() -> Result<()> {
     );
 
     // Dirty signal: send SIGUSR1 to daemon on window/session/pane changes
-    let dirty_cmd = "run-shell -b 'kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null'";
+    let dirty_cmd = "run-shell -b 'kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null || true'";
 
     let hooks: &[(&str, &str)] = &[
         ("after-new-window[99]", &sync_cmd),
