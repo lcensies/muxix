@@ -316,8 +316,12 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .map(|(idx, agent)| {
             let is_selected = selected_idx == Some(idx);
             let project = extract_project_name(&agent.path);
-            let (worktree, is_main) =
-                extract_worktree_name(&agent.session, &agent.window_name, app.window_prefix());
+            let (worktree, is_main) = extract_worktree_name(
+                &agent.session,
+                &agent.window_name,
+                app.window_prefix(),
+                &agent.path,
+            );
 
             let base_worktree = if is_main {
                 "main".to_string()

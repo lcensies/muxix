@@ -332,8 +332,12 @@ impl SidebarApp {
     /// Display name for an agent: "project/worktree" or just "project" for main.
     pub fn display_name(&self, agent: &AgentPane) -> String {
         let project = extract_project_name(&agent.path);
-        let (worktree, is_main) =
-            extract_worktree_name(&agent.session, &agent.window_name, &self.window_prefix);
+        let (worktree, is_main) = extract_worktree_name(
+            &agent.session,
+            &agent.window_name,
+            &self.window_prefix,
+            &agent.path,
+        );
 
         if is_main {
             project

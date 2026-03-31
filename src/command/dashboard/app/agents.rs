@@ -31,8 +31,12 @@ impl App {
             let window_prefix = self.config.window_prefix();
             self.agents.retain(|a| {
                 let project = Self::extract_project_name(a).to_lowercase();
-                let (worktree, _) =
-                    agent::extract_worktree_name(&a.session, &a.window_name, window_prefix);
+                let (worktree, _) = agent::extract_worktree_name(
+                    &a.session,
+                    &a.window_name,
+                    window_prefix,
+                    &a.path,
+                );
                 let worktree_lower = worktree.to_lowercase();
                 project.contains(&filter_lower) || worktree_lower.contains(&filter_lower)
             });
@@ -440,6 +444,7 @@ impl App {
             &agent_pane.session,
             &agent_pane.window_name,
             self.config.window_prefix(),
+            &agent_pane.path,
         )
     }
 

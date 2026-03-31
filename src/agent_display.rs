@@ -12,6 +12,7 @@ pub fn extract_worktree_name(
     session_name: &str,
     window_name: &str,
     window_prefix: &str,
+    path: &Path,
 ) -> (String, bool) {
     if let Some(stripped) = window_name.strip_prefix(window_prefix) {
         // Window mode: worktree name is in the window name
@@ -19,9 +20,35 @@ pub fn extract_worktree_name(
     } else if let Some(stripped) = session_name.strip_prefix(window_prefix) {
         // Session mode: worktree name is in the session name
         (stripped.to_string(), false)
+    } else if !is_generic_mux_name(window_name) {
+        let is_main = matches!(window_name, "main" | "master");
+        (window_name.to_string(), is_main)
+    } else if !is_generic_mux_name(session_name) {
+        let is_main = matches!(session_name, "main" | "master");
+        (session_name.to_string(), is_main)
     } else {
-        // Non-workmux agent - running in main worktree
+        derive_worktree_name_from_path(path)
+    }
+}
+
+fn is_generic_mux_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    trimmed.is_empty()
+        || trimmed.chars().all(|c| c.is_ascii_digit())
+        || matches!(trimmed, "zsh" | "bash" | "sh" | "fish" | "nu" | "nushell")
+}
+
+fn derive_worktree_name_from_path(path: &Path) -> (String, bool) {
+    let project = extract_project_name(path);
+    let basename = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string());
+
+    if basename == project {
         ("main".to_string(), true)
+    } else {
+        (basename, false)
     }
 }
 
@@ -63,29 +90,55 @@ mod tests {
 
     #[test]
     fn test_extract_worktree_name_window_mode() {
-        let (name, is_main) = extract_worktree_name("main-session", "workmux:fix-bug", "workmux:");
+        let path = Path::new("/home/user/myproject__worktrees/fix-bug");
+        let (name, is_main) =
+            extract_worktree_name("main-session", "workmux:fix-bug", "workmux:", path);
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
 
     #[test]
     fn test_extract_worktree_name_session_mode() {
-        let (name, is_main) = extract_worktree_name("workmux:feature-auth", "zsh", "workmux:");
+        let path = Path::new("/home/user/myproject__worktrees/feature-auth");
+        let (name, is_main) =
+            extract_worktree_name("workmux:feature-auth", "zsh", "workmux:", path);
         assert_eq!(name, "feature-auth");
         assert!(!is_main);
     }
 
     #[test]
     fn test_extract_worktree_name_window_preferred_over_session() {
-        let (name, is_main) =
-            extract_worktree_name("workmux:from-session", "workmux:from-window", "workmux:");
+        let path = Path::new("/home/user/myproject__worktrees/from-window");
+        let (name, is_main) = extract_worktree_name(
+            "workmux:from-session",
+            "workmux:from-window",
+            "workmux:",
+            path,
+        );
         assert_eq!(name, "from-window");
         assert!(!is_main);
     }
 
     #[test]
-    fn test_extract_worktree_name_main() {
-        let (name, is_main) = extract_worktree_name("other-session", "some-window", "workmux:");
+    fn test_extract_worktree_name_plain_window_name() {
+        let path = Path::new("/home/user/myproject__worktrees/reforge");
+        let (name, is_main) = extract_worktree_name("0", "reforge", "workmux:", path);
+        assert_eq!(name, "reforge");
+        assert!(!is_main);
+    }
+
+    #[test]
+    fn test_extract_worktree_name_path_fallback_for_generic_names() {
+        let path = Path::new("/home/user/myproject__worktrees/fix-bug");
+        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        assert_eq!(name, "fix-bug");
+        assert!(!is_main);
+    }
+
+    #[test]
+    fn test_extract_worktree_name_main_from_path_fallback() {
+        let path = Path::new("/home/user/myproject");
+        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
         assert_eq!(name, "main");
         assert!(is_main);
     }
