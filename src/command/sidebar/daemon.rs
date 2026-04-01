@@ -500,23 +500,27 @@ fn spawn_git_worker(
     thread::spawn(move || {
         // Bounded filesystem event channel to prevent unbounded memory growth
         // under heavy file I/O (e.g. MCP servers, Claude sessions).
-        // Drops are safe: pending events already guarantee a git status refresh.
+        // On overflow, all worktrees are marked pending for an early refresh.
         let (fs_tx, fs_rx) = std::sync::mpsc::sync_channel(256);
+        let fs_overflow = Arc::new(AtomicBool::new(false));
+        let fs_overflow_clone = fs_overflow.clone();
         let mut watcher: Option<notify::RecommendedWatcher> = match notify::RecommendedWatcher::new(
             move |event: notify::Result<notify::Event>| {
                 if let Ok(ref e) = event {
-                    // Filter out high-volume paths that don't affect git status
+                    // Filter out .git internal traffic that doesn't affect status.
+                    // Gitignore-based filtering (node_modules, target, etc.) happens
+                    // in the worker thread where matchers are available.
                     let dominated_by_noise = e.paths.iter().all(|p| {
                         let s = p.to_string_lossy();
-                        s.contains("/.git/objects/")
-                            || s.contains("/.git/logs/")
-                            || s.contains("/node_modules/")
+                        s.contains("/.git/objects/") || s.contains("/.git/logs/")
                     });
                     if dominated_by_noise {
                         return;
                     }
                 }
-                let _ = fs_tx.try_send(event);
+                if let Err(std::sync::mpsc::TrySendError::Full(_)) = fs_tx.try_send(event) {
+                    fs_overflow_clone.store(true, Ordering::Relaxed);
+                }
             },
             notify::Config::default(),
         ) {
@@ -590,6 +594,15 @@ fn spawn_git_worker(
                 while let Ok(event_result) = fs_rx.try_recv() {
                     if let Ok(event) = event_result {
                         process_event(event);
+                    }
+                }
+
+                // On channel overflow, mark all active worktrees as pending so
+                // events for one noisy worktree can't starve updates to others.
+                if fs_overflow.swap(false, Ordering::Relaxed) {
+                    let now = Instant::now();
+                    for path in worktree_watches.keys() {
+                        pending_worktrees.entry(path.clone()).or_insert(now);
                     }
                 }
             } else {
