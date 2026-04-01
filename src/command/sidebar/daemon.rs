@@ -380,7 +380,24 @@ fn remove_worktree_watch(
     }
 }
 
+/// Whether the platform can handle recursive worktree watches efficiently.
+/// macOS FSEvents aggregates events at the directory level in the kernel and
+/// handles heavy I/O well. Linux inotify sets a watch per directory and
+/// generates an event per file operation, which overwhelms the system under
+/// heavy AI/MCP file activity.
+fn platform_supports_worktree_watches() -> bool {
+    cfg!(target_os = "macos")
+}
+
 /// Set up filesystem watches for a worktree.
+///
+/// Always watches .git metadata (non-recursively for HEAD/index/etc., recursively
+/// for refs/) to detect commits, staging, and branch changes instantly.
+///
+/// On macOS (FSEvents), also watches the worktree root recursively for near-instant
+/// uncommitted change detection. On Linux (inotify), working tree changes are
+/// detected by the periodic poll sweep instead, avoiding the massive inotify event
+/// volume that recursive watches generate under heavy file I/O.
 fn setup_worktree_watches(
     watcher: &mut notify::RecommendedWatcher,
     worktree: &Path,
@@ -393,11 +410,11 @@ fn setup_worktree_watches(
     if is_linked {
         // Linked worktree: gitdir is outside the worktree root
         if let Some(git_dir) = resolve_git_dir(worktree) {
-            // Watch per-worktree gitdir (HEAD, index)
+            // Watch per-worktree gitdir non-recursively (HEAD, index, etc.)
             add_watch(
                 watcher,
                 &git_dir,
-                RecursiveMode::Recursive,
+                RecursiveMode::NonRecursive,
                 worktree,
                 watch_to_worktrees,
                 &mut watched,
@@ -427,17 +444,34 @@ fn setup_worktree_watches(
                 );
             }
         }
-        // Watch worktree root for file edits
+    } else if dot_git.is_dir() {
+        // Normal worktree: watch .git/ non-recursively (HEAD, index, MERGE_HEAD, etc.)
         add_watch(
             watcher,
-            worktree,
-            RecursiveMode::Recursive,
+            &dot_git,
+            RecursiveMode::NonRecursive,
             worktree,
             watch_to_worktrees,
             &mut watched,
         );
-    } else {
-        // Normal worktree: .git/ is inside, single recursive watch covers everything
+        // Watch refs/ recursively (low volume: branch creates/deletes/updates)
+        let refs_dir = dot_git.join("refs");
+        if refs_dir.is_dir() {
+            add_watch(
+                watcher,
+                &refs_dir,
+                RecursiveMode::Recursive,
+                worktree,
+                watch_to_worktrees,
+                &mut watched,
+            );
+        }
+    }
+
+    // On macOS, also watch the worktree root for near-instant uncommitted change
+    // detection. FSEvents handles heavy I/O efficiently via kernel-level aggregation.
+    // On Linux, skip this and rely on the periodic poll sweep instead.
+    if platform_supports_worktree_watches() {
         add_watch(
             watcher,
             worktree,
@@ -571,11 +605,16 @@ fn spawn_git_worker(
         // Track unique active paths for fallback polling
         let mut unique_active: Vec<PathBuf> = Vec::new();
         let mut last_full_sweep = Instant::now();
-        // Watcher mode: 30s fallback sweep. Poll-only mode: 2s sweep interval.
-        let full_sweep_interval = if watcher.is_some() {
+        let full_sweep_interval = if watcher.is_none() {
+            // No watcher available: poll frequently as the only change detection
+            Duration::from_secs(2)
+        } else if platform_supports_worktree_watches() {
+            // macOS: worktree watches give instant detection, sweep is just a safety net
             Duration::from_secs(30)
         } else {
-            Duration::from_secs(2)
+            // Linux: only .git metadata is watched, working tree changes need polling.
+            // 5s balances responsiveness with CPU cost (one git-status per worktree).
+            Duration::from_secs(5)
         };
         let debounce_duration = Duration::from_millis(300);
 
