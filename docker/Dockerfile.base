@@ -83,5 +83,7 @@ exec gosu "${WM_TARGET_UID}:${WM_TARGET_GID}" env HOME=/tmp "$@"
 SCRIPT
 RUN chmod +x /usr/local/bin/network-init.sh
 
+ARG CACHE_BUST=1
+
 # Install workmux (needed for sandbox RPC)
 RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash

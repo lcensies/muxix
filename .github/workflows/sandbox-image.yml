@@ -75,6 +75,8 @@ jobs:
           context: .
           file: docker/Dockerfile.base
           platforms: ${{ matrix.platform }}
+          build-args: |
+            CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=base-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=base-${{ matrix.platform }}
@@ -181,6 +183,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             BASE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:base
+            CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.agent }}-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.agent }}-${{ matrix.platform }}

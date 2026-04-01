@@ -1,6 +1,8 @@
 ARG BASE=ghcr.io/raine/workmux-sandbox:base
 FROM ${BASE}
 
+ARG CACHE_BUST=1
+
 # Install Codex CLI from GitHub releases (musl for glibc-independent static binary)
 RUN ARCH=$(uname -m) && \
     mkdir /tmp/codex-install && \
