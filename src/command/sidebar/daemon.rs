@@ -1,6 +1,7 @@
 //! Sidebar daemon: single process that polls tmux and pushes snapshots to clients.
 
 use anyhow::Result;
+use ignore::gitignore::Gitignore;
 use notify::{RecursiveMode, Watcher};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -247,6 +248,43 @@ fn resolve_common_git_dir(gitdir: &Path) -> Option<PathBuf> {
         gitdir.join(rel)
     };
     path.canonicalize().ok().or(Some(path))
+}
+
+/// Build a gitignore matcher for a worktree root.
+/// Loads the root .gitignore (covers the vast majority of ignored paths like
+/// target/, node_modules/, .venv/, build/, etc.) without needing to walk
+/// nested .gitignore files.
+fn build_gitignore(worktree: &Path) -> Gitignore {
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(worktree);
+    builder.add(worktree.join(".gitignore"));
+    builder.build().unwrap_or_else(|_| Gitignore::empty())
+}
+
+/// Check if a filesystem event path should be skipped based on gitignore rules.
+/// Returns true if the path is inside a .git directory (non-working-tree change)
+/// or matches the worktree's .gitignore patterns.
+fn is_event_ignored(
+    event_path: &Path,
+    worktree: &Path,
+    gitignores: &HashMap<PathBuf, Gitignore>,
+) -> bool {
+    // Always process .git metadata changes (HEAD, index, refs) - they affect git status
+    if let Ok(rel) = event_path.strip_prefix(worktree) {
+        let rel_str = rel.to_string_lossy();
+        if rel_str.starts_with(".git/") || rel_str == ".git" {
+            // Skip .git/objects and .git/logs (high volume, don't affect status)
+            // but allow .git/index, .git/HEAD, .git/refs, etc.
+            return rel_str.starts_with(".git/objects/") || rel_str.starts_with(".git/logs/");
+        }
+    }
+
+    if let Some(gi) = gitignores.get(worktree) {
+        let is_dir = event_path.is_dir();
+        gi.matched_path_or_any_parents(event_path, is_dir)
+            .is_ignore()
+    } else {
+        false
+    }
 }
 
 /// Compare two GitStatus values ignoring the cached_at timestamp.
@@ -497,6 +535,8 @@ fn spawn_git_worker(
         let mut watch_to_worktrees: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
         // Maps: worktree path -> list of watched paths for it
         let mut worktree_watches: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        // Per-worktree gitignore matchers for filtering irrelevant events
+        let mut gitignores: HashMap<PathBuf, Gitignore> = HashMap::new();
         // Per-worktree: timestamp of last fs event (for debouncing)
         let mut pending_worktrees: HashMap<PathBuf, Instant> = HashMap::new();
         // Stale status per path (true = all agents at path are stale)
@@ -521,17 +561,24 @@ fn spawn_git_worker(
                     last_full_sweep,
                     full_sweep_interval,
                 );
-                match fs_rx.recv_timeout(timeout) {
-                    Ok(Ok(event)) => {
-                        for path in &event.paths {
-                            for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
-                                pending_worktrees
-                                    .entry(wt)
-                                    .and_modify(|t| *t = Instant::now())
-                                    .or_insert_with(Instant::now);
+                // Process a single FS event: find affected worktrees,
+                // skip gitignored paths, and mark worktrees as pending.
+                let mut process_event = |event: notify::Event| {
+                    for path in &event.paths {
+                        for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                            if is_event_ignored(path, &wt, &gitignores) {
+                                continue;
                             }
+                            pending_worktrees
+                                .entry(wt)
+                                .and_modify(|t| *t = Instant::now())
+                                .or_insert_with(Instant::now);
                         }
                     }
+                };
+
+                match fs_rx.recv_timeout(timeout) {
+                    Ok(Ok(event)) => process_event(event),
                     Ok(Err(e)) => {
                         tracing::warn!("filesystem watch error: {}", e);
                     }
@@ -542,14 +589,7 @@ fn spawn_git_worker(
                 // Drain any additional buffered events
                 while let Ok(event_result) = fs_rx.try_recv() {
                     if let Ok(event) = event_result {
-                        for path in &event.paths {
-                            for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
-                                pending_worktrees
-                                    .entry(wt)
-                                    .and_modify(|t| *t = Instant::now())
-                                    .or_insert_with(Instant::now);
-                            }
-                        }
+                        process_event(event);
                     }
                 }
             } else {
@@ -593,6 +633,7 @@ fn spawn_git_worker(
                                 remove_worktree_watch(w, wp, path, &mut watch_to_worktrees);
                             }
                         }
+                        gitignores.remove(path);
                         pending_worktrees.remove(path);
                     }
 
@@ -603,6 +644,7 @@ fn spawn_git_worker(
                         }
                         let watched = setup_worktree_watches(w, path, &mut watch_to_worktrees);
                         worktree_watches.insert(path.clone(), watched);
+                        gitignores.insert(path.clone(), build_gitignore(path));
                         // Trigger immediate status fetch for new worktrees
                         pending_worktrees.insert(path.clone(), Instant::now() - debounce_duration);
                     }
