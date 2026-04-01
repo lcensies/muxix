@@ -22,6 +22,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.169 (2026-04-01)
+
+- Allow `sandbox.image` in project config (`.workmux.yaml`), so custom container
+  images are no longer silently ignored when set per-project
+- Fix Codex sandbox warnings about helper binaries in temporary directories and
+  missing bubblewrap ([#110](https://github.com/raine/workmux/issues/110))
+- Fix high CPU usage on Linux caused by inotify recursive watches when running
+  multiple worktrees with active agents
+
 ## v0.1.168 (2026-04-01)
 
 - Add manual sleeping toggle (`z` key) in the sidebar to deprioritize agents you
