@@ -330,7 +330,8 @@ impl SidebarApp {
     }
 
     /// Toggle the sleeping state of the selected agent.
-    /// Writes the sleeping set to a tmux global option so the daemon picks it up.
+    /// Does a read-modify-write on the tmux global option so concurrent
+    /// toggles from different sidebar clients don't clobber each other.
     pub fn toggle_sleeping(&mut self) {
         let Some(pane_id) = self
             .list_state
@@ -341,17 +342,24 @@ impl SidebarApp {
             return;
         };
 
-        if !self.sleeping_pane_ids.insert(pane_id.clone()) {
-            self.sleeping_pane_ids.remove(&pane_id);
+        // Read current set from tmux (source of truth) to avoid losing
+        // toggles made by other sidebar clients since our last snapshot.
+        let mut current: std::collections::HashSet<String> = Cmd::new("tmux")
+            .args(&["show-option", "-gqv", "@workmux_sleeping_panes"])
+            .run_and_capture_stdout()
+            .ok()
+            .map(|s| s.split_whitespace().map(String::from).collect())
+            .unwrap_or_default();
+
+        if !current.insert(pane_id.clone()) {
+            current.remove(&pane_id);
         }
 
-        // Write to tmux global so daemon picks it up on next tick
-        let panes: String = self
-            .sleeping_pane_ids
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" ");
+        // Update local state for immediate rendering
+        self.sleeping_pane_ids = current.clone();
+
+        // Write back to tmux
+        let panes: String = current.into_iter().collect::<Vec<_>>().join(" ");
         if panes.is_empty() {
             let _ = Cmd::new("tmux")
                 .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
