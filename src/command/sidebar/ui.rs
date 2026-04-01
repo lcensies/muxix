@@ -429,6 +429,16 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Style::default().fg(app.palette.text)
             };
 
+            let mut project_style = if is_stale {
+                Style::default()
+                    .fg(app.palette.dimmed)
+                    .add_modifier(Modifier::DIM)
+            } else {
+                Style::default()
+                    .fg(app.palette.text)
+                    .add_modifier(Modifier::DIM)
+            };
+
             let mut body_style = if is_stale {
                 Style::default()
                     .fg(app.palette.dimmed)
@@ -448,6 +458,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 
             if let Some(bg_color) = bg {
                 name_style = name_style.bg(bg_color);
+                project_style = project_style.bg(bg_color);
                 body_style = body_style.bg(bg_color);
                 elapsed_style = elapsed_style.bg(bg_color);
                 stripe_bg_style = stripe_bg_style.bg(bg_color);
@@ -515,7 +526,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let mut line2_spans = vec![
                 Span::styled("▌ ", stripe_bg_style),
                 Span::styled(body_indent, pad_style),
-                Span::styled(project_display, body_style),
+                Span::styled(project_display, project_style),
                 Span::styled(" ".repeat(middle_padding), pad_style),
             ];
 
