@@ -1906,18 +1906,7 @@ impl Config {
                 .target
                 .clone()
                 .or(self.sandbox.target.clone()),
-            // Security: image is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from using an
-            // untrusted image via .workmux.yaml.
-            image: {
-                if project.sandbox.image.is_some() {
-                    tracing::warn!(
-                        "image in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.image.clone()
-            },
+            image: project.sandbox.image.clone().or(self.sandbox.image.clone()),
             // Security: env_passthrough is global-only. Project config cannot
             // set it -- this prevents a malicious repo from requesting
             // passthrough of host env secrets via .workmux.yaml.
@@ -2695,7 +2684,7 @@ agents:
 
         let merged = global.merge(project);
         assert!(merged.sandbox.is_enabled()); // from global
-        assert_eq!(merged.sandbox.resolved_image("claude"), "global-image"); // image is global-only
+        assert_eq!(merged.sandbox.resolved_image("claude"), "project-image"); // project overrides global
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
     }
 
@@ -3056,47 +3045,46 @@ agents:
     }
 
     #[test]
-    fn test_sandbox_image_global_only() {
-        // Project config is ignored -- only global matters
+    fn test_sandbox_image_project_overrides_global() {
         let global = Config {
             sandbox: SandboxConfig {
-                image: Some("trusted:latest".to_string()),
+                image: Some("global:latest".to_string()),
                 ..Default::default()
             },
             ..Default::default()
         };
         let project = Config {
             sandbox: SandboxConfig {
-                image: Some("evil:latest".to_string()),
+                image: Some("custom:latest".to_string()),
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        assert_eq!(merged.sandbox.image, Some("trusted:latest".to_string()));
+        assert_eq!(merged.sandbox.image, Some("custom:latest".to_string()));
     }
 
     #[test]
-    fn test_sandbox_image_project_ignored_when_no_global() {
+    fn test_sandbox_image_project_used_when_no_global() {
         let global = Config::default();
         let project = Config {
             sandbox: SandboxConfig {
-                image: Some("evil:latest".to_string()),
+                image: Some("custom:latest".to_string()),
                 ..Default::default()
             },
             ..Default::default()
         };
 
         let merged = global.merge(project);
-        assert!(merged.sandbox.image.is_none());
+        assert_eq!(merged.sandbox.image, Some("custom:latest".to_string()));
     }
 
     #[test]
-    fn test_sandbox_image_uses_global() {
+    fn test_sandbox_image_falls_back_to_global() {
         let global = Config {
             sandbox: SandboxConfig {
-                image: Some("trusted:latest".to_string()),
+                image: Some("global:latest".to_string()),
                 ..Default::default()
             },
             ..Default::default()
@@ -3104,7 +3092,7 @@ agents:
         let project = Config::default();
 
         let merged = global.merge(project);
-        assert_eq!(merged.sandbox.image, Some("trusted:latest".to_string()));
+        assert_eq!(merged.sandbox.image, Some("global:latest".to_string()));
     }
 
     #[test]

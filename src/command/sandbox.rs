@@ -1052,7 +1052,8 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
             .iter()
             .map(|a| super::sandbox_run::redact_env_arg(a, &[]))
             .collect();
-        debug!(runtime = runtime_bin, args = ?redacted_args, "starting shell container");
+        let image = config.sandbox.resolved_image(agent);
+        debug!(runtime = runtime_bin, %image, args = ?redacted_args, "starting shell container");
 
         let status = Command::new(runtime_bin)
             .args(&docker_args)
