@@ -105,27 +105,34 @@ fn query_tmux_state() -> TmuxState {
 /// Unix socket server for broadcasting snapshots to clients.
 struct SocketServer {
     clients: Arc<Mutex<Vec<UnixStream>>>,
+    /// Cached last broadcast payload (length-prefixed) for immediate delivery to new clients.
+    cached_payload: Arc<Mutex<Vec<u8>>>,
 }
 
 impl SocketServer {
-    fn bind(path: &Path, dirty_flag: Arc<AtomicBool>) -> std::io::Result<Self> {
+    fn bind(path: &Path) -> std::io::Result<Self> {
         let listener = UnixListener::bind(path)?;
         // Restrict socket to owner only (prevent other local users from reading snapshots)
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         listener.set_nonblocking(true)?;
         let clients: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::new()));
         let clients_clone = clients.clone();
+        let cached_payload: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let cached_clone = cached_payload.clone();
 
         thread::spawn(move || {
             loop {
                 match listener.accept() {
-                    Ok((stream, _)) => {
-                        // 1ms write timeout: local Unix sockets shouldn't block
-                        let _ = stream.set_write_timeout(Some(Duration::from_millis(1)));
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+                        // Send cached snapshot immediately so the client doesn't
+                        // wait for the next tick (no dirty_flag needed).
+                        if let Ok(payload) = cached_clone.lock()
+                            && !payload.is_empty()
+                        {
+                            let _ = stream.write_all(&payload);
+                        }
                         clients_clone.lock().unwrap().push(stream);
-                        // Trigger an immediate broadcast so the new client gets
-                        // the current snapshot without waiting for the next timer.
-                        dirty_flag.store(true, Ordering::Relaxed);
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(50));
@@ -135,12 +142,22 @@ impl SocketServer {
             }
         });
 
-        Ok(Self { clients })
+        Ok(Self {
+            clients,
+            cached_payload,
+        })
     }
 
     fn broadcast(&self, snapshot: &super::snapshot::SidebarSnapshot) {
         let data = serde_json::to_vec(snapshot).unwrap_or_default();
         let len = (data.len() as u32).to_be_bytes();
+
+        // Cache the length-prefixed payload for new client connections
+        if let Ok(mut cached) = self.cached_payload.lock() {
+            cached.clear();
+            cached.extend_from_slice(&len);
+            cached.extend_from_slice(&data);
+        }
 
         // Take clients out of mutex to avoid holding lock during writes
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
@@ -432,25 +449,44 @@ struct GitWorkerPath {
 fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
+    wake_tx: std::sync::mpsc::SyncSender<()>,
 ) -> (GitCache, std::sync::mpsc::Sender<Vec<GitWorkerPath>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<GitWorkerPath>>();
 
     thread::spawn(move || {
-        // Filesystem event channel for notify
-        let (fs_tx, fs_rx) = std::sync::mpsc::channel();
-        let mut watcher: Option<notify::RecommendedWatcher> =
-            match notify::RecommendedWatcher::new(fs_tx, notify::Config::default()) {
-                Ok(w) => Some(w),
-                Err(e) => {
-                    tracing::warn!(
-                        "filesystem watcher unavailable, falling back to polling: {}",
-                        e
-                    );
-                    None
+        // Bounded filesystem event channel to prevent unbounded memory growth
+        // under heavy file I/O (e.g. MCP servers, Claude sessions).
+        // Drops are safe: pending events already guarantee a git status refresh.
+        let (fs_tx, fs_rx) = std::sync::mpsc::sync_channel(256);
+        let mut watcher: Option<notify::RecommendedWatcher> = match notify::RecommendedWatcher::new(
+            move |event: notify::Result<notify::Event>| {
+                if let Ok(ref e) = event {
+                    // Filter out high-volume paths that don't affect git status
+                    let dominated_by_noise = e.paths.iter().all(|p| {
+                        let s = p.to_string_lossy();
+                        s.contains("/.git/objects/")
+                            || s.contains("/.git/logs/")
+                            || s.contains("/node_modules/")
+                    });
+                    if dominated_by_noise {
+                        return;
+                    }
                 }
-            };
+                let _ = fs_tx.try_send(event);
+            },
+            notify::Config::default(),
+        ) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                tracing::warn!(
+                    "filesystem watcher unavailable, falling back to polling: {}",
+                    e
+                );
+                None
+            }
+        };
 
         let mut active_entries: Vec<GitWorkerPath> = Vec::new();
         // Maps: watched directory -> set of worktrees it covers
@@ -573,6 +609,7 @@ fn spawn_git_worker(
                             c.retain(|p, _| unique_set.contains(p));
                         }
                         dirty_flag.store(true, Ordering::Relaxed);
+                        let _ = wake_tx.try_send(());
                     }
                 } else {
                     // Poll-only mode: just prune cache, no watches to manage
@@ -581,6 +618,7 @@ fn spawn_git_worker(
                         c.retain(|p, _| unique_set.contains(p));
                         if c.len() != before {
                             dirty_flag.store(true, Ordering::Relaxed);
+                            let _ = wake_tx.try_send(());
                         }
                     }
                     // Trigger immediate fetch for new paths
@@ -637,6 +675,7 @@ fn spawn_git_worker(
 
             if any_changed {
                 dirty_flag.store(true, Ordering::Relaxed);
+                let _ = wake_tx.try_send(());
             }
         }
     });
@@ -777,12 +816,17 @@ pub fn run() -> Result<()> {
     signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
     signal_hook::flag::register(signal_hook::consts::SIGUSR1, dirty_flag.clone())?;
 
+    // Wake channel: replaces the 10ms spin loop. Producers send () to wake the
+    // main loop immediately (SIGUSR1 uses the AtomicBool since signal handlers
+    // can't send on channels; the wake channel handles git worker notifications).
+    let (wake_tx, wake_rx) = std::sync::mpsc::sync_channel::<()>(1);
+
     let sock_path = socket_path(&instance_id);
     let _ = std::fs::remove_file(&sock_path); // Clean stale
-    let server = SocketServer::bind(&sock_path, dirty_flag.clone())?;
+    let server = SocketServer::bind(&sock_path)?;
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
-    let (git_cache, git_path_tx) = spawn_git_worker(term.clone(), dirty_flag.clone());
+    let (git_cache, git_path_tx) = spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx);
 
     // Store PID so toggle-off can kill us and hooks can signal us
     Cmd::new("tmux")
@@ -910,8 +954,17 @@ pub fn run() -> Result<()> {
             break;
         }
 
-        // Always sleep to prevent CPU spinning (never skip on dirty)
-        thread::sleep(Duration::from_millis(10));
+        // Block until woken by a producer or next refresh is due.
+        // SIGUSR1 sets dirty_flag (can't use channels from signal handlers),
+        // so we cap the wait at 100ms to check it, but otherwise block fully.
+        let wait = if dirty_pending {
+            debounce_interval.saturating_sub(last_refresh.elapsed())
+        } else {
+            refresh_interval
+                .saturating_sub(last_refresh.elapsed())
+                .min(Duration::from_millis(100))
+        };
+        let _ = wake_rx.recv_timeout(wait);
     }
 
     // Cleanup
