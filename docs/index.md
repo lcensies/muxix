@@ -1,5 +1,6 @@
 ---
 layout: home
+title: workmux - parallel AI agents in your terminal
 description: Terminal-first workflow for parallel AI agents using git worktrees
 ---
 
