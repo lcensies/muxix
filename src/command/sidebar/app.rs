@@ -72,6 +72,8 @@ pub struct SidebarApp {
     pub git_statuses: HashMap<PathBuf, GitStatus>,
     /// Pane IDs of agents detected as interrupted by the daemon.
     pub interrupted_pane_ids: std::collections::HashSet<String>,
+    /// Pane IDs of agents manually marked as sleeping by the user.
+    pub sleeping_pane_ids: std::collections::HashSet<String>,
 }
 
 impl SidebarApp {
@@ -111,6 +113,7 @@ impl SidebarApp {
             selection_mode: SelectionMode::FollowHost,
             git_statuses: HashMap::new(),
             interrupted_pane_ids: std::collections::HashSet::new(),
+            sleeping_pane_ids: std::collections::HashSet::new(),
         })
     }
 
@@ -119,6 +122,7 @@ impl SidebarApp {
         self.layout_mode = snapshot.layout_mode;
         self.git_statuses = snapshot.git_statuses;
         self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
+        self.sleeping_pane_ids = snapshot.sleeping_pane_ids;
 
         // Find host agent by window_id (stable tmux ID, survives renames).
         // When multiple agents share a window, prefer the active pane.
@@ -323,6 +327,43 @@ impl SidebarApp {
             settings.sidebar_layout = Some(self.layout_mode.as_str().to_string());
             let _ = store.save_settings(&settings);
         }
+    }
+
+    /// Toggle the sleeping state of the selected agent.
+    /// Writes the sleeping set to a tmux global option so the daemon picks it up.
+    pub fn toggle_sleeping(&mut self) {
+        let Some(pane_id) = self
+            .list_state
+            .selected()
+            .and_then(|i| self.agents.get(i))
+            .map(|a| a.pane_id.clone())
+        else {
+            return;
+        };
+
+        if !self.sleeping_pane_ids.insert(pane_id.clone()) {
+            self.sleeping_pane_ids.remove(&pane_id);
+        }
+
+        // Write to tmux global so daemon picks it up on next tick
+        let panes: String = self
+            .sleeping_pane_ids
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if panes.is_empty() {
+            let _ = Cmd::new("tmux")
+                .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
+                .run();
+        } else {
+            let _ = Cmd::new("tmux")
+                .args(&["set-option", "-g", "@workmux_sleeping_panes", &panes])
+                .run();
+        }
+
+        // Signal daemon for immediate refresh (re-sort + broadcast)
+        super::daemon_ctrl::signal_daemon();
     }
 
     pub fn window_prefix(&self) -> &str {

@@ -216,16 +216,18 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .map(|(idx, agent)| {
             let worktree_name = format!("{}{}", app.display_name(agent), pane_suffixes[idx]);
 
+            let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
             let is_stale = agent
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
-            // Only show stale for Done/None - Working and Waiting agents need attention
-            let is_stale = is_stale
-                && !matches!(
-                    agent.status,
-                    Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-                );
+            // Auto-stale only for Done/None; manual sleeping always applies
+            let is_stale = is_sleeping
+                || (is_stale
+                    && !matches!(
+                        agent.status,
+                        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+                    ));
             let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             // Status icon
             let (icon, icon_style) =
@@ -337,16 +339,18 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let pane_suffix = &pane_suffixes[idx];
             let display_worktree = format!("{}{}", base_worktree, pane_suffix);
 
+            let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
             let is_stale = agent
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
-            // Only show stale for Done/None - Working and Waiting agents need attention
-            let is_stale = is_stale
-                && !matches!(
-                    agent.status,
-                    Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-                );
+            // Auto-stale only for Done/None; manual sleeping always applies
+            let is_stale = is_sleeping
+                || (is_stale
+                    && !matches!(
+                        agent.status,
+                        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+                    ));
             let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             let is_active = app.host_agent_idx == Some(idx);
 

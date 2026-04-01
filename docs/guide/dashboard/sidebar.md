@@ -77,13 +77,21 @@ Click an agent tile to jump to its pane, or scroll to navigate the list. Require
 
 ## Keybindings
 
-| Key     | Action             |
-| ------- | ------------------ |
-| `j`/`k` | Navigate up/down   |
-| `Enter` | Jump to agent pane |
-| `g`/`G` | Jump to first/last |
-| `v`     | Toggle layout mode |
-| `q`     | Quit sidebar       |
+| Key     | Action                   |
+| ------- | ------------------------ |
+| `j`/`k` | Navigate up/down         |
+| `Enter` | Jump to agent pane       |
+| `g`/`G` | Jump to first/last       |
+| `v`     | Toggle layout mode       |
+| `z`     | Toggle sleeping on agent |
+| `q`     | Quit sidebar             |
+
+### Sleeping agents
+
+Press `z` to manually mark an agent as sleeping. Sleeping agents show a 💤 icon
+with dimmed colors and are pushed to the bottom of the list, regardless of their
+actual status. This is useful for temporarily deprioritizing agents you don't
+need to monitor. Press `z` again to wake them up.
 
 ## Agent navigation hotkeys
 

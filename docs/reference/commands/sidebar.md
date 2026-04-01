@@ -22,12 +22,14 @@ Each agent row displays:
 
 ## Keybindings
 
-| Key     | Action             |
-| ------- | ------------------ |
-| `j`/`k` | Navigate up/down   |
-| `Enter` | Jump to agent pane |
-| `g`/`G` | Jump to first/last |
-| `q`     | Quit sidebar       |
+| Key     | Action                   |
+| ------- | ------------------------ |
+| `j`/`k` | Navigate up/down         |
+| `Enter` | Jump to agent pane       |
+| `g`/`G` | Jump to first/last       |
+| `v`     | Toggle layout mode       |
+| `z`     | Toggle sleeping on agent |
+| `q`     | Quit sidebar             |
 
 ## Navigation commands
 

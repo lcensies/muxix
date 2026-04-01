@@ -212,6 +212,16 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
     None
 }
 
+/// Read pane IDs manually marked as sleeping from the tmux global option.
+fn read_sleeping_panes() -> HashSet<String> {
+    Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sleeping_panes"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.split_whitespace().map(String::from).collect())
+        .unwrap_or_default()
+}
+
 /// Shared git status cache, updated by a background worker thread.
 type GitCache = Arc<Mutex<HashMap<PathBuf, GitStatus>>>;
 
@@ -949,6 +959,7 @@ pub fn run() -> Result<()> {
                 .ok();
             let Some(agents) = agents else { continue };
             let layout_mode = read_sidebar_layout_mode(&config).unwrap_or_default();
+            let sleeping_pane_ids = read_sleeping_panes();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
             let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker);
             let now = Instant::now();
@@ -968,6 +979,7 @@ pub fn run() -> Result<()> {
                     now_ts,
                     layout_mode,
                     git_statuses,
+                    sleeping_pane_ids,
                 },
                 &mut inactivity_tracker,
                 &last_interrupted,
@@ -1055,6 +1067,9 @@ pub fn run() -> Result<()> {
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
         .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
+        .run();
     Ok(())
 }
 
@@ -1069,6 +1084,7 @@ struct TickInput {
     now_ts: u64,
     layout_mode: SidebarLayoutMode,
     git_statuses: HashMap<PathBuf, GitStatus>,
+    sleeping_pane_ids: HashSet<String>,
 }
 
 /// A state-file write to apply after computing the tick.
@@ -1109,6 +1125,7 @@ fn compute_tick(
         now_ts,
         layout_mode,
         git_statuses,
+        sleeping_pane_ids,
     } = input;
 
     // Phase 1: Inactivity detection
@@ -1140,6 +1157,7 @@ fn compute_tick(
         layout_mode,
         status_icons,
         git_statuses,
+        &sleeping_pane_ids,
     );
     snapshot.interrupted_pane_ids = interrupted.clone();
 
@@ -1589,6 +1607,7 @@ mod tests {
                     now_ts,
                     layout_mode: SidebarLayoutMode::default(),
                     git_statuses: HashMap::new(),
+                    sleeping_pane_ids: HashSet::new(),
                 },
                 tracker,
                 last,

@@ -49,6 +49,7 @@ const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
     "@workmux_sidebar_enabled",
     "@workmux_sidebar_width",
     "@workmux_sidebar_agents",
+    "@workmux_sleeping_panes",
 ];
 
 /// Unset all sidebar global tmux options.

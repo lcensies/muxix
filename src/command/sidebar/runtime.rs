@@ -200,6 +200,7 @@ fn process_event(
                 (KeyCode::Char('G'), _) => app.select_last(),
                 (KeyCode::Char('g'), _) => app.select_first(),
                 (KeyCode::Char('v'), _) => app.toggle_layout_mode(),
+                (KeyCode::Char('z'), _) => app.toggle_sleeping(),
                 _ => {}
             }
             *needs_render = true;

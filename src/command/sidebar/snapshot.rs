@@ -27,6 +27,9 @@ pub struct SidebarSnapshot {
     /// Pane IDs of agents detected as interrupted (working but no pane output change).
     #[serde(default)]
     pub interrupted_pane_ids: HashSet<String>,
+    /// Pane IDs of agents manually marked as sleeping by the user.
+    #[serde(default)]
+    pub sleeping_pane_ids: HashSet<String>,
     pub agents: Vec<AgentPane>,
 }
 
@@ -42,6 +45,7 @@ pub fn build_snapshot(
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
     git_statuses: HashMap<PathBuf, GitStatus>,
+    sleeping_pane_ids: &HashSet<String>,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
     let waiting_icon = status_icons.waiting();
@@ -68,6 +72,7 @@ pub fn build_snapshot(
         .as_secs();
 
     agents.sort_by_cached_key(|a| {
+        let is_sleeping = sleeping_pane_ids.contains(&a.pane_id);
         let elapsed = a
             .status_ts
             .map(|ts| now.saturating_sub(ts))
@@ -78,7 +83,7 @@ pub fn build_snapshot(
             .unwrap_or(&a.pane_id)
             .parse()
             .unwrap_or(u64::MAX);
-        (elapsed, pane_num)
+        (is_sleeping, elapsed, pane_num)
     });
 
     // Populate window_id from the tmux state lookup
@@ -88,6 +93,13 @@ pub fn build_snapshot(
         }
     }
 
+    // Prune sleeping set to only include live agents
+    let live_sleeping: HashSet<String> = sleeping_pane_ids
+        .iter()
+        .filter(|id| agents.iter().any(|a| &a.pane_id == *id))
+        .cloned()
+        .collect();
+
     SidebarSnapshot {
         layout_mode,
         active_windows,
@@ -95,6 +107,7 @@ pub fn build_snapshot(
         window_pane_counts,
         git_statuses,
         interrupted_pane_ids: HashSet::new(),
+        sleeping_pane_ids: live_sleeping,
         agents,
     }
 }
