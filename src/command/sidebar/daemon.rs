@@ -256,7 +256,13 @@ fn resolve_common_git_dir(gitdir: &Path) -> Option<PathBuf> {
 /// nested .gitignore files.
 fn build_gitignore(worktree: &Path) -> Gitignore {
     let mut builder = ignore::gitignore::GitignoreBuilder::new(worktree);
-    builder.add(worktree.join(".gitignore"));
+    if let Some(err) = builder.add(worktree.join(".gitignore")) {
+        tracing::debug!(
+            "failed to parse .gitignore for {}: {}",
+            worktree.display(),
+            err
+        );
+    }
     builder.build().unwrap_or_else(|_| Gitignore::empty())
 }
 
