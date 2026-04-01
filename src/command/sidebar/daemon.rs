@@ -571,6 +571,13 @@ fn spawn_git_worker(
                 // skip gitignored paths, and mark worktrees as pending.
                 let mut process_event = |event: notify::Event| {
                     for path in &event.paths {
+                        // Rebuild gitignore matcher when .gitignore itself changes
+                        if path.file_name().is_some_and(|n| n == ".gitignore") {
+                            for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
+                                let gi = build_gitignore(&wt);
+                                gitignores.insert(wt, gi);
+                            }
+                        }
                         for wt in find_worktrees_for_path(path, &watch_to_worktrees) {
                             if is_event_ignored(path, &wt, &gitignores) {
                                 continue;
