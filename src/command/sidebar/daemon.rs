@@ -279,8 +279,10 @@ fn is_event_ignored(
     }
 
     if let Some(gi) = gitignores.get(worktree) {
-        let is_dir = event_path.is_dir();
-        gi.matched_path_or_any_parents(event_path, is_dir)
+        // Pass false for is_dir to avoid a synchronous stat syscall per event.
+        // Directory-level ignore rules (e.g. "target/") still match because
+        // matched_path_or_any_parents checks ancestor components.
+        gi.matched_path_or_any_parents(event_path, false)
             .is_ignore()
     } else {
         false
