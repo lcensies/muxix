@@ -1047,12 +1047,34 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         docker_args.insert(1, "--name".to_string());
         docker_args.insert(2, format!("wm-shell-{}", std::process::id()));
 
-        let runtime_bin = config.sandbox.runtime().binary_name();
+        let runtime = config.sandbox.runtime();
+        let runtime_bin = runtime.binary_name();
+        let runtime_display = runtime.display_name();
         let redacted_args: Vec<_> = docker_args
             .iter()
             .map(|a| super::sandbox_run::redact_env_arg(a, &[]))
             .collect();
         let image = config.sandbox.resolved_image(agent);
+        eprintln!("sandbox: image={} runtime={}", image, runtime_display);
+
+        // Pre-flight: verify image exists in the selected runtime's store
+        let inspect = Command::new(runtime_bin)
+            .args(["image", "inspect", &image])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if let Ok(status) = inspect
+            && !status.success()
+        {
+            bail!(
+                "Image '{}' not found in {} image store. \
+                 If you built this image with a different runtime \
+                 (e.g. docker vs apple-container), it won't be visible here.",
+                image,
+                runtime_display,
+            );
+        }
+
         debug!(runtime = runtime_bin, %image, args = ?redacted_args, "starting shell container");
 
         let status = Command::new(runtime_bin)

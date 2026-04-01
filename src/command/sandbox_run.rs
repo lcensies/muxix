@@ -421,7 +421,29 @@ fn run_container(
 
     // Background freshness check (non-blocking)
     let freshness_image = config.sandbox.resolved_image(agent);
-    crate::sandbox::freshness::check_in_background(freshness_image, config.sandbox.runtime());
+    crate::sandbox::freshness::check_in_background(
+        freshness_image.clone(),
+        config.sandbox.runtime(),
+    );
+
+    // Pre-flight: verify image exists in the selected runtime's store
+    let runtime_display = config.sandbox.runtime().display_name();
+    let inspect = Command::new(runtime_bin)
+        .args(["image", "inspect", &freshness_image])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if let Ok(status) = inspect
+        && !status.success()
+    {
+        bail!(
+            "Image '{}' not found in {} image store. \
+             If you built this image with a different runtime \
+             (e.g. docker vs apple-container), it won't be visible here.",
+            freshness_image,
+            runtime_display,
+        );
+    }
 
     // Create guard to stop container on exit (panic, SIGTERM, etc.)
     let _guard = ContainerGuard {

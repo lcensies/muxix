@@ -710,6 +710,15 @@ impl SandboxRuntime {
         }
     }
 
+    /// Human-readable name for user-facing messages.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            SandboxRuntime::Docker => "docker",
+            SandboxRuntime::Podman => "podman",
+            SandboxRuntime::AppleContainer => "apple-container",
+        }
+    }
+
     /// Whether this runtime needs `--add-host host.docker.internal:host-gateway`.
     /// Only Docker requires this.
     pub fn needs_add_host(&self) -> bool {
