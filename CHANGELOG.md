@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.170 (2026-04-01)
+
+- Fail early with a clear error when the sandbox image is missing from the
+  selected runtime's store ([#111](https://github.com/raine/workmux/issues/111))
+
 ## v0.1.169 (2026-04-01)
 
 - Allow `sandbox.image` in project config (`.workmux.yaml`), so custom container
