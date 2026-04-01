@@ -3,6 +3,16 @@ FROM ${BASE}
 
 ARG CACHE_BUST=1
 
+# bubblewrap: Codex uses bwrap for sandboxing; without it, Codex warns about
+#   missing system bubblewrap and falls back to a vendored copy.
+# /home/user/.codex: Codex refuses to create helper binaries when its home dir
+#   is under /tmp. CODEX_HOME is set to this path at runtime to avoid the warning.
+#   World-writable so arbitrary UIDs (container runs as host user) can write.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bubblewrap \
+    && rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /home/user/.codex && chmod -R 777 /home/user
+
 # Install Codex CLI from GitHub releases (musl for glibc-independent static binary)
 RUN ARCH=$(uname -m) && \
     mkdir /tmp/codex-install && \

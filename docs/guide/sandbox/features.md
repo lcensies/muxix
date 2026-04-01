@@ -105,7 +105,7 @@ Both sandbox backends mount agent-specific credential directories from the host.
 | ---------- | -------------------------- | ----------------------------- | ------------------------------ |
 | `claude`   | `~/.claude/`               | `/tmp/.claude/`               | `$HOME/.claude/`               |
 | `gemini`   | `~/.gemini/`               | `/tmp/.gemini/`               | `$HOME/.gemini/`               |
-| `codex`    | `~/.codex/`                | `/tmp/.codex/`                | `$HOME/.codex/`                |
+| `codex`    | `~/.codex/`                | `/home/user/.codex/`          | `$HOME/.codex/`                |
 | `opencode` | `~/.local/share/opencode/` | `/tmp/.local/share/opencode/` | `$HOME/.local/share/opencode/` |
 
 Key behaviors:

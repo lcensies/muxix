@@ -313,6 +313,14 @@ pub fn build_docker_run_args(
     args.push("--env".to_string());
     args.push("HOME=/tmp".to_string());
 
+    // Codex refuses to create helper binaries when CODEX_HOME is under a
+    // temporary directory (i.e. /tmp). Setting CODEX_HOME to a non-temp path
+    // avoids this while keeping HOME=/tmp like the other agents.
+    if agent == "codex" {
+        args.push("--env".to_string());
+        args.push("CODEX_HOME=/home/user/.codex".to_string());
+    }
+
     // Agent-specific credential mounts
     // Claude uses ~/.claude-sandbox-config/claude.json for container-specific config.
     // Apple Container only supports directory mounts, so we mount the directory
@@ -347,7 +355,7 @@ pub fn build_docker_run_args(
         let target = match agent {
             "claude" => "/tmp/.claude",
             "gemini" => "/tmp/.gemini",
-            "codex" => "/tmp/.codex",
+            "codex" => "/home/user/.codex",
             "opencode" => "/tmp/.local/share/opencode",
             _ => unreachable!(), // resolved_agent_config_dir returns None for unknown agents
         };
@@ -879,7 +887,7 @@ mod tests {
         // Gemini agent should NOT have Claude-specific mounts
         assert!(!args_str.contains("target=/tmp/.claude.json"));
         assert!(!args_str.contains("target=/tmp/.claude,"));
-        assert!(!args_str.contains("target=/tmp/.codex"));
+        assert!(!args_str.contains("/home/user/.codex"));
     }
 
     #[test]
@@ -898,8 +906,10 @@ mod tests {
         .unwrap();
 
         let args_str = args.join(" ");
-        // Codex agent should mount ~/.codex to /tmp/.codex
-        assert!(args_str.contains("target=/tmp/.codex"));
+        // Codex agent should mount ~/.codex to /home/user/.codex (matches CODEX_HOME)
+        assert!(args_str.contains("target=/home/user/.codex"));
+        // CODEX_HOME set to avoid "Refusing to create helper binaries under temporary dir" warning
+        assert!(args_str.contains("CODEX_HOME=/home/user/.codex"));
         // Codex agent should NOT have Claude-specific mounts
         assert!(!args_str.contains("target=/tmp/.claude.json"));
         assert!(!args_str.contains("target=/tmp/.gemini"));
@@ -947,7 +957,7 @@ mod tests {
         // Unknown agent should NOT have any agent credential mounts
         assert!(!args_str.contains("target=/tmp/.claude"));
         assert!(!args_str.contains("target=/tmp/.gemini"));
-        assert!(!args_str.contains("target=/tmp/.codex"));
+        assert!(!args_str.contains("/home/user/.codex"));
         assert!(!args_str.contains("target=/tmp/.local/share/opencode"));
     }
 
