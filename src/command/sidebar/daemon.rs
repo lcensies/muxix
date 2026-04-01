@@ -127,12 +127,16 @@ impl SocketServer {
                         let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
                         // Send cached snapshot immediately so the client doesn't
                         // wait for the next tick (no dirty_flag needed).
-                        if let Ok(payload) = cached_clone.lock()
-                            && !payload.is_empty()
-                        {
-                            let _ = stream.write_all(&payload);
+                        // Clone under lock and drop before the blocking write to
+                        // avoid holding the mutex during I/O.
+                        let payload = cached_clone.lock().ok().map(|p| p.clone());
+                        let cache_ok = match payload {
+                            Some(ref p) if !p.is_empty() => stream.write_all(p).is_ok(),
+                            _ => true,
+                        };
+                        if cache_ok {
+                            clients_clone.lock().unwrap().push(stream);
                         }
-                        clients_clone.lock().unwrap().push(stream);
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(50));
@@ -820,6 +824,9 @@ pub fn run() -> Result<()> {
     // main loop immediately (SIGUSR1 uses the AtomicBool since signal handlers
     // can't send on channels; the wake channel handles git worker notifications).
     let (wake_tx, wake_rx) = std::sync::mpsc::sync_channel::<()>(1);
+    // Keep a sender alive so recv_timeout won't return Disconnected if the
+    // git worker thread panics (which would spin the main loop at 100% CPU).
+    let _wake_tx_keepalive = wake_tx.clone();
 
     let sock_path = socket_path(&instance_id);
     let _ = std::fs::remove_file(&sock_path); // Clean stale
