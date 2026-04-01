@@ -284,14 +284,19 @@ fn is_event_ignored(
     worktree: &Path,
     gitignores: &HashMap<PathBuf, Gitignore>,
 ) -> bool {
+    // Linked-worktree git metadata events (e.g. shared gitdir, common refs)
+    // live outside the worktree root. They are git events, not working-tree
+    // files, so they should never be ignored.
+    let Ok(rel) = event_path.strip_prefix(worktree) else {
+        return false;
+    };
+
+    let rel_str = rel.to_string_lossy();
     // Always process .git metadata changes (HEAD, index, refs) - they affect git status
-    if let Ok(rel) = event_path.strip_prefix(worktree) {
-        let rel_str = rel.to_string_lossy();
-        if rel_str.starts_with(".git/") || rel_str == ".git" {
-            // Skip .git/objects and .git/logs (high volume, don't affect status)
-            // but allow .git/index, .git/HEAD, .git/refs, etc.
-            return rel_str.starts_with(".git/objects/") || rel_str.starts_with(".git/logs/");
-        }
+    if rel_str.starts_with(".git/") || rel_str == ".git" {
+        // Skip .git/objects and .git/logs (high volume, don't affect status)
+        // but allow .git/index, .git/HEAD, .git/refs, etc.
+        return rel_str.starts_with(".git/objects/") || rel_str.starts_with(".git/logs/");
     }
 
     if let Some(gi) = gitignores.get(worktree) {
@@ -598,10 +603,7 @@ fn spawn_git_worker(
                             if is_event_ignored(path, &wt, &gitignores) {
                                 continue;
                             }
-                            pending_worktrees
-                                .entry(wt)
-                                .and_modify(|t| *t = Instant::now())
-                                .or_insert_with(Instant::now);
+                            pending_worktrees.entry(wt).or_insert_with(Instant::now);
                         }
                     }
                 };
@@ -748,9 +750,7 @@ fn spawn_git_worker(
                     unique_active.clone()
                 };
                 for path in &sweep_paths {
-                    if pending_worktrees.contains_key(path) {
-                        continue;
-                    }
+                    pending_worktrees.remove(path);
                     if refresh_git_status(path, &cache_clone) {
                         any_changed = true;
                     }
