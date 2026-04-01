@@ -22,6 +22,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.168 (2026-04-01)
+
+- Add manual sleeping toggle (`z` key) in the sidebar to deprioritize agents you
+  don't need to monitor, regardless of their actual status
+- Fix stale indicator incorrectly overriding working or waiting status icons in
+  the sidebar, hiding statuses that require attention
+- Fix git diff stats permanently freezing in linked worktrees when filesystem
+  events originated from the shared gitdir
+
 ## v0.1.166 (2026-03-31)
 
 - Fix relative `worktree_dir` paths (e.g. `../wm/`) being passed literally to
