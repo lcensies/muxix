@@ -220,6 +220,12 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
+            // Only show stale for Done/None - Working and Waiting agents need attention
+            let is_stale = is_stale
+                && !matches!(
+                    agent.status,
+                    Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+                );
             let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             // Status icon
             let (icon, icon_style) =
@@ -335,6 +341,12 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 .status_ts
                 .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
                 .unwrap_or(false);
+            // Only show stale for Done/None - Working and Waiting agents need attention
+            let is_stale = is_stale
+                && !matches!(
+                    agent.status,
+                    Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+                );
             let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             let is_active = app.host_agent_idx == Some(idx);
 
