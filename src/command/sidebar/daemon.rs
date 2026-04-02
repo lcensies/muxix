@@ -996,6 +996,14 @@ pub fn run() -> Result<()> {
     let mut last_runtime_write = Instant::now();
     let backend_name = mux.name().to_string();
 
+    // Cache the session scope once at startup (immutable for daemon lifetime)
+    let session_scope: Option<String> = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s != "global");
+
     let mut last_refresh = Instant::now();
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
@@ -1027,14 +1035,7 @@ pub fn run() -> Result<()> {
             let Some(mut agents) = agents else { continue };
 
             // Session-scoped filtering: only include agents in the target session
-            let scope_raw = Cmd::new("tmux")
-                .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
-                .run_and_capture_stdout()
-                .ok()
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default();
-            if !scope_raw.is_empty() && scope_raw != "global" {
-                let target_sid = &scope_raw;
+            if let Some(ref target_sid) = session_scope {
                 agents.retain(|a| {
                     tmux_state
                         .pane_session_ids
@@ -1167,6 +1168,9 @@ pub fn run() -> Result<()> {
         .run();
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
+        .run();
+    let _ = Cmd::new("tmux")
+        .args(&["set-option", "-gu", "@workmux_sidebar_scope"])
         .run();
     Ok(())
 }

@@ -277,12 +277,12 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Session filter: skip windows not in the scoped session
-    if let SidebarScope::Session(ref sid) = scope
-        && let Some(window_sid) = get_window_session_id(&target)
-        && window_sid != *sid
-    {
-        return Ok(());
+    // Session filter: skip windows not in the scoped session (or on lookup failure)
+    if let SidebarScope::Session(ref sid) = scope {
+        match get_window_session_id(&target) {
+            Some(window_sid) if window_sid == *sid => {}
+            _ => return Ok(()),
+        }
     }
 
     // Check if this window already has a sidebar
@@ -321,12 +321,12 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Session filter: skip windows not in the scoped session
-    if let SidebarScope::Session(ref sid) = scope
-        && let Some(window_sid) = get_window_session_id(&target)
-        && window_sid != *sid
-    {
-        return Ok(());
+    // Session filter: skip windows not in the scoped session (or on lookup failure)
+    if let SidebarScope::Session(ref sid) = scope {
+        match get_window_session_id(&target) {
+            Some(window_sid) if window_sid == *sid => {}
+            _ => return Ok(()),
+        }
     }
 
     // Find the sidebar pane ID in this window
