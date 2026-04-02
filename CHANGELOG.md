@@ -22,6 +22,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.171 (2026-04-02)
+
+- Fix sidebar daemon dropping all clients after 30s, causing sidebar panes to
+  stop updating
+- Fix sidebar width being too narrow in some windows when the sidebar was first
+  opened from a smaller terminal
+- Make project name more readable in sidebar tiles
+
 ## v0.1.170 (2026-04-01)
 
 - Fail early with a clear error when the sandbox image is missing from the
