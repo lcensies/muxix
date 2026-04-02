@@ -279,6 +279,16 @@ fn run_container(
     // Ensure sandbox config dirs exist before building container args
     ensure_sandbox_config_dirs()?;
 
+    // Ensure image is present and up-to-date before setting up RPC/state.
+    // Done early so an interrupted pull doesn't leave stale state entries.
+    let agent = crate::multiplexer::agent::resolve_profile_with_type(
+        config.agent.as_deref(),
+        config.agent_type.as_deref(),
+    )
+    .name();
+    let freshness_image = config.sandbox.resolved_image(agent);
+    crate::sandbox::ensure_image_ready(&config.sandbox, &freshness_image)?;
+
     // Merge built-in commands (e.g. afplay, clipboard shims) with user-configured ones
     let host_commands = shims::effective_host_commands(config.sandbox.host_commands());
     // Clipboard shims use ClipboardRead RPC, not Exec -- exclude from exec allowlist
@@ -389,12 +399,6 @@ fn run_container(
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
 
-    let agent = crate::multiplexer::agent::resolve_profile_with_type(
-        config.agent.as_deref(),
-        config.agent_type.as_deref(),
-    )
-    .name();
-
     let user_command = command.join(" ");
     let shim_host_dir = _shim_dir.as_ref().map(|d| d.path().join("shims/bin"));
     let mut docker_args = build_docker_run_args(
@@ -418,10 +422,6 @@ fn run_container(
         .map(|a| redact_env_arg(a, &env_keys))
         .collect();
     debug!(runtime = runtime_bin, container = %container_name, args = ?redacted_args, "spawning container");
-
-    // Ensure image is present and up-to-date (pulls if missing or stale)
-    let freshness_image = config.sandbox.resolved_image(agent);
-    crate::sandbox::ensure_image_ready(&config.sandbox, &freshness_image)?;
 
     // Create guard to stop container on exit (panic, SIGTERM, etc.)
     let _guard = ContainerGuard {
