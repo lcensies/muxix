@@ -22,6 +22,14 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.173 (2026-04-02)
+
+- Add `--session` flag to `workmux sidebar` to scope the sidebar to a single
+  tmux session instead of all sessions
+- Add sandbox image freshness checking for Apple Container runtime, notifying
+  when a newer image is available
+  ([#115](https://github.com/raine/workmux/issues/115))
+
 ## v0.1.172 (2026-04-02)
 
 - Automatically pull sandbox images when missing or stale, removing the need for
