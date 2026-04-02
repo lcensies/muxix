@@ -204,8 +204,13 @@ pub fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
 }
 
 /// Check if an image is from the official workmux registry.
+///
+/// Matches `ghcr.io/raine/workmux-sandbox:tag` but not
+/// `ghcr.io/raine/workmux-sandbox-dev:tag`.
 pub fn is_official_image(image: &str) -> bool {
-    image.starts_with(DEFAULT_IMAGE_REGISTRY)
+    image
+        .strip_prefix(DEFAULT_IMAGE_REGISTRY)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(':') || rest.starts_with('@'))
 }
 
 /// Check if the cached freshness status says the image is stale.
@@ -365,5 +370,20 @@ mod tests {
     fn test_mark_fresh_skips_apple_container() {
         // Should not panic or error -- just returns immediately
         mark_fresh("test-image:latest", SandboxRuntime::AppleContainer);
+    }
+
+    #[test]
+    fn test_is_official_image() {
+        assert!(is_official_image("ghcr.io/raine/workmux-sandbox:claude"));
+        assert!(is_official_image("ghcr.io/raine/workmux-sandbox:base"));
+        assert!(is_official_image(
+            "ghcr.io/raine/workmux-sandbox@sha256:abc"
+        ));
+        assert!(is_official_image("ghcr.io/raine/workmux-sandbox"));
+        assert!(!is_official_image(
+            "ghcr.io/raine/workmux-sandbox-dev:claude"
+        ));
+        assert!(!is_official_image("ghcr.io/raine/workmux-sandboxx:claude"));
+        assert!(!is_official_image("docker.io/library/ubuntu:latest"));
     }
 }
