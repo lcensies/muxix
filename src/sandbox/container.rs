@@ -199,7 +199,7 @@ pub fn ensure_image_ready(config: &SandboxConfig, image: &str) -> Result<()> {
 
     // Image exists. For official images, check if it's stale.
     if is_official {
-        let stale = crate::sandbox::freshness::cached_is_stale(image, runtime.clone());
+        let stale = crate::sandbox::freshness::cached_is_stale(image, runtime);
         if stale == Some(true) {
             eprintln!("Updating sandbox image '{}'...", image);
             match pull_image(config, image) {
@@ -578,10 +578,7 @@ pub fn stop_containers_for_handle(handle: &str) {
     let mut by_runtime: std::collections::HashMap<SandboxRuntime, Vec<String>> =
         std::collections::HashMap::new();
     for (name, runtime) in &containers {
-        by_runtime
-            .entry(runtime.clone())
-            .or_default()
-            .push(name.clone());
+        by_runtime.entry(*runtime).or_default().push(name.clone());
     }
 
     for (runtime, names) in &by_runtime {

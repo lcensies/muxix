@@ -116,11 +116,20 @@ fn save_cache(image: &str, is_fresh: bool, local_image_id: Option<String>) -> Re
 ///
 /// This is a cheap local-only operation used to detect when the local image
 /// has changed since the last freshness check.
-fn get_local_image_id(runtime: &str, image: &str) -> Result<String> {
-    let output = Command::new(runtime)
+///
+/// For Docker/Podman, uses `--format "{{.Id}}"`.
+/// For Apple Container (which doesn't support `--format`), extracts
+/// `index.digest` from the JSON output.
+fn get_local_image_id(runtime: SandboxRuntime, image: &str) -> Result<String> {
+    if matches!(runtime, SandboxRuntime::AppleContainer) {
+        return get_apple_index_digest(image);
+    }
+
+    let runtime_bin = runtime.binary_name();
+    let output = Command::new(runtime_bin)
         .args(["image", "inspect", "--format", "{{.Id}}", image])
         .output()
-        .with_context(|| format!("Failed to run {} image inspect", runtime))?;
+        .with_context(|| format!("Failed to run {} image inspect", runtime_bin))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -128,6 +137,33 @@ fn get_local_image_id(runtime: &str, image: &str) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Extract `index.digest` from `container image inspect` JSON output.
+///
+/// Apple Container returns a JSON array where each element has an `index`
+/// object containing a `digest` field (the OCI image index digest).
+fn get_apple_index_digest(image: &str) -> Result<String> {
+    let output = Command::new("container")
+        .args(["image", "inspect", image])
+        .output()
+        .context("Failed to run container image inspect")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("container image inspect failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(stdout.trim()).context("Failed to parse container inspect JSON")?;
+
+    json.as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|entry| entry.pointer("/index/digest"))
+        .and_then(|d| d.as_str())
+        .map(|s| s.to_string())
+        .context("No index.digest in container inspect output")
 }
 
 /// Get the repo digests for a local image.
@@ -167,9 +203,11 @@ fn get_local_repo_digests(runtime: &str, image: &str) -> Result<Vec<String>> {
 /// Uses runtime-appropriate tooling:
 /// - Docker: `docker buildx imagetools inspect` (parses `Digest:` line)
 /// - Podman: `podman manifest inspect` (parses JSON `digest` field from first manifest)
+/// - Apple Container: OCI registry HTTP API via `curl` (ghcr.io token + HEAD request)
 fn get_remote_digest(image: &str, runtime: SandboxRuntime) -> Result<String> {
     match runtime {
         SandboxRuntime::Podman => get_remote_digest_podman(image),
+        SandboxRuntime::AppleContainer => get_remote_digest_apple(image),
         _ => get_remote_digest_docker(image),
     }
 }
@@ -228,25 +266,95 @@ fn get_remote_digest_podman(image: &str) -> Result<String> {
     anyhow::bail!("Could not find digest in podman manifest output");
 }
 
+/// Get remote digest for Apple Container via OCI registry HTTP API.
+///
+/// Apple Container has no remote inspect command, so we query ghcr.io directly
+/// using `curl`:
+/// 1. Get an anonymous bearer token from `ghcr.io/token`
+/// 2. HEAD the manifest endpoint to read `Docker-Content-Digest` header
+fn get_remote_digest_apple(image: &str) -> Result<String> {
+    let without_registry = image
+        .strip_prefix("ghcr.io/")
+        .context("Apple Container freshness check only supports ghcr.io images")?;
+    let (repo, tag) = without_registry
+        .rsplit_once(':')
+        .unwrap_or((without_registry, "latest"));
+
+    // Get anonymous bearer token
+    let token_url = format!("https://ghcr.io/token?scope=repository:{}:pull", repo);
+    let token_output = Command::new("curl")
+        .args(["-sf", &token_url])
+        .output()
+        .context("Failed to run curl for ghcr.io token")?;
+
+    if !token_output.status.success() {
+        anyhow::bail!("Failed to get ghcr.io bearer token");
+    }
+
+    let token_json: serde_json::Value =
+        serde_json::from_slice(&token_output.stdout).context("Failed to parse token response")?;
+    let token = token_json
+        .get("token")
+        .and_then(|t| t.as_str())
+        .context("No token in ghcr.io response")?;
+
+    // HEAD request for manifest digest
+    let manifest_url = format!("https://ghcr.io/v2/{}/manifests/{}", repo, tag);
+    let head_output = Command::new("curl")
+        .args([
+            "-sfI",
+            "-H",
+            &format!("Authorization: Bearer {}", token),
+            "-H",
+            "Accept: application/vnd.oci.image.index.v1+json",
+            "-H",
+            "Accept: application/vnd.docker.distribution.manifest.list.v2+json",
+            &manifest_url,
+        ])
+        .output()
+        .context("Failed to run curl for manifest HEAD")?;
+
+    if !head_output.status.success() {
+        anyhow::bail!("Failed to fetch manifest from ghcr.io");
+    }
+
+    // Parse Docker-Content-Digest header (case-insensitive)
+    let headers = String::from_utf8_lossy(&head_output.stdout);
+    for line in headers.lines() {
+        if let Some((key, value)) = line.split_once(':')
+            && key.trim().eq_ignore_ascii_case("docker-content-digest")
+        {
+            let digest = value.trim();
+            if digest.starts_with("sha256:") {
+                return Ok(digest.to_string());
+            }
+        }
+    }
+
+    anyhow::bail!("No Docker-Content-Digest header in ghcr.io response");
+}
+
 /// Perform the freshness check. Returns true if local image matches remote.
 ///
 /// Does NOT print any hints; callers decide how to react.
 pub fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
-    if matches!(runtime, SandboxRuntime::AppleContainer) {
-        return Ok(true);
-    }
-
-    let runtime_bin = runtime.binary_name();
-
-    // Get the digests the local image was pulled with (e.g. "registry/repo@sha256:abc...")
-    let local_digests =
-        get_local_repo_digests(runtime_bin, image).context("Failed to get local image digests")?;
-
     // Get the current remote manifest digest (e.g. "sha256:abc...")
     let remote_digest =
         get_remote_digest(image, runtime).context("Failed to get remote image digest")?;
 
-    // Check if any local RepoDigest contains the current remote digest
+    if matches!(runtime, SandboxRuntime::AppleContainer) {
+        // Apple Container: compare index.digest directly against remote
+        let local_digest =
+            get_apple_index_digest(image).context("Failed to get local Apple Container digest")?;
+        return Ok(local_digest == remote_digest);
+    }
+
+    let runtime_bin = runtime.binary_name();
+
+    // Docker/Podman: compare RepoDigests against remote
+    let local_digests =
+        get_local_repo_digests(runtime_bin, image).context("Failed to get local image digests")?;
+
     let is_fresh = local_digests.iter().any(|d| d.contains(&remote_digest));
 
     Ok(is_fresh)
@@ -267,18 +375,13 @@ pub fn is_official_image(image: &str) -> bool {
 /// Returns `Some(true)` if cached as stale (and local image hasn't changed),
 /// `Some(false)` if cached as fresh, `None` if no valid cache entry.
 pub fn cached_is_stale(image: &str, runtime: SandboxRuntime) -> Option<bool> {
-    if matches!(runtime, SandboxRuntime::AppleContainer) {
-        return Some(false);
-    }
-
     let cache = load_cache(image)?;
     if cache.is_fresh {
         return Some(false);
     }
 
     // Cached as stale: verify local image hasn't changed since
-    let runtime_bin = runtime.binary_name();
-    if let Ok(current_id) = get_local_image_id(runtime_bin, image)
+    if let Ok(current_id) = get_local_image_id(runtime, image)
         && cache.local_image_id.as_deref() == Some(&current_id)
     {
         Some(true)
@@ -293,12 +396,7 @@ pub fn cached_is_stale(image: &str, runtime: SandboxRuntime) -> Option<bool> {
 /// Call this after a successful `sandbox pull` so the staleness hint
 /// is not shown until the next TTL window.
 pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
-    if matches!(runtime, SandboxRuntime::AppleContainer) {
-        return;
-    }
-
-    let runtime_bin = runtime.binary_name();
-    let local_id = get_local_image_id(runtime_bin, image).ok();
+    let local_id = get_local_image_id(runtime, image).ok();
     let _ = save_cache(image, true, local_id);
 }
 
@@ -316,17 +414,10 @@ pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
 /// Silent on any failure (network issues, missing commands, etc.)
 pub fn check_in_background(image: String, runtime: SandboxRuntime) {
     std::thread::spawn(move || {
-        // Skip freshness checking for Apple Container
-        if matches!(runtime, SandboxRuntime::AppleContainer) {
-            return;
-        }
-
         // Only check official images from our registry
         if !is_official_image(&image) {
             return;
         }
-
-        let runtime_bin = runtime.binary_name();
 
         // Check cache first - if fresh, nothing to do
         if let Some(cache) = load_cache(&image) {
@@ -336,7 +427,7 @@ pub fn check_in_background(image: String, runtime: SandboxRuntime) {
 
             // Cached as stale: check if the local image has changed since then
             // (e.g. user ran `docker pull` or auto-pull updated it).
-            if let Ok(current_id) = get_local_image_id(runtime_bin, &image)
+            if let Ok(current_id) = get_local_image_id(runtime, &image)
                 && cache.local_image_id.as_deref() == Some(&current_id)
             {
                 // Same local image, still stale - no need to re-check
@@ -346,7 +437,7 @@ pub fn check_in_background(image: String, runtime: SandboxRuntime) {
         }
 
         // Perform freshness check
-        let local_id = get_local_image_id(runtime_bin, &image).ok();
+        let local_id = get_local_image_id(runtime, &image).ok();
         match check_freshness(&image, runtime) {
             Ok(is_fresh) => {
                 // Save result to cache (ignore errors)
@@ -423,16 +514,96 @@ mod tests {
     }
 
     #[test]
-    fn test_check_freshness_skips_apple_container() {
-        let result = check_freshness("test-image:latest", SandboxRuntime::AppleContainer);
-        // Should return Ok(true) immediately without running any commands
-        assert!(result.unwrap());
+    fn test_parse_apple_container_index_digest() {
+        let json = r#"[{"index":{"mediaType":"application/vnd.oci.image.index.v1+json","size":1609,"digest":"sha256:abc123"},"variants":[],"name":"ghcr.io/raine/workmux-sandbox:claude"}]"#;
+        let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+        let digest = parsed
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|entry| entry.pointer("/index/digest"))
+            .and_then(|d| d.as_str())
+            .unwrap();
+        assert_eq!(digest, "sha256:abc123");
     }
 
     #[test]
-    fn test_mark_fresh_skips_apple_container() {
-        // Should not panic or error -- just returns immediately
-        mark_fresh("test-image:latest", SandboxRuntime::AppleContainer);
+    fn test_parse_ghcr_docker_content_digest() {
+        let headers = "HTTP/2 200\r\ncontent-type: application/vnd.oci.image.index.v1+json\r\nDocker-Content-Digest: sha256:abc123\r\n";
+        let mut found = None;
+        for line in headers.lines() {
+            if let Some((key, value)) = line.split_once(':') {
+                if key.trim().eq_ignore_ascii_case("docker-content-digest") {
+                    let digest = value.trim();
+                    if digest.starts_with("sha256:") {
+                        found = Some(digest.to_string());
+                    }
+                }
+            }
+        }
+        assert_eq!(found.unwrap(), "sha256:abc123");
+    }
+
+    #[test]
+    fn test_parse_ghcr_docker_content_digest_lowercase() {
+        let headers = "HTTP/2 200\r\ndocker-content-digest: sha256:def456\r\n";
+        let mut found = None;
+        for line in headers.lines() {
+            if let Some((key, value)) = line.split_once(':') {
+                if key.trim().eq_ignore_ascii_case("docker-content-digest") {
+                    let digest = value.trim();
+                    if digest.starts_with("sha256:") {
+                        found = Some(digest.to_string());
+                    }
+                }
+            }
+        }
+        assert_eq!(found.unwrap(), "sha256:def456");
+    }
+
+    /// Integration tests that require Apple Container and network access.
+    /// Run with: cargo test apple_container -- --ignored
+    #[test]
+    #[ignore]
+    fn test_apple_container_local_digest() {
+        let digest = get_apple_index_digest("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        assert!(
+            digest.starts_with("sha256:"),
+            "expected sha256 digest, got: {}",
+            digest
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_apple_container_remote_digest() {
+        let digest = get_remote_digest_apple("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        assert!(
+            digest.starts_with("sha256:"),
+            "expected sha256 digest, got: {}",
+            digest
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn test_apple_container_freshness_check() {
+        // A just-pulled image should be fresh
+        let is_fresh = check_freshness(
+            "ghcr.io/raine/workmux-sandbox:claude",
+            SandboxRuntime::AppleContainer,
+        )
+        .unwrap();
+        assert!(is_fresh, "freshly pulled image should be detected as fresh");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_apple_container_digests_match() {
+        // Local index.digest and remote Docker-Content-Digest should be identical
+        // for a freshly pulled image
+        let local = get_apple_index_digest("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        let remote = get_remote_digest_apple("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        assert_eq!(local, remote, "local and remote digests should match");
     }
 
     #[test]

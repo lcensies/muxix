@@ -665,7 +665,7 @@ pub enum SandboxBackend {
 }
 
 /// Container runtime for sandbox
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxRuntime {
     /// Docker (default fallback when neither runtime is found in PATH)
@@ -1015,7 +1015,7 @@ pub struct ContainerConfig {
 
 impl ContainerConfig {
     pub fn runtime(&self) -> SandboxRuntime {
-        self.runtime.clone().unwrap_or_else(SandboxRuntime::detect)
+        self.runtime.unwrap_or_else(SandboxRuntime::detect)
     }
 
     /// Merge: project overrides global, per-field.
