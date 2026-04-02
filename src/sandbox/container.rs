@@ -146,8 +146,6 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
 pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
     let runtime = config.runtime();
 
-    println!("Pulling image '{}'...", image);
-
     let status = Command::new(runtime.binary_name())
         .args(runtime.pull_args(image))
         .status()

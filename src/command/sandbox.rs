@@ -198,6 +198,7 @@ fn run_pull() -> Result<()> {
     let agent = resolve_agent(&config);
     let image = config.sandbox.resolved_image(agent);
 
+    println!("Pulling image '{}'...", image);
     sandbox::pull_image(&config.sandbox, &image)?;
     sandbox::freshness::mark_fresh(&image, config.sandbox.runtime());
 
