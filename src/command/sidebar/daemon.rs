@@ -136,7 +136,9 @@ impl SocketServer {
                             _ => true,
                         };
                         if cache_ok {
-                            clients_clone.lock().unwrap().push(stream);
+                            let mut clients = clients_clone.lock().unwrap();
+                            clients.push(stream);
+                            tracing::debug!(clients = clients.len(), "sidebar client connected");
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -166,8 +168,17 @@ impl SocketServer {
 
         // Take clients out of mutex to avoid holding lock during writes
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
+        let before = clients.len();
         clients
             .retain_mut(|stream| stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok());
+        let dropped = before - clients.len();
+        if dropped > 0 {
+            tracing::info!(
+                dropped,
+                remaining = clients.len(),
+                "sidebar broadcast: clients disconnected"
+            );
+        }
         // Merge surviving clients back (append to preserve any new connections accepted during writes)
         self.clients.lock().unwrap().append(&mut clients);
     }
@@ -933,6 +944,8 @@ pub fn run() -> Result<()> {
     let config = Config::load(None)?;
     let status_icons = config.status_icons.clone();
 
+    tracing::info!(instance_id = %instance_id, "sidebar daemon starting");
+
     // Signal handlers for clean shutdown and dirty notification
     let term = Arc::new(AtomicBool::new(false));
     let dirty_flag = Arc::new(AtomicBool::new(false));
@@ -973,6 +986,7 @@ pub fn run() -> Result<()> {
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
     let mut last_agent_list = String::new();
+    let mut last_health_log = Instant::now();
     let refresh_interval = Duration::from_secs(2);
     let debounce_interval = Duration::from_millis(50);
 
@@ -1076,10 +1090,18 @@ pub fn run() -> Result<()> {
         }
 
         // Track client activity for auto-exit
-        if server.client_count() > 0 {
+        let cc = server.client_count();
+        if cc > 0 {
             last_client_seen = Instant::now();
         } else if last_client_seen.elapsed() > Duration::from_secs(10) {
+            tracing::info!("sidebar daemon exiting: no clients for 10s");
             break;
+        }
+
+        // Periodic health log (every 60s)
+        if last_health_log.elapsed() >= Duration::from_secs(60) {
+            tracing::info!(clients = cc, "sidebar daemon alive");
+            last_health_log = Instant::now();
         }
 
         // Block until woken by a producer or next refresh is due.
@@ -1093,6 +1115,10 @@ pub fn run() -> Result<()> {
                 .min(Duration::from_millis(100))
         };
         let _ = wake_rx.recv_timeout(wait);
+    }
+
+    if term.load(Ordering::Relaxed) {
+        tracing::info!("sidebar daemon exiting: SIGTERM received");
     }
 
     // Cleanup

@@ -58,6 +58,7 @@ pub fn run_sidebar() -> Result<()> {
     let mux = create_backend(detect_backend());
 
     if !mux.is_running().unwrap_or(false) {
+        tracing::info!("sidebar-run exiting: mux not running");
         return Ok(());
     }
 
@@ -128,7 +129,10 @@ pub fn run_sidebar() -> Result<()> {
                 }
                 continue;
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                tracing::info!("sidebar-run exiting: event channel disconnected");
+                break;
+            }
         };
 
         // Process first event
@@ -156,6 +160,11 @@ pub fn run_sidebar() -> Result<()> {
         }
 
         if app.should_quit {
+            tracing::info!(
+                host_window = ?app.host_window_id(),
+                quit_reason = app.quit_reason.as_deref().unwrap_or("unknown"),
+                "sidebar-run quitting"
+            );
             shutdown_all_sidebars();
             break;
         }
@@ -181,6 +190,7 @@ fn process_event(
                     && let Some(wid) = app.host_window_id()
                     && snapshot.window_pane_counts.get(wid).copied().unwrap_or(2) <= 1
                 {
+                    app.quit_reason = Some(format!("last-pane: window {} has <= 1 pane", wid));
                     app.should_quit = true;
                 }
                 app.apply_snapshot(snapshot);
@@ -192,6 +202,7 @@ fn process_event(
                 (KeyCode::Char('q'), _)
                 | (KeyCode::Esc, _)
                 | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
+                    app.quit_reason = Some("user keypress".to_string());
                     app.should_quit = true;
                 }
                 (KeyCode::Char('j'), _) | (KeyCode::Down, _) => app.next(),
