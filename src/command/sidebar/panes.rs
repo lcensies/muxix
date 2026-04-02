@@ -90,21 +90,25 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
 }
 
 /// Create sidebars in all existing tmux windows.
-pub(super) fn create_sidebars_in_all_windows(width: u16) -> Result<()> {
+///
+/// Computes width per-window from `#{window_width}` so each window gets a
+/// sidebar proportional to its own dimensions. Unattached sessions may have
+/// stale geometry, but `reflow()` corrects them on reattach.
+pub(super) fn create_sidebars_in_all_windows(config: &crate::config::Config) -> Result<()> {
     let output = Cmd::new("tmux")
-        .args(&["list-windows", "-a", "-F", "#{window_id}"])
+        .args(&["list-windows", "-a", "-F", "#{window_id} #{window_width}"])
         .run_and_capture_stdout()?;
 
-    debug!(width, "create_sidebars_in_all_windows: creating sidebars");
+    debug!("create_sidebars_in_all_windows: creating sidebars");
 
-    for window_id in output.lines() {
-        let window_id = window_id.trim();
-        if window_id.is_empty() {
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
             continue;
         }
-        // Use client-based width for all windows. Unattached sessions have stale
-        // #{window_width} from their last-seen client (window-size=latest), so
-        // per-window sizing gives wrong results for those sessions.
+        let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
+        let window_w: u16 = width_str.parse().unwrap_or(0);
+        let width = super::resolve_width_for(config, window_w);
         let _ = create_sidebar_in_window(window_id, width);
     }
 

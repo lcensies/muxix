@@ -47,7 +47,6 @@ const MAX_WIDTH: u16 = 50;
 /// Global tmux options set while the sidebar is active.
 const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
     "@workmux_sidebar_enabled",
-    "@workmux_sidebar_width",
     "@workmux_sidebar_agents",
     "@workmux_sleeping_panes",
 ];
@@ -57,21 +56,6 @@ fn clear_sidebar_globals() {
     for opt in SIDEBAR_GLOBAL_OPTIONS {
         let _ = Cmd::new("tmux").args(&["set-option", "-gu", opt]).run();
     }
-}
-
-/// Get the tmux client width in columns.
-fn terminal_width() -> u16 {
-    Cmd::new("tmux")
-        .args(&["display-message", "-p", "#{client_width}"])
-        .run_and_capture_stdout()
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-}
-
-/// Resolve sidebar width from config, falling back to 10% of terminal (clamped 25-50).
-fn resolve_width(config: &crate::config::Config) -> u16 {
-    resolve_width_for(config, terminal_width())
 }
 
 /// Resolve sidebar width for a given terminal/window width.
@@ -91,7 +75,6 @@ fn resolve_width_for(config: &crate::config::Config, tw: u16) -> u16 {
 /// Toggle the sidebar globally across all tmux windows.
 pub fn toggle() -> Result<()> {
     let config = crate::config::Config::load(None)?;
-    let width = resolve_width(&config);
 
     if std::env::var("TMUX").is_err() {
         return Err(anyhow!("Sidebar requires tmux"));
@@ -119,18 +102,14 @@ pub fn toggle() -> Result<()> {
     let _ = std::thread::spawn(crate::tips::mark_sidebar_used);
 
     // Current window missing sidebar → enable/repair globally
-    let width_str = width.to_string();
     Cmd::new("tmux")
         .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
-        .run()?;
-    Cmd::new("tmux")
-        .args(&["set-option", "-g", "@workmux_sidebar_width", &width_str])
         .run()?;
 
     // Ensure daemon is running (spawns if needed)
     ensure_daemon_running()?;
 
-    create_sidebars_in_all_windows(width)?;
+    create_sidebars_in_all_windows(&config)?;
     install_hooks()?;
 
     Ok(())
@@ -167,16 +146,17 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Read width from tmux global (set by toggle) or fall back to config
-    let width = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_width"])
+    // Compute sidebar width based on the target window's own width, not the
+    // stored global. The global is set once at toggle-time and may reflect a
+    // different client/terminal size than this window actually has.
+    let config = crate::config::Config::load(None).unwrap_or_default();
+    let window_w: u16 = Cmd::new("tmux")
+        .args(&["display-message", "-t", &target, "-p", "#{window_width}"])
         .run_and_capture_stdout()
         .ok()
-        .and_then(|s| s.trim().parse::<u16>().ok())
-        .unwrap_or_else(|| {
-            let config = crate::config::Config::load(None).unwrap_or_default();
-            resolve_width(&config)
-        });
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let width = resolve_width_for(&config, window_w);
     create_sidebar_in_window(&target, width)?;
 
     Ok(())
