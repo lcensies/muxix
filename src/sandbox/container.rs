@@ -204,19 +204,21 @@ pub fn ensure_image_ready(config: &SandboxConfig, image: &str) -> Result<()> {
             eprintln!("Updating sandbox image '{}'...", image);
             match pull_image(config, image) {
                 Ok(()) => {
-                    crate::sandbox::freshness::mark_fresh(image, runtime.clone());
+                    crate::sandbox::freshness::mark_fresh(image, runtime);
                 }
                 Err(e) => {
                     eprintln!(
                         "warning: failed to update sandbox image: {}; continuing with local image",
                         e
                     );
+                    // Still refresh cache in background so next run retries
+                    crate::sandbox::freshness::check_in_background(image.to_string(), runtime);
                 }
             }
+        } else {
+            // Not known stale: refresh cache in background for next run
+            crate::sandbox::freshness::check_in_background(image.to_string(), runtime);
         }
-
-        // Refresh cache in background for next run
-        crate::sandbox::freshness::check_in_background(image.to_string(), runtime);
     }
 
     Ok(())
