@@ -32,8 +32,17 @@ struct FreshnessCache {
     local_image_id: Option<String>,
 }
 
-/// Get the cache file path, optionally rooted at `base` (for testing).
-fn cache_file_path_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
+/// Turn an image reference into a safe filename component.
+///
+/// Replaces `/` and `:` with `-`, e.g.
+/// `ghcr.io/raine/workmux-sandbox:claude` becomes
+/// `ghcr.io-raine-workmux-sandbox-claude`.
+fn image_to_filename(image: &str) -> String {
+    image.replace(['/', ':'], "-")
+}
+
+/// Get the cache directory, optionally rooted at `base` (for testing).
+fn cache_dir_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
     let state_dir = if let Some(base) = base {
         base.join("workmux")
     } else if let Ok(xdg_state) = std::env::var("XDG_STATE_HOME") {
@@ -47,28 +56,29 @@ fn cache_file_path_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
     fs::create_dir_all(&state_dir)
         .with_context(|| format!("Failed to create state directory: {}", state_dir.display()))?;
 
-    Ok(state_dir.join("image-freshness.json"))
+    Ok(state_dir)
 }
 
-/// Get the cache file path.
-fn cache_file_path() -> Result<PathBuf> {
-    cache_file_path_in(None)
+/// Get the per-image cache file path, optionally rooted at `base` (for testing).
+fn cache_file_path_in(base: Option<&std::path::Path>, image: &str) -> Result<PathBuf> {
+    let dir = cache_dir_in(base)?;
+    Ok(dir.join(format!("image-freshness-{}.json", image_to_filename(image))))
+}
+
+/// Get the per-image cache file path.
+fn cache_file_path(image: &str) -> Result<PathBuf> {
+    cache_file_path_in(None, image)
 }
 
 /// Load cached freshness check result.
 fn load_cache(image: &str) -> Option<FreshnessCache> {
-    let cache_path = cache_file_path().ok()?;
+    let cache_path = cache_file_path(image).ok()?;
     if !cache_path.exists() {
         return None;
     }
 
     let contents = fs::read_to_string(&cache_path).ok()?;
     let cache: FreshnessCache = serde_json::from_str(&contents).ok()?;
-
-    // Check if cache is for the same image
-    if cache.image != image {
-        return None;
-    }
 
     // Check if cache is still valid (within TTL)
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
@@ -81,7 +91,7 @@ fn load_cache(image: &str) -> Option<FreshnessCache> {
 
 /// Save freshness check result to cache.
 fn save_cache(image: &str, is_fresh: bool, local_image_id: Option<String>) -> Result<()> {
-    let cache_path = cache_file_path()?;
+    let cache_path = cache_file_path(image)?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .context("Failed to get current time")?
@@ -319,11 +329,25 @@ mod tests {
     #[test]
     fn test_cache_file_path() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = cache_file_path_in(Some(tmp.path())).unwrap();
+        let path =
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:claude").unwrap();
         assert!(path.to_string_lossy().contains("workmux"));
-        assert!(path.to_string_lossy().ends_with("image-freshness.json"));
+        assert!(
+            path.to_string_lossy()
+                .ends_with("image-freshness-ghcr.io-raine-workmux-sandbox-claude.json")
+        );
         // Verify the directory was actually created
         assert!(path.parent().unwrap().is_dir());
+    }
+
+    #[test]
+    fn test_cache_file_path_per_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path_claude =
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        let path_codex =
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:codex").unwrap();
+        assert_ne!(path_claude, path_codex);
     }
 
     #[test]
