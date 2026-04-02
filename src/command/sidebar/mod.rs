@@ -59,8 +59,8 @@ pub(super) enum SidebarScope {
     Off,
     /// Sidebar active in all sessions.
     Global,
-    /// Sidebar active in a single session (by stable session_id like "$0").
-    Session(String),
+    /// Sidebar active in specific sessions (by stable session_id like "$0").
+    Sessions(std::collections::HashSet<String>),
 }
 
 /// Read the current sidebar scope from tmux.
@@ -74,7 +74,11 @@ pub(super) fn current_scope() -> SidebarScope {
     match raw.as_str() {
         "" => SidebarScope::Off,
         "global" => SidebarScope::Global,
-        session_id => SidebarScope::Session(session_id.to_string()),
+        ids => {
+            let set: std::collections::HashSet<String> =
+                ids.split_whitespace().map(String::from).collect();
+            SidebarScope::Sessions(set)
+        }
     }
 }
 
@@ -91,9 +95,11 @@ fn set_scope(scope: &SidebarScope) {
                 .args(&["set-option", "-g", "@workmux_sidebar_scope", "global"])
                 .run();
         }
-        SidebarScope::Session(id) => {
+        SidebarScope::Sessions(ids) => {
+            let val: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+            let val = val.join(" ");
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-g", "@workmux_sidebar_scope", id])
+                .args(&["set-option", "-g", "@workmux_sidebar_scope", &val])
                 .run();
         }
     }
@@ -151,10 +157,10 @@ pub fn toggle() -> Result<()> {
         return Err(anyhow!("Sidebar requires tmux"));
     }
 
-    // Can't enable global while session-scoped is active
-    if let SidebarScope::Session(_) = current_scope() {
+    // Can't enable global while session-scoped sidebars are active
+    if let SidebarScope::Sessions(_) = current_scope() {
         return Err(anyhow!(
-            "Session-scoped sidebar is active. Run `workmux sidebar --session` in that session to disable it first."
+            "Session-scoped sidebar is active. Run `workmux sidebar --session` to disable it first."
         ));
     }
 
@@ -205,18 +211,10 @@ pub fn toggle_session() -> Result<()> {
     let scope = current_scope();
     let session_id = get_current_session_id()?;
 
-    match &scope {
-        SidebarScope::Global => {
-            return Err(anyhow!(
-                "Global sidebar is active. Run `workmux sidebar` to disable it first."
-            ));
-        }
-        SidebarScope::Session(id) if *id != session_id => {
-            return Err(anyhow!(
-                "Another session already has sidebar active. Disable it first."
-            ));
-        }
-        _ => {}
+    if matches!(&scope, SidebarScope::Global) {
+        return Err(anyhow!(
+            "Global sidebar is active. Run `workmux sidebar` to disable it first."
+        ));
     }
 
     let current_window = Cmd::new("tmux")
@@ -230,18 +228,42 @@ pub fn toggle_session() -> Result<()> {
     if current_has_sidebar {
         // Toggle OFF for this session
         kill_sidebars_in_session(&session_id);
-        kill_daemon();
-        remove_hooks();
-        clear_sidebar_globals();
+
+        // Remove this session from the scope set
+        if let SidebarScope::Sessions(mut ids) = scope {
+            ids.remove(&session_id);
+            if ids.is_empty() {
+                // Last session removed: full cleanup
+                kill_daemon();
+                remove_hooks();
+                clear_sidebar_globals();
+            } else {
+                set_scope(&SidebarScope::Sessions(ids));
+            }
+        }
         return Ok(());
     }
 
+    // Toggle ON for this session
     let _ = std::thread::spawn(crate::tips::mark_sidebar_used);
 
     Cmd::new("tmux")
         .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
         .run()?;
-    set_scope(&SidebarScope::Session(session_id.clone()));
+
+    // Add this session to the scope set
+    let new_scope = match scope {
+        SidebarScope::Sessions(mut ids) => {
+            ids.insert(session_id.clone());
+            SidebarScope::Sessions(ids)
+        }
+        _ => {
+            let mut ids = std::collections::HashSet::new();
+            ids.insert(session_id.clone());
+            SidebarScope::Sessions(ids)
+        }
+    };
+    set_scope(&new_scope);
 
     ensure_daemon_running()?;
     create_sidebars_in_session(&session_id, &config)?;
@@ -277,10 +299,10 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Session filter: skip windows not in the scoped session (or on lookup failure)
-    if let SidebarScope::Session(ref sid) = scope {
+    // Session filter: skip windows not in a scoped session (or on lookup failure)
+    if let SidebarScope::Sessions(ref ids) = scope {
         match get_window_session_id(&target) {
-            Some(window_sid) if window_sid == *sid => {}
+            Some(window_sid) if ids.contains(&window_sid) => {}
             _ => return Ok(()),
         }
     }
@@ -321,10 +343,10 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Session filter: skip windows not in the scoped session (or on lookup failure)
-    if let SidebarScope::Session(ref sid) = scope {
+    // Session filter: skip windows not in a scoped session (or on lookup failure)
+    if let SidebarScope::Sessions(ref ids) = scope {
         match get_window_session_id(&target) {
-            Some(window_sid) if window_sid == *sid => {}
+            Some(window_sid) if ids.contains(&window_sid) => {}
             _ => return Ok(()),
         }
     }

@@ -95,9 +95,11 @@ workmux sidebar --session  # Enable in current session only
 workmux sidebar --session  # Run again to disable
 ```
 
-Only one scope (global or session) can be active at a time. Attempting to enable
-one while the other is active will show an error with instructions to disable
-the current scope first.
+You can enable session-scoped sidebars in multiple sessions independently. Each
+session can be toggled on/off without affecting others.
+
+Session-scoped and global modes cannot be mixed. Attempting to enable one while
+the other is active will show an error.
 
 ## Limitations
 

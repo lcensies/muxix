@@ -239,10 +239,13 @@ pub(super) fn kill_all_sidebars_and_restore_layouts() {
     }
 }
 
-/// Shut down all sidebars (called when any sidebar quits).
-/// Kills all other sidebar panes immediately, then defers our own window's
+/// Shut down sidebars (called when any sidebar quits).
+/// Kills other sidebar panes immediately, then defers our own window's
 /// layout reflow so it fires after our process exits and the pane closes.
-/// Respects session scope: in session mode, only kills sidebars in that session.
+///
+/// In session-scoped mode, only kills sidebars in our session and removes
+/// our session from the scope set. Full cleanup (daemon, hooks) only happens
+/// when no scoped sessions remain.
 pub(super) fn shutdown_all_sidebars() {
     let our_pane = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{pane_id}"])
@@ -259,9 +262,17 @@ pub(super) fn shutdown_all_sidebars() {
 
     let scope = super::current_scope();
 
+    // Determine our session_id for session-scoped filtering
+    let our_session_id = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{session_id}"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
     let sidebars = match &scope {
-        super::SidebarScope::Session(session_id) => {
-            // Session-scoped: only collect sidebars in the target session
+        super::SidebarScope::Sessions(ids) if !our_session_id.is_empty() => {
+            // Session-scoped: only collect sidebars in our session
             let output = Cmd::new("tmux")
                 .args(&[
                     "list-panes",
@@ -271,7 +282,8 @@ pub(super) fn shutdown_all_sidebars() {
                 ])
                 .run_and_capture_stdout()
                 .unwrap_or_default();
-            output
+            let our_sid = &our_session_id;
+            let sidebars: Vec<_> = output
                 .lines()
                 .filter_map(|line| {
                     let mut parts = line.splitn(4, ' ');
@@ -279,10 +291,21 @@ pub(super) fn shutdown_all_sidebars() {
                     let wid = parts.next()?;
                     let pid = parts.next()?;
                     let role = parts.next()?.trim();
-                    (role == SIDEBAR_ROLE_VALUE && sid == session_id)
+                    (role == SIDEBAR_ROLE_VALUE && sid == our_sid)
                         .then(|| (wid.to_string(), pid.to_string()))
                 })
-                .collect()
+                .collect();
+
+            // Update scope: remove our session from the set
+            let mut remaining = ids.clone();
+            remaining.remove(our_sid);
+            if remaining.is_empty() {
+                super::set_scope(&super::SidebarScope::Off);
+            } else {
+                super::set_scope(&super::SidebarScope::Sessions(remaining));
+            }
+
+            sidebars
         }
         _ => list_sidebar_panes(),
     };
@@ -314,12 +337,15 @@ pub(super) fn shutdown_all_sidebars() {
         }
     }
 
-    // Kill daemon
-    kill_daemon();
+    // Full cleanup only if no scoped sessions remain (or global mode)
+    let remaining_scope = super::current_scope();
+    let full_cleanup = !matches!(remaining_scope, super::SidebarScope::Sessions(_));
 
-    // Remove hooks and global options
-    remove_hooks();
-    super::clear_sidebar_globals();
+    if full_cleanup {
+        kill_daemon();
+        remove_hooks();
+        super::clear_sidebar_globals();
+    }
 
     // Defer our own window's layout reflow until after our pane closes
     if !our_window.is_empty()
