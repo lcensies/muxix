@@ -9,7 +9,8 @@ Shows all active agents across all sessions and projects with live status
 updates.
 
 ```bash
-workmux sidebar            # Toggle sidebar on/off
+workmux sidebar            # Toggle sidebar on/off (all sessions)
+workmux sidebar --session  # Toggle sidebar for current session only
 ```
 
 ## What it shows
@@ -83,6 +84,20 @@ sidebar automatically.
 
 Running `workmux sidebar` again disables the sidebar globally, killing all
 sidebar panes, the daemon, and removing hooks.
+
+### Session-scoped mode
+
+By default, the sidebar appears in all tmux sessions. Use `--session` to scope
+it to the current session only, leaving other sessions untouched:
+
+```bash
+workmux sidebar --session  # Enable in current session only
+workmux sidebar --session  # Run again to disable
+```
+
+Only one scope (global or session) can be active at a time. Attempting to enable
+one while the other is active will show an error with instructions to disable
+the current scope first.
 
 ## Limitations
 

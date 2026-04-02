@@ -1619,7 +1619,8 @@ providing an always-visible overview without taking over the full screen like
 the dashboard.
 
 ```bash
-workmux sidebar            # Toggle sidebar on/off
+workmux sidebar            # Toggle sidebar on/off (all sessions)
+workmux sidebar --session  # Toggle sidebar for current session only
 ```
 
 The sidebar displays:

@@ -36,8 +36,8 @@ use crate::cmd::Cmd;
 use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
 use self::hooks::{install_hooks, remove_hooks};
 use self::panes::{
-    create_sidebar_in_window, create_sidebars_in_all_windows, find_sidebar_in_window,
-    kill_all_sidebars_and_restore_layouts,
+    create_sidebar_in_window, create_sidebars_in_all_windows, create_sidebars_in_session,
+    find_sidebar_in_window, kill_all_sidebars_and_restore_layouts, kill_sidebars_in_session,
 };
 
 const SIDEBAR_ROLE_VALUE: &str = "sidebar";
@@ -49,7 +49,78 @@ const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
     "@workmux_sidebar_enabled",
     "@workmux_sidebar_agents",
     "@workmux_sleeping_panes",
+    "@workmux_sidebar_scope",
 ];
+
+/// Active sidebar scope on this tmux server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum SidebarScope {
+    /// No sidebar active.
+    Off,
+    /// Sidebar active in all sessions.
+    Global,
+    /// Sidebar active in a single session (by stable session_id like "$0").
+    Session(String),
+}
+
+/// Read the current sidebar scope from tmux.
+pub(super) fn current_scope() -> SidebarScope {
+    let raw = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    match raw.as_str() {
+        "" => SidebarScope::Off,
+        "global" => SidebarScope::Global,
+        session_id => SidebarScope::Session(session_id.to_string()),
+    }
+}
+
+/// Set the sidebar scope in tmux.
+fn set_scope(scope: &SidebarScope) {
+    match scope {
+        SidebarScope::Off => {
+            let _ = Cmd::new("tmux")
+                .args(&["set-option", "-gu", "@workmux_sidebar_scope"])
+                .run();
+        }
+        SidebarScope::Global => {
+            let _ = Cmd::new("tmux")
+                .args(&["set-option", "-g", "@workmux_sidebar_scope", "global"])
+                .run();
+        }
+        SidebarScope::Session(id) => {
+            let _ = Cmd::new("tmux")
+                .args(&["set-option", "-g", "@workmux_sidebar_scope", id])
+                .run();
+        }
+    }
+}
+
+/// Get the current tmux session's stable ID (e.g., "$0").
+fn get_current_session_id() -> Result<String> {
+    let s = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{session_id}"])
+        .run_and_capture_stdout()?
+        .trim()
+        .to_string();
+    if s.is_empty() {
+        return Err(anyhow!("could not detect tmux session"));
+    }
+    Ok(s)
+}
+
+/// Get the session_id a window belongs to.
+fn get_window_session_id(window_id: &str) -> Option<String> {
+    Cmd::new("tmux")
+        .args(&["display-message", "-t", window_id, "-p", "#{session_id}"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
 /// Unset all sidebar global tmux options.
 fn clear_sidebar_globals() {
@@ -80,6 +151,13 @@ pub fn toggle() -> Result<()> {
         return Err(anyhow!("Sidebar requires tmux"));
     }
 
+    // Can't enable global while session-scoped is active
+    if let SidebarScope::Session(_) = current_scope() {
+        return Err(anyhow!(
+            "Session-scoped sidebar is active. Run `workmux sidebar --session` in that session to disable it first."
+        ));
+    }
+
     // Determine intent based on the current window's state
     let current_window = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{window_id}"])
@@ -105,11 +183,68 @@ pub fn toggle() -> Result<()> {
     Cmd::new("tmux")
         .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
         .run()?;
+    set_scope(&SidebarScope::Global);
 
     // Ensure daemon is running (spawns if needed)
     ensure_daemon_running()?;
 
     create_sidebars_in_all_windows(&config)?;
+    install_hooks()?;
+
+    Ok(())
+}
+
+/// Toggle the sidebar for the current tmux session only.
+pub fn toggle_session() -> Result<()> {
+    let config = crate::config::Config::load(None)?;
+
+    if std::env::var("TMUX").is_err() {
+        return Err(anyhow!("Sidebar requires tmux"));
+    }
+
+    let scope = current_scope();
+    let session_id = get_current_session_id()?;
+
+    match &scope {
+        SidebarScope::Global => {
+            return Err(anyhow!(
+                "Global sidebar is active. Run `workmux sidebar` to disable it first."
+            ));
+        }
+        SidebarScope::Session(id) if *id != session_id => {
+            return Err(anyhow!(
+                "Another session already has sidebar active. Disable it first."
+            ));
+        }
+        _ => {}
+    }
+
+    let current_window = Cmd::new("tmux")
+        .args(&["display-message", "-p", "#{window_id}"])
+        .run_and_capture_stdout()?
+        .trim()
+        .to_string();
+
+    let current_has_sidebar = find_sidebar_in_window(&current_window).unwrap_or(false);
+
+    if current_has_sidebar {
+        // Toggle OFF for this session
+        kill_sidebars_in_session(&session_id);
+        kill_daemon();
+        remove_hooks();
+        clear_sidebar_globals();
+        return Ok(());
+    }
+
+    let _ = std::thread::spawn(crate::tips::mark_sidebar_used);
+
+    Cmd::new("tmux")
+        .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
+        .run()?;
+    set_scope(&SidebarScope::Session(session_id.clone()));
+
+    ensure_daemon_running()?;
+    create_sidebars_in_session(&session_id, &config)?;
     install_hooks()?;
 
     Ok(())
@@ -129,7 +264,8 @@ fn resolve_target_window(window_id: Option<&str>) -> Result<String> {
 
 /// Sync sidebar into a window (called by tmux hooks for new windows/sessions).
 pub fn sync(window_id: Option<&str>) -> Result<()> {
-    if !is_sidebar_enabled() {
+    let scope = current_scope();
+    if matches!(scope, SidebarScope::Off) {
         return Ok(());
     }
 
@@ -138,6 +274,14 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
 
     let target = resolve_target_window(window_id)?;
     if target.is_empty() {
+        return Ok(());
+    }
+
+    // Session filter: skip windows not in the scoped session
+    if let SidebarScope::Session(ref sid) = scope
+        && let Some(window_sid) = get_window_session_id(&target)
+        && window_sid != *sid
+    {
         return Ok(());
     }
 
@@ -167,12 +311,21 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
 /// Finds the sidebar pane in the target window and runs the layout tree
 /// reflow to keep the sidebar at the correct width and content panes balanced.
 pub fn reflow(window_id: Option<&str>) -> Result<()> {
-    if !is_sidebar_enabled() {
+    let scope = current_scope();
+    if matches!(scope, SidebarScope::Off) {
         return Ok(());
     }
 
     let target = resolve_target_window(window_id)?;
     if target.is_empty() {
+        return Ok(());
+    }
+
+    // Session filter: skip windows not in the scoped session
+    if let SidebarScope::Session(ref sid) = scope
+        && let Some(window_sid) = get_window_session_id(&target)
+        && window_sid != *sid
+    {
         return Ok(());
     }
 
@@ -219,14 +372,6 @@ pub fn run_daemon() -> Result<()> {
 /// Run the sidebar TUI (called by the hidden `_sidebar-run` command).
 pub fn run_sidebar() -> Result<()> {
     runtime::run_sidebar()
-}
-
-fn is_sidebar_enabled() -> bool {
-    Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
-        .run_and_capture_stdout()
-        .map(|s| s.trim() == "1")
-        .unwrap_or(false)
 }
 
 /// Navigation action for sidebar hotkeys.

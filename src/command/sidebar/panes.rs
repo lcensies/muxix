@@ -115,6 +115,80 @@ pub(super) fn create_sidebars_in_all_windows(config: &crate::config::Config) -> 
     Ok(())
 }
 
+/// Create sidebars in all windows of a specific session (by session_id).
+pub(super) fn create_sidebars_in_session(
+    session_id: &str,
+    config: &crate::config::Config,
+) -> Result<()> {
+    let output = Cmd::new("tmux")
+        .args(&[
+            "list-windows",
+            "-t",
+            session_id,
+            "-F",
+            "#{window_id} #{window_width}",
+        ])
+        .run_and_capture_stdout()?;
+
+    debug!(session_id, "create_sidebars_in_session: creating sidebars");
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
+        let window_w: u16 = width_str.parse().unwrap_or(0);
+        let width = super::resolve_width_for(config, window_w);
+        let _ = create_sidebar_in_window(window_id, width);
+    }
+    Ok(())
+}
+
+/// Kill sidebar panes only in a specific session (by session_id).
+/// Handles layout restoration for killed panes.
+pub(super) fn kill_sidebars_in_session(session_id: &str) {
+    let output = Cmd::new("tmux")
+        .args(&[
+            "list-panes",
+            "-a",
+            "-F",
+            "#{session_id} #{window_id} #{pane_id} #{@workmux_role}",
+        ])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    let session_sidebars: Vec<(String, String)> = output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(4, ' ');
+            let sid = parts.next()?;
+            let window_id = parts.next()?;
+            let pane_id = parts.next()?;
+            let role = parts.next()?.trim();
+            (role == SIDEBAR_ROLE_VALUE && sid == session_id)
+                .then(|| (window_id.to_string(), pane_id.to_string()))
+        })
+        .collect();
+
+    let layouts: Vec<_> = session_sidebars
+        .iter()
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .collect();
+
+    for (_, pane_id) in &session_sidebars {
+        let _ = Cmd::new("tmux").args(&["kill-pane", "-t", pane_id]).run();
+    }
+
+    for (i, (window_id, _)) in session_sidebars.iter().enumerate() {
+        if let Some(layout) = &layouts[i] {
+            let _ = Cmd::new("tmux")
+                .args(&["select-layout", "-t", window_id, layout])
+                .run();
+        }
+    }
+}
+
 /// Find all sidebar panes across all windows. Returns (window_id, pane_id) pairs.
 fn list_sidebar_panes() -> Vec<(String, String)> {
     let output = Cmd::new("tmux")
@@ -165,9 +239,10 @@ pub(super) fn kill_all_sidebars_and_restore_layouts() {
     }
 }
 
-/// Shut down all sidebars globally (called when any sidebar quits).
+/// Shut down all sidebars (called when any sidebar quits).
 /// Kills all other sidebar panes immediately, then defers our own window's
 /// layout reflow so it fires after our process exits and the pane closes.
+/// Respects session scope: in session mode, only kills sidebars in that session.
 pub(super) fn shutdown_all_sidebars() {
     let our_pane = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{pane_id}"])
@@ -182,7 +257,35 @@ pub(super) fn shutdown_all_sidebars() {
         .trim()
         .to_string();
 
-    let sidebars = list_sidebar_panes();
+    let scope = super::current_scope();
+
+    let sidebars = match &scope {
+        super::SidebarScope::Session(session_id) => {
+            // Session-scoped: only collect sidebars in the target session
+            let output = Cmd::new("tmux")
+                .args(&[
+                    "list-panes",
+                    "-a",
+                    "-F",
+                    "#{session_id} #{window_id} #{pane_id} #{@workmux_role}",
+                ])
+                .run_and_capture_stdout()
+                .unwrap_or_default();
+            output
+                .lines()
+                .filter_map(|line| {
+                    let mut parts = line.splitn(4, ' ');
+                    let sid = parts.next()?;
+                    let wid = parts.next()?;
+                    let pid = parts.next()?;
+                    let role = parts.next()?.trim();
+                    (role == SIDEBAR_ROLE_VALUE && sid == session_id)
+                        .then(|| (wid.to_string(), pid.to_string()))
+                })
+                .collect()
+        }
+        _ => list_sidebar_panes(),
+    };
 
     // Compute target layouts from the live tree before destroying any panes
     let computed_layouts: Vec<_> = sidebars

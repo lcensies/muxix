@@ -35,11 +35,13 @@ struct TmuxState {
     pane_window_ids: HashMap<String, String>,
     active_pane_ids: HashSet<String>,
     window_pane_counts: HashMap<String, usize>,
+    /// pane_id -> session_id (stable, survives renames)
+    pane_session_ids: HashMap<String, String>,
 }
 
 /// Query all sidebar-relevant tmux state in a single command.
 fn query_tmux_state() -> TmuxState {
-    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
+    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}\t#{session_id}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
@@ -50,6 +52,7 @@ fn query_tmux_state() -> TmuxState {
     let mut pane_window_ids = HashMap::new();
     let mut active_pane_ids = HashSet::new();
     let mut window_pane_counts: HashMap<String, usize> = HashMap::new();
+    let mut pane_session_ids = HashMap::new();
 
     for line in output.lines() {
         let mut parts = line.split('\t');
@@ -73,6 +76,7 @@ fn query_tmux_state() -> TmuxState {
         else {
             continue;
         };
+        let session_id = parts.next().unwrap_or("");
         let win_active = win_active == "1";
         let sess_attached = sess_attached == "1";
         let pane_active = pane_active == "1";
@@ -85,6 +89,9 @@ fn query_tmux_state() -> TmuxState {
         window_statuses.insert(pane_id.to_string(), status_val);
         pane_window_ids.insert(pane_id.to_string(), window_id.to_string());
         *window_pane_counts.entry(window_id.to_string()).or_default() += 1;
+        if !session_id.is_empty() {
+            pane_session_ids.insert(pane_id.to_string(), session_id.to_string());
+        }
 
         if win_active && sess_attached {
             active_windows.insert((session.to_string(), window_id.to_string()));
@@ -100,6 +107,7 @@ fn query_tmux_state() -> TmuxState {
         pane_window_ids,
         active_pane_ids,
         window_pane_counts,
+        pane_session_ids,
     }
 }
 
@@ -1016,7 +1024,26 @@ pub fn run() -> Result<()> {
             let agents = StateStore::new()
                 .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
                 .ok();
-            let Some(agents) = agents else { continue };
+            let Some(mut agents) = agents else { continue };
+
+            // Session-scoped filtering: only include agents in the target session
+            let scope_raw = Cmd::new("tmux")
+                .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
+                .run_and_capture_stdout()
+                .ok()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+            if !scope_raw.is_empty() && scope_raw != "global" {
+                let target_sid = &scope_raw;
+                agents.retain(|a| {
+                    tmux_state
+                        .pane_session_ids
+                        .get(&a.pane_id)
+                        .map(|sid| sid == target_sid)
+                        .unwrap_or(false)
+                });
+            }
+
             let layout_mode = read_sidebar_layout_mode(&config).unwrap_or_default();
             let sleeping_pane_ids = read_sleeping_panes();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
@@ -1672,6 +1699,7 @@ mod tests {
                         pane_window_ids: HashMap::new(),
                         active_pane_ids: HashSet::new(),
                         window_pane_counts: HashMap::new(),
+                        pane_session_ids: HashMap::new(),
                     },
                     captured_panes: captures,
                     now,

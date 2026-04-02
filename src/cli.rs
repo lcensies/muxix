@@ -597,6 +597,9 @@ enum Commands {
 
     /// Toggle a live agent status sidebar in tmux
     Sidebar {
+        /// Scope sidebar to current tmux session only
+        #[arg(long)]
+        session: bool,
         #[command(subcommand)]
         action: Option<SidebarAction>,
     },
@@ -946,7 +949,7 @@ pub fn run() -> Result<()> {
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
-        Commands::Sidebar { action } => match action {
+        Commands::Sidebar { session, action } => match action {
             Some(SidebarAction::Next) => {
                 command::sidebar::navigate(command::sidebar::NavAction::Next)
             }
@@ -956,7 +959,13 @@ pub fn run() -> Result<()> {
             Some(SidebarAction::Jump { index }) => {
                 command::sidebar::navigate(command::sidebar::NavAction::Jump(index as usize))
             }
-            None => command::sidebar::toggle(),
+            None => {
+                if session {
+                    command::sidebar::toggle_session()
+                } else {
+                    command::sidebar::toggle()
+                }
+            }
         },
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
