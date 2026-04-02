@@ -162,10 +162,19 @@ fn get_local_repo_digests(runtime: &str, image: &str) -> Result<Vec<String>> {
     Ok(digests)
 }
 
-/// Get the current remote manifest digest via `docker buildx imagetools inspect`.
+/// Get the current remote manifest digest.
 ///
-/// Parses the `Digest: sha256:...` line from the text output.
-fn get_remote_digest(image: &str) -> Result<String> {
+/// Uses runtime-appropriate tooling:
+/// - Docker: `docker buildx imagetools inspect` (parses `Digest:` line)
+/// - Podman: `podman manifest inspect` (parses JSON `digest` field from first manifest)
+fn get_remote_digest(image: &str, runtime: SandboxRuntime) -> Result<String> {
+    match runtime {
+        SandboxRuntime::Podman => get_remote_digest_podman(image),
+        _ => get_remote_digest_docker(image),
+    }
+}
+
+fn get_remote_digest_docker(image: &str) -> Result<String> {
     let output = Command::new("docker")
         .args(["buildx", "imagetools", "inspect", image])
         .output()
@@ -190,6 +199,35 @@ fn get_remote_digest(image: &str) -> Result<String> {
     anyhow::bail!("Could not find Digest in imagetools output");
 }
 
+fn get_remote_digest_podman(image: &str) -> Result<String> {
+    let output = Command::new("podman")
+        .args(["manifest", "inspect", image])
+        .output()
+        .context("Failed to run podman manifest inspect")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("podman manifest inspect failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(stdout.trim()).context("Failed to parse manifest JSON")?;
+
+    // OCI image index: look for digest in manifests array
+    if let Some(manifests) = json.get("manifests").and_then(|m| m.as_array()) {
+        for manifest in manifests {
+            if let Some(digest) = manifest.get("digest").and_then(|d| d.as_str())
+                && digest.starts_with("sha256:")
+            {
+                return Ok(digest.to_string());
+            }
+        }
+    }
+
+    anyhow::bail!("Could not find digest in podman manifest output");
+}
+
 /// Perform the freshness check. Returns true if local image matches remote.
 ///
 /// Does NOT print any hints; callers decide how to react.
@@ -205,7 +243,8 @@ pub fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
         get_local_repo_digests(runtime_bin, image).context("Failed to get local image digests")?;
 
     // Get the current remote manifest digest (e.g. "sha256:abc...")
-    let remote_digest = get_remote_digest(image).context("Failed to get remote image digest")?;
+    let remote_digest =
+        get_remote_digest(image, runtime).context("Failed to get remote image digest")?;
 
     // Check if any local RepoDigest contains the current remote digest
     let is_fresh = local_digests.iter().any(|d| d.contains(&remote_digest));
