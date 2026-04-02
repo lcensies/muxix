@@ -83,6 +83,17 @@ exec gosu "${WM_TARGET_UID}:${WM_TARGET_GID}" env HOME=/tmp "$@"
 SCRIPT
 RUN chmod +x /usr/local/bin/network-init.sh
 
+# Ensure host-exec shim directory is on PATH for login shells.
+# Agents like Codex run commands via login shell (bash -lc) which sources
+# /etc/profile, resetting PATH to system defaults and losing the shim
+# directory that workmux prepends. This profile.d script re-adds it.
+RUN cat <<'SCRIPT' > /etc/profile.d/workmux-shims.sh
+if [ -d /tmp/.workmux-shims/bin ]; then
+    PATH="/tmp/.workmux-shims/bin:$PATH"
+    export PATH
+fi
+SCRIPT
+
 ARG CACHE_BUST=1
 
 # Install workmux (needed for sandbox RPC)

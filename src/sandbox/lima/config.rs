@@ -160,6 +160,16 @@ pub fn generate_lima_config(
 set -eux
 apt-get update
 apt-get install -y --no-install-recommends curl ca-certificates git xz-utils
+
+# Ensure host-exec shim directory is on PATH for login shells.
+# Agents like Codex run commands via login shell (bash -lc) which sources
+# /etc/profile, resetting PATH and losing the shim directory.
+cat > /etc/profile.d/workmux-shims.sh <<'PROFILESCRIPT'
+if [ -d "$HOME/.workmux-state/shims/bin" ]; then
+    PATH="$HOME/.workmux-state/shims/bin:$PATH"
+    export PATH
+fi
+PROFILESCRIPT
 "#;
 
         let agent_install = lima_install_script_for_agent(agent);
