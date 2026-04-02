@@ -22,6 +22,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.172 (2026-04-02)
+
+- Automatically pull sandbox images when missing or stale, removing the need for
+  manual `workmux sandbox pull`
+  ([#115](https://github.com/raine/workmux/issues/115))
+- Fix `sandbox.host_commands` shims not available in agents that use login
+  shells (e.g. Codex, OpenCode)
+  ([#114](https://github.com/raine/workmux/issues/114))
+
 ## v0.1.171 (2026-04-02)
 
 - Fix sidebar daemon dropping all clients after 30s, causing sidebar panes to
