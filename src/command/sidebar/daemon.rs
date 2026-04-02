@@ -125,6 +125,11 @@ impl SocketServer {
             loop {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Clear inherited O_NONBLOCK from the listener.
+                        // Without this, write_all fails with WouldBlock when
+                        // the payload exceeds the socket buffer, and
+                        // set_write_timeout has no effect on non-blocking sockets.
+                        let _ = stream.set_nonblocking(false);
                         let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
                         // Send cached snapshot immediately so the client doesn't
                         // wait for the next tick (no dirty_flag needed).
@@ -176,6 +181,7 @@ impl SocketServer {
             tracing::info!(
                 dropped,
                 remaining = clients.len(),
+                payload_bytes = data.len(),
                 "sidebar broadcast: clients disconnected"
             );
         }
