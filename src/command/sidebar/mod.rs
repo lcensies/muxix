@@ -157,11 +157,12 @@ pub fn toggle() -> Result<()> {
         return Err(anyhow!("Sidebar requires tmux"));
     }
 
-    // Can't enable global while session-scoped sidebars are active
+    // If session-scoped sidebars are active, clean them up first
     if let SidebarScope::Sessions(_) = current_scope() {
-        return Err(anyhow!(
-            "Session-scoped sidebar is active. Run `workmux sidebar --session` to disable it first."
-        ));
+        kill_all_sidebars_and_restore_layouts();
+        kill_daemon();
+        remove_hooks();
+        clear_sidebar_globals();
     }
 
     // Determine intent based on the current window's state
