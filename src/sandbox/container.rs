@@ -160,6 +160,70 @@ pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
     Ok(())
 }
 
+/// Ensure the container image is ready to run.
+///
+/// - If the image is missing and it's an official image, pull it automatically.
+/// - If the image exists but is stale (per freshness cache), pull the update.
+///   If the update pull fails, warn and continue with the local image.
+/// - For custom (non-official) images, only check existence.
+/// - Kicks off a background freshness cache update for the next run.
+pub fn ensure_image_ready(config: &SandboxConfig, image: &str) -> Result<()> {
+    let runtime = config.runtime();
+    let runtime_bin = runtime.binary_name();
+    let runtime_display = runtime.display_name();
+    let is_official = crate::sandbox::freshness::is_official_image(image);
+
+    // Check if image exists locally
+    let exists = Command::new(runtime_bin)
+        .args(["image", "inspect", image])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !exists {
+        if is_official {
+            eprintln!("Image '{}' not found locally, pulling...", image);
+            pull_image(config, image)?;
+            crate::sandbox::freshness::mark_fresh(image, runtime);
+            return Ok(());
+        } else {
+            anyhow::bail!(
+                "Image '{}' not found in {} image store. \
+                 If you built this image with a different runtime \
+                 (e.g. docker vs apple-container), it won't be visible here.",
+                image,
+                runtime_display,
+            );
+        }
+    }
+
+    // Image exists. For official images, check if it's stale.
+    if is_official {
+        let stale = crate::sandbox::freshness::cached_is_stale(image, runtime.clone());
+        if stale == Some(true) {
+            eprintln!("Updating sandbox image '{}'...", image);
+            match pull_image(config, image) {
+                Ok(()) => {
+                    crate::sandbox::freshness::mark_fresh(image, runtime.clone());
+                }
+                Err(e) => {
+                    eprintln!(
+                        "warning: failed to update sandbox image: {}; continuing with local image",
+                        e
+                    );
+                }
+            }
+        }
+
+        // Refresh cache in background for next run
+        crate::sandbox::freshness::check_in_background(image.to_string(), runtime);
+    }
+
+    Ok(())
+}
+
 /// Build the argument list for a `docker run` command.
 ///
 /// Returns the full arg vector (excluding the runtime binary name itself).

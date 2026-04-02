@@ -180,8 +180,10 @@ fn get_remote_digest(image: &str) -> Result<String> {
     anyhow::bail!("Could not find Digest in imagetools output");
 }
 
-/// Perform the freshness check and print hint if stale.
-fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
+/// Perform the freshness check. Returns true if local image matches remote.
+///
+/// Does NOT print any hints; callers decide how to react.
+pub fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
     if matches!(runtime, SandboxRuntime::AppleContainer) {
         return Ok(true);
     }
@@ -198,13 +200,38 @@ fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
     // Check if any local RepoDigest contains the current remote digest
     let is_fresh = local_digests.iter().any(|d| d.contains(&remote_digest));
 
-    if !is_fresh {
-        eprintln!(
-            "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
-        );
+    Ok(is_fresh)
+}
+
+/// Check if an image is from the official workmux registry.
+pub fn is_official_image(image: &str) -> bool {
+    image.starts_with(DEFAULT_IMAGE_REGISTRY)
+}
+
+/// Check if the cached freshness status says the image is stale.
+///
+/// Returns `Some(true)` if cached as stale (and local image hasn't changed),
+/// `Some(false)` if cached as fresh, `None` if no valid cache entry.
+pub fn cached_is_stale(image: &str, runtime: SandboxRuntime) -> Option<bool> {
+    if matches!(runtime, SandboxRuntime::AppleContainer) {
+        return Some(false);
     }
 
-    Ok(is_fresh)
+    let cache = load_cache(image)?;
+    if cache.is_fresh {
+        return Some(false);
+    }
+
+    // Cached as stale: verify local image hasn't changed since
+    let runtime_bin = runtime.binary_name();
+    if let Ok(current_id) = get_local_image_id(runtime_bin, image)
+        && cache.local_image_id.as_deref() == Some(&current_id)
+    {
+        Some(true)
+    } else {
+        // Local image changed or couldn't be checked, cache is inconclusive
+        None
+    }
 }
 
 /// Mark an image as fresh in the cache.
@@ -221,14 +248,16 @@ pub fn mark_fresh(image: &str, runtime: SandboxRuntime) {
     let _ = save_cache(image, true, local_id);
 }
 
-/// Check image freshness in background (non-blocking).
+/// Update the freshness cache in background (non-blocking).
 ///
 /// Spawns a detached thread that:
 /// 1. Checks if image is from official registry (returns early if not)
-/// 2. Checks cache (returns early if recently checked)
+/// 2. Checks cache (returns early if recently checked and fresh)
 /// 3. Compares local vs remote digests
-/// 4. Prints hint to stderr if stale
-/// 5. Updates cache with result
+/// 4. Updates cache with result
+///
+/// Does not print hints or trigger pulls. The synchronous preflight
+/// in `ensure_image_ready` handles those actions using the cached state.
 ///
 /// Silent on any failure (network issues, missing commands, etc.)
 pub fn check_in_background(image: String, runtime: SandboxRuntime) {
@@ -239,27 +268,24 @@ pub fn check_in_background(image: String, runtime: SandboxRuntime) {
         }
 
         // Only check official images from our registry
-        if !image.starts_with(DEFAULT_IMAGE_REGISTRY) {
+        if !is_official_image(&image) {
             return;
         }
 
         let runtime_bin = runtime.binary_name();
 
-        // Check cache first
+        // Check cache first - if fresh, nothing to do
         if let Some(cache) = load_cache(&image) {
             if cache.is_fresh {
                 return;
             }
 
             // Cached as stale: check if the local image has changed since then
-            // (e.g. user ran `docker pull` directly). This is a cheap local check.
+            // (e.g. user ran `docker pull` or auto-pull updated it).
             if let Ok(current_id) = get_local_image_id(runtime_bin, &image)
                 && cache.local_image_id.as_deref() == Some(&current_id)
             {
-                // Same local image, still stale
-                eprintln!(
-                    "hint: a newer sandbox image is available (run `workmux sandbox pull` to update)"
-                );
+                // Same local image, still stale - no need to re-check
                 return;
             }
             // Local image changed or couldn't be checked - fall through to re-check

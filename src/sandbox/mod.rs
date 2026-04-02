@@ -17,6 +17,7 @@ pub use container::KNOWN_AGENTS;
 pub(crate) use container::build_docker_run_args;
 pub use container::build_image;
 pub use container::dockerfile_for_agent;
+pub use container::ensure_image_ready;
 pub(crate) use container::ensure_sandbox_config_dirs;
 pub use container::pull_image;
 pub use container::stop_containers_for_handle;

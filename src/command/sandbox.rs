@@ -1057,23 +1057,8 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         let image = config.sandbox.resolved_image(agent);
         eprintln!("sandbox: image={} runtime={}", image, runtime_display);
 
-        // Pre-flight: verify image exists in the selected runtime's store
-        let inspect = Command::new(runtime_bin)
-            .args(["image", "inspect", &image])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        if let Ok(status) = inspect
-            && !status.success()
-        {
-            bail!(
-                "Image '{}' not found in {} image store. \
-                 If you built this image with a different runtime \
-                 (e.g. docker vs apple-container), it won't be visible here.",
-                image,
-                runtime_display,
-            );
-        }
+        // Ensure image is present and up-to-date (pulls if missing or stale)
+        sandbox::ensure_image_ready(&config.sandbox, &image)?;
 
         debug!(runtime = runtime_bin, %image, args = ?redacted_args, "starting shell container");
 
