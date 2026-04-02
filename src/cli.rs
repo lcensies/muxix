@@ -598,7 +598,7 @@ enum Commands {
     /// Toggle a live agent status sidebar in tmux
     Sidebar {
         /// Scope sidebar to current tmux session only
-        #[arg(long)]
+        #[arg(short = 's', long)]
         session: bool,
         #[command(subcommand)]
         action: Option<SidebarAction>,
