@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.175 (2026-04-03)
+
+- Mount OpenCode's global config directory (`~/.config/opencode/`) into the
+  sandbox, providing access to `opencode.json`, plugins, and global MCP
+  definitions ([#117](https://github.com/raine/workmux/issues/117))
+
 ## v0.1.174 (2026-04-03)
 
 - Fix concurrent `workmux add` commands failing with "could not lock config
