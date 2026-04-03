@@ -59,10 +59,10 @@ class TestShellCompatibility:
 
         env.configure_default_shell(shell_cmd.path)
 
-        # Write RC file that sets an env var
+        # Append env var to RC file (base PATH already set by MuxEnvironment)
         rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(shell_cmd.set_env("TEST_MARKER", "env_var_works") + "\n")
+        with rc_path.open("a") as f:
+            f.write(shell_cmd.set_env("TEST_MARKER", "env_var_works") + "\n")
 
         # Use shell-specific env var reference syntax
         write_workmux_config(

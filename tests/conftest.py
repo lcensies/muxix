@@ -168,11 +168,22 @@ class MuxEnvironment(ABC):
         self.home_path = self.tmp_path / "test_home"
         self.home_path.mkdir()
 
-        # Prevent shell config issues
-        (self.home_path / ".zshrc").touch()
+        # Create a shared fake-bin directory for test agent scripts.
+        # Write base RC files for every supported shell that prepend this
+        # directory to PATH.  This survives macOS path_helper reordering
+        # in login shells, which would otherwise push the fake dir to the
+        # end of PATH and let a real installed agent win.
+        self.fake_bin_dir = self.tmp_path / "fake-bin"
+        self.fake_bin_dir.mkdir()
+        for shell_name in ["bash", "zsh", "fish", "nu"]:
+            sc = ShellCommands(shell_name)
+            rc_path = self.home_path / sc.rc_filename
+            rc_path.parent.mkdir(parents=True, exist_ok=True)
+            rc_path.write_text(sc.prepend_path(str(self.fake_bin_dir)) + "\n")
 
         # Base environment setup
         self.env = os.environ.copy()
+        self.env["PATH"] = f"{self.fake_bin_dir}:{self.env.get('PATH', '')}"
         self.env["TMPDIR"] = str(self.tmp_path)
         self.env["HOME"] = str(self.home_path)
         # Explicitly set XDG_STATE_HOME to ensure state files are isolated
@@ -958,27 +969,23 @@ def repo_builder(mux_server: MuxEnvironment, repo_path: Path) -> RepoBuilder:
 
 @dataclass
 class FakeAgentInstaller:
-    """Factory for installing fake agent commands in tests."""
+    """Factory for installing fake agent commands in tests.
+
+    Scripts are placed in MuxEnvironment.fake_bin_dir, which is already
+    on PATH via both the subprocess environment and shell RC files.
+    """
 
     env: MuxEnvironment
-    _bin_dir: Path | None = None
 
     @property
     def bin_dir(self) -> Path:
-        if self._bin_dir is None:
-            self._bin_dir = self.env.tmp_path / "agents-bin"
-            self._bin_dir.mkdir(exist_ok=True)
-        return self._bin_dir
+        return self.env.fake_bin_dir
 
     def install(self, name: str, script_body: str) -> Path:
-        """Creates a fake agent command in PATH so panes can invoke it."""
+        """Creates a fake agent command; the bin dir is already on PATH."""
         script_path = self.bin_dir / name
         script_path.write_text(script_body)
         script_path.chmod(0o755)
-
-        new_path = f"{self.bin_dir}:{self.env.env.get('PATH', '')}"
-        self.env.env["PATH"] = new_path
-        self.env.set_session_env("PATH", new_path)
         return script_path
 
 

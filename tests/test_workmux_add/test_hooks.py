@@ -126,14 +126,10 @@ class TestShellRcFiles:
         # Configure the default shell
         env.configure_default_shell(shell_cmd.path)
 
-        # Write the appropriate RC file for this shell
+        # Append alias to RC file (base PATH already set by MuxEnvironment)
         rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_content = f"""
-# Test alias
-{shell_cmd.alias("testcmd", f'echo "{alias_output}"')}
-"""
-        rc_path.write_text(rc_content)
+        with rc_path.open("a") as f:
+            f.write(shell_cmd.alias("testcmd", f'echo "{alias_output}"') + "\n")
 
         write_workmux_config(mux_repo_path, panes=[{"command": "testcmd"}])
 

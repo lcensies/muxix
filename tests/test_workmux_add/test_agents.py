@@ -56,13 +56,6 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Write RC file with PATH to fake agent
-        rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(
-            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
-        )
-
         # Use agent name - shell will find it via PATH from RC file
         write_workmux_config(
             mux_repo_path, agent="claude", panes=[{"command": "<agent>"}]
@@ -130,13 +123,6 @@ printf '%s' "$2" > "{output_filename}"
 """,
         )
 
-        # Write RC file with PATH to fake agent
-        rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(
-            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
-        )
-
         # Use agent name - shell will find it via PATH from RC file
         write_workmux_config(
             mux_repo_path, agent="gemini", panes=[{"command": "<agent>"}]
@@ -196,13 +182,6 @@ set -e
 # Gemini gets a -i flag, then the prompt as $2
 printf '%s' "$2" > "{output_filename}"
 """,
-        )
-
-        # Write RC file with PATH to fake agent
-        rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(
-            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
         )
 
         # Configure .workmux.yaml to use the agent name (found via PATH)
@@ -696,17 +675,10 @@ class TestShellAliases:
         # Configure the default shell
         env.configure_default_shell(shell_cmd.path)
 
-        # Get the path where the fake agent will be installed
-        fake_bin_dir = fake_agent_installer.bin_dir
-
-        # Write shell-appropriate RC file that prepends our fake bin to PATH and defines alias
+        # Append alias definition to RC file (PATH is already set by MuxEnvironment)
         rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_content = f"""
-{shell_cmd.prepend_path(str(fake_bin_dir))}
-{shell_cmd.alias("claude", "claude --aliased")}
-"""
-        rc_path.write_text(rc_content.strip() + "\n")
+        with rc_path.open("a") as f:
+            f.write(shell_cmd.alias("claude", "claude --aliased") + "\n")
 
         fake_agent_installer.install(
             "claude",
@@ -1024,12 +996,6 @@ class TestPromptFileOnly:
 # In file-only mode, claude should receive no arguments.
 echo "ARGS:$@" > "{output_filename}"
 """,
-        )
-
-        rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(
-            shell_cmd.prepend_path(str(fake_agent_installer.bin_dir)) + "\n"
         )
 
         write_workmux_config(

@@ -36,11 +36,11 @@ class TestLoginShell:
         # 1. Configure the shell
         env.configure_default_shell(shell_cmd.path)
 
-        # 2. Create RC file that creates a marker file
-        # This file is only sourced if the shell starts properly
+        # 2. Append marker creation to RC file
+        # This is only executed if the shell starts properly
         rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(f"touch {marker_file}\n")
+        with rc_path.open("a") as f:
+            f.write(f"touch {marker_file}\n")
 
         # 3. Create workmux config with a command
         # A command is required to trigger the wrapper logic in setup_panes
@@ -70,10 +70,10 @@ class TestLoginShell:
         # 1. Configure the shell
         env.configure_default_shell(shell_cmd.path)
 
-        # 2. Create RC file that appends to a log
+        # 2. Append log-writing to RC file
         rc_path = env.home_path / shell_cmd.rc_filename
-        rc_path.parent.mkdir(parents=True, exist_ok=True)
-        rc_path.write_text(shell_cmd.append_to_file("loaded", str(log_file)) + "\n")
+        with rc_path.open("a") as f:
+            f.write(shell_cmd.append_to_file("loaded", str(log_file)) + "\n")
 
         # 3. Create workmux config with two panes (one initial, one split)
         write_workmux_config(
