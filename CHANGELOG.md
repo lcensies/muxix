@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.177 (2026-04-03)
+
+- Fix OpenCode sandbox passing unnecessary OPENCODE_CONFIG environment variable
+  to containers
+
 ## v0.1.176 (2026-04-03)
 
 - Fix pi agent exiting immediately after prompt injection instead of staying in
