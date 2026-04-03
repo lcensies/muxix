@@ -175,7 +175,7 @@ class MuxEnvironment(ABC):
         # end of PATH and let a real installed agent win.
         self.fake_bin_dir = self.tmp_path / "fake-bin"
         self.fake_bin_dir.mkdir()
-        for shell_name in ["bash", "zsh", "fish", "nu"]:
+        for shell_name in SHELL_NAMES:
             sc = ShellCommands(shell_name)
             rc_path = self.home_path / sc.rc_filename
             rc_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1542,6 +1542,7 @@ trap 'echo $? > {shlex.quote(str(exit_code_file))}' EXIT
 export PATH={shlex.quote(env.env["PATH"])}
 export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
 export HOME={shlex.quote(env.env.get("HOME", ""))}
+export SHELL={shlex.quote(env.env.get("SHELL", os.environ.get("SHELL", "/bin/sh")))}
 export WORKMUX_TEST=1
 cd {shlex.quote(str(workdir))}
 {pipe_cmd}{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
