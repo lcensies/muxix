@@ -16,16 +16,14 @@ for running multiple AI agents in parallel without conflict.
 windowing, git for worktrees, your agent for coding — workmux orchestrates the
 rest.
 
-::: tip New to workmux?
-Read the
+::: tip New to workmux? Read the
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
-quick overview.
-:::
+quick overview. :::
 
 ## Why workmux?
 
-**Parallel workflows.** Work on multiple features or hotfixes at the same time,
-each with its own AI agent. No stashing, no branch switching, no conflicts.
+**Parallel workflows.** Work on multiple features at the same time, each with
+its own AI agent. No stashing, no branch switching, no conflicts.
 
 **One window per task.** A natural mental model. Each has its own terminal
 state, editor session, dev server, and AI agent. Context switching is switching

@@ -45,8 +45,8 @@ quick overview.
 
 ## Why workmux?
 
-**Parallel workflows.** Work on multiple features or hotfixes at the same time,
-each with its own AI agent. No stashing, no branch switching, no conflicts.
+**Parallel workflows.** Work on multiple features the same time, each with its
+own AI agent. No stashing, no branch switching, no conflicts.
 
 **One window per task.** A natural mental model. Each has its own terminal
 state, editor session, dev server, and AI agent. Context switching is switching
@@ -2406,15 +2406,19 @@ to `.gitignore`:
 
 **Skip permission prompts (yolo mode)**
 
-To skip prompts entirely, define a [named agent](https://workmux.raine.dev/guide/agents#named-agents) that shadows `claude`:
+To skip prompts entirely, define a
+[named agent](https://workmux.raine.dev/guide/agents#named-agents) that shadows
+`claude`:
 
 ```yaml
 # ~/.config/workmux/config.yaml
 agents:
-  claude: "claude --dangerously-skip-permissions"
+  claude: 'claude --dangerously-skip-permissions'
 ```
 
-This makes all workmux-created worktrees use the flag automatically, without affecting `claude` outside of workmux. You can also use a separate name and reference it per-project with `agent: cc-yolo`.
+This makes all workmux-created worktrees use the flag automatically, without
+affecting `claude` outside of workmux. You can also use a separate name and
+reference it per-project with `agent: cc-yolo`.
 
 ### Delegating tasks with `/worktree`
 
