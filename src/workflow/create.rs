@@ -342,6 +342,12 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         "create:creating worktree"
     );
 
+    // Acquire an exclusive lock to serialize .git/config writes across parallel
+    // workmux processes. Without this, concurrent `workmux add` commands race on
+    // git's config.lock file and fail with "could not lock config file".
+    let _config_lock = git::GitConfigLock::acquire(&context.git_common_dir)
+        .context("Failed to acquire git config lock")?;
+
     git::create_worktree(
         &worktree_path,
         branch_name,
@@ -383,6 +389,10 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         mode = mode_str,
         "create:stored tmux mode in git config"
     );
+
+    // Release the config lock before proceeding to non-git operations
+    // (prompt files, tmux setup, hooks, etc.)
+    drop(_config_lock);
 
     // Write prompt file to worktree if provided
     let prompt_file_path = if let Some(p) = prompt {
