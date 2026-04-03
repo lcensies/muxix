@@ -446,8 +446,6 @@ pub fn build_docker_run_args(
             cfg_dir.display(),
             target
         ));
-        args.push("--env".to_string());
-        args.push(format!("OPENCODE_CONFIG={}", target));
     }
 
     // Terminal vars
