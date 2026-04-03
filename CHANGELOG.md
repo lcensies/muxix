@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.174 (2026-04-03)
+
+- Fix concurrent `workmux add` commands failing with "could not lock config
+  file" errors when creating multiple worktrees in parallel
+  ([#116](https://github.com/raine/workmux/issues/116))
+
 ## v0.1.173 (2026-04-02)
 
 - Add `--session` flag to `workmux sidebar` to scope the sidebar to a single
