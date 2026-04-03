@@ -38,8 +38,12 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
     // 2. Resolve all targets and validate they exist
     let mut candidates: Vec<(String, PathBuf, String)> = Vec::new();
     for name in resolved_names {
-        let (worktree_path, branch_name) = git::find_worktree(&name)
-            .with_context(|| format!("No worktree found with name '{}'", name))?;
+        let (worktree_path, branch_name) = git::find_worktree(&name).map_err(|_| {
+            anyhow!(
+                "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                name
+            )
+        })?;
 
         let handle = worktree_path
             .file_name()

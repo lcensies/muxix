@@ -13,9 +13,9 @@ pub fn run(name: Option<&str>) -> Result<()> {
     // and branch lookups, then we extract the true handle from the path basename.
     let resolved_handle = match name {
         Some(n) => {
-            let (path, _branch) = git::find_worktree(n).with_context(|| {
-                format!(
-                    "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
+            let (path, _branch) = git::find_worktree(n).map_err(|_| {
+                anyhow!(
+                    "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
                     n
                 )
             })?;

@@ -117,9 +117,7 @@ pub fn run(
             new_window,
             session,
             file_only_prompt,
-        )
-        .context("Failed to open worktree environment")
-        {
+        ) {
             Ok(result) => {
                 let target_type = match result.mode {
                     MuxMode::Session => "session",
@@ -147,7 +145,7 @@ pub fn run(
                 }
             }
             Err(e) => {
-                eprintln!("✗ Failed to open '{}': {:#}", resolved_name, e);
+                eprintln!("✗ {:#}", e);
                 errors.push((resolved_name.clone(), e));
             }
         }
@@ -155,11 +153,12 @@ pub fn run(
 
     if errors.is_empty() {
         Ok(())
+    } else if resolved_names.len() == 1 {
+        // Single worktree: error already printed, just exit
+        std::process::exit(1);
     } else if errors.len() == resolved_names.len() {
-        // All failed
         bail!("Failed to open all {} worktrees", errors.len())
     } else {
-        // Some failed
         bail!(
             "Failed to open {} of {} worktrees",
             errors.len(),

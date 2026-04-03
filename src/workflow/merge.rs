@@ -38,8 +38,12 @@ pub fn merge(
     context.chdir_to_main_worktree()?;
 
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_to_merge) = git::find_worktree(name)
-        .with_context(|| format!("No worktree found with name '{}'", name))?;
+    let (worktree_path, branch_to_merge) = git::find_worktree(name).map_err(|_| {
+        anyhow!(
+            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+            name
+        )
+    })?;
 
     // The handle is the basename of the worktree directory (used for tmux operations)
     let handle = worktree_path

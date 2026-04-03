@@ -282,7 +282,7 @@ def test_open_fails_when_worktree_missing(
         expect_fail=True,
     )
 
-    assert "No worktree found with name" in result.stderr
+    assert "not found" in result.stderr
 
 
 def test_open_with_run_hooks_reexecutes_post_create_commands(

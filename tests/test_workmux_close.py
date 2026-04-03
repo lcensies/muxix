@@ -144,7 +144,7 @@ def test_close_fails_when_worktree_missing(
         expect_fail=True,
     )
 
-    assert "No worktree found with name" in result.stderr
+    assert "not found" in result.stderr
 
 
 def test_close_can_reopen_with_open(

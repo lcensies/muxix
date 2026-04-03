@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 
 use crate::git;
 use crate::sandbox;
@@ -19,8 +19,12 @@ pub fn remove(
 
     // Get worktree path and branch - this also validates that the worktree exists
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_name) = git::find_worktree(handle)
-        .with_context(|| format!("No worktree found with name '{}'", handle))?;
+    let (worktree_path, branch_name) = git::find_worktree(handle).map_err(|_| {
+        anyhow!(
+            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+            handle
+        )
+    })?;
 
     // Extract actual handle from worktree path (directory name)
     // User may have provided branch name (with slashes) but window names use handle (with dashes)

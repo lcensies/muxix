@@ -43,9 +43,9 @@ pub fn open(
 
     // This command requires the worktree to already exist
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_name) = git::find_worktree(name).with_context(|| {
-        format!(
-            "No worktree found with name '{}'. Use 'workmux list' to see available worktrees.",
+    let (worktree_path, branch_name) = git::find_worktree(name).map_err(|_| {
+        anyhow!(
+            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
             name
         )
     })?;
