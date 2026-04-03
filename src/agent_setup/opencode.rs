@@ -16,7 +16,7 @@ use super::StatusCheck;
 /// The OpenCode plugin source, embedded at compile time.
 const PLUGIN_SOURCE: &str = include_str!("../../.opencode/plugin/workmux-status.ts");
 
-fn opencode_config_dir() -> Option<PathBuf> {
+pub fn opencode_config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("OPENCODE_CONFIG") {
         return Some(PathBuf::from(dir));
     }

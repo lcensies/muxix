@@ -432,6 +432,24 @@ pub fn build_docker_run_args(
         ));
     }
 
+    // Mount opencode global config directory (~/.config/opencode/) read-only.
+    // This is separate from the data directory (~/.local/share/opencode/) and
+    // contains opencode.json, plugins, and global MCP definitions.
+    if agent == "opencode"
+        && let Some(cfg_dir) = crate::agent_setup::opencode::opencode_config_dir()
+        && cfg_dir.is_dir()
+    {
+        let target = "/tmp/.config/opencode";
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source={},target={},readonly",
+            cfg_dir.display(),
+            target
+        ));
+        args.push("--env".to_string());
+        args.push(format!("OPENCODE_CONFIG={}", target));
+    }
+
     // Terminal vars
     for term_var in ["TERM", "COLORTERM"] {
         if std::env::var(term_var).is_ok() {

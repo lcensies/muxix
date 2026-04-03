@@ -301,6 +301,23 @@ pub fn generate_mounts(
         });
     }
 
+    // Mount opencode global config directory (~/.config/opencode/) read-only.
+    // This is separate from the data directory (~/.local/share/opencode/) and
+    // contains opencode.json, plugins, and global MCP definitions.
+    if agent == "opencode"
+        && let Some(cfg_dir) = crate::agent_setup::opencode::opencode_config_dir()
+        && cfg_dir.is_dir()
+    {
+        let guest_path = lima_guest_home()
+            .map(|h| h.join(".config/opencode"))
+            .unwrap_or_else(|| cfg_dir.clone());
+        mounts.push(Mount {
+            host_path: cfg_dir,
+            guest_path,
+            read_only: true,
+        });
+    }
+
     // Mount per-VM state directory for workmux state
     if let Ok(state_dir) = lima_state_dir(vm_name) {
         let guest_path = lima_guest_home()
