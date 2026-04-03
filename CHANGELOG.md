@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.176 (2026-04-03)
+
+- Fix pi agent exiting immediately after prompt injection instead of staying in
+  interactive mode ([#118](https://github.com/raine/workmux/issues/118)
+- Clean up worktree-not-found error messages
+
 ## v0.1.175 (2026-04-03)
 
 - Mount OpenCode's global config directory (`~/.config/opencode/`) into the
