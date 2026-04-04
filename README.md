@@ -2526,3 +2526,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
   Claude Code conversation history with fzf
 - [consult-llm-mcp](https://github.com/raine/consult-llm-mcp) — MCP server that
   lets Claude Code consult stronger AI models (o3, Gemini, GPT-5.1 Codex)
+- [tmux-agent-usage](https://github.com/raine/tmux-agent-usage) — Display AI agent
+  rate limit usage in your tmux status bar
