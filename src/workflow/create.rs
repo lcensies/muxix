@@ -43,10 +43,11 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         base_branch,
         remote_branch,
         prompt,
-        options,
+        mut options,
         agent,
         is_explicit_name,
         prompt_file_only,
+        fork_source,
     } = args;
 
     info!(
@@ -160,7 +161,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             config_root: options.config_root.clone(),
             open_if_exists: false,
             mode: options.mode,
-            continue_session: options.continue_session,
+            resume_mode: options.resume_mode.clone(),
         };
 
         // In file-only mode, pass the prompt so open can write it to the worktree
@@ -394,6 +395,23 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // (prompt files, tmux setup, hooks, etc.)
     drop(_config_lock);
 
+    // Fork conversation into the new worktree if requested.
+    // Must happen after git::create_worktree() (path is finalized) and before
+    // setup_environment() (which launches the agent with resume args).
+    if let Some(fork) = fork_source {
+        let session_id = fork
+            .forker
+            .fork_conversation(&fork.session, &worktree_path)
+            .context("Failed to fork conversation into new worktree")?;
+        options.resume_mode =
+            crate::multiplexer::types::ResumeMode::ForkSession(session_id.clone());
+        info!(
+            session_id = %session_id,
+            target = %worktree_path.display(),
+            "create:forked conversation into new worktree"
+        );
+    }
+
     // Write prompt file to worktree if provided
     let prompt_file_path = if let Some(p) = prompt {
         Some(setup::write_prompt_file(
@@ -523,6 +541,7 @@ pub fn create_with_changes(
             agent: None,
             is_explicit_name: false,
             prompt_file_only: false,
+            fork_source: None,
         },
     ) {
         Ok(result) => result,

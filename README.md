@@ -582,6 +582,10 @@ immediately. If the branch doesn't exist, it will be created automatically.
   know or care whether the worktree already exists.
 - `-s, --session`: Create a tmux session instead of a window. See
   [Session mode](#session-mode) for details.
+- `--fork`: Fork the last conversation from the current worktree into the new
+  one. The agent resumes with the forked conversation context. Use
+  `--fork=<session-id>` to fork a specific session (prefix matching supported).
+  Currently supports Claude Code.
 
 #### Skip options
 

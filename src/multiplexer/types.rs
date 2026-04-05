@@ -5,6 +5,18 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// How (if at all) to resume an existing agent conversation when launching.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ResumeMode {
+    /// Don't resume any conversation
+    #[default]
+    None,
+    /// Resume the most recent conversation (agent's --continue flag)
+    Continue,
+    /// Resume a specific forked session by UUID
+    ForkSession(String),
+}
+
 /// Agent status representing the current state of an agent.
 ///
 /// Stored as lowercase strings in JSON (e.g., "working", "waiting", "done").
@@ -103,8 +115,8 @@ pub struct PaneSetupOptions<'a> {
     pub worktree_root: Option<&'a std::path::Path>,
     /// Pre-booted Lima VM name (if sandbox backend is Lima and VM was booted before window creation)
     pub lima_vm_name: Option<&'a str>,
-    /// If true, inject the agent's continue/resume flag to resume the last conversation.
-    pub continue_session: bool,
+    /// How to resume a conversation (continue last, fork specific session, or none).
+    pub resume_mode: ResumeMode,
 }
 
 /// Backend type for multiplexer selection

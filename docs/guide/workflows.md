@@ -54,6 +54,28 @@ This pattern naturally leads to a **coordinator agent** workflow: an agent on th
 
 See [Skills](/guide/skills#-worktree) for the skill setup.
 
+### Forking conversations
+
+When you want a new worktree agent to pick up where the current conversation left off, use `--fork`:
+
+```bash
+workmux add -A --fork
+```
+
+This copies the most recent conversation from the current worktree into the new one and launches the agent with `--resume`, so it has full context of what was discussed. Useful when:
+
+- You want to branch off a conversation to explore an alternative approach
+- The current agent has built up context you want to preserve in a new worktree
+- You're splitting a large task and want each worktree to start with shared context
+
+To fork a specific session (not the most recent), use `--fork=<session-id>` with the session UUID or a prefix:
+
+```bash
+workmux add my-branch --fork=abc123
+```
+
+Currently supports Claude Code conversations. The forked conversation files are copied (not moved), so the original remains unchanged.
+
 ### Coordinating multiple agents
 
 For multi-step plans where you want the agent to manage the full lifecycle (spawning, monitoring, and merging), use the [`/coordinator` skill](/guide/skills#-coordinator).

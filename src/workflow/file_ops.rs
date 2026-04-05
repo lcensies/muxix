@@ -203,7 +203,7 @@ fn validate_path_within_repo(
 /// Recursively copy a directory's contents into the destination, overwriting existing files.
 /// Symlinks are preserved rather than followed to avoid infinite recursion on symlink loops.
 /// Special files (sockets, FIFOs) are skipped to avoid blocking.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;

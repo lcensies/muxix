@@ -340,6 +340,11 @@ enum Commands {
         #[arg(short = 'l', long, conflicts_with = "agent")]
         layout: Option<String>,
 
+        /// Fork the last conversation from the current worktree into the new one.
+        /// Specify a session ID to fork a specific conversation, or omit for most recent.
+        #[arg(long, num_args = 0..=1, default_missing_value = "", require_equals = true)]
+        fork: Option<String>,
+
         /// Block until the created tmux window is closed
         #[arg(short = 'W', long)]
         wait: bool,
@@ -855,6 +860,7 @@ pub fn run() -> Result<()> {
             rescue,
             multi,
             layout,
+            fork,
             wait,
             session,
         } => command::add::run(
@@ -868,6 +874,7 @@ pub fn run() -> Result<()> {
             rescue,
             multi,
             layout,
+            fork,
             wait,
             session,
         ),

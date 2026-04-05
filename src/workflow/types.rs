@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use crate::config::MuxMode;
 use crate::github::PrSummary;
 use crate::multiplexer::AgentStatus;
+use crate::multiplexer::conversation::{ConversationForker, SessionInfo};
+use crate::multiplexer::types::ResumeMode;
 use crate::prompt::Prompt;
 
 /// Arguments for creating a worktree
@@ -20,6 +22,8 @@ pub struct CreateArgs<'a> {
     /// When true, the prompt file is written to .workmux/ but not passed to
     /// setup_environment, so validation and agent injection are skipped.
     pub prompt_file_only: bool,
+    /// Fork a conversation from another worktree into this one
+    pub fork_source: Option<ForkSource>,
 }
 
 /// Result of creating a worktree
@@ -94,8 +98,8 @@ pub struct SetupOptions {
     pub open_if_exists: bool,
     /// Mode for tmux operations: window (default) or session
     pub mode: MuxMode,
-    /// If true, inject the agent's continue/resume flag to resume the last conversation.
-    pub continue_session: bool,
+    /// How to resume a conversation (continue last, fork specific session, or none).
+    pub resume_mode: ResumeMode,
 }
 
 impl SetupOptions {
@@ -112,7 +116,7 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
-            continue_session: false,
+            resume_mode: ResumeMode::default(),
         }
     }
 
@@ -128,7 +132,7 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
-            continue_session: false,
+            resume_mode: ResumeMode::default(),
         }
     }
 
@@ -150,9 +154,15 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
-            continue_session: false,
+            resume_mode: ResumeMode::default(),
         }
     }
+}
+
+/// Source data for forking a conversation into a new worktree
+pub struct ForkSource {
+    pub forker: Box<dyn ConversationForker>,
+    pub session: SessionInfo,
 }
 
 /// Summary of agent statuses for a worktree (may have multiple agents)

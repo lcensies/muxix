@@ -91,7 +91,9 @@ pub fn run(
         let mut options = SetupOptions::new(run_hooks, force_files, true);
         options.mode = preliminary_mode;
         options.prompt_file_path = prompt_file_path;
-        options.continue_session = continue_session;
+        if continue_session {
+            options.resume_mode = crate::multiplexer::types::ResumeMode::Continue;
+        }
 
         // Only announce hooks if we're forcing a new target (otherwise we might just switch)
         if new_window {

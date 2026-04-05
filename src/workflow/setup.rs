@@ -164,7 +164,7 @@ pub fn setup_environment(
         prompt_file_path: options.prompt_file_path.as_deref(),
         worktree_root: Some(worktree_path),
         lima_vm_name: lima_vm_name.as_deref(),
-        continue_session: options.continue_session,
+        resume_mode: options.resume_mode.clone(),
     };
 
     // Track the focus and zoom pane across all windows
@@ -583,7 +583,7 @@ mod tests {
             config_root: None,
             open_if_exists: false,
             mode: crate::config::MuxMode::default(),
-            continue_session: false,
+            resume_mode: crate::multiplexer::types::ResumeMode::default(),
         }
     }
 

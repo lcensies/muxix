@@ -166,6 +166,7 @@ pub fn run(
     rescue: RescueArgs,
     multi: MultiArgs,
     layout: Option<String>,
+    fork: Option<String>,
     wait: bool,
     session: bool,
 ) -> Result<()> {
@@ -173,6 +174,9 @@ pub fn run(
     if crate::sandbox::guest::is_sandbox_guest() {
         if layout.is_some() {
             bail!("--layout is not supported from inside a sandbox");
+        }
+        if fork.is_some() {
+            bail!("--fork is not supported from inside a sandbox");
         }
         return run_add_via_rpc(
             branch_name,
@@ -197,6 +201,46 @@ pub fn run(
 
     // Load config early to determine mode (CLI flag overrides config)
     let mut initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+
+    // Resolve fork source if --fork is set
+    let fork_source = if let Some(ref fork_arg) = fork {
+        let agent_name = initial_config.agent.as_deref().unwrap_or("claude");
+        let forker =
+            crate::multiplexer::conversation::resolve_forker(agent_name).ok_or_else(|| {
+                anyhow!(
+                    "Agent '{}' does not support conversation forking",
+                    agent_name
+                )
+            })?;
+
+        // Use worktree root (not cwd) so subdirectory invocation works correctly
+        let source_path = git::get_repo_root()?;
+        let session = if fork_arg.is_empty() {
+            // --fork without value: use most recent
+            forker
+                .find_latest_conversation(&source_path)?
+                .ok_or_else(|| {
+                    anyhow!(
+                        "No conversations found in current worktree.\n\
+                     Path searched: {}",
+                        source_path.display()
+                    )
+                })?
+        } else {
+            // --fork=<session-id>: find specific session
+            forker
+                .find_conversation(&source_path, fork_arg)?
+                .ok_or_else(|| {
+                    anyhow!(
+                        "No conversation matching '{}' found in current worktree",
+                        fork_arg
+                    )
+                })?
+        };
+        Some(crate::workflow::types::ForkSource { forker, session })
+    } else {
+        None
+    };
     let mode = if session {
         MuxMode::Session
     } else {
@@ -440,7 +484,7 @@ pub fn run(
         prompt_args.prompt_file_only || initial_config.prompt_file_only.unwrap_or(false);
 
     // Create worktrees from specs
-    let plan = CreationPlan {
+    let mut plan = CreationPlan {
         specs: &specs,
         resolved_base,
         remote_branch: remote_branch.as_deref(),
@@ -454,6 +498,7 @@ pub fn run(
         sandbox_override,
         prompt_file_only,
         layout: layout.as_deref(),
+        fork_source,
     };
     plan.execute()
 }
@@ -584,15 +629,16 @@ struct CreationPlan<'a> {
     sandbox_override: bool,
     prompt_file_only: bool,
     layout: Option<&'a str>,
+    fork_source: Option<crate::workflow::types::ForkSource>,
 }
 
 impl<'a> CreationPlan<'a> {
     /// Execute the creation plan, creating all worktrees according to the specs.
-    fn execute(&self) -> Result<()> {
+    fn execute(&mut self) -> Result<()> {
         self.create_worktrees()
     }
 
-    fn create_worktrees(&self) -> Result<()> {
+    fn create_worktrees(&mut self) -> Result<()> {
         if self.specs.len() > 1 {
             println!("Preparing to create {} worktrees...", self.specs.len());
         }
@@ -674,6 +720,26 @@ impl<'a> CreationPlan<'a> {
 
             super::announce_hooks(&config, Some(&self.options), super::HookPhase::PostCreate);
 
+            // For multi-worktree, re-resolve fork source for earlier specs;
+            // last spec takes ownership to avoid unnecessary re-resolution.
+            let fork_for_spec = if i == self.specs.len() - 1 {
+                self.fork_source.take()
+            } else if let Some(ref fork) = self.fork_source {
+                let agent_name = spec
+                    .agent
+                    .as_deref()
+                    .or(config.agent.as_deref())
+                    .unwrap_or("claude");
+                crate::multiplexer::conversation::resolve_forker(agent_name).map(|forker| {
+                    crate::workflow::types::ForkSource {
+                        forker,
+                        session: fork.session.clone(),
+                    }
+                })
+            } else {
+                None
+            };
+
             // Create a WorkflowContext for this spec's config (reuse shared mux)
             let context = workflow::WorkflowContext::new(config, mux.clone(), config_location)?;
 
@@ -689,6 +755,7 @@ impl<'a> CreationPlan<'a> {
                     agent: spec.agent.as_deref(),
                     is_explicit_name: self.explicit_name.is_some(),
                     prompt_file_only: self.prompt_file_only,
+                    fork_source: fork_for_spec,
                 },
             )
             .with_context(|| {

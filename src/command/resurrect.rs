@@ -72,7 +72,7 @@ pub fn run(dry_run: bool) -> Result<()> {
             config_root: None,
             open_if_exists: false,
             mode: candidate.mode,
-            continue_session: true,
+            resume_mode: crate::multiplexer::types::ResumeMode::Continue,
         };
 
         info!(

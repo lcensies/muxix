@@ -1498,6 +1498,7 @@ def run_workmux_command(
     expect_fail: bool = False,
     working_dir: Optional[Path] = None,
     stdin_input: Optional[str] = None,
+    pre_run_env: Optional[dict] = None,
 ) -> WorkmuxCommandResult:
     """
     Helper to run a workmux command inside the isolated multiplexer session.
@@ -1513,6 +1514,7 @@ def run_workmux_command(
         expect_fail: Whether the command is expected to fail (non-zero exit)
         working_dir: Optional directory to run the command from (defaults to repo_path)
         stdin_input: Optional text to pipe to the command's stdin
+        pre_run_env: Optional dict of environment variables to export before running
     """
     scripts_dir = get_scripts_dir(env)
     stdout_file = scripts_dir / "workmux_stdout.txt"
@@ -1535,6 +1537,14 @@ def run_workmux_command(
     if stdin_input is not None:
         pipe_cmd = f"printf %s {shlex.quote(stdin_input)} | "
 
+    # Build extra env exports
+    extra_env_lines = ""
+    if pre_run_env:
+        extra_env_lines = (
+            "\n".join(f"export {k}={shlex.quote(v)}" for k, v in pre_run_env.items())
+            + "\n"
+        )
+
     # Write the command to a script file to avoid tmux send-keys line length limits.
     # The PATH can be very long in test environments, causing command truncation.
     script_content = f"""#!/bin/sh
@@ -1544,7 +1554,7 @@ export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
 export HOME={shlex.quote(env.env.get("HOME", ""))}
 export SHELL={shlex.quote(env.env.get("SHELL", os.environ.get("SHELL", "/bin/sh")))}
 export WORKMUX_TEST=1
-cd {shlex.quote(str(workdir))}
+{extra_env_lines}cd {shlex.quote(str(workdir))}
 {pipe_cmd}{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
 """
     script_file.write_text(script_content)

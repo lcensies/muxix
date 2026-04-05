@@ -4,6 +4,7 @@
 //! with different terminal multiplexers (tmux, WezTerm) interchangeably.
 
 pub mod agent;
+pub mod conversation;
 pub mod handle;
 pub mod handshake;
 pub mod kitty;
@@ -351,18 +352,44 @@ pub trait Multiplexer: Send + Sync {
                         || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
                 });
 
-                // Inject continue/resume flag for agent panes when requested
-                if options.continue_session && is_agent_pane {
-                    let profile =
-                        agent::resolve_profile_with_type(pane_agent, config.agent_type.as_deref());
-                    if let Some(flag) = profile.continue_flag() {
-                        resolved.command =
-                            util::inject_skip_permissions_flag(&resolved.command, flag);
-                    } else {
-                        tracing::warn!(
-                            agent = profile.name(),
-                            "agent does not support --continue, flag ignored"
-                        );
+                // Inject resume/continue flag for agent panes when requested
+                if is_agent_pane {
+                    match &options.resume_mode {
+                        crate::multiplexer::types::ResumeMode::Continue => {
+                            let profile = agent::resolve_profile_with_type(
+                                pane_agent,
+                                config.agent_type.as_deref(),
+                            );
+                            if let Some(flag) = profile.continue_flag() {
+                                resolved.command =
+                                    util::inject_skip_permissions_flag(&resolved.command, flag);
+                            } else {
+                                tracing::warn!(
+                                    agent = profile.name(),
+                                    "agent does not support --continue, flag ignored"
+                                );
+                            }
+                        }
+                        crate::multiplexer::types::ResumeMode::ForkSession(session_id) => {
+                            let agent_name =
+                                pane_agent.or(config.agent.as_deref()).unwrap_or("claude");
+                            if let Some(forker) =
+                                crate::multiplexer::conversation::resolve_forker(agent_name)
+                            {
+                                let resume_args = forker.resume_args(session_id);
+                                let combined = resume_args.join(" ");
+                                resolved.command = util::inject_skip_permissions_flag(
+                                    &resolved.command,
+                                    &combined,
+                                );
+                            } else {
+                                tracing::warn!(
+                                    agent = agent_name,
+                                    "agent does not support forking, resume flag ignored"
+                                );
+                            }
+                        }
+                        crate::multiplexer::types::ResumeMode::None => {}
                     }
                 }
 
