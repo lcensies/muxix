@@ -16,9 +16,9 @@ for running multiple AI agents in parallel without conflict.
 windowing, git for worktrees, your agent for coding — workmux orchestrates the
 rest.
 
+<!-- prettier-ignore -->
 ::: tip New to workmux?
-Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
-quick overview.
+Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
 :::
 
 ## Why workmux?
