@@ -31,6 +31,11 @@ export default defineConfig({
       "meta",
       { name: "algolia-site-verification", content: "3CFC51B41FBBDD13" },
     ],
+    ["meta", { property: "og:image", content: "https://workmux.raine.dev/social-preview.png" }],
+    ["meta", { property: "og:image:width", content: "1280" }],
+    ["meta", { property: "og:image:height", content: "640" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:image", content: "https://workmux.raine.dev/social-preview.png" }],
   ],
 
   vite: {
