@@ -68,6 +68,11 @@ commit, rebase, and merge the branch.
 Then use the /merge skill to commit, rebase, and merge the branch.
 ```
 
+**`--fork`**: When passed, add `--fork` to the `workmux add` command. This copies
+the current conversation into the new worktree so the agent resumes with full
+context of what was discussed. Useful when the current conversation has built up
+context that the new worktree agent needs.
+
 ## Workflow
 
 Write ALL temp files first, THEN run all workmux commands.
