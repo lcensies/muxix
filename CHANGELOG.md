@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.178 (2026-04-07)
+
+- Add `--fork` flag to `workmux add` for forking an existing Claude Code
+  conversation into a new worktree, allowing the new agent to resume with full
+  context from a previous session. Currently Claude Code only.
+
 ## v0.1.177 (2026-04-03)
 
 - Fix OpenCode sandbox passing unnecessary OPENCODE_CONFIG environment variable
