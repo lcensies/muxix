@@ -62,7 +62,7 @@ See [Skills](/guide/skills#-worktree) for the skill setup.
 
 ### Forking conversations
 
-When you want a new worktree agent to pick up where the current conversation left off, use `--fork`:
+When you want a new worktree agent to pick up where the current conversation left off, use `--fork` (currently Claude Code only):
 
 ```bash
 workmux add -A --fork
