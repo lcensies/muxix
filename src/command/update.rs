@@ -244,8 +244,7 @@ struct UpdateCache {
 }
 
 fn update_cache_path() -> Option<std::path::PathBuf> {
-    let home = home::home_dir()?;
-    let dir = home.join(".cache").join("workmux");
+    let dir = crate::xdg::cache_dir().ok()?;
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("update_check.json"))
 }

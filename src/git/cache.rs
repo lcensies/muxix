@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -6,8 +6,7 @@ use super::GitStatus;
 
 /// Get the path to the git status cache file
 pub fn get_cache_path() -> Result<PathBuf> {
-    let home = home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-    let cache_dir = home.join(".cache").join("workmux");
+    let cache_dir = crate::xdg::cache_dir()?;
     std::fs::create_dir_all(&cache_dir)?;
     Ok(cache_dir.join("git_status_cache.json"))
 }

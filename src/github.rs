@@ -864,8 +864,7 @@ fn list_prs_for_branches_rest(
 
 /// Get the path to the PR status cache file
 fn get_pr_cache_path() -> Result<PathBuf> {
-    let home = home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-    let cache_dir = home.join(".cache").join("workmux");
+    let cache_dir = crate::xdg::cache_dir()?;
     std::fs::create_dir_all(&cache_dir)?;
     Ok(cache_dir.join("pr_status_cache.json"))
 }

@@ -1466,18 +1466,41 @@ pub fn validate_layouts_config(layouts: &HashMap<String, LayoutConfig>) -> anyho
 }
 
 /// Get the path to the global config file.
+///
+/// Resolves via `$XDG_CONFIG_HOME/workmux/` (default `~/.config/workmux/`).
+/// If a custom `XDG_CONFIG_HOME` is set and no config exists there yet,
+/// falls back to the legacy `~/.config/workmux/` location for reading.
 /// Prefers existing .yml file to avoid shadowing, otherwise defaults to .yaml.
 pub fn global_config_path() -> Option<PathBuf> {
-    let home = home::home_dir()?;
-    let yaml = home.join(".config/workmux/config.yaml");
-    let yml = home.join(".config/workmux/config.yml");
+    let xdg_dir = crate::xdg::config_dir().ok()?;
+    let yaml = xdg_dir.join("config.yaml");
+    let yml = xdg_dir.join("config.yml");
 
-    // Prefer existing .yml file to avoid shadowing user's config
+    // Check XDG location first
     if yml.exists() && !yaml.exists() {
-        Some(yml)
-    } else {
-        Some(yaml)
+        return Some(yml);
     }
+    if yaml.exists() {
+        return Some(yaml);
+    }
+
+    // Legacy fallback: if XDG_CONFIG_HOME points elsewhere, check ~/.config/workmux/
+    if let Some(home) = home::home_dir() {
+        let legacy_dir = home.join(".config/workmux");
+        if legacy_dir != xdg_dir {
+            let legacy_yml = legacy_dir.join("config.yml");
+            let legacy_yaml = legacy_dir.join("config.yaml");
+            if legacy_yml.exists() && !legacy_yaml.exists() {
+                return Some(legacy_yml);
+            }
+            if legacy_yaml.exists() {
+                return Some(legacy_yaml);
+            }
+        }
+    }
+
+    // Default to XDG path for new config files
+    Some(yaml)
 }
 
 impl Config {
@@ -1687,18 +1710,15 @@ impl Config {
         Ok(Some(config))
     }
 
-    /// Load the global configuration file from the XDG config directory.
+    /// Load the global configuration file.
+    ///
+    /// Uses `global_config_path()` which resolves via XDG_CONFIG_HOME with
+    /// legacy fallback.
     fn load_global() -> anyhow::Result<Option<Self>> {
-        // Check ~/.config/workmux (XDG convention, works cross-platform)
-        if let Some(home_dir) = home::home_dir() {
-            let xdg_config_path = home_dir.join(".config/workmux/config.yaml");
-            if xdg_config_path.exists() {
-                return Self::load_from_path(&xdg_config_path);
-            }
-            let xdg_config_path_yml = home_dir.join(".config/workmux/config.yml");
-            if xdg_config_path_yml.exists() {
-                return Self::load_from_path(&xdg_config_path_yml);
-            }
+        if let Some(path) = global_config_path()
+            && path.exists()
+        {
+            return Self::load_from_path(&path);
         }
         Ok(None)
     }
@@ -2096,7 +2116,12 @@ impl Config {
 
         println!("✓ Created .workmux.yaml");
         println!("\nThis file provides project-specific overrides.");
-        println!("For global settings, edit ~/.config/workmux/config.yaml");
+        println!(
+            "For global settings, edit {}",
+            global_config_path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string())
+        );
 
         Ok(())
     }

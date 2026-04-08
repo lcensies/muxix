@@ -305,11 +305,10 @@ fn run_container(
     }
 
     // Create shims directory for host-exec (on host, will be bind-mounted into container).
-    // Use ~/.cache/workmux/shims/ instead of system temp (/var/folders/... on macOS)
+    // Use $XDG_CACHE_HOME/workmux/shims/ instead of system temp (/var/folders/... on macOS)
     // so the path is inside ~ and accessible to VM-based runtimes like Colima.
     let _shim_dir = {
-        let home = home::home_dir().context("Could not determine home directory")?;
-        let shims_base = home.join(".cache/workmux/shims");
+        let shims_base = crate::xdg::cache_dir()?.join("shims");
         std::fs::create_dir_all(&shims_base)
             .with_context(|| format!("Failed to create {}", shims_base.display()))?;
         let dir = tempfile::Builder::new()

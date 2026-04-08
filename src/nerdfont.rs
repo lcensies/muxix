@@ -243,15 +243,24 @@ pub fn prompt_setup() -> Result<Option<bool>> {
         println!(
             "  {}",
             style(format!(
-                "Add 'nerdfont: {}' to ~/.config/workmux/config.yaml to persist this setting",
-                enabled
+                "Add 'nerdfont: {}' to {} to persist this setting",
+                enabled,
+                crate::config::global_config_path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string()),
             ))
             .dim()
         );
     } else if !enabled {
         println!(
             "  {}",
-            style("Set nerdfont: true in ~/.config/workmux/config.yaml to enable later").dim()
+            style(format!(
+                "Set nerdfont: true in {} to enable later",
+                crate::config::global_config_path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string()),
+            ))
+            .dim()
         );
     }
     println!();

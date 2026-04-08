@@ -11,7 +11,7 @@
 
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use tracing::debug;
 
@@ -75,6 +75,43 @@ const ALLOW_WRITE_DIRS: &[&str] = &[
 /// macOS-specific write-allowed paths.
 #[cfg(target_os = "macos")]
 const ALLOW_WRITE_DIRS_MACOS: &[&str] = &["Library/Caches", "Library/Logs"];
+
+/// Resolve extra writable directories from custom XDG env vars.
+///
+/// When `XDG_CACHE_HOME` or `XDG_STATE_HOME` point to a non-default location
+/// under `$HOME`, return those paths so the sandbox can allow writes there.
+/// Paths outside `$HOME` don't need explicit rules (the sandbox only restricts
+/// writes under `$HOME`).
+fn extra_xdg_write_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for (var, default_suffix) in [
+        ("XDG_CACHE_HOME", ".cache"),
+        ("XDG_STATE_HOME", ".local/state"),
+    ] {
+        if let Ok(val) = std::env::var(var) {
+            let path = PathBuf::from(&val);
+            if path.is_absolute() && path.starts_with(home) && path != home.join(default_suffix) {
+                dirs.push(path);
+            }
+        }
+    }
+    dirs
+}
+
+/// Resolve the workmux config dir if custom XDG_CONFIG_HOME is set.
+///
+/// Returns the path to deny-read so sandboxed processes can't read the
+/// workmux config at a non-default location.
+fn extra_xdg_deny_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
+        let path = PathBuf::from(&val);
+        if path.is_absolute() && path.starts_with(home) && path != home.join(".config") {
+            dirs.push(path.join("workmux"));
+        }
+    }
+    dirs
+}
 
 /// Spawn a command inside an OS-native sandbox.
 ///
@@ -143,7 +180,10 @@ fn spawn_macos(
         .to_str()
         .context("Worktree path is not valid UTF-8")?;
 
-    let profile = generate_macos_profile();
+    let home_path = Path::new(&home);
+    let extra_write = extra_xdg_write_dirs(home_path);
+    let extra_deny = extra_xdg_deny_dirs(home_path);
+    let profile = generate_macos_profile(&extra_write, &extra_deny);
 
     let mut cmd = Command::new("/usr/bin/sandbox-exec");
     // Use -D parameter substitution to inject paths safely (no string interpolation)
@@ -168,8 +208,11 @@ fn spawn_macos(
 /// Uses `(param ...)` references for HOME_DIR and WORKTREE so paths are
 /// injected via `-D` flags rather than string interpolation. This prevents
 /// profile injection via crafted paths.
+///
+/// `extra_write_dirs` and `extra_deny_dirs` are absolute paths resolved from
+/// custom XDG env vars that need dynamic sandbox rules.
 #[cfg(target_os = "macos")]
-fn generate_macos_profile() -> String {
+fn generate_macos_profile(extra_write_dirs: &[PathBuf], extra_deny_dirs: &[PathBuf]) -> String {
     let mut profile = String::from("(version 1)\n(allow default)\n\n");
 
     // Deny reading sensitive directories and files under HOME
@@ -193,6 +236,11 @@ fn generate_macos_profile() -> String {
             "    (subpath (string-append (param \"HOME_DIR\") \"/{}\" ))\n",
             dir
         ));
+    }
+    for dir in extra_deny_dirs {
+        if let Some(s) = dir.to_str() {
+            profile.push_str(&format!("    (subpath \"{}\")\n", s));
+        }
     }
     profile.push_str(")\n\n");
 
@@ -222,6 +270,11 @@ fn generate_macos_profile() -> String {
             "    (subpath (string-append (param \"HOME_DIR\") \"/{}\" ))\n",
             dir
         ));
+    }
+    for dir in extra_write_dirs {
+        if let Some(s) = dir.to_str() {
+            profile.push_str(&format!("    (subpath \"{}\")\n", s));
+        }
     }
     profile.push_str(")\n\n");
 
@@ -291,6 +344,8 @@ fn spawn_bwrap(
 ) -> Result<Child> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/var/empty".to_string());
     let home_path = Path::new(&home);
+    let extra_write = extra_xdg_write_dirs(home_path);
+    let extra_deny = extra_xdg_deny_dirs(home_path);
 
     let mut cmd = Command::new(bwrap_path);
 
@@ -315,6 +370,13 @@ fn spawn_bwrap(
             }
         }
     }
+    for path in &extra_deny {
+        if path.exists() {
+            if let Some(s) = path.to_str() {
+                cmd.args(["--tmpfs", s]);
+            }
+        }
+    }
 
     // Hide secret files by binding /dev/null over them
     for file in DENY_READ_FILES {
@@ -333,6 +395,17 @@ fn spawn_bwrap(
         if !path.exists() {
             if let Err(e) = std::fs::create_dir_all(&path) {
                 debug!(?path, error = %e, "failed to create cache dir for bwrap binding");
+                continue;
+            }
+        }
+        if let Some(s) = path.to_str() {
+            cmd.args(["--bind", s, s]);
+        }
+    }
+    for path in &extra_write {
+        if !path.exists() {
+            if let Err(e) = std::fs::create_dir_all(path) {
+                debug!(?path, error = %e, "failed to create XDG dir for bwrap binding");
                 continue;
             }
         }
@@ -407,7 +480,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_macos_profile_uses_params() {
-        let profile = generate_macos_profile();
+        let profile = generate_macos_profile(&[], &[]);
         // Must use param references, not hardcoded paths
         assert!(profile.contains("(param \"HOME_DIR\")"));
         assert!(profile.contains("(param \"WORKTREE\")"));
@@ -419,7 +492,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_macos_profile_contains_all_deny_paths() {
-        let profile = generate_macos_profile();
+        let profile = generate_macos_profile(&[], &[]);
         for p in DENY_READ_DIRS
             .iter()
             .chain(DENY_READ_FILES.iter())
@@ -432,7 +505,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_macos_profile_allows_worktree_and_caches() {
-        let profile = generate_macos_profile();
+        let profile = generate_macos_profile(&[], &[]);
         assert!(profile.contains("WORKTREE"));
         assert!(profile.contains(".cache"));
         assert!(profile.contains(".cargo"));

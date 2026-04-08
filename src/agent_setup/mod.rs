@@ -151,7 +151,7 @@ struct SetupState {
 }
 
 fn setup_state_path() -> Result<PathBuf> {
-    Ok(crate::state::store::get_state_dir()?.join("workmux/setup.json"))
+    Ok(crate::state::store::get_state_dir()?.join("setup.json"))
 }
 
 fn load_setup_state() -> SetupState {

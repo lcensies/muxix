@@ -692,6 +692,9 @@ const EXEC_ENV_ALLOWLIST: &[&str] = &[
     "COLORTERM",
     "LANG",
     "LC_ALL",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_STATE_HOME",
 ];
 
 /// Build a sanitized environment map from the current process environment.

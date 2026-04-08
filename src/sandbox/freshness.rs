@@ -41,16 +41,12 @@ fn image_to_filename(image: &str) -> String {
     image.replace(['/', ':'], "-")
 }
 
-/// Get the cache directory, optionally rooted at `base` (for testing).
-fn cache_dir_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
+/// Get the state directory, optionally rooted at `base` (for testing).
+fn state_dir_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
     let state_dir = if let Some(base) = base {
         base.join("workmux")
-    } else if let Ok(xdg_state) = std::env::var("XDG_STATE_HOME") {
-        PathBuf::from(xdg_state).join("workmux")
-    } else if let Some(home) = home::home_dir() {
-        home.join(".local/state/workmux")
     } else {
-        anyhow::bail!("Could not determine state directory");
+        crate::xdg::state_dir()?
     };
 
     fs::create_dir_all(&state_dir)
@@ -61,7 +57,7 @@ fn cache_dir_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
 
 /// Get the per-image cache file path, optionally rooted at `base` (for testing).
 fn cache_file_path_in(base: Option<&std::path::Path>, image: &str) -> Result<PathBuf> {
-    let dir = cache_dir_in(base)?;
+    let dir = state_dir_in(base)?;
     Ok(dir.join(format!("image-freshness-{}.json", image_to_filename(image))))
 }
 

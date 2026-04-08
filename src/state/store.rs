@@ -28,7 +28,7 @@ impl StateStore {
     ///
     /// Creates the base directory and agents subdirectory if they don't exist.
     pub fn new() -> Result<Self> {
-        let base = get_state_dir()?.join("workmux");
+        let base = get_state_dir()?;
         fs::create_dir_all(&base).context("Failed to create state directory")?;
         fs::create_dir_all(base.join("agents")).context("Failed to create agents directory")?;
         Ok(Self { base_path: base })
@@ -388,19 +388,11 @@ fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Get the XDG state directory.
+/// Get the workmux state directory (`$XDG_STATE_HOME/workmux`).
 ///
-/// Checks XDG_STATE_HOME first, falls back to ~/.local/state.
+/// Delegates to `crate::xdg::state_dir()`.
 pub fn get_state_dir() -> Result<PathBuf> {
-    if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
-        return Ok(PathBuf::from(state_home));
-    }
-
-    if let Some(home_dir) = home::home_dir() {
-        return Ok(home_dir.join(".local/state"));
-    }
-
-    anyhow::bail!("Could not determine state directory")
+    crate::xdg::state_dir()
 }
 
 /// Read and parse an agent state file.

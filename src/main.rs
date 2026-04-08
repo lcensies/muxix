@@ -24,6 +24,7 @@ mod tips;
 mod ui;
 mod util;
 mod workflow;
+mod xdg;
 
 use anyhow::Result;
 use tracing::{error, info};

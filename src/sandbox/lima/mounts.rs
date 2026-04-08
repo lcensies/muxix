@@ -182,27 +182,17 @@ fn expand_worktree_template(template: &str, project_root: &Path) -> Result<PathB
     }
 }
 
-/// Get the XDG state directory (same logic as state/store.rs).
-fn get_state_dir() -> Result<PathBuf> {
-    if let Ok(state_home) = std::env::var("XDG_STATE_HOME") {
-        return Ok(PathBuf::from(state_home));
-    }
-    let home =
-        home::home_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
-    Ok(home.join(".local/state"))
-}
-
 /// Get the host-side state directory for a Lima VM.
 /// Uses XDG state dir: $XDG_STATE_HOME/workmux/lima/<vm_name>/
 fn lima_state_dir(vm_name: &str) -> Result<PathBuf> {
-    let state_dir = get_state_dir()?.join("workmux/lima").join(vm_name);
+    let state_dir = crate::xdg::state_dir()?.join("lima").join(vm_name);
     std::fs::create_dir_all(&state_dir)?;
     Ok(state_dir)
 }
 
 /// Get the state directory path for a VM without creating it.
 pub(crate) fn lima_state_dir_path(vm_name: &str) -> Result<PathBuf> {
-    Ok(get_state_dir()?.join("workmux/lima").join(vm_name))
+    Ok(crate::xdg::state_dir()?.join("lima").join(vm_name))
 }
 
 /// Seed ~/.claude.json into the VM's state directory.

@@ -53,7 +53,7 @@ pub fn toolchain_wrapper_script(toolchain: &DetectedToolchain) -> Option<String>
             concat!(
                 "_WM_CWD=\"$PWD\"; ",
                 "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
+                "_WM_CACHE=\"${XDG_CACHE_HOME:-$HOME/.cache}/workmux/devbox/$_WM_HASH\"; ",
                 "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
                 "mkdir -p \"$_WM_CACHE\" && ",
                 "cp devbox.json \"$_WM_CACHE/\" && ",
@@ -102,7 +102,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
                 concat!(
                     "_WM_CWD=\"$PWD\"; ",
                     "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                    "_WM_CACHE=\"$HOME/.cache/workmux/devbox/$_WM_HASH\"; ",
+                    "_WM_CACHE=\"${{XDG_CACHE_HOME:-$HOME/.cache}}/workmux/devbox/$_WM_HASH\"; ",
                     "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
                     "mkdir -p \"$_WM_CACHE\" && ",
                     "cp devbox.json \"$_WM_CACHE/\" && ",
@@ -205,8 +205,8 @@ mod tests {
         assert!(wrapped.contains("md5 -q"));
         assert!(wrapped.contains("devbox.json"));
         assert!(wrapped.contains("devbox.lock"));
-        // Should use shared cache dir
-        assert!(wrapped.contains(".cache/workmux/devbox/"));
+        // Should use shared cache dir with XDG support
+        assert!(wrapped.contains("XDG_CACHE_HOME:-$HOME/.cache}"));
         // Should copy config to cache
         assert!(wrapped.contains("cp devbox.json"));
         // Should use -c flag pointing to cache

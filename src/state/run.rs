@@ -23,7 +23,7 @@ pub struct RunResult {
 
 /// Get the base directory for run artifacts.
 fn runs_base_dir() -> Result<PathBuf> {
-    let dir = get_state_dir()?.join("workmux").join("runs");
+    let dir = get_state_dir()?.join("runs");
     fs::create_dir_all(&dir).context("Failed to create runs directory")?;
     Ok(dir)
 }

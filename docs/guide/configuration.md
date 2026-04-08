@@ -11,6 +11,18 @@ workmux uses a two-level configuration system:
 
 Project settings override global settings. When you run workmux from a subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing nested configs for monorepos. See [Monorepos](./monorepos.md#nested-configuration) for details. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
 
+### XDG Base Directory support
+
+workmux respects the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/):
+
+| Purpose       | Environment variable | Default          |
+| ------------- | -------------------- | ---------------- |
+| Configuration | `XDG_CONFIG_HOME`    | `~/.config`      |
+| Cache         | `XDG_CACHE_HOME`     | `~/.cache`       |
+| State         | `XDG_STATE_HOME`     | `~/.local/state` |
+
+All workmux files live under a `workmux/` subdirectory within these base directories. If you have an existing config at the default location and later set a custom `XDG_CONFIG_HOME`, workmux will fall back to reading from `~/.config/workmux/` if no config exists at the new location.
+
 ## Global configuration example
 
 `~/.config/workmux/config.yaml`:

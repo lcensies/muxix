@@ -15,9 +15,7 @@ pub struct TipsState {
 }
 
 fn tips_path() -> Option<PathBuf> {
-    get_state_dir()
-        .ok()
-        .map(|dir| dir.join("workmux/tips.json"))
+    get_state_dir().ok().map(|dir| dir.join("tips.json"))
 }
 
 fn load_tips() -> TipsState {
