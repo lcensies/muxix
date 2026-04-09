@@ -1476,6 +1476,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 - `-s, --session`: Filter to only show agents in the current session. Useful for
   session-per-project workflows where each session maps to a different
   repository.
+- `-t, --tab <agents|worktrees>`: Open directly on the specified tab.
 
 <!-- prettier-ignore -->
 > [!IMPORTANT]
@@ -1609,6 +1610,9 @@ Add to your `~/.tmux.conf` for quick access:
 
 ```bash
 bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
+
+# Open directly on Worktrees tab
+bind C-w display-popup -h 30 -w 100 -E "workmux dashboard --tab worktrees"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.

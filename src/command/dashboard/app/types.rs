@@ -28,8 +28,10 @@ pub enum AppEvent {
     AddWorktreePrList(u64, Result<Vec<PrListEntry>, String>),
 }
 
+use clap::ValueEnum;
+
 /// Which tab is active in the dashboard
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum DashboardTab {
     #[default]
     Agents,

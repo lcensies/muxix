@@ -646,6 +646,10 @@ enum Commands {
         /// Filter to only show agents in the current session
         #[arg(short = 's', long)]
         session: bool,
+
+        /// Open directly on the specified tab
+        #[arg(long, short = 't', value_enum)]
+        tab: Option<command::dashboard::DashboardTab>,
     },
 
     /// Manage global configuration
@@ -982,7 +986,8 @@ pub fn run() -> Result<()> {
             preview_size,
             diff,
             session,
-        } => command::dashboard::run(preview_size, diff, session),
+            tab,
+        } => command::dashboard::run(preview_size, diff, session, tab),
         Commands::Config(args) => command::config::run(args),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),

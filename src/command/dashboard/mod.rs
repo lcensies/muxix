@@ -35,6 +35,7 @@ mod settings;
 mod sort;
 pub mod spinner;
 pub mod ui;
+pub use app::DashboardTab;
 
 use anyhow::Result;
 use crossterm::{
@@ -52,7 +53,7 @@ use crate::github;
 use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
-use self::app::{App, AppEvent, DashboardTab, ViewMode};
+use self::app::{App, AppEvent, ViewMode};
 use self::diff_ops::DiffOps;
 use self::keymap::{Context, action_for_key};
 use self::spinner::SPINNER_FRAME_COUNT;
@@ -119,7 +120,12 @@ fn handle_mouse_event(app: &mut App, kind: MouseEventKind) {
     }
 }
 
-pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) -> Result<()> {
+pub fn run(
+    cli_preview_size: Option<u8>,
+    open_diff: bool,
+    session_filter: bool,
+    tab: Option<DashboardTab>,
+) -> Result<()> {
     let mux = create_backend(detect_backend());
 
     // Check if multiplexer is running
@@ -146,6 +152,11 @@ pub fn run(cli_preview_size: Option<u8>, open_diff: bool, session_filter: bool) 
     // CLI preview size overrides config/tmux if provided
     if let Some(size) = cli_preview_size {
         app.preview_size = size;
+    }
+
+    // CLI tab override: set initial active tab if specified
+    if let Some(initial_tab) = tab {
+        app.active_tab = initial_tab;
     }
 
     // Open diff view for current worktree if requested
