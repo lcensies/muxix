@@ -22,6 +22,15 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.179 (2026-04-09)
+
+- Respect the XDG Base Directory Specification for config, cache, and state
+  paths. Custom `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and `XDG_STATE_HOME` values
+  are now honored, with automatic fallback to defaults. Existing setups continue
+  to work without changes. ([#126](https://github.com/raine/workmux/issues/126))
+- Fix dashboard ignoring `mode: session` config when creating, opening, or
+  checking out worktrees ([#129](https://github.com/raine/workmux/issues/129))
+
 ## v0.1.178 (2026-04-07)
 
 - Add `--fork` flag to `workmux add` for forking an existing Claude Code
