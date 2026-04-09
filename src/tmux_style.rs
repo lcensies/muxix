@@ -78,7 +78,7 @@ fn apply_tmux_directives(mut current: Style, style_str: &str, base: Style) -> St
 fn parse_tmux_color(s: &str) -> Option<Color> {
     // Hex: #RRGGBB
     if let Some(hex) = s.strip_prefix('#') {
-        if hex.len() == 6 {
+        if hex.len() == 6 && hex.is_ascii() {
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
