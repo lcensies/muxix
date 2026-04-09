@@ -9,6 +9,7 @@ use ratatui::{
 };
 
 use super::super::agent;
+use super::super::ansi;
 use super::super::app::App;
 use super::super::spinner::SPINNER_FRAMES;
 use super::format::{format_git_status, format_pr_status};
@@ -138,24 +139,21 @@ pub fn render_worktree_table(f: &mut Frame, app: &mut App, area: Rect) {
                 if working > 0 {
                     let icon = app.config.status_icons.working();
                     let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
-                    parts.push((
-                        format!("{} {} ", icon, spinner),
-                        Style::default().fg(app.palette.info),
-                    ));
+                    let base_style = Style::default().fg(app.palette.info);
+                    parts.extend(ansi::parse_tmux_styles(icon, base_style));
+                    parts.push((format!(" {} ", spinner), base_style));
                 }
                 if waiting > 0 {
                     let icon = app.config.status_icons.waiting();
-                    parts.push((
-                        format!("{} ", icon),
-                        Style::default().fg(app.palette.accent),
-                    ));
+                    let base_style = Style::default().fg(app.palette.accent);
+                    parts.extend(ansi::parse_tmux_styles(icon, base_style));
+                    parts.push((" ".to_string(), base_style));
                 }
                 if done > 0 {
                     let icon = app.config.status_icons.done();
-                    parts.push((
-                        format!("{} ", icon),
-                        Style::default().fg(app.palette.success),
-                    ));
+                    let base_style = Style::default().fg(app.palette.success);
+                    parts.extend(ansi::parse_tmux_styles(icon, base_style));
+                    parts.push((" ".to_string(), base_style));
                 }
                 if parts.is_empty() {
                     parts.push(("-".to_string(), Style::default().fg(app.palette.dimmed)));
@@ -579,30 +577,31 @@ fn render_info_panel(
         if working > 0 {
             let icon = app.config.status_icons.working();
             let spinner = SPINNER_FRAMES[app.spinner_frame as usize % SPINNER_FRAMES.len()];
-            agent_spans.push(Span::styled(
-                format!("{} {}", icon, spinner),
-                Style::default().fg(app.palette.info),
-            ));
+            let base_style = Style::default().fg(app.palette.info);
+            for (text, style) in ansi::parse_tmux_styles(icon, base_style) {
+                agent_spans.push(Span::styled(text, style));
+            }
+            agent_spans.push(Span::styled(format!(" {}", spinner), base_style));
         }
         if waiting > 0 {
             if working > 0 {
                 agent_spans.push(Span::styled(" ", text_style));
             }
             let icon = app.config.status_icons.waiting();
-            agent_spans.push(Span::styled(
-                icon.to_string(),
-                Style::default().fg(app.palette.accent),
-            ));
+            let base_style = Style::default().fg(app.palette.accent);
+            for (text, style) in ansi::parse_tmux_styles(icon, base_style) {
+                agent_spans.push(Span::styled(text, style));
+            }
         }
         if done > 0 {
             if working > 0 || waiting > 0 {
                 agent_spans.push(Span::styled(" ", text_style));
             }
             let icon = app.config.status_icons.done();
-            agent_spans.push(Span::styled(
-                icon.to_string(),
-                Style::default().fg(app.palette.success),
-            ));
+            let base_style = Style::default().fg(app.palette.success);
+            for (text, style) in ansi::parse_tmux_styles(icon, base_style) {
+                agent_spans.push(Span::styled(text, style));
+            }
         }
         lines.push(Line::from(agent_spans));
     }

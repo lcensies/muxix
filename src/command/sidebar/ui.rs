@@ -5,12 +5,12 @@ use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name};
+use crate::command::dashboard::ansi;
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::ui::theme::ThemePalette;
@@ -230,7 +230,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                     ));
             let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
             // Status icon
-            let (icon, icon_style) =
+            let (icon_spans, _icon_style) =
                 status_icon_and_style(app, agent.status, is_stale, is_interrupted);
 
             // Elapsed time: hide when interrupted
@@ -244,7 +244,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             };
 
             // Pad icon to fixed 2-column width so emoji and spinners align
-            let icon_cols = display_width(&icon);
+            let icon_cols: usize = icon_spans.iter().map(|(t, _)| display_width(t)).sum();
             let icon_pad = if icon_cols < 2 {
                 " ".repeat(2 - icon_cols)
             } else {
@@ -281,8 +281,11 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Style::default().fg(app.palette.text)
             };
 
-            let line = Line::from(vec![
-                Span::styled(icon, icon_style),
+            let mut line_spans: Vec<Span> = icon_spans
+                .into_iter()
+                .map(|(text, style)| Span::styled(text, style))
+                .collect();
+            line_spans.extend([
                 Span::raw(icon_pad),
                 Span::raw(" "),
                 Span::styled(display_name, name_style),
@@ -290,6 +293,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Span::raw(" "),
                 Span::styled(elapsed, elapsed_style),
             ]);
+            let line = Line::from(line_spans);
 
             ListItem::new(line)
         })
@@ -355,9 +359,9 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let is_active = app.host_agent_idx == Some(idx);
 
             // Status icon and color
-            let (icon, icon_style) =
+            let (icon_spans, icon_base_style) =
                 status_icon_and_style(app, agent.status, is_stale, is_interrupted);
-            let status_color = icon_style.fg.unwrap_or(ratatui::style::Color::Reset);
+            let status_color = icon_base_style.fg.unwrap_or(ratatui::style::Color::Reset);
 
             // Stripe color on all lines; stale forces dimmed
             let stripe_color = if is_stale {
@@ -378,7 +382,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             };
 
             // Pad icon to fixed 2-column width
-            let icon_cols = display_width(&icon);
+            let icon_cols: usize = icon_spans.iter().map(|(t, _)| display_width(t)).sum();
             let icon_pad = if icon_cols < 2 {
                 " ".repeat(2 - icon_cols)
             } else {
@@ -454,7 +458,6 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             };
 
             let mut stripe_bg_style = stripe_style;
-            let mut icon_bg_style = icon_style;
 
             if let Some(bg_color) = bg {
                 name_style = name_style.bg(bg_color);
@@ -462,7 +465,6 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 body_style = body_style.bg(bg_color);
                 elapsed_style = elapsed_style.bg(bg_color);
                 stripe_bg_style = stripe_bg_style.bg(bg_color);
-                icon_bg_style = icon_bg_style.bg(bg_color);
             }
 
             // Padding style (spaces that need background in selected state)
@@ -471,7 +473,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             // Line 1: ▌ icon  worktree-name (N)    elapsed
             // Compute used width to pad trailing space
             let line1_used = 2
-                + display_width(&icon)
+                + icon_cols
                 + (2usize.saturating_sub(icon_cols))
                 + 1
                 + full_width
@@ -486,9 +488,15 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 suffix_style = suffix_style.bg(bg_color);
             }
 
-            let line1 = Line::from(vec![
-                Span::styled("▌ ", stripe_bg_style),
-                Span::styled(icon, icon_bg_style),
+            // Build icon spans with optional background for selected state
+            let mut line1_spans: Vec<Span> = vec![Span::styled("▌ ", stripe_bg_style)];
+            for (text, mut style) in icon_spans {
+                if let Some(bg_color) = bg {
+                    style = style.bg(bg_color);
+                }
+                line1_spans.push(Span::styled(text, style));
+            }
+            line1_spans.extend([
                 Span::styled(icon_pad, pad_style),
                 Span::styled(" ", pad_style),
                 Span::styled(display_name_part, name_style),
@@ -498,6 +506,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 Span::styled(elapsed, elapsed_style),
                 Span::styled(" ".repeat(line1_trail), pad_style),
             ]);
+            let line1 = Line::from(line1_spans);
 
             // Line 2: ▌   project name          +N -M *+X -Y
             // Priority: project name > uncommitted stats > committed stats
@@ -602,40 +611,55 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
-/// Get the status icon string and its style for an agent.
+/// Get the status icon as parsed styled spans and the base style for an agent.
+///
+/// Returns `(spans, base_style)` where `spans` contains tmux style codes parsed into
+/// individual `(text, style)` pairs, and `base_style` is the fallback style (used for
+/// stripe color, etc.).
 fn status_icon_and_style(
     app: &SidebarApp,
     status: Option<AgentStatus>,
     is_stale: bool,
     is_interrupted: bool,
-) -> (Cow<'static, str>, Style) {
+) -> (Vec<(String, Style)>, Style) {
     if is_stale {
-        return (Cow::Borrowed("💤"), Style::default().fg(app.palette.dimmed));
+        let style = Style::default().fg(app.palette.dimmed);
+        return (vec![("💤".to_string(), style)], style);
     }
     if is_interrupted {
-        return (Cow::Borrowed("  "), Style::default().fg(app.palette.dimmed));
+        let style = Style::default().fg(app.palette.dimmed);
+        return (vec![("  ".to_string(), style)], style);
     }
     match status {
         Some(AgentStatus::Working) => {
-            let icon = match &app.status_icons.working {
-                Some(custom) => Cow::Owned(custom.clone()),
+            let base_style = Style::default().fg(app.palette.info);
+            let spans = match &app.status_icons.working {
+                Some(custom) => ansi::parse_tmux_styles(custom, base_style),
                 None => {
                     let frames: &[&str] =
                         &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
-                    Cow::Borrowed(frames[app.spinner_frame as usize % frames.len()])
+                    vec![(
+                        frames[app.spinner_frame as usize % frames.len()].to_string(),
+                        base_style,
+                    )]
                 }
             };
-            (icon, Style::default().fg(app.palette.info))
+            (spans, base_style)
         }
-        Some(AgentStatus::Waiting) => (
-            Cow::Owned(app.status_icons.waiting().to_string()),
-            Style::default().fg(app.palette.accent),
-        ),
-        Some(AgentStatus::Done) => (
-            Cow::Owned(app.status_icons.done().to_string()),
-            Style::default().fg(app.palette.success),
-        ),
-        None => (Cow::Borrowed("  "), Style::default().fg(app.palette.dimmed)),
+        Some(AgentStatus::Waiting) => {
+            let base_style = Style::default().fg(app.palette.accent);
+            let spans = ansi::parse_tmux_styles(app.status_icons.waiting(), base_style);
+            (spans, base_style)
+        }
+        Some(AgentStatus::Done) => {
+            let base_style = Style::default().fg(app.palette.success);
+            let spans = ansi::parse_tmux_styles(app.status_icons.done(), base_style);
+            (spans, base_style)
+        }
+        None => {
+            let style = Style::default().fg(app.palette.dimmed);
+            (vec![("  ".to_string(), style)], style)
+        }
     }
 }
 

@@ -25,7 +25,7 @@
 
 mod actions;
 pub mod agent;
-mod ansi;
+pub(crate) mod ansi;
 mod app;
 mod diff;
 mod diff_ops;
