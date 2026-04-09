@@ -22,6 +22,19 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.180 (2026-04-09)
+
+- Add custom theme color overrides in config. Define custom colors under
+  `theme.custom` to override any built-in theme's palette, using hex colors,
+  named colors, or terminal color indices
+  ([#128](https://github.com/raine/workmux/issues/128))
+- Render tmux style codes in status icons. Icons configured with tmux styles
+  like `#[fg=#da8548]●` now display with proper colors instead of raw style
+  strings ([#130](https://github.com/raine/workmux/issues/130))
+- Add `--tab` flag to dashboard command to open directly on a specific tab (e.g.
+  `workmux dashboard --tab agents`)
+  ([#127](https://github.com/raine/workmux/issues/127))
+
 ## v0.1.179 (2026-04-09)
 
 - Respect the XDG Base Directory Specification for config, cache, and state
