@@ -699,7 +699,8 @@ impl App {
             return;
         };
 
-        let options = workflow::types::SetupOptions::new(false, false, true);
+        let mut options = workflow::types::SetupOptions::new(false, false, true);
+        options.mode = self.config.mode();
         if workflow::open(&handle, &ctx, options, false, false, None).is_ok() {
             self.should_jump = true;
         }
@@ -1128,6 +1129,7 @@ impl App {
                 let handle = crate::naming::derive_handle(&local_branch, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
+                options.mode = config.mode();
 
                 let result = workflow::create(
                     &ctx,
@@ -1181,6 +1183,7 @@ impl App {
                 let handle = crate::naming::derive_handle(&name, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
+                options.mode = config.mode();
 
                 // Set working directory for git operations
                 std::env::set_current_dir(&repo_path)?;
