@@ -266,7 +266,7 @@ customize.
 | `agent`          | Default agent for `<agent>` placeholder                                                         | `claude`                    |
 | `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only) | `{}`                        |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                            | `merge`                     |
-| `theme`          | Dashboard color scheme                                                                          | `default` (auto dark/light) |
+| `theme`          | Dashboard color scheme ([custom colors](https://workmux.raine.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
 
 #### Naming options
 

@@ -2,7 +2,7 @@
 
 use ratatui::style::Color;
 
-use crate::config::{ThemeMode, ThemeScheme};
+use crate::config::{CustomThemeColors, ThemeConfig, ThemeMode, ThemeScheme};
 
 /// All customizable colors used in the UI.
 pub struct ThemePalette {
@@ -42,6 +42,44 @@ pub struct ThemePalette {
 }
 
 impl ThemePalette {
+    /// Build a palette from a full theme config, applying custom overrides if present.
+    pub fn from_config(config: &ThemeConfig, mode: ThemeMode) -> Self {
+        let mut palette = Self::for_scheme(config.scheme, mode);
+        if let Some(ref custom) = config.custom {
+            palette.apply_custom(custom);
+        }
+        palette
+    }
+
+    /// Apply custom color overrides to this palette.
+    /// Accepts any color format supported by ratatui: hex ("#51afef"), named ("red"), or indexed ("42").
+    pub fn apply_custom(&mut self, custom: &CustomThemeColors) {
+        macro_rules! apply_color {
+            ($field:ident) => {
+                if let Some(ref s) = custom.$field {
+                    if let Ok(color) = s.parse::<Color>() {
+                        self.$field = color;
+                    }
+                }
+            };
+        }
+        apply_color!(current_row_bg);
+        apply_color!(highlight_row_bg);
+        apply_color!(current_worktree_fg);
+        apply_color!(dimmed);
+        apply_color!(text);
+        apply_color!(border);
+        apply_color!(help_border);
+        apply_color!(help_muted);
+        apply_color!(header);
+        apply_color!(keycap);
+        apply_color!(info);
+        apply_color!(success);
+        apply_color!(warning);
+        apply_color!(danger);
+        apply_color!(accent);
+    }
+
     /// Build a palette for the given scheme and mode.
     pub fn for_scheme(scheme: ThemeScheme, mode: ThemeMode) -> Self {
         match (scheme, mode) {
@@ -575,5 +613,76 @@ impl ThemePalette {
             danger: Color::Rgb(180, 50, 50),
             accent: Color::Rgb(115, 75, 145),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::CustomThemeColors;
+
+    #[test]
+    fn apply_custom_hex_colors() {
+        let mut palette = ThemePalette::for_scheme(ThemeScheme::Default, ThemeMode::Dark);
+        let custom = CustomThemeColors {
+            accent: Some("#51afef".to_string()),
+            danger: Some("#ff6c6b".to_string()),
+            ..Default::default()
+        };
+        palette.apply_custom(&custom);
+        assert_eq!(palette.accent, Color::Rgb(81, 175, 239));
+        assert_eq!(palette.danger, Color::Rgb(255, 108, 107));
+        // Unset fields remain from base scheme
+        assert_eq!(palette.success, Color::Rgb(166, 218, 149));
+    }
+
+    #[test]
+    fn apply_custom_named_colors() {
+        let mut palette = ThemePalette::for_scheme(ThemeScheme::Default, ThemeMode::Dark);
+        let custom = CustomThemeColors {
+            accent: Some("red".to_string()),
+            ..Default::default()
+        };
+        palette.apply_custom(&custom);
+        assert_eq!(palette.accent, Color::Red);
+    }
+
+    #[test]
+    fn apply_custom_ignores_invalid() {
+        let mut palette = ThemePalette::for_scheme(ThemeScheme::Default, ThemeMode::Dark);
+        let original_accent = palette.accent;
+        let custom = CustomThemeColors {
+            accent: Some("not-a-color".to_string()),
+            ..Default::default()
+        };
+        palette.apply_custom(&custom);
+        assert_eq!(palette.accent, original_accent);
+    }
+
+    #[test]
+    fn from_config_applies_custom() {
+        let config = ThemeConfig {
+            scheme: ThemeScheme::Emberforge,
+            mode: None,
+            custom: Some(CustomThemeColors {
+                success: Some("#00ff00".to_string()),
+                ..Default::default()
+            }),
+        };
+        let palette = ThemePalette::from_config(&config, ThemeMode::Dark);
+        assert_eq!(palette.success, Color::Rgb(0, 255, 0));
+        // Other fields come from Emberforge dark
+        assert_eq!(palette.current_row_bg, Color::Rgb(32, 22, 18));
+    }
+
+    #[test]
+    fn from_config_without_custom() {
+        let config = ThemeConfig {
+            scheme: ThemeScheme::Default,
+            mode: None,
+            custom: None,
+        };
+        let palette = ThemePalette::from_config(&config, ThemeMode::Dark);
+        assert_eq!(palette.accent, Color::Rgb(203, 166, 247));
     }
 }

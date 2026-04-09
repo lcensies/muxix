@@ -89,7 +89,7 @@ impl SidebarApp {
                 Ok(luma) if luma > 0.6 => crate::config::ThemeMode::Light,
                 _ => crate::config::ThemeMode::Dark,
             });
-        let palette = ThemePalette::for_scheme(config.theme.scheme, theme_mode);
+        let palette = ThemePalette::from_config(&config.theme, theme_mode);
         let window_prefix = config.window_prefix().to_string();
         let status_icons = config.status_icons.clone();
 

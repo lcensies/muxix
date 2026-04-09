@@ -556,16 +556,57 @@ impl<'de> serde::Deserialize<'de> for ThemeScheme {
     }
 }
 
-/// Theme configuration: scheme + optional mode override.
+/// Custom color overrides for the theme palette.
+/// Each field corresponds to a `ThemePalette` field and accepts a CSS hex color (e.g. "#51afef").
+/// Shorthand aliases: `bg` for `current_row_bg`, `fg` for `text`, `error` for `danger`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+pub struct CustomThemeColors {
+    #[serde(default, alias = "bg")]
+    pub current_row_bg: Option<String>,
+    #[serde(default)]
+    pub highlight_row_bg: Option<String>,
+    #[serde(default)]
+    pub current_worktree_fg: Option<String>,
+    #[serde(default)]
+    pub dimmed: Option<String>,
+    #[serde(default, alias = "fg")]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub border: Option<String>,
+    #[serde(default)]
+    pub help_border: Option<String>,
+    #[serde(default)]
+    pub help_muted: Option<String>,
+    #[serde(default)]
+    pub header: Option<String>,
+    #[serde(default)]
+    pub keycap: Option<String>,
+    #[serde(default)]
+    pub info: Option<String>,
+    #[serde(default)]
+    pub success: Option<String>,
+    #[serde(default)]
+    pub warning: Option<String>,
+    #[serde(default, alias = "error")]
+    pub danger: Option<String>,
+    #[serde(default)]
+    pub accent: Option<String>,
+}
+
+/// Theme configuration: scheme + optional mode override + custom color overrides.
 /// Supports deserializing from:
 ///   - `theme: emberforge` (scheme name, auto-detect mode)
 ///   - `theme: dark` or `theme: light` (legacy mode override)
 ///   - `theme: { scheme: emberforge, mode: dark }` (structured)
+///   - `theme: { scheme: emberforge, custom: { accent: "#51afef" } }` (with overrides)
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 pub struct ThemeConfig {
     pub scheme: ThemeScheme,
     /// None = auto-detect from terminal background
     pub mode: Option<ThemeMode>,
+    /// Custom color overrides applied on top of the base scheme
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<CustomThemeColors>,
 }
 
 impl<'de> serde::Deserialize<'de> for ThemeConfig {
@@ -587,14 +628,17 @@ impl<'de> serde::Deserialize<'de> for ThemeConfig {
                     "dark" => Ok(ThemeConfig {
                         scheme: ThemeScheme::Default,
                         mode: Some(ThemeMode::Dark),
+                        custom: None,
                     }),
                     "light" => Ok(ThemeConfig {
                         scheme: ThemeScheme::Default,
                         mode: Some(ThemeMode::Light),
+                        custom: None,
                     }),
                     _ => Ok(ThemeConfig {
                         scheme: ThemeScheme::from_slug(&lower).unwrap_or_default(),
                         mode: None,
+                        custom: None,
                     }),
                 }
             }
@@ -602,6 +646,7 @@ impl<'de> serde::Deserialize<'de> for ThemeConfig {
             fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<ThemeConfig, M::Error> {
                 let mut scheme = None;
                 let mut mode = None;
+                let mut custom = None;
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
                         "scheme" => {
@@ -615,6 +660,9 @@ impl<'de> serde::Deserialize<'de> for ThemeConfig {
                                 _ => ThemeMode::Dark,
                             });
                         }
+                        "custom" => {
+                            custom = Some(map.next_value::<CustomThemeColors>()?);
+                        }
                         _ => {
                             let _ = map.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -623,6 +671,7 @@ impl<'de> serde::Deserialize<'de> for ThemeConfig {
                 Ok(ThemeConfig {
                     scheme: scheme.unwrap_or_default(),
                     mode,
+                    custom,
                 })
             }
         }
@@ -1879,6 +1928,7 @@ impl Config {
                 self.theme.scheme
             },
             mode: project.theme.mode.or(self.theme.mode),
+            custom: project.theme.custom.or(self.theme.custom),
         };
 
         // Special case: mode (project wins if explicitly set)
@@ -4354,5 +4404,113 @@ panes:
         let merged = global.merge(project);
         let layouts = merged.layouts.unwrap();
         assert!(layouts.contains_key("a"));
+    }
+
+    #[test]
+    fn theme_config_with_custom_colors() {
+        let yaml = r##"
+theme:
+  scheme: emberforge
+  custom:
+    accent: "#51afef"
+    success: "#98be65"
+"##;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, super::ThemeScheme::Emberforge);
+        let custom = config.theme.custom.unwrap();
+        assert_eq!(custom.accent, Some("#51afef".to_string()));
+        assert_eq!(custom.success, Some("#98be65".to_string()));
+        assert_eq!(custom.danger, None);
+    }
+
+    #[test]
+    fn theme_config_custom_with_aliases() {
+        let yaml = r##"
+theme:
+  custom:
+    bg: "#282c34"
+    fg: "#bbc2cf"
+    error: "#ff6c6b"
+"##;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let custom = config.theme.custom.unwrap();
+        // bg alias maps to current_row_bg
+        assert_eq!(custom.current_row_bg, Some("#282c34".to_string()));
+        // fg alias maps to text
+        assert_eq!(custom.text, Some("#bbc2cf".to_string()));
+        // error alias maps to danger
+        assert_eq!(custom.danger, Some("#ff6c6b".to_string()));
+    }
+
+    #[test]
+    fn theme_config_custom_only() {
+        let yaml = r##"
+theme:
+  custom:
+    accent: "#51afef"
+"##;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, super::ThemeScheme::Default);
+        assert!(config.theme.custom.is_some());
+    }
+
+    #[test]
+    fn theme_config_simple_string_no_custom() {
+        let yaml = "theme: emberforge\n";
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.theme.scheme, super::ThemeScheme::Emberforge);
+        assert!(config.theme.custom.is_none());
+    }
+
+    #[test]
+    fn theme_config_merge_custom_project_wins() {
+        let global = Config {
+            theme: super::ThemeConfig {
+                scheme: super::ThemeScheme::Default,
+                mode: None,
+                custom: Some(super::CustomThemeColors {
+                    accent: Some("#111111".to_string()),
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            theme: super::ThemeConfig {
+                scheme: super::ThemeScheme::Default,
+                mode: None,
+                custom: Some(super::CustomThemeColors {
+                    accent: Some("#222222".to_string()),
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        };
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.theme.custom.unwrap().accent,
+            Some("#222222".to_string())
+        );
+    }
+
+    #[test]
+    fn theme_config_merge_custom_falls_back_to_global() {
+        let global = Config {
+            theme: super::ThemeConfig {
+                scheme: super::ThemeScheme::Default,
+                mode: None,
+                custom: Some(super::CustomThemeColors {
+                    accent: Some("#111111".to_string()),
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.theme.custom.unwrap().accent,
+            Some("#111111".to_string())
+        );
     }
 }

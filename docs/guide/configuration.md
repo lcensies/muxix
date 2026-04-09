@@ -85,7 +85,7 @@ Most options have sensible defaults. You only need to configure what you want to
 
 ### Themes
 
-The dashboard supports 11 color schemes, each with dark and light variants. Dark/light mode is auto-detected from your terminal background.
+The dashboard supports 12 color schemes, each with dark and light variants. Dark/light mode is auto-detected from your terminal background.
 
 Press `T` (shift+t) in the dashboard to cycle through schemes. The selection persists to your global config (`~/.config/workmux/config.yaml`).
 
@@ -100,6 +100,38 @@ theme:
   scheme: emberforge
   mode: light
 ```
+
+#### Custom colors
+
+You can override individual palette colors using the `custom` block. Custom colors are applied on top of the base scheme, so you can start from any built-in theme and tweak specific colors. Values can be hex colors (`"#51afef"`), named colors (`red`, `cyan`), or terminal color indices (`42`):
+
+```yaml
+theme:
+  custom:
+    bg: "#282c34"
+    fg: "#bbc2cf"
+    accent: "#51afef"
+    success: "#98be65"
+    warning: "#ECBE7B"
+    error: "#ff6c6b"
+```
+
+You can also combine custom colors with a specific scheme and mode:
+
+```yaml
+theme:
+  scheme: emberforge
+  mode: dark
+  custom:
+    accent: "#51afef"
+    danger: "#ff6c6b"
+```
+
+**Shorthand aliases:** `bg` for `current_row_bg`, `fg` for `text`, `error` for `danger`.
+
+**All palette fields:** `current_row_bg`, `highlight_row_bg`, `current_worktree_fg`, `dimmed`, `text`, `border`, `help_border`, `help_muted`, `header`, `keycap`, `info`, `success`, `warning`, `danger`, `accent`.
+
+Custom colors persist when cycling themes with `T`.
 
 ### Naming options
 

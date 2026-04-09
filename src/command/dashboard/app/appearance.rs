@@ -8,6 +8,9 @@ impl App {
     pub fn cycle_color_scheme(&mut self) {
         self.scheme = self.scheme.next();
         self.palette = ThemePalette::for_scheme(self.scheme, self.theme_mode);
+        if let Some(ref custom) = self.config.theme.custom {
+            self.palette.apply_custom(custom);
+        }
         self.save_theme_scheme();
     }
 
@@ -26,6 +29,7 @@ impl App {
 
 /// Update the `theme:` entry in a YAML config string.
 /// Preserves explicit mode override when present.
+/// Preserves `custom:` block when present in existing config.
 /// Prefers uncommented `theme:` over `# theme:`.
 fn update_theme_in_config(
     contents: &str,
@@ -35,24 +39,6 @@ fn update_theme_in_config(
     use crate::config::{ThemeMode, ThemeScheme};
 
     let slug = scheme.slug();
-
-    // Build replacement lines
-    let new_lines_for_theme = if scheme == ThemeScheme::Default && explicit_mode.is_none() {
-        vec!["# theme: default".to_string()]
-    } else if let Some(mode) = explicit_mode {
-        let mode_str = match mode {
-            ThemeMode::Dark => "dark",
-            ThemeMode::Light => "light",
-        };
-        vec![
-            "theme:".to_string(),
-            format!("  scheme: {}", slug),
-            format!("  mode: {}", mode_str),
-        ]
-    } else {
-        vec![format!("theme: {}", slug)]
-    };
-
     let lines: Vec<&str> = contents.lines().collect();
 
     // First pass: find the best target line (prefer uncommented over commented)
@@ -67,6 +53,68 @@ fn update_theme_in_config(
         }
     }
     let target_idx = uncommented_idx.or(commented_idx);
+
+    // Extract existing custom block lines if the theme is a structured block
+    let mut custom_lines: Vec<String> = Vec::new();
+    if let Some(idx) = target_idx {
+        let trimmed = lines[idx].trim_start();
+        let is_block = trimmed
+            .strip_prefix("theme:")
+            .is_some_and(|rest| rest.trim().is_empty());
+        if is_block {
+            let block_indent = lines[idx].len() - trimmed.len();
+            let mut i = idx + 1;
+            let mut in_custom = false;
+            while i < lines.len() {
+                let next_trimmed = lines[i].trim_start();
+                if next_trimmed.is_empty() {
+                    i += 1;
+                    continue;
+                }
+                if (lines[i].len() - next_trimmed.len()) <= block_indent {
+                    break;
+                }
+                // Check if this is the custom: sub-key
+                if next_trimmed.starts_with("custom:") {
+                    in_custom = true;
+                    custom_lines.push(lines[i].to_string());
+                } else if in_custom {
+                    // Collect lines that are deeper than the custom: key
+                    let custom_indent = custom_lines
+                        .first()
+                        .map(|l| l.len() - l.trim_start().len())
+                        .unwrap_or(0);
+                    if (lines[i].len() - next_trimmed.len()) > custom_indent {
+                        custom_lines.push(lines[i].to_string());
+                    } else {
+                        in_custom = false;
+                    }
+                }
+                i += 1;
+            }
+        }
+    }
+
+    // Build replacement lines
+    let needs_block = explicit_mode.is_some() || !custom_lines.is_empty();
+    let new_lines_for_theme =
+        if scheme == ThemeScheme::Default && explicit_mode.is_none() && custom_lines.is_empty() {
+            vec!["# theme: default".to_string()]
+        } else if needs_block {
+            let mut v = vec!["theme:".to_string()];
+            v.push(format!("  scheme: {}", slug));
+            if let Some(mode) = explicit_mode {
+                let mode_str = match mode {
+                    ThemeMode::Dark => "dark",
+                    ThemeMode::Light => "light",
+                };
+                v.push(format!("  mode: {}", mode_str));
+            }
+            v.extend(custom_lines);
+            v
+        } else {
+            vec![format!("theme: {}", slug)]
+        };
 
     // Second pass: build output
     let mut result_lines: Vec<String> = Vec::new();
@@ -88,7 +136,6 @@ fn update_theme_in_config(
                 let block_indent = line.len() - trimmed.len();
                 while let Some(&(_, next_line)) = iter.peek() {
                     let next_trimmed = next_line.trim_start();
-                    // Continue through blank lines and deeper-indented lines
                     if next_trimmed.is_empty() {
                         iter.next();
                         continue;
@@ -243,5 +290,43 @@ mod theme_persistence_tests {
         let input = "theme: default";
         let result = update_theme_in_config(input, ThemeScheme::Emberforge, None);
         assert_eq!(result, "theme: emberforge");
+    }
+
+    #[test]
+    fn preserves_custom_block_when_cycling() {
+        let input = "theme:\n  scheme: emberforge\n  custom:\n    accent: \"#51afef\"\n    danger: \"#ff6c6b\"\n";
+        let result = update_theme_in_config(input, ThemeScheme::SlateGarden, None);
+        assert_eq!(
+            result,
+            "theme:\n  scheme: slate-garden\n  custom:\n    accent: \"#51afef\"\n    danger: \"#ff6c6b\"\n"
+        );
+    }
+
+    #[test]
+    fn preserves_custom_block_with_mode() {
+        let input =
+            "theme:\n  scheme: default\n  mode: dark\n  custom:\n    success: \"#00ff00\"\n";
+        let result = update_theme_in_config(input, ThemeScheme::Lasergrid, Some(ThemeMode::Dark));
+        assert_eq!(
+            result,
+            "theme:\n  scheme: lasergrid\n  mode: dark\n  custom:\n    success: \"#00ff00\"\n"
+        );
+    }
+
+    #[test]
+    fn preserves_custom_block_default_scheme_comments_out() {
+        let input = "theme:\n  scheme: emberforge\n  custom:\n    accent: \"#51afef\"\n";
+        let result = update_theme_in_config(input, ThemeScheme::Default, None);
+        assert_eq!(
+            result,
+            "theme:\n  scheme: default\n  custom:\n    accent: \"#51afef\"\n"
+        );
+    }
+
+    #[test]
+    fn structured_block_without_custom_stays_simple() {
+        let input = "theme:\n  scheme: emberforge\n  mode: dark\n";
+        let result = update_theme_in_config(input, ThemeScheme::Mossfire, None);
+        assert_eq!(result, "theme: mossfire\n");
     }
 }

@@ -182,7 +182,7 @@ impl App {
                 _ => crate::config::ThemeMode::Dark,
             });
         let scheme = config.theme.scheme;
-        let palette = ThemePalette::for_scheme(scheme, theme_mode);
+        let palette = ThemePalette::from_config(&config.theme, theme_mode);
         let config_path = crate::config::global_config_path();
         let sort_mode = SortMode::load();
         let scope_mode = if cli_session_filter {
