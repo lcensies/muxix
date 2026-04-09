@@ -10,9 +10,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name};
-use crate::command::dashboard::ansi;
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
+use crate::tmux_style;
 use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
@@ -634,7 +634,7 @@ fn status_icon_and_style(
         Some(AgentStatus::Working) => {
             let base_style = Style::default().fg(app.palette.info);
             let spans = match &app.status_icons.working {
-                Some(custom) => ansi::parse_tmux_styles(custom, base_style),
+                Some(custom) => tmux_style::parse_tmux_styles(custom, base_style),
                 None => {
                     let frames: &[&str] =
                         &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
@@ -648,12 +648,12 @@ fn status_icon_and_style(
         }
         Some(AgentStatus::Waiting) => {
             let base_style = Style::default().fg(app.palette.accent);
-            let spans = ansi::parse_tmux_styles(app.status_icons.waiting(), base_style);
+            let spans = tmux_style::parse_tmux_styles(app.status_icons.waiting(), base_style);
             (spans, base_style)
         }
         Some(AgentStatus::Done) => {
             let base_style = Style::default().fg(app.palette.success);
-            let spans = ansi::parse_tmux_styles(app.status_icons.done(), base_style);
+            let spans = tmux_style::parse_tmux_styles(app.status_icons.done(), base_style);
             (spans, base_style)
         }
         None => {

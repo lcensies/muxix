@@ -21,6 +21,7 @@ mod spinner;
 mod state;
 mod template;
 mod tips;
+mod tmux_style;
 mod ui;
 mod util;
 mod workflow;
