@@ -1,6 +1,6 @@
 //! Tmux style code parsing for ratatui rendering.
 
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 /// Parse a string containing tmux style codes (`#[fg=#a6e3a1]`, `#[default]`, etc.)
 /// into styled spans for ratatui rendering.
@@ -55,8 +55,20 @@ fn apply_tmux_directives(mut current: Style, style_str: &str, base: Style) -> St
             } else if let Some(c) = parse_tmux_color(bg) {
                 current = current.bg(c);
             }
+        } else if part.eq_ignore_ascii_case("bold") {
+            current = current.add_modifier(Modifier::BOLD);
+        } else if part.eq_ignore_ascii_case("dim") {
+            current = current.add_modifier(Modifier::DIM);
+        } else if part.eq_ignore_ascii_case("italics") {
+            current = current.add_modifier(Modifier::ITALIC);
+        } else if part.eq_ignore_ascii_case("underscore") {
+            current = current.add_modifier(Modifier::UNDERLINED);
+        } else if part.eq_ignore_ascii_case("reverse") {
+            current = current.add_modifier(Modifier::REVERSED);
+        } else if part.eq_ignore_ascii_case("strikethrough") {
+            current = current.add_modifier(Modifier::CROSSED_OUT);
         }
-        // Unknown directives (bold, italics, etc.) are silently ignored
+        // Other unknown directives are silently ignored
     }
     current
 }
@@ -186,9 +198,18 @@ mod tests {
     }
 
     #[test]
-    fn test_unknown_directive_ignored() {
+    fn test_bold_modifier() {
         let base = Style::default().fg(Color::Cyan);
         let spans = parse_tmux_styles("#[bold,fg=red]X", base);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].1.fg, Some(Color::Red));
+        assert!(spans[0].1.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn test_unknown_directive_ignored() {
+        let base = Style::default().fg(Color::Cyan);
+        let spans = parse_tmux_styles("#[overline,fg=red]X", base);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].1.fg, Some(Color::Red));
     }
