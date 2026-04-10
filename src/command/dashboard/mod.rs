@@ -360,6 +360,111 @@ fn handle_terminal_event(
         return;
     }
 
+    // Command palette modal
+    if app.pending_command_palette.is_some() {
+        match key.code {
+            crossterm::event::KeyCode::Esc => app.pending_command_palette = None,
+            crossterm::event::KeyCode::Enter => {
+                // Confirm selection: extract the action, close palette, dispatch
+                if let Some(ref palette) = app.pending_command_palette {
+                    let filtered = palette.filtered();
+                    if let Some(&idx) = filtered.get(palette.cursor) {
+                        let action = palette.commands[idx].action.clone();
+                        app.pending_command_palette = None;
+                        let refreshed = apply_action(app, action);
+                        if refreshed {
+                            *last_preview_refresh = std::time::Instant::now();
+                        }
+                    } else {
+                        app.pending_command_palette = None;
+                    }
+                }
+            }
+            crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j')
+                if !key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    let count = palette.filtered().len();
+                    if count > 0 {
+                        palette.cursor = (palette.cursor + 1).min(count - 1);
+                    }
+                }
+            }
+            crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k')
+                if !key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    palette.cursor = palette.cursor.saturating_sub(1);
+                }
+            }
+            crossterm::event::KeyCode::Char('n')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    let count = palette.filtered().len();
+                    if count > 0 {
+                        palette.cursor = (palette.cursor + 1).min(count - 1);
+                    }
+                }
+            }
+            crossterm::event::KeyCode::Char('p')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    palette.cursor = palette.cursor.saturating_sub(1);
+                }
+            }
+            crossterm::event::KeyCode::Backspace => {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    palette.filter.pop();
+                    palette.cursor = 0;
+                }
+            }
+            crossterm::event::KeyCode::Char('w')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    // Delete last word
+                    let trimmed = palette.filter.trim_end();
+                    if let Some(pos) = trimmed.rfind(' ') {
+                        palette.filter.truncate(pos + 1);
+                    } else {
+                        palette.filter.clear();
+                    }
+                    palette.cursor = 0;
+                }
+            }
+            crossterm::event::KeyCode::Char('u')
+                if key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    palette.filter.clear();
+                    palette.cursor = 0;
+                }
+            }
+            crossterm::event::KeyCode::Char(c) => {
+                if let Some(ref mut palette) = app.pending_command_palette {
+                    palette.filter.push(c);
+                    palette.cursor = 0;
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // Add worktree modal
     if let Some(ref state) = app.pending_add_worktree {
         if state.editing_base {

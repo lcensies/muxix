@@ -273,6 +273,96 @@ impl AddWorktreeState {
     }
 }
 
+/// A command entry in the command palette.
+pub struct PaletteCommand {
+    /// Human-readable label shown in the palette
+    pub label: &'static str,
+    /// Key hint shown to the right (e.g. "d", "Ctrl+u")
+    pub key_hint: &'static str,
+    /// The action to dispatch when selected
+    pub action: super::super::actions::Action,
+}
+
+/// State for the command palette modal.
+pub struct CommandPaletteState {
+    /// Available commands for the current context
+    pub commands: Vec<PaletteCommand>,
+    /// Filter text typed by the user
+    pub filter: String,
+    /// Cursor position in the filtered list
+    pub cursor: usize,
+}
+
+impl CommandPaletteState {
+    /// Return indices into `commands` that match the current filter, sorted by relevance.
+    pub fn filtered(&self) -> Vec<usize> {
+        if self.filter.is_empty() {
+            return (0..self.commands.len()).collect();
+        }
+        let query = self.filter.to_lowercase();
+        let mut scored: Vec<(usize, i32)> = self
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(i, cmd)| {
+                let target = cmd.label.to_lowercase();
+                fuzzy_score(&query, &target).map(|score| (i, score))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.into_iter().map(|(i, _)| i).collect()
+    }
+}
+
+/// Score a fuzzy match: higher is better, None means no match.
+/// Exact prefix > word-boundary match > substring > subsequence.
+fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
+    // Exact prefix match
+    if target.starts_with(query) {
+        return Some(1000 + query.len() as i32);
+    }
+    // Word start match (query matches start of a word in target)
+    let words: Vec<&str> = target.split_whitespace().collect();
+    for word in &words {
+        if word.starts_with(query) {
+            return Some(800 + query.len() as i32);
+        }
+    }
+    // Substring match
+    if target.contains(query) {
+        return Some(500 + query.len() as i32);
+    }
+    // Fuzzy subsequence match with scoring
+    let mut target_chars = target.chars().peekable();
+    let mut score = 0i32;
+    let mut matched = 0;
+    let mut prev_matched = false;
+    for qc in query.chars() {
+        let mut found = false;
+        for tc in target_chars.by_ref() {
+            if tc == qc {
+                matched += 1;
+                // Bonus for consecutive matches
+                if prev_matched {
+                    score += 5;
+                }
+                prev_matched = true;
+                found = true;
+                break;
+            }
+            prev_matched = false;
+        }
+        if !found {
+            return None;
+        }
+    }
+    if matched == query.len() {
+        Some(score + matched as i32)
+    } else {
+        None
+    }
+}
+
 /// Plan for a pending worktree removal (shown in confirmation modal).
 pub struct RemovePlan {
     pub handle: String,

@@ -28,8 +28,8 @@ fn dim_buffer(f: &mut Frame) {
 pub use self::dashboard::render_dashboard;
 pub use self::diff::render_diff_view;
 pub use self::help::{
-    render_add_worktree, render_base_picker, render_confirm_kill, render_confirm_remove,
-    render_help, render_project_picker, render_sweep,
+    render_add_worktree, render_base_picker, render_command_palette, render_confirm_kill,
+    render_confirm_remove, render_help, render_project_picker, render_sweep,
 };
 
 /// Main UI entry point - renders the appropriate view based on app state.
@@ -47,7 +47,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         || app.pending_base_picker.is_some()
         || app.pending_project_picker.is_some()
         || app.pending_sweep.is_some()
-        || app.pending_add_worktree.is_some();
+        || app.pending_add_worktree.is_some()
+        || app.pending_command_palette.is_some();
 
     if has_modal {
         dim_buffer(f);
@@ -59,6 +60,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         render_confirm_kill(f, app);
     } else if app.pending_remove.is_some() {
         render_confirm_remove(f, app);
+    } else if app.pending_command_palette.is_some() {
+        render_command_palette(f, app);
     } else if app.pending_base_picker.is_some() {
         render_base_picker(f, app);
     } else if app.pending_project_picker.is_some() {

@@ -150,6 +150,8 @@ pub struct App {
     pub show_sidebar_tip: bool,
     /// Pane IDs of agents detected as interrupted by the sidebar daemon.
     pub interrupted_pane_ids: std::collections::HashSet<String>,
+    /// Pending command palette state (shown in command palette modal)
+    pub pending_command_palette: Option<CommandPaletteState>,
 }
 
 impl App {
@@ -261,6 +263,7 @@ impl App {
             status_message: None,
             show_sidebar_tip: crate::tips::should_show_sidebar_tip(),
             interrupted_pane_ids: std::collections::HashSet::new(),
+            pending_command_palette: None,
         };
 
         app.refresh();

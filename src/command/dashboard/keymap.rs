@@ -69,6 +69,7 @@ fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('X') => Some(Action::KillSelected),
         KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
         KeyCode::Char('R') => Some(Action::StartSweep),
+        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
         _ => None,
     }
@@ -111,6 +112,7 @@ fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('b') => Some(Action::ShowBaseBranchPicker),
         KeyCode::Char('/') => Some(Action::EnterFilterMode),
         KeyCode::Char('T') => Some(Action::CycleColorScheme),
+        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
         KeyCode::Char(c @ '1'..='9') => {
             Some(Action::WorktreeJumpToIndex((c as u8 - b'1') as usize))
         }
@@ -152,6 +154,7 @@ fn diff_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('a') => Some(Action::EnterPatchMode),
         KeyCode::Char('c') => Some(Action::SendCommitDiff),
         KeyCode::Char('m') => Some(Action::TriggerMergeDiff),
+        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
         _ => None,
     }
 }
@@ -175,6 +178,7 @@ fn patch_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('j') | KeyCode::Down => Some(Action::NextHunk),
         KeyCode::Char('c') => Some(Action::SendCommitDiff),
         KeyCode::Char('m') => Some(Action::TriggerMergeDiff),
+        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
         KeyCode::Esc | KeyCode::Char('q') => Some(Action::ExitPatchMode),
         _ => None,
     }
@@ -218,6 +222,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("R", "Sweep cleanup"),
             ("/", "Filter agents"),
             ("T", "Cycle theme"),
+            (":", "Command palette"),
             ("1-9", "Quick jump"),
         ],
         Context::DashboardInput => vec![("Esc", "Exit input mode"), ("<keys>", "Send to agent")],
@@ -243,6 +248,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("p", "Switch project"),
             ("/", "Filter worktrees"),
             ("T", "Cycle theme"),
+            (":", "Command palette"),
             ("1-9", "Quick jump"),
         ],
         Context::DiffNormal => vec![
@@ -254,6 +260,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("a", "Enter patch mode (WIP only)"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),
+            (":", "Command palette"),
         ],
         Context::Patch => vec![
             ("?", "Show help"),
@@ -266,6 +273,7 @@ pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
             ("Ctrl+d/u", "Scroll hunk"),
             ("c", "Commit changes"),
             ("m", "Merge branch"),
+            (":", "Command palette"),
             ("q/Esc", "Exit patch mode"),
         ],
         Context::Comment => vec![

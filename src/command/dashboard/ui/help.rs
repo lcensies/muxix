@@ -691,6 +691,150 @@ pub fn render_project_picker(f: &mut Frame, app: &App) {
     f.render_widget(paragraph, popup_area);
 }
 
+/// Render the command palette modal.
+pub fn render_command_palette(f: &mut Frame, app: &App) {
+    let Some(ref palette) = app.pending_command_palette else {
+        return;
+    };
+    let palette_ref = &app.palette;
+
+    let bold = |s: &str| {
+        Span::styled(
+            s.to_string(),
+            Style::default()
+                .fg(palette_ref.text)
+                .add_modifier(Modifier::BOLD),
+        )
+    };
+    let dim = |s: &str| Span::styled(s.to_string(), Style::default().fg(palette_ref.dimmed));
+
+    let filtered = palette.filtered();
+
+    let area = f.area();
+    let width = (area.width * 3 / 5).clamp(40, 70);
+    let height = (area.height * 2 / 5).clamp(10, 25);
+    // overhead: filter + blank + blank_after_items + footer + borders(2)
+    let overhead: u16 = 6;
+    let max_visible: usize = height.saturating_sub(overhead) as usize;
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Filter input line
+    if palette.filter.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(" /", Style::default().fg(palette_ref.dimmed)),
+            Span::styled("_", Style::default().fg(palette_ref.dimmed)),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled(" /", Style::default().fg(palette_ref.dimmed)),
+            Span::styled(
+                palette.filter.clone(),
+                Style::default().fg(palette_ref.text),
+            ),
+            Span::styled("_", Style::default().fg(palette_ref.text)),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+
+    if filtered.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            " No matching commands.",
+            Style::default().fg(palette_ref.dimmed),
+        )]));
+        for _ in 1..max_visible {
+            lines.push(Line::from(""));
+        }
+    } else {
+        // Compute a window of items around the cursor
+        let total = filtered.len();
+        let start = if total <= max_visible || palette.cursor < max_visible / 2 {
+            0
+        } else if palette.cursor + max_visible / 2 >= total {
+            total.saturating_sub(max_visible)
+        } else {
+            palette.cursor - max_visible / 2
+        };
+        let end = (start + max_visible).min(total);
+
+        for (fi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
+            let cmd = &palette.commands[idx];
+            let is_selected = fi == palette.cursor;
+            let cursor_str = if is_selected { "> " } else { "  " };
+
+            let label_style = if is_selected {
+                Style::default().fg(palette_ref.accent)
+            } else {
+                Style::default().fg(palette_ref.text)
+            };
+
+            let mut spans = vec![
+                Span::styled(cursor_str, Style::default().fg(palette_ref.text)),
+                Span::styled(cmd.label, label_style),
+            ];
+
+            if !cmd.key_hint.is_empty() {
+                // Right-align the key hint by padding
+                let label_len = 2 + cmd.label.len() + 1 + cmd.key_hint.len();
+                let inner_width = width.saturating_sub(2) as usize; // minus borders
+                let pad = inner_width.saturating_sub(label_len);
+                spans.push(Span::raw(" ".repeat(pad)));
+                spans.push(Span::styled(
+                    cmd.key_hint,
+                    Style::default()
+                        .fg(palette_ref.dimmed)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+
+            lines.push(Line::from(spans));
+        }
+
+        // Fill remaining slots so height stays fixed
+        for _ in (end - start)..max_visible {
+            lines.push(Line::from(""));
+        }
+    }
+
+    lines.push(Line::from(""));
+
+    // Footer
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        bold("Enter"),
+        dim(" run  "),
+        bold("Esc"),
+        dim(" cancel"),
+    ]));
+
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(palette_ref.help_border))
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                "Command Palette",
+                Style::default()
+                    .fg(palette_ref.header)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+
+    let paragraph = Paragraph::new(Text::from(lines)).block(block);
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(paragraph, popup_area);
+}
+
 /// Render the add-worktree modal.
 pub fn render_add_worktree(f: &mut Frame, app: &App) {
     use super::super::app::{AddWorktreeMode, PrListState};

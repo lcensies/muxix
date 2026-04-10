@@ -1,7 +1,8 @@
 //! Action enum and dispatcher for dashboard key handling.
 
-use super::app::{App, DashboardTab, ViewMode};
+use super::app::{App, CommandPaletteState, DashboardTab, PaletteCommand, ViewMode};
 use super::diff_ops::DiffOps;
+use super::keymap::Context;
 
 /// All possible actions in the dashboard.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +91,9 @@ pub enum Action {
     SendComment,
     DeleteChar,
     AppendChar(char),
+
+    // Command palette
+    ShowCommandPalette,
 }
 
 /// Apply an action to the app state.
@@ -452,5 +456,297 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             }
             false
         }
+
+        // Command palette
+        Action::ShowCommandPalette => {
+            let ctx = super::get_context(app);
+            let commands = palette_commands(ctx, app);
+            app.pending_command_palette = Some(CommandPaletteState {
+                commands,
+                filter: String::new(),
+                cursor: 0,
+            });
+            false
+        }
+    }
+}
+
+/// Build the list of palette commands available in the given context.
+fn palette_commands(ctx: Context, app: &App) -> Vec<PaletteCommand> {
+    match ctx {
+        Context::DashboardNormal => {
+            let mut cmds = vec![
+                PaletteCommand {
+                    label: "Show help",
+                    key_hint: "?",
+                    action: Action::ShowHelp,
+                },
+                PaletteCommand {
+                    label: "Quit",
+                    key_hint: "q",
+                    action: Action::Quit,
+                },
+                PaletteCommand {
+                    label: "Switch to worktrees",
+                    key_hint: "Tab",
+                    action: Action::SwitchTab,
+                },
+                PaletteCommand {
+                    label: "Jump to agent",
+                    key_hint: "Enter",
+                    action: Action::JumpToSelected,
+                },
+                PaletteCommand {
+                    label: "Last agent",
+                    key_hint: "Bksp",
+                    action: Action::JumpToLast,
+                },
+                PaletteCommand {
+                    label: "Peek agent",
+                    key_hint: "p",
+                    action: Action::PeekSelected,
+                },
+                PaletteCommand {
+                    label: "View diff",
+                    key_hint: "d",
+                    action: Action::LoadWipDiff,
+                },
+                PaletteCommand {
+                    label: "Commit changes",
+                    key_hint: "c",
+                    action: Action::SendCommitDashboard,
+                },
+                PaletteCommand {
+                    label: "Merge branch",
+                    key_hint: "m",
+                    action: Action::TriggerMergeDashboard,
+                },
+                PaletteCommand {
+                    label: "Change base branch",
+                    key_hint: "b",
+                    action: Action::ShowBaseBranchPicker,
+                },
+                PaletteCommand {
+                    label: "Open PR in browser",
+                    key_hint: "o",
+                    action: Action::OpenPr,
+                },
+                PaletteCommand {
+                    label: "Open PR checks",
+                    key_hint: "O",
+                    action: Action::OpenPrChecks,
+                },
+                PaletteCommand {
+                    label: "Kill agent",
+                    key_hint: "X",
+                    action: Action::KillSelected,
+                },
+                PaletteCommand {
+                    label: "Remove worktree",
+                    key_hint: "r",
+                    action: Action::RemoveSelectedWorktree,
+                },
+                PaletteCommand {
+                    label: "Sweep cleanup",
+                    key_hint: "R",
+                    action: Action::StartSweep,
+                },
+                PaletteCommand {
+                    label: "Cycle sort mode",
+                    key_hint: "s",
+                    action: Action::CycleSortMode,
+                },
+                PaletteCommand {
+                    label: "Toggle session filter",
+                    key_hint: "F",
+                    action: Action::ToggleScopeFilter,
+                },
+                PaletteCommand {
+                    label: "Toggle stale filter",
+                    key_hint: "f",
+                    action: Action::ToggleStaleFilter,
+                },
+                PaletteCommand {
+                    label: "Enter input mode",
+                    key_hint: "i",
+                    action: Action::EnterInputMode,
+                },
+                PaletteCommand {
+                    label: "Cycle theme",
+                    key_hint: "T",
+                    action: Action::CycleColorScheme,
+                },
+                PaletteCommand {
+                    label: "Filter agents",
+                    key_hint: "/",
+                    action: Action::EnterFilterMode,
+                },
+            ];
+            // Only show "Add worktree" if on agents tab but it's useful cross-tab
+            if app.active_tab == DashboardTab::Agents {
+                cmds.push(PaletteCommand {
+                    label: "Add worktree",
+                    key_hint: "",
+                    action: Action::AddWorktree,
+                });
+            }
+            cmds
+        }
+        Context::WorktreeNormal => vec![
+            PaletteCommand {
+                label: "Show help",
+                key_hint: "?",
+                action: Action::ShowHelp,
+            },
+            PaletteCommand {
+                label: "Quit",
+                key_hint: "q",
+                action: Action::Quit,
+            },
+            PaletteCommand {
+                label: "Switch to agents",
+                key_hint: "Tab",
+                action: Action::SwitchTab,
+            },
+            PaletteCommand {
+                label: "Jump to worktree",
+                key_hint: "Enter",
+                action: Action::JumpToSelectedWorktree,
+            },
+            PaletteCommand {
+                label: "Open PR in browser",
+                key_hint: "o",
+                action: Action::OpenPr,
+            },
+            PaletteCommand {
+                label: "Open PR checks",
+                key_hint: "O",
+                action: Action::OpenPrChecks,
+            },
+            PaletteCommand {
+                label: "Add worktree",
+                key_hint: "a",
+                action: Action::AddWorktree,
+            },
+            PaletteCommand {
+                label: "Remove worktree",
+                key_hint: "r",
+                action: Action::RemoveSelectedWorktree,
+            },
+            PaletteCommand {
+                label: "Close mux window",
+                key_hint: "c",
+                action: Action::CloseSelectedWorktreeWindow,
+            },
+            PaletteCommand {
+                label: "Sweep cleanup",
+                key_hint: "R",
+                action: Action::StartSweep,
+            },
+            PaletteCommand {
+                label: "Cycle sort mode",
+                key_hint: "s",
+                action: Action::CycleWorktreeSortMode,
+            },
+            PaletteCommand {
+                label: "Change base branch",
+                key_hint: "b",
+                action: Action::ShowBaseBranchPicker,
+            },
+            PaletteCommand {
+                label: "Switch project",
+                key_hint: "p",
+                action: Action::ShowProjectPicker,
+            },
+            PaletteCommand {
+                label: "Filter worktrees",
+                key_hint: "/",
+                action: Action::EnterFilterMode,
+            },
+            PaletteCommand {
+                label: "Cycle theme",
+                key_hint: "T",
+                action: Action::CycleColorScheme,
+            },
+        ],
+        Context::DiffNormal => {
+            let mut cmds = vec![
+                PaletteCommand {
+                    label: "Close diff",
+                    key_hint: "q",
+                    action: Action::CloseDiff,
+                },
+                PaletteCommand {
+                    label: "Toggle WIP/Review",
+                    key_hint: "Tab",
+                    action: Action::ToggleDiffType,
+                },
+                PaletteCommand {
+                    label: "Commit changes",
+                    key_hint: "c",
+                    action: Action::SendCommitDiff,
+                },
+                PaletteCommand {
+                    label: "Merge branch",
+                    key_hint: "m",
+                    action: Action::TriggerMergeDiff,
+                },
+            ];
+            // Only show patch mode for WIP diffs
+            if let ViewMode::Diff(ref diff) = app.view_mode
+                && !diff.is_branch_diff
+            {
+                cmds.push(PaletteCommand {
+                    label: "Enter patch mode",
+                    key_hint: "a",
+                    action: Action::EnterPatchMode,
+                });
+            }
+            cmds
+        }
+        Context::Patch => vec![
+            PaletteCommand {
+                label: "Stage hunk",
+                key_hint: "y",
+                action: Action::StageAndNext,
+            },
+            PaletteCommand {
+                label: "Skip hunk",
+                key_hint: "n",
+                action: Action::SkipHunk,
+            },
+            PaletteCommand {
+                label: "Undo last staged",
+                key_hint: "u",
+                action: Action::UndoStagedHunk,
+            },
+            PaletteCommand {
+                label: "Split hunk",
+                key_hint: "s",
+                action: Action::SplitHunk,
+            },
+            PaletteCommand {
+                label: "Add comment",
+                key_hint: "o",
+                action: Action::StartComment,
+            },
+            PaletteCommand {
+                label: "Commit changes",
+                key_hint: "c",
+                action: Action::SendCommitDiff,
+            },
+            PaletteCommand {
+                label: "Merge branch",
+                key_hint: "m",
+                action: Action::TriggerMergeDiff,
+            },
+            PaletteCommand {
+                label: "Exit patch mode",
+                key_hint: "Esc",
+                action: Action::ExitPatchMode,
+            },
+        ],
+        // Don't offer palette in text-entry contexts
+        _ => Vec::new(),
     }
 }
