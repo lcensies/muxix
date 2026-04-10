@@ -16,6 +16,7 @@ include = [
     "/.codex/hooks/**/*",
     "/.github/hooks/**/*",
     "/resources/opencode/**/*",
+    "/resources/gemini/**/*",
     "/.pi/extensions/**/*",
     "/Cargo.toml",
     "/Cargo.lock",

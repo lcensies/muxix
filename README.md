@@ -1830,7 +1830,7 @@ at-a-glance visibility into what the agent in each window doing.
 | Codex        | ✅ Supported\*                                                              |
 | Copilot CLI  | ✅ Supported\*                                                              |
 | Pi           | ✅ Supported\*                                                              |
-| Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
+| Gemini CLI   | ✅ Supported                                                                |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 

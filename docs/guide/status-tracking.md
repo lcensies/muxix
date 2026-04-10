@@ -19,7 +19,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 | Codex        | ✅ Supported\*                                                              |
 | Copilot CLI  | ✅ Supported\*                                                              |
 | Pi           | ✅ Supported\*                                                              |
-| Gemini CLI   | [In progress](https://github.com/google-gemini/gemini-cli/issues/9070)      |
+| Gemini CLI   | ✅ Supported                                                                |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
@@ -105,6 +105,24 @@ curl -o ~/.codex/hooks.json \
 If you already have a `~/.codex/hooks.json`, merge the hook entries from the downloaded file into your existing configuration.
 
 Note: Codex hooks do not support detecting permission prompts, so only working/done states are tracked (no waiting state).
+
+## Gemini CLI setup
+
+If you prefer manual setup, download the hooks configuration and merge it into your Gemini settings:
+
+```bash
+curl -s https://raw.githubusercontent.com/raine/workmux/main/resources/gemini/settings.json \
+  | jq -s '.[0] * .[1]' ~/.gemini/settings.json - > /tmp/gemini-settings.json \
+  && mv /tmp/gemini-settings.json ~/.gemini/settings.json
+```
+
+If you don't have an existing `~/.gemini/settings.json`, you can download the hooks configuration directly:
+
+```bash
+mkdir -p ~/.gemini
+curl -o ~/.gemini/settings.json \
+  https://raw.githubusercontent.com/raine/workmux/main/resources/gemini/settings.json
+```
 
 ## Copilot CLI setup
 

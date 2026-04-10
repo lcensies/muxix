@@ -7,6 +7,7 @@
 pub mod claude;
 pub mod codex;
 pub mod copilot;
+pub mod gemini;
 pub mod opencode;
 pub mod pi;
 
@@ -25,6 +26,7 @@ pub enum Agent {
     Claude,
     Codex,
     Copilot,
+    Gemini,
     OpenCode,
     Pi,
 }
@@ -35,6 +37,7 @@ impl Agent {
             Agent::Claude => "Claude Code",
             Agent::Codex => "Codex",
             Agent::Copilot => "Copilot CLI",
+            Agent::Gemini => "Gemini CLI",
             Agent::OpenCode => "OpenCode",
             Agent::Pi => "pi",
         }
@@ -102,6 +105,18 @@ pub fn check_all() -> Vec<AgentCheck> {
         });
     }
 
+    if let Some(reason) = gemini::detect() {
+        let status = match gemini::check() {
+            Ok(s) => s,
+            Err(e) => StatusCheck::Error(e.to_string()),
+        };
+        results.push(AgentCheck {
+            agent: Agent::Gemini,
+            reason,
+            status,
+        });
+    }
+
     if let Some(reason) = pi::detect() {
         let status = match pi::check() {
             Ok(s) => s,
@@ -135,6 +150,7 @@ pub fn install(agent: Agent) -> Result<String> {
         Agent::Claude => claude::install(),
         Agent::Codex => codex::install(),
         Agent::Copilot => copilot::install(),
+        Agent::Gemini => gemini::install(),
         Agent::OpenCode => opencode::install(),
         Agent::Pi => pi::install(),
     }
@@ -393,6 +409,7 @@ mod tests {
         assert_eq!(Agent::Claude.name(), "Claude Code");
         assert_eq!(Agent::Codex.name(), "Codex");
         assert_eq!(Agent::Copilot.name(), "Copilot CLI");
+        assert_eq!(Agent::Gemini.name(), "Gemini CLI");
         assert_eq!(Agent::OpenCode.name(), "OpenCode");
         assert_eq!(Agent::Pi.name(), "pi");
     }
@@ -405,6 +422,7 @@ mod tests {
             serde_json::to_string(&Agent::Copilot).unwrap(),
             "\"copilot\""
         );
+        assert_eq!(serde_json::to_string(&Agent::Gemini).unwrap(), "\"gemini\"");
         assert_eq!(
             serde_json::to_string(&Agent::OpenCode).unwrap(),
             "\"opencode\""
@@ -420,6 +438,8 @@ mod tests {
         assert_eq!(agent, Agent::Codex);
         let agent: Agent = serde_json::from_str("\"copilot\"").unwrap();
         assert_eq!(agent, Agent::Copilot);
+        let agent: Agent = serde_json::from_str("\"gemini\"").unwrap();
+        assert_eq!(agent, Agent::Gemini);
         let agent: Agent = serde_json::from_str("\"opencode\"").unwrap();
         assert_eq!(agent, Agent::OpenCode);
         let agent: Agent = serde_json::from_str("\"pi\"").unwrap();
