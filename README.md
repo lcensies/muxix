@@ -1504,6 +1504,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 | `+`/`-`   | Resize preview pane                     |
 | `Enter`   | Go to selected agent (closes dashboard) |
 | `j`/`k`   | Navigate up/down                        |
+| `:`       | Open command palette                    |
 | `q`/`Esc` | Quit                                    |
 
 #### Live preview
@@ -1573,6 +1574,7 @@ along with diff statistics showing lines added (+) and removed (-).
 | `Ctrl+u`  | Page up                          |
 | `c`       | Send commit command to agent     |
 | `m`       | Trigger merge and exit dashboard |
+| `:`       | Open command palette             |
 | `q`/`Esc` | Close diff view                  |
 
 #### Patch mode
@@ -1591,6 +1593,7 @@ rendered with syntax highlighting for better readability.
 | `s`       | Split hunk (if splittable)       |
 | `o`       | Comment on hunk (sends to agent) |
 | `j`/`k`   | Navigate to next/previous hunk   |
+| `:`       | Open command palette             |
 | `q`/`Esc` | Exit patch mode                  |
 
 Press `y` to stage the current hunk and advance to the next. Press `n` to skip

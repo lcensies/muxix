@@ -67,6 +67,7 @@ The dashboard has two views, toggled with `Tab`:
 | `/`       | Filter agents by name                   |
 | `j`/`k`   | Navigate up/down                        |
 | `T`       | Cycle theme                             |
+| `:`       | Open command palette                    |
 | `q`/`Esc` | Quit                                    |
 | `Ctrl+c`  | Quit (works from any view)              |
 
@@ -88,6 +89,7 @@ The dashboard has two views, toggled with `Tab`:
 | `/`       | Filter worktrees by name/branch        |
 | `j`/`k`   | Navigate up/down                       |
 | `T`       | Cycle theme                            |
+| `:`       | Open command palette                   |
 | `q`/`Esc` | Quit                                   |
 | `Ctrl+c`  | Quit (works from any view)             |
 

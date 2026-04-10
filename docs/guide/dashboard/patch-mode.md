@@ -18,6 +18,7 @@ When [delta](https://github.com/dandavison/delta) is installed, hunks are render
 | `s`       | Split hunk (if splittable)       |
 | `o`       | Comment on hunk (sends to agent) |
 | `j`/`k`   | Navigate to next/previous hunk   |
+| `:`       | Open command palette             |
 | `q`/`Esc` | Exit patch mode                  |
 | `Ctrl+c`  | Quit dashboard                   |
 

@@ -36,6 +36,7 @@ If there are no changes to show, a message is displayed instead:
 | `Ctrl+u`  | Page up                     |
 | `c`       | Send commit action to agent |
 | `m`       | Send merge action to agent  |
+| `:`       | Open command palette        |
 | `q`/`Esc` | Close diff view             |
 | `Ctrl+c`  | Quit dashboard              |
 
