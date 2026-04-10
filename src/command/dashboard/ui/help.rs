@@ -717,6 +717,11 @@ pub fn render_command_palette(f: &mut Frame, app: &App) {
     let overhead: u16 = 6;
     let max_visible: usize = height.saturating_sub(overhead) as usize;
 
+    // Compute final popup dimensions (respects small terminals)
+    let popup_width = width.min(area.width);
+    let popup_height = height.min(area.height);
+    let inner_width = popup_width.saturating_sub(2) as usize; // minus borders
+
     let mut lines: Vec<Line> = Vec::new();
 
     // Filter input line
@@ -777,7 +782,6 @@ pub fn render_command_palette(f: &mut Frame, app: &App) {
             if !cmd.key_hint.is_empty() {
                 // Right-align the key hint by padding
                 let label_len = 2 + cmd.label.len() + 1 + cmd.key_hint.len();
-                let inner_width = width.saturating_sub(2) as usize; // minus borders
                 let pad = inner_width.saturating_sub(label_len);
                 spans.push(Span::raw(" ".repeat(pad)));
                 spans.push(Span::styled(
@@ -809,10 +813,10 @@ pub fn render_command_palette(f: &mut Frame, app: &App) {
     ]));
 
     let popup_area = Rect {
-        x: area.width.saturating_sub(width) / 2,
-        y: area.height.saturating_sub(height) / 2,
-        width: width.min(area.width),
-        height: height.min(area.height),
+        x: area.width.saturating_sub(popup_width) / 2,
+        y: area.height.saturating_sub(popup_height) / 2,
+        width: popup_width,
+        height: popup_height,
     };
 
     let block = Block::bordered()
