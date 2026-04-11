@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.181 (2026-04-11)
+
+- Add command palette to the dashboard, accessible via `:`. Provides a
+  fuzzy-searchable list of available actions for the current context with their
+  key hints
+
 ## v0.1.180 (2026-04-09)
 
 - Add custom theme color overrides in config. Define custom colors under
