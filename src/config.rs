@@ -1202,6 +1202,17 @@ pub struct ContainerConfig {
     /// Global-only: ignored in project config.
     #[serde(default)]
     pub group_add: Option<Vec<String>>,
+
+    /// Files (relative to the worktree root) to mask out of the container's
+    /// worktree bind mount. Each path is shadowed by bind-mounting `/dev/null`
+    /// over it so agents running inside the container cannot read the host
+    /// file. Useful for keeping `.env` and other secret-bearing files out of
+    /// the sandbox without restructuring the project.
+    ///
+    /// Only existing regular files are masked; missing paths are skipped with
+    /// a warning. Directories are not supported (use path-level exclusions).
+    #[serde(default)]
+    pub excluded_files: Option<Vec<String>>,
 }
 
 impl ContainerConfig {
@@ -1215,6 +1226,12 @@ impl ContainerConfig {
 
     pub fn group_add(&self) -> &[String] {
         self.group_add.as_deref().unwrap_or(&[])
+    }
+
+    /// Files to mask out of the worktree bind mount (relative to worktree root).
+    /// Returns empty slice when unset.
+    pub fn excluded_files(&self) -> &[String] {
+        self.excluded_files.as_deref().unwrap_or(&[])
     }
 
     /// Structural validation for hardware access fields. Called at config load.
@@ -1239,6 +1256,7 @@ impl ContainerConfig {
             memory: project.memory.or(global.memory),
             devices: global.devices,
             group_add: global.group_add,
+            excluded_files: project.excluded_files.or(global.excluded_files),
         }
     }
 }
@@ -2575,6 +2593,12 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   #   runtime: docker          # docker | podman | apple-container
 #   #   # memory: 16G            # VM memory limit (apple-container default: 16G)
 #   #   # cpus: 4                # VM CPU count (only passed when set)
+#   #   # Mask files out of the worktree bind mount (paths relative to the
+#   #   # worktree root). Each listed file is shadowed by /dev/null so the
+#   #   # sandboxed agent cannot read it. Missing files are skipped.
+#   #   # excluded_files:
+#   #   #   - .env
+#   #   #   - .env.local
 #   # lima:
 #   #   isolation: project
 #   #   cpus: 4
@@ -3363,6 +3387,70 @@ agents:
 
         let merged = global.merge(project);
         assert_eq!(merged.sandbox.image, Some("global:latest".to_string()));
+    }
+
+    #[test]
+    fn test_excluded_files_default_empty() {
+        let config = ContainerConfig::default();
+        assert!(config.excluded_files().is_empty());
+    }
+
+    #[test]
+    fn test_excluded_files_accessor() {
+        let config = ContainerConfig {
+            excluded_files: Some(vec![".env".into(), ".env.local".into()]),
+            ..Default::default()
+        };
+        assert_eq!(config.excluded_files(), &[".env", ".env.local"]);
+    }
+
+    #[test]
+    fn test_excluded_files_merge_project_overrides_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    excluded_files: Some(vec![".env".into()]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    excluded_files: Some(vec![".env.production".into()]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(
+            merged.sandbox.container.excluded_files,
+            Some(vec![".env.production".into()])
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_merge_inherits_global() {
+        let global = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    excluded_files: Some(vec![".env".into()]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let merged = global.merge(Config::default());
+        assert_eq!(
+            merged.sandbox.container.excluded_files,
+            Some(vec![".env".into()])
+        );
     }
 
     #[test]

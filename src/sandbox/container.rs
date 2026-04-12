@@ -344,6 +344,35 @@ pub fn build_docker_run_args(
         worktree_root_str, worktree_root_str
     ));
 
+    // Mask configured files out of the worktree mount by bind-mounting /dev/null
+    // over them. Must come AFTER the worktree mount so the /dev/null mounts win.
+    // Missing files are skipped -- bind-mounting over a nonexistent target would
+    // fail and kill the container. Paths that escape the worktree are rejected
+    // to prevent a malicious project config from masking host files.
+    for rel in config.container.excluded_files() {
+        let rel_path = Path::new(rel);
+        if rel_path.is_absolute() || rel.contains("..") {
+            tracing::warn!(
+                path = %rel,
+                "sandbox.container.excluded_files entry must be a relative path inside the worktree; skipping"
+            );
+            continue;
+        }
+        let host_path = worktree_root.join(rel_path);
+        if !host_path.is_file() {
+            tracing::warn!(
+                path = %host_path.display(),
+                "sandbox.container.excluded_files entry does not exist on disk; skipping"
+            );
+            continue;
+        }
+        args.push("--mount".to_string());
+        args.push(format!(
+            "type=bind,source=/dev/null,target={},readonly",
+            host_path.display()
+        ));
+    }
+
     // Git worktree mounts: .git directory + main worktree (for symlink resolution)
     let git_path = worktree_root.join(".git");
     if git_path.is_file()
@@ -678,6 +707,143 @@ mod tests {
         assert!(args.contains(&"sh".to_string()));
         assert!(args.contains(&"-c".to_string()));
         assert!(args.contains(&"claude".to_string()));
+    }
+
+    #[test]
+    fn test_excluded_files_default_empty() {
+        let config = make_config();
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            !args.iter().any(|a| a.contains("source=/dev/null")),
+            "no /dev/null mounts should be added when excluded_files is unset"
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_masks_existing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".env"), "SECRET=1").unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![".env".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            tmp.path(),
+            tmp.path(),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let env_abs = tmp.path().join(".env");
+        let expected = format!(
+            "type=bind,source=/dev/null,target={},readonly",
+            env_abs.display()
+        );
+        assert!(
+            args.contains(&expected),
+            "expected /dev/null mount for .env, got: {:?}",
+            args
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_skips_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![".env".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            tmp.path(),
+            tmp.path(),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            !args.iter().any(|a| a.contains("source=/dev/null")),
+            "nonexistent excluded files should be skipped, not mounted"
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_rejects_escape_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create the target of the attempted escape so is_file() would succeed
+        // if the path-safety check weren't applied.
+        let outside = tmp.path().parent().unwrap().join("outside-secret");
+        let _ = std::fs::write(&outside, "SECRET=1");
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![
+                    "../outside-secret".to_string(),
+                    "/etc/passwd".to_string(),
+                ]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            tmp.path(),
+            tmp.path(),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let _ = std::fs::remove_file(&outside);
+
+        assert!(
+            !args.iter().any(|a| a.contains("source=/dev/null")),
+            "paths escaping the worktree must not produce mounts: {:?}",
+            args
+        );
     }
 
     #[test]
