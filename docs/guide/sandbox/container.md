@@ -144,6 +144,8 @@ sandbox:
 
 Listed paths are relative to the worktree root. Each one is shadowed by a read-only `/dev/null` bind mount, so agents running inside the container cannot read the host file without having to restructure the project. Paths that escape the worktree (absolute paths or `..` segments) are rejected; files that don't exist on disk are skipped with a warning.
 
+**Note:** `excluded_files` relies on file-level bind mounts, which Apple Container does not support (it only accepts directory mounts). Use Docker or Podman if you need this feature.
+
 **Sandbox all panes (not just agent):**
 
 ```yaml
@@ -185,6 +187,7 @@ The exact flags vary by runtime (e.g., Podman adds `--userns=keep-id`, Apple Con
 | Main `.git`            | read-write  | Git operations                                                |
 | Agent credentials      | read-write  | Auth and settings (see [Credentials](./features#credentials)) |
 | `extra_mounts` entries | read-only\* | User-configured paths                                         |
+| `excluded_files` entries | masked    | Shadowed with `/dev/null` so sensitive files are unreadable   |
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
