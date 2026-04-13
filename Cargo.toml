@@ -15,7 +15,7 @@ include = [
     "/.claude-plugin/**/*",
     "/.codex/hooks/**/*",
     "/.github/hooks/**/*",
-    "/.opencode/plugin/**/*",
+    "/resources/opencode/**/*",
     "/.pi/extensions/**/*",
     "/Cargo.toml",
     "/Cargo.lock",

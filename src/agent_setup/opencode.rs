@@ -5,7 +5,8 @@
 //! 2. `XDG_CONFIG_HOME/opencode`
 //! 3. `~/.config/opencode`
 //!
-//! Installs plugin by writing `workmux-status.ts` to the plugin directory.
+//! Installs plugin by writing `package.json` and `workmux-status.ts` to the
+//! OpenCode config directory.
 
 use anyhow::{Context, Result};
 use std::fs;
@@ -13,8 +14,9 @@ use std::path::PathBuf;
 
 use super::StatusCheck;
 
-/// The OpenCode plugin source, embedded at compile time.
-const PLUGIN_SOURCE: &str = include_str!("../../.opencode/plugin/workmux-status.ts");
+/// OpenCode distribution files, embedded at compile time.
+const PLUGIN_SOURCE: &str = include_str!("../../resources/opencode/plugins/workmux-status.ts");
+const PACKAGE_JSON: &str = include_str!("../../resources/opencode/package.json");
 
 pub fn opencode_config_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("OPENCODE_CONFIG") {
@@ -27,7 +29,15 @@ pub fn opencode_config_dir() -> Option<PathBuf> {
 }
 
 fn plugin_path() -> Option<PathBuf> {
+    opencode_config_dir().map(|d| d.join("plugins/workmux-status.ts"))
+}
+
+fn legacy_plugin_path() -> Option<PathBuf> {
     opencode_config_dir().map(|d| d.join("plugin/workmux-status.ts"))
+}
+
+fn package_json_path() -> Option<PathBuf> {
+    opencode_config_dir().map(|d| d.join("package.json"))
 }
 
 /// Detect if OpenCode is present via filesystem.
@@ -49,7 +59,7 @@ pub fn check() -> Result<StatusCheck> {
         return Ok(StatusCheck::NotInstalled);
     };
 
-    if path.exists() {
+    if path.exists() || legacy_plugin_path().is_some_and(|legacy| legacy.exists()) {
         Ok(StatusCheck::Installed)
     } else {
         Ok(StatusCheck::NotInstalled)
@@ -61,15 +71,23 @@ pub fn check() -> Result<StatusCheck> {
 pub fn install() -> Result<String> {
     let path =
         plugin_path().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let package_json =
+        package_json_path().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("Failed to create OpenCode plugin directory")?;
     }
 
+    if let Some(parent) = package_json.parent() {
+        fs::create_dir_all(parent).context("Failed to create OpenCode config directory")?;
+    }
+
+    fs::write(&package_json, PACKAGE_JSON).context("Failed to write OpenCode package.json")?;
     fs::write(&path, PLUGIN_SOURCE).context("Failed to write OpenCode plugin")?;
 
     Ok(format!(
-        "Installed plugin to {}. Restart OpenCode for it to take effect.",
+        "Installed OpenCode plugin files to {} and {}. Restart OpenCode for it to take effect.",
+        package_json.display(),
         path.display()
     ))
 }

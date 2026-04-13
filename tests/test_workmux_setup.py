@@ -289,7 +289,7 @@ class TestSetupInstall:
         workmux_exe_path: Path,
         repo_path: Path,
     ):
-        """Accepting installs OpenCode plugin file."""
+        """Accepting installs OpenCode package and plugin files."""
         opencode_dir = mux_server.home_path / ".config" / "opencode"
         opencode_dir.mkdir(parents=True)
 
@@ -304,7 +304,10 @@ class TestSetupInstall:
         assert poll_until_file_has_content(exit_code_file, timeout=5.0)
         assert exit_code_file.read_text().strip() == "0"
 
-        plugin_path = opencode_dir / "plugin" / "workmux-status.ts"
+        package_json_path = opencode_dir / "package.json"
+        plugin_path = opencode_dir / "plugins" / "workmux-status.ts"
+        assert package_json_path.exists()
+        assert len(package_json_path.read_text()) > 0
         assert plugin_path.exists()
         assert len(plugin_path.read_text()) > 0
 
@@ -339,7 +342,9 @@ class TestSetupInstall:
         assert "Stop" in settings["hooks"]
 
         # OpenCode plugin installed
-        plugin_path = opencode_dir / "plugin" / "workmux-status.ts"
+        package_json_path = opencode_dir / "package.json"
+        plugin_path = opencode_dir / "plugins" / "workmux-status.ts"
+        assert package_json_path.exists()
         assert plugin_path.exists()
 
     def test_claude_preserves_existing_settings(

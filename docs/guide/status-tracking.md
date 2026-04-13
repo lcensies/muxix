@@ -76,9 +76,11 @@ Restart pi for the extension to take effect.
 If you prefer manual setup, download the workmux status plugin to your global OpenCode plugin directory:
 
 ```bash
-mkdir -p ~/.config/opencode/plugin
-curl -o ~/.config/opencode/plugin/workmux-status.ts \
-  https://raw.githubusercontent.com/raine/workmux/main/.opencode/plugin/workmux-status.ts
+mkdir -p ~/.config/opencode/plugins
+curl -o ~/.config/opencode/package.json \
+  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/package.json
+curl -o ~/.config/opencode/plugins/workmux-status.ts \
+  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/plugins/workmux-status.ts
 ```
 
 Restart OpenCode for the plugin to take effect.
