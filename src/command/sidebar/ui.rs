@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
-use crate::agent_display::{extract_project_name, extract_worktree_name};
+use crate::agent_display::{extract_project_name, extract_worktree_name, strip_oc_title_prefix};
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::tmux_style;
@@ -679,6 +679,8 @@ fn sanitize_pane_title<'a>(raw: Option<&'a str>, worktree: &str, project: &str) 
         })
         .trim();
 
+    let title = strip_oc_title_prefix(title);
+
     if title.is_empty() {
         return None;
     }
@@ -774,4 +776,50 @@ fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
     let mut result = trimmed.to_string();
     result.push('\u{2026}');
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_pane_title;
+    use crate::agent_display::strip_oc_title_prefix;
+
+    #[test]
+    fn strips_oc_prefixes() {
+        assert_eq!(
+            strip_oc_title_prefix("OC | Investigating..."),
+            "Investigating..."
+        );
+        assert_eq!(
+            strip_oc_title_prefix("OC | OC | Investigating..."),
+            "Investigating..."
+        );
+    }
+
+    #[test]
+    fn keeps_non_agent_pipe_titles() {
+        assert_eq!(
+            strip_oc_title_prefix("Build | Investigating..."),
+            "Build | Investigating..."
+        );
+        assert_eq!(
+            strip_oc_title_prefix("Claude Code | Investigating..."),
+            "Claude Code | Investigating..."
+        );
+    }
+
+    #[test]
+    fn sanitize_pane_title_drops_empty_after_prefix_strip() {
+        assert_eq!(
+            sanitize_pane_title(Some("OC |"), "worktree", "project"),
+            None
+        );
+    }
+
+    #[test]
+    fn sanitize_pane_title_strips_icons_and_agent_prefixes() {
+        assert_eq!(
+            sanitize_pane_title(Some("⠋⠙ OC | Investigating..."), "worktree", "project"),
+            Some("Investigating...")
+        );
+    }
 }

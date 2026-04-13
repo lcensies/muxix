@@ -10,6 +10,8 @@ use ratatui::{
 };
 use std::collections::{BTreeMap, HashSet};
 
+use crate::agent_display::strip_oc_title_prefix;
+
 use super::super::app::{App, DashboardTab};
 use super::super::spinner::SPINNER_FRAMES;
 use super::format;
@@ -266,7 +268,10 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
             let title = agent
                 .pane_title
                 .as_ref()
-                .map(|t| t.strip_prefix("... ").unwrap_or(t).to_string())
+                .map(|t| {
+                    let t = strip_oc_title_prefix(t);
+                    t.strip_prefix("... ").unwrap_or(t).to_string()
+                })
                 .unwrap_or_default();
             let status_spans = app.get_status_display(agent);
             let duration = app

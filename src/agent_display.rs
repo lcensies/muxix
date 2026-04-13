@@ -84,6 +84,19 @@ pub fn extract_project_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
+/// Strip repeated OpenCode title prefixes used for terminal title metadata.
+pub fn strip_oc_title_prefix(mut title: &str) -> &str {
+    while let Some((prefix, rest)) = title.split_once('|') {
+        if prefix.trim() != "OC" {
+            break;
+        }
+
+        title = rest.trim();
+    }
+
+    title
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +203,21 @@ mod tests {
         std::fs::create_dir_all(project_dir.join(".git")).unwrap();
 
         assert_eq!(extract_project_name(&worktree_dir), "myproject");
+    }
+
+    #[test]
+    fn test_strip_oc_title_prefix() {
+        assert_eq!(
+            strip_oc_title_prefix("OC | Investigating..."),
+            "Investigating..."
+        );
+        assert_eq!(
+            strip_oc_title_prefix("OC | OC | Investigating..."),
+            "Investigating..."
+        );
+        assert_eq!(
+            strip_oc_title_prefix("Claude Code | Investigating..."),
+            "Claude Code | Investigating..."
+        );
     }
 }
