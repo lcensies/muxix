@@ -22,6 +22,16 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.182 (2026-04-13)
+
+- Fix OpenCode status tracking plugin distribution by moving shipped plugin files
+  into `resources/opencode/` and updating `workmux setup` and manual install
+  instructions to install both `package.json` and the plugin file to OpenCode's
+  global config directory
+- Fix duplicate OpenCode busy and idle status events causing stale window status
+  transitions
+- Fix dashboard agent title prefixes
+
 ## v0.1.181 (2026-04-11)
 
 - Add command palette to the dashboard, accessible via `:`. Provides a
