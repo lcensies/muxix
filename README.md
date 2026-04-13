@@ -119,24 +119,25 @@ curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.
 brew install raine/workmux/workmux
 ```
 
-### Cargo
+<details>
+<summary>Other methods (Cargo, mise, Nix)</summary>
 
-Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
-
+**Cargo** (requires [rustup](https://rustup.rs/)):
 ```bash
 cargo install workmux
 ```
 
-### Nix
-
+**mise:**
 ```bash
-nix profile install github:raine/workmux
-# or try without installing
-nix run github:raine/workmux -- --help
+mise use -g cargo:raine/workmux
 ```
 
-See [Nix guide](https://workmux.raine.dev/guide/nix) for flake and home-manager
-setup.
+**Nix** ([flake and home-manager setup](https://workmux.raine.dev/guide/nix)):
+```bash
+nix profile install github:raine/workmux
+```
+
+</details>
 
 ---
 
