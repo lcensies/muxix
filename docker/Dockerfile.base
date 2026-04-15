@@ -86,8 +86,10 @@ fi
 # root and must drop privileges after iptables setup).
 #
 # WM_EXTRA_GIDS is a comma-separated list of group names or numeric GIDs
-# configured via sandbox.container.group_add. When empty, we explicitly clear
-# supplementary groups so the dropped process does not inherit root's groups.
+# configured via sandbox.container.group_add. We always prepend the primary
+# GID so the supplementary group list matches Docker's default `--user`
+# behaviour (primary GID present even with no extras), and so root's
+# supplementary groups are never inherited by the dropped process.
 #
 # --inh-caps=-all drops inheritable capabilities; the setpriv man page warns
 # that dropping UID/GID does not by itself reset capabilities.
@@ -95,21 +97,17 @@ fi
 # HOME=/tmp is preserved because downstream login shells may otherwise reset
 # it to "/" (for UIDs not in /etc/passwd), breaking agents that look up their
 # config dirs relative to HOME.
+GROUPS_ARG="${WM_TARGET_GID}"
 if [ -n "${WM_EXTRA_GIDS:-}" ]; then
-    exec setpriv \
-        --reuid "${WM_TARGET_UID}" \
-        --regid "${WM_TARGET_GID}" \
-        --groups "${WM_EXTRA_GIDS}" \
-        --inh-caps=-all \
-        env HOME=/tmp "$@"
-else
-    exec setpriv \
-        --reuid "${WM_TARGET_UID}" \
-        --regid "${WM_TARGET_GID}" \
-        --clear-groups \
-        --inh-caps=-all \
-        env HOME=/tmp "$@"
+    GROUPS_ARG="${GROUPS_ARG},${WM_EXTRA_GIDS}"
 fi
+
+exec setpriv \
+    --reuid "${WM_TARGET_UID}" \
+    --regid "${WM_TARGET_GID}" \
+    --groups "${GROUPS_ARG}" \
+    --inh-caps=-all \
+    env HOME=/tmp "$@"
 SCRIPT
 RUN chmod +x /usr/local/bin/network-init.sh
 

@@ -1083,11 +1083,13 @@ impl ContainerDevice {
     pub fn validate(&self) -> anyhow::Result<()> {
         match self {
             Self::String(s) => {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
+                if s.is_empty() {
                     anyhow::bail!("empty device entry");
                 }
-                let mut parts = trimmed.split(':');
+                if s.chars().any(char::is_whitespace) {
+                    anyhow::bail!("device entry must not contain whitespace: {s}");
+                }
+                let mut parts = s.split(':');
                 let host = parts.next().unwrap_or("");
                 if !host.starts_with('/') {
                     anyhow::bail!("device host path must be absolute: {s}");
@@ -1129,13 +1131,22 @@ impl ContainerDevice {
                 guest_path,
                 permissions,
             } => {
-                if host_path.trim().is_empty() || !host_path.starts_with('/') {
-                    anyhow::bail!("device host_path must be absolute: {host_path}");
+                if host_path.is_empty()
+                    || !host_path.starts_with('/')
+                    || host_path.chars().any(char::is_whitespace)
+                {
+                    anyhow::bail!(
+                        "device host_path must be an absolute path with no whitespace: {host_path}"
+                    );
                 }
                 if let Some(gp) = guest_path
-                    && (gp.trim().is_empty() || !gp.starts_with('/'))
+                    && (gp.is_empty()
+                        || !gp.starts_with('/')
+                        || gp.chars().any(char::is_whitespace))
                 {
-                    anyhow::bail!("device guest_path must be absolute: {gp}");
+                    anyhow::bail!(
+                        "device guest_path must be an absolute path with no whitespace: {gp}"
+                    );
                 }
                 if let Some(p) = permissions
                     && (p.is_empty() || !p.chars().all(|c| matches!(c, 'r' | 'w' | 'm')))
@@ -4010,6 +4021,29 @@ container:
     #[test]
     fn container_device_validation_rejects_relative_host_path() {
         let dev = ContainerDevice::String("ttyUSB0".to_string());
+        assert!(dev.validate().is_err());
+    }
+
+    #[test]
+    fn container_device_validation_rejects_whitespace() {
+        let dev = ContainerDevice::String(" /dev/kvm".to_string());
+        assert!(dev.validate().is_err());
+        let dev = ContainerDevice::String("/dev/kvm ".to_string());
+        assert!(dev.validate().is_err());
+        let dev = ContainerDevice::String("/dev/kvm:/dev/kvm:r w".to_string());
+        assert!(dev.validate().is_err());
+
+        let dev = ContainerDevice::Struct {
+            host_path: "/dev/kvm ".to_string(),
+            guest_path: None,
+            permissions: None,
+        };
+        assert!(dev.validate().is_err());
+        let dev = ContainerDevice::Struct {
+            host_path: "/dev/kvm".to_string(),
+            guest_path: Some(" /dev/kvm".to_string()),
+            permissions: None,
+        };
         assert!(dev.validate().is_err());
     }
 
