@@ -47,6 +47,8 @@ workmux sandbox pull
 | `container.runtime`       | auto-detect                             | Container runtime: `docker`, `podman`, or `apple-container`. Auto-detected from PATH when not set. On macOS, prefers Apple Container (`container`) over Docker/Podman.                                            |
 | `container.memory`        | `16G` (Apple Container) / none (others) | Memory limit for the container. Apple Container VMs default to 1 GB which is too low, so workmux sets `16G` by default. This is a ceiling, not an upfront allocation. Works with any runtime when explicitly set. |
 | `container.cpus`          | none                                    | CPU count for the container. Only passed when explicitly set. Apple Container defaults to 4 CPUs which is sufficient for most workloads.                                                                          |
+| `container.devices`       | `[]`                                    | Host device nodes exposed to the sandbox (e.g. `/dev/kvm`, `/dev/ttyUSB0`). Passed to the runtime as `--device`. Docker and Podman only; Apple Container rejects. **Global config only.**                          |
+| `container.group_add`     | `[]`                                    | Supplementary groups added to the sandboxed process (e.g. `dialout`, `video`, or numeric GIDs). Passed to the runtime as `--group-add`. Docker and Podman only; Apple Container rejects. **Global config only.**   |
 | `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                                          |
 | `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent).                                                                                                                                                       |
 | `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.**                           |
@@ -91,6 +93,43 @@ sandbox:
     # memory: 16G   # default, adjust if needed
     # cpus: 8       # optional, Apple Container defaults to 4
 ```
+
+**With host hardware (USB serial, GPU, etc.):**
+
+```yaml
+sandbox:
+  enabled: true
+  container:
+    runtime: docker
+    devices:
+      - /dev/kvm
+      - /dev/bus/usb/001/002:/dev/bus/usb/001/002:rwm
+      # structured form is also supported:
+      - host_path: /dev/ttyUSB0
+        guest_path: /dev/ttyUSB0
+        permissions: rw
+    group_add:
+      - dialout # access to serial devices
+      - "46"    # numeric GID if the name differs between host and container
+```
+
+Notes on hardware access:
+
+- Both `devices` and `group_add` are **global config only**. A project's
+  `.workmux.yaml` cannot opt into them; this prevents a repository from
+  silently widening the sandbox.
+- Apple Container does not support `--device` or `--group-add`. Set
+  `container.runtime: docker` (or `podman`) if you need hardware access.
+- Group names (e.g. `dialout`) must resolve inside the container image.
+  When the host and image disagree on GIDs (common across distros), use
+  numeric GIDs.
+- In network-deny mode, workmux drops privileges inside the container via
+  `setpriv` (replacing `gosu`), which preserves the configured supplementary
+  groups. This means hardware access works in both `allow` and `deny`
+  network modes.
+- Rootless Podman may require additional configuration to access host
+  devices; see Podman's own documentation on `keep-groups` and subgid
+  mapping if you hit permission errors.
 
 **Sandbox all panes (not just agent):**
 

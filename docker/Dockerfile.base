@@ -1,12 +1,16 @@
 FROM debian:bookworm-slim
 
+# util-linux provides `setpriv`, which we use to drop privileges in deny mode.
+# Unlike `gosu`, setpriv lets us explicitly set supplementary groups so that
+# Docker-style --group-add behaviour works for hardware access configured via
+# sandbox.container.group_add.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
     jq \
     iptables \
-    gosu \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 # Embed network init script (sets up iptables firewall, then drops privileges)
@@ -70,16 +74,42 @@ if [ -n "${WM_PROXY_HOST:-}" ] && [ -n "${WM_PROXY_PORT:-}" ]; then
 fi
 
 # Fix PTY ownership so the unprivileged user can read/write the terminal.
-# Docker allocates the PTY as root; after gosu drops privileges, the user
-# has no access to /dev/pts/0 unless we transfer ownership.
+# Docker allocates the PTY as root; after the privilege drop, the user has no
+# access to /dev/pts/0 unless we transfer ownership.
 if [ -t 0 ]; then
     chown "${WM_TARGET_UID}:${WM_TARGET_GID}" "$(tty)"
 fi
 
-# Drop privileges and exec the user command.
-# gosu resets HOME via getpwuid() which returns "/" for UIDs not in /etc/passwd.
-# Preserve the container's HOME=/tmp so agents find their config dirs.
-exec gosu "${WM_TARGET_UID}:${WM_TARGET_GID}" env HOME=/tmp "$@"
+# Drop privileges via setpriv. Unlike gosu, setpriv lets us explicitly set
+# supplementary groups via --groups, which is required so Docker-style
+# --group-add behaviour works in deny mode (where the container starts as
+# root and must drop privileges after iptables setup).
+#
+# WM_EXTRA_GIDS is a comma-separated list of group names or numeric GIDs
+# configured via sandbox.container.group_add. When empty, we explicitly clear
+# supplementary groups so the dropped process does not inherit root's groups.
+#
+# --inh-caps=-all drops inheritable capabilities; the setpriv man page warns
+# that dropping UID/GID does not by itself reset capabilities.
+#
+# HOME=/tmp is preserved because downstream login shells may otherwise reset
+# it to "/" (for UIDs not in /etc/passwd), breaking agents that look up their
+# config dirs relative to HOME.
+if [ -n "${WM_EXTRA_GIDS:-}" ]; then
+    exec setpriv \
+        --reuid "${WM_TARGET_UID}" \
+        --regid "${WM_TARGET_GID}" \
+        --groups "${WM_EXTRA_GIDS}" \
+        --inh-caps=-all \
+        env HOME=/tmp "$@"
+else
+    exec setpriv \
+        --reuid "${WM_TARGET_UID}" \
+        --regid "${WM_TARGET_GID}" \
+        --clear-groups \
+        --inh-caps=-all \
+        env HOME=/tmp "$@"
+fi
 SCRIPT
 RUN chmod +x /usr/local/bin/network-init.sh
 

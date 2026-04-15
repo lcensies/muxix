@@ -288,10 +288,24 @@ pub fn build_docker_run_args(
         args.push("host.docker.internal:host-gateway".to_string());
     }
 
+    // Host hardware access: global-only in config, not supported on Apple Container.
+    let devices = config.container.devices();
+    let group_add = config.container.group_add();
+    if (!devices.is_empty() || !group_add.is_empty()) && runtime == SandboxRuntime::AppleContainer {
+        anyhow::bail!(
+            "sandbox.container.devices and sandbox.container.group_add are not supported \
+             on Apple Container. Set sandbox.container.runtime to docker or podman."
+        );
+    }
+    for dev in devices {
+        args.push("--device".to_string());
+        args.push(dev.to_arg());
+    }
+
     if network_deny {
-        // Deny mode: start as root for iptables setup, drop privileges via gosu.
+        // Deny mode: start as root for iptables setup, drop privileges via setpriv.
         // Do NOT use --userns=keep-id (Podman) in deny mode since the container
-        // starts as root and drops privileges via gosu after iptables setup.
+        // starts as root and drops privileges after iptables setup.
         if runtime.needs_deny_mode_caps() {
             args.extend(deny_mode_run_flags());
         }
@@ -299,6 +313,14 @@ pub fn build_docker_run_args(
         args.push(format!("WM_TARGET_UID={}", uid));
         args.push("--env".to_string());
         args.push(format!("WM_TARGET_GID={}", gid));
+        // Supplementary groups are applied inside the container by setpriv
+        // (see docker/Dockerfile.base). We do NOT pass --group-add here because
+        // in deny mode the root process drops privileges after iptables setup,
+        // and the --group-add groups would be stripped during that drop.
+        if !group_add.is_empty() {
+            args.push("--env".to_string());
+            args.push(format!("WM_EXTRA_GIDS={}", group_add.join(",")));
+        }
     } else {
         // Normal mode: run as user directly.
         // Rootless Podman uses a user namespace that remaps UIDs. Without --userns=keep-id,
@@ -309,6 +331,10 @@ pub fn build_docker_run_args(
         }
         args.push("--user".to_string());
         args.push(format!("{}:{}", uid, gid));
+        for g in group_add {
+            args.push("--group-add".to_string());
+            args.push(g.clone());
+        }
     }
 
     // Mirror mount worktree
@@ -615,7 +641,7 @@ pub fn stop_containers_for_handle(handle: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ContainerConfig, SandboxConfig, SandboxRuntime};
+    use crate::config::{ContainerConfig, ContainerDevice, SandboxConfig, SandboxRuntime};
 
     fn make_config() -> SandboxConfig {
         SandboxConfig {
@@ -1353,6 +1379,7 @@ mod tests {
                 runtime: Some(SandboxRuntime::AppleContainer),
                 memory: Some("8G".to_string()),
                 cpus: Some(8),
+                ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
             ..Default::default()
@@ -1422,5 +1449,211 @@ mod tests {
         // Explicit memory should be passed even for Docker
         let mem_idx = args.iter().position(|a| a == "--memory").unwrap();
         assert_eq!(args[mem_idx + 1], "4G");
+    }
+
+    fn find_flag_value<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+        args.windows(2)
+            .filter(|w| w[0] == flag)
+            .map(|w| w[1].as_str())
+            .collect()
+    }
+
+    #[test]
+    fn docker_emits_device_flags() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                devices: Some(vec![
+                    ContainerDevice::String("/dev/kvm".to_string()),
+                    ContainerDevice::String("/dev/dri:/dev/dri:rwm".to_string()),
+                ]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let devs = find_flag_value(&args, "--device");
+        assert!(devs.contains(&"/dev/kvm"));
+        assert!(devs.contains(&"/dev/dri:/dev/dri:rwm"));
+    }
+
+    #[test]
+    fn docker_allow_mode_emits_group_add() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                group_add: Some(vec!["dialout".to_string(), "video".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let groups = find_flag_value(&args, "--group-add");
+        assert!(groups.contains(&"dialout"));
+        assert!(groups.contains(&"video"));
+        assert!(!args.iter().any(|a| a.starts_with("WM_EXTRA_GIDS=")));
+    }
+
+    #[test]
+    fn docker_deny_mode_uses_wm_extra_gids_not_group_add() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                group_add: Some(vec!["dialout".to_string(), "20".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        assert!(!args.iter().any(|a| a == "--group-add"));
+        assert!(args.iter().any(|a| a == "WM_EXTRA_GIDS=dialout,20"));
+    }
+
+    #[test]
+    fn docker_deny_mode_still_emits_device_flags() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                devices: Some(vec![ContainerDevice::String("/dev/kvm".to_string())]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let devs = find_flag_value(&args, "--device");
+        assert!(devs.contains(&"/dev/kvm"));
+    }
+
+    #[test]
+    fn apple_container_rejects_devices() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+                devices: Some(vec![ContainerDevice::String("/dev/kvm".to_string())]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let result = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apple_container_rejects_group_add() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::AppleContainer),
+                group_add: Some(vec!["dialout".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let result = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn podman_allow_mode_supports_devices_and_group_add() {
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Podman),
+                devices: Some(vec![ContainerDevice::String("/dev/kvm".to_string())]),
+                group_add: Some(vec!["dialout".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            Path::new("/tmp/project"),
+            Path::new("/tmp/project"),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        let devs = find_flag_value(&args, "--device");
+        assert!(devs.contains(&"/dev/kvm"));
+        let groups = find_flag_value(&args, "--group-add");
+        assert!(groups.contains(&"dialout"));
     }
 }

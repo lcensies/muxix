@@ -1042,6 +1042,126 @@ impl LimaConfig {
     }
 }
 
+/// Host device mapping for container sandboxes.
+///
+/// Supports two YAML forms:
+/// - string: `"/dev/kvm"`, `"/dev/dri:/dev/dri"`, `"/dev/dri:/dev/dri:rwm"`
+/// - struct: `{ host_path, guest_path?, permissions? }`
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ContainerDevice {
+    String(String),
+    Struct {
+        host_path: String,
+        #[serde(default)]
+        guest_path: Option<String>,
+        #[serde(default)]
+        permissions: Option<String>,
+    },
+}
+
+impl ContainerDevice {
+    /// Render as the value for a `--device` flag.
+    pub fn to_arg(&self) -> String {
+        match self {
+            Self::String(s) => s.clone(),
+            Self::Struct {
+                host_path,
+                guest_path,
+                permissions,
+            } => {
+                let gp = guest_path.as_deref().unwrap_or(host_path.as_str());
+                match permissions.as_deref() {
+                    Some(p) => format!("{host_path}:{gp}:{p}"),
+                    None if guest_path.is_some() => format!("{host_path}:{gp}"),
+                    None => host_path.clone(),
+                }
+            }
+        }
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        match self {
+            Self::String(s) => {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    anyhow::bail!("empty device entry");
+                }
+                let mut parts = trimmed.split(':');
+                let host = parts.next().unwrap_or("");
+                if !host.starts_with('/') {
+                    anyhow::bail!("device host path must be absolute: {s}");
+                }
+                if let Some(second) = parts.next() {
+                    let third = parts.next();
+                    if parts.next().is_some() {
+                        anyhow::bail!("device entry has too many ':' separators: {s}");
+                    }
+                    // second is either a guest path (absolute) or a permissions token.
+                    // third, if present, must be a permissions token.
+                    let is_perms = |tok: &str| {
+                        !tok.is_empty() && tok.chars().all(|c| matches!(c, 'r' | 'w' | 'm'))
+                    };
+                    match third {
+                        Some(perms) => {
+                            if !second.starts_with('/') {
+                                anyhow::bail!("device guest path must be absolute: {s}");
+                            }
+                            if !is_perms(perms) {
+                                anyhow::bail!(
+                                    "invalid device permissions (expected subset of r/w/m): {s}"
+                                );
+                            }
+                        }
+                        None => {
+                            if !second.starts_with('/') && !is_perms(second) {
+                                anyhow::bail!(
+                                    "device entry second token must be an absolute path or r/w/m permissions: {s}"
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Self::Struct {
+                host_path,
+                guest_path,
+                permissions,
+            } => {
+                if host_path.trim().is_empty() || !host_path.starts_with('/') {
+                    anyhow::bail!("device host_path must be absolute: {host_path}");
+                }
+                if let Some(gp) = guest_path
+                    && (gp.trim().is_empty() || !gp.starts_with('/'))
+                {
+                    anyhow::bail!("device guest_path must be absolute: {gp}");
+                }
+                if let Some(p) = permissions
+                    && (p.is_empty() || !p.chars().all(|c| matches!(c, 'r' | 'w' | 'm')))
+                {
+                    anyhow::bail!("invalid device permissions (expected subset of r/w/m): {p}");
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+pub(crate) fn validate_group_add_entry(group: &str) -> anyhow::Result<()> {
+    let trimmed = group.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("empty group_add entry");
+    }
+    if trimmed
+        .chars()
+        .any(|c| c.is_whitespace() || c == ',' || c == ':')
+    {
+        anyhow::bail!("group_add entry must not contain whitespace or separators: {group}");
+    }
+    Ok(())
+}
+
 /// Container-specific sandbox configuration.
 /// Nested under `sandbox.container` in YAML.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -1060,6 +1180,17 @@ pub struct ContainerConfig {
     /// is too low). For Docker/Podman, only passed when explicitly set.
     #[serde(default)]
     pub memory: Option<String>,
+
+    /// Host device nodes exposed to the container sandbox (docker `--device`).
+    /// Global-only: ignored in project config.
+    #[serde(default)]
+    pub devices: Option<Vec<ContainerDevice>>,
+
+    /// Supplementary groups added to the sandboxed process
+    /// (docker `--group-add`). Values can be group names or numeric GIDs.
+    /// Global-only: ignored in project config.
+    #[serde(default)]
+    pub group_add: Option<Vec<String>>,
 }
 
 impl ContainerConfig {
@@ -1067,12 +1198,36 @@ impl ContainerConfig {
         self.runtime.unwrap_or_else(SandboxRuntime::detect)
     }
 
-    /// Merge: project overrides global, per-field.
+    pub fn devices(&self) -> &[ContainerDevice] {
+        self.devices.as_deref().unwrap_or(&[])
+    }
+
+    pub fn group_add(&self) -> &[String] {
+        self.group_add.as_deref().unwrap_or(&[])
+    }
+
+    /// Structural validation for hardware access fields. Called at config load.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        for d in self.devices() {
+            d.validate()?;
+        }
+        for g in self.group_add() {
+            validate_group_add_entry(g)?;
+        }
+        Ok(())
+    }
+
+    /// Merge: project overrides global, per-field, EXCEPT for `devices` and
+    /// `group_add` which are security-sensitive and global-only. Warnings for
+    /// project-level attempts are emitted in `Config::merge` where both values
+    /// are visible.
     fn merge(global: Self, project: Self) -> Self {
         Self {
             runtime: project.runtime.or(global.runtime),
             cpus: project.cpus.or(global.cpus),
             memory: project.memory.or(global.memory),
+            devices: global.devices,
+            group_add: global.group_add,
         }
     }
 }
@@ -1611,6 +1766,7 @@ impl Config {
         }
 
         config.sandbox.network.validate()?;
+        config.sandbox.container.validate()?;
 
         debug!(
             agent = ?config.agent,
@@ -1743,6 +1899,7 @@ impl Config {
         // Unwrap is safe: validate only fails for invalid network config,
         // which would have failed during deserialization already.
         let _ = config.sandbox.network.validate();
+        let _ = config.sandbox.container.validate();
 
         config
     }
@@ -2063,7 +2220,25 @@ impl Config {
                 self.sandbox.agent_config_dir.clone()
             },
             lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
-            container: ContainerConfig::merge(self.sandbox.container, project.sandbox.container),
+            // Security: sandbox.container.devices and sandbox.container.group_add
+            // are global-only. They expose host hardware and can expand
+            // filesystem access via supplementary groups, so a malicious repo
+            // must not be able to enable them via .workmux.yaml.
+            container: {
+                if project.sandbox.container.devices.is_some() {
+                    tracing::warn!(
+                        "sandbox.container.devices in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                if project.sandbox.container.group_add.is_some() {
+                    tracing::warn!(
+                        "sandbox.container.group_add in project config (.workmux.yaml) is ignored -- \
+                        move it to your global config (~/.config/workmux/config.yaml)"
+                    );
+                }
+                ContainerConfig::merge(self.sandbox.container, project.sandbox.container)
+            },
             // Security: network is global-only. Project config cannot
             // set it -- this prevents a malicious repo from weakening
             // network restrictions via .workmux.yaml.
@@ -2505,10 +2680,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        Config, ContainerConfig, ExtraMount, LayoutConfig, LimaConfig, NetworkConfig,
-        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SplitDirection,
-        ToolchainMode, is_agent_command, split_first_token, validate_domain,
-        validate_layouts_config,
+        Config, ContainerConfig, ContainerDevice, ExtraMount, LayoutConfig, LimaConfig,
+        NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget,
+        SplitDirection, ToolchainMode, is_agent_command, split_first_token, validate_domain,
+        validate_group_add_entry, validate_layouts_config,
     };
 
     #[test]
@@ -3788,6 +3963,164 @@ network:
         let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.network.policy(), NetworkPolicy::Deny);
         assert_eq!(config.network.allowed_domains().len(), 2);
+    }
+
+    // --- ContainerDevice / group_add tests ---
+
+    #[test]
+    fn container_device_string_form_parses() {
+        let yaml = r#"
+container:
+  devices:
+    - /dev/kvm
+    - /dev/dri:/dev/dri
+    - /dev/bus/usb/001/002:/dev/bus/usb/001/002:rwm
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        let devs = config.container.devices.unwrap();
+        assert_eq!(devs.len(), 3);
+        assert_eq!(devs[0].to_arg(), "/dev/kvm");
+        assert_eq!(devs[1].to_arg(), "/dev/dri:/dev/dri");
+        assert_eq!(
+            devs[2].to_arg(),
+            "/dev/bus/usb/001/002:/dev/bus/usb/001/002:rwm"
+        );
+    }
+
+    #[test]
+    fn container_device_struct_form_parses() {
+        let yaml = r#"
+container:
+  devices:
+    - host_path: /dev/bus/usb/001/002
+      guest_path: /dev/bus/usb/001/002
+      permissions: rw
+    - host_path: /dev/kvm
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        let devs = config.container.devices.unwrap();
+        assert_eq!(devs.len(), 2);
+        assert_eq!(
+            devs[0].to_arg(),
+            "/dev/bus/usb/001/002:/dev/bus/usb/001/002:rw"
+        );
+        assert_eq!(devs[1].to_arg(), "/dev/kvm");
+    }
+
+    #[test]
+    fn container_device_validation_rejects_relative_host_path() {
+        let dev = ContainerDevice::String("ttyUSB0".to_string());
+        assert!(dev.validate().is_err());
+    }
+
+    #[test]
+    fn container_device_validation_rejects_bad_permissions() {
+        let dev = ContainerDevice::String("/dev/kvm:/dev/kvm:zzz".to_string());
+        assert!(dev.validate().is_err());
+    }
+
+    #[test]
+    fn container_device_validation_accepts_single_path() {
+        let dev = ContainerDevice::String("/dev/kvm".to_string());
+        assert!(dev.validate().is_ok());
+    }
+
+    #[test]
+    fn container_device_validation_accepts_path_with_permissions_only() {
+        let dev = ContainerDevice::String("/dev/kvm:rwm".to_string());
+        assert!(dev.validate().is_ok());
+    }
+
+    #[test]
+    fn container_device_validation_accepts_full_triple() {
+        let dev = ContainerDevice::String("/dev/dri:/dev/dri:rw".to_string());
+        assert!(dev.validate().is_ok());
+    }
+
+    #[test]
+    fn container_device_struct_validation() {
+        let bad = ContainerDevice::Struct {
+            host_path: "dev/kvm".to_string(),
+            guest_path: None,
+            permissions: None,
+        };
+        assert!(bad.validate().is_err());
+
+        let bad_perms = ContainerDevice::Struct {
+            host_path: "/dev/kvm".to_string(),
+            guest_path: None,
+            permissions: Some("zzz".to_string()),
+        };
+        assert!(bad_perms.validate().is_err());
+
+        let ok = ContainerDevice::Struct {
+            host_path: "/dev/kvm".to_string(),
+            guest_path: Some("/dev/kvm".to_string()),
+            permissions: Some("rw".to_string()),
+        };
+        assert!(ok.validate().is_ok());
+    }
+
+    #[test]
+    fn group_add_validation() {
+        assert!(validate_group_add_entry("dialout").is_ok());
+        assert!(validate_group_add_entry("20").is_ok());
+        assert!(validate_group_add_entry("").is_err());
+        assert!(validate_group_add_entry("dial out").is_err());
+        assert!(validate_group_add_entry("a,b").is_err());
+        assert!(validate_group_add_entry("a:b").is_err());
+    }
+
+    #[test]
+    fn group_add_yaml_parses() {
+        let yaml = r#"
+container:
+  group_add:
+    - dialout
+    - video
+    - "46"
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        let groups = config.container.group_add.unwrap();
+        assert_eq!(groups, vec!["dialout", "video", "46"]);
+    }
+
+    #[test]
+    fn container_devices_are_global_only_in_merge() {
+        let mut global = Config::default();
+        global.sandbox.container.devices =
+            Some(vec![ContainerDevice::String("/dev/kvm".to_string())]);
+        let mut project = Config::default();
+        project.sandbox.container.devices =
+            Some(vec![ContainerDevice::String("/dev/ttyUSB0".to_string())]);
+
+        let merged = global.merge(project);
+        let devs = merged.sandbox.container.devices.unwrap();
+        assert_eq!(devs.len(), 1);
+        assert_eq!(devs[0].to_arg(), "/dev/kvm");
+    }
+
+    #[test]
+    fn container_devices_project_ignored_when_global_empty() {
+        let global = Config::default();
+        let mut project = Config::default();
+        project.sandbox.container.devices =
+            Some(vec![ContainerDevice::String("/dev/ttyUSB0".to_string())]);
+
+        let merged = global.merge(project);
+        assert!(merged.sandbox.container.devices.is_none());
+    }
+
+    #[test]
+    fn container_group_add_global_only_in_merge() {
+        let mut global = Config::default();
+        global.sandbox.container.group_add = Some(vec!["dialout".to_string()]);
+        let mut project = Config::default();
+        project.sandbox.container.group_add = Some(vec!["video".to_string()]);
+
+        let merged = global.merge(project);
+        let groups = merged.sandbox.container.group_add.unwrap();
+        assert_eq!(groups, vec!["dialout".to_string()]);
     }
 
     // --- WindowConfig tests ---
