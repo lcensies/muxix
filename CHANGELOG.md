@@ -22,6 +22,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.183 (2026-04-15)
+
+- Add `container.devices` config to expose host device nodes (e.g. `/dev/kvm`,
+  `/dev/ttyUSB0`) to sandboxed containers
+- Add `container.group_add` config to add supplementary groups (e.g. `dialout`,
+  `video`) to the sandboxed process
+
 ## v0.1.182 (2026-04-13)
 
 - Fix OpenCode status tracking plugin distribution by moving shipped plugin
