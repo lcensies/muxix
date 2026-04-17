@@ -16,6 +16,7 @@ pub mod merge;
 pub mod open;
 pub mod path;
 pub mod remove;
+pub mod rename;
 pub mod resurrect;
 pub mod run;
 pub mod sandbox;

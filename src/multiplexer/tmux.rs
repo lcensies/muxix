@@ -338,6 +338,18 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["kill-window", "-t", &target])
     }
 
+    fn rename_window(&self, old_full_name: &str, new_full_name: &str) -> Result<()> {
+        // `=` prefix forces exact-name match so we don't hit similarly-named windows.
+        let target = format!("={}", old_full_name);
+        self.tmux_cmd(&["rename-window", "-t", &target, new_full_name])
+    }
+
+    fn rename_session(&self, old_full_name: &str, new_full_name: &str) -> Result<()> {
+        // `=` prefix forces exact-name match so we don't hit similarly-named sessions.
+        let target = format!("={}", old_full_name);
+        self.tmux_cmd(&["rename-session", "-t", &target, new_full_name])
+    }
+
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()> {
         let delay_secs = format!("{:.3}", delay.as_secs_f64());
         let target = format!("={}", full_name);

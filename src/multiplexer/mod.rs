@@ -86,6 +86,30 @@ pub trait Multiplexer: Send + Sync {
     /// Kill a window by its full name (including prefix)
     fn kill_window(&self, full_name: &str) -> Result<()>;
 
+    /// Rename a window from its full name to a new full name.
+    ///
+    /// Default implementation returns an error. Backends that support
+    /// rename (tmux) override this.
+    fn rename_window(&self, old_full_name: &str, new_full_name: &str) -> Result<()> {
+        let _ = (old_full_name, new_full_name);
+        Err(anyhow!(
+            "Renaming windows is not supported by the {} backend",
+            self.name()
+        ))
+    }
+
+    /// Rename a session from its full name to a new full name.
+    ///
+    /// Default implementation returns an error. Backends that support
+    /// rename (tmux) override this.
+    fn rename_session(&self, old_full_name: &str, new_full_name: &str) -> Result<()> {
+        let _ = (old_full_name, new_full_name);
+        Err(anyhow!(
+            "Renaming sessions is not supported by the {} backend",
+            self.name()
+        ))
+    }
+
     /// Schedule a window to close after a delay
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()>;
 

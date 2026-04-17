@@ -10,6 +10,7 @@ mod open;
 pub mod pr;
 pub mod prompt_loader;
 mod remove;
+mod rename;
 pub mod resurrect;
 mod setup;
 pub mod types;
@@ -23,6 +24,7 @@ pub use list::{list, list_in};
 pub use merge::merge;
 pub use open::open;
 pub use remove::remove;
+pub use rename::rename;
 pub use setup::write_prompt_file;
 
 // Re-export commonly used types for convenience

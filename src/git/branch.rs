@@ -179,6 +179,19 @@ pub fn list_local_branches_in(workdir: Option<&Path>) -> Result<Vec<String>> {
         .collect())
 }
 
+/// Rename a local branch using `git branch -m`.
+///
+/// Git automatically migrates `branch.<old>.*` config (including
+/// `branch.<old>.workmux-base`) to `branch.<new>.*`, so we don't need to
+/// touch branch-base metadata manually.
+pub fn rename_branch(old: &str, new: &str) -> Result<()> {
+    Cmd::new("git")
+        .args(&["branch", "-m", old, new])
+        .run()
+        .with_context(|| format!("Failed to rename branch {} -> {}", old, new))?;
+    Ok(())
+}
+
 /// Delete a local branch.
 pub fn delete_branch_in(branch_name: &str, force: bool, git_common_dir: &Path) -> Result<()> {
     let mut cmd = Cmd::new("git").workdir(git_common_dir).arg("branch");

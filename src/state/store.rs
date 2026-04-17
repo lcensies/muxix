@@ -211,6 +211,90 @@ impl StateStore {
             .collect()
     }
 
+    /// Rename the container markers directory from `<old_handle>` to `<new_handle>`.
+    ///
+    /// No-op if the old directory doesn't exist. Returns an error if the
+    /// destination directory already exists (would clobber state).
+    pub fn migrate_container_handle(&self, old_handle: &str, new_handle: &str) -> Result<()> {
+        if old_handle == new_handle {
+            return Ok(());
+        }
+        let old = self.containers_dir().join(old_handle);
+        if !old.exists() {
+            return Ok(());
+        }
+        let new = self.containers_dir().join(new_handle);
+        if new.exists() {
+            return Err(anyhow::anyhow!(
+                "Container state directory already exists: {}",
+                new.display()
+            ));
+        }
+        if let Some(parent) = new.parent() {
+            fs::create_dir_all(parent)
+                .context("Failed to create container state parent directory")?;
+        }
+        fs::rename(&old, &new).context("Failed to rename container state directory")?;
+        Ok(())
+    }
+
+    /// Migrate all agent state files whose `workdir` is `old_root` or a
+    /// descendant of it, rewriting the path to the corresponding location
+    /// under `new_root`. Also rewrites `window_name` / `session_name` that
+    /// start with `old_full_base` to use `new_full_base`.
+    ///
+    /// `old_root_canonical` should be the pre-move canonical path (captured
+    /// before `git worktree move` renders the old path non-existent).
+    ///
+    /// `old_full_base` / `new_full_base` are the prefixed window/session
+    /// base names (e.g. "wm-old-handle" / "wm-new-handle"). `-N` duplicate
+    /// suffixes on window names are preserved.
+    ///
+    /// Returns the number of agent state files updated.
+    pub fn migrate_worktree_paths(
+        &self,
+        old_root_canonical: &Path,
+        new_root: &Path,
+        old_full_base: &str,
+        new_full_base: &str,
+    ) -> Result<usize> {
+        use crate::util::canon_or_self;
+
+        let agents_dir = self.agents_dir();
+        if !agents_dir.exists() {
+            return Ok(0);
+        }
+
+        let mut migrated = 0;
+
+        for entry in fs::read_dir(&agents_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let Some(mut state) = read_agent_file(&path)? else {
+                continue;
+            };
+
+            let stored_canon = canon_or_self(&state.workdir);
+            let Ok(relpath) = stored_canon.strip_prefix(old_root_canonical) else {
+                continue;
+            };
+
+            state.workdir = new_root.join(relpath);
+            state.window_name = state
+                .window_name
+                .map(|n| remap_full_name(&n, old_full_base, new_full_base));
+            state.session_name = state
+                .session_name
+                .map(|n| remap_full_name(&n, old_full_base, new_full_base));
+
+            let content = serde_json::to_string_pretty(&state)?;
+            write_atomic(&path, content.as_bytes())?;
+            migrated += 1;
+        }
+
+        Ok(migrated)
+    }
+
     // ── Runtime state management ────────────────────────────────────────────
 
     /// Write runtime state for a multiplexer instance.
@@ -393,6 +477,25 @@ fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
 /// Delegates to `crate::xdg::state_dir()`.
 pub fn get_state_dir() -> Result<PathBuf> {
     crate::xdg::state_dir()
+}
+
+/// Rewrite a full window/session name when the handle portion has changed.
+///
+/// - Exact match of `old_base` -> `new_base`.
+/// - `<old_base>-N` (numeric duplicate suffix) -> `<new_base>-N`.
+/// - Anything else is returned unchanged.
+fn remap_full_name(name: &str, old_base: &str, new_base: &str) -> String {
+    if name == old_base {
+        return new_base.to_string();
+    }
+    let dash_prefix = format!("{}-", old_base);
+    if let Some(suffix) = name.strip_prefix(&dash_prefix)
+        && !suffix.is_empty()
+        && suffix.chars().all(|c| c.is_ascii_digit())
+    {
+        return format!("{}-{}", new_base, suffix);
+    }
+    name.to_string()
 }
 
 /// Read and parse an agent state file.
@@ -651,6 +754,96 @@ mod tests {
             by_name["container-container"],
             &SandboxRuntime::AppleContainer
         );
+    }
+
+    #[test]
+    fn test_migrate_worktree_paths_rewrites_root_and_subdirs() {
+        let (store, _dir) = test_store();
+
+        // Agent at the worktree root
+        let root_key = PaneKey {
+            backend: "tmux".to_string(),
+            instance: "default".to_string(),
+            pane_id: "%1".to_string(),
+        };
+        let mut root_state = test_agent_state(root_key.clone());
+        root_state.workdir = PathBuf::from("/repo/wt/old");
+        root_state.window_name = Some("wm-old".to_string());
+        root_state.session_name = Some("wm-old".to_string());
+        store.upsert_agent(&root_state).unwrap();
+
+        // Agent in a subdirectory of the worktree
+        let sub_key = PaneKey {
+            backend: "tmux".to_string(),
+            instance: "default".to_string(),
+            pane_id: "%2".to_string(),
+        };
+        let mut sub_state = test_agent_state(sub_key.clone());
+        sub_state.workdir = PathBuf::from("/repo/wt/old/src/nested");
+        sub_state.window_name = Some("wm-old-2".to_string()); // duplicate suffix
+        sub_state.session_name = Some("wm-old".to_string());
+        store.upsert_agent(&sub_state).unwrap();
+
+        // Unrelated agent in a different worktree
+        let other_key = PaneKey {
+            backend: "tmux".to_string(),
+            instance: "default".to_string(),
+            pane_id: "%3".to_string(),
+        };
+        let mut other_state = test_agent_state(other_key.clone());
+        other_state.workdir = PathBuf::from("/repo/wt/unrelated");
+        other_state.window_name = Some("wm-unrelated".to_string());
+        store.upsert_agent(&other_state).unwrap();
+
+        let migrated = store
+            .migrate_worktree_paths(
+                &PathBuf::from("/repo/wt/old"),
+                &PathBuf::from("/repo/wt/new"),
+                "wm-old",
+                "wm-new",
+            )
+            .unwrap();
+        assert_eq!(migrated, 2);
+
+        let root_after = store.get_agent(&root_key).unwrap().unwrap();
+        assert_eq!(root_after.workdir, PathBuf::from("/repo/wt/new"));
+        assert_eq!(root_after.window_name.as_deref(), Some("wm-new"));
+        assert_eq!(root_after.session_name.as_deref(), Some("wm-new"));
+
+        let sub_after = store.get_agent(&sub_key).unwrap().unwrap();
+        assert_eq!(sub_after.workdir, PathBuf::from("/repo/wt/new/src/nested"));
+        assert_eq!(sub_after.window_name.as_deref(), Some("wm-new-2"));
+        assert_eq!(sub_after.session_name.as_deref(), Some("wm-new"));
+
+        let other_after = store.get_agent(&other_key).unwrap().unwrap();
+        assert_eq!(other_after.workdir, PathBuf::from("/repo/wt/unrelated"));
+        assert_eq!(other_after.window_name.as_deref(), Some("wm-unrelated"));
+    }
+
+    #[test]
+    fn test_migrate_container_handle_renames_directory() {
+        let (store, _dir) = test_store();
+        store
+            .register_container("old-handle", "c1", &SandboxRuntime::Docker)
+            .unwrap();
+
+        store
+            .migrate_container_handle("old-handle", "new-handle")
+            .unwrap();
+
+        assert!(store.list_containers("old-handle").is_empty());
+        let containers = store.list_containers("new-handle");
+        assert_eq!(containers.len(), 1);
+        assert_eq!(containers[0].0, "c1");
+    }
+
+    #[test]
+    fn test_migrate_container_handle_noop_when_missing() {
+        let (store, _dir) = test_store();
+        // Should not error out when the old handle has no containers dir
+        store
+            .migrate_container_handle("nonexistent", "anything")
+            .unwrap();
     }
 
     #[test]

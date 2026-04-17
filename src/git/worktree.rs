@@ -58,6 +58,62 @@ pub fn create_worktree(
     Ok(())
 }
 
+/// Move a registered worktree to a new path using `git worktree move`.
+///
+/// Git updates the worktree admin dir's `gitdir` file and the worktree's
+/// `.git` pointer. Note: the admin dir itself (`.git/worktrees/<basename>/`)
+/// keeps its original basename; workmux does not rely on that path shape.
+pub fn move_worktree(old_path: &Path, new_path: &Path) -> Result<()> {
+    let old = old_path
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid old worktree path"))?;
+    let new = new_path
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid new worktree path"))?;
+    Cmd::new("git")
+        .args(&["worktree", "move", old, new])
+        .run()
+        .with_context(|| format!("Failed to move worktree {} -> {}", old, new))?;
+    Ok(())
+}
+
+/// Migrate all `workmux.worktree.<old_handle>.*` config entries to
+/// `workmux.worktree.<new_handle>.*`, then remove the old section.
+pub fn migrate_worktree_meta(old_handle: &str, new_handle: &str) -> Result<()> {
+    if old_handle == new_handle {
+        return Ok(());
+    }
+    let old_section = format!("workmux.worktree.{}", old_handle);
+    let regex_pattern = format!(r"^{}\.", regex::escape(&old_section));
+    let output = Cmd::new("git")
+        .args(&["config", "--local", "--get-regexp", &regex_pattern])
+        .run_and_capture_stdout()
+        .unwrap_or_default();
+
+    for line in output.lines() {
+        let Some((key, value)) = line.split_once(' ') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        let Some(suffix) = key.strip_prefix(&format!("{}.", old_section)) else {
+            continue;
+        };
+        let new_key = format!("workmux.worktree.{}.{}", new_handle, suffix);
+        Cmd::new("git")
+            .args(&["config", "--local", &new_key, value])
+            .run()
+            .with_context(|| format!("Failed to set {}", new_key))?;
+    }
+
+    // Remove the old section (ignore "no such section" errors).
+    let _ = Cmd::new("git")
+        .args(&["config", "--local", "--remove-section", &old_section])
+        .run();
+
+    Ok(())
+}
+
 /// Prune stale worktree metadata.
 pub fn prune_worktrees_in(git_common_dir: &Path) -> Result<()> {
     Cmd::new("git")

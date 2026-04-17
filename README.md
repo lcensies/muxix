@@ -1198,6 +1198,40 @@ workmux rm --all
 
 ---
 
+### `workmux rename [old-name] <new-name>`
+
+Renames a worktree's directory, its tmux window or session, and the per-worktree
+workmux metadata. Optionally also renames the underlying git branch.
+
+- `[old-name]`: Optional current worktree name. Defaults to the current worktree
+  when run from inside one.
+- `<new-name>`: The new handle (directory name and tmux window/session base name).
+
+#### Options
+
+- `--branch`, `-b`: Also rename the underlying git branch to match `<new-name>`.
+  Fails if the worktree is on a detached HEAD.
+
+#### Examples
+
+```bash
+# Rename a worktree from inside it
+workmux rename feature-new
+
+# Rename a specific worktree by name
+workmux rename feature-old feature-new
+
+# Also rename the branch to match
+workmux rename feature-old feature-new --branch
+```
+
+Rename is non-destructive: uncommitted changes and untracked files are
+preserved. The main worktree cannot be renamed. Collisions (existing target
+path, existing tmux target, or existing branch) are rejected before any changes
+are made.
+
+---
+
 ### `workmux list` (alias: `ls`)
 
 Lists all git worktrees with their agent status, multiplexer window status, and

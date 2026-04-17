@@ -91,7 +91,7 @@ _workmux() {
     # For commands that take handles or branches, offer only those
     # (no file fallback from _default). Flag completion is handled above.
     case "$cmd" in
-        open|remove|rm|path|merge|close)
+        open|remove|rm|rename|path|merge|close)
             _workmux_handles
             ;;
         send|capture|status|wait|run)

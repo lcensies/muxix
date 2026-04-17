@@ -52,6 +52,21 @@ pub struct RemoveResult {
     pub branch_removed: String,
 }
 
+/// Result of renaming a worktree
+pub struct RenameResult {
+    pub old_path: PathBuf,
+    pub new_path: PathBuf,
+    pub old_handle: String,
+    pub new_handle: String,
+    pub old_branch: String,
+    /// Set when `--branch` was used and the branch was actually renamed.
+    pub new_branch: Option<String>,
+    /// Number of tmux windows/sessions renamed.
+    pub tmux_renamed: usize,
+    /// Number of agent state files updated.
+    pub agents_migrated: usize,
+}
+
 /// Deferred cleanup operations to run after window close.
 /// Used when running inside the target window to avoid invalidating the agent's CWD.
 pub struct DeferredCleanup {

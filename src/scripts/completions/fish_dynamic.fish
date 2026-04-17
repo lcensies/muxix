@@ -16,7 +16,7 @@ function __workmux_git_branches
 end
 
 # Lifecycle commands: local handles only
-complete -c workmux -n '__fish_seen_subcommand_from open remove rm path merge close' -f -a '(__workmux_handles)'
+complete -c workmux -n '__fish_seen_subcommand_from open remove rm rename path merge close' -f -a '(__workmux_handles)'
 # Agent commands: local + cross-project targets
 complete -c workmux -n '__fish_seen_subcommand_from send capture status wait run' -f -a '(__workmux_agent_targets)'
 # Add command: git branches

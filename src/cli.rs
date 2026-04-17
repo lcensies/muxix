@@ -255,6 +255,7 @@ impl clap::builder::TypedValueParser for GitBranchParser {
 Worktree lifecycle:
   add          Create a new worktree and tmux window
   remove       Remove a worktree, tmux window, and branch without merging [rm]
+  rename       Rename a worktree, tmux window/session, and optionally branch
   merge        Merge a branch, then clean up the worktree and tmux window
   open         Open a tmux window for an existing worktree
   close        Close a worktree's tmux window (keeps the worktree and branch)
@@ -438,6 +439,17 @@ enum Commands {
         /// Show a system notification on successful merge
         #[arg(long)]
         notification: bool,
+    },
+
+    /// Rename a worktree, its tmux window/session, and (optionally) its branch
+    Rename {
+        /// [OLD_NAME] NEW_NAME. If only one argument is given, renames the current worktree.
+        #[arg(required = true, num_args = 1..=2, value_parser = WorktreeHandleParser::new())]
+        names: Vec<String>,
+
+        /// Also rename the underlying git branch to match the new handle
+        #[arg(short = 'b', long)]
+        branch: bool,
     },
 
     /// Remove a worktree, tmux window, and branch without merging
@@ -929,6 +941,7 @@ pub fn run() -> Result<()> {
             force,
             keep_branch,
         } => command::remove::run(names, gone, all, force, keep_branch),
+        Commands::Rename { names, branch } => command::rename::run(names, branch),
         Commands::List { pr, json, filter } => command::list::run(pr, json, &filter),
         Commands::Path { name } => command::path::run(&name),
         Commands::Send { name, text, file } => {
