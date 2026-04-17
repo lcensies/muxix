@@ -22,6 +22,17 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.184 (2026-04-17)
+
+- Add `workmux rename [old-name] <new-name>` command to rename a worktree, its
+  tmux window or session, agent state, and sandbox container marker. Pass
+  `--branch` to also rename the underlying git branch
+  ([#138](https://github.com/raine/workmux/issues/138))
+- Add status tracking support for Gemini CLI, so Gemini agents now report
+  working, waiting, and done states in the dashboard like Claude Code, Codex,
+  and OpenCode. `workmux setup` auto-detects Gemini and installs the required
+  hooks
+
 ## v0.1.183 (2026-04-15)
 
 - Add `container.devices` config to expose host device nodes (e.g. `/dev/kvm`,
