@@ -345,14 +345,27 @@ pub fn build_docker_run_args(
     ));
 
     // Git worktree mounts: .git directory + main worktree (for symlink resolution)
+    //
+    // `.git` in a linked worktree is a file like `gitdir: <path>`. `<path>` is
+    // absolute by default but can be relative when the worktree was created
+    // with `git worktree add --relative-paths` (git 2.48+), in which case it
+    // is resolved against the worktree root. Emitting a relative path into
+    // `--mount` would produce bogus mount specs.
     let mut main_worktree_path: Option<PathBuf> = None;
     let git_path = worktree_root.join(".git");
     if git_path.is_file()
         && let Ok(content) = std::fs::read_to_string(&git_path)
         && let Some(gitdir) = content.strip_prefix("gitdir: ")
     {
-        let gitdir = gitdir.trim();
-        if let Some(main_git) = Path::new(gitdir).ancestors().nth(2) {
+        let gitdir_path = {
+            let p = Path::new(gitdir.trim());
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                worktree_root.join(p)
+            }
+        };
+        if let Some(main_git) = gitdir_path.ancestors().nth(2) {
             // Mount the .git directory for git operations
             args.push("--mount".to_string());
             args.push(format!(
@@ -419,6 +432,7 @@ pub fn build_docker_run_args(
                 }
             }
             let mut masked_any = false;
+            let mut saw_dir = false;
             for host_path in &candidates {
                 if host_path.is_file() {
                     args.push("--mount".to_string());
@@ -427,13 +441,22 @@ pub fn build_docker_run_args(
                         host_path.display()
                     ));
                     masked_any = true;
+                } else if host_path.is_dir() {
+                    saw_dir = true;
                 }
             }
             if !masked_any {
-                tracing::warn!(
-                    path = %rel,
-                    "sandbox.container.excluded_files entry does not exist on disk; skipping"
-                );
+                if saw_dir {
+                    tracing::warn!(
+                        path = %rel,
+                        "sandbox.container.excluded_files entry is a directory; only regular files can be masked. Skipping."
+                    );
+                } else {
+                    tracing::warn!(
+                        path = %rel,
+                        "sandbox.container.excluded_files entry does not exist on disk; skipping"
+                    );
+                }
             }
         }
     }
@@ -929,6 +952,118 @@ mod tests {
             args.contains(&expected_main),
             "expected main-worktree alias {} to be masked, got: {:?}",
             main_env.display(),
+            args
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_masks_main_worktree_alias_with_relative_gitdir() {
+        // `git worktree add --relative-paths` (git 2.48+) writes a `.git` file
+        // with a RELATIVE `gitdir:` pointer. Workmux must resolve it against
+        // the worktree root; otherwise the main-worktree mount and the alias
+        // masking would be emitted with relative `--mount` paths.
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main");
+        let wt = tmp.path().join("wt1");
+        std::fs::create_dir_all(&main).unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        let wt1_git_dir = main.join(".git").join("worktrees").join("wt1");
+        std::fs::create_dir_all(&wt1_git_dir).unwrap();
+
+        // Mirror git's output under --relative-paths exactly.
+        std::fs::write(wt.join(".git"), "gitdir: ../main/.git/worktrees/wt1\n").unwrap();
+
+        std::fs::write(main.join(".env"), "SECRET=1").unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![".env".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args =
+            build_docker_run_args("claude", &config, "claude", &wt, &wt, &[], None, false).unwrap();
+
+        // The joined path preserves `..`, but critically it is absolute
+        // (anchored at the worktree root) so Docker can resolve it.
+        let resolved_main_env = wt.join("../main/.env");
+        let expected = format!(
+            "type=bind,source=/dev/null,target={},readonly",
+            resolved_main_env.display()
+        );
+        assert!(
+            args.contains(&expected),
+            "expected main-worktree alias masked at absolute path, got: {:?}",
+            args
+        );
+
+        // Regression: no `--mount` arg must start with a relative path.
+        let mount_args: Vec<&String> = args
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| {
+                if i > 0 && args[i - 1] == "--mount" {
+                    Some(a)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for m in &mount_args {
+            for kv in m.split(',') {
+                if let Some(v) = kv
+                    .strip_prefix("source=")
+                    .or_else(|| kv.strip_prefix("target="))
+                {
+                    assert!(
+                        v.starts_with('/'),
+                        "mount spec has non-absolute path in {kv:?} (full: {m})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_excluded_files_directory_warns_not_missing() {
+        // An entry that is a directory on disk must not be reported as
+        // "does not exist on disk" -- that would mislead users into thinking
+        // they had a typo. Behavior: no mount emitted, and (verified by
+        // inspection) the dedicated directory warning is chosen.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".aws")).unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![".aws".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            tmp.path(),
+            tmp.path(),
+            &[],
+            None,
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            !args.iter().any(|a| a.contains("source=/dev/null")),
+            "directories must not produce /dev/null mounts, got: {:?}",
             args
         );
     }
