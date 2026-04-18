@@ -1204,13 +1204,22 @@ pub struct ContainerConfig {
     pub group_add: Option<Vec<String>>,
 
     /// Files (relative to the worktree root) to mask out of the container's
-    /// worktree bind mount. Each path is shadowed by bind-mounting `/dev/null`
+    /// worktree bind mounts. Each path is shadowed by bind-mounting `/dev/null`
     /// over it so agents running inside the container cannot read the host
     /// file. Useful for keeping `.env` and other secret-bearing files out of
     /// the sandbox without restructuring the project.
     ///
+    /// Masking applies to both the current worktree and, where applicable, the
+    /// main-worktree mount (which workmux adds for symlink resolution), so a
+    /// symlinked secret cannot be read via the alias path.
+    ///
     /// Only existing regular files are masked; missing paths are skipped with
-    /// a warning. Directories are not supported (use path-level exclusions).
+    /// a warning. Directories are not supported.
+    ///
+    /// Security: this field is global-only. It is ignored when set in a
+    /// project's `.workmux.yaml`, and workmux fails fast rather than running
+    /// with excluded_files on a runtime that lacks file-level bind mounts
+    /// (Apple Container).
     #[serde(default)]
     pub excluded_files: Option<Vec<String>>,
 }
@@ -1250,13 +1259,22 @@ impl ContainerConfig {
     /// project-level attempts are emitted in `Config::merge` where both values
     /// are visible.
     fn merge(global: Self, project: Self) -> Self {
+        // Security: excluded_files is global-only. Project config cannot set it --
+        // otherwise a repo's .workmux.yaml could delete user-level secret
+        // protections by providing an empty/overriding list.
+        if project.excluded_files.is_some() {
+            tracing::warn!(
+                "sandbox.container.excluded_files in project config (.workmux.yaml) is ignored -- \
+                move it to your global config (~/.config/workmux/config.yaml)"
+            );
+        }
         Self {
             runtime: project.runtime.or(global.runtime),
             cpus: project.cpus.or(global.cpus),
             memory: project.memory.or(global.memory),
             devices: global.devices,
             group_add: global.group_add,
-            excluded_files: project.excluded_files.or(global.excluded_files),
+            excluded_files: global.excluded_files,
         }
     }
 }
@@ -2593,9 +2611,10 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   #   runtime: docker          # docker | podman | apple-container
 #   #   # memory: 16G            # VM memory limit (apple-container default: 16G)
 #   #   # cpus: 4                # VM CPU count (only passed when set)
-#   #   # Mask files out of the worktree bind mount (paths relative to the
+#   #   # Mask files out of the worktree bind mounts (paths relative to the
 #   #   # worktree root). Each listed file is shadowed by /dev/null so the
 #   #   # sandboxed agent cannot read it. Missing files are skipped.
+#   #   # GLOBAL-ONLY: ignored when set in a project .workmux.yaml.
 #   #   # excluded_files:
 #   #   #   - .env
 #   #   #   - .env.local
@@ -3405,7 +3424,10 @@ agents:
     }
 
     #[test]
-    fn test_excluded_files_merge_project_overrides_global() {
+    fn test_excluded_files_merge_project_is_ignored() {
+        // Security: excluded_files is global-only. A project config (.workmux.yaml)
+        // MUST NOT be able to weaken or replace the global list; otherwise a
+        // malicious repo could delete user-level secret protections.
         let global = Config {
             sandbox: SandboxConfig {
                 container: ContainerConfig {
@@ -3430,8 +3452,28 @@ agents:
         let merged = global.merge(project);
         assert_eq!(
             merged.sandbox.container.excluded_files,
-            Some(vec![".env.production".into()])
+            Some(vec![".env".into()])
         );
+    }
+
+    #[test]
+    fn test_excluded_files_merge_project_only_is_ignored() {
+        // A project that sets excluded_files without any global list must NOT
+        // take effect -- project config can never set this field.
+        let global = Config::default();
+        let project = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    excluded_files: Some(vec![".env".into()]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.sandbox.container.excluded_files, None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Docker/Podman container sandbox implementation.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result};
@@ -344,45 +344,8 @@ pub fn build_docker_run_args(
         worktree_root_str, worktree_root_str
     ));
 
-    // Mask configured files out of the worktree mount by bind-mounting /dev/null
-    // over them. Must come AFTER the worktree mount so the /dev/null mounts win.
-    // Missing files are skipped -- bind-mounting over a nonexistent target would
-    // fail and kill the container. Paths that escape the worktree are rejected
-    // to prevent a malicious project config from masking host files.
-    let excluded = config.container.excluded_files();
-    if !excluded.is_empty() && !runtime.supports_file_mounts() {
-        tracing::warn!(
-            runtime = ?runtime,
-            "sandbox.container.excluded_files requires file-level bind mounts, \
-             which this runtime does not support; entries will be ignored"
-        );
-    } else {
-        for rel in excluded {
-            let rel_path = Path::new(rel);
-            if rel_path.is_absolute() || rel.contains("..") {
-                tracing::warn!(
-                    path = %rel,
-                    "sandbox.container.excluded_files entry must be a relative path inside the worktree; skipping"
-                );
-                continue;
-            }
-            let host_path = worktree_root.join(rel_path);
-            if !host_path.is_file() {
-                tracing::warn!(
-                    path = %host_path.display(),
-                    "sandbox.container.excluded_files entry does not exist on disk; skipping"
-                );
-                continue;
-            }
-            args.push("--mount".to_string());
-            args.push(format!(
-                "type=bind,source=/dev/null,target={},readonly",
-                host_path.display()
-            ));
-        }
-    }
-
     // Git worktree mounts: .git directory + main worktree (for symlink resolution)
+    let mut main_worktree_path: Option<PathBuf> = None;
     let git_path = worktree_root.join(".git");
     if git_path.is_file()
         && let Ok(content) = std::fs::read_to_string(&git_path)
@@ -407,6 +370,70 @@ pub fn build_docker_run_args(
                     main_worktree.display(),
                     main_worktree.display()
                 ));
+                main_worktree_path = Some(main_worktree.to_path_buf());
+            }
+        }
+    }
+
+    // Mask configured files out of the worktree mounts by bind-mounting
+    // /dev/null over them. Must come AFTER the worktree AND main-worktree
+    // mounts so the /dev/null mounts win even for aliased paths (a file in
+    // the current worktree that is a symlink into the main worktree).
+    //
+    // Missing files are skipped -- bind-mounting over a nonexistent target
+    // would fail and kill the container. Paths that escape the worktree are
+    // rejected to prevent a malicious project config from masking host files.
+    let excluded = config.container.excluded_files();
+    if !excluded.is_empty() {
+        if !runtime.supports_file_mounts() {
+            anyhow::bail!(
+                "sandbox.container.excluded_files is set but runtime {:?} does \
+                 not support file-level bind mounts. Secrets would remain \
+                 readable inside the sandbox. Use docker or podman, or remove \
+                 sandbox.container.excluded_files.",
+                runtime
+            );
+        }
+        for rel in excluded {
+            let rel_path = Path::new(rel);
+            if rel_path.is_absolute()
+                || rel_path
+                    .components()
+                    .any(|c| matches!(c, Component::ParentDir))
+            {
+                tracing::warn!(
+                    path = %rel,
+                    "sandbox.container.excluded_files entry must be a relative path inside the worktree; skipping"
+                );
+                continue;
+            }
+            // Mask the path under the current worktree AND, if applicable,
+            // under the main worktree (which workmux also bind-mounts for
+            // symlink resolution). Without the second mount, a symlinked
+            // secret would still be readable via the main-worktree alias.
+            let mut candidates = vec![worktree_root.join(rel_path)];
+            if let Some(ref main) = main_worktree_path {
+                let main_candidate = main.join(rel_path);
+                if main_candidate != candidates[0] {
+                    candidates.push(main_candidate);
+                }
+            }
+            let mut masked_any = false;
+            for host_path in &candidates {
+                if host_path.is_file() {
+                    args.push("--mount".to_string());
+                    args.push(format!(
+                        "type=bind,source=/dev/null,target={},readonly",
+                        host_path.display()
+                    ));
+                    masked_any = true;
+                }
+            }
+            if !masked_any {
+                tracing::warn!(
+                    path = %rel,
+                    "sandbox.container.excluded_files entry does not exist on disk; skipping"
+                );
             }
         }
     }
@@ -813,7 +840,10 @@ mod tests {
     }
 
     #[test]
-    fn test_excluded_files_skipped_on_apple_container() {
+    fn test_excluded_files_errors_on_apple_container() {
+        // Apple Container cannot honor excluded_files (no file-level mounts).
+        // Silently skipping would leave secrets readable inside the sandbox
+        // without the user noticing, so we hard-fail instead.
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join(".env"), "SECRET=1").unwrap();
 
@@ -822,6 +852,100 @@ mod tests {
             container: ContainerConfig {
                 runtime: Some(SandboxRuntime::AppleContainer),
                 excluded_files: Some(vec![".env".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let err = build_docker_run_args(
+            "claude",
+            &config,
+            "claude",
+            tmp.path(),
+            tmp.path(),
+            &[],
+            None,
+            false,
+        )
+        .expect_err("expected hard error when excluded_files is set on apple-container");
+
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("excluded_files"),
+            "error message should mention excluded_files, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_masks_main_worktree_alias() {
+        // When the current worktree has a `.git` gitlink pointing into a main
+        // repo's worktrees/<name>/ directory, workmux bind-mounts both the
+        // current worktree and the main worktree. A secret reachable via the
+        // main-worktree mount (e.g. a symlink from current worktree -> main)
+        // must be masked on both paths.
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main");
+        let wt = tmp.path().join("wt1");
+        std::fs::create_dir_all(&main).unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+
+        // Build a plausible main/.git/worktrees/wt1 layout.
+        let main_git = main.join(".git");
+        let wt1_git_dir = main_git.join("worktrees").join("wt1");
+        std::fs::create_dir_all(&wt1_git_dir).unwrap();
+
+        // Current worktree's .git is a gitlink file pointing at the main
+        // repo's worktree dir, matching real git behavior.
+        std::fs::write(
+            wt.join(".git"),
+            format!("gitdir: {}\n", wt1_git_dir.display()),
+        )
+        .unwrap();
+
+        // Secret lives only in the main worktree.
+        std::fs::write(main.join(".env"), "SECRET=1").unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec![".env".to_string()]),
+                ..Default::default()
+            },
+            image: Some("test-image:latest".to_string()),
+            ..Default::default()
+        };
+
+        let args =
+            build_docker_run_args("claude", &config, "claude", &wt, &wt, &[], None, false).unwrap();
+
+        let main_env = main.join(".env");
+        let expected_main = format!(
+            "type=bind,source=/dev/null,target={},readonly",
+            main_env.display()
+        );
+        assert!(
+            args.contains(&expected_main),
+            "expected main-worktree alias {} to be masked, got: {:?}",
+            main_env.display(),
+            args
+        );
+    }
+
+    #[test]
+    fn test_excluded_files_allows_safe_dotted_names() {
+        // Paths like "foo..bar" and "my..env" contain ".." but are NOT parent
+        // traversal components, so they must be accepted.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("my..env"), "SECRET=1").unwrap();
+        std::fs::write(tmp.path().join("foo..bar"), "SECRET=2").unwrap();
+
+        let config = SandboxConfig {
+            enabled: Some(true),
+            container: ContainerConfig {
+                runtime: Some(SandboxRuntime::Docker),
+                excluded_files: Some(vec!["my..env".to_string(), "foo..bar".to_string()]),
                 ..Default::default()
             },
             image: Some("test-image:latest".to_string()),
@@ -840,9 +964,23 @@ mod tests {
         )
         .unwrap();
 
+        let my_env = tmp.path().join("my..env");
+        let foo_bar = tmp.path().join("foo..bar");
         assert!(
-            !args.iter().any(|a| a.contains("source=/dev/null")),
-            "apple-container lacks file-mount support; excluded_files must be skipped"
+            args.iter().any(|a| a.contains(&format!(
+                "source=/dev/null,target={},readonly",
+                my_env.display()
+            ))),
+            "my..env should be masked: {:?}",
+            args
+        );
+        assert!(
+            args.iter().any(|a| a.contains(&format!(
+                "source=/dev/null,target={},readonly",
+                foo_bar.display()
+            ))),
+            "foo..bar should be masked: {:?}",
+            args
         );
     }
 

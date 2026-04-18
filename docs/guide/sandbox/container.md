@@ -142,9 +142,11 @@ sandbox:
       - .env.local
 ```
 
-Listed paths are relative to the worktree root. Each one is shadowed by a read-only `/dev/null` bind mount, so agents running inside the container cannot read the host file without having to restructure the project. Paths that escape the worktree (absolute paths or `..` segments) are rejected; files that don't exist on disk are skipped with a warning.
+Listed paths are relative to the worktree root. Each one is shadowed by a read-only `/dev/null` bind mount, so agents running inside the container cannot read the host file without having to restructure the project. Files reachable via workmux's main-worktree mount (including symlinks from the current worktree into it) are masked at both paths. Absolute paths and entries containing `..` components are rejected; files that don't exist on disk are skipped with a warning.
 
-**Note:** `excluded_files` relies on file-level bind mounts, which Apple Container does not support (it only accepts directory mounts). Use Docker or Podman if you need this feature.
+**Security: global-only.** `excluded_files` is ignored when set in a project's `.workmux.yaml`; it must be configured in your global config (`~/.config/workmux/config.yaml`). This prevents a malicious repo from deleting protections via its own config.
+
+**Note:** `excluded_files` relies on file-level bind mounts, which Apple Container does not support (it only accepts directory mounts). When the runtime is Apple Container and `excluded_files` is set, workmux fails fast rather than silently leaving secrets readable. Use Docker or Podman if you need this feature.
 
 **Sandbox all panes (not just agent):**
 
@@ -180,14 +182,14 @@ The exact flags vary by runtime (e.g., Podman adds `--userns=keep-id`, Apple Con
 
 ### What's mounted
 
-| Mount                  | Access      | Purpose                                                       |
-| ---------------------- | ----------- | ------------------------------------------------------------- |
-| Worktree directory     | read-write  | Source code                                                   |
-| Main worktree          | read-write  | Symlink resolution (e.g., CLAUDE.md)                          |
-| Main `.git`            | read-write  | Git operations                                                |
-| Agent credentials      | read-write  | Auth and settings (see [Credentials](./features#credentials)) |
-| `extra_mounts` entries | read-only\* | User-configured paths                                         |
-| `excluded_files` entries | masked    | Shadowed with `/dev/null` so sensitive files are unreadable   |
+| Mount                    | Access      | Purpose                                                       |
+| ------------------------ | ----------- | ------------------------------------------------------------- |
+| Worktree directory       | read-write  | Source code                                                   |
+| Main worktree            | read-write  | Symlink resolution (e.g., CLAUDE.md)                          |
+| Main `.git`              | read-write  | Git operations                                                |
+| Agent credentials        | read-write  | Auth and settings (see [Credentials](./features#credentials)) |
+| `extra_mounts` entries   | read-only\* | User-configured paths                                         |
+| `excluded_files` entries | masked      | Shadowed with `/dev/null` so sensitive files are unreadable   |
 
 \* Extra mounts are read-only by default. Set `writable: true` to allow writes.
 
