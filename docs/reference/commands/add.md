@@ -33,8 +33,9 @@ workmux add <branch-name> [flags]
 | `-l, --layout <name>`          | Use a named pane layout from config instead of the default panes. See [named layouts](/guide/configuration#named-layouts). Cannot be combined with `--agent`.                                                                                                           |
 | `-a, --agent <name>`           | The agent(s) to use for the worktree(s). Can be specified multiple times to generate a worktree for each agent. Overrides the `agent` from your config file.                                                                                                            |
 | `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `workmux remove --keep-branch`.                                                                 |
-| `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists.                                                                                      |
-| `-s, --session`                | Create the worktree's window in its own tmux session instead of the current session. Useful for session-per-project workflows. Can also be set via `mode: session` in config.                                                                                           |
+| `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists. Any mode override is forwarded when reopening the existing worktree.                 |
+| `--mode <window\|session>`     | Override the multiplexer mode for this command only. Useful for forcing window mode when config defaults to sessions, or creating a one-off session without changing config. Session mode is only supported with tmux.                                                  |
+| `-s, --session`                | Shorthand for `--mode session`. Cannot be combined with `--mode`.                                                                                                                                                                                                       |
 | `--fork`                       | Fork the last conversation from the current worktree into the new one. The agent resumes with the forked conversation context. Use `--fork=<session-id>` to fork a specific session (prefix matching supported). Currently supports Claude Code.                        |
 
 ## Skip options
@@ -53,7 +54,7 @@ These options allow you to skip expensive setup steps when they're not needed (e
 2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is configurable and defaults to a sibling directory of your project)
 3. Runs any configured file operations (copy/symlink)
 4. Executes `post_create` commands if defined (runs before the tmux window/session opens, so keep them fast)
-5. Creates a new tmux window named `<window_prefix><handle>` (e.g., `wm-feature-auth` with `window_prefix: wm-`). With `--session`, the window is created in its own dedicated session instead of the current session.
+5. Creates a new tmux window named `<window_prefix><handle>` (e.g., `wm-feature-auth` with `window_prefix: wm-`). With `--mode session` or `--session`, the worktree is created in its own dedicated tmux session instead of the current session.
 6. Sets up your configured tmux pane layout
 7. Automatically switches your tmux client to the new window
 
@@ -148,13 +149,16 @@ done
 
 ```bash [Session mode]
 # Create a worktree in its own tmux session (instead of the current session)
-workmux add feature/isolated --session
+workmux add feature/isolated --mode session
+
+# Override a session-mode config for one command and keep a normal window
+workmux add feature/quick-fix --mode window
 
 # Create in a new session without switching to it
-workmux add feature/background-task --session --background
+workmux add feature/background-task --mode session --background
 
 # Session mode works with all other flags
-workmux add feature/ai-session --session -p "Implement the new API"
+workmux add feature/ai-session --mode session -p "Implement the new API"
 ```
 
 :::

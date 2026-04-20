@@ -1641,6 +1641,7 @@ def run_workmux_open(
     force_files: bool = False,
     new_window: bool = False,
     session: bool = False,
+    mode: Optional[str] = None,
     prompt: Optional[str] = None,
     prompt_file: Optional[Path] = None,
     pre_run_mux_cmds: Optional[List[List[str]]] = None,
@@ -1670,6 +1671,8 @@ def run_workmux_open(
         flags.append("--new")
     if session:
         flags.append("-s")
+    if mode:
+        flags.append(f"--mode {shlex.quote(mode)}")
     if prompt:
         flags.append(f"-p {shlex.quote(prompt)}")
     if prompt_file:

@@ -18,7 +18,7 @@ pub fn open(
     context: &WorkflowContext,
     options: SetupOptions,
     new_window: bool,
-    session_override: bool,
+    mode_override: Option<MuxMode>,
     prompt_file_only: Option<&Prompt>,
 ) -> Result<CreateResult> {
     info!(
@@ -26,7 +26,7 @@ pub fn open(
         run_hooks = options.run_hooks,
         run_file_ops = options.run_file_ops,
         new_window = new_window,
-        session_override = session_override,
+        mode_override = ?mode_override,
         "open:start"
     );
 
@@ -58,15 +58,17 @@ pub fn open(
         .to_string();
 
     // Resolve mode using canonical base_handle (not the CLI-provided name which may be a branch).
-    // Precedence: --session flag > stored git metadata > config default (from options.mode)
+    // Precedence: CLI override > stored git metadata > config default (from options.mode)
     let stored_mode = git::get_worktree_mode_opt(&base_handle);
-    let mode = if session_override {
-        MuxMode::Session
-    } else if let Some(m) = stored_mode {
-        m
-    } else {
-        options.mode
-    };
+    let mode = mode_override.or(stored_mode).unwrap_or(options.mode);
+
+    if mode == MuxMode::Session && context.mux.name() != "tmux" {
+        anyhow::bail!(
+            "Session mode (--mode session / --session) is only supported with tmux.\n\
+             Current backend: {}. Use window mode instead.",
+            context.mux.name()
+        );
+    }
 
     // Validate windows config requires session mode (after canonical mode resolution)
     if let Some(windows) = &context.config.windows {
@@ -79,27 +81,40 @@ pub fn open(
         crate::config::validate_windows_config(windows)?;
     }
 
-    // If mode is resolving to session and prior mode was window, close existing window targets
-    // to prevent orphaned windows (covers both --session flag and config fallback)
-    if mode == MuxMode::Session && stored_mode != Some(MuxMode::Session) {
-        // Kill all matching window targets (base + any -N numeric duplicates only)
-        let prior_mode = stored_mode.unwrap_or(MuxMode::Window);
-        let all_names = context.mux.get_all_window_names()?;
-        let full_base = prefixed(&context.prefix, &base_handle);
-        let full_base_dash = format!("{}-", full_base);
-        for name in &all_names {
-            let is_exact = *name == full_base;
-            let is_numeric_suffix = name
-                .strip_prefix(&full_base_dash)
-                .is_some_and(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
+    let prior_mode = stored_mode.unwrap_or(MuxMode::Window);
+    if prior_mode != mode {
+        match prior_mode {
+            MuxMode::Window => {
+                // Kill all matching window targets (base + any -N numeric duplicates only)
+                let all_names = context.mux.get_all_window_names()?;
+                let full_base = prefixed(&context.prefix, &base_handle);
+                let full_base_dash = format!("{}-", full_base);
+                for name in &all_names {
+                    let is_exact = *name == full_base;
+                    let is_numeric_suffix = name
+                        .strip_prefix(&full_base_dash)
+                        .is_some_and(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()));
 
-            if is_exact || is_numeric_suffix {
-                info!(
-                    handle = base_handle,
-                    window = name,
-                    "open:closing window before mode conversion"
-                );
-                MuxHandle::kill_full(context.mux.as_ref(), prior_mode, name)?;
+                    if is_exact || is_numeric_suffix {
+                        info!(
+                            handle = base_handle,
+                            window = name,
+                            "open:closing window before mode conversion"
+                        );
+                        MuxHandle::kill_full(context.mux.as_ref(), prior_mode, name)?;
+                    }
+                }
+            }
+            MuxMode::Session => {
+                let full_name = prefixed(&context.prefix, &base_handle);
+                if MuxHandle::exists_full(context.mux.as_ref(), prior_mode, &full_name)? {
+                    info!(
+                        handle = base_handle,
+                        session = full_name,
+                        "open:closing session before mode conversion"
+                    );
+                    MuxHandle::kill_full(context.mux.as_ref(), prior_mode, &full_name)?;
+                }
             }
         }
     }

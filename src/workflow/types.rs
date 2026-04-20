@@ -15,6 +15,7 @@ pub struct CreateArgs<'a> {
     pub remote_branch: Option<&'a str>,
     pub prompt: Option<&'a Prompt>,
     pub options: SetupOptions,
+    pub mode_override: Option<MuxMode>,
     pub agent: Option<&'a str>,
     /// True if the handle was explicitly set via --name (skip auto-suffix on collision)
     pub is_explicit_name: bool,

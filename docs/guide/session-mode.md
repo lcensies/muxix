@@ -24,13 +24,14 @@ Globally via config:
 mode: session
 ```
 
-Or per-worktree via flag:
+Or per-command via flag:
 
 ```bash
-workmux add feature-branch --session
+workmux add feature-branch --mode session
+workmux open feature-branch --mode window
 ```
 
-The `--session` flag overrides the config for that specific worktree. This lets you use window mode by default but create individual worktrees as sessions when needed.
+`--mode` overrides the config for the current command. This lets you use window mode by default but create individual worktrees as sessions when needed, or temporarily reopen a session-mode worktree as a window. `--session` is shorthand for `--mode session`.
 
 ## How it works
 

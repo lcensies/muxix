@@ -1,12 +1,19 @@
 """Basic tests for `workmux add` command - worktree creation and flags."""
 
+from typing import cast
+
 import pytest
 
 from ..conftest import (
     MuxEnvironment,
+    TmuxEnvironment,
+    assert_session_exists,
+    assert_session_not_exists,
     assert_window_exists,
+    assert_window_not_exists,
     create_commit,
     file_for_commit,
+    get_session_name,
     get_window_name,
     get_worktree_path,
     run_workmux_add,
@@ -411,6 +418,99 @@ class TestExistingBranch:
         # Verify worktree was created
         assert worktree_path.is_dir()
         assert_window_exists(env, get_window_name(branch_name))
+
+    def test_add_open_if_exists_preserves_stored_mode_without_override(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `workmux add -o` does not treat config mode as an explicit override."""
+        env = cast(TmuxEnvironment, mux_server)
+        branch_name = "feature-open-if-exists-preserve-mode"
+        session_name = get_session_name(branch_name)
+        window_name = get_window_name(branch_name)
+
+        add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args="--session --background",
+        )
+
+        run_workmux_command(
+            env, workmux_exe_path, mux_repo_path, f"close {branch_name}"
+        )
+        assert_session_not_exists(env, session_name)
+
+        config_path = mux_repo_path / ".workmux.yaml"
+        config_path.write_text("nerdfont: false\nmode: window\n")
+
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} -o",
+            expect_fail=True,
+        )
+
+        assert_session_exists(env, session_name)
+        assert_window_not_exists(env, window_name)
+
+    def test_add_open_if_exists_respects_session_mode_override(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `workmux add -o --mode session` forwards the override to open."""
+        env = cast(TmuxEnvironment, mux_server)
+        branch_name = "feature-open-if-exists-session"
+        session_name = get_session_name(branch_name)
+        window_name = get_window_name(branch_name)
+
+        write_workmux_config(mux_repo_path)
+
+        add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args="--background",
+        )
+
+        env.kill_window(window_name)
+        assert_window_not_exists(env, window_name)
+
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} -o --mode session",
+            expect_fail=True,
+        )
+
+        assert_session_exists(env, session_name)
+        assert_window_not_exists(env, window_name)
+
+    def test_add_mode_window_overrides_session_config(
+        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path
+    ):
+        """Verifies that `workmux add --mode window` overrides `mode: session` config."""
+        env = cast(TmuxEnvironment, mux_server)
+        branch_name = "feature-mode-window"
+        session_name = get_session_name(branch_name)
+        window_name = get_window_name(branch_name)
+
+        config_path = mux_repo_path / ".workmux.yaml"
+        config_path.write_text("nerdfont: false\nmode: session\n")
+
+        add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args="--mode window --background",
+        )
+
+        assert_window_exists(env, window_name)
+        assert_window_not_exists(env, window_name + "-2")
+        assert_session_not_exists(env, session_name)
 
     def test_add_open_if_exists_conflicts_with_with_changes(
         self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path

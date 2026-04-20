@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -16,6 +17,7 @@ from .conftest import (
     get_worktree_path,
     poll_until,
     run_workmux_add,
+    run_workmux_command,
     run_workmux_open,
     run_workmux_remove,
     slugify,
@@ -283,6 +285,63 @@ def test_open_fails_when_worktree_missing(
     )
 
     assert "not found" in result.stderr
+
+
+@pytest.mark.tmux_only
+def test_open_mode_window_overrides_stored_session_mode(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --mode window` converts a session-mode worktree to window mode."""
+    env = cast(TmuxEnvironment, mux_server)
+    branch_name = "feature-session-to-window"
+    session_name = get_session_name(branch_name)
+    window_name = get_window_name(branch_name)
+
+    write_workmux_config(repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        repo_path,
+        f"add {branch_name} --session --background",
+    )
+
+    run_workmux_command(env, workmux_exe_path, repo_path, f"close {branch_name}")
+    assert_session_not_exists(env, session_name)
+
+    run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        mode="window",
+    )
+
+    assert window_name in _get_all_windows(env)
+    assert_session_not_exists(env, session_name)
+
+
+@pytest.mark.tmux_only
+def test_open_mode_session_conflicts_with_new(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --new --mode session` is rejected."""
+    env = mux_server
+    branch_name = "feature-open-new-session-mode"
+
+    write_workmux_config(repo_path)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    result = run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        new_window=True,
+        mode="session",
+        expect_fail=True,
+    )
+
+    assert "--new is not supported in session mode" in result.stderr
 
 
 def test_open_with_run_hooks_reexecutes_post_create_commands(

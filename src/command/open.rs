@@ -11,7 +11,7 @@ pub fn run(
     run_hooks: bool,
     force_files: bool,
     new_window: bool,
-    session: bool,
+    mode_override: Option<MuxMode>,
     continue_session: bool,
     prompt_args: PromptArgs,
 ) -> Result<()> {
@@ -38,20 +38,11 @@ pub fn run(
     let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, config_location)?;
 
-    // Validate backend supports session mode
-    if session && context.mux.name() != "tmux" {
-        bail!(
-            "Session mode (--session) is only supported with tmux.\n\
-             Current backend: {}. Use window mode instead.",
-            context.mux.name()
-        );
-    }
+    let preliminary_mode = context.config.mode();
 
-    let preliminary_mode = if session {
-        MuxMode::Session
-    } else {
-        context.config.mode()
-    };
+    if new_window && mode_override == Some(MuxMode::Session) {
+        bail!("--new is not supported in session mode. Each worktree can only have one session.");
+    }
 
     // Load prompt if any prompt argument is provided
     let prompt = load_prompt(&PromptLoadArgs {
@@ -117,7 +108,7 @@ pub fn run(
             &context,
             options,
             new_window,
-            session,
+            mode_override,
             file_only_prompt,
         ) {
             Ok(result) => {

@@ -701,7 +701,7 @@ impl App {
 
         let mut options = workflow::types::SetupOptions::new(false, false, true);
         options.mode = self.config.mode();
-        if workflow::open(&handle, &ctx, options, false, false, None).is_ok() {
+        if workflow::open(&handle, &ctx, options, false, None, None).is_ok() {
             self.should_jump = true;
         }
     }
@@ -1140,6 +1140,7 @@ impl App {
                         remote_branch: Some(&remote_branch),
                         prompt: None,
                         options,
+                        mode_override: None,
                         agent: None,
                         is_explicit_name: false,
                         prompt_file_only: false,
@@ -1197,6 +1198,7 @@ impl App {
                         remote_branch: None,
                         prompt: None,
                         options,
+                        mode_override: None,
                         agent: None,
                         is_explicit_name: false,
                         prompt_file_only: false,

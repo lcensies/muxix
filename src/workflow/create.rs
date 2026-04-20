@@ -44,6 +44,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         remote_branch,
         prompt,
         mut options,
+        mode_override,
         agent,
         is_explicit_name,
         prompt_file_only,
@@ -81,7 +82,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Validate backend supports session mode before creating any git state
     if options.mode == MuxMode::Session && context.mux.name() != "tmux" {
         return Err(anyhow!(
-            "Session mode (--session) is only supported with tmux.\n\
+            "Session mode (--mode session / --session) is only supported with tmux.\n\
              Current backend: {}. Use window mode instead.",
             context.mux.name()
         ));
@@ -172,7 +173,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             context,
             open_options,
             false,
-            false,
+            mode_override,
             file_only_prompt,
         );
     }
@@ -538,6 +539,7 @@ pub fn create_with_changes(
             remote_branch: None,
             prompt: None,
             options,
+            mode_override: None,
             agent: None,
             is_explicit_name: false,
             prompt_file_only: false,

@@ -82,7 +82,7 @@ pub fn run(dry_run: bool) -> Result<()> {
             "resurrect:exec opening worktree"
         );
 
-        match workflow::open(&candidate.handle, &context, options, false, false, None) {
+        match workflow::open(&candidate.handle, &context, options, false, None, None) {
             Ok(result) => {
                 info!(
                     handle = candidate.handle,

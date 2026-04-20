@@ -16,17 +16,18 @@ workmux open [name...] [flags]
 
 ## Options
 
-| Flag                       | Description                                                                                                                                                                                                                   |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-n, --new`                | Force opening in a new window even if one already exists. Creates a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having multiple terminal views into the same worktree. Cannot be combined with `--session`. |
-| `-s, --session`            | Open in session mode, overriding the stored mode. Persists the mode change for subsequent opens. Cannot be combined with `--new`. Only supported with tmux.                                                                   |
-| `--run-hooks`              | Re-runs the `post_create` commands (these block window creation).                                                                                                                                                             |
-| `--force-files`            | Re-applies file copy/symlink operations. Useful for restoring a deleted `.env` file.                                                                                                                                          |
-| `-p, --prompt <text>`      | Provide an inline prompt for AI agent panes.                                                                                                                                                                                  |
-| `-P, --prompt-file <path>` | Provide a path to a file containing the prompt.                                                                                                                                                                               |
-| `-c, --continue`           | Resume the agent's most recent conversation in this worktree. Injects the appropriate flag for the configured agent (e.g., `--continue` for Claude, `--resume` for Gemini).                                                   |
-| `-e, --prompt-editor`      | Open your editor to write the prompt interactively.                                                                                                                                                                           |
-| `--prompt-file-only`       | Write the prompt file to the worktree without injecting it into agent commands.                                                                                                                                               |
+| Flag                       | Description                                                                                                                                                                                                                |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-n, --new`                | Force opening in a new window even if one already exists. Creates a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having multiple terminal views into the same worktree. Cannot be used with session mode. |
+| `--mode <window\|session>` | Override the multiplexer mode for this command. `session` persists the mode change for subsequent opens. `window` converts a session-mode worktree back to window mode. Session mode is only supported with tmux.          |
+| `-s, --session`            | Shorthand for `--mode session`. Persists the mode change for subsequent opens. Cannot be combined with `--mode`.                                                                                                           |
+| `--run-hooks`              | Re-runs the `post_create` commands (these block window creation).                                                                                                                                                          |
+| `--force-files`            | Re-applies file copy/symlink operations. Useful for restoring a deleted `.env` file.                                                                                                                                       |
+| `-p, --prompt <text>`      | Provide an inline prompt for AI agent panes.                                                                                                                                                                               |
+| `-P, --prompt-file <path>` | Provide a path to a file containing the prompt.                                                                                                                                                                            |
+| `-c, --continue`           | Resume the agent's most recent conversation in this worktree. Injects the appropriate flag for the configured agent (e.g., `--continue` for Claude, `--resume` for Gemini).                                                |
+| `-e, --prompt-editor`      | Open your editor to write the prompt interactively.                                                                                                                                                                        |
+| `--prompt-file-only`       | Write the prompt file to the worktree without injecting it into agent commands.                                                                                                                                            |
 
 ## What happens
 
@@ -50,7 +51,10 @@ workmux open user-auth --new
 workmux open --new
 
 # Open in session mode (converts from window mode if needed)
-workmux open user-auth --session
+workmux open user-auth --mode session
+
+# Convert a session-mode worktree back to a window
+workmux open user-auth --mode window
 
 # Resume the agent's last conversation
 workmux open user-auth --continue

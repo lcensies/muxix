@@ -168,7 +168,7 @@ pub fn run(
     layout: Option<String>,
     fork: Option<String>,
     wait: bool,
-    session: bool,
+    mode_override: Option<MuxMode>,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
@@ -189,7 +189,7 @@ pub fn run(
             pr,
             name.as_deref(),
             wait,
-            session,
+            mode_override,
         );
     }
 
@@ -199,7 +199,7 @@ pub fn run(
     // Extract sandbox override before consuming setup flags
     let sandbox_override = setup.sandbox;
 
-    // Load config early to determine mode (CLI flag overrides config)
+    // Load config early to determine mode
     let mut initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
 
     // Resolve fork source if --fork is set
@@ -241,11 +241,7 @@ pub fn run(
     } else {
         None
     };
-    let mode = if session {
-        MuxMode::Session
-    } else {
-        initial_config.mode()
-    };
+    let mode = mode_override.unwrap_or(initial_config.mode());
 
     // Validate layout early to fail fast before any LLM calls
     if let Some(layout_name) = &layout {
@@ -490,6 +486,7 @@ pub fn run(
         remote_branch: remote_branch.as_deref(),
         prompt_doc: prompt_doc.as_ref(),
         options,
+        mode_override,
         env: &env,
         explicit_name: name.as_deref(),
         wait,
@@ -621,6 +618,7 @@ struct CreationPlan<'a> {
     remote_branch: Option<&'a str>,
     prompt_doc: Option<&'a PromptDocument>,
     options: SetupOptions,
+    mode_override: Option<MuxMode>,
     env: &'a TemplateEnv,
     explicit_name: Option<&'a str>,
     wait: bool,
@@ -651,6 +649,7 @@ impl<'a> CreationPlan<'a> {
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
         let mode = self.options.mode;
+        let mode_override = self.mode_override;
 
         for (i, spec) in self.specs.iter().enumerate() {
             // Concurrency control: wait for a slot if at limit
@@ -752,6 +751,7 @@ impl<'a> CreationPlan<'a> {
                     remote_branch: self.remote_branch,
                     prompt: prompt_for_spec.as_ref(),
                     options: self.options.clone(),
+                    mode_override,
                     agent: spec.agent.as_deref(),
                     is_explicit_name: self.explicit_name.is_some(),
                     prompt_file_only: self.prompt_file_only,
@@ -823,7 +823,7 @@ fn run_add_via_rpc(
     pr: Option<u32>,
     name: Option<&str>,
     wait: bool,
-    session: bool,
+    mode_override: Option<MuxMode>,
 ) -> Result<()> {
     use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
     use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
@@ -855,9 +855,10 @@ fn run_add_via_rpc(
     if multi.foreach.is_some() {
         bail!("--foreach is not supported from inside a sandbox");
     }
-    if session {
+    if mode_override.is_some() {
         bail!(
-            "--session is not supported from inside a sandbox (host controls mode via its config)"
+            "Mode overrides (--mode / --session) are not supported from inside a sandbox \
+             (host controls mode via its config)"
         );
     }
     if prompt_args.prompt_file_only {

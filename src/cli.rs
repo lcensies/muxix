@@ -1,8 +1,9 @@
 use crate::command::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
+use crate::config::MuxMode;
 use crate::{claude, command, config, git, nerdfont};
 use anyhow::{Context, Result};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 
 #[derive(Clone, Debug)]
@@ -300,6 +301,21 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum CliMuxMode {
+    Window,
+    Session,
+}
+
+impl From<CliMuxMode> for MuxMode {
+    fn from(value: CliMuxMode) -> Self {
+        match value {
+            CliMuxMode::Window => MuxMode::Window,
+            CliMuxMode::Session => MuxMode::Session,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Create a new worktree and tmux window
@@ -350,8 +366,12 @@ enum Commands {
         #[arg(short = 'W', long)]
         wait: bool,
 
+        /// Override the multiplexer mode for this command only
+        #[arg(long, value_enum)]
+        mode: Option<CliMuxMode>,
+
         /// Create the window in its own tmux session (useful for session-per-project workflows)
-        #[arg(short = 's', long)]
+        #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
     },
 
@@ -370,11 +390,15 @@ enum Commands {
         force_files: bool,
 
         /// Force opening in a new window (creates suffix like -2, -3) instead of switching to existing
-        #[arg(long, short = 'n', conflicts_with = "session")]
+        #[arg(long, short = 'n')]
         new: bool,
 
+        /// Override the multiplexer mode for this command only
+        #[arg(long, value_enum)]
+        mode: Option<CliMuxMode>,
+
         /// Open in session mode (overrides stored mode for this worktree)
-        #[arg(short = 's', long)]
+        #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
 
         /// Resume the agent's most recent conversation in this worktree
@@ -878,39 +902,51 @@ pub fn run() -> Result<()> {
             layout,
             fork,
             wait,
+            mode,
             session,
-        } => command::add::run(
-            branch_name.as_deref(),
-            pr,
-            auto_name,
-            base.as_deref(),
-            name,
-            prompt,
-            setup,
-            rescue,
-            multi,
-            layout,
-            fork,
-            wait,
-            session,
-        ),
+        } => {
+            let mode_override = mode
+                .map(MuxMode::from)
+                .or(session.then_some(MuxMode::Session));
+            command::add::run(
+                branch_name.as_deref(),
+                pr,
+                auto_name,
+                base.as_deref(),
+                name,
+                prompt,
+                setup,
+                rescue,
+                multi,
+                layout,
+                fork,
+                wait,
+                mode_override,
+            )
+        }
         Commands::Open {
             names,
             run_hooks,
             force_files,
             new,
+            mode,
             session,
             continue_session,
             prompt,
-        } => command::open::run(
-            &names,
-            run_hooks,
-            force_files,
-            new,
-            session,
-            continue_session,
-            prompt,
-        ),
+        } => {
+            let mode_override = mode
+                .map(MuxMode::from)
+                .or(session.then_some(MuxMode::Session));
+            command::open::run(
+                &names,
+                run_hooks,
+                force_files,
+                new,
+                mode_override,
+                continue_session,
+                prompt,
+            )
+        }
         Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Resurrect { dry_run } => command::resurrect::run(dry_run),
         Commands::Merge {
