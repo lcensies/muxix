@@ -22,6 +22,25 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.185 (2026-04-22)
+
+- Add `--mode <window|session>` flag to `workmux add` and `workmux open` for
+  per-command multiplexer mode overrides. Use `--mode window` to temporarily
+  reopen a session-mode worktree as a window, or `--mode session` to create a
+  one-off session without changing config. The existing `--session` flag is now
+  shorthand for `--mode session`
+  ([#139](https://github.com/raine/workmux/issues/139))
+- Add `sandbox.container.excluded_files` config to hide sensitive worktree files
+  from sandboxed containers by shadowing them with `/dev/null` (e.g. `.env`,
+  `.env.local`). Configurable only in your global config for security
+  ([#134](https://github.com/raine/workmux/pull/134))
+- Restrict `excluded_files` to global config only, preventing malicious projects
+  from disabling file masking via their own `.workmux.yaml`
+- Skip `excluded_files` gracefully with a clear warning on runtimes that do not
+  support file-level bind mounts (Apple Container)
+- Fix sandbox relative gitdir path resolution and improve warning messages for
+  directory entries
+
 ## v0.1.184 (2026-04-17)
 
 - Add `workmux rename [old-name] <new-name>` command to rename a worktree, its
