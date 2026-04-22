@@ -26,6 +26,10 @@ pub enum AppEvent {
     AddWorktreeResult(Result<String, String>),
     /// Result of fetching open PRs for the add-worktree modal
     AddWorktreePrList(u64, Result<Vec<PrListEntry>, String>),
+    /// Progress update during background sweep (current, total, handle)
+    SweepProgressUpdate(usize, usize, String),
+    /// Sweep operation completed
+    SweepComplete(Result<(), String>),
 }
 
 use clap::ValueEnum;
@@ -79,6 +83,13 @@ impl SweepReason {
 pub struct SweepState {
     pub candidates: Vec<SweepCandidate>,
     pub cursor: usize,
+}
+
+/// Progress state for a background sweep operation.
+pub struct SweepProgress {
+    pub total: usize,
+    pub current: usize,
+    pub handle: String,
 }
 
 /// An entry in the project picker.

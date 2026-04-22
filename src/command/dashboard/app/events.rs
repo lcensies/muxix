@@ -53,6 +53,27 @@ impl App {
                     });
                 }
             }
+            AppEvent::SweepProgressUpdate(current, total, handle) => {
+                self.sweep_progress = Some(super::types::SweepProgress {
+                    total,
+                    current,
+                    handle,
+                });
+            }
+            AppEvent::SweepComplete(result) => {
+                self.sweep_progress = None;
+                match result {
+                    Ok(()) => {
+                        self.status_message =
+                            Some(("Sweep complete".to_string(), std::time::Instant::now()));
+                    }
+                    Err(e) => {
+                        self.status_message =
+                            Some((format!("Sweep failed: {e}"), std::time::Instant::now()));
+                    }
+                }
+                self.trigger_worktree_refetch();
+            }
         }
     }
 }

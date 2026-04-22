@@ -29,7 +29,7 @@ pub use self::dashboard::render_dashboard;
 pub use self::diff::render_diff_view;
 pub use self::help::{
     render_add_worktree, render_base_picker, render_command_palette, render_confirm_kill,
-    render_confirm_remove, render_help, render_project_picker, render_sweep,
+    render_confirm_remove, render_help, render_project_picker, render_sweep, render_sweep_progress,
 };
 
 /// Main UI entry point - renders the appropriate view based on app state.
@@ -41,7 +41,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     }
 
     // Render overlays on top
-    let has_modal = app.show_help
+    let has_modal = app.sweep_progress.is_some()
+        || app.show_help
         || app.pending_kill_pane_id.is_some()
         || app.pending_remove.is_some()
         || app.pending_base_picker.is_some()
@@ -54,7 +55,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         dim_buffer(f);
     }
 
-    if app.show_help {
+    if app.sweep_progress.is_some() {
+        render_sweep_progress(f, app);
+    } else if app.show_help {
         render_help(f, app);
     } else if app.pending_kill_pane_id.is_some() {
         render_confirm_kill(f, app);

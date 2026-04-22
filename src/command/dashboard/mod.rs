@@ -285,6 +285,20 @@ fn handle_terminal_event(
     event: Event,
     last_preview_refresh: &mut std::time::Instant,
 ) {
+    // Sweep in progress - block all input except Ctrl+C until complete
+    if app.sweep_progress.is_some() {
+        if let Event::Key(key) = &event
+            && key.kind == KeyEventKind::Press
+            && key.code == crossterm::event::KeyCode::Char('c')
+            && key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+        {
+            app.should_quit = true;
+        }
+        return;
+    }
+
     // Handle mouse scroll events in diff view
     if let Event::Mouse(mouse) = &event {
         handle_mouse_event(app, mouse.kind);

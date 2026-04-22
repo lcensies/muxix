@@ -134,6 +134,8 @@ pub struct App {
     pub pending_base_picker: Option<BaseBranchPicker>,
     /// Pending add-worktree modal state
     pub pending_add_worktree: Option<AddWorktreeState>,
+    /// Active sweep progress overlay (blocks input while removing worktrees)
+    pub sweep_progress: Option<SweepProgress>,
     /// Override which repo's worktrees are shown (name, git root path)
     pub worktree_project_override: Option<(String, PathBuf)>,
     /// Flag to prevent concurrent worktree fetches
@@ -264,6 +266,7 @@ impl App {
             show_sidebar_tip: crate::tips::should_show_sidebar_tip(),
             interrupted_pane_ids: std::collections::HashSet::new(),
             pending_command_palette: None,
+            sweep_progress: None,
         };
 
         app.refresh();

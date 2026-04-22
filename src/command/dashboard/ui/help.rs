@@ -300,6 +300,61 @@ pub fn render_help(f: &mut Frame, app: &App) {
     f.render_widget(table, popup_area);
 }
 
+/// Render the sweep progress overlay.
+pub fn render_sweep_progress(f: &mut Frame, app: &App) {
+    let Some(ref progress) = app.sweep_progress else {
+        return;
+    };
+    let palette = &app.palette;
+    let spinner = super::super::spinner::SPINNER_FRAMES
+        [app.spinner_frame as usize % super::super::spinner::SPINNER_FRAMES.len()];
+
+    let lines = vec![
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            format!(" {spinner} Removing worktrees... "),
+            Style::default().fg(palette.text),
+        )]),
+        Line::from(vec![Span::styled(
+            format!(
+                " {} ({}/{}) ",
+                progress.handle, progress.current, progress.total
+            ),
+            Style::default().fg(palette.dimmed),
+        )]),
+        Line::from(""),
+    ];
+
+    let height = lines.len() as u16 + 2;
+    let content_width = lines.iter().map(|l| l.width()).max().unwrap_or(30);
+    let width = (content_width as u16 + 4).max(36);
+    let area = f.area();
+    let popup_area = Rect {
+        x: area.width.saturating_sub(width) / 2,
+        y: area.height.saturating_sub(height) / 2,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    };
+
+    let block = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(palette.help_border))
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                "Sweep",
+                Style::default()
+                    .fg(palette.header)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ", Style::default()),
+        ]));
+
+    let paragraph = Paragraph::new(Text::from(lines)).block(block);
+    f.render_widget(Clear, popup_area);
+    f.render_widget(paragraph, popup_area);
+}
+
 /// Render the sweep cleanup modal.
 pub fn render_sweep(f: &mut Frame, app: &App) {
     let Some(ref sweep) = app.pending_sweep else {
