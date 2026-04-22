@@ -169,6 +169,7 @@ pub fn run(
     fork: Option<String>,
     wait: bool,
     mode_override: Option<MuxMode>,
+    config_override: Option<&std::path::Path>,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
@@ -177,6 +178,9 @@ pub fn run(
         }
         if fork.is_some() {
             bail!("--fork is not supported from inside a sandbox");
+        }
+        if config_override.is_some() {
+            bail!("--config is not supported from inside a sandbox");
         }
         return run_add_via_rpc(
             branch_name,
@@ -200,7 +204,10 @@ pub fn run(
     let sandbox_override = setup.sandbox;
 
     // Load config early to determine mode
-    let mut initial_config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+    let mut initial_config = config::Config::load_with_override(
+        multi.agent.first().map(|s| s.as_str()),
+        config_override,
+    )?;
 
     // Resolve fork source if --fork is set
     let fork_source = if let Some(ref fork_arg) = fork {
@@ -256,7 +263,10 @@ pub fn run(
 
     // If using --auto-name and config has auto_name.background = true, run in background
     if auto_name && options.focus_window {
-        let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+        let config = config::Config::load_with_override(
+            multi.agent.first().map(|s| s.as_str()),
+            config_override,
+        )?;
         if config
             .auto_name
             .as_ref()
@@ -308,7 +318,10 @@ pub fn run(
             } else {
                 // Single worktree mode - generate branch name now
                 let prompt_text = prompt.read_content()?;
-                let config = config::Config::load(multi.agent.first().map(|s| s.as_str()))?;
+                let config = config::Config::load_with_override(
+                    multi.agent.first().map(|s| s.as_str()),
+                    config_override,
+                )?;
                 let generated = generate_branch_name_with_spinner(Some(&prompt_text), &config)?;
                 (generated, Some(prompt), None, false)
             }
@@ -358,8 +371,10 @@ pub fn run(
 
     // Handle rescue flow early if requested
     if rescue.with_changes {
-        let (mut rescue_config, rescue_location) =
-            config::Config::load_with_location(multi.agent.first().map(|s| s.as_str()))?;
+        let (mut rescue_config, rescue_location) = config::Config::load_with_location(
+            multi.agent.first().map(|s| s.as_str()),
+            config_override,
+        )?;
         if sandbox_override {
             rescue_config.sandbox.enabled = Some(true);
         }
@@ -497,6 +512,7 @@ pub fn run(
         prompt_file_only,
         layout: layout.as_deref(),
         fork_source,
+        config_override,
     };
     plan.execute()
 }
@@ -630,6 +646,7 @@ struct CreationPlan<'a> {
     prompt_file_only: bool,
     layout: Option<&'a str>,
     fork_source: Option<crate::workflow::types::ForkSource>,
+    config_override: Option<&'a std::path::Path>,
 }
 
 impl<'a> CreationPlan<'a> {
@@ -676,7 +693,7 @@ impl<'a> CreationPlan<'a> {
             }
             // Load config for this specific agent to ensure correct agent resolution
             let (mut config, config_location) =
-                config::Config::load_with_location(spec.agent.as_deref())?;
+                config::Config::load_with_location(spec.agent.as_deref(), self.config_override)?;
             if self.sandbox_override {
                 config.sandbox.enabled = Some(true);
             }

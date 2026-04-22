@@ -6,6 +6,7 @@ use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
 use anyhow::{Context, Result, bail};
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     names: &[String],
     run_hooks: bool,
@@ -14,7 +15,12 @@ pub fn run(
     mode_override: Option<MuxMode>,
     continue_session: bool,
     prompt_args: PromptArgs,
+    config_override: Option<&std::path::Path>,
 ) -> Result<()> {
+    if crate::sandbox::guest::is_sandbox_guest() && config_override.is_some() {
+        bail!("--config is not supported from inside a sandbox");
+    }
+
     // Resolve names: use provided names, or infer from current directory with --new
     let resolved_names: Vec<String> = if names.is_empty() {
         if new_window {
@@ -34,7 +40,7 @@ pub fn run(
         bail!("Prompt arguments (-p, -P, -e) cannot be used when opening multiple worktrees");
     }
 
-    let (config, config_location) = config::Config::load_with_location(None)?;
+    let (config, config_location) = config::Config::load_with_location(None, config_override)?;
     let mux = create_backend(detect_backend());
     let context = WorkflowContext::new(config, mux, config_location)?;
 

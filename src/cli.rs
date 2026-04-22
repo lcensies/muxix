@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 struct WorktreeBranchParser;
@@ -373,6 +374,10 @@ enum Commands {
         /// Create the window in its own tmux session (useful for session-per-project workflows)
         #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
+
+        /// Use an alternate config file for this invocation (still merges with global config)
+        #[arg(long, value_hint = clap::ValueHint::FilePath)]
+        config: Option<PathBuf>,
     },
 
     /// Open a tmux window for an existing worktree
@@ -407,6 +412,10 @@ enum Commands {
 
         #[command(flatten)]
         prompt: PromptArgs,
+
+        /// Use an alternate config file for this invocation (still merges with global config)
+        #[arg(long, value_hint = clap::ValueHint::FilePath)]
+        config: Option<PathBuf>,
     },
 
     /// Close a worktree's tmux window (keeps the worktree and branch)
@@ -852,12 +861,20 @@ pub fn run() -> Result<()> {
         }
     };
 
+    // Extract config override early so the side-effect loads (nerdfont, update
+    // check) respect the user's explicit --config choice.
+    let config_override = match &cli.command {
+        Commands::Add { config, .. } => config.as_deref(),
+        Commands::Open { config, .. } => config.as_deref(),
+        _ => None,
+    };
+
     // Always initialize nerdfont setting for prefix consistency across commands.
     // Only prompt interactively for commands that display icons.
     // If config fails to load, skip the nerdfont wizard -- it will be shown on
     // the next successful run and the real error surfaces when the command loads
     // config with `?`.
-    let (cfg, config_ok) = match config::Config::load(None) {
+    let (cfg, config_ok) = match config::Config::load_with_override(None, config_override) {
         Ok(cfg) => (cfg, true),
         Err(_) => (config::Config::default(), false),
     };
@@ -904,6 +921,7 @@ pub fn run() -> Result<()> {
             wait,
             mode,
             session,
+            config,
         } => {
             let mode_override = mode
                 .map(MuxMode::from)
@@ -922,6 +940,7 @@ pub fn run() -> Result<()> {
                 fork,
                 wait,
                 mode_override,
+                config.as_deref(),
             )
         }
         Commands::Open {
@@ -933,6 +952,7 @@ pub fn run() -> Result<()> {
             session,
             continue_session,
             prompt,
+            config,
         } => {
             let mode_override = mode
                 .map(MuxMode::from)
@@ -945,6 +965,7 @@ pub fn run() -> Result<()> {
                 mode_override,
                 continue_session,
                 prompt,
+                config.as_deref(),
             )
         }
         Commands::Close { name } => command::close::run(name.as_deref()),

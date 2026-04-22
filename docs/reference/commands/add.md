@@ -36,6 +36,7 @@ workmux add <branch-name> [flags]
 | `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists. Any mode override is forwarded when reopening the existing worktree.                 |
 | `--mode <window\|session>`     | Override the multiplexer mode for this command only. Useful for forcing window mode when config defaults to sessions, or creating a one-off session without changing config. Session mode is only supported with tmux.                                                  |
 | `-s, --session`                | Shorthand for `--mode session`. Cannot be combined with `--mode`.                                                                                                                                                                                                       |
+| `--config <path>`              | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `workmux add feat/my-branch --config .workmux.window.yaml`.                                                                             |
 | `--fork`                       | Fork the last conversation from the current worktree into the new one. The agent resumes with the forked conversation context. Use `--fork=<session-id>` to fork a specific session (prefix matching supported). Currently supports Claude Code.                        |
 
 ## Skip options

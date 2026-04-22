@@ -935,3 +935,51 @@ def test_open_multiple_with_prompt_fails(
     )
 
     assert "cannot be used when opening multiple worktrees" in result.stderr
+
+
+def test_open_with_config_override(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --config` loads an alternate config file."""
+    env = mux_server
+    branch_name = "feature-open-config"
+    override_prefix = "open-override-"
+
+    write_workmux_config(repo_path, window_prefix="default-")
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    # Kill the window so we can recreate it with open
+    env.kill_window(f"default-{branch_name}")
+
+    # Write an alternate config
+    alt_config = repo_path / ".workmux.open.yaml"
+    alt_config.write_text(f"window_prefix: {override_prefix}\nnerdfont: false\n")
+
+    run_workmux_open(env, workmux_exe_path, repo_path, branch_name, config=alt_config)
+
+    assert f"{override_prefix}{branch_name}" in _get_all_windows(env)
+    assert f"default-{branch_name}" not in _get_all_windows(env)
+
+
+def test_open_config_override_missing_file_fails(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies `workmux open --config` with a missing file fails clearly."""
+    env = mux_server
+    branch_name = "feature-open-missing-config"
+    missing_config = repo_path / "nonexistent.yaml"
+
+    write_workmux_config(repo_path)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    env.kill_window(get_window_name(branch_name))
+
+    result = run_workmux_open(
+        env,
+        workmux_exe_path,
+        repo_path,
+        branch_name,
+        config=missing_config,
+        expect_fail=True,
+    )
+
+    assert "Config file not found" in result.stderr

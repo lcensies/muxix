@@ -1599,6 +1599,7 @@ def run_workmux_add(
     *,
     base: Optional[str] = None,
     background: bool = False,
+    config: Optional[Path] = None,
 ) -> None:
     """
     Helper to run `workmux add` command inside the isolated multiplexer session.
@@ -1613,12 +1614,15 @@ def run_workmux_add(
         pre_run_mux_cmds: Optional list of mux commands to run before workmux add
         base: Optional base branch for the new worktree (passed as `--base`)
         background: If True, pass `--background` so the window is created without focus
+        config: Optional path to an alternate config file (passed as `--config`)
     """
     args = ["add", branch_name]
     if base:
         args.extend(["--base", base])
     if background:
         args.append("--background")
+    if config:
+        args.extend(["--config", str(config)])
 
     command = " ".join(args)
 
@@ -1647,6 +1651,7 @@ def run_workmux_open(
     pre_run_mux_cmds: Optional[List[List[str]]] = None,
     expect_fail: bool = False,
     working_dir: Optional[Path] = None,
+    config: Optional[Path] = None,
 ) -> WorkmuxCommandResult:
     """
     Helper to run `workmux open` command inside the isolated multiplexer session.
@@ -1661,6 +1666,7 @@ def run_workmux_open(
         prompt: Inline prompt text to pass via -p
         prompt_file: Path to a prompt file to pass via -P
         working_dir: Optional directory to run the command from (defaults to repo_path)
+        config: Optional path to an alternate config file (passed as `--config`)
     """
     flags: List[str] = []
     if run_hooks:
@@ -1677,6 +1683,8 @@ def run_workmux_open(
         flags.append(f"-p {shlex.quote(prompt)}")
     if prompt_file:
         flags.append(f"-P {shlex.quote(str(prompt_file))}")
+    if config:
+        flags.append(f"--config {shlex.quote(str(config))}")
 
     flag_str = f" {' '.join(flags)}" if flags else ""
     if isinstance(branch_name, list):

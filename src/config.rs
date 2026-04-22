@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
@@ -1757,104 +1758,24 @@ pub fn global_config_path() -> Option<PathBuf> {
 impl Config {
     /// Load and merge global and project configurations.
     pub fn load(cli_agent: Option<&str>) -> anyhow::Result<Self> {
-        debug!("config:loading");
-        let global_config = Self::load_global()?.unwrap_or_default();
-        let project_config = Self::load_project()?.unwrap_or_default();
+        Self::load_with_override(cli_agent, None)
+    }
 
-        let has_explicit_agent =
-            cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
-
-        let final_agent = cli_agent
-            .map(|s| s.to_string())
-            .or_else(|| project_config.agent.clone())
-            .or_else(|| global_config.agent.clone())
-            .unwrap_or_else(|| "claude".to_string());
-
-        let mut config = global_config.merge(project_config);
-
-        // Resolve agent name through agents map
-        if let Some(entry) = config.agents.get(&final_agent) {
-            config.agent_type = entry.agent_type.clone();
-            config.agent = Some(entry.command.clone());
-        } else {
-            config.agent = Some(final_agent);
-        }
-
-        // After merging, apply sensible defaults for any values that are not configured.
-        if let Ok(repo_root) = git::get_repo_root() {
-            // Apply defaults that require inspecting the repository.
-            let has_node_modules = repo_root.join("pnpm-lock.yaml").exists()
-                || repo_root.join("package-lock.json").exists()
-                || repo_root.join("yarn.lock").exists();
-
-            // Default panes based on project type (only when windows is not set).
-            // Use agent panes if CLAUDE.md exists OR the user explicitly configured an agent.
-            if config.panes.is_none() && config.windows.is_none() {
-                if repo_root.join("CLAUDE.md").exists() || has_explicit_agent {
-                    config.panes = Some(Self::agent_default_panes());
-                } else {
-                    config.panes = Some(Self::default_panes());
-                }
-            }
-
-            // Default pre_remove hook for Node.js projects
-            if config.pre_remove.is_none() && has_node_modules {
-                config.pre_remove = Some(vec![NODE_MODULES_CLEANUP_SCRIPT.to_string()]);
-            }
-        } else {
-            // Apply fallback defaults for when not in a git repo (e.g., `workmux init`).
-            if config.panes.is_none() && config.windows.is_none() {
-                if has_explicit_agent {
-                    config.panes = Some(Self::agent_default_panes());
-                } else {
-                    config.panes = Some(Self::default_panes());
-                }
-            }
-        }
-
-        config.sandbox.network.validate()?;
-        config.sandbox.container.validate()?;
-
-        debug!(
-            agent = ?config.agent,
-            panes = config.panes.as_ref().map_or(0, |p| p.len()),
-            windows = config.windows.as_ref().map_or(0, |w| w.len()),
-            "config:loaded"
-        );
-        Ok(config)
+    pub fn load_with_override(
+        cli_agent: Option<&str>,
+        config_override: Option<&Path>,
+    ) -> anyhow::Result<Self> {
+        Self::load_with_location(cli_agent, config_override).map(|(cfg, _)| cfg)
     }
 
     /// Load and merge configs, returning the final config and project config location.
     /// The location indicates where the project config was found (for working dir calculation).
     pub fn load_with_location(
         cli_agent: Option<&str>,
+        config_override: Option<&Path>,
     ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
-        debug!("config:loading with location");
-        let global_config = Self::load_global()?.unwrap_or_default();
-        let (project_config, location) = Self::load_project_with_location()?;
-        let project_config = project_config.unwrap_or_default();
-
-        let defaults_root = location
-            .as_ref()
-            .map(|loc| loc.config_dir.clone())
-            .or_else(|| git::get_repo_root().ok())
-            .unwrap_or_default();
-
-        let config = Self::merge_and_apply_defaults(
-            global_config,
-            project_config,
-            cli_agent,
-            &defaults_root,
-        );
-
-        debug!(
-            agent = ?config.agent,
-            panes = config.panes.as_ref().map_or(0, |p| p.len()),
-            windows = config.windows.as_ref().map_or(0, |w| w.len()),
-            has_location = location.is_some(),
-            "config:loaded with location"
-        );
-        Ok((config, location))
+        let start_dir = std::env::current_dir().unwrap_or_default();
+        Self::load_with_location_from_override(&start_dir, cli_agent, config_override)
     }
 
     /// Like `load_with_location`, but searches for the project config starting
@@ -1863,19 +1784,65 @@ impl Config {
         start_dir: &std::path::Path,
         cli_agent: Option<&str>,
     ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
+        Self::load_with_location_from_override(start_dir, cli_agent, None)
+    }
+
+    pub fn load_with_location_from_override(
+        start_dir: &std::path::Path,
+        cli_agent: Option<&str>,
+        config_override: Option<&Path>,
+    ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
         debug!(start_dir = %start_dir.display(), "config:loading with location from");
         let global_config = Self::load_global()?.unwrap_or_default();
 
-        let location = find_project_config(start_dir)?;
-        let project_config = if let Some(ref loc) = location {
-            Self::load_from_path(&loc.config_path)?.unwrap_or_default()
+        let (project_config, location) = if let Some(path) = config_override {
+            let meta = std::fs::metadata(path)
+                .with_context(|| format!("Config file not found: {}", path.display()))?;
+            if meta.is_dir() {
+                anyhow::bail!(
+                    "--config path must be a file, not a directory: {}",
+                    path.display()
+                );
+            }
+            if !meta.is_file() {
+                anyhow::bail!("--config path must be a regular file: {}", path.display());
+            }
+            let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+            let config = Self::load_from_path(&abs_path)?
+                .ok_or_else(|| anyhow::anyhow!("Config file not found: {}", path.display()))?;
+            let config_dir = abs_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| start_dir.to_path_buf());
+            // rel_dir is intentionally empty: --config overrides don't imply a subproject layout,
+            // so panes always open at the worktree root regardless of where the config file lives.
+            let location = ConfigLocation {
+                config_path: abs_path,
+                config_dir: config_dir.clone(),
+                rel_dir: PathBuf::new(),
+            };
+            (config, Some(location))
         } else {
-            Self::default()
+            let location = find_project_config(start_dir)?;
+            let project_config = if let Some(ref loc) = location {
+                Self::load_from_path(&loc.config_path)?.unwrap_or_default()
+            } else {
+                Self::default()
+            };
+            (project_config, location)
         };
 
         let defaults_root = location
             .as_ref()
-            .map(|loc| loc.config_dir.clone())
+            .and_then(|loc| {
+                let repo_root = git::get_repo_root_for(start_dir).ok()?;
+                if loc.config_dir.starts_with(&repo_root) {
+                    Some(loc.config_dir.clone())
+                } else {
+                    Some(repo_root)
+                }
+            })
+            .or_else(|| git::get_repo_root_for(start_dir).ok())
             .unwrap_or_else(|| start_dir.to_path_buf());
 
         let config = Self::merge_and_apply_defaults(
@@ -1974,29 +1941,6 @@ impl Config {
             return Self::load_from_path(&path);
         }
         Ok(None)
-    }
-
-    /// Load project config and return its location.
-    /// Returns (Config, Option<ConfigLocation>) - location is None if no config found.
-    fn load_project_with_location() -> anyhow::Result<(Option<Self>, Option<ConfigLocation>)> {
-        let start_dir = std::env::current_dir().unwrap_or_default();
-
-        if let Some(location) = find_project_config(&start_dir)? {
-            let config = Self::load_from_path(&location.config_path)?;
-            return Ok((config, Some(location)));
-        }
-
-        Ok((None, None))
-    }
-
-    /// Load the project-specific configuration file.
-    ///
-    /// Searches for `.workmux.yaml` or `.workmux.yml` by walking upward from CWD:
-    /// 1. Current directory up to repo root (finds nearest config)
-    /// 2. Main worktree root (fallback for linked worktrees)
-    fn load_project() -> anyhow::Result<Option<Self>> {
-        let (config, _location) = Self::load_project_with_location()?;
-        Ok(config)
     }
 
     /// Merge a project config into a global config.
