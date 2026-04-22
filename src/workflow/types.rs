@@ -13,6 +13,8 @@ pub struct CreateArgs<'a> {
     pub handle: &'a str,
     pub base_branch: Option<&'a str>,
     pub remote_branch: Option<&'a str>,
+    /// PR number for PR checkout flow (fetches refs/pull/N/head from origin)
+    pub pr_number: Option<u32>,
     pub prompt: Option<&'a Prompt>,
     pub options: SetupOptions,
     pub mode_override: Option<MuxMode>,

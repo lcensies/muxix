@@ -42,6 +42,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         handle,
         base_branch,
         remote_branch,
+        pr_number,
         prompt,
         mut options,
         mode_override,
@@ -229,10 +230,34 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
                 git::list_remotes()?
             ));
         }
-        spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
-            git::fetch_remote(&spec.remote)
-        })
-        .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
+
+        // For PR checkout, try to fetch refs/pull/N/head from origin into the
+        // remote-tracking namespace. This ensures the PR code is available
+        // even if the head branch was deleted on the fork.
+        // If the PR ref doesn't exist (e.g., non-GitHub forge, local test repo),
+        // fall back to fetching from the fork remote directly.
+        if let Some(pr_number) = pr_number {
+            let pr_refspec = format!(
+                "+refs/pull/{}/head:refs/remotes/{}/{}",
+                pr_number, spec.remote, spec.branch
+            );
+            let pr_fetch =
+                spinner::with_spinner(&format!("Fetching PR #{} from origin", pr_number), || {
+                    git::fetch_refspec("origin", &pr_refspec)
+                });
+            if pr_fetch.is_err() {
+                spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
+                    git::fetch_remote(&spec.remote)
+                })
+                .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
+            }
+        } else {
+            spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
+                git::fetch_remote(&spec.remote)
+            })
+            .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
+        }
+
         let remote_ref = format!("{}/{}", spec.remote, spec.branch);
         if !git::branch_exists(&remote_ref)? {
             return Err(anyhow!(
@@ -537,6 +562,7 @@ pub fn create_with_changes(
             handle,
             base_branch: None,
             remote_branch: None,
+            pr_number: None,
             prompt: None,
             options,
             mode_override: None,

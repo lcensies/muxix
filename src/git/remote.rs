@@ -43,6 +43,21 @@ pub fn fetch_prune() -> Result<()> {
     Ok(())
 }
 
+/// Fetch a specific refspec from a remote.
+/// Used for PR checkout to fetch refs/pull/N/head into a remote-tracking ref.
+pub fn fetch_refspec(remote: &str, refspec: &str) -> Result<()> {
+    Cmd::new("git")
+        .args(&["fetch", remote, refspec])
+        .run()
+        .with_context(|| {
+            format!(
+                "Failed to fetch refspec '{}' from remote '{}'",
+                refspec, remote
+            )
+        })?;
+    Ok(())
+}
+
 /// Add a git remote if it doesn't exist
 pub fn add_remote(name: &str, url: &str) -> Result<()> {
     Cmd::new("git")
@@ -72,41 +87,72 @@ pub fn get_remote_url(remote: &str) -> Result<String> {
         .with_context(|| format!("Failed to get URL for remote '{}'", remote))
 }
 
+/// Find an existing remote that matches the given repository identity.
+/// Returns the remote name if found, None otherwise.
+fn find_remote_for_repo(target: &RepoIdentity) -> Result<Option<String>> {
+    for remote_name in list_remotes()? {
+        let url = match get_remote_url(&remote_name) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+        if let Some(id) = parse_repo_identity_from_git_url(&url)
+            && id.host.eq_ignore_ascii_case(&target.host)
+            && id.owner.eq_ignore_ascii_case(&target.owner)
+            && id.repo.eq_ignore_ascii_case(&target.repo)
+        {
+            return Ok(Some(remote_name));
+        }
+    }
+    Ok(None)
+}
+
 /// Ensure a remote exists for a specific fork owner.
 /// Returns the name of the remote (e.g., "origin" or "fork-username").
 /// If the remote needs to be created, it constructs the URL based on the origin URL's scheme.
 pub fn ensure_fork_remote(fork_owner: &str) -> Result<String> {
-    // If the fork owner is the same as the origin owner, just use origin
-    let current_owner = get_repo_owner().unwrap_or_default();
-    if !current_owner.is_empty() && fork_owner == current_owner {
-        return Ok("origin".to_string());
-    }
-
-    let remote_name = format!("fork-{}", fork_owner);
-
-    // Construct fork URL based on origin URL format, preserving host and protocol
+    // Parse origin URL to get base repo identity
     let origin_url = get_remote_url("origin")?;
-    let parsed_url = GitUrl::parse(&origin_url).with_context(|| {
+    let origin_parsed = GitUrl::parse(&origin_url).with_context(|| {
         format!(
             "Failed to parse origin URL for fork remote construction: {}",
             origin_url
         )
     })?;
 
-    let host = parsed_url.host().unwrap_or("github.com");
-    let scheme = parsed_url.scheme().unwrap_or("ssh");
+    let origin_host = origin_parsed.host().unwrap_or("github.com").to_string();
+    let scheme = origin_parsed.scheme().unwrap_or("ssh");
 
-    let provider: GenericProvider = parsed_url
+    let origin_provider: GenericProvider = origin_parsed
         .provider_info()
         .with_context(|| "Failed to extract provider info from origin URL")?;
-    let repo_name = provider.repo();
+    let repo_name = origin_provider.repo();
+
+    // If the fork owner is the same as the origin owner, just use origin
+    let current_owner = origin_provider.owner();
+    if !current_owner.is_empty() && fork_owner.eq_ignore_ascii_case(current_owner) {
+        return Ok("origin".to_string());
+    }
+
+    let target_identity = RepoIdentity {
+        host: origin_host.clone(),
+        owner: fork_owner.to_string(),
+        repo: repo_name.to_string(),
+    };
+
+    // Strict matching: look for any remote pointing to the exact same repo
+    if let Some(existing) = find_remote_for_repo(&target_identity)? {
+        info!(remote = %existing, "git:reusing existing remote for fork");
+        return Ok(existing);
+    }
+
+    let remote_name = format!("fork-{}", fork_owner);
 
     let fork_url = match scheme {
-        "https" => format!("https://{}/{}/{}.git", host, fork_owner, repo_name),
-        "http" => format!("http://{}/{}/{}.git", host, fork_owner, repo_name),
+        "https" => format!("https://{}/{}/{}.git", origin_host, fork_owner, repo_name),
+        "http" => format!("http://{}/{}/{}.git", origin_host, fork_owner, repo_name),
         _ => {
             // SSH or other schemes
-            format!("git@{}:{}/{}.git", host, fork_owner, repo_name)
+            format!("git@{}:{}/{}.git", origin_host, fork_owner, repo_name)
         }
     };
 
@@ -125,6 +171,27 @@ pub fn ensure_fork_remote(fork_owner: &str) -> Result<String> {
     }
 
     Ok(remote_name)
+}
+
+/// Parsed repository identity from a git remote URL.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RepoIdentity {
+    pub host: String,
+    pub owner: String,
+    pub repo: String,
+}
+
+/// Parse full repository identity (host, owner, repo) from a git remote URL.
+/// Supports both HTTPS and SSH formats.
+fn parse_repo_identity_from_git_url(url: &str) -> Option<RepoIdentity> {
+    let parsed = GitUrl::parse(url).ok()?;
+    let host = parsed.host()?.to_string();
+    let provider: GenericProvider = parsed.provider_info().ok()?;
+    Some(RepoIdentity {
+        host,
+        owner: provider.owner().to_string(),
+        repo: provider.repo().to_string(),
+    })
 }
 
 /// Parse the repository owner from a git remote URL
