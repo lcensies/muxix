@@ -2,6 +2,15 @@
 
 use ratatui::style::{Modifier, Style};
 
+/// Truncate a string to max_len characters, appending ellipsis if truncated.
+pub fn truncate(s: &str, max_len: usize) -> String {
+    if s.chars().count() > max_len {
+        s.chars().take(max_len - 1).collect::<String>() + "…"
+    } else {
+        s.to_string()
+    }
+}
+
 use crate::git::GitStatus;
 use crate::github::{CheckMeta, CheckState, PrSummary};
 use crate::nerdfont;

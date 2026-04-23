@@ -15,7 +15,7 @@ use crate::agent_display::strip_oc_title_prefix;
 use super::super::app::{App, DashboardTab};
 use super::super::spinner::SPINNER_FRAMES;
 use super::format;
-use super::format::{format_git_status, format_pr_status};
+use super::format::{format_git_status, format_pr_status, truncate};
 use super::worktree::{render_worktree_preview, render_worktree_table};
 
 /// Render the tab header line showing Agents | Worktrees with active tab highlighted.
@@ -263,7 +263,10 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
                 }
             });
             let worktree_display = format!("{}{}", worktree_name, pane_suffix);
-            let worktree_base = worktree_name;
+            let worktree_base = truncate(
+                &worktree_name,
+                25usize.saturating_sub(pane_suffix.chars().count()),
+            );
             let worktree_suffix = pane_suffix;
             let title = agent
                 .pane_title
@@ -322,14 +325,14 @@ fn render_table(f: &mut Frame, app: &mut App, area: Rect) {
         .clamp(5, 20) // min 5, max 20
         + 2; // padding
 
-    // Calculate max worktree name width (with padding)
-    // Use at least 8 to fit the "Worktree" header
+    // Calculate max worktree name width (with padding, capped)
+    // Use at least 8 to fit the "Worktree" header, at most 25 to keep layout compact
     let max_worktree_width = row_data
         .iter()
         .map(|(_, _, worktree_display, _, _, _, _, _, _, _, _, _)| worktree_display.len())
         .max()
         .unwrap_or(8)
-        .max(8) // min 8 (header width)
+        .clamp(8, 25)
         + 1; // padding
 
     // Calculate max git status width (sum of all span character counts)
