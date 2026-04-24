@@ -535,8 +535,14 @@ fn render_info_panel(
         // PR title (truncated to fit)
         let inner_width = area.width.saturating_sub(2) as usize; // border
         let title_max = inner_width.saturating_sub(8); // label width
-        let truncated_title = if pr.title.len() > title_max {
-            format!("{}...", &pr.title[..title_max.saturating_sub(3)])
+        let truncated_title = if pr.title.chars().count() > title_max {
+            format!(
+                "{}...",
+                pr.title
+                    .chars()
+                    .take(title_max.saturating_sub(3))
+                    .collect::<String>()
+            )
         } else {
             pr.title.clone()
         };

@@ -645,7 +645,7 @@ impl Multiplexer for ZellijBackend {
         let combined = if let Some(command) = cmd {
             debug!(
                 pane_id,
-                command = &command[..command.len().min(100)],
+                command = command.chars().take(100).collect::<String>(),
                 "respawn_pane: sending cd + command"
             );
             format!("cd '{}' && {}", cwd_str.replace('\'', "'\\''"), command)

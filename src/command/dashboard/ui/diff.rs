@@ -10,6 +10,7 @@ use ratatui::{
 
 use super::super::diff::DiffView;
 use super::theme::ThemePalette;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// Render the diff view (replaces the entire dashboard).
 pub fn render_diff_view(f: &mut Frame, diff: &mut DiffView, palette: &ThemePalette) {
@@ -133,29 +134,42 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemeP
         };
 
         // Truncate path from left if needed
-        let full_path_len = file.filename.len();
-        let (display_dir, display_basename) = if full_path_len > path_max_width {
+        let full_path_width = file.filename.width();
+        let (display_dir, display_basename) = if full_path_width > path_max_width {
             // Need to truncate - prioritize showing basename
-            if basename.len() >= path_max_width {
+            let basename_width = basename.width();
+            if basename_width >= path_max_width {
                 // Even basename doesn't fit, truncate it
-                let trunc_len = path_max_width.saturating_sub(1); // -1 for "..."
-                (
-                    None,
-                    format!(
-                        "...{}",
-                        &basename[basename.len().saturating_sub(trunc_len)..]
-                    ),
-                )
+                let target_width = path_max_width.saturating_sub(3); // "..." width
+                let mut truncated = String::new();
+                let mut width = 0;
+                for c in basename.chars().rev() {
+                    let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+                    if width + cw > target_width {
+                        break;
+                    }
+                    truncated.push(c);
+                    width += cw;
+                }
+                let truncated: String = truncated.chars().rev().collect();
+                (None, format!("...{}", truncated))
             } else {
                 // Truncate directory, keep full basename
-                // path_max_width = "..." + dir_chars + "/" + basename
-                // dir_chars = path_max_width - 1 (...) - 1 (/) - basename.len()
-                let dir_chars = path_max_width.saturating_sub(2 + basename.len());
+                let dir_target_width = path_max_width.saturating_sub(3 + 1 + basename_width);
                 match dir {
-                    Some(d) if dir_chars > 0 => {
-                        let start = d.len().saturating_sub(dir_chars);
-                        let truncated = format!("...{}", &d[start..]);
-                        (Some(truncated), basename.to_string())
+                    Some(d) if dir_target_width > 0 => {
+                        let mut truncated = String::new();
+                        let mut width = 0;
+                        for c in d.chars().rev() {
+                            let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+                            if width + cw > dir_target_width {
+                                break;
+                            }
+                            truncated.push(c);
+                            width += cw;
+                        }
+                        let truncated: String = truncated.chars().rev().collect();
+                        (Some(format!("...{}", truncated)), basename.to_string())
                     }
                     Some(_) => (Some("...".to_string()), basename.to_string()),
                     None => (None, basename.to_string()),
@@ -167,8 +181,8 @@ fn render_file_list(f: &mut Frame, diff: &DiffView, area: Rect, palette: &ThemeP
 
         // Calculate displayed path length
         let path_len = match &display_dir {
-            Some(d) => d.len() + 1 + display_basename.len(), // dir/ + basename
-            None => display_basename.len(),
+            Some(d) => d.width() + 1 + display_basename.width(), // dir/ + basename
+            None => display_basename.width(),
         };
 
         // Calculate padding to right-align stats (minimum 1 space)
