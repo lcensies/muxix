@@ -22,6 +22,17 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.186 (2026-04-25)
+
+- Show a progress overlay when sweeping multiple worktrees in the dashboard,
+  instead of freezing silently for several seconds
+- Truncate long worktree names in the dashboard so they no longer overflow the
+  panel
+- Fix panics caused by Unicode characters in worktree names being truncated at
+  non-character boundaries
+- Install via `cargo binstall workmux` is now supported
+  ([#137](https://github.com/raine/workmux/pull/137))
+
 ## v0.1.185 (2026-04-22)
 
 - Add `--mode <window|session>` flag to `workmux add` and `workmux open` for
