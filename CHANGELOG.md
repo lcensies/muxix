@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.187 (2026-04-25)
+
+- Add `--config <path>` flag to `workmux add` and `workmux open` to use an
+  alternate config file for a single invocation
+
 ## v0.1.186 (2026-04-25)
 
 - Show a progress overlay when sweeping multiple worktrees in the dashboard,
