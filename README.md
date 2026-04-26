@@ -43,6 +43,12 @@ quick overview.
 
 ![workmux screenshot](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/screenshot_20260329_165534.webp)
 
+> [!TIP]
+> [consult-llm](https://github.com/raine/consult-llm) pairs naturally with
+> workmux: let your agents consult another AI model to plan architecture,
+> review changes, debate approaches, or get unstuck on tricky bugs without
+> leaving the worktree.
+
 ## Why workmux?
 
 **Parallel workflows.** Work on multiple features the same time, each with its
