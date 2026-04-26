@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.188 (2026-04-26)
+
+- Support `{project}` placeholder and `~` (tilde) expansion in `worktree_dir`,
+  letting you use config like `worktree_dir = "~/worktrees/{project}"` ([#148](https://github.com/raine/workmux/issues/148))
+
 ## v0.1.187 (2026-04-25)
 
 - Add `--config <path>` flag to `workmux add` and `workmux open` to use an
