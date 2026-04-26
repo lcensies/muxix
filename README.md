@@ -2576,7 +2576,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
   hunk-level git staging for AI agents
 - [claude-history](https://github.com/raine/claude-history) — Search and view
   Claude Code conversation history with fzf
-- [consult-llm-mcp](https://github.com/raine/consult-llm-mcp) — MCP server that
-  lets Claude Code consult stronger AI models (o3, Gemini, GPT-5.1 Codex)
+- [consult-llm](https://github.com/raine/consult-llm) — Consult other AI models
+  from your agent workflow
 - [tmux-agent-usage](https://github.com/raine/tmux-agent-usage) — Display AI agent
   rate limit usage in your tmux status bar
