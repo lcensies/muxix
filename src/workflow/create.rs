@@ -294,15 +294,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Always use main_worktree_root (not repo_root) to ensure consistent paths even when
     // running from inside an existing worktree.
     let base_dir = if let Some(ref worktree_dir) = context.config.worktree_dir {
-        let path = Path::new(worktree_dir);
-        if path.is_absolute() {
-            // Use absolute path as-is
-            path.to_path_buf()
-        } else {
-            // Relative path: resolve from main worktree root and normalize
-            // to collapse any ".." segments (e.g. "../wm/" -> clean absolute path)
-            crate::util::normalize_path(&context.main_worktree_root.join(path))
-        }
+        crate::util::expand_worktree_dir(worktree_dir, &context.main_worktree_root)?
     } else {
         // Default behavior: <main_worktree_root>/../<project_name>__worktrees
         let project_name = context

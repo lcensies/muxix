@@ -165,23 +165,6 @@ fn calc_worktrees_dir(project_root: &Path) -> Result<PathBuf> {
     Ok(worktrees_dir)
 }
 
-/// Expand the worktree_dir template (replaces {project} placeholder).
-fn expand_worktree_template(template: &str, project_root: &Path) -> Result<PathBuf> {
-    let project_name = project_root
-        .file_name()
-        .ok_or_else(|| anyhow::anyhow!("Invalid project path"))?
-        .to_string_lossy();
-
-    let expanded = template.replace("{project}", &project_name);
-
-    // Handle relative paths, normalizing to collapse ".." segments
-    if Path::new(&expanded).is_absolute() {
-        Ok(crate::util::normalize_path(Path::new(&expanded)))
-    } else {
-        Ok(crate::util::normalize_path(&project_root.join(expanded)))
-    }
-}
-
 /// Get the host-side state directory for a Lima VM.
 /// Uses XDG state dir: $XDG_STATE_HOME/workmux/lima/<vm_name>/
 fn lima_state_dir(vm_name: &str) -> Result<PathBuf> {
@@ -262,7 +245,7 @@ pub fn generate_mounts(
 
             // 4. Mount custom worktree directory if configured
             if let Some(custom_template) = config.worktree_dir.as_ref() {
-                let custom_dir = expand_worktree_template(custom_template, &project_root)?;
+                let custom_dir = crate::util::expand_worktree_dir(custom_template, &project_root)?;
                 std::fs::create_dir_all(&custom_dir)?;
 
                 if custom_dir != worktrees_dir {
@@ -336,22 +319,6 @@ pub fn generate_mounts(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_expand_worktree_template() {
-        let project_root = PathBuf::from("/Users/test/myproject");
-        let template = "/custom/{project}-worktrees";
-        let expanded = expand_worktree_template(template, &project_root).unwrap();
-        assert_eq!(expanded, PathBuf::from("/custom/myproject-worktrees"));
-    }
-
-    #[test]
-    fn test_expand_worktree_template_relative() {
-        let project_root = PathBuf::from("/Users/test/myproject");
-        let template = ".worktrees";
-        let expanded = expand_worktree_template(template, &project_root).unwrap();
-        assert_eq!(expanded, PathBuf::from("/Users/test/myproject/.worktrees"));
-    }
 
     #[test]
     fn test_seed_claude_json_writes_onboarding_config() {

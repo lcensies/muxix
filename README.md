@@ -267,7 +267,7 @@ customize.
 | ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------- |
 | `main_branch`    | Branch to merge into                                                                            | Auto-detected               |
 | `base_branch`    | Default base branch for new worktrees                                                           | Current branch              |
-| `worktree_dir`   | Directory for worktrees (absolute or relative)                                                  | `<project>__worktrees/`     |
+| `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                   | `<project>__worktrees/`     |
 | `window_prefix`  | Prefix for tmux window/session names                                                            | `wm-`                       |
 | `mode`           | Tmux mode (`window` or `session`)                                                               | `window`                    |
 | `agent`          | Default agent for `<agent>` placeholder                                                         | `claude`                    |
@@ -499,6 +499,10 @@ simultaneously without conflicts.
 
 You can customize the worktree directory location using the `worktree_dir`
 configuration option (see [Configuration options](#configuration-options)).
+The value supports `~` for the home directory and a `{project}` placeholder
+that resolves to the main worktree's directory name. This lets a single
+global config namespace every repo's worktrees under one root, e.g.
+`worktree_dir: ~/.workmux/{project}`.
 
 ### Shell alias (recommended)
 

@@ -52,7 +52,7 @@ These options allow you to skip expensive setup steps when they're not needed (e
 ## What happens
 
 1. Determines the **handle** for the worktree by slugifying the branch name (e.g., `feature/auth` becomes `feature-auth`). This can be overridden with the `--name` flag.
-2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is configurable and defaults to a sibling directory of your project)
+2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is configurable and defaults to a sibling directory of your project; supports `~` and a `{project}` placeholder, e.g. `~/.workmux/{project}`)
 3. Runs any configured file operations (copy/symlink)
 4. Executes `post_create` commands if defined (runs before the tmux window/session opens, so keep them fast)
 5. Creates a new tmux window named `<window_prefix><handle>` (e.g., `wm-feature-auth` with `window_prefix: wm-`). With `--mode session` or `--session`, the worktree is created in its own dedicated tmux session instead of the current session.

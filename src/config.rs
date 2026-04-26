@@ -928,7 +928,7 @@ impl ExtraMount {
             ),
         };
 
-        let host_path = expand_tilde(host_str);
+        let host_path = crate::util::expand_tilde(host_str);
         if !host_path.is_absolute() {
             anyhow::bail!(
                 "extra_mounts: host path must be absolute (got '{}'). Use an absolute path or ~/.",
@@ -949,20 +949,6 @@ impl ExtraMount {
         let read_only = !writable;
         Ok((host_path, guest_path, read_only))
     }
-}
-
-/// Expand `~` or `~/...` to the user's home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = home::home_dir() {
-            return home.join(rest);
-        }
-    } else if path == "~"
-        && let Some(home) = home::home_dir()
-    {
-        return home;
-    }
-    PathBuf::from(path)
 }
 
 /// Lima-specific sandbox configuration.
@@ -1512,7 +1498,7 @@ impl SandboxConfig {
     pub fn resolved_agent_config_dir(&self, agent: &str) -> Option<PathBuf> {
         if let Some(ref dir) = self.agent_config_dir {
             let expanded = dir.replace("{agent}", agent);
-            Some(expand_tilde(&expanded))
+            Some(crate::util::expand_tilde(&expanded))
         } else {
             let home = home::home_dir()?;
             match agent {
@@ -2387,7 +2373,9 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #-------------------------------------------------------------------------------
 
 # Directory where worktrees are created.
-# Can be relative to repo root or absolute.
+# Can be relative to repo root or absolute. Supports `~` for home directory
+# and `{project}` for the main worktree's directory name, so a global config
+# can namespace each repo, e.g. `~/.workmux/{project}`.
 # Default: Sibling directory '<project>__worktrees'.
 # worktree_dir: .worktrees
 

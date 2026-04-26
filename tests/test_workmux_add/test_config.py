@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 from ..conftest import (
     FakeAgentInstaller,
     MuxEnvironment,
@@ -13,6 +15,7 @@ from ..conftest import (
     file_for_commit,
     get_window_name,
     run_workmux_command,
+    slugify,
     wait_for_file,
     wait_for_pane_output,
     write_global_workmux_config,
@@ -505,3 +508,38 @@ class TestConfigOverride:
 
         # Override prefix should have been used
         assert_window_exists(env, f"{override_prefix}{branch_name}")
+
+
+class TestWorktreeDirPlaceholders:
+    """Tests for `{project}` and tilde expansion in `worktree_dir`."""
+
+    def test_global_worktree_dir_with_project_placeholder_and_tilde(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """A single global `worktree_dir: ~/.workmux/{project}` should namespace each
+        repo under HOME without per-project configuration (the use case from #148)."""
+        env = mux_server
+        branch_name = "feature-placeholder"
+
+        # Write directly to the global config: the existing helper does not
+        # accept `worktree_dir`, but we want to exercise the actual user flow
+        # of setting this once globally.
+        global_config_dir = env.home_path / ".config" / "workmux"
+        global_config_dir.mkdir(parents=True, exist_ok=True)
+        (global_config_dir / "config.yaml").write_text(
+            yaml.dump({"worktree_dir": "~/.workmux/{project}", "nerdfont": False})
+        )
+
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name}",
+        )
+
+        handle = slugify(branch_name)
+        expected = env.home_path / ".workmux" / mux_repo_path.name / handle
+        assert expected.is_dir(), f"expected worktree at {expected}"
