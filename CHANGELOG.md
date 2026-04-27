@@ -2,7 +2,6 @@
 description: Release notes and version history for workmux
 ---
 
-<!-- skipped: v0.1.189 -->
 <!-- skipped: v0.1.167 -->
 <!-- skipped: v0.1.161 -->
 <!-- skipped: v0.1.160 -->
@@ -22,6 +21,10 @@ description: Release notes and version history for workmux
 <!-- skipped: v0.1.8 -->
 
 # Changelog
+
+## v0.1.189 (2026-04-27)
+
+- Fix pi agents lingering in the dashboard after exit ([#143](https://github.com/raine/workmux/issues/143))
 
 ## v0.1.188 (2026-04-26)
 
