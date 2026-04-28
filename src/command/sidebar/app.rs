@@ -8,9 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::agent_display::{
-    extract_project_name, extract_worktree_name, resolve_labels, sanitize_pane_title,
-};
+use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
 use crate::config::{Config, StatusIcons};
 use crate::git::GitStatus;
@@ -423,15 +421,12 @@ impl SidebarApp {
             agent.window_name.as_str()
         };
 
-        let task_title = sanitize_pane_title(agent.pane_title.as_deref(), &worktree, &project);
-
         resolve_labels(
             &project,
             session,
             &worktree,
             window,
             agent.window_cmd.as_deref(),
-            task_title,
         )
     }
 }

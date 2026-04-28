@@ -90,17 +90,20 @@ enum LabelSource {
     Worktree,
     Window,
     Session,
-    TaskTitle,
     Project,
 }
 
 /// Resolve the sidebar's primary and secondary labels for a single row.
 ///
-/// Walks a candidate chain (`worktree → window → session → task_title → project`)
-/// and takes the first meaningful entry as the primary label and the next as the
-/// secondary. The worktree must always remain visible: when demoted (not primary),
-/// it is appended to the secondary line as `"<secondary> · <worktree>"` (or stands
-/// alone when no other secondary exists).
+/// Walks a candidate chain (`worktree → window → session → project`) and takes
+/// the first meaningful entry as the primary label and the next as the
+/// secondary. The worktree must always remain visible: when demoted (not
+/// primary), it is appended to the secondary line as `"<secondary> · <worktree>"`
+/// (or stands alone when no other secondary exists).
+///
+/// The pane title is intentionally not in the chain. It has its own dedicated
+/// third line in the renderer, and promoting it to primary/secondary caused
+/// duplication and made the first line jump around as the agent's task changed.
 ///
 /// `window_cmd` is the foreground command of the agent's pane; if `None` (non-tmux
 /// backends), the window name is never promoted because we have no way to detect
@@ -111,10 +114,8 @@ pub fn resolve_labels(
     worktree: &str,
     window: &str,
     window_cmd: Option<&str>,
-    task_title: Option<&str>,
 ) -> (String, String) {
-    let task_title_val = task_title.unwrap_or("").trim();
-    let candidates: [(LabelSource, &str, bool); 5] = [
+    let candidates: [(LabelSource, &str, bool); 4] = [
         (
             LabelSource::Worktree,
             worktree,
@@ -129,11 +130,6 @@ pub fn resolve_labels(
             LabelSource::Session,
             session,
             is_session_meaningful(session, project),
-        ),
-        (
-            LabelSource::TaskTitle,
-            task_title_val,
-            is_task_title_meaningful(task_title_val),
         ),
         (LabelSource::Project, project, !project.is_empty()),
     ];
@@ -225,27 +221,6 @@ fn is_window_meaningful(window: &str, cmd: Option<&str>) -> bool {
     // tmux's #{automatic_rename} flag is unreliable; comparing window_name against
     // pane_current_command is the only signal that survives across versions.
     window != cmd
-}
-
-/// Defense-in-depth: even though `SidebarApp::resolve_agent_labels` calls
-/// `sanitize_pane_title` before forwarding pane titles, future callers of
-/// `resolve_labels` may not. Block the most common generic markers here so the
-/// resolver never promotes obvious noise like `Claude Code` or shell names.
-fn is_task_title_meaningful(title: &str) -> bool {
-    let title = title.trim();
-    if title.is_empty() {
-        return false;
-    }
-    if title.starts_with("Claude Code") {
-        return false;
-    }
-    if matches!(title, "zsh" | "bash" | "sh" | "fish") {
-        return false;
-    }
-    if title == "OC" || title.starts_with("OC |") {
-        return false;
-    }
-    true
 }
 
 fn is_session_meaningful(session: &str, project: &str) -> bool {
@@ -433,8 +408,7 @@ mod tests {
     #[test]
     fn resolve_labels_feature_branch_keeps_worktree_primary() {
         // Common case: feature-branch worktree, project as secondary.
-        let (primary, secondary) =
-            resolve_labels("api", "api", "fix-auth", "zsh", Some("zsh"), None);
+        let (primary, secondary) = resolve_labels("api", "api", "fix-auth", "zsh", Some("zsh"));
         assert_eq!(primary, "fix-auth");
         assert_eq!(secondary, "api");
     }
@@ -443,7 +417,7 @@ mod tests {
     fn resolve_labels_promotes_sticky_window_on_main_worktree() {
         // Multiple agents on `main` with sticky tmux window names.
         let (primary, secondary) =
-            resolve_labels("api", "api", "main", "db-migration", Some("sleep"), None);
+            resolve_labels("api", "api", "main", "db-migration", Some("sleep"));
         assert_eq!(primary, "db-migration");
         assert_eq!(secondary, "api · main");
     }
@@ -451,14 +425,8 @@ mod tests {
     #[test]
     fn resolve_labels_promotes_session_when_window_auto_tracks() {
         // Session-per-project: session name carries identity, window auto-tracks shell.
-        let (primary, secondary) = resolve_labels(
-            "monorepo",
-            "frontend-refactor",
-            "main",
-            "zsh",
-            Some("zsh"),
-            None,
-        );
+        let (primary, secondary) =
+            resolve_labels("monorepo", "frontend-refactor", "main", "zsh", Some("zsh"));
         assert_eq!(primary, "frontend-refactor");
         assert_eq!(secondary, "monorepo · main");
     }
@@ -466,7 +434,7 @@ mod tests {
     #[test]
     fn resolve_labels_falls_back_to_project_when_nothing_else_meaningful() {
         // Numeric session, auto-tracked window, main worktree → project wins.
-        let (primary, secondary) = resolve_labels("api", "0", "main", "zsh", Some("zsh"), None);
+        let (primary, secondary) = resolve_labels("api", "0", "main", "zsh", Some("zsh"));
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
@@ -474,23 +442,21 @@ mod tests {
     #[test]
     fn resolve_labels_window_never_promoted_without_cmd() {
         // Non-tmux backends pass None for window_cmd; window must not be promoted.
-        let (primary, secondary) =
-            resolve_labels("api", "api", "main", "looks-meaningful", None, None);
+        let (primary, secondary) = resolve_labels("api", "api", "main", "looks-meaningful", None);
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
 
     #[test]
     fn resolve_labels_session_equal_to_project_not_meaningful() {
-        let (primary, secondary) = resolve_labels("api", "api", "main", "zsh", Some("zsh"), None);
+        let (primary, secondary) = resolve_labels("api", "api", "main", "zsh", Some("zsh"));
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
 
     #[test]
     fn resolve_labels_default_session_not_meaningful() {
-        let (primary, secondary) =
-            resolve_labels("api", "default", "main", "zsh", Some("zsh"), None);
+        let (primary, secondary) = resolve_labels("api", "default", "main", "zsh", Some("zsh"));
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
@@ -498,37 +464,15 @@ mod tests {
     #[test]
     fn resolve_labels_master_treated_like_main() {
         let (primary, secondary) =
-            resolve_labels("api", "release-prep", "master", "zsh", Some("zsh"), None);
+            resolve_labels("api", "release-prep", "master", "zsh", Some("zsh"));
         assert_eq!(primary, "release-prep");
         assert_eq!(secondary, "api · master");
     }
 
     #[test]
-    fn resolve_labels_task_title_promoted_when_others_generic() {
-        let (primary, secondary) = resolve_labels(
-            "api",
-            "0",
-            "main",
-            "zsh",
-            Some("zsh"),
-            Some("Investigating flaky CI"),
-        );
-        assert_eq!(primary, "Investigating flaky CI");
-        assert_eq!(secondary, "api · main");
-    }
-
-    #[test]
     fn resolve_labels_worktree_primary_keeps_project_secondary_even_with_sticky_window() {
-        // Per spec: when worktree is primary, project stays secondary regardless
-        // of meaningful window or task_title candidates.
-        let (primary, secondary) = resolve_labels(
-            "api",
-            "session-x",
-            "fix-auth",
-            "scratchpad",
-            Some("zsh"),
-            Some("Investigating flaky CI"),
-        );
+        let (primary, secondary) =
+            resolve_labels("api", "session-x", "fix-auth", "scratchpad", Some("zsh"));
         assert_eq!(primary, "fix-auth");
         assert_eq!(secondary, "api");
     }
@@ -536,22 +480,21 @@ mod tests {
     #[test]
     fn resolve_labels_window_zsh_not_promoted_when_pane_runs_node() {
         // Generic window names are blocklisted even when they differ from cmd.
-        let (primary, secondary) = resolve_labels("api", "0", "main", "zsh", Some("node"), None);
+        let (primary, secondary) = resolve_labels("api", "0", "main", "zsh", Some("node"));
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
 
     #[test]
     fn resolve_labels_window_default_blocked() {
-        let (primary, secondary) =
-            resolve_labels("api", "0", "main", "default", Some("node"), None);
+        let (primary, secondary) = resolve_labels("api", "0", "main", "default", Some("node"));
         assert_eq!(primary, "api");
         assert_eq!(secondary, "main");
     }
 
     #[test]
     fn resolve_labels_worktree_primary_no_project_yields_empty_secondary() {
-        let (primary, secondary) = resolve_labels("", "", "fix-auth", "", None, None);
+        let (primary, secondary) = resolve_labels("", "", "fix-auth", "", None);
         assert_eq!(primary, "fix-auth");
         assert_eq!(secondary, "");
     }
@@ -559,7 +502,7 @@ mod tests {
     #[test]
     fn resolve_labels_blocks_pwsh_powershell_nu() {
         for shell in ["pwsh", "powershell", "nu", "csh", "tcsh", "xonsh", "elvish"] {
-            let (primary, _) = resolve_labels("api", "0", "main", shell, Some("node"), None);
+            let (primary, _) = resolve_labels("api", "0", "main", shell, Some("node"));
             assert_eq!(primary, "api", "expected {shell} to be blocked");
         }
     }
@@ -567,28 +510,10 @@ mod tests {
     #[test]
     fn resolve_labels_trims_whitespace_in_predicates() {
         // Whitespace-padded generic values must not bypass meaningfulness checks.
-        let (primary, _) = resolve_labels("api", " default ", "main", " zsh ", Some("zsh"), None);
+        let (primary, _) = resolve_labels("api", " default ", "main", " zsh ", Some("zsh"));
         assert_eq!(primary, "api");
 
-        let (primary, _) = resolve_labels("api", " 0 ", " main ", " zsh ", Some("zsh"), None);
-        assert_eq!(primary, "api");
-    }
-
-    #[test]
-    fn resolve_labels_baseline_title_filter_blocks_claude_code() {
-        // Even if the caller forgets to sanitize, the resolver rejects "Claude Code".
-        let (primary, secondary) =
-            resolve_labels("api", "0", "main", "zsh", Some("zsh"), Some("Claude Code"));
-        assert_eq!(primary, "api");
-        assert_eq!(secondary, "main");
-    }
-
-    #[test]
-    fn resolve_labels_baseline_title_filter_blocks_oc_marker() {
-        let (primary, _) = resolve_labels("api", "0", "main", "zsh", Some("zsh"), Some("OC"));
-        assert_eq!(primary, "api");
-
-        let (primary, _) = resolve_labels("api", "0", "main", "zsh", Some("zsh"), Some("OC | "));
+        let (primary, _) = resolve_labels("api", " 0 ", " main ", " zsh ", Some("zsh"));
         assert_eq!(primary, "api");
     }
 
