@@ -453,6 +453,11 @@ impl StateStore {
                     if live.title.is_some() {
                         agent_pane.pane_title = live.title.clone();
                     }
+                    // Only the tmux backend can reliably distinguish auto-renamed
+                    // window names from sticky user-set ones via pane_current_command.
+                    if backend == "tmux" {
+                        agent_pane.window_cmd = live.current_command.clone();
+                    }
                     valid_agents.push(agent_pane);
                 }
             }

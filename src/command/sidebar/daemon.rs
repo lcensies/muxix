@@ -1318,6 +1318,7 @@ mod tests {
             status: Some(AgentStatus::Working),
             status_ts: Some(100),
             updated_ts: Some(updated_ts),
+            window_cmd: None,
         }
     }
 

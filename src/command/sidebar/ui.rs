@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
-use crate::agent_display::{extract_project_name, extract_worktree_name, strip_oc_title_prefix};
+use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::tmux_style;
@@ -327,21 +327,9 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .enumerate()
         .map(|(idx, agent)| {
             let is_selected = selected_idx == Some(idx);
-            let project = extract_project_name(&agent.path);
-            let (worktree, is_main) = extract_worktree_name(
-                &agent.session,
-                &agent.window_name,
-                app.window_prefix(),
-                &agent.path,
-            );
-
-            let base_worktree = if is_main {
-                "main".to_string()
-            } else {
-                worktree.to_string()
-            };
+            let (primary, secondary) = app.resolve_agent_labels(agent);
             let pane_suffix = &pane_suffixes[idx];
-            let display_worktree = format!("{}{}", base_worktree, pane_suffix);
+            let display_worktree = format!("{}{}", primary, pane_suffix);
 
             let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
             let is_stale = agent
@@ -508,23 +496,23 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             ]);
             let line1 = Line::from(line1_spans);
 
-            // Line 2: ▌   project name          +N -M *+X -Y
-            // Priority: project name > uncommitted stats > committed stats
-            // Give project a minimum width, then let git stats use what remains
+            // Line 2: ▌   <secondary label>          +N -M *+X -Y
+            // Priority: secondary label > uncommitted stats > committed stats
+            // Give the label a minimum width, then let git stats use what remains
             let git_status = app.git_statuses.get(&agent.path);
-            let project_full_width = display_width(&project);
-            let min_project_width = 5.min(project_full_width);
-            let git_available = body_width.saturating_sub(min_project_width + 1); // +1 for gap
+            let secondary_full_width = display_width(&secondary);
+            let min_secondary_width = 5.min(secondary_full_width);
+            let git_available = body_width.saturating_sub(min_secondary_width + 1); // +1 for gap
             let (git_spans, git_width) =
                 format_sidebar_git_stats(git_status, &app.palette, is_stale, git_available);
 
-            // Project gets remaining space after git stats
+            // Secondary gets remaining space after git stats
             let project_max_width = if git_width > 0 {
                 body_width.saturating_sub(git_width + 1)
             } else {
                 body_width
             };
-            let project_display = truncate_with_ellipsis(&project, project_max_width);
+            let project_display = truncate_with_ellipsis(&secondary, project_max_width);
             let project_display_width = display_width(&project_display);
 
             // Padding between project name and git stats
@@ -558,8 +546,22 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 
             let line2 = Line::from(line2_spans);
 
-            // Optional: pane_title (task description) when available
-            let title = sanitize_pane_title(agent.pane_title.as_deref(), &worktree, &project);
+            // Optional: pane_title (task description) when available.
+            // Sanitize against the agent's actual worktree/project (not the
+            // resolver's primary/secondary, which can be augmented with " · main").
+            let title_worktree = extract_worktree_name(
+                &agent.session,
+                &agent.window_name,
+                app.window_prefix(),
+                &agent.path,
+            )
+            .0;
+            let title_project = extract_project_name(&agent.path);
+            let title =
+                sanitize_pane_title(agent.pane_title.as_deref(), &title_worktree, &title_project)
+                    // Avoid showing the same string on line1 (primary), line2
+                    // (secondary), and line3 simultaneously.
+                    .filter(|t| *t != primary && *t != secondary);
 
             // Separator at the top (between tiles, not on first item)
             let mut lines = Vec::new();
@@ -663,46 +665,6 @@ fn status_icon_and_style(
     }
 }
 
-/// Clean up a pane title, returning None if it's noise.
-fn sanitize_pane_title<'a>(raw: Option<&'a str>, worktree: &str, project: &str) -> Option<&'a str> {
-    let title = raw?.trim();
-    if title.is_empty() {
-        return None;
-    }
-
-    // Strip leading status icon characters (braille spinners, symbols like ✳)
-    let title = title
-        .trim_start_matches(|c: char| {
-            // Braille patterns U+2800..U+28FF, common status symbols
-            ('\u{2800}'..='\u{28FF}').contains(&c)
-                || matches!(c, '✳' | '⠀' | '●' | '○' | '◌' | '✓' | '✗')
-        })
-        .trim();
-
-    let title = strip_oc_title_prefix(title);
-
-    if title.is_empty() {
-        return None;
-    }
-
-    // Filter out generic "Claude Code" titles (with optional version)
-    if title.starts_with("Claude Code") {
-        return None;
-    }
-
-    // Filter out shell names
-    if matches!(title, "zsh" | "bash" | "sh" | "fish") {
-        return None;
-    }
-
-    // Filter if identical to worktree or project name
-    if title == worktree || title == project {
-        return None;
-    }
-
-    Some(title)
-}
-
 /// Format elapsed seconds compactly: "5s", "2m", "1h", "3d"
 fn format_compact_elapsed(secs: u64) -> String {
     if secs < 3600 {
@@ -780,8 +742,7 @@ fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_pane_title;
-    use crate::agent_display::strip_oc_title_prefix;
+    use crate::agent_display::{sanitize_pane_title, strip_oc_title_prefix};
 
     #[test]
     fn strips_oc_prefixes() {

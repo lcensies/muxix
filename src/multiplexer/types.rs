@@ -56,6 +56,12 @@ pub struct AgentPane {
     /// Used by the inactivity tracker to detect when an agent resumes working.
     #[serde(default)]
     pub updated_ts: Option<u64>,
+    /// Foreground command of the agent's pane (e.g., "node", "zsh").
+    /// Only populated for the tmux backend; other backends pass `None` because
+    /// no equivalent signal exists for distinguishing auto-tracked window names
+    /// from user-set ones. Used by the sidebar identity resolver.
+    #[serde(default)]
+    pub window_cmd: Option<String>,
 }
 
 /// Parameters for creating a new window/tab

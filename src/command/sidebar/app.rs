@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::agent_display::{extract_project_name, extract_worktree_name};
+use crate::agent_display::{
+    extract_project_name, extract_worktree_name, resolve_labels, sanitize_pane_title,
+};
 use crate::cmd::Cmd;
 use crate::config::{Config, StatusIcons};
 use crate::git::GitStatus;
@@ -380,21 +382,57 @@ impl SidebarApp {
         &self.window_prefix
     }
 
-    /// Display name for an agent: "project/worktree" or just "project" for main.
+    /// One-line display name for compact-mode rendering.
+    ///
+    /// Renders as `<secondary>/<primary>` so the demoted worktree (always
+    /// preserved in `secondary` when it is not primary) stays visible. Falls
+    /// back to just `<primary>` when no secondary exists.
     pub fn display_name(&self, agent: &AgentPane) -> String {
+        let (primary, secondary) = self.resolve_agent_labels(agent);
+        if secondary.is_empty() {
+            primary
+        } else {
+            format!("{}/{}", secondary, primary)
+        }
+    }
+
+    /// Resolve the (primary, secondary) label pair for an agent row.
+    ///
+    /// Strips the workmux prefix from session/window names so the resolver only
+    /// considers user-authored values. The window name is never promoted for
+    /// non-tmux backends (signaled by `window_cmd: None`).
+    pub fn resolve_agent_labels(&self, agent: &AgentPane) -> (String, String) {
         let project = extract_project_name(&agent.path);
-        let (worktree, is_main) = extract_worktree_name(
+        let (worktree, _is_main) = extract_worktree_name(
             &agent.session,
             &agent.window_name,
             &self.window_prefix,
             &agent.path,
         );
 
-        if is_main {
-            project
+        // Workmux-managed names start with the configured prefix; treat them as
+        // not user-authored by clearing them before the resolver sees them.
+        let session = if agent.session.starts_with(&self.window_prefix) {
+            ""
         } else {
-            format!("{}/{}", project, worktree)
-        }
+            agent.session.as_str()
+        };
+        let window = if agent.window_name.starts_with(&self.window_prefix) {
+            ""
+        } else {
+            agent.window_name.as_str()
+        };
+
+        let task_title = sanitize_pane_title(agent.pane_title.as_deref(), &worktree, &project);
+
+        resolve_labels(
+            &project,
+            session,
+            &worktree,
+            window,
+            agent.window_cmd.as_deref(),
+            task_title,
+        )
     }
 }
 
