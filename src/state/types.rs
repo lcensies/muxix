@@ -181,6 +181,10 @@ pub struct GlobalSettings {
     /// Sidebar layout mode: "compact" or "tiles"
     #[serde(default)]
     pub sidebar_layout: Option<String>,
+
+    /// Sidebar width in columns (manual override synced across windows)
+    #[serde(default)]
+    pub sidebar_width: Option<u16>,
 }
 
 /// Tracks which pane last-done navigated to, so repeated presses cycle
