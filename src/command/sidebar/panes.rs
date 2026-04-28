@@ -108,7 +108,7 @@ pub(super) fn create_sidebars_in_all_windows(config: &crate::config::Config) -> 
         }
         let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
         let window_w: u16 = width_str.parse().unwrap_or(0);
-        let width = super::resolve_width_for(config, window_w);
+        let width = super::effective_width_for(config, window_w);
         let _ = create_sidebar_in_window(window_id, width);
     }
 
@@ -139,7 +139,7 @@ pub(super) fn create_sidebars_in_session(
         }
         let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
         let window_w: u16 = width_str.parse().unwrap_or(0);
-        let width = super::resolve_width_for(config, window_w);
+        let width = super::effective_width_for(config, window_w);
         let _ = create_sidebar_in_window(window_id, width);
     }
     Ok(())
@@ -190,7 +190,7 @@ pub(super) fn kill_sidebars_in_session(session_id: &str) {
 }
 
 /// Find all sidebar panes across all windows. Returns (window_id, pane_id) pairs.
-fn list_sidebar_panes() -> Vec<(String, String)> {
+pub(super) fn list_sidebar_panes() -> Vec<(String, String)> {
     let output = Cmd::new("tmux")
         .args(&[
             "list-panes",

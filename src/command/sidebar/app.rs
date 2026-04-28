@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name};
 use crate::cmd::Cmd;
@@ -75,6 +76,12 @@ pub struct SidebarApp {
     pub interrupted_pane_ids: std::collections::HashSet<String>,
     /// Pane IDs of agents manually marked as sleeping by the user.
     pub sleeping_pane_ids: std::collections::HashSet<String>,
+    /// Last known window width (for detecting manual pane resizes).
+    last_window_width: Option<u16>,
+    /// Pending resize columns to process after debounce.
+    pending_resize_cols: Option<u16>,
+    /// Deadline after which pending resize should be processed.
+    pub(super) resize_deadline: Option<Instant>,
 }
 
 impl SidebarApp {
@@ -94,6 +101,10 @@ impl SidebarApp {
         let status_icons = config.status_icons.clone();
 
         let (host_session, host_window_id) = detect_host_window();
+
+        // Seed last_window_width so the first resize event after startup grace
+        // can be compared against a baseline (fixes first-resize-dropped bug).
+        let initial_window_width = query_window_width_for_pane();
 
         Ok(Self {
             mux,
@@ -116,6 +127,9 @@ impl SidebarApp {
             git_statuses: HashMap::new(),
             interrupted_pane_ids: std::collections::HashSet::new(),
             sleeping_pane_ids: std::collections::HashSet::new(),
+            last_window_width: initial_window_width,
+            pending_resize_cols: None,
+            resize_deadline: None,
         })
     }
 
@@ -380,6 +394,67 @@ impl SidebarApp {
         &self.window_prefix
     }
 
+    /// Record a resize event for debounced processing.
+    pub fn on_resize_event(&mut self, cols: u16) {
+        self.pending_resize_cols = Some(cols);
+        self.resize_deadline = Some(Instant::now() + Duration::from_millis(150));
+    }
+
+    /// Process any pending resize after the debounce period has elapsed.
+    /// Skips detection during startup grace period.
+    pub fn process_pending_resize(&mut self, startup: &Instant, startup_grace: Duration) {
+        if startup.elapsed() < startup_grace {
+            // Suppress detection during startup to avoid false positives from
+            // initial pane creation layout divergence.
+            self.pending_resize_cols = None;
+            self.resize_deadline = None;
+            return;
+        }
+
+        let Some(deadline) = self.resize_deadline else {
+            return;
+        };
+        if Instant::now() < deadline {
+            return;
+        }
+
+        let Some(pane_width) = self.pending_resize_cols else {
+            self.resize_deadline = None;
+            return;
+        };
+
+        let window_w = self.query_host_window_width();
+
+        // Store for next comparison before any potential reflow
+        let prev_window_w = self.last_window_width;
+        self.last_window_width = Some(window_w);
+        self.pending_resize_cols = None;
+        self.resize_deadline = None;
+
+        // Skip until we have a previous window width to compare against
+        let Some(prev_ww) = prev_window_w else { return };
+
+        // If window width changed, this is a terminal resize, not manual pane resize
+        if prev_ww != window_w {
+            return;
+        }
+
+        let config = Config::load(None).unwrap_or_default();
+        let expected = super::effective_width_for(&config, window_w);
+
+        // If pane width differs significantly from expected, treat as manual resize
+        if (pane_width as i16 - expected as i16).abs() > 3 {
+            super::set_sidebar_width(pane_width);
+            if let Some(wid) = self.host_window_id() {
+                super::reflow_all_sidebars_except(wid);
+            }
+        }
+    }
+
+    fn query_host_window_width(&self) -> u16 {
+        query_window_width_for_pane().unwrap_or(0)
+    }
+
     /// Display name for an agent: "project/worktree" or just "project" for main.
     pub fn display_name(&self, agent: &AgentPane) -> String {
         let project = extract_project_name(&agent.path);
@@ -396,6 +471,21 @@ impl SidebarApp {
             format!("{}/{}", project, worktree)
         }
     }
+}
+
+/// Query the window width for the current tmux pane (standalone for use before `Self` exists).
+fn query_window_width_for_pane() -> Option<u16> {
+    let pane_id = std::env::var("TMUX_PANE").unwrap_or_default();
+    let mut args = vec!["display-message", "-p"];
+    if !pane_id.is_empty() {
+        args.extend_from_slice(&["-t", &pane_id]);
+    }
+    args.push("#{window_width}");
+    Cmd::new("tmux")
+        .args(&args)
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
 }
 
 /// Height in rows of a tile-mode ListItem at the given index.
