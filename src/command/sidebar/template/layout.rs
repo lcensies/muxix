@@ -30,6 +30,8 @@ pub fn render_line(ctx: &RowContext, tokens: &[Token], width: usize) -> Vec<Span
         .iter()
         .map(|t| TokenInfo::new(t, ctx))
         .collect();
+    let left_info = collapse_empty_fields(left_info);
+    let right_info = collapse_empty_fields(right_info);
 
     let right_width: usize = right_info.iter().map(|i| i.natural_width).sum();
     let left_fixed_width: usize = left_info
@@ -133,6 +135,39 @@ impl TokenInfo {
                 is_field: true,
             },
         }
+    }
+}
+
+/// Drop a single adjacent whitespace literal next to any field that resolves
+/// to empty, so optional fields like `{pane_suffix}` don't leave dangling
+/// joiner spaces in the output.
+fn collapse_empty_fields(infos: Vec<TokenInfo>) -> Vec<TokenInfo> {
+    let mut keep = vec![true; infos.len()];
+    for i in 0..infos.len() {
+        let is_empty_field =
+            matches!(infos[i].token, Token::Field(_)) && infos[i].natural_width == 0;
+        if !is_empty_field {
+            continue;
+        }
+        // Prefer dropping the following whitespace literal, fall back to the preceding one.
+        if i + 1 < infos.len() && keep[i + 1] && is_whitespace_literal(&infos[i + 1]) {
+            keep[i + 1] = false;
+        } else if i > 0 && keep[i - 1] && is_whitespace_literal(&infos[i - 1]) {
+            keep[i - 1] = false;
+        }
+    }
+    infos
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(info, k)| if k { Some(info) } else { None })
+        .collect()
+}
+
+fn is_whitespace_literal(info: &TokenInfo) -> bool {
+    if let Token::Literal(s) = &info.token {
+        !s.is_empty() && s.chars().all(|c| c.is_whitespace())
+    } else {
+        false
     }
 }
 

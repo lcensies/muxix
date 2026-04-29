@@ -35,7 +35,7 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
             if counts[&key] > 1 {
                 let pos = positions.entry(key).or_default();
                 *pos += 1;
-                format!(" ({})", pos)
+                format!("({})", pos)
             } else {
                 String::new()
             }

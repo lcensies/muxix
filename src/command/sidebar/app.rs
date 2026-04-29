@@ -45,9 +45,9 @@ enum SelectionMode {
     Manual,
 }
 
-const DEFAULT_COMPACT_TEMPLATE: &str = "{status_icon} {primary}{pane_suffix} {fill} {elapsed}";
+const DEFAULT_COMPACT_TEMPLATE: &str = "{status_icon} {primary} {pane_suffix} {fill} {elapsed}";
 const DEFAULT_TILE_TEMPLATES: &[&str] = &[
-    "{primary}{pane_suffix} {fill} {elapsed}",
+    "{primary} {pane_suffix} {fill} {elapsed}",
     "{secondary} {fill} {git_stats}",
     "{pane_title}",
 ];
