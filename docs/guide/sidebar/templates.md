@@ -95,9 +95,18 @@ Adding `{agent_icon}` or `{agent_label}` to a template surfaces which agent is
 running in each pane. Identity is detected from the stored agent command via
 the same profile system used elsewhere in workmux.
 
-Default icons: `claude` → `CC`, `codex` → `CX`, `opencode` → `OC`, `gemini` →
-`G`, `pi` → `π`, `kiro-cli` → `K`, `vibe` → `V`, `copilot` → `CP`. Unknown
-agents render an empty icon.
+Default icons:
+
+- `claude` → `CC`
+- `codex` → `CX`
+- `opencode` → `OC`
+- `gemini` → `G`
+- `pi` → `π`
+- `kiro-cli` → `K`
+- `vibe` → `V`
+- `copilot` → `CP`
+
+Unknown agents render an empty icon.
 
 Default colors are brand accents: Claude orange, Codex teal, Gemini blue,
 Copilot purple, Vibe orange, Pi sage, OpenCode blue. Stale rows still dim

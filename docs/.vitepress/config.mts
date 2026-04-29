@@ -103,7 +103,6 @@ export default defineConfig({
         items: [
           { text: "Overview", link: "/guide/sidebar/" },
           { text: "Templates", link: "/guide/sidebar/templates" },
-          { text: "How it works", link: "/guide/sidebar/architecture" },
         ],
       },
       {
