@@ -146,6 +146,7 @@ fn render_with_layout(
     let mut spans = Vec::new();
     let mut used_width = 0;
     let mut first_flex_assigned = false;
+    let mut slack: usize = 0;
 
     // Render left segment
     for info in left {
@@ -157,7 +158,9 @@ fn render_with_layout(
             Token::Fill => {}
             Token::Field(id) => {
                 if info.is_flex && !first_flex_assigned {
-                    // First flex token absorbs slack
+                    // First flex token: truncate if natural exceeds slack, otherwise
+                    // render at natural width and emit the leftover as a fill-space
+                    // span between left and right segments (handled after the loop).
                     let allocated = available;
                     if *id == TokenId::StatusIcon {
                         for (text, style) in &ctx.status_icon_spans {
@@ -166,20 +169,19 @@ fn render_with_layout(
                         }
                     } else {
                         let text = ctx.resolve(*id);
-                        let rendered = if allocated > 0 {
+                        let rendered = if info.natural_width > allocated && allocated > 0 {
                             truncate_with_ellipsis(&text, allocated)
-                        } else {
+                        } else if allocated == 0 {
                             String::new()
+                        } else {
+                            text
                         };
                         let rendered_width = display_width(&rendered);
                         spans.push(Span::styled(rendered, ctx.intrinsic_style(*id)));
                         used_width += rendered_width;
 
-                        // Pad if natural width is less than allocated
                         if rendered_width < allocated {
-                            let pad = allocated - rendered_width;
-                            spans.push(Span::raw(" ".repeat(pad)));
-                            used_width += pad;
+                            slack = allocated - rendered_width;
                         }
                     }
 
@@ -212,6 +214,12 @@ fn render_with_layout(
                 }
             }
         }
+    }
+
+    // Slack between left and right segments (where {fill} sat).
+    if slack > 0 {
+        spans.push(Span::raw(" ".repeat(slack)));
+        used_width += slack;
     }
 
     // Render right segment
