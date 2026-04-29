@@ -374,8 +374,8 @@ fn render_with_layout(
                         spans.push(styled_span(text.clone(), *style, user_style, ctx));
                         used_width += display_width(text);
                     }
-                } else if *id == TokenId::GitStats {
-                    let (git_spans, git_width) = ctx.git_stats_spans(max_w);
+                } else if is_git_segment(*id) {
+                    let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
                     for (text, style) in git_spans {
                         spans.push(styled_span(text, style, user_style, ctx));
                     }
@@ -722,6 +722,23 @@ mod tests {
         let text: String = spans.iter().map(|s| s.content.clone()).collect();
         assert!(!text.contains('+'), "should drop numbers: {:?}", text);
         assert!(!text.contains('-'), "should drop numbers: {:?}", text);
+    }
+
+    #[test]
+    fn split_git_token_renders_on_right_side_of_fill() {
+        let agent = test_agent("g");
+        let status = GitStatus {
+            lines_added: 10,
+            lines_removed: 5,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        let tokens = vec![
+            Token::Fill,
+            Token::Field(TokenId::GitCommitted),
+        ];
+        let text = render_text(&ctx, &tokens, 40);
+        assert!(text.contains("+10 -5"), "missing committed: {:?}", text);
     }
 
     #[test]
