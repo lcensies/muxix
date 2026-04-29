@@ -421,10 +421,13 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let ctx = RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx);
             let mut spans = render_line(&ctx, &template, width);
 
-            // Post-pass: apply selection background
+            // Post-pass: apply selection background where the template has
+            // not already supplied an explicit user `bg=`.
             if ctx.is_selected {
                 for span in &mut spans {
-                    span.style = span.style.bg(app.palette.highlight_row_bg);
+                    if span.style.bg.is_none() {
+                        span.style = span.style.bg(app.palette.highlight_row_bg);
+                    }
                 }
             }
 
@@ -536,10 +539,13 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 // Right margin: 1 blank column so content doesn't touch the edge.
                 line_spans.push(Span::raw(" "));
 
-                // Post-pass: apply selection background
+                // Post-pass: apply selection background where the template
+                // has not already supplied an explicit user `bg=`.
                 if ctx.is_selected {
                     for span in &mut line_spans {
-                        span.style = span.style.bg(app.palette.highlight_row_bg);
+                        if span.style.bg.is_none() {
+                            span.style = span.style.bg(app.palette.highlight_row_bg);
+                        }
                     }
                 }
 
