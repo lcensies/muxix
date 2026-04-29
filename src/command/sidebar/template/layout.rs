@@ -251,10 +251,17 @@ fn render_with_layout(
         }
     }
 
-    // Slack between left and right segments (where {fill} sat).
-    if slack > 0 {
-        spans.push(Span::raw(" ".repeat(slack)));
-        used_width += slack;
+    // Slack between left and right segments (where {fill} sat). If a flex
+    // token absorbed part of the budget that's already in `slack`; otherwise
+    // the entire `available` budget is unused and goes here.
+    let fill_width = if first_flex_assigned {
+        slack
+    } else {
+        available
+    };
+    if fill_width > 0 {
+        spans.push(Span::raw(" ".repeat(fill_width)));
+        used_width += fill_width;
     }
 
     // Render right segment
