@@ -166,18 +166,9 @@ impl SidebarApp {
 
     /// Apply a snapshot received from the daemon.
     pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
-        if snapshot.config_version != self.last_config_version {
-            self.last_config_version = snapshot.config_version;
-            self.reload_config_from_disk(&snapshot);
-        }
-
-        self.layout_mode = snapshot.layout_mode;
-        self.git_statuses = snapshot.git_statuses;
-        self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
-        self.sleeping_pane_ids = snapshot.sleeping_pane_ids;
-
-        // Find host agent by window_id (stable tmux ID, survives renames).
-        // When multiple agents share a window, prefer the active pane.
+        // Compute host agent index from the new snapshot first so that a
+        // config_version bump anchors the reload to the *current* host path,
+        // not whatever was selected from the previous snapshot.
         self.host_agent_idx = self.host_window_id.as_ref().and_then(|wid| {
             let mut first_match = None;
             for (i, agent) in snapshot.agents.iter().enumerate() {
@@ -191,6 +182,16 @@ impl SidebarApp {
             }
             first_match
         });
+
+        if snapshot.config_version != self.last_config_version {
+            self.last_config_version = snapshot.config_version;
+            self.reload_config_from_disk(&snapshot);
+        }
+
+        self.layout_mode = snapshot.layout_mode;
+        self.git_statuses = snapshot.git_statuses;
+        self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
+        self.sleeping_pane_ids = snapshot.sleeping_pane_ids;
 
         // Check if host window is active
         let was_active = self.host_window_active;

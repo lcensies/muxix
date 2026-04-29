@@ -937,6 +937,14 @@ fn spawn_config_watcher(
                     .cloned()
                     .collect();
                 for dir in &to_remove {
+                    // Never unwatch the global config dir, even if it was
+                    // tracked under watched_project_dirs (we never issued an
+                    // OS-level watch for it from the project path; it's still
+                    // watched as the global watch).
+                    if Some(dir) == watched_global.as_ref() {
+                        watched_project_dirs.remove(dir);
+                        continue;
+                    }
                     let res = watcher.unwatch(dir);
                     tracing::info!(
                         op = "unwatch",
@@ -1013,20 +1021,25 @@ fn spawn_config_watcher(
                 && Instant::now() >= t
             {
                 pending_reload_at = None;
+                // Always bump the version so clients try their own per-project
+                // load (their anchor path may differ from the daemon CWD; a
+                // failure here doesn't necessarily mean clients will fail).
+                // Only update the daemon-side cached Config on success.
                 match Config::load(None) {
                     Ok(new_cfg) => {
                         if let Ok(mut slot) = config.lock() {
                             *slot = new_cfg;
                         }
-                        let v = config_version.fetch_add(1, Ordering::Relaxed) + 1;
-                        tracing::info!(version = v, "sidebar config reloaded");
-                        dirty_flag.store(true, Ordering::Relaxed);
-                        let _ = wake_tx.try_send(());
+                        tracing::debug!("daemon config reloaded");
                     }
                     Err(e) => {
-                        tracing::warn!("config reload failed, keeping previous: {}", e);
+                        tracing::warn!("daemon-side config load failed, keeping previous: {}", e);
                     }
                 }
+                let v = config_version.fetch_add(1, Ordering::Relaxed) + 1;
+                tracing::info!(version = v, "sidebar config_version bumped");
+                dirty_flag.store(true, Ordering::Relaxed);
+                let _ = wake_tx.try_send(());
             }
         }
     });
@@ -1221,9 +1234,11 @@ pub fn run() -> Result<()> {
     let refresh_interval = Duration::from_secs(2);
     let debounce_interval = Duration::from_millis(50);
 
-    // Cache of agent_path -> Option<project_config_dir> so we don't run the
-    // walk-up filesystem search on every tick.
-    let mut project_config_cache: HashMap<PathBuf, Option<PathBuf>> = HashMap::new();
+    // Cache of agent_path -> project_config_dir so we don't run the walk-up
+    // filesystem search on every tick. Misses (no config found) are NOT
+    // cached, so a newly-created `.workmux.yaml` in or above an agent's path
+    // is picked up on the next tick.
+    let mut project_config_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
 
     while !term.load(Ordering::Relaxed) {
@@ -1319,15 +1334,19 @@ pub fn run() -> Result<()> {
             project_config_cache.retain(|p, _| live_paths.contains(p));
             let mut config_dirs: HashSet<PathBuf> = HashSet::new();
             for a in &output.snapshot.agents {
-                let dir = project_config_cache
-                    .entry(a.path.clone())
-                    .or_insert_with(|| {
-                        crate::config::find_project_config(&a.path)
-                            .ok()
-                            .flatten()
-                            .map(|loc| loc.config_dir)
-                    });
-                if let Some(d) = dir.clone() {
+                let dir = if let Some(d) = project_config_cache.get(&a.path) {
+                    Some(d.clone())
+                } else {
+                    let found = crate::config::find_project_config(&a.path)
+                        .ok()
+                        .flatten()
+                        .map(|loc| loc.config_dir);
+                    if let Some(ref d) = found {
+                        project_config_cache.insert(a.path.clone(), d.clone());
+                    }
+                    found
+                };
+                if let Some(d) = dir {
                     config_dirs.insert(d);
                 }
             }
