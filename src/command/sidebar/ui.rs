@@ -187,6 +187,192 @@ pub(crate) fn format_sidebar_git_stats(
     (vec![], 0)
 }
 
+/// Width of an interleaved span list (text widths + 1 col per joiner space).
+fn interleaved_width(spans: &[(String, Style)]) -> usize {
+    if spans.is_empty() {
+        return 0;
+    }
+    spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len() - 1
+}
+
+/// Insert a single space between adjacent spans (no trailing space).
+fn interleave_spans(spans: Vec<(String, Style)>) -> Vec<(String, Style)> {
+    let mut out: Vec<(String, Style)> = Vec::with_capacity(spans.len() * 2);
+    let mut first = true;
+    for span in spans {
+        if !first {
+            out.push((" ".to_string(), Style::default()));
+        }
+        first = false;
+        out.push(span);
+    }
+    out
+}
+
+/// Pick the widest variant (in priority order) that fits `max_width`.
+/// Variants are pre-interleave: each entry is a list of styled text fragments
+/// that will be joined by a single space.
+fn pick_fitting_variant(
+    variants: Vec<Vec<(String, Style)>>,
+    max_width: usize,
+) -> (Vec<(String, Style)>, usize) {
+    for raw in variants {
+        let width = interleaved_width(&raw);
+        if width > 0 && width <= max_width {
+            return (interleave_spans(raw), width);
+        }
+    }
+    (Vec::new(), 0)
+}
+
+/// Format the committed/branch-diff segment of git stats with self-fitting.
+///
+/// Variant ladder (widest first): `+N -M` → `+N` → `-M` → empty.
+/// Returns empty when there are no committed changes or when all changes
+/// are uncommitted (the composite hides committed in that case to avoid
+/// duplicating the uncommitted numbers).
+pub(crate) fn format_committed_spans(
+    status: Option<&GitStatus>,
+    palette: &ThemePalette,
+    is_stale: bool,
+    max_width: usize,
+) -> (Vec<(String, Style)>, usize) {
+    let Some(status) = status else {
+        return (Vec::new(), 0);
+    };
+
+    let has_committed = status.lines_added > 0 || status.lines_removed > 0;
+    let has_uncommitted =
+        status.uncommitted_added > 0 || status.uncommitted_removed > 0 || status.is_dirty;
+    let all_uncommitted = has_uncommitted
+        && status.uncommitted_added == status.lines_added
+        && status.uncommitted_removed == status.lines_removed;
+
+    if !has_committed || all_uncommitted {
+        return (Vec::new(), 0);
+    }
+
+    let success = if is_stale {
+        palette.dimmed
+    } else {
+        palette.success
+    };
+    let danger = if is_stale {
+        palette.dimmed
+    } else {
+        palette.danger
+    };
+    let style_a = Style::default().fg(success).add_modifier(Modifier::DIM);
+    let style_r = Style::default().fg(danger).add_modifier(Modifier::DIM);
+
+    let added = (status.lines_added > 0).then(|| (format!("+{}", status.lines_added), style_a));
+    let removed =
+        (status.lines_removed > 0).then(|| (format!("-{}", status.lines_removed), style_r));
+
+    let mut variants: Vec<Vec<(String, Style)>> = Vec::new();
+    match (&added, &removed) {
+        (Some(a), Some(r)) => {
+            variants.push(vec![a.clone(), r.clone()]);
+            variants.push(vec![a.clone()]);
+            variants.push(vec![r.clone()]);
+        }
+        (Some(a), None) => variants.push(vec![a.clone()]),
+        (None, Some(r)) => variants.push(vec![r.clone()]),
+        (None, None) => {}
+    }
+
+    pick_fitting_variant(variants, max_width)
+}
+
+/// Format the uncommitted/diff segment with self-fitting.
+///
+/// Variant ladder: `icon +N -M` → `icon +N` → `icon -M` → `icon` → empty.
+pub(crate) fn format_uncommitted_spans(
+    status: Option<&GitStatus>,
+    palette: &ThemePalette,
+    is_stale: bool,
+    max_width: usize,
+) -> (Vec<(String, Style)>, usize) {
+    let Some(status) = status else {
+        return (Vec::new(), 0);
+    };
+
+    let has_uncommitted =
+        status.uncommitted_added > 0 || status.uncommitted_removed > 0 || status.is_dirty;
+    if !has_uncommitted {
+        return (Vec::new(), 0);
+    }
+
+    let icons = crate::nerdfont::git_icons();
+    let success = if is_stale {
+        palette.dimmed
+    } else {
+        palette.success
+    };
+    let danger = if is_stale {
+        palette.dimmed
+    } else {
+        palette.danger
+    };
+    let accent = if is_stale {
+        palette.dimmed
+    } else {
+        palette.accent
+    };
+
+    let icon = (icons.diff.to_string(), Style::default().fg(accent));
+    let added = (status.uncommitted_added > 0).then(|| {
+        (
+            format!("+{}", status.uncommitted_added),
+            Style::default().fg(success),
+        )
+    });
+    let removed = (status.uncommitted_removed > 0).then(|| {
+        (
+            format!("-{}", status.uncommitted_removed),
+            Style::default().fg(danger),
+        )
+    });
+
+    let mut variants: Vec<Vec<(String, Style)>> = Vec::new();
+    match (&added, &removed) {
+        (Some(a), Some(r)) => {
+            variants.push(vec![icon.clone(), a.clone(), r.clone()]);
+            variants.push(vec![icon.clone(), a.clone()]);
+            variants.push(vec![icon.clone(), r.clone()]);
+        }
+        (Some(a), None) => variants.push(vec![icon.clone(), a.clone()]),
+        (None, Some(r)) => variants.push(vec![icon.clone(), r.clone()]),
+        (None, None) => {} // dirty but no line counts: fall through to icon-only
+    }
+    variants.push(vec![icon.clone()]);
+
+    pick_fitting_variant(variants, max_width)
+}
+
+/// Format the rebase indicator with self-fitting.
+pub(crate) fn format_rebase_spans(
+    status: Option<&GitStatus>,
+    palette: &ThemePalette,
+    is_stale: bool,
+    max_width: usize,
+) -> (Vec<(String, Style)>, usize) {
+    let Some(status) = status else {
+        return (Vec::new(), 0);
+    };
+    if !status.is_rebasing {
+        return (Vec::new(), 0);
+    }
+    let icons = crate::nerdfont::git_icons();
+    let color = if is_stale {
+        palette.dimmed
+    } else {
+        palette.warning
+    };
+    let icon = (icons.rebase.to_string(), Style::default().fg(color));
+    pick_fitting_variant(vec![vec![icon]], max_width)
+}
+
 /// Render the sidebar UI.
 pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
     let area = f.area();

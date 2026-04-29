@@ -131,9 +131,12 @@ impl<'a> RowContext<'a> {
             TokenId::AgentIcon => self.agent_icon.clone(),
             TokenId::PaneSuffix => self.pane_suffix.clone(),
             TokenId::Elapsed => self.elapsed.clone(),
-            TokenId::GitStats => {
-                // Composite token: empty string at resolution time;
-                // layout engine calls git_stats_spans() for rendering.
+            TokenId::GitStats
+            | TokenId::GitCommitted
+            | TokenId::GitUncommitted
+            | TokenId::GitRebase => {
+                // Span-rendered tokens: empty string at resolution time;
+                // layout engine calls git_segment_spans() for rendering.
                 String::new()
             }
         }
@@ -149,9 +152,11 @@ impl<'a> RowContext<'a> {
                 .sum(),
             TokenId::AgentIcon => display_width(&self.agent_icon),
             TokenId::AgentLabel => display_width(&self.agent_label),
-            TokenId::GitStats => {
-                let (spans, width) = self.git_stats_spans(usize::MAX);
-                let _ = spans;
+            TokenId::GitStats
+            | TokenId::GitCommitted
+            | TokenId::GitUncommitted
+            | TokenId::GitRebase => {
+                let (_, width) = self.git_segment_spans(token, usize::MAX);
                 width
             }
             other => display_width(&self.resolve(other)),
@@ -168,6 +173,36 @@ impl<'a> RowContext<'a> {
                 allocated_width,
             ),
             None => (Vec::new(), 0),
+        }
+    }
+
+    /// Render one git segment token (composite or split) with self-fitting.
+    pub fn git_segment_spans(
+        &self,
+        token: TokenId,
+        allocated_width: usize,
+    ) -> (Vec<(String, Style)>, usize) {
+        match token {
+            TokenId::GitStats => self.git_stats_spans(allocated_width),
+            TokenId::GitCommitted => super::super::ui::format_committed_spans(
+                self.git_status,
+                self.palette,
+                self.is_stale,
+                allocated_width,
+            ),
+            TokenId::GitUncommitted => super::super::ui::format_uncommitted_spans(
+                self.git_status,
+                self.palette,
+                self.is_stale,
+                allocated_width,
+            ),
+            TokenId::GitRebase => super::super::ui::format_rebase_spans(
+                self.git_status,
+                self.palette,
+                self.is_stale,
+                allocated_width,
+            ),
+            _ => (Vec::new(), 0),
         }
     }
 

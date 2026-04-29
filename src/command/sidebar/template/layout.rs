@@ -95,9 +95,15 @@ pub fn is_empty_line(tokens: &[Token], ctx: &RowContext) -> bool {
             }
             Token::Fill => {}
             Token::Field(id) => {
-                let text = ctx.resolve(*id);
-                if !text.is_empty() {
-                    has_content = true;
+                if is_git_segment(*id) {
+                    if ctx.natural_width(*id) > 0 {
+                        has_content = true;
+                    }
+                } else {
+                    let text = ctx.resolve(*id);
+                    if !text.is_empty() {
+                        has_content = true;
+                    }
                 }
             }
         }
@@ -161,6 +167,13 @@ fn collapse_empty_fields(infos: Vec<TokenInfo>) -> Vec<TokenInfo> {
         .zip(keep)
         .filter_map(|(info, k)| if k { Some(info) } else { None })
         .collect()
+}
+
+fn is_git_segment(id: TokenId) -> bool {
+    matches!(
+        id,
+        TokenId::GitStats | TokenId::GitCommitted | TokenId::GitUncommitted | TokenId::GitRebase
+    )
 }
 
 fn is_whitespace_literal(info: &TokenInfo) -> bool {
@@ -230,8 +243,8 @@ fn render_with_layout(
                             spans.push(Span::styled(text.clone(), *style));
                             used_width += display_width(text);
                         }
-                    } else if *id == TokenId::GitStats {
-                        let (git_spans, git_width) = ctx.git_stats_spans(max_w);
+                    } else if is_git_segment(*id) {
+                        let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
                         for (text, style) in git_spans {
                             spans.push(Span::styled(text, style));
                         }
@@ -346,6 +359,7 @@ mod tests {
     use super::super::context::RowContext;
     use super::super::parser::{Token, TokenId};
     use super::*;
+    use crate::git::GitStatus;
     use crate::multiplexer::AgentPane;
     use crate::ui::theme::ThemePalette;
     use std::path::PathBuf;
@@ -487,6 +501,139 @@ mod tests {
             Token::Literal("▌ ".to_string()),
             Token::Field(TokenId::Primary),
         ];
+        assert!(!is_empty_line(&tokens, &ctx));
+    }
+
+    fn make_git_context<'a>(agent: &'a AgentPane, status: &'a GitStatus) -> RowContext<'a> {
+        RowContext {
+            agent,
+            primary: String::new(),
+            secondary: String::new(),
+            pane_suffix: String::new(),
+            elapsed: String::new(),
+            status_icon_spans: vec![],
+            status_color: ratatui::style::Color::Reset,
+            pane_title: None,
+            git_status: Some(status),
+            is_stale: false,
+            is_active: false,
+            is_selected: false,
+            palette: test_palette(),
+            agent_icon: String::new(),
+            agent_label: String::new(),
+        }
+    }
+
+    fn render_text(ctx: &RowContext, tokens: &[Token], width: usize) -> String {
+        render_line(ctx, tokens, width)
+            .iter()
+            .map(|s| s.content.clone())
+            .collect()
+    }
+
+    #[test]
+    fn split_git_tokens_join_with_literal_space() {
+        let agent = test_agent("g");
+        let status = GitStatus {
+            lines_added: 10,
+            lines_removed: 5,
+            uncommitted_added: 3,
+            uncommitted_removed: 1,
+            is_dirty: true,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        let tokens = vec![
+            Token::Field(TokenId::GitCommitted),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::GitUncommitted),
+        ];
+        let text = render_text(&ctx, &tokens, 40);
+        assert!(text.contains("+10 -5"), "missing committed: {:?}", text);
+        assert!(text.contains("+3 -1"), "missing uncommitted: {:?}", text);
+    }
+
+    #[test]
+    fn split_git_tokens_collapse_space_when_one_empty() {
+        let agent = test_agent("g");
+        // Only uncommitted (committed is zero)
+        let status = GitStatus {
+            uncommitted_added: 3,
+            uncommitted_removed: 1,
+            is_dirty: true,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        let tokens = vec![
+            Token::Field(TokenId::GitCommitted),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::GitUncommitted),
+        ];
+        let text = render_text(&ctx, &tokens, 40);
+        // Should not start with a leading space from the dropped committed token
+        assert!(
+            !text.starts_with("  "),
+            "leading whitespace bleed: {:?}",
+            text
+        );
+        assert!(text.contains("+3 -1"));
+    }
+
+    #[test]
+    fn split_git_committed_self_fits_when_narrow() {
+        let agent = test_agent("g");
+        let status = GitStatus {
+            lines_added: 1278,
+            lines_removed: 400,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        // Natural: "+1278 -400" = 10 cols. Width 7 should fit "+1278" (5 cols) variant.
+        let tokens = vec![Token::Field(TokenId::GitCommitted)];
+        let text: String = render_line(&ctx, &tokens, 7)
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        assert!(text.contains("+1278"), "missing +1278: {:?}", text);
+        assert!(!text.contains("-400"), "should drop -400: {:?}", text);
+    }
+
+    #[test]
+    fn split_git_uncommitted_falls_back_to_icon_only() {
+        let agent = test_agent("g");
+        let status = GitStatus {
+            uncommitted_added: 999,
+            uncommitted_removed: 999,
+            is_dirty: true,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        // Width 1: only icon (1 col) fits.
+        let tokens = vec![Token::Field(TokenId::GitUncommitted)];
+        let spans = render_line(&ctx, &tokens, 1);
+        let text: String = spans.iter().map(|s| s.content.clone()).collect();
+        assert!(!text.contains('+'), "should drop numbers: {:?}", text);
+        assert!(!text.contains('-'), "should drop numbers: {:?}", text);
+    }
+
+    #[test]
+    fn is_empty_line_with_only_git_committed_empty() {
+        let agent = test_agent("g");
+        let status = GitStatus::default();
+        let ctx = make_git_context(&agent, &status);
+        let tokens = vec![Token::Field(TokenId::GitCommitted)];
+        assert!(is_empty_line(&tokens, &ctx));
+    }
+
+    #[test]
+    fn is_empty_line_false_when_git_committed_has_content() {
+        let agent = test_agent("g");
+        let status = GitStatus {
+            lines_added: 5,
+            ..Default::default()
+        };
+        let ctx = make_git_context(&agent, &status);
+        let tokens = vec![Token::Field(TokenId::GitCommitted)];
         assert!(!is_empty_line(&tokens, &ctx));
     }
 

@@ -29,6 +29,9 @@ pub enum TokenId {
     PaneSuffix,
     Elapsed,
     GitStats,
+    GitCommitted,
+    GitUncommitted,
+    GitRebase,
 }
 
 impl TokenId {
@@ -63,6 +66,9 @@ impl fmt::Display for TokenId {
             TokenId::PaneSuffix => "pane_suffix",
             TokenId::Elapsed => "elapsed",
             TokenId::GitStats => "git_stats",
+            TokenId::GitCommitted => "git_committed",
+            TokenId::GitUncommitted => "git_uncommitted",
+            TokenId::GitRebase => "git_rebase",
         };
         write!(f, "{}", s)
     }
@@ -158,6 +164,9 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                     "pane_suffix" => TokenId::PaneSuffix,
                     "elapsed" => TokenId::Elapsed,
                     "git_stats" => TokenId::GitStats,
+                    "git_committed" => TokenId::GitCommitted,
+                    "git_uncommitted" => TokenId::GitUncommitted,
+                    "git_rebase" => TokenId::GitRebase,
                     other => {
                         return Err(ParseError {
                             message: format!("unknown token '{}' at column {}", other, start + 1),
@@ -293,6 +302,9 @@ mod tests {
             TokenId::PaneSuffix,
             TokenId::Elapsed,
             TokenId::GitStats,
+            TokenId::GitCommitted,
+            TokenId::GitUncommitted,
+            TokenId::GitRebase,
         ] {
             let name = token_id.to_string();
             let parsed = parse_line(&format!("{{{}}}", name)).unwrap();
