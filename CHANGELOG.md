@@ -22,6 +22,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.190 (2026-04-29)
+
+- Add sidebar template customization, letting you choose which labels, git stats, timers, and status details appear in compact and tile layouts. See the [sidebar customization guide](https://workmux.raine.dev/guide/sidebar/customization)
+- Add customizable per-agent sidebar icons and colors, with built-in defaults for Claude, Codex, OpenCode, Gemini, Pi, Kiro, Vibe, and Copilot
+- Support tmux-style colors and attributes inside sidebar templates
+- Improve sidebar rendering for git stats, elapsed time, row highlighting, and synchronized width across windows
+
 ## v0.1.189 (2026-04-27)
 
 - Fix pi agents lingering in the dashboard after exit ([#143](https://github.com/raine/workmux/issues/143))
