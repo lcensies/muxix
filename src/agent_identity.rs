@@ -7,12 +7,91 @@
 //! these, so the result of `classify_agent_kind` is cached on `AgentState`
 //! once it becomes non-None and reused by the sidebar render path.
 //!
-//! The returned string is the canonical profile name (e.g. "claude",
-//! "kiro-cli") so the sidebar can look up the existing `AgentProfile`.
+//! The canonical string form (e.g. "claude", "kiro-cli") matches the existing
+//! `AgentProfile::name` so the sidebar can look up the corresponding profile.
 
 use std::path::Path;
 
 const GENERIC_INTERPRETERS: &[&str] = &["node", "python", "python3", "bun", "deno"];
+
+/// Canonical set of agents the sidebar knows how to render.
+///
+/// Keeping per-variant metadata (icon, label) on this enum forces a compile
+/// error in every consumer when a new variant is added, instead of silently
+/// falling through to a generic default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AgentKind {
+    Claude,
+    Codex,
+    OpenCode,
+    Gemini,
+    Pi,
+    KiroCli,
+    Vibe,
+    Copilot,
+}
+
+impl AgentKind {
+    /// Canonical string form. Matches `AgentProfile::name` and is the value
+    /// persisted in `AgentState::agent_kind`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::Codex => "codex",
+            AgentKind::OpenCode => "opencode",
+            AgentKind::Gemini => "gemini",
+            AgentKind::Pi => "pi",
+            AgentKind::KiroCli => "kiro-cli",
+            AgentKind::Vibe => "vibe",
+            AgentKind::Copilot => "copilot",
+        }
+    }
+
+    /// Parse the canonical string form. Round-trips with [`AgentKind::as_str`].
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "claude" => Some(AgentKind::Claude),
+            "codex" => Some(AgentKind::Codex),
+            "opencode" => Some(AgentKind::OpenCode),
+            "gemini" => Some(AgentKind::Gemini),
+            "pi" => Some(AgentKind::Pi),
+            "kiro-cli" => Some(AgentKind::KiroCli),
+            "vibe" => Some(AgentKind::Vibe),
+            "copilot" => Some(AgentKind::Copilot),
+            _ => None,
+        }
+    }
+
+    /// Default sidebar icon. Exhaustive match: adding a variant forces an
+    /// update here.
+    pub fn default_icon(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "CC",
+            AgentKind::Codex => "CX",
+            AgentKind::OpenCode => "OC",
+            AgentKind::Gemini => "G",
+            AgentKind::Pi => "π",
+            AgentKind::KiroCli => "K",
+            AgentKind::Vibe => "V",
+            AgentKind::Copilot => "CP",
+        }
+    }
+
+    /// Default sidebar label. Exhaustive match: adding a variant forces an
+    /// update here.
+    pub fn default_label(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "Claude",
+            AgentKind::Codex => "Codex",
+            AgentKind::OpenCode => "OpenCode",
+            AgentKind::Gemini => "Gemini",
+            AgentKind::Pi => "Pi",
+            AgentKind::KiroCli => "Kiro",
+            AgentKind::Vibe => "Vibe",
+            AgentKind::Copilot => "Copilot",
+        }
+    }
+}
 
 /// Classify an agent pane using its foreground command and pane title.
 ///
@@ -20,62 +99,57 @@ const GENERIC_INTERPRETERS: &[&str] = &["node", "python", "python3", "bun", "den
 /// matches. Callers cache the first non-None result to avoid re-classifying
 /// on every tick.
 pub fn classify_agent_kind(command: Option<&str>, pane_title: Option<&str>) -> Option<String> {
+    classify_agent_kind_enum(command, pane_title).map(|k| k.as_str().to_string())
+}
+
+fn classify_agent_kind_enum(command: Option<&str>, pane_title: Option<&str>) -> Option<AgentKind> {
     let raw = command.unwrap_or("").trim();
     let stem = command_stem(raw);
 
     if let Some(kind) = classify_by_command(raw, &stem) {
-        return Some(kind.to_string());
+        return Some(kind);
     }
 
     if is_generic_interpreter(&stem)
         && let Some(kind) = classify_by_title(pane_title.unwrap_or(""))
     {
-        return Some(kind.to_string());
+        return Some(kind);
     }
 
     None
 }
 
-fn classify_by_command(raw: &str, stem: &str) -> Option<&'static str> {
+fn classify_by_command(raw: &str, stem: &str) -> Option<AgentKind> {
     if stem.is_empty() {
         return None;
     }
 
     if is_version_string(stem) || is_version_string(raw) {
-        return Some("claude");
+        return Some(AgentKind::Claude);
     }
 
     if stem == "codex" || stem.starts_with("codex-") {
-        return Some("codex");
+        return Some(AgentKind::Codex);
     }
 
-    match stem {
-        "claude" => Some("claude"),
-        "opencode" => Some("opencode"),
-        "kiro-cli" => Some("kiro-cli"),
-        "copilot" => Some("copilot"),
-        "gemini" => Some("gemini"),
-        "pi" => Some("pi"),
-        "vibe" => Some("vibe"),
-        _ => None,
-    }
+    AgentKind::from_str(stem)
 }
 
-fn classify_by_title(title: &str) -> Option<&'static str> {
+fn classify_by_title(title: &str) -> Option<AgentKind> {
     if title.contains("Claude Code") {
-        return Some("claude");
+        return Some(AgentKind::Claude);
     }
     if title.contains("opencode") {
-        return Some("opencode");
+        return Some(AgentKind::OpenCode);
     }
     if title.contains("Gemini") || title.contains('\u{25C7}') {
-        return Some("gemini");
+        return Some(AgentKind::Gemini);
     }
     if title.contains('\u{03C0}') {
-        return Some("pi");
+        return Some(AgentKind::Pi);
     }
     if title.contains("Vibe") {
-        return Some("vibe");
+        return Some(AgentKind::Vibe);
     }
     None
 }
@@ -233,5 +307,34 @@ mod tests {
         assert!(!is_version_string("2.1a"));
         assert!(is_version_string("2.1"));
         assert!(is_version_string("2.1.118"));
+    }
+
+    /// Every variant has a non-empty icon and label; the classifier produces
+    /// a string that round-trips back to the same variant. Catches forgetting
+    /// to fill in metadata or string form when adding a variant.
+    #[test]
+    fn every_variant_has_metadata_and_round_trips() {
+        let all = [
+            AgentKind::Claude,
+            AgentKind::Codex,
+            AgentKind::OpenCode,
+            AgentKind::Gemini,
+            AgentKind::Pi,
+            AgentKind::KiroCli,
+            AgentKind::Vibe,
+            AgentKind::Copilot,
+        ];
+        for kind in all {
+            assert!(!kind.default_icon().is_empty(), "{:?} icon empty", kind);
+            assert!(!kind.default_label().is_empty(), "{:?} label empty", kind);
+            assert_eq!(AgentKind::from_str(kind.as_str()), Some(kind));
+        }
+    }
+
+    #[test]
+    fn from_str_rejects_unknown() {
+        assert_eq!(AgentKind::from_str(""), None);
+        assert_eq!(AgentKind::from_str("not-a-profile"), None);
+        assert_eq!(AgentKind::from_str("Claude"), None); // case-sensitive
     }
 }

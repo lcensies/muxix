@@ -3,6 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
+use crate::agent_identity::AgentKind;
 use crate::git::GitStatus;
 use crate::multiplexer::agent::resolve_profile_for_display;
 use crate::multiplexer::{AgentPane, AgentStatus};
@@ -209,11 +210,10 @@ impl<'a> RowContext<'a> {
 }
 
 fn resolve_agent_label(agent_kind: Option<&str>, agent_command: Option<&str>) -> String {
-    let name = effective_profile_name(agent_kind, agent_command);
-    if name.is_empty() || name == "default" {
-        return String::new();
+    match effective_agent_kind(agent_kind, agent_command) {
+        Some(kind) => kind.default_label().to_string(),
+        None => String::new(),
     }
-    label_from_profile_name(name)
 }
 
 fn resolve_agent_icon(
@@ -221,65 +221,28 @@ fn resolve_agent_icon(
     agent_command: Option<&str>,
     agent_icons: &std::collections::BTreeMap<String, String>,
 ) -> String {
-    let name = effective_profile_name(agent_kind, agent_command);
-    if name.is_empty() || name == "default" {
+    let Some(kind) = effective_agent_kind(agent_kind, agent_command) else {
         return String::new();
-    }
-    if let Some(icon) = agent_icons.get(name) {
+    };
+    if let Some(icon) = agent_icons.get(kind.as_str()) {
         return icon.clone();
     }
-    match name {
-        "claude" => "CC".to_string(),
-        "codex" => "CX".to_string(),
-        "opencode" => "OC".to_string(),
-        "gemini" => "G".to_string(),
-        "pi" => "π".to_string(),
-        "kiro-cli" => "K".to_string(),
-        "vibe" => "V".to_string(),
-        _ => name.chars().next().unwrap_or('?').to_string(),
-    }
+    kind.default_icon().to_string()
 }
 
 /// Prefer the cached classification; fall back to today's stem-based resolver.
 ///
-/// The cached value is validated against a known set so that a malformed,
-/// hand-edited, or future-version state file can't shadow a perfectly good
-/// `agent_command` with a meaningless icon/label.
-fn effective_profile_name<'a>(
-    agent_kind: Option<&'a str>,
-    agent_command: Option<&'a str>,
-) -> &'a str {
-    if let Some(kind) = agent_kind
-        && is_known_agent_kind(kind)
-    {
-        return kind;
+/// A malformed, hand-edited, or future-version state file with an unknown
+/// `agent_kind` falls through to the command-based resolver instead of
+/// shadowing a perfectly good `agent_command` with a meaningless icon/label.
+fn effective_agent_kind(
+    agent_kind: Option<&str>,
+    agent_command: Option<&str>,
+) -> Option<AgentKind> {
+    if let Some(kind) = agent_kind.and_then(AgentKind::from_str) {
+        return Some(kind);
     }
-    resolve_profile_for_display(agent_command).name()
-}
-
-fn is_known_agent_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "claude" | "codex" | "opencode" | "gemini" | "pi" | "kiro-cli" | "vibe" | "copilot"
-    )
-}
-
-/// Friendly label for a canonical profile name. "kiro-cli" renders as "Kiro";
-/// otherwise capitalises the first character of the profile name.
-fn label_from_profile_name(name: &str) -> String {
-    match name {
-        "kiro-cli" => "Kiro".to_string(),
-        "opencode" => "OpenCode".to_string(),
-        _ => {
-            let mut chars = name.chars();
-            match chars.next() {
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
-                }
-                None => String::new(),
-            }
-        }
-    }
+    AgentKind::from_str(resolve_profile_for_display(agent_command).name())
 }
 
 fn build_pane_title(
