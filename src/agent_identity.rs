@@ -10,6 +10,7 @@
 //! The canonical string form (e.g. "claude", "kiro-cli") matches the existing
 //! `AgentProfile::name` so the sidebar can look up the corresponding profile.
 
+use ratatui::style::Color;
 use std::path::Path;
 
 const GENERIC_INTERPRETERS: &[&str] = &["node", "python", "python3", "bun", "deno"];
@@ -90,6 +91,25 @@ impl AgentKind {
             AgentKind::Vibe => "Vibe",
             AgentKind::Copilot => "Copilot",
         }
+    }
+
+    /// Default sidebar icon foreground color. Brand-true mid-luminance hex
+    /// values that read on both shipped light and dark palettes.
+    ///
+    /// Sources: Anthropic, OpenAI, Google, GitHub, Mistral brand sheets;
+    /// Pi sampled from product UI. `None` means "fall through to
+    /// `palette.text`".
+    pub fn default_color(self) -> Option<Color> {
+        Some(match self {
+            AgentKind::Claude => Color::Rgb(0xd9, 0x77, 0x57),
+            AgentKind::Codex => Color::Rgb(0x10, 0xa3, 0x7f),
+            AgentKind::Gemini => Color::Rgb(0x07, 0x8e, 0xfa),
+            AgentKind::Copilot => Color::Rgb(0x89, 0x57, 0xe5),
+            AgentKind::Vibe => Color::Rgb(0xff, 0x82, 0x05),
+            AgentKind::Pi => Color::Rgb(0x96, 0xbb, 0xb5),
+            AgentKind::OpenCode => Color::Blue,
+            AgentKind::KiroCli => return None,
+        })
     }
 }
 

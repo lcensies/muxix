@@ -126,8 +126,56 @@ pub struct TemplatesConfig {
     pub tiles: Option<Vec<String>>,
 }
 
-/// Per-agent icon overrides. Maps agent kind (e.g. "claude", "codex") to a custom icon.
-pub type AgentIcons = BTreeMap<String, String>;
+/// Detailed per-agent icon override: `{ icon, color }`.
+///
+/// `deny_unknown_fields` catches typos like `colour:` instead of silently
+/// dropping them.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentIconDetails {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+/// Per-agent icon and color override.
+///
+/// Backwards compatible: a bare string (`claude: "C"`) parses as `Plain`.
+/// Detailed form (`claude: { icon: "C", color: "#d97757" }`) parses as
+/// `Detailed`. Bare key with no value (`claude:`) parses as `Null` and
+/// behaves like no override.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AgentIconConfig {
+    Plain(String),
+    Detailed(AgentIconDetails),
+    Null,
+}
+
+impl AgentIconConfig {
+    /// Icon override, if any.
+    pub fn icon(&self) -> Option<&str> {
+        match self {
+            Self::Plain(s) => Some(s.as_str()),
+            Self::Detailed(d) => d.icon.as_deref(),
+            Self::Null => None,
+        }
+    }
+
+    /// Color override, if any. The string is unparsed; callers parse and
+    /// validate at config-load time.
+    pub fn color(&self) -> Option<&str> {
+        match self {
+            Self::Plain(_) | Self::Null => None,
+            Self::Detailed(d) => d.color.as_deref(),
+        }
+    }
+}
+
+/// Per-agent icon overrides. Maps agent kind (e.g. "claude", "codex") to
+/// either a bare icon string or `{ icon, color }`.
+pub type AgentIcons = BTreeMap<String, AgentIconConfig>;
 
 /// Configuration for the sidebar.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -2127,11 +2175,16 @@ impl Config {
                 .templates
                 .clone()
                 .or(self.sidebar.templates.clone()),
-            agent_icons: project
-                .sidebar
-                .agent_icons
-                .clone()
-                .or(self.sidebar.agent_icons.clone()),
+            agent_icons: match (
+                self.sidebar.agent_icons.clone(),
+                project.sidebar.agent_icons.clone(),
+            ) {
+                (Some(mut global), Some(proj)) => {
+                    global.extend(proj);
+                    Some(global)
+                }
+                (g, p) => p.or(g),
+            },
         };
 
         // Sandbox config: per-field override with nested struct merging

@@ -9,7 +9,7 @@ use crate::multiplexer::agent::resolve_profile_for_display;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::ui::theme::ThemePalette;
 
-use super::super::app::SidebarApp;
+use super::super::app::{ResolvedAgentIcons, SidebarApp};
 use super::TokenId;
 
 /// Pre-computed values for every piece of row metadata.
@@ -39,6 +39,9 @@ pub struct RowContext<'a> {
     pub palette: &'a ThemePalette,
     /// Pre-resolved agent icon string (empty when no profile matches).
     pub agent_icon: String,
+    /// Pre-resolved foreground color for `{agent_icon}`. `None` means fall
+    /// through to `palette.text`.
+    pub agent_icon_color: Option<Color>,
     /// Pre-resolved agent label string (empty when no profile matches).
     pub agent_label: String,
     /// 0-based sidebar row index. Rendered as 1-based via the `idx` and
@@ -88,13 +91,11 @@ impl<'a> RowContext<'a> {
 
         let pane_title = build_pane_title(agent, &primary, &secondary, app.window_prefix());
         let git_status = app.git_statuses.get(&agent.path);
-        let agent_icon = resolve_agent_icon(
-            agent.agent_kind.as_deref(),
-            agent.agent_command.as_deref(),
-            &app.agent_icons,
-        );
-        let agent_label =
-            resolve_agent_label(agent.agent_kind.as_deref(), agent.agent_command.as_deref());
+        let kind =
+            effective_agent_kind(agent.agent_kind.as_deref(), agent.agent_command.as_deref());
+        let agent_icon = resolve_agent_icon(kind, &app.agent_icons);
+        let agent_icon_color = resolve_agent_icon_color(kind, &app.agent_icons);
+        let agent_label = resolve_agent_label(kind);
 
         Self {
             agent,
@@ -111,6 +112,7 @@ impl<'a> RowContext<'a> {
             is_selected,
             palette: &app.palette,
             agent_icon,
+            agent_icon_color,
             agent_label,
             idx,
         }
@@ -275,6 +277,10 @@ impl<'a> RowContext<'a> {
             TokenId::StatusLabel => Style::default().fg(self.status_color),
             TokenId::Idx => Style::default().fg(self.palette.dimmed),
             TokenId::JumpKey => Style::default().fg(self.palette.dimmed),
+            TokenId::AgentIcon => {
+                let fg = self.agent_icon_color.unwrap_or(self.palette.text);
+                Style::default().fg(fg)
+            }
             _ => Style::default().fg(self.palette.text),
         }
     }
@@ -294,25 +300,30 @@ impl<'a> RowContext<'a> {
     }
 }
 
-fn resolve_agent_label(agent_kind: Option<&str>, agent_command: Option<&str>) -> String {
-    match effective_agent_kind(agent_kind, agent_command) {
-        Some(kind) => kind.default_label().to_string(),
+fn resolve_agent_label(kind: Option<AgentKind>) -> String {
+    match kind {
+        Some(k) => k.default_label().to_string(),
         None => String::new(),
     }
 }
 
-fn resolve_agent_icon(
-    agent_kind: Option<&str>,
-    agent_command: Option<&str>,
-    agent_icons: &std::collections::BTreeMap<String, String>,
-) -> String {
-    let Some(kind) = effective_agent_kind(agent_kind, agent_command) else {
+fn resolve_agent_icon(kind: Option<AgentKind>, icons: &ResolvedAgentIcons) -> String {
+    let Some(kind) = kind else {
         return String::new();
     };
-    if let Some(icon) = agent_icons.get(kind.as_str()) {
+    if let Some(icon) = icons.icons.get(kind.as_str()) {
         return icon.clone();
     }
     kind.default_icon().to_string()
+}
+
+fn resolve_agent_icon_color(kind: Option<AgentKind>, icons: &ResolvedAgentIcons) -> Option<Color> {
+    let kind = kind?;
+    match icons.colors.get(kind.as_str()) {
+        Some(Some(c)) => Some(*c),
+        Some(None) => None, // explicit opt-out via `color: ''`
+        None => kind.default_color(),
+    }
 }
 
 /// Prefer the cached classification; fall back to today's stem-based resolver.
@@ -368,55 +379,61 @@ fn format_compact_elapsed(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
+
+    fn kind(agent_kind: Option<&str>, agent_command: Option<&str>) -> Option<AgentKind> {
+        effective_agent_kind(agent_kind, agent_command)
+    }
 
     #[test]
     fn cached_kind_resolves_label_without_command() {
         // Command is a version string the stem-based resolver can't classify;
         // the cached kind must drive label/icon.
         assert_eq!(
-            resolve_agent_label(Some("claude"), Some("2.1.118")),
+            resolve_agent_label(kind(Some("claude"), Some("2.1.118"))),
             "Claude"
         );
     }
 
     #[test]
     fn cached_kind_renders_friendly_kiro_label() {
-        assert_eq!(resolve_agent_label(Some("kiro-cli"), None), "Kiro");
+        assert_eq!(resolve_agent_label(kind(Some("kiro-cli"), None)), "Kiro");
     }
 
     #[test]
     fn cached_kind_renders_friendly_opencode_label() {
-        assert_eq!(resolve_agent_label(Some("opencode"), None), "OpenCode");
+        assert_eq!(
+            resolve_agent_label(kind(Some("opencode"), None)),
+            "OpenCode"
+        );
     }
 
     #[test]
     fn unknown_cached_kind_falls_back_to_command() {
         // Defensive: malformed cache must not shadow a valid agent_command.
-        let icons = BTreeMap::new();
+        let icons = ResolvedAgentIcons::default();
         assert_eq!(
-            resolve_agent_label(Some("not-a-profile"), Some("claude")),
+            resolve_agent_label(kind(Some("not-a-profile"), Some("claude"))),
             "Claude"
         );
         assert_eq!(
-            resolve_agent_icon(Some("not-a-profile"), Some("claude"), &icons),
+            resolve_agent_icon(kind(Some("not-a-profile"), Some("claude")), &icons),
             "CC"
         );
     }
 
     #[test]
     fn no_cache_falls_back_to_today_behavior() {
-        let icons = BTreeMap::new();
-        assert_eq!(resolve_agent_label(None, Some("gemini")), "Gemini");
-        assert_eq!(resolve_agent_icon(None, Some("gemini"), &icons), "G");
+        let icons = ResolvedAgentIcons::default();
+        assert_eq!(resolve_agent_label(kind(None, Some("gemini"))), "Gemini");
+        assert_eq!(resolve_agent_icon(kind(None, Some("gemini")), &icons), "G");
     }
 
     #[test]
     fn custom_icon_override_still_honored_with_cached_kind() {
-        let mut icons = BTreeMap::new();
-        icons.insert("claude".to_string(), "X".to_string());
+        let mut icons = ResolvedAgentIcons::default();
+        icons.icons.insert("claude".to_string(), "X".to_string());
         assert_eq!(
-            resolve_agent_icon(Some("claude"), Some("2.1.118"), &icons),
+            resolve_agent_icon(kind(Some("claude"), Some("2.1.118")), &icons),
             "X"
         );
     }
@@ -469,6 +486,7 @@ mod tests {
             is_selected: false,
             palette: test_palette(),
             agent_icon: String::new(),
+            agent_icon_color: None,
             agent_label: String::new(),
             idx,
         }
@@ -640,5 +658,42 @@ mod tests {
             ctx.intrinsic_style(TokenId::StatusLabel).fg,
             Some(palette.dimmed)
         );
+    }
+
+    #[test]
+    fn default_color_for_claude_is_brand_orange() {
+        let icons = ResolvedAgentIcons::default();
+        assert_eq!(
+            resolve_agent_icon_color(kind(Some("claude"), None), &icons),
+            Some(Color::Rgb(0xd9, 0x77, 0x57))
+        );
+    }
+
+    #[test]
+    fn user_color_override_wins_over_default() {
+        let mut icons = ResolvedAgentIcons::default();
+        icons
+            .colors
+            .insert("claude".to_string(), Some(Color::Rgb(0, 255, 0)));
+        assert_eq!(
+            resolve_agent_icon_color(kind(Some("claude"), None), &icons),
+            Some(Color::Rgb(0, 255, 0))
+        );
+    }
+
+    #[test]
+    fn explicit_empty_color_disables_default() {
+        let mut icons = ResolvedAgentIcons::default();
+        icons.colors.insert("claude".to_string(), None);
+        assert_eq!(
+            resolve_agent_icon_color(kind(Some("claude"), None), &icons),
+            None
+        );
+    }
+
+    #[test]
+    fn unknown_agent_has_no_color() {
+        let icons = ResolvedAgentIcons::default();
+        assert_eq!(resolve_agent_icon_color(None, &icons), None);
     }
 }

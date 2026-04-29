@@ -12,6 +12,10 @@ use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_
 use crate::cmd::Cmd;
 use crate::config::{AgentIcons, Config, SidebarWidth, StatusIcons};
 use crate::git::GitStatus;
+use ratatui::style::Color;
+use std::collections::BTreeMap;
+use std::str::FromStr;
+use tracing::warn;
 
 use crate::multiplexer::{AgentPane, Multiplexer};
 
@@ -43,6 +47,55 @@ impl SidebarLayoutMode {
 enum SelectionMode {
     FollowHost,
     Manual,
+}
+
+/// Runtime form of `sidebar.agent_icons`: icon strings and parsed colors.
+///
+/// Built once when config loads or reloads. Color strings are parsed eagerly
+/// so the render path does no string parsing per row per frame, and invalid
+/// colors warn once at load time instead of being silently ignored every
+/// render.
+///
+/// The `colors` map distinguishes:
+///   - `Some(Some(c))`: user override color.
+///   - `Some(None)`: explicit opt-out (`color: ''`); skip the
+///     `AgentKind::default_color` fallback.
+///   - kind missing from map: no override, fall through to default.
+#[derive(Debug, Default, Clone)]
+pub struct ResolvedAgentIcons {
+    pub icons: BTreeMap<String, String>,
+    pub colors: BTreeMap<String, Option<Color>>,
+}
+
+impl ResolvedAgentIcons {
+    pub fn from_config(map: Option<&AgentIcons>) -> Self {
+        let mut icons = BTreeMap::new();
+        let mut colors = BTreeMap::new();
+        let Some(map) = map else {
+            return Self { icons, colors };
+        };
+        for (kind, spec) in map {
+            if let Some(i) = spec.icon() {
+                icons.insert(kind.clone(), i.to_string());
+            }
+            if let Some(raw) = spec.color() {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    colors.insert(kind.clone(), None);
+                } else {
+                    match Color::from_str(trimmed) {
+                        Ok(c) => {
+                            colors.insert(kind.clone(), Some(c));
+                        }
+                        Err(_) => warn!(
+                            "sidebar.agent_icons.{kind}.color = {raw:?}: invalid color, ignoring"
+                        ),
+                    }
+                }
+            }
+        }
+        Self { icons, colors }
+    }
 }
 
 const DEFAULT_COMPACT_TEMPLATE: &str = "{status_icon} {primary} {pane_suffix} {fill} {elapsed}";
@@ -92,8 +145,8 @@ pub struct SidebarApp {
     pub sleeping_pane_ids: std::collections::HashSet<String>,
     /// Parsed sidebar templates.
     pub templates: ParsedTemplates,
-    /// Per-agent icon overrides.
-    pub agent_icons: AgentIcons,
+    /// Per-agent icon and color overrides, parsed once at config load.
+    pub agent_icons: ResolvedAgentIcons,
     /// Cached tile heights for hit testing (updated each render).
     pub tile_heights: Vec<usize>,
     /// Last `config_version` from the daemon snapshot. Increments trigger a
@@ -130,7 +183,7 @@ impl SidebarApp {
 
         let templates = parse_templates(&config);
         let (current_compact_str, current_tile_strs) = resolved_template_strings(&config);
-        let agent_icons = config.sidebar.agent_icons.clone().unwrap_or_default();
+        let agent_icons = ResolvedAgentIcons::from_config(config.sidebar.agent_icons.as_ref());
         let current_width = config.sidebar.width.clone();
 
         Ok(Self {
@@ -282,7 +335,7 @@ impl SidebarApp {
             );
         }
 
-        self.agent_icons = cfg.sidebar.agent_icons.clone().unwrap_or_default();
+        self.agent_icons = ResolvedAgentIcons::from_config(cfg.sidebar.agent_icons.as_ref());
         self.current_width = cfg.sidebar.width.clone();
     }
 

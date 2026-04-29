@@ -157,16 +157,38 @@ running in each pane. Identity is detected from the stored agent command via
 the same profile system used elsewhere in workmux.
 
 Default icons: `claude` → `CC`, `codex` → `CX`, `opencode` → `OC`, `gemini` →
-`G`, `pi` → `π`, `kiro-cli` → `K`, `vibe` → `V`. Unknown agents fall back to
-the first letter of their command name.
+`G`, `pi` → `π`, `kiro-cli` → `K`, `vibe` → `V`, `copilot` → `CP`. Unknown
+agents render an empty icon.
 
-Override icons per agent under `sidebar.agent_icons`:
+Default colors are brand accents: Claude orange, Codex teal, Gemini blue,
+Copilot purple, Vibe orange, Pi sage, OpenCode blue. Stale rows still dim
+and selected rows still take the highlight background; the icon color sits
+on top of those.
+
+Override icons or colors per agent under `sidebar.agent_icons`. Each value
+is either a bare string (icon only, default color stays) or an object with
+`icon` and `color`. Color values use the same format as `theme.custom`:
+hex (`'#ff8c00'`), named ANSI (`red`, `yellow`, `lightgreen`), or indexed
+(`'214'`).
 
 ```yaml
 sidebar:
   agent_icons:
-    claude: "C"
-    codex: "🤖"
+    # Bare string: icon only, default brand color stays
+    vibe: V
+
+    # Override color only
+    gemini:
+      color: cyan
+
+    # Override both
+    claude:
+      icon: CC
+      color: '#ff8c00'
+
+    # Disable the default color (use palette text color)
+    codex:
+      color: ''
 ```
 
 ### Status icons

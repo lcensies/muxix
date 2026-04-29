@@ -406,6 +406,7 @@ mod tests {
             is_selected: false,
             palette: test_palette(),
             agent_icon: String::new(),
+            agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
         }
@@ -484,6 +485,7 @@ mod tests {
             is_selected: false,
             palette: test_palette(),
             agent_icon: String::new(),
+            agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
         };
@@ -522,6 +524,7 @@ mod tests {
             is_selected: false,
             palette: test_palette(),
             agent_icon: String::new(),
+            agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
         }
@@ -658,6 +661,7 @@ mod tests {
             is_selected: false,
             palette: test_palette(),
             agent_icon: String::new(),
+            agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
         };
