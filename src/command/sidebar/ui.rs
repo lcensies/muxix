@@ -611,10 +611,6 @@ pub(crate) fn status_icon_and_style(
             let base_style = Style::default().fg(app.palette.info);
             let spans = match &app.status_icons.working {
                 Some(custom) => tmux_style::parse_tmux_styles(custom, base_style),
-                None if use_nf => vec![(
-                    NF_SPINNER[app.spinner_frame as usize % NF_SPINNER.len()].to_string(),
-                    base_style,
-                )],
                 None => {
                     let frames: &[&str] =
                         &["⠋⠙", "⠙⠹", "⠹⠸", "⠸⠼", "⠼⠴", "⠴⠦", "⠦⠧", "⠧⠇", "⠇⠏", "⠏⠋"];
@@ -650,18 +646,6 @@ pub(crate) fn status_icon_and_style(
         }
     }
 }
-
-// Nerdfont spinner frames: pie-chart fill animation (nf-md-circle_slice_1..8).
-const NF_SPINNER: &[&str] = &[
-    "\u{f0ce6}",
-    "\u{f0ce7}",
-    "\u{f0ce8}",
-    "\u{f0ce9}",
-    "\u{f0cea}",
-    "\u{f0ceb}",
-    "\u{f0cec}",
-    "\u{f0ced}",
-];
 
 fn render_empty_state(f: &mut Frame, app: &SidebarApp, area: Rect) {
     let text = Line::from(Span::styled(
