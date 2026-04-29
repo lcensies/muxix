@@ -223,7 +223,9 @@ impl<'a> RowContext<'a> {
                 .add_modifier(Modifier::DIM),
             TokenId::PaneTitle => Style::default().fg(self.palette.dimmed),
             TokenId::PaneSuffix => Style::default().fg(self.palette.dimmed),
-            TokenId::Elapsed => Style::default().fg(self.palette.text),
+            TokenId::Elapsed => Style::default()
+                .fg(self.palette.text)
+                .add_modifier(Modifier::DIM),
             TokenId::AgentLabel => Style::default().fg(self.palette.text),
             _ => Style::default().fg(self.palette.text),
         }
