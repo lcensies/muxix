@@ -1,8 +1,8 @@
 ---
-description: Customize the sidebar layout with a token-based template DSL
+description: Customize the sidebar with templates, styling, and per-agent icons
 ---
 
-# Templates
+# Customization
 
 The sidebar renders each agent row from a small token-based template DSL. You
 can override the built-in templates per layout mode:

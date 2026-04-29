@@ -45,7 +45,8 @@ Each agent is displayed as a tile showing:
 - Project name and git diff stats (committed + uncommitted lines)
 - Agent task description
 
-The exact layout is fully customizable via [templates](./templates).
+The exact layout, styling, and per-agent icons are fully customizable; see
+[Customization](./customization).
 
 ## Configuration
 
