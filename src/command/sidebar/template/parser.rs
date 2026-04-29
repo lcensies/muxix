@@ -121,6 +121,7 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
     let mut chars = input.char_indices().peekable();
     let mut literal = String::new();
     let mut fill_count = 0;
+    let mut saw_unclosed_style = false;
 
     while let Some((i, c)) = chars.next() {
         if c == '#'
@@ -152,6 +153,7 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                 // literally (matches `tmux_style::parse_tmux_styles`).
                 literal.push_str("#[");
                 literal.push_str(&directive);
+                saw_unclosed_style = true;
             }
             continue;
         }
@@ -264,6 +266,13 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                 fill_count
             ),
         });
+    }
+
+    if saw_unclosed_style {
+        tracing::debug!(
+            template = input,
+            "sidebar template contained an unclosed `#[` style directive; rendering it as literal text"
+        );
     }
 
     Ok(tokens)

@@ -733,10 +733,7 @@ mod tests {
             ..Default::default()
         };
         let ctx = make_git_context(&agent, &status);
-        let tokens = vec![
-            Token::Fill,
-            Token::Field(TokenId::GitCommitted),
-        ];
+        let tokens = vec![Token::Fill, Token::Field(TokenId::GitCommitted)];
         let text = render_text(&ctx, &tokens, 40);
         assert!(text.contains("+10 -5"), "missing committed: {:?}", text);
     }
