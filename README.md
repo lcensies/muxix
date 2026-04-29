@@ -78,7 +78,7 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
   one command (`merge`)
 - [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
   sending commands
-- [Sidebar](https://workmux.raine.dev/guide/dashboard/sidebar) for a persistent,
+- [Sidebar](https://workmux.raine.dev/guide/sidebar/) for a persistent,
   at-a-glance view of all agents across tmux windows
 - [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
   `/worktree` skill
