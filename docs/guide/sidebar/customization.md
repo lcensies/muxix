@@ -196,7 +196,7 @@ clear an inherited override entirely for one agent, set its value to
 
 The `{status_icon}` token renders the working spinner, waiting indicator,
 done check, and sleeping indicator. Defaults depend on whether you have
-[nerdfont](/guide/nerdfont) enabled:
+[nerdfont](/guide/configuration) enabled:
 
 | State    | Default (no nerdfont) | Default (nerdfont) |
 | -------- | --------------------- | ------------------ |
