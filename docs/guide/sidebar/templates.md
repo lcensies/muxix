@@ -108,9 +108,21 @@ sidebar:
 ```
 
 Supported attributes are `fg=`, `bg=`, `bold`, `dim`, `italics`,
-`underscore`, `reverse`, `strikethrough`, plus `default`/`none` to clear the
-overlay. Colors may be hex (`#a6e3a1`), named (`red`, `green`, `cyan`,
-etc.), or indexed (`colour196`).
+`underscore`, `reverse`, `strikethrough`, their negations (`nobold`,
+`nodim`, `noitalics`, `nounderscore`, `noreverse`, `nostrikethrough`)
+to remove a modifier inherited from the token's intrinsic style, plus
+`default`/`none` to clear the overlay. Colors may be hex (`#a6e3a1`),
+named (`red`, `green`, `cyan`, etc.), or indexed (`colour196`).
+
+For example, `{elapsed}` renders dim by default for visual hierarchy.
+To override:
+
+```yaml
+sidebar:
+  templates:
+    tiles:
+      - "{primary} {pane_suffix} {fill} #[fg=cyan,nodim]{elapsed}"
+```
 
 Notes:
 

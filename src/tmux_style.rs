@@ -67,6 +67,18 @@ pub fn apply_tmux_directives(mut current: Style, style_str: &str, base: Style) -
             current = current.add_modifier(Modifier::REVERSED);
         } else if part.eq_ignore_ascii_case("strikethrough") {
             current = current.add_modifier(Modifier::CROSSED_OUT);
+        } else if part.eq_ignore_ascii_case("nobold") {
+            current = current.remove_modifier(Modifier::BOLD);
+        } else if part.eq_ignore_ascii_case("nodim") {
+            current = current.remove_modifier(Modifier::DIM);
+        } else if part.eq_ignore_ascii_case("noitalics") {
+            current = current.remove_modifier(Modifier::ITALIC);
+        } else if part.eq_ignore_ascii_case("nounderscore") {
+            current = current.remove_modifier(Modifier::UNDERLINED);
+        } else if part.eq_ignore_ascii_case("noreverse") {
+            current = current.remove_modifier(Modifier::REVERSED);
+        } else if part.eq_ignore_ascii_case("nostrikethrough") {
+            current = current.remove_modifier(Modifier::CROSSED_OUT);
         }
         // Other unknown directives are silently ignored
     }
@@ -212,6 +224,26 @@ mod tests {
         let spans = parse_tmux_styles("#[overline,fg=red]X", base);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].1.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn test_nodim_negates_intrinsic_dim() {
+        // The user style is built on top of `Style::default()`; a `nodim`
+        // directive must record DIM in the sub_modifier so that
+        // `base.patch(user)` strips DIM from the intrinsic style.
+        let base = Style::default();
+        let spans = parse_tmux_styles("#[fg=cyan,nodim]X", base);
+        assert_eq!(spans.len(), 1);
+        let user_style = spans[0].1;
+        assert_eq!(user_style.fg, Some(Color::Cyan));
+        assert!(user_style.sub_modifier.contains(Modifier::DIM));
+
+        // Simulate the render path: an intrinsic style with DIM patched by
+        // the user overlay should end up without DIM.
+        let intrinsic = Style::default().add_modifier(Modifier::DIM);
+        let patched = intrinsic.patch(user_style);
+        assert!(!patched.add_modifier.contains(Modifier::DIM));
+        assert_eq!(patched.fg, Some(Color::Cyan));
     }
 
     #[test]
