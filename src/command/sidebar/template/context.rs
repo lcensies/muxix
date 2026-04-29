@@ -229,7 +229,7 @@ fn resolve_agent_icon(
         return icon.clone();
     }
     match name {
-        "claude" => "✳".to_string(),
+        "claude" => "CC".to_string(),
         "codex" => "CX".to_string(),
         "opencode" => "OC".to_string(),
         "gemini" => "G".to_string(),
@@ -352,7 +352,7 @@ mod tests {
         );
         assert_eq!(
             resolve_agent_icon(Some("not-a-profile"), Some("claude"), &icons),
-            "✳"
+            "CC"
         );
     }
 
