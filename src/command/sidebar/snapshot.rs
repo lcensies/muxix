@@ -31,6 +31,10 @@ pub struct SidebarSnapshot {
     #[serde(default)]
     pub sleeping_pane_ids: HashSet<String>,
     pub agents: Vec<AgentPane>,
+    /// Increments whenever the daemon reloads the merged config.
+    /// Clients use this to trigger their own per-project config reload.
+    #[serde(default)]
+    pub config_version: u64,
 }
 
 /// Build a snapshot from reconciled agents and tmux state.
@@ -109,5 +113,6 @@ pub fn build_snapshot(
         interrupted_pane_ids: HashSet::new(),
         sleeping_pane_ids: live_sleeping,
         agents,
+        config_version: 0,
     }
 }

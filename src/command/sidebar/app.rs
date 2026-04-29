@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{AgentIcons, Config, StatusIcons};
+use crate::config::{AgentIcons, Config, SidebarWidth, StatusIcons};
 use crate::git::GitStatus;
 
 use crate::multiplexer::{AgentPane, Multiplexer};
@@ -96,6 +96,18 @@ pub struct SidebarApp {
     pub agent_icons: AgentIcons,
     /// Cached tile heights for hit testing (updated each render).
     pub tile_heights: Vec<usize>,
+    /// Last `config_version` from the daemon snapshot. Increments trigger a
+    /// client-side config reload.
+    pub last_config_version: u64,
+    /// String form of the compact template currently parsed into `templates`.
+    /// Tracked so we don't re-parse on every snapshot, and so we don't retry
+    /// an unchanged broken value after logging once.
+    pub current_compact_str: String,
+    /// String forms of tile templates currently parsed into `templates`.
+    pub current_tile_strs: Vec<String>,
+    /// Live sidebar width as last loaded from config. Stored for parity with
+    /// other live keys; tmux pane resize is not driven from here.
+    pub current_width: Option<SidebarWidth>,
 }
 
 impl SidebarApp {
@@ -117,7 +129,9 @@ impl SidebarApp {
         let (host_session, host_window_id) = detect_host_window();
 
         let templates = parse_templates(&config);
+        let (current_compact_str, current_tile_strs) = resolved_template_strings(&config);
         let agent_icons = config.sidebar.agent_icons.clone().unwrap_or_default();
+        let current_width = config.sidebar.width.clone();
 
         Ok(Self {
             mux,
@@ -143,11 +157,20 @@ impl SidebarApp {
             templates,
             agent_icons,
             tile_heights: Vec::new(),
+            last_config_version: 0,
+            current_compact_str,
+            current_tile_strs,
+            current_width,
         })
     }
 
     /// Apply a snapshot received from the daemon.
     pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
+        if snapshot.config_version != self.last_config_version {
+            self.last_config_version = snapshot.config_version;
+            self.reload_config_from_disk(&snapshot);
+        }
+
         self.layout_mode = snapshot.layout_mode;
         self.git_statuses = snapshot.git_statuses;
         self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
@@ -223,6 +246,43 @@ impl SidebarApp {
         if let Some(idx) = self.host_agent_idx {
             self.list_state.select(Some(idx));
         }
+    }
+
+    /// Re-read the merged config from disk and apply live-reloadable fields:
+    /// templates, agent icons, and width. Templates are anchored at the host
+    /// agent's worktree path so per-project `.workmux.yaml` overrides are
+    /// honored. On any parse error, keep the previously valid templates.
+    fn reload_config_from_disk(&mut self, snapshot: &SidebarSnapshot) {
+        let host_path = self
+            .host_agent_idx
+            .and_then(|i| snapshot.agents.get(i))
+            .map(|a| a.path.clone());
+
+        let cfg_result = match host_path.as_ref() {
+            Some(p) => Config::load_with_location_from(p, None).map(|(c, _)| c),
+            None => Config::load(None),
+        };
+        let cfg = match cfg_result {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("client config reload failed: {}", e);
+                return;
+            }
+        };
+
+        let (new_compact, new_tiles) = resolved_template_strings(&cfg);
+        if new_compact != self.current_compact_str || new_tiles != self.current_tile_strs {
+            try_reparse_templates(
+                &mut self.templates,
+                &mut self.current_compact_str,
+                &mut self.current_tile_strs,
+                &new_compact,
+                &new_tiles,
+            );
+        }
+
+        self.agent_icons = cfg.sidebar.agent_icons.clone().unwrap_or_default();
+        self.current_width = cfg.sidebar.width.clone();
     }
 
     pub fn host_window_id(&self) -> Option<&str> {
@@ -458,15 +518,32 @@ impl SidebarApp {
     }
 }
 
-fn parse_templates(config: &Config) -> ParsedTemplates {
-    let compact_str = config
+/// Resolve template strings from config, falling back to defaults.
+fn resolved_template_strings(config: &Config) -> (String, Vec<String>) {
+    let compact = config
         .sidebar
         .templates
         .as_ref()
-        .and_then(|t| t.compact.as_deref())
-        .unwrap_or(DEFAULT_COMPACT_TEMPLATE);
+        .and_then(|t| t.compact.clone())
+        .unwrap_or_else(|| DEFAULT_COMPACT_TEMPLATE.to_string());
+    let tiles = config
+        .sidebar
+        .templates
+        .as_ref()
+        .and_then(|t| t.tiles.clone())
+        .unwrap_or_else(|| {
+            DEFAULT_TILE_TEMPLATES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
+    (compact, tiles)
+}
 
-    let compact = match parse_line(compact_str) {
+fn parse_templates(config: &Config) -> ParsedTemplates {
+    let (compact_str, tile_strs) = resolved_template_strings(config);
+
+    let compact = match parse_line(&compact_str) {
         Ok(tokens) => tokens,
         Err(e) => {
             tracing::warn!("failed to parse compact template: {}, using default", e);
@@ -474,16 +551,8 @@ fn parse_templates(config: &Config) -> ParsedTemplates {
         }
     };
 
-    let tile_strs: Vec<&str> = config
-        .sidebar
-        .templates
-        .as_ref()
-        .and_then(|t| t.tiles.as_ref())
-        .map(|v| v.iter().map(|s| s.as_str()).collect())
-        .unwrap_or_else(|| DEFAULT_TILE_TEMPLATES.to_vec());
-
     let mut tiles = Vec::new();
-    for line in tile_strs {
+    for line in &tile_strs {
         match parse_line(line) {
             Ok(tokens) => tiles.push(tokens),
             Err(e) => {
@@ -501,6 +570,123 @@ fn parse_templates(config: &Config) -> ParsedTemplates {
     }
 
     ParsedTemplates { compact, tiles }
+}
+
+/// Parse new template strings, mutating `templates` and the cached strings.
+/// On any parse error, keep `templates` as-is and log a warning. The cached
+/// strings are still updated so we don't retry the same broken value on every
+/// snapshot.
+fn try_reparse_templates(
+    templates: &mut ParsedTemplates,
+    current_compact_str: &mut String,
+    current_tile_strs: &mut Vec<String>,
+    new_compact: &str,
+    new_tiles: &[String],
+) {
+    let compact_res = parse_line(new_compact);
+    let tile_results: Vec<_> = new_tiles.iter().map(|s| parse_line(s)).collect();
+
+    let mut had_error = false;
+    if let Err(e) = &compact_res {
+        tracing::warn!("compact template parse error, keeping previous: {}", e);
+        had_error = true;
+    }
+    for (i, r) in tile_results.iter().enumerate() {
+        if let Err(e) = r {
+            tracing::warn!(
+                line = i,
+                "tile template parse error, keeping previous: {}",
+                e
+            );
+            had_error = true;
+        }
+    }
+
+    if !had_error {
+        templates.compact = compact_res.expect("checked above");
+        templates.tiles = tile_results
+            .into_iter()
+            .map(|r| r.expect("checked above"))
+            .collect();
+    }
+    *current_compact_str = new_compact.to_string();
+    *current_tile_strs = new_tiles.to_vec();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed_for(s: &str) -> ParsedTemplates {
+        ParsedTemplates {
+            compact: parse_line(s).unwrap(),
+            tiles: vec![parse_line(s).unwrap()],
+        }
+    }
+
+    #[test]
+    fn reparse_swaps_templates_on_change() {
+        let mut templates = parsed_for("{primary}");
+        let mut compact = "{primary}".to_string();
+        let mut tiles = vec!["{primary}".to_string()];
+
+        let new_compact = "{secondary} {fill}";
+        let new_tiles = vec!["{primary} {fill} {elapsed}".to_string()];
+        try_reparse_templates(
+            &mut templates,
+            &mut compact,
+            &mut tiles,
+            new_compact,
+            &new_tiles,
+        );
+
+        assert_eq!(compact, new_compact);
+        assert_eq!(tiles, new_tiles);
+        // 3 tokens: secondary field, literal " ", fill
+        assert_eq!(templates.compact.len(), 3);
+    }
+
+    #[test]
+    fn reparse_keeps_previous_on_compact_parse_error() {
+        let original_str = "{primary}".to_string();
+        let mut templates = parsed_for(&original_str);
+        let original_tokens = templates.compact.clone();
+        let mut compact = original_str.clone();
+        let mut tiles = vec![original_str.clone()];
+
+        let bad_compact = "{unclosed";
+        try_reparse_templates(
+            &mut templates,
+            &mut compact,
+            &mut tiles,
+            bad_compact,
+            &[original_str.clone()],
+        );
+
+        // Templates unchanged
+        assert_eq!(templates.compact, original_tokens);
+        // But cached strings updated so we don't retry the broken value
+        assert_eq!(compact, bad_compact);
+    }
+
+    #[test]
+    fn reparse_keeps_previous_on_tile_parse_error() {
+        let mut templates = parsed_for("{primary}");
+        let original_tiles = templates.tiles.clone();
+        let mut compact = "{primary}".to_string();
+        let mut tiles = vec!["{primary}".to_string()];
+
+        try_reparse_templates(
+            &mut templates,
+            &mut compact,
+            &mut tiles,
+            "{primary}",
+            &["{unknown_token}".to_string()],
+        );
+
+        assert_eq!(templates.tiles, original_tiles);
+        assert_eq!(tiles, vec!["{unknown_token}".to_string()]);
+    }
 }
 
 /// Detect this sidebar's host window using TMUX_PANE (stable, one-time).

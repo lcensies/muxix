@@ -148,7 +148,7 @@ pub struct SidebarConfig {
 }
 
 /// Sidebar width: either absolute columns or a percentage of terminal width.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SidebarWidth {
     Absolute(u16),
     Percent(u16),
