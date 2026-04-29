@@ -49,25 +49,36 @@ pub fn render_line(ctx: &RowContext, tokens: &[Token], width: usize) -> Vec<Span
         let mut dropped_right_width = right_width;
         let mut right_kept: Vec<&TokenInfo> = right_info.iter().collect();
 
-        // Drop field tokens (not literals) from the right in reverse order
-        while let Some(last) = right_kept.last() {
-            if last.is_field {
-                dropped_right_width -= last.natural_width;
-                right_kept.pop();
-                // Also drop any trailing literals that follow the dropped field
-                while let Some(last) = right_kept.last() {
-                    if !last.is_field {
-                        dropped_right_width -= last.natural_width;
-                        right_kept.pop();
-                    } else {
-                        break;
-                    }
-                }
-                available = width.saturating_sub(dropped_right_width + left_fixed_width);
-                if available > 0 || dropped_right_width + left_fixed_width <= width {
+        // Drop field tokens (not literals) from the right in reverse order.
+        // First pop any trailing non-field tokens (zero-width style tokens or
+        // literals) so a trailing `#[default]` or whitespace does not block
+        // the loop from reaching the field that needs to be dropped.
+        loop {
+            while let Some(last) = right_kept.last() {
+                if !last.is_field {
+                    dropped_right_width -= last.natural_width;
+                    right_kept.pop();
+                } else {
                     break;
                 }
-            } else {
+            }
+            let Some(last) = right_kept.last() else { break };
+            if !last.is_field {
+                break;
+            }
+            dropped_right_width -= last.natural_width;
+            right_kept.pop();
+            // Drop any trailing non-field tokens that follow the dropped field
+            while let Some(last) = right_kept.last() {
+                if !last.is_field {
+                    dropped_right_width -= last.natural_width;
+                    right_kept.pop();
+                } else {
+                    break;
+                }
+            }
+            available = width.saturating_sub(dropped_right_width + left_fixed_width);
+            if available > 0 || dropped_right_width + left_fixed_width <= width {
                 break;
             }
         }
@@ -732,6 +743,26 @@ mod tests {
         let ctx = make_git_context(&agent, &status);
         let tokens = vec![Token::Field(TokenId::GitCommitted)];
         assert!(!is_empty_line(&tokens, &ctx));
+    }
+
+    #[test]
+    fn trailing_style_after_right_field_does_not_change_drop_behavior() {
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        let plain = vec![
+            Token::Field(TokenId::Primary),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+        let styled = vec![
+            Token::Field(TokenId::Primary),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+            Token::Style("default".to_string()),
+        ];
+        let plain_text = render_text(&ctx, &plain, 3);
+        let styled_text = render_text(&ctx, &styled, 3);
+        assert_eq!(plain_text, styled_text);
     }
 
     #[test]
