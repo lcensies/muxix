@@ -156,18 +156,37 @@ pub(crate) fn format_sidebar_git_stats(
     let full_width = rebase_width + committed_width + uncommitted_width;
     let no_committed_width = rebase_width + uncommitted_width;
 
+    // Insert a space between every span and append a trailing space, matching
+    // the width accounted for by calc_width. The trailing space also acts as
+    // right padding inside the allocated git_stats area.
+    let interleave = |spans: Vec<(String, Style)>| -> Vec<(String, Style)> {
+        let mut out: Vec<(String, Style)> = Vec::with_capacity(spans.len() * 2);
+        let mut first = true;
+        for span in spans {
+            if !first {
+                out.push((" ".to_string(), Style::default()));
+            }
+            first = false;
+            out.push(span);
+        }
+        if !out.is_empty() {
+            out.push((" ".to_string(), Style::default()));
+        }
+        out
+    };
+
     // Priority: full > drop committed > drop uncommitted > rebase only > nothing
     if full_width > 0 && full_width <= available_width {
         let mut spans = rebase_spans;
         spans.extend(committed_spans);
         spans.extend(uncommitted_spans);
-        (spans, full_width)
+        (interleave(spans), full_width)
     } else if no_committed_width > 0 && no_committed_width <= available_width {
         let mut spans = rebase_spans;
         spans.extend(uncommitted_spans);
-        (spans, no_committed_width)
+        (interleave(spans), no_committed_width)
     } else if rebase_width > 0 && rebase_width <= available_width {
-        (rebase_spans, rebase_width)
+        (interleave(rebase_spans), rebase_width)
     } else {
         (vec![], 0)
     }
