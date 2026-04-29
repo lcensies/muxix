@@ -117,6 +117,18 @@ impl DashboardConfig {
     }
 }
 
+/// Per-mode template strings for sidebar rendering.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct TemplatesConfig {
+    /// Single-line template for compact mode.
+    pub compact: Option<String>,
+    /// Multi-line templates for tile mode (one string per line).
+    pub tiles: Option<Vec<String>>,
+}
+
+/// Per-agent icon overrides. Maps agent kind (e.g. "claude", "codex") to a custom icon.
+pub type AgentIcons = BTreeMap<String, String>;
+
 /// Configuration for the sidebar.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SidebarConfig {
@@ -127,6 +139,12 @@ pub struct SidebarConfig {
 
     /// Layout mode: "compact" or "tiles". Default: "tiles"
     pub layout: Option<String>,
+
+    /// Custom templates for sidebar rendering.
+    pub templates: Option<TemplatesConfig>,
+
+    /// Per-agent icon overrides.
+    pub agent_icons: Option<AgentIcons>,
 }
 
 /// Sidebar width: either absolute columns or a percentage of terminal width.
@@ -2104,6 +2122,16 @@ impl Config {
         merged.sidebar = SidebarConfig {
             width: project.sidebar.width.or(self.sidebar.width),
             layout: project.sidebar.layout.or(self.sidebar.layout),
+            templates: project
+                .sidebar
+                .templates
+                .clone()
+                .or(self.sidebar.templates.clone()),
+            agent_icons: project
+                .sidebar
+                .agent_icons
+                .clone()
+                .or(self.sidebar.agent_icons.clone()),
         };
 
         // Sandbox config: per-field override with nested struct merging

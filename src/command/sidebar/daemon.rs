@@ -1357,6 +1357,7 @@ mod tests {
             status_ts: Some(100),
             updated_ts: Some(updated_ts),
             window_cmd: None,
+            agent_command: None,
         }
     }
 

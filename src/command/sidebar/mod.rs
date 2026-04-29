@@ -27,6 +27,7 @@ mod layout_tree;
 mod panes;
 mod runtime;
 mod snapshot;
+mod template;
 mod ui;
 
 use anyhow::{Result, anyhow};

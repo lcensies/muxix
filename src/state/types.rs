@@ -134,6 +134,7 @@ impl AgentState {
             status_ts: self.status_ts,
             updated_ts: Some(self.updated_ts),
             window_cmd: None,
+            agent_command: Some(self.command.clone()),
         }
     }
 }

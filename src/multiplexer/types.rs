@@ -62,6 +62,10 @@ pub struct AgentPane {
     /// from user-set ones. Used by the sidebar identity resolver.
     #[serde(default)]
     pub window_cmd: Option<String>,
+    /// The agent command that launched this pane (e.g., "claude --verbose").
+    /// Used for agent identity classification in the sidebar.
+    #[serde(default)]
+    pub agent_command: Option<String>,
 }
 
 /// Parameters for creating a new window/tab

@@ -9,13 +9,14 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
 
-use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::tmux_style;
 use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
+use super::template::context::RowContext;
+use super::template::layout::{is_empty_line, render_line};
 
 /// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
@@ -51,7 +52,7 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
 /// 2. Committed/branch diff stats (dimmed +N -M)
 ///
 /// Returns pre-built spans (without background) and total display width.
-fn format_sidebar_git_stats(
+pub(crate) fn format_sidebar_git_stats(
     status: Option<&GitStatus>,
     palette: &ThemePalette,
     is_stale: bool,
@@ -208,94 +209,26 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .as_secs();
 
     let pane_suffixes = compute_pane_suffixes(&app.agents);
+    let selected_idx = app.list_state.selected();
+    let template = app.templates.compact.clone();
+    let width = area.width as usize;
 
     let items: Vec<ListItem> = app
         .agents
         .iter()
         .enumerate()
         .map(|(idx, agent)| {
-            let worktree_name = format!("{}{}", app.display_name(agent), pane_suffixes[idx]);
+            let ctx = RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx);
+            let mut spans = render_line(&ctx, &template, width);
 
-            let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
-            let is_stale = agent
-                .status_ts
-                .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
-                .unwrap_or(false);
-            // Auto-stale only for Done/None; manual sleeping always applies
-            let is_stale = is_sleeping
-                || (is_stale
-                    && !matches!(
-                        agent.status,
-                        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-                    ));
-            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
-            // Status icon
-            let (icon_spans, _icon_style) =
-                status_icon_and_style(app, agent.status, is_stale, is_interrupted);
+            // Post-pass: apply selection background
+            if ctx.is_selected {
+                for span in &mut spans {
+                    span.style = span.style.bg(app.palette.highlight_row_bg);
+                }
+            }
 
-            // Elapsed time: hide when interrupted
-            let elapsed = if is_interrupted {
-                String::new()
-            } else {
-                agent
-                    .status_ts
-                    .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
-                    .unwrap_or_default()
-            };
-
-            // Pad icon to fixed 2-column width so emoji and spinners align
-            let icon_cols: usize = icon_spans.iter().map(|(t, _)| display_width(t)).sum();
-            let icon_pad = if icon_cols < 2 {
-                " ".repeat(2 - icon_cols)
-            } else {
-                String::new()
-            };
-
-            // Calculate available width for the name
-            // Layout: "{icon}{pad} {name} {elapsed}"
-            let elapsed_width = elapsed.len();
-            // Reserve: 2 (icon slot) + 1 (space) + 1 (space) + elapsed
-            let reserved = 2 + 1 + 1 + elapsed_width;
-            let name_width = (area.width as usize).saturating_sub(reserved);
-
-            let display_name = truncate_to_width(&worktree_name, name_width);
-            let padding = name_width.saturating_sub(display_width(&display_name));
-
-            let is_active = app.host_agent_idx == Some(idx);
-
-            let name_style = if is_stale {
-                Style::default()
-                    .fg(app.palette.dimmed)
-                    .add_modifier(Modifier::DIM)
-            } else if is_active {
-                Style::default()
-                    .fg(app.palette.current_worktree_fg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.palette.text)
-            };
-
-            let elapsed_style = if is_stale {
-                Style::default().fg(app.palette.dimmed)
-            } else {
-                Style::default().fg(app.palette.text)
-            };
-
-            let mut line_spans: Vec<Span> = icon_spans
-                .into_iter()
-                .map(|(text, style)| Span::styled(text, style))
-                .collect();
-            line_spans.extend([
-                Span::raw(icon_pad),
-                Span::raw(" "),
-                Span::styled(display_name, name_style),
-                Span::raw(" ".repeat(padding)),
-                Span::raw(" "),
-                Span::styled(elapsed, elapsed_style),
-            ]);
-            let line = Line::from(line_spans);
-
-            ListItem::new(line)
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
@@ -320,248 +253,48 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     let selected_idx = app.list_state.selected();
     let agent_count = app.agents.len();
     let pane_suffixes = compute_pane_suffixes(&app.agents);
+    let tile_templates: Vec<_> = app.templates.tiles.clone();
+    let body_width = (area.width as usize).saturating_sub(5); // stripe(2) + icon(2) + gap(1)
+
+    let mut tile_heights = Vec::new();
 
     let items: Vec<ListItem> = app
         .agents
         .iter()
         .enumerate()
         .map(|(idx, agent)| {
-            let is_selected = selected_idx == Some(idx);
-            let (primary, secondary) = app.resolve_agent_labels(agent);
-            let pane_suffix = &pane_suffixes[idx];
-            let display_worktree = format!("{}{}", primary, pane_suffix);
-
-            let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
-            let is_stale = agent
-                .status_ts
-                .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
-                .unwrap_or(false);
-            // Auto-stale only for Done/None; manual sleeping always applies
-            let is_stale = is_sleeping
-                || (is_stale
-                    && !matches!(
-                        agent.status,
-                        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-                    ));
-            let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
-            let is_active = app.host_agent_idx == Some(idx);
-
-            // Status icon and color
-            let (icon_spans, icon_base_style) =
-                status_icon_and_style(app, agent.status, is_stale, is_interrupted);
-            let status_color = icon_base_style.fg.unwrap_or(ratatui::style::Color::Reset);
+            let ctx = RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx);
 
             // Stripe color on all lines; stale forces dimmed
-            let stripe_color = if is_stale {
+            let stripe_color = if ctx.is_stale {
                 app.palette.dimmed
             } else {
-                status_color
+                ctx.status_color
             };
             let stripe_style = Style::default().fg(stripe_color);
 
-            // Elapsed time: hide when interrupted
-            let elapsed = if is_interrupted {
-                String::new()
-            } else {
-                agent
-                    .status_ts
-                    .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
-                    .unwrap_or_default()
-            };
-
-            // Pad icon to fixed 2-column width
-            let icon_cols: usize = icon_spans.iter().map(|(t, _)| display_width(t)).sum();
-            let icon_pad = if icon_cols < 2 {
-                " ".repeat(2 - icon_cols)
-            } else {
-                String::new()
-            };
-
-            // Line 1 content width: area - stripe(2) - icon(2+pad) - space(1) - space(1) - elapsed - space(1)
-            let line1_name_width =
-                (area.width as usize).saturating_sub(2 + 2 + 1 + 1 + 1 + elapsed.len());
-            // Body lines indent to align with worktree name: icon(2) + gap(1) = 3
-            let body_indent = "   ";
-            let body_width = (area.width as usize).saturating_sub(2 + body_indent.len());
-
-            // Truncate using the full string (base + suffix) for width calculation,
-            // then split back into name part and suffix part for separate styling.
-            let display_full = truncate_with_ellipsis(&display_worktree, line1_name_width);
-            let full_width = display_width(&display_full);
-            let name_padding = line1_name_width.saturating_sub(full_width);
-
-            // Split: if the suffix is still fully present in the truncated string, render it dimmed
-            let (display_name_part, display_suffix_part) =
-                if !pane_suffix.is_empty() && display_full.ends_with(pane_suffix) {
-                    let name_end = display_full.len() - pane_suffix.len();
-                    (
-                        display_full[..name_end].to_string(),
-                        pane_suffix.to_string(),
-                    )
-                } else {
-                    (display_full, String::new())
-                };
-
-            // Styles - apply highlight background on selected tiles' content lines
-            let bg = if is_selected {
+            let bg = if ctx.is_selected {
                 Some(app.palette.highlight_row_bg)
             } else {
                 None
             };
 
-            let mut name_style = if is_stale {
-                Style::default()
-                    .fg(app.palette.dimmed)
-                    .add_modifier(Modifier::DIM)
-            } else if is_active {
-                Style::default()
-                    .fg(app.palette.current_worktree_fg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.palette.text)
-            };
-
-            let mut project_style = if is_stale {
-                Style::default()
-                    .fg(app.palette.dimmed)
-                    .add_modifier(Modifier::DIM)
-            } else {
-                Style::default()
-                    .fg(app.palette.text)
-                    .add_modifier(Modifier::DIM)
-            };
-
-            let mut body_style = if is_stale {
-                Style::default()
-                    .fg(app.palette.dimmed)
-                    .add_modifier(Modifier::DIM)
-            } else {
-                Style::default().fg(app.palette.dimmed)
-            };
-
-            let mut elapsed_style = if is_stale {
-                Style::default().fg(app.palette.dimmed)
-            } else {
-                Style::default().fg(app.palette.text)
-            };
-
             let mut stripe_bg_style = stripe_style;
-
             if let Some(bg_color) = bg {
-                name_style = name_style.bg(bg_color);
-                project_style = project_style.bg(bg_color);
-                body_style = body_style.bg(bg_color);
-                elapsed_style = elapsed_style.bg(bg_color);
                 stripe_bg_style = stripe_bg_style.bg(bg_color);
             }
 
-            // Padding style (spaces that need background in selected state)
-            let pad_style = bg.map(|c| Style::default().bg(c)).unwrap_or_default();
-
-            // Line 1: ▌ icon  worktree-name (N)    elapsed
-            // Compute used width to pad trailing space
-            let line1_used = 2
-                + icon_cols
-                + (2usize.saturating_sub(icon_cols))
-                + 1
-                + full_width
-                + name_padding
-                + 1
-                + elapsed.len();
-            let line1_trail = (area.width as usize).saturating_sub(line1_used);
-
-            // Suffix style: slightly dimmed relative to the name
-            let mut suffix_style = Style::default().fg(app.palette.dimmed);
-            if let Some(bg_color) = bg {
-                suffix_style = suffix_style.bg(bg_color);
-            }
-
-            // Build icon spans with optional background for selected state
-            let mut line1_spans: Vec<Span> = vec![Span::styled("▌ ", stripe_bg_style)];
-            for (text, mut style) in icon_spans {
-                if let Some(bg_color) = bg {
-                    style = style.bg(bg_color);
-                }
-                line1_spans.push(Span::styled(text, style));
-            }
-            line1_spans.extend([
-                Span::styled(icon_pad, pad_style),
-                Span::styled(" ", pad_style),
-                Span::styled(display_name_part, name_style),
-                Span::styled(display_suffix_part, suffix_style),
-                Span::styled(" ".repeat(name_padding), pad_style),
-                Span::styled(" ", pad_style),
-                Span::styled(elapsed, elapsed_style),
-                Span::styled(" ".repeat(line1_trail), pad_style),
-            ]);
-            let line1 = Line::from(line1_spans);
-
-            // Line 2: ▌   <secondary label>          +N -M *+X -Y
-            // Priority: secondary label > uncommitted stats > committed stats
-            // Give the label a minimum width, then let git stats use what remains
-            let git_status = app.git_statuses.get(&agent.path);
-            let secondary_full_width = display_width(&secondary);
-            let min_secondary_width = 5.min(secondary_full_width);
-            let git_available = body_width.saturating_sub(min_secondary_width + 1); // +1 for gap
-            let (git_spans, git_width) =
-                format_sidebar_git_stats(git_status, &app.palette, is_stale, git_available);
-
-            // Secondary gets remaining space after git stats
-            let project_max_width = if git_width > 0 {
-                body_width.saturating_sub(git_width + 1)
+            // Pad icon to fixed 2-column width
+            let icon_cols: usize = ctx
+                .status_icon_spans
+                .iter()
+                .map(|(t, _)| display_width(t))
+                .sum();
+            let icon_pad = if icon_cols < 2 {
+                " ".repeat(2 - icon_cols)
             } else {
-                body_width
+                String::new()
             };
-            let project_display = truncate_with_ellipsis(&secondary, project_max_width);
-            let project_display_width = display_width(&project_display);
-
-            // Padding between project name and git stats
-            let middle_padding = body_width
-                .saturating_sub(project_display_width)
-                .saturating_sub(git_width);
-
-            let mut line2_spans = vec![
-                Span::styled("▌ ", stripe_bg_style),
-                Span::styled(body_indent, pad_style),
-                Span::styled(project_display, project_style),
-                Span::styled(" ".repeat(middle_padding), pad_style),
-            ];
-
-            // Append git stat spans with proper background + trailing space for right padding
-            let mut first_git = true;
-            for (text, mut style) in git_spans {
-                if !first_git {
-                    line2_spans.push(Span::styled(" ", pad_style));
-                }
-                first_git = false;
-                if let Some(bg_color) = bg {
-                    style = style.bg(bg_color);
-                }
-                line2_spans.push(Span::styled(text, style));
-            }
-            if !first_git {
-                // Add trailing space for right padding
-                line2_spans.push(Span::styled(" ", pad_style));
-            }
-
-            let line2 = Line::from(line2_spans);
-
-            // Optional: pane_title (task description) when available.
-            // Sanitize against the agent's actual worktree/project (not the
-            // resolver's primary/secondary, which can be augmented with " · main").
-            let title_worktree = extract_worktree_name(
-                &agent.session,
-                &agent.window_name,
-                app.window_prefix(),
-                &agent.path,
-            )
-            .0;
-            let title_project = extract_project_name(&agent.path);
-            let title =
-                sanitize_pane_title(agent.pane_title.as_deref(), &title_worktree, &title_project)
-                    // Avoid showing the same string on line1 (primary), line2
-                    // (secondary), and line3 simultaneously.
-                    .filter(|t| *t != primary && *t != secondary);
 
             // Separator at the top (between tiles, not on first item)
             let mut lines = Vec::new();
@@ -572,28 +305,56 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 )));
             }
 
-            lines.push(line1);
-            lines.push(line2);
+            let mut visible_lines = 0;
 
-            if let Some(title_text) = title {
-                // Reserve 1 char for right padding so ellipsis doesn't touch the edge
-                let title_max = body_width.saturating_sub(1);
-                let title_display = truncate_with_ellipsis(title_text, title_max);
-                let title_padding = body_width.saturating_sub(display_width(&title_display));
+            for (line_idx, template) in tile_templates.iter().enumerate() {
+                // Drop empty lines
+                if is_empty_line(template, &ctx) {
+                    continue;
+                }
+                visible_lines += 1;
+
+                let mut line_spans: Vec<Span> = vec![Span::styled("▌ ", stripe_bg_style)];
+
+                // Chrome: icon column (status icon on line 1, blank on lines 2+)
+                if line_idx == 0 {
+                    for (text, style) in &ctx.status_icon_spans {
+                        line_spans.push(Span::styled(text.clone(), *style));
+                    }
+                    line_spans.push(Span::raw(icon_pad.clone()));
+                } else {
+                    line_spans.push(Span::raw("  "));
+                }
+
+                // Chrome: gap
+                line_spans.push(Span::raw(" "));
+
+                // Body: template rendering
+                let body_spans = render_line(&ctx, template, body_width);
+                line_spans.extend(body_spans);
+
+                // Post-pass: apply selection background
+                if ctx.is_selected {
+                    for span in &mut line_spans {
+                        span.style = span.style.bg(app.palette.highlight_row_bg);
+                    }
+                }
+
+                lines.push(Line::from(line_spans));
+            }
+
+            // If all lines were empty, render at least one blank line so the tile doesn't collapse
+            if visible_lines == 0 {
+                visible_lines = 1;
                 lines.push(Line::from(vec![
                     Span::styled("▌ ", stripe_bg_style),
-                    Span::styled(body_indent, pad_style),
-                    Span::styled(title_display, body_style),
-                    Span::styled(" ".repeat(title_padding), pad_style),
-                ]));
-            } else {
-                let empty_padding = body_width;
-                lines.push(Line::from(vec![
-                    Span::styled("▌ ", stripe_bg_style),
-                    Span::styled(body_indent, pad_style),
-                    Span::styled(" ".repeat(empty_padding), pad_style),
+                    Span::raw("  "),
+                    Span::raw(" "),
+                    Span::raw(" ".repeat(body_width)),
                 ]));
             }
+
+            tile_heights.push(visible_lines);
 
             // Bottom separator after the last item
             if idx == agent_count - 1 {
@@ -607,6 +368,8 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         })
         .collect();
 
+    app.tile_heights = tile_heights;
+
     // No highlight_style - background is baked into content lines to avoid highlighting separators
     let list = List::new(items);
 
@@ -618,7 +381,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 /// Returns `(spans, base_style)` where `spans` contains tmux style codes parsed into
 /// individual `(text, style)` pairs, and `base_style` is the fallback style (used for
 /// stripe color, etc.).
-fn status_icon_and_style(
+pub(crate) fn status_icon_and_style(
     app: &SidebarApp,
     status: Option<AgentStatus>,
     is_stale: bool,
@@ -665,18 +428,6 @@ fn status_icon_and_style(
     }
 }
 
-/// Format elapsed seconds compactly: "5s", "2m", "1h", "3d"
-fn format_compact_elapsed(secs: u64) -> String {
-    if secs < 3600 {
-        // MM:SS timer for agents under 1 hour
-        format!("{}:{:02}", secs / 60, secs % 60)
-    } else if secs < 86400 {
-        format!("{}h", secs / 3600)
-    } else {
-        format!("{}d", secs / 86400)
-    }
-}
-
 fn render_empty_state(f: &mut Frame, app: &SidebarApp, area: Rect) {
     let text = Line::from(Span::styled(
         "No agents running",
@@ -689,14 +440,14 @@ fn render_empty_state(f: &mut Frame, app: &SidebarApp, area: Rect) {
 }
 
 /// Get the display width of a string, counting wide chars as 2.
-fn display_width(s: &str) -> usize {
+pub(crate) fn display_width(s: &str) -> usize {
     s.chars()
         .map(|c| UnicodeWidthChar::width(c).unwrap_or(1))
         .sum()
 }
 
 /// Truncate a string to fit within a given display width (hard cut, no ellipsis).
-fn truncate_to_width(s: &str, max_width: usize) -> String {
+pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
     let mut width = 0;
     let mut result = String::new();
     for c in s.chars() {
@@ -711,7 +462,7 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
 }
 
 /// Truncate a string to fit within a given display width, adding ellipsis if truncated.
-fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
+pub(crate) fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
     if max_width == 0 {
         return String::new();
     }

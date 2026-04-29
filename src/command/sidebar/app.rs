@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{Config, StatusIcons};
+use crate::config::{AgentIcons, Config, StatusIcons};
 use crate::git::GitStatus;
 
 use crate::multiplexer::{AgentPane, Multiplexer};
@@ -18,6 +18,7 @@ use crate::multiplexer::{AgentPane, Multiplexer};
 use crate::ui::theme::ThemePalette;
 
 use super::snapshot::SidebarSnapshot;
+use super::template::parser::{Token, parse_line};
 
 /// Sidebar layout mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -42,6 +43,20 @@ impl SidebarLayoutMode {
 enum SelectionMode {
     FollowHost,
     Manual,
+}
+
+const DEFAULT_COMPACT_TEMPLATE: &str = "{status_icon} {primary}{pane_suffix} {fill} {elapsed}";
+const DEFAULT_TILE_TEMPLATES: &[&str] = &[
+    "{primary}{pane_suffix} {fill} {elapsed}",
+    "{secondary} {fill} {git_stats}",
+    "{pane_title}",
+];
+
+/// Parsed templates for one sidebar instance.
+#[derive(Debug, Clone)]
+pub struct ParsedTemplates {
+    pub compact: Vec<Token>,
+    pub tiles: Vec<Vec<Token>>,
 }
 
 /// Lightweight sidebar app state. No preview, git, PR, diff, or input mode.
@@ -75,6 +90,12 @@ pub struct SidebarApp {
     pub interrupted_pane_ids: std::collections::HashSet<String>,
     /// Pane IDs of agents manually marked as sleeping by the user.
     pub sleeping_pane_ids: std::collections::HashSet<String>,
+    /// Parsed sidebar templates.
+    pub templates: ParsedTemplates,
+    /// Per-agent icon overrides.
+    pub agent_icons: AgentIcons,
+    /// Cached tile heights for hit testing (updated each render).
+    pub tile_heights: Vec<usize>,
 }
 
 impl SidebarApp {
@@ -94,6 +115,9 @@ impl SidebarApp {
         let status_icons = config.status_icons.clone();
 
         let (host_session, host_window_id) = detect_host_window();
+
+        let templates = parse_templates(&config);
+        let agent_icons = config.sidebar.agent_icons.clone().unwrap_or_default();
 
         Ok(Self {
             mux,
@@ -116,6 +140,9 @@ impl SidebarApp {
             git_statuses: HashMap::new(),
             interrupted_pane_ids: std::collections::HashSet::new(),
             sleeping_pane_ids: std::collections::HashSet::new(),
+            templates,
+            agent_icons,
+            tile_heights: Vec::new(),
         })
     }
 
@@ -286,7 +313,7 @@ impl SidebarApp {
             SidebarLayoutMode::Tiles => {
                 let mut y = 0;
                 for idx in offset..self.agents.len() {
-                    let h = tile_item_height(idx, self.agents.len());
+                    let h = self.tile_item_height(idx);
                     if relative_row < y + h {
                         return Some(idx);
                     }
@@ -295,6 +322,20 @@ impl SidebarApp {
                 None
             }
         }
+    }
+
+    /// Height in rows of a tile-mode item at the given index.
+    /// Uses cached heights from the last render pass.
+    fn tile_item_height(&self, idx: usize) -> usize {
+        let base = self.tile_heights.get(idx).copied().unwrap_or(3);
+        let mut h = base;
+        if idx > 0 {
+            h += 1; // top separator
+        }
+        if idx == self.agents.len() - 1 {
+            h += 1; // bottom separator
+        }
+        h
     }
 
     pub fn jump_to_selected(&mut self) {
@@ -431,17 +472,49 @@ impl SidebarApp {
     }
 }
 
-/// Height in rows of a tile-mode ListItem at the given index.
-/// Must stay in sync with the line-building logic in `ui::render_tile_list`.
-fn tile_item_height(idx: usize, agent_count: usize) -> usize {
-    let mut h = 3; // line1 (worktree) + line2 (project) + line3 (title or empty)
-    if idx > 0 {
-        h += 1; // top separator
+fn parse_templates(config: &Config) -> ParsedTemplates {
+    let compact_str = config
+        .sidebar
+        .templates
+        .as_ref()
+        .and_then(|t| t.compact.as_deref())
+        .unwrap_or(DEFAULT_COMPACT_TEMPLATE);
+
+    let compact = match parse_line(compact_str) {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            tracing::warn!("failed to parse compact template: {}, using default", e);
+            parse_line(DEFAULT_COMPACT_TEMPLATE).expect("default template is valid")
+        }
+    };
+
+    let tile_strs: Vec<&str> = config
+        .sidebar
+        .templates
+        .as_ref()
+        .and_then(|t| t.tiles.as_ref())
+        .map(|v| v.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_else(|| DEFAULT_TILE_TEMPLATES.to_vec());
+
+    let mut tiles = Vec::new();
+    for line in tile_strs {
+        match parse_line(line) {
+            Ok(tokens) => tiles.push(tokens),
+            Err(e) => {
+                tracing::warn!("failed to parse tile template '{}': {}, skipping", line, e);
+            }
+        }
     }
-    if idx == agent_count - 1 {
-        h += 1; // bottom separator
+
+    // If all tile templates failed, use defaults
+    if tiles.is_empty() {
+        tiles = DEFAULT_TILE_TEMPLATES
+            .iter()
+            .map(|s| parse_line(s).expect("default template is valid"))
+            .collect();
     }
-    h
+
+    ParsedTemplates { compact, tiles }
 }
 
 /// Detect this sidebar's host window using TMUX_PANE (stable, one-time).
