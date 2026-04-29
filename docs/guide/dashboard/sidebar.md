@@ -162,20 +162,21 @@ The `{status_icon}` token renders the working spinner, waiting indicator,
 done check, and sleeping indicator. Defaults depend on whether you have
 [nerdfont](/guide/nerdfont) enabled:
 
-| State    | Default (no nerdfont) | Default (nerdfont)           |
-| -------- | --------------------- | ---------------------------- |
-| Working  | braille spinner       | braille spinner              |
-| Waiting  | configured fallback   | nf-fa-comment                |
-| Done     | configured fallback   | nf-md-check_circle           |
-| Sleeping | 💤                    | nf-md-sleep                  |
+| State    | Default (no nerdfont) | Default (nerdfont) |
+| -------- | --------------------- | ------------------ |
+| Working  | braille spinner       | braille spinner    |
+| Waiting  | 💬                    | nf-fa-comment      |
+| Done     | ✅                    | nf-md-check_circle |
+| Sleeping | 💤                    | nf-md-sleep        |
 
-Override per state under top-level `status_icons` (these win over the
-nerdfont defaults so you can mix and match):
+Override per state under top-level `status_icons`. Any value set here
+wins over both the emoji and nerdfont defaults, so you can mix and match.
+Setting `working` also replaces the braille spinner with a static icon:
 
 ```yaml
 status_icons:
-  working: "⏳"
-  waiting: "👋"
+  working: "🤖"
+  waiting: "💬"
   done: "✅"
 ```
 
