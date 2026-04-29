@@ -84,8 +84,13 @@ impl<'a> RowContext<'a> {
 
         let pane_title = build_pane_title(agent, &primary, &secondary, app.window_prefix());
         let git_status = app.git_statuses.get(&agent.path);
-        let agent_icon = resolve_agent_icon(agent.agent_command.as_deref(), &app.agent_icons);
-        let agent_label = resolve_agent_label(agent.agent_command.as_deref());
+        let agent_icon = resolve_agent_icon(
+            agent.agent_kind.as_deref(),
+            agent.agent_command.as_deref(),
+            &app.agent_icons,
+        );
+        let agent_label =
+            resolve_agent_label(agent.agent_kind.as_deref(), agent.agent_command.as_deref());
 
         Self {
             agent,
@@ -203,26 +208,21 @@ impl<'a> RowContext<'a> {
     }
 }
 
-fn resolve_agent_label(agent_command: Option<&str>) -> String {
-    let profile = resolve_profile_for_display(agent_command);
-    let name = profile.name();
-    if name == "default" {
+fn resolve_agent_label(agent_kind: Option<&str>, agent_command: Option<&str>) -> String {
+    let name = effective_profile_name(agent_kind, agent_command);
+    if name.is_empty() || name == "default" {
         return String::new();
     }
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
-        None => String::new(),
-    }
+    label_from_profile_name(name)
 }
 
 fn resolve_agent_icon(
+    agent_kind: Option<&str>,
     agent_command: Option<&str>,
     agent_icons: &std::collections::BTreeMap<String, String>,
 ) -> String {
-    let profile = resolve_profile_for_display(agent_command);
-    let name = profile.name();
-    if name == "default" {
+    let name = effective_profile_name(agent_kind, agent_command);
+    if name.is_empty() || name == "default" {
         return String::new();
     }
     if let Some(icon) = agent_icons.get(name) {
@@ -237,6 +237,48 @@ fn resolve_agent_icon(
         "kiro-cli" => "K".to_string(),
         "vibe" => "V".to_string(),
         _ => name.chars().next().unwrap_or('?').to_string(),
+    }
+}
+
+/// Prefer the cached classification; fall back to today's stem-based resolver.
+///
+/// The cached value is validated against a known set so that a malformed,
+/// hand-edited, or future-version state file can't shadow a perfectly good
+/// `agent_command` with a meaningless icon/label.
+fn effective_profile_name<'a>(
+    agent_kind: Option<&'a str>,
+    agent_command: Option<&'a str>,
+) -> &'a str {
+    if let Some(kind) = agent_kind
+        && is_known_agent_kind(kind)
+    {
+        return kind;
+    }
+    resolve_profile_for_display(agent_command).name()
+}
+
+fn is_known_agent_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "claude" | "codex" | "opencode" | "gemini" | "pi" | "kiro-cli" | "vibe" | "copilot"
+    )
+}
+
+/// Friendly label for a canonical profile name. "kiro-cli" renders as "Kiro";
+/// otherwise capitalises the first character of the profile name.
+fn label_from_profile_name(name: &str) -> String {
+    match name {
+        "kiro-cli" => "Kiro".to_string(),
+        "opencode" => "OpenCode".to_string(),
+        _ => {
+            let mut chars = name.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
+                None => String::new(),
+            }
+        }
     }
 }
 
@@ -272,5 +314,62 @@ fn format_compact_elapsed(secs: u64) -> String {
         format!("{}h", secs / 3600)
     } else {
         format!("{}d", secs / 86400)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn cached_kind_resolves_label_without_command() {
+        // Command is a version string the stem-based resolver can't classify;
+        // the cached kind must drive label/icon.
+        assert_eq!(
+            resolve_agent_label(Some("claude"), Some("2.1.118")),
+            "Claude"
+        );
+    }
+
+    #[test]
+    fn cached_kind_renders_friendly_kiro_label() {
+        assert_eq!(resolve_agent_label(Some("kiro-cli"), None), "Kiro");
+    }
+
+    #[test]
+    fn cached_kind_renders_friendly_opencode_label() {
+        assert_eq!(resolve_agent_label(Some("opencode"), None), "OpenCode");
+    }
+
+    #[test]
+    fn unknown_cached_kind_falls_back_to_command() {
+        // Defensive: malformed cache must not shadow a valid agent_command.
+        let icons = BTreeMap::new();
+        assert_eq!(
+            resolve_agent_label(Some("not-a-profile"), Some("claude")),
+            "Claude"
+        );
+        assert_eq!(
+            resolve_agent_icon(Some("not-a-profile"), Some("claude"), &icons),
+            "✳"
+        );
+    }
+
+    #[test]
+    fn no_cache_falls_back_to_today_behavior() {
+        let icons = BTreeMap::new();
+        assert_eq!(resolve_agent_label(None, Some("gemini")), "Gemini");
+        assert_eq!(resolve_agent_icon(None, Some("gemini"), &icons), "G");
+    }
+
+    #[test]
+    fn custom_icon_override_still_honored_with_cached_kind() {
+        let mut icons = BTreeMap::new();
+        icons.insert("claude".to_string(), "X".to_string());
+        assert_eq!(
+            resolve_agent_icon(Some("claude"), Some("2.1.118"), &icons),
+            "X"
+        );
     }
 }

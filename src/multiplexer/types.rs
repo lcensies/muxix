@@ -66,6 +66,11 @@ pub struct AgentPane {
     /// Used for agent identity classification in the sidebar.
     #[serde(default)]
     pub agent_command: Option<String>,
+    /// Cached agent identity (canonical profile name) classified at status-hook time.
+    /// See `crate::agent_identity::classify_agent_kind`. The sidebar consults this
+    /// before falling back to stem-based profile resolution.
+    #[serde(default)]
+    pub agent_kind: Option<String>,
 }
 
 /// Parameters for creating a new window/tab

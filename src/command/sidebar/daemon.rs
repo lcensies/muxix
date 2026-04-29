@@ -1601,6 +1601,7 @@ mod tests {
             updated_ts: Some(updated_ts),
             window_cmd: None,
             agent_command: None,
+            agent_kind: None,
         }
     }
 
@@ -1938,6 +1939,7 @@ mod tests {
                 window_name: None,
                 session_name: None,
                 boot_id: None,
+                agent_kind: None,
             };
             store.upsert_agent(&state).unwrap();
         }

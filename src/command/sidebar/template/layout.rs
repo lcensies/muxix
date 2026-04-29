@@ -371,6 +371,7 @@ mod tests {
             updated_ts: None,
             window_cmd: None,
             agent_command: None,
+            agent_kind: None,
         }
     }
 
