@@ -2747,11 +2747,97 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        Config, ContainerConfig, ContainerDevice, ExtraMount, LayoutConfig, LimaConfig,
-        NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget,
-        SplitDirection, ToolchainMode, is_agent_command, split_first_token, validate_domain,
-        validate_group_add_entry, validate_layouts_config,
+        AgentIconConfig, AgentIconDetails, Config, ContainerConfig, ContainerDevice, ExtraMount,
+        LayoutConfig, LimaConfig, NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig,
+        SandboxRuntime, SandboxTarget, SplitDirection, ToolchainMode, is_agent_command,
+        split_first_token, validate_domain, validate_group_add_entry, validate_layouts_config,
     };
+
+    #[test]
+    fn agent_icon_config_parses_legacy_string() {
+        let v: AgentIconConfig = serde_yaml::from_str("\"C\"").unwrap();
+        assert_eq!(v, AgentIconConfig::Plain("C".to_string()));
+    }
+
+    #[test]
+    fn agent_icon_config_parses_detailed_with_both() {
+        let v: AgentIconConfig = serde_yaml::from_str("{ icon: \"X\", color: \"#fff\" }").unwrap();
+        assert_eq!(
+            v,
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: Some("X".to_string()),
+                color: Some("#fff".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn agent_icon_config_parses_detailed_with_color_only() {
+        let v: AgentIconConfig = serde_yaml::from_str("{ color: red }").unwrap();
+        assert_eq!(
+            v,
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: None,
+                color: Some("red".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn agent_icon_config_parses_empty_object_as_detailed() {
+        let v: AgentIconConfig = serde_yaml::from_str("{}").unwrap();
+        assert_eq!(
+            v,
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: None,
+                color: None,
+            })
+        );
+    }
+
+    #[test]
+    fn agent_icon_config_parses_null_as_null_variant() {
+        let v: AgentIconConfig = serde_yaml::from_str("~").unwrap();
+        assert_eq!(v, AgentIconConfig::Null);
+    }
+
+    #[test]
+    fn agent_icon_config_rejects_unknown_field() {
+        let err = serde_yaml::from_str::<AgentIconConfig>("{ colour: red }");
+        assert!(err.is_err(), "expected unknown-field rejection");
+    }
+
+    #[test]
+    fn agent_icons_merge_extends_per_key() {
+        // Project key overrides global for that key; other global keys survive.
+        let yaml_global = r##"
+sidebar:
+  agent_icons:
+    claude: "C"
+    codex:
+      color: cyan
+"##;
+        let yaml_project = r##"
+sidebar:
+  agent_icons:
+    claude:
+      color: "#ff8c00"
+"##;
+        let global: Config = serde_yaml::from_str(yaml_global).unwrap();
+        let project: Config = serde_yaml::from_str(yaml_project).unwrap();
+        let merged = global.merge(project);
+        let icons = merged.sidebar.agent_icons.unwrap();
+        // codex (only in global) survives.
+        assert!(icons.contains_key("codex"));
+        // claude is replaced by the project entry (per-key replacement).
+        assert_eq!(
+            icons.get("claude"),
+            Some(&AgentIconConfig::Detailed(AgentIconDetails {
+                icon: None,
+                color: Some("#ff8c00".to_string()),
+            }))
+        );
+    }
 
     #[test]
     fn split_first_token_single_word() {

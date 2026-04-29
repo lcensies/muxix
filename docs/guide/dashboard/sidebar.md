@@ -184,12 +184,18 @@ sidebar:
     # Override both
     claude:
       icon: CC
-      color: '#ff8c00'
+      color: "#ff8c00"
 
     # Disable the default color (use palette text color)
     codex:
-      color: ''
+      color: ""
 ```
+
+A project-level `agent_icons` map merges into the global one per agent
+key. Setting `claude:` in a project replaces only the global `claude`
+entry; other agents defined in the global config are preserved. To
+clear an inherited override entirely for one agent, set its value to
+`null` (e.g. `claude: ~`).
 
 ### Status icons
 

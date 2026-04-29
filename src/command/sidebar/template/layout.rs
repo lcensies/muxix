@@ -389,7 +389,7 @@ mod tests {
         }
     }
 
-    fn make_context(agent: &AgentPane) -> RowContext {
+    fn make_context(agent: &AgentPane) -> RowContext<'_> {
         // Build a minimal RowContext manually for unit tests
         RowContext {
             agent,

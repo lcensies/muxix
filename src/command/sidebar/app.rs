@@ -670,6 +670,72 @@ fn try_reparse_templates(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{AgentIconConfig, AgentIconDetails};
+
+    #[test]
+    fn resolved_icons_legacy_string() {
+        let mut map = AgentIcons::new();
+        map.insert(
+            "claude".to_string(),
+            AgentIconConfig::Plain("C".to_string()),
+        );
+        let r = ResolvedAgentIcons::from_config(Some(&map));
+        assert_eq!(r.icons.get("claude").map(String::as_str), Some("C"));
+        assert!(r.colors.is_empty());
+    }
+
+    #[test]
+    fn resolved_icons_detailed_with_valid_color() {
+        let mut map = AgentIcons::new();
+        map.insert(
+            "claude".to_string(),
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: Some("X".to_string()),
+                color: Some("#00ff00".to_string()),
+            }),
+        );
+        let r = ResolvedAgentIcons::from_config(Some(&map));
+        assert_eq!(r.icons.get("claude").map(String::as_str), Some("X"));
+        assert_eq!(r.colors.get("claude"), Some(&Some(Color::Rgb(0, 255, 0))));
+    }
+
+    #[test]
+    fn resolved_icons_blank_color_disables_default() {
+        let mut map = AgentIcons::new();
+        map.insert(
+            "claude".to_string(),
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: None,
+                color: Some("   ".to_string()),
+            }),
+        );
+        let r = ResolvedAgentIcons::from_config(Some(&map));
+        assert_eq!(r.colors.get("claude"), Some(&None));
+    }
+
+    #[test]
+    fn resolved_icons_invalid_color_is_dropped() {
+        let mut map = AgentIcons::new();
+        map.insert(
+            "claude".to_string(),
+            AgentIconConfig::Detailed(AgentIconDetails {
+                icon: None,
+                color: Some("not-a-color".to_string()),
+            }),
+        );
+        let r = ResolvedAgentIcons::from_config(Some(&map));
+        // No entry: lookup falls through to AgentKind::default_color at use site.
+        assert!(!r.colors.contains_key("claude"));
+    }
+
+    #[test]
+    fn resolved_icons_null_variant_is_no_op() {
+        let mut map = AgentIcons::new();
+        map.insert("claude".to_string(), AgentIconConfig::Null);
+        let r = ResolvedAgentIcons::from_config(Some(&map));
+        assert!(r.icons.is_empty());
+        assert!(r.colors.is_empty());
+    }
 
     fn parsed_for(s: &str) -> ParsedTemplates {
         ParsedTemplates {
