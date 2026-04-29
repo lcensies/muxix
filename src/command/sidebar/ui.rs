@@ -94,12 +94,12 @@ pub(crate) fn format_sidebar_git_stats(
         return (vec![], 0);
     }
 
-    // Width of a set of spans: text widths + spaces between + trailing space
+    // Width of a set of spans: text widths + a single space between each pair.
     let calc_width = |spans: &[(String, Style)]| -> usize {
         if spans.is_empty() {
             return 0;
         }
-        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len()
+        spans.iter().map(|(s, _)| display_width(s)).sum::<usize>() + spans.len() - 1
     };
 
     // Build rebase indicator (shown first, highest priority)
@@ -148,17 +148,7 @@ pub(crate) fn format_sidebar_git_stats(
         }
     }
 
-    let rebase_width = calc_width(&rebase_spans);
-    let committed_width = calc_width(&committed_spans);
-    let uncommitted_width = calc_width(&uncommitted_spans);
-
-    // Trailing space of each group acts as separator when concatenated
-    let full_width = rebase_width + committed_width + uncommitted_width;
-    let no_committed_width = rebase_width + uncommitted_width;
-
-    // Insert a space between every span and append a trailing space, matching
-    // the width accounted for by calc_width. The trailing space also acts as
-    // right padding inside the allocated git_stats area.
+    // Insert a single space between adjacent spans (no trailing space).
     let interleave = |spans: Vec<(String, Style)>| -> Vec<(String, Style)> {
         let mut out: Vec<(String, Style)> = Vec::with_capacity(spans.len() * 2);
         let mut first = true;
@@ -169,27 +159,32 @@ pub(crate) fn format_sidebar_git_stats(
             first = false;
             out.push(span);
         }
-        if !out.is_empty() {
-            out.push((" ".to_string(), Style::default()));
-        }
         out
     };
 
-    // Priority: full > drop committed > drop uncommitted > rebase only > nothing
-    if full_width > 0 && full_width <= available_width {
-        let mut spans = rebase_spans;
-        spans.extend(committed_spans);
-        spans.extend(uncommitted_spans);
-        (interleave(spans), full_width)
-    } else if no_committed_width > 0 && no_committed_width <= available_width {
-        let mut spans = rebase_spans;
-        spans.extend(uncommitted_spans);
-        (interleave(spans), no_committed_width)
-    } else if rebase_width > 0 && rebase_width <= available_width {
-        (interleave(rebase_spans), rebase_width)
-    } else {
-        (vec![], 0)
+    // Try variants in priority order: full > drop committed > drop uncommitted > rebase only.
+    let candidates: Vec<Vec<(String, Style)>> = vec![
+        {
+            let mut s = rebase_spans.clone();
+            s.extend(committed_spans.clone());
+            s.extend(uncommitted_spans.clone());
+            s
+        },
+        {
+            let mut s = rebase_spans.clone();
+            s.extend(uncommitted_spans);
+            s
+        },
+        rebase_spans,
+    ];
+
+    for spans in candidates {
+        let width = calc_width(&spans);
+        if width > 0 && width <= available_width {
+            return (interleave(spans), width);
+        }
     }
+    (vec![], 0)
 }
 
 /// Render the sidebar UI.
