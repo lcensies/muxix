@@ -156,6 +156,29 @@ sidebar:
     codex: "🤖"
 ```
 
+### Status icons
+
+The `{status_icon}` token renders the working spinner, waiting indicator,
+done check, and sleeping indicator. Defaults depend on whether you have
+[nerdfont](/guide/nerdfont) enabled:
+
+| State    | Default (no nerdfont) | Default (nerdfont)            |
+| -------- | --------------------- | ----------------------------- |
+| Working  | braille spinner       | pie-chart spinner (8 frames)  |
+| Waiting  | configured fallback   | nf-fa-comment                 |
+| Done     | configured fallback   | nf-md-check_circle            |
+| Sleeping | 💤                    | nf-md-sleep                   |
+
+Override per state under top-level `status_icons` (these win over the
+nerdfont defaults so you can mix and match):
+
+```yaml
+status_icons:
+  working: '⏳'
+  waiting: '👋'
+  done: '✅'
+```
+
 ### Examples
 
 Show only the worktree and elapsed time per agent in compact mode:
