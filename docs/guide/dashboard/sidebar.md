@@ -134,7 +134,8 @@ default `{pane_title}` row collapse when there's nothing to show.
 
 ### Escaping
 
-Use `{{` for a literal `{` and `}}` for a literal `}`.
+Use <code v-pre>{{</code> for a literal `{` and <code v-pre>}}</code> for a
+literal `}`.
 
 ### Agent identity
 
