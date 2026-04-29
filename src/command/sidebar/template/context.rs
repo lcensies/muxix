@@ -20,14 +20,10 @@ pub struct RowContext<'a> {
     pub secondary: String,
     /// Pane suffix like " (1)" when multiple agents share a window.
     pub pane_suffix: String,
-    /// `primary + pane_suffix` (convenience for compact mode).
-    pub display_name: String,
     /// Compact elapsed string (e.g. "5:23", "2h", "1d").
     pub elapsed: String,
     /// Status icon parsed into styled spans.
     pub status_icon_spans: Vec<(String, Style)>,
-    /// Base style of the status icon (used for stripe color).
-    pub status_icon_style: Style,
     /// Foreground color extracted from status icon style.
     pub status_color: Color,
     /// Sanitized pane title, filtered against primary/secondary duplicates.
@@ -37,9 +33,7 @@ pub struct RowContext<'a> {
     /// Row flags.
     pub is_stale: bool,
     pub is_active: bool,
-    pub is_interrupted: bool,
     pub is_selected: bool,
-    pub is_sleeping: bool,
     /// Theme palette for style resolution.
     pub palette: &'a ThemePalette,
     /// Per-agent icon overrides.
@@ -57,7 +51,6 @@ impl<'a> RowContext<'a> {
     ) -> Self {
         let (primary, secondary) = app.resolve_agent_labels(agent);
         let pane_suffix = pane_suffixes[idx].clone();
-        let display_name = format!("{}{}", primary, pane_suffix);
 
         let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
         let is_stale = agent
@@ -95,18 +88,14 @@ impl<'a> RowContext<'a> {
             primary,
             secondary,
             pane_suffix,
-            display_name,
             elapsed,
             status_icon_spans,
-            status_icon_style,
             status_color,
             pane_title,
             git_status,
             is_stale,
             is_active,
-            is_interrupted,
             is_selected,
-            is_sleeping,
             palette: &app.palette,
             agent_icons: &app.agent_icons,
         }

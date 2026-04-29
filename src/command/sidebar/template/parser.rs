@@ -32,25 +32,6 @@ pub enum TokenId {
 }
 
 impl TokenId {
-    /// Minimum display width this token requires.
-    pub fn min_width(self) -> usize {
-        match self {
-            TokenId::StatusIcon => 2,
-            TokenId::AgentIcon => 2,
-            TokenId::AgentLabel => 2,
-            TokenId::Primary => 1,
-            TokenId::Secondary => 1,
-            TokenId::Worktree => 1,
-            TokenId::Project => 1,
-            TokenId::Session => 1,
-            TokenId::Window => 1,
-            TokenId::PaneTitle => 0,
-            TokenId::PaneSuffix => 0,
-            TokenId::Elapsed => 4,
-            TokenId::GitStats => 0,
-        }
-    }
-
     /// Whether this token can absorb slack width on its line.
     pub fn is_flex(self) -> bool {
         matches!(
@@ -62,18 +43,6 @@ impl TokenId {
                 | TokenId::Session
                 | TokenId::Window
                 | TokenId::PaneTitle
-        )
-    }
-
-    /// Whether this token's resolved text can be empty.
-    pub fn can_be_empty(self) -> bool {
-        matches!(
-            self,
-            TokenId::PaneSuffix
-                | TokenId::PaneTitle
-                | TokenId::GitStats
-                | TokenId::AgentIcon
-                | TokenId::AgentLabel
         )
     }
 }

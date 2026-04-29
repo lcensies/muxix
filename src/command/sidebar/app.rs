@@ -421,20 +421,6 @@ impl SidebarApp {
         &self.window_prefix
     }
 
-    /// One-line display name for compact-mode rendering.
-    ///
-    /// Renders as `<secondary>/<primary>` so the demoted worktree (always
-    /// preserved in `secondary` when it is not primary) stays visible. Falls
-    /// back to just `<primary>` when no secondary exists.
-    pub fn display_name(&self, agent: &AgentPane) -> String {
-        let (primary, secondary) = self.resolve_agent_labels(agent);
-        if secondary.is_empty() {
-            primary
-        } else {
-            format!("{}/{}", secondary, primary)
-        }
-    }
-
     /// Resolve the (primary, secondary) label pair for an agent row.
     ///
     /// Strips the workmux prefix from session/window names so the resolver only

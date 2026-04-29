@@ -446,51 +446,6 @@ pub(crate) fn display_width(s: &str) -> usize {
         .sum()
 }
 
-/// Truncate a string to fit within a given display width (hard cut, no ellipsis).
-pub(crate) fn truncate_to_width(s: &str, max_width: usize) -> String {
-    let mut width = 0;
-    let mut result = String::new();
-    for c in s.chars() {
-        let w = UnicodeWidthChar::width(c).unwrap_or(1);
-        if width + w > max_width {
-            break;
-        }
-        width += w;
-        result.push(c);
-    }
-    result
-}
-
-/// Truncate a string to fit within a given display width, adding ellipsis if truncated.
-pub(crate) fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    if display_width(s) <= max_width {
-        return s.to_string();
-    }
-    if max_width == 1 {
-        return "\u{2026}".to_string();
-    }
-
-    let mut out = String::new();
-    let mut width = 0;
-    for c in s.chars() {
-        let char_width = UnicodeWidthChar::width(c).unwrap_or(1);
-        // Reserve 1 column for the ellipsis character
-        if width + char_width + 1 > max_width {
-            break;
-        }
-        out.push(c);
-        width += char_width;
-    }
-    // Trim trailing spaces so ellipsis attaches to the last word
-    let trimmed = out.trim_end();
-    let mut result = trimmed.to_string();
-    result.push('\u{2026}');
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use crate::agent_display::{sanitize_pane_title, strip_oc_title_prefix};
