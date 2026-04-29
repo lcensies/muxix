@@ -41,6 +41,9 @@ pub struct RowContext<'a> {
     pub agent_icon: String,
     /// Pre-resolved agent label string (empty when no profile matches).
     pub agent_label: String,
+    /// 0-based sidebar row index. Rendered as 1-based via the `idx` and
+    /// `jump_key` tokens.
+    pub idx: usize,
 }
 
 impl<'a> RowContext<'a> {
@@ -109,6 +112,7 @@ impl<'a> RowContext<'a> {
             palette: &app.palette,
             agent_icon,
             agent_label,
+            idx,
         }
     }
 
@@ -138,6 +142,42 @@ impl<'a> RowContext<'a> {
                 // Span-rendered tokens: empty string at resolution time;
                 // layout engine calls git_segment_spans() for rendering.
                 String::new()
+            }
+            TokenId::GitAhead => self
+                .git_status
+                .filter(|s| s.has_upstream && s.ahead > 0)
+                .map(|s| format!("\u{2191}{}", s.ahead))
+                .unwrap_or_default(),
+            TokenId::GitBehind => self
+                .git_status
+                .filter(|s| s.has_upstream && s.behind > 0)
+                .map(|s| format!("\u{2193}{}", s.behind))
+                .unwrap_or_default(),
+            TokenId::GitDirty => match self.git_status {
+                Some(s) if s.is_dirty => crate::nerdfont::git_icons().diff.to_string(),
+                _ => String::new(),
+            },
+            TokenId::GitConflict => match self.git_status {
+                Some(s) if s.has_conflict => crate::nerdfont::git_icons().conflict.to_string(),
+                _ => String::new(),
+            },
+            TokenId::GitBranch => self
+                .git_status
+                .and_then(|s| s.branch.clone())
+                .unwrap_or_default(),
+            TokenId::StatusLabel => match self.agent.status {
+                Some(AgentStatus::Working) => "Working".to_string(),
+                Some(AgentStatus::Waiting) => "Waiting".to_string(),
+                Some(AgentStatus::Done) => "Done".to_string(),
+                None => String::new(),
+            },
+            TokenId::Idx => (self.idx + 1).to_string(),
+            TokenId::JumpKey => {
+                if self.idx < 9 {
+                    format!("M-{}", self.idx + 1)
+                } else {
+                    String::new()
+                }
             }
         }
     }
@@ -227,6 +267,14 @@ impl<'a> RowContext<'a> {
                 .fg(self.palette.text)
                 .add_modifier(Modifier::DIM),
             TokenId::AgentLabel => Style::default().fg(self.palette.text),
+            TokenId::GitAhead => Style::default().fg(self.palette.success),
+            TokenId::GitBehind => Style::default().fg(self.palette.danger),
+            TokenId::GitDirty => Style::default().fg(self.palette.warning),
+            TokenId::GitConflict => Style::default().fg(self.palette.danger),
+            TokenId::GitBranch => Style::default().fg(self.palette.text),
+            TokenId::StatusLabel => Style::default().fg(self.status_color),
+            TokenId::Idx => Style::default().fg(self.palette.dimmed),
+            TokenId::JumpKey => Style::default().fg(self.palette.dimmed),
             _ => Style::default().fg(self.palette.text),
         }
     }
@@ -370,6 +418,227 @@ mod tests {
         assert_eq!(
             resolve_agent_icon(Some("claude"), Some("2.1.118"), &icons),
             "X"
+        );
+    }
+
+    use crate::config::{ThemeMode, ThemeScheme};
+    use crate::multiplexer::AgentPane;
+    use std::path::PathBuf;
+
+    fn test_palette() -> &'static ThemePalette {
+        Box::leak(Box::new(ThemePalette::for_scheme(
+            ThemeScheme::Default,
+            ThemeMode::Dark,
+        )))
+    }
+
+    fn test_agent() -> AgentPane {
+        AgentPane {
+            session: "s".to_string(),
+            window_name: "w".to_string(),
+            pane_id: "%1".to_string(),
+            window_id: "@1".to_string(),
+            path: PathBuf::from("/tmp/x"),
+            pane_title: None,
+            status: None,
+            status_ts: None,
+            updated_ts: None,
+            window_cmd: None,
+            agent_command: None,
+            agent_kind: None,
+        }
+    }
+
+    fn make_context<'a>(
+        agent: &'a AgentPane,
+        git: Option<&'a GitStatus>,
+        idx: usize,
+    ) -> RowContext<'a> {
+        RowContext {
+            agent,
+            primary: String::new(),
+            secondary: String::new(),
+            pane_suffix: String::new(),
+            elapsed: String::new(),
+            status_icon_spans: vec![],
+            status_color: Color::Reset,
+            pane_title: None,
+            git_status: git,
+            is_stale: false,
+            is_active: false,
+            is_selected: false,
+            palette: test_palette(),
+            agent_icon: String::new(),
+            agent_label: String::new(),
+            idx,
+        }
+    }
+
+    #[test]
+    fn resolve_idx_is_one_based() {
+        let agent = test_agent();
+        let ctx0 = make_context(&agent, None, 0);
+        let ctx9 = make_context(&agent, None, 9);
+        assert_eq!(ctx0.resolve(TokenId::Idx), "1");
+        assert_eq!(ctx9.resolve(TokenId::Idx), "10");
+    }
+
+    #[test]
+    fn resolve_jump_key_caps_at_nine() {
+        let agent = test_agent();
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::JumpKey),
+            "M-1"
+        );
+        assert_eq!(
+            make_context(&agent, None, 8).resolve(TokenId::JumpKey),
+            "M-9"
+        );
+        assert_eq!(make_context(&agent, None, 9).resolve(TokenId::JumpKey), "");
+    }
+
+    #[test]
+    fn resolve_status_label_capitalised() {
+        let mut agent = test_agent();
+        agent.status = Some(AgentStatus::Working);
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::StatusLabel),
+            "Working"
+        );
+        agent.status = Some(AgentStatus::Waiting);
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::StatusLabel),
+            "Waiting"
+        );
+        agent.status = Some(AgentStatus::Done);
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::StatusLabel),
+            "Done"
+        );
+        agent.status = None;
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::StatusLabel),
+            ""
+        );
+    }
+
+    #[test]
+    fn resolve_git_ahead_behind() {
+        let agent = test_agent();
+        // No git status -> empty.
+        assert_eq!(make_context(&agent, None, 0).resolve(TokenId::GitAhead), "");
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::GitBehind),
+            ""
+        );
+
+        let mut status = GitStatus::default();
+        status.has_upstream = true;
+        status.ahead = 3;
+        status.behind = 0;
+        let ctx = make_context(&agent, Some(&status), 0);
+        assert_eq!(ctx.resolve(TokenId::GitAhead), "\u{2191}3");
+        assert_eq!(ctx.resolve(TokenId::GitBehind), "");
+
+        let mut status = GitStatus::default();
+        status.has_upstream = true;
+        status.ahead = 0;
+        status.behind = 5;
+        let ctx = make_context(&agent, Some(&status), 0);
+        assert_eq!(ctx.resolve(TokenId::GitAhead), "");
+        assert_eq!(ctx.resolve(TokenId::GitBehind), "\u{2193}5");
+
+        // No upstream: even nonzero counts collapse to empty.
+        let mut status = GitStatus::default();
+        status.has_upstream = false;
+        status.ahead = 3;
+        status.behind = 5;
+        let ctx = make_context(&agent, Some(&status), 0);
+        assert_eq!(ctx.resolve(TokenId::GitAhead), "");
+        assert_eq!(ctx.resolve(TokenId::GitBehind), "");
+    }
+
+    #[test]
+    fn resolve_git_dirty_conflict_glyphs() {
+        let agent = test_agent();
+        let icons = crate::nerdfont::git_icons();
+
+        let clean = GitStatus::default();
+        let ctx = make_context(&agent, Some(&clean), 0);
+        assert_eq!(ctx.resolve(TokenId::GitDirty), "");
+        assert_eq!(ctx.resolve(TokenId::GitConflict), "");
+
+        let mut dirty = GitStatus::default();
+        dirty.is_dirty = true;
+        dirty.has_conflict = true;
+        let ctx = make_context(&agent, Some(&dirty), 0);
+        assert_eq!(ctx.resolve(TokenId::GitDirty), icons.diff);
+        assert_eq!(ctx.resolve(TokenId::GitConflict), icons.conflict);
+    }
+
+    #[test]
+    fn resolve_git_branch() {
+        let agent = test_agent();
+        let mut status = GitStatus::default();
+        status.branch = Some("feature/x".to_string());
+        assert_eq!(
+            make_context(&agent, Some(&status), 0).resolve(TokenId::GitBranch),
+            "feature/x"
+        );
+        // Detached HEAD -> empty.
+        let detached = GitStatus::default();
+        assert_eq!(
+            make_context(&agent, Some(&detached), 0).resolve(TokenId::GitBranch),
+            ""
+        );
+        // No git status -> empty.
+        assert_eq!(
+            make_context(&agent, None, 0).resolve(TokenId::GitBranch),
+            ""
+        );
+    }
+
+    #[test]
+    fn intrinsic_style_assigns_palette_colors() {
+        let agent = test_agent();
+        let ctx = make_context(&agent, None, 0);
+        let palette = ctx.palette;
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::GitAhead).fg,
+            Some(palette.success)
+        );
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::GitBehind).fg,
+            Some(palette.danger)
+        );
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::GitConflict).fg,
+            Some(palette.danger)
+        );
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::GitDirty).fg,
+            Some(palette.warning)
+        );
+        assert_eq!(ctx.intrinsic_style(TokenId::Idx).fg, Some(palette.dimmed));
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::JumpKey).fg,
+            Some(palette.dimmed)
+        );
+    }
+
+    #[test]
+    fn intrinsic_style_dims_when_stale() {
+        let agent = test_agent();
+        let mut ctx = make_context(&agent, None, 0);
+        ctx.is_stale = true;
+        let palette = ctx.palette;
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::GitAhead).fg,
+            Some(palette.dimmed)
+        );
+        assert_eq!(
+            ctx.intrinsic_style(TokenId::StatusLabel).fg,
+            Some(palette.dimmed)
         );
     }
 }

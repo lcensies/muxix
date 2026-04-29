@@ -407,6 +407,7 @@ mod tests {
             palette: test_palette(),
             agent_icon: String::new(),
             agent_label: String::new(),
+            idx: 0,
         }
     }
 
@@ -484,6 +485,7 @@ mod tests {
             palette: test_palette(),
             agent_icon: String::new(),
             agent_label: String::new(),
+            idx: 0,
         };
         let tokens = vec![
             Token::Field(TokenId::PaneTitle),
@@ -521,6 +523,7 @@ mod tests {
             palette: test_palette(),
             agent_icon: String::new(),
             agent_label: String::new(),
+            idx: 0,
         }
     }
 
@@ -656,6 +659,7 @@ mod tests {
             palette: test_palette(),
             agent_icon: String::new(),
             agent_label: String::new(),
+            idx: 0,
         };
         let tokens = vec![
             Token::Literal("   ".to_string()),

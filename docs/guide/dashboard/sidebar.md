@@ -90,22 +90,35 @@ sidebars without a restart.
 
 ### Tokens
 
-| Token           | Description                                                                                                                |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `{primary}`     | Primary identity label (worktree / window / session / project chain).                                                      |
-| `{secondary}`   | Secondary label from the same chain, with worktree appended if not already primary.                                        |
-| `{worktree}`    | Worktree directory name.                                                                                                   |
-| `{project}`     | Project name (parent of the worktree).                                                                                     |
-| `{session}`     | Tmux session name (blank for workmux-prefixed sessions).                                                                   |
-| `{window}`      | Tmux window name (blank for generic shell names like `zsh`, `bash`).                                                       |
-| `{pane_title}`  | Sanitized agent task title from the pane title.                                                                            |
-| `{pane_suffix}` | Disambiguator like `(1)`, `(2)` when multiple agents share a window. Empty otherwise.                                      |
-| `{status_icon}` | Status indicator (working spinner, waiting, done, sleeping, etc.).                                                         |
-| `{agent_icon}`  | Per-agent icon based on the running agent's profile (see below).                                                           |
-| `{agent_label}` | Capitalized agent name (e.g. `Claude`, `Codex`).                                                                           |
-| `{elapsed}`     | Elapsed time since the agent's last status change.                                                                         |
-| `{git_stats}`   | Composite git diff stats: committed (`+1278 -400`), pen icon, uncommitted (`+21`). Self-degrades to fit the space it gets. |
-| `{fill}`        | Layout marker that splits a line into a left and right segment. At most one per line.                                      |
+| Token            | Description                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `{primary}`      | Primary identity label (worktree / window / session / project chain).                                                      |
+| `{secondary}`    | Secondary label from the same chain, with worktree appended if not already primary.                                        |
+| `{worktree}`     | Worktree directory name.                                                                                                   |
+| `{project}`      | Project name (parent of the worktree).                                                                                     |
+| `{session}`      | Tmux session name (blank for workmux-prefixed sessions).                                                                   |
+| `{window}`       | Tmux window name (blank for generic shell names like `zsh`, `bash`).                                                       |
+| `{pane_title}`   | Sanitized agent task title from the pane title.                                                                            |
+| `{pane_suffix}`  | Disambiguator like `(1)`, `(2)` when multiple agents share a window. Empty otherwise.                                      |
+| `{status_icon}`  | Status indicator (working spinner, waiting, done, sleeping, etc.).                                                         |
+| `{agent_icon}`   | Per-agent icon based on the running agent's profile (see below).                                                           |
+| `{agent_label}`  | Capitalized agent name (e.g. `Claude`, `Codex`).                                                                           |
+| `{elapsed}`      | Elapsed time since the agent's last status change.                                                                         |
+| `{git_stats}`    | Composite git diff stats: committed (`+1278 -400`), pen icon, uncommitted (`+21`). Self-degrades to fit the space it gets. |
+| `{git_branch}`   | Current branch name. Empty when detached HEAD or git status unavailable.                                                   |
+| `{git_ahead}`    | Commits ahead of upstream as `↑N` when N greater than 0. Empty when 0 or no upstream.                                      |
+| `{git_behind}`   | Commits behind upstream as `↓N` when N greater than 0. Empty when 0 or no upstream.                                        |
+| `{git_dirty}`    | Diff glyph when the working tree is dirty. Empty when clean.                                                               |
+| `{git_conflict}` | Conflict glyph when the worktree has merge conflicts. Empty otherwise.                                                     |
+| `{status_label}` | Display name for the agent status: `Working`, `Waiting`, `Done`, or empty when no status.                                  |
+| `{idx}`          | 1-based sidebar position (`1`, `2`, ...).                                                                                  |
+| `{jump_key}`     | The `M-1`..`M-9` chord label for the first nine rows. Empty for row 10 and beyond.                                         |
+| `{fill}`         | Layout marker that splits a line into a left and right segment. At most one per line.                                      |
+
+`{git_ahead}` and `{git_behind}` already include the arrow prefix, so do not
+wrap them with another `↑` / `↓` literal in your template -- a stray glyph
+would remain when the count is zero. The same applies to `{git_dirty}` and
+`{git_conflict}`, which are self-contained glyph indicators.
 
 Unknown tokens or unbalanced braces cause the template to be rejected and the
 previous valid template (or the built-in default) is kept.

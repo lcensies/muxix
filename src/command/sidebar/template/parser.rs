@@ -32,6 +32,14 @@ pub enum TokenId {
     GitCommitted,
     GitUncommitted,
     GitRebase,
+    GitAhead,
+    GitBehind,
+    GitDirty,
+    GitConflict,
+    GitBranch,
+    StatusLabel,
+    Idx,
+    JumpKey,
 }
 
 impl TokenId {
@@ -69,6 +77,14 @@ impl fmt::Display for TokenId {
             TokenId::GitCommitted => "git_committed",
             TokenId::GitUncommitted => "git_uncommitted",
             TokenId::GitRebase => "git_rebase",
+            TokenId::GitAhead => "git_ahead",
+            TokenId::GitBehind => "git_behind",
+            TokenId::GitDirty => "git_dirty",
+            TokenId::GitConflict => "git_conflict",
+            TokenId::GitBranch => "git_branch",
+            TokenId::StatusLabel => "status_label",
+            TokenId::Idx => "idx",
+            TokenId::JumpKey => "jump_key",
         };
         write!(f, "{}", s)
     }
@@ -167,6 +183,14 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                     "git_committed" => TokenId::GitCommitted,
                     "git_uncommitted" => TokenId::GitUncommitted,
                     "git_rebase" => TokenId::GitRebase,
+                    "git_ahead" => TokenId::GitAhead,
+                    "git_behind" => TokenId::GitBehind,
+                    "git_dirty" => TokenId::GitDirty,
+                    "git_conflict" => TokenId::GitConflict,
+                    "git_branch" => TokenId::GitBranch,
+                    "status_label" => TokenId::StatusLabel,
+                    "idx" => TokenId::Idx,
+                    "jump_key" => TokenId::JumpKey,
                     other => {
                         return Err(ParseError {
                             message: format!("unknown token '{}' at column {}", other, start + 1),
@@ -305,6 +329,14 @@ mod tests {
             TokenId::GitCommitted,
             TokenId::GitUncommitted,
             TokenId::GitRebase,
+            TokenId::GitAhead,
+            TokenId::GitBehind,
+            TokenId::GitDirty,
+            TokenId::GitConflict,
+            TokenId::GitBranch,
+            TokenId::StatusLabel,
+            TokenId::Idx,
+            TokenId::JumpKey,
         ] {
             let name = token_id.to_string();
             let parsed = parse_line(&format!("{{{}}}", name)).unwrap();
