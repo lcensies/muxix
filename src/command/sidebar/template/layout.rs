@@ -1,9 +1,11 @@
 //! Layout solver: turns a parsed token line and a RowContext into styled spans.
 
+use ratatui::style::Style;
 use ratatui::text::Span;
 
 use super::context::RowContext;
 use super::parser::{Token, TokenId};
+use crate::tmux_style::apply_tmux_directives;
 
 /// Render a line of tokens into spans, fitting within `width` columns.
 ///
@@ -93,7 +95,7 @@ pub fn is_empty_line(tokens: &[Token], ctx: &RowContext) -> bool {
                 // Non-whitespace literal means the line is not empty
                 return false;
             }
-            Token::Fill => {}
+            Token::Fill | Token::Style(_) => {}
             Token::Field(id) => {
                 if is_git_segment(*id) {
                     if ctx.natural_width(*id) > 0 {
@@ -134,6 +136,12 @@ impl TokenInfo {
                 is_flex: false,
                 is_field: false,
             },
+            Token::Style(s) => Self {
+                token: Token::Style(s.clone()),
+                natural_width: 0,
+                is_flex: false,
+                is_field: false,
+            },
             Token::Field(id) => Self {
                 token: Token::Field(*id),
                 natural_width: ctx.natural_width(*id),
@@ -155,11 +163,17 @@ fn collapse_empty_fields(infos: Vec<TokenInfo>) -> Vec<TokenInfo> {
         if !is_empty_field {
             continue;
         }
-        // Prefer dropping the following whitespace literal, fall back to the preceding one.
-        if i + 1 < infos.len() && keep[i + 1] && is_whitespace_literal(&infos[i + 1]) {
-            keep[i + 1] = false;
-        } else if i > 0 && keep[i - 1] && is_whitespace_literal(&infos[i - 1]) {
-            keep[i - 1] = false;
+        // Prefer dropping a following whitespace literal, falling back to a
+        // preceding one. Skip over zero-width style tokens when scanning, so
+        // `{empty_field}#[fg=red] ` still drops the joiner space.
+        if let Some(j) = next_kept_neighbor(&infos, &keep, i, true)
+            && is_whitespace_literal(&infos[j])
+        {
+            keep[j] = false;
+        } else if let Some(j) = next_kept_neighbor(&infos, &keep, i, false)
+            && is_whitespace_literal(&infos[j])
+        {
+            keep[j] = false;
         }
     }
     infos
@@ -167,6 +181,39 @@ fn collapse_empty_fields(infos: Vec<TokenInfo>) -> Vec<TokenInfo> {
         .zip(keep)
         .filter_map(|(info, k)| if k { Some(info) } else { None })
         .collect()
+}
+
+/// Find the next still-kept non-style neighbor in the given direction.
+fn next_kept_neighbor(
+    infos: &[TokenInfo],
+    keep: &[bool],
+    from: usize,
+    forward: bool,
+) -> Option<usize> {
+    if forward {
+        let mut j = from + 1;
+        while j < infos.len() {
+            if keep[j] && !matches!(infos[j].token, Token::Style(_)) {
+                return Some(j);
+            }
+            j += 1;
+        }
+        None
+    } else {
+        if from == 0 {
+            return None;
+        }
+        let mut j = from - 1;
+        loop {
+            if keep[j] && !matches!(infos[j].token, Token::Style(_)) {
+                return Some(j);
+            }
+            if j == 0 {
+                return None;
+            }
+            j -= 1;
+        }
+    }
 }
 
 fn is_git_segment(id: TokenId) -> bool {
@@ -195,15 +242,21 @@ fn render_with_layout(
     let mut used_width = 0;
     let mut first_flex_assigned = false;
     let mut slack: usize = 0;
+    // User-supplied tmux-style overlay accumulated as we scan tokens. Stale
+    // rows ignore this overlay so state signaling stays authoritative.
+    let mut user_style = Style::default();
 
     // Render left segment
     for info in left {
         match &info.token {
             Token::Literal(s) => {
-                spans.push(Span::raw(s.clone()));
+                spans.push(styled_span(s.clone(), Style::default(), user_style, ctx));
                 used_width += info.natural_width;
             }
             Token::Fill => {}
+            Token::Style(directive) => {
+                user_style = apply_tmux_directives(user_style, directive, Style::default());
+            }
             Token::Field(id) => {
                 if info.is_flex && !first_flex_assigned {
                     // First flex token: truncate if natural exceeds slack, otherwise
@@ -212,7 +265,7 @@ fn render_with_layout(
                     let allocated = available;
                     if *id == TokenId::StatusIcon {
                         for (text, style) in &ctx.status_icon_spans {
-                            spans.push(Span::styled(text.clone(), *style));
+                            spans.push(styled_span(text.clone(), *style, user_style, ctx));
                             used_width += display_width(text);
                         }
                     } else {
@@ -225,7 +278,12 @@ fn render_with_layout(
                             text
                         };
                         let rendered_width = display_width(&rendered);
-                        spans.push(Span::styled(rendered, ctx.intrinsic_style(*id)));
+                        spans.push(styled_span(
+                            rendered,
+                            ctx.intrinsic_style(*id),
+                            user_style,
+                            ctx,
+                        ));
                         used_width += rendered_width;
 
                         if rendered_width < allocated {
@@ -240,13 +298,13 @@ fn render_with_layout(
                     let max_w = width.saturating_sub(used_width);
                     if *id == TokenId::StatusIcon {
                         for (text, style) in &ctx.status_icon_spans {
-                            spans.push(Span::styled(text.clone(), *style));
+                            spans.push(styled_span(text.clone(), *style, user_style, ctx));
                             used_width += display_width(text);
                         }
                     } else if is_git_segment(*id) {
                         let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
                         for (text, style) in git_spans {
-                            spans.push(Span::styled(text, style));
+                            spans.push(styled_span(text, style, user_style, ctx));
                         }
                         used_width += git_width;
                     } else {
@@ -256,7 +314,12 @@ fn render_with_layout(
                         } else {
                             text
                         };
-                        spans.push(Span::styled(rendered, ctx.intrinsic_style(*id)));
+                        spans.push(styled_span(
+                            rendered,
+                            ctx.intrinsic_style(*id),
+                            user_style,
+                            ctx,
+                        ));
                         used_width += info.natural_width.min(max_w);
                     }
                 }
@@ -273,7 +336,12 @@ fn render_with_layout(
         available
     };
     if fill_width > 0 {
-        spans.push(Span::raw(" ".repeat(fill_width)));
+        spans.push(styled_span(
+            " ".repeat(fill_width),
+            Style::default(),
+            user_style,
+            ctx,
+        ));
         used_width += fill_width;
     }
 
@@ -281,21 +349,24 @@ fn render_with_layout(
     for info in right {
         match &info.token {
             Token::Literal(s) => {
-                spans.push(Span::raw(s.clone()));
+                spans.push(styled_span(s.clone(), Style::default(), user_style, ctx));
                 used_width += info.natural_width;
             }
             Token::Fill => {}
+            Token::Style(directive) => {
+                user_style = apply_tmux_directives(user_style, directive, Style::default());
+            }
             Token::Field(id) => {
                 let max_w = width.saturating_sub(used_width);
                 if *id == TokenId::StatusIcon {
                     for (text, style) in &ctx.status_icon_spans {
-                        spans.push(Span::styled(text.clone(), *style));
+                        spans.push(styled_span(text.clone(), *style, user_style, ctx));
                         used_width += display_width(text);
                     }
                 } else if *id == TokenId::GitStats {
                     let (git_spans, git_width) = ctx.git_stats_spans(max_w);
                     for (text, style) in git_spans {
-                        spans.push(Span::styled(text, style));
+                        spans.push(styled_span(text, style, user_style, ctx));
                     }
                     used_width += git_width;
                 } else {
@@ -305,7 +376,12 @@ fn render_with_layout(
                     } else {
                         text
                     };
-                    spans.push(Span::styled(rendered, ctx.intrinsic_style(*id)));
+                    spans.push(styled_span(
+                        rendered,
+                        ctx.intrinsic_style(*id),
+                        user_style,
+                        ctx,
+                    ));
                     used_width += info.natural_width.min(max_w);
                 }
             }
@@ -315,10 +391,25 @@ fn render_with_layout(
     // Fill any remaining width with spaces so the line reaches `width`
     // (important for background coloring in selected rows)
     if used_width < width {
-        spans.push(Span::raw(" ".repeat(width - used_width)));
+        spans.push(styled_span(
+            " ".repeat(width - used_width),
+            Style::default(),
+            user_style,
+            ctx,
+        ));
     }
 
     spans
+}
+
+/// Build a `Span` whose style is the intrinsic base patched by the user
+/// overlay, except on stale rows where the user overlay is ignored.
+fn styled_span(text: String, base: Style, user_style: Style, ctx: &RowContext) -> Span<'static> {
+    if ctx.is_stale {
+        Span::styled(text, base)
+    } else {
+        Span::styled(text, base.patch(user_style))
+    }
 }
 
 fn display_width(s: &str) -> usize {
@@ -641,6 +732,199 @@ mod tests {
         let ctx = make_git_context(&agent, &status);
         let tokens = vec![Token::Field(TokenId::GitCommitted)];
         assert!(!is_empty_line(&tokens, &ctx));
+    }
+
+    #[test]
+    fn style_token_is_zero_width_in_layout() {
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        // Same template with and without a style wrap should render identical
+        // visible text at the same width.
+        let plain = vec![
+            Token::Field(TokenId::Primary),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+        let styled = vec![
+            Token::Style("fg=red".to_string()),
+            Token::Field(TokenId::Primary),
+            Token::Style("default".to_string()),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+        let plain_text: String = render_line(&ctx, &plain, 30)
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        let styled_text: String = render_line(&ctx, &styled, 30)
+            .iter()
+            .map(|s| s.content.clone())
+            .collect();
+        assert_eq!(plain_text, styled_text);
+    }
+
+    #[test]
+    fn user_fg_overrides_intrinsic_on_field() {
+        use ratatui::style::Color;
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        let tokens = vec![
+            Token::Style("fg=red".to_string()),
+            Token::Field(TokenId::Primary),
+            Token::Style("default".to_string()),
+        ];
+        let spans = render_line(&ctx, &tokens, 20);
+        let primary_span = spans
+            .iter()
+            .find(|s| s.content.contains("feature-auth"))
+            .expect("primary rendered");
+        assert_eq!(primary_span.style.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn default_resets_user_overlay() {
+        use ratatui::style::Color;
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        // "x" should be red, "y" should fall back to no-overlay (literals are
+        // emitted with Style::default() by default).
+        let tokens = vec![
+            Token::Style("fg=red".to_string()),
+            Token::Literal("x".to_string()),
+            Token::Style("default".to_string()),
+            Token::Literal("y".to_string()),
+        ];
+        let spans = render_line(&ctx, &tokens, 10);
+        let x = spans.iter().find(|s| s.content == "x").unwrap();
+        let y = spans.iter().find(|s| s.content == "y").unwrap();
+        assert_eq!(x.style.fg, Some(Color::Red));
+        assert_eq!(y.style.fg, None);
+    }
+
+    #[test]
+    fn stale_row_ignores_user_overlay() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.is_stale = true;
+        let plain_tokens = vec![Token::Field(TokenId::Primary)];
+        let styled_tokens = vec![
+            Token::Style("fg=red,bold".to_string()),
+            Token::Field(TokenId::Primary),
+        ];
+        let plain = render_line(&ctx, &plain_tokens, 20);
+        let styled = render_line(&ctx, &styled_tokens, 20);
+        let plain_primary = plain
+            .iter()
+            .find(|s| s.content.contains("feature-auth"))
+            .unwrap();
+        let styled_primary = styled
+            .iter()
+            .find(|s| s.content.contains("feature-auth"))
+            .unwrap();
+        assert_eq!(plain_primary.style, styled_primary.style);
+    }
+
+    #[test]
+    fn unclosed_style_renders_literally_and_counts_for_width() {
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        // Parser path: an unclosed `#[` becomes a literal. Round-trip the
+        // template through the parser to exercise the real flow.
+        use super::super::parser::parse_line;
+        let tokens = parse_line("#[fg=red x").unwrap();
+        let spans = render_line(&ctx, &tokens, 20);
+        let text: String = spans.iter().map(|s| s.content.clone()).collect();
+        assert!(text.contains("#[fg=red x"));
+    }
+
+    #[test]
+    fn rendered_width_matches_requested_width_with_styles() {
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        let tokens = vec![
+            Token::Style("fg=red".to_string()),
+            Token::Field(TokenId::Primary),
+            Token::Style("default".to_string()),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+        let spans = render_line(&ctx, &tokens, 25);
+        let total_width: usize = spans.iter().map(|s| display_width(&s.content)).sum();
+        assert_eq!(total_width, 25);
+    }
+
+    #[test]
+    fn styled_fill_padding_inherits_overlay() {
+        use ratatui::style::Color;
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        let tokens = vec![
+            Token::Style("bg=blue".to_string()),
+            Token::Field(TokenId::Primary),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+        let spans = render_line(&ctx, &tokens, 30);
+        // Find the slack span (whitespace between primary and elapsed).
+        let pad = spans
+            .iter()
+            .find(|s| !s.content.is_empty() && s.content.chars().all(|c| c == ' '))
+            .expect("a padding span exists");
+        assert_eq!(pad.style.bg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn collapse_empty_field_skips_intervening_style_token() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.pane_suffix.clear();
+        let tokens = vec![
+            Token::Field(TokenId::Primary),
+            Token::Field(TokenId::PaneSuffix),
+            Token::Style("fg=red".to_string()),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::Elapsed),
+        ];
+        let spans = render_line(&ctx, &tokens, 30);
+        let text: String = spans.iter().map(|s| s.content.clone()).collect();
+        // No double space between primary and elapsed when pane_suffix is
+        // empty: the whitespace literal sandwiched after the style token is
+        // dropped.
+        assert!(
+            !text.contains("feature-auth  "),
+            "joiner space leaked: {:?}",
+            text
+        );
+    }
+
+    #[test]
+    fn is_empty_line_ignores_style_tokens() {
+        let agent = test_agent("foo");
+        let ctx = RowContext {
+            agent: &agent,
+            primary: String::new(),
+            secondary: String::new(),
+            pane_suffix: String::new(),
+            elapsed: String::new(),
+            status_icon_spans: vec![],
+            status_color: ratatui::style::Color::Reset,
+            pane_title: None,
+            git_status: None,
+            is_stale: false,
+            is_active: false,
+            is_selected: false,
+            palette: test_palette(),
+            agent_icon: String::new(),
+            agent_icon_color: None,
+            agent_label: String::new(),
+            idx: 0,
+        };
+        let tokens = vec![
+            Token::Style("fg=red".to_string()),
+            Token::Field(TokenId::PaneTitle),
+            Token::Style("default".to_string()),
+        ];
+        assert!(is_empty_line(&tokens, &ctx));
     }
 
     #[test]

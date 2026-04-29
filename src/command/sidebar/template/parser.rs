@@ -11,6 +11,9 @@ pub enum Token {
     Field(TokenId),
     /// Layout fill marker.
     Fill,
+    /// Tmux-style directive (`#[fg=red,bold]`). Carries the raw directive
+    /// content (without the surrounding `#[` and `]`).
+    Style(String),
 }
 
 /// Identifiers for every supported template token.
@@ -111,6 +114,8 @@ impl std::error::Error for ParseError {}
 /// - `}}` → literal `}`
 /// - `{name}` → field token
 /// - `{fill}` → fill marker
+/// - `#[fg=red,bold]` → tmux-style directive token (zero-width). Unclosed
+///   `#[...` falls back to literal text.
 pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
     let mut tokens = Vec::new();
     let mut chars = input.char_indices().peekable();
@@ -118,6 +123,39 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
     let mut fill_count = 0;
 
     while let Some((i, c)) = chars.next() {
+        if c == '#'
+            && let Some(&(_, '[')) = chars.peek()
+        {
+            // Consume the `[`
+            chars.next();
+
+            // Look for closing `]`. The directive body cannot contain `]`,
+            // matching `tmux_style::parse_tmux_styles`.
+            let mut directive = String::new();
+            let mut found_close = false;
+            for (_, inner_c) in chars.by_ref() {
+                if inner_c == ']' {
+                    found_close = true;
+                    break;
+                }
+                directive.push(inner_c);
+            }
+
+            if found_close {
+                // Flush pending literal, then emit the style token.
+                if !literal.is_empty() {
+                    tokens.push(Token::Literal(std::mem::take(&mut literal)));
+                }
+                tokens.push(Token::Style(directive));
+            } else {
+                // Unclosed `#[`: render the prefix and the consumed body
+                // literally (matches `tmux_style::parse_tmux_styles`).
+                literal.push_str("#[");
+                literal.push_str(&directive);
+            }
+            continue;
+        }
+
         if c == '{' {
             if let Some(&(_, next_c)) = chars.peek()
                 && next_c == '{'
@@ -308,6 +346,67 @@ mod tests {
     fn reject_multiple_fill() {
         let err = parse_line("{fill} {fill}").unwrap_err();
         assert!(err.message.contains("at most one {fill}"));
+    }
+
+    #[test]
+    fn parse_style_directive() {
+        let tokens = parse_line("#[fg=red]X").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Style("fg=red".to_string()),
+                Token::Literal("X".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_multiple_styles_split_literals() {
+        let tokens = parse_line("a#[fg=red]b#[default]c").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Literal("a".to_string()),
+                Token::Style("fg=red".to_string()),
+                Token::Literal("b".to_string()),
+                Token::Style("default".to_string()),
+                Token::Literal("c".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_style_around_token() {
+        let tokens = parse_line("#[fg=cyan]{primary}#[default]").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Style("fg=cyan".to_string()),
+                Token::Field(TokenId::Primary),
+                Token::Style("default".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_unclosed_style_falls_back_to_literal() {
+        let tokens = parse_line("icon #[fg=red").unwrap();
+        assert_eq!(tokens, vec![Token::Literal("icon #[fg=red".to_string())]);
+    }
+
+    #[test]
+    fn parse_empty_style_directive() {
+        let tokens = parse_line("#[]X").unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Style(String::new()), Token::Literal("X".to_string()),]
+        );
+    }
+
+    #[test]
+    fn parse_lone_hash_treated_as_literal() {
+        let tokens = parse_line("a#b#c").unwrap();
+        assert_eq!(tokens, vec![Token::Literal("a#b#c".to_string())]);
     }
 
     #[test]

@@ -38,7 +38,7 @@ pub fn parse_tmux_styles(input: &str, base_style: Style) -> Vec<(String, Style)>
 }
 
 /// Apply comma-separated tmux style directives (e.g. `fg=#a6e3a1,bold`) to a style.
-fn apply_tmux_directives(mut current: Style, style_str: &str, base: Style) -> Style {
+pub fn apply_tmux_directives(mut current: Style, style_str: &str, base: Style) -> Style {
     for part in style_str.split(',') {
         let part = part.trim();
         if part.eq_ignore_ascii_case("default") || part.eq_ignore_ascii_case("none") {

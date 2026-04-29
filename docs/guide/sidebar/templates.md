@@ -89,6 +89,41 @@ default `{pane_title}` row collapse when there's nothing to show.
 Use <code v-pre>{{</code> for a literal `{` and <code v-pre>}}</code> for a
 literal `}`.
 
+## Styling
+
+Templates accept the same tmux-style `#[...]` directives that workmux uses
+elsewhere (see [configuration](/guide/configuration#status-icons)). A
+directive is stateful: it applies to all subsequent literals, fields, and
+fill spaces on the same line until the next directive or `#[default]`. Each
+line starts with no overlay.
+
+```yaml
+sidebar:
+  templates:
+    compact: "{status_icon} #[fg=cyan]{primary}#[default] {fill} {elapsed}"
+    tiles:
+      - "#[fg=cyan,bold]{primary}#[default] {pane_suffix} {fill} {elapsed}"
+      - "{secondary} {fill} #[fg=green]{git_stats}#[default]"
+      - "{pane_title}"
+```
+
+Supported attributes are `fg=`, `bg=`, `bold`, `dim`, `italics`,
+`underscore`, `reverse`, `strikethrough`, plus `default`/`none` to clear the
+overlay. Colors may be hex (`#a6e3a1`), named (`red`, `green`, `cyan`,
+etc.), or indexed (`colour196`).
+
+Notes:
+
+- Style codes are zero-width. They never affect `{fill}` alignment or
+  ellipsis truncation.
+- Stale rows ignore template styling so the dim state remains visually
+  authoritative.
+- The active row's bold and the selected row's background highlight are
+  preserved; user `fg` patches over the active foreground while keeping
+  bold. A user `bg=` will hide the selection highlight on the styled span.
+- An unclosed `#[...` is rendered as literal text; malformed directives
+  inside `#[...]` are silently ignored.
+
 ## Agent identity
 
 Adding `{agent_icon}` or `{agent_label}` to a template surfaces which agent is
