@@ -324,10 +324,6 @@ mod tests {
         }
     }
 
-    fn empty_icons() -> &'static std::collections::BTreeMap<String, String> {
-        Box::leak(Box::new(std::collections::BTreeMap::new()))
-    }
-
     fn make_context(agent: &AgentPane) -> RowContext {
         // Build a minimal RowContext manually for unit tests
         RowContext {
@@ -344,7 +340,8 @@ mod tests {
             is_active: false,
             is_selected: false,
             palette: test_palette(),
-            agent_icons: empty_icons(),
+            agent_icon: String::new(),
+            agent_label: String::new(),
         }
     }
 
@@ -420,7 +417,8 @@ mod tests {
             is_active: false,
             is_selected: false,
             palette: test_palette(),
-            agent_icons: empty_icons(),
+            agent_icon: String::new(),
+            agent_label: String::new(),
         };
         let tokens = vec![
             Token::Field(TokenId::PaneTitle),
@@ -458,7 +456,8 @@ mod tests {
             is_active: false,
             is_selected: false,
             palette: test_palette(),
-            agent_icons: empty_icons(),
+            agent_icon: String::new(),
+            agent_label: String::new(),
         };
         let tokens = vec![
             Token::Literal("   ".to_string()),

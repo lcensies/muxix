@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
 use crate::git::GitStatus;
-use crate::multiplexer::agent::resolve_profile;
+use crate::multiplexer::agent::resolve_profile_for_display;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::ui::theme::ThemePalette;
 
@@ -36,8 +36,10 @@ pub struct RowContext<'a> {
     pub is_selected: bool,
     /// Theme palette for style resolution.
     pub palette: &'a ThemePalette,
-    /// Per-agent icon overrides.
-    pub agent_icons: &'a std::collections::BTreeMap<String, String>,
+    /// Pre-resolved agent icon string (empty when no profile matches).
+    pub agent_icon: String,
+    /// Pre-resolved agent label string (empty when no profile matches).
+    pub agent_label: String,
 }
 
 impl<'a> RowContext<'a> {
@@ -82,6 +84,8 @@ impl<'a> RowContext<'a> {
 
         let pane_title = build_pane_title(agent, &primary, &secondary, app.window_prefix());
         let git_status = app.git_statuses.get(&agent.path);
+        let agent_icon = resolve_agent_icon(agent.agent_command.as_deref(), &app.agent_icons);
+        let agent_label = resolve_agent_label(agent.agent_command.as_deref());
 
         Self {
             agent,
@@ -97,7 +101,8 @@ impl<'a> RowContext<'a> {
             is_active,
             is_selected,
             palette: &app.palette,
-            agent_icons: &app.agent_icons,
+            agent_icon,
+            agent_label,
         }
     }
 
@@ -111,13 +116,13 @@ impl<'a> RowContext<'a> {
             TokenId::Session => self.agent.session.clone(),
             TokenId::Window => self.agent.window_name.clone(),
             TokenId::PaneTitle => self.pane_title.clone().unwrap_or_default(),
-            TokenId::AgentLabel => self.agent_label(),
+            TokenId::AgentLabel => self.agent_label.clone(),
             TokenId::StatusIcon => self
                 .status_icon_spans
                 .iter()
                 .map(|(t, _)| t.clone())
                 .collect(),
-            TokenId::AgentIcon => self.agent_icon(),
+            TokenId::AgentIcon => self.agent_icon.clone(),
             TokenId::PaneSuffix => self.pane_suffix.clone(),
             TokenId::Elapsed => self.elapsed.clone(),
             TokenId::GitStats => {
@@ -136,8 +141,8 @@ impl<'a> RowContext<'a> {
                 .iter()
                 .map(|(t, _)| display_width(t))
                 .sum(),
-            TokenId::AgentIcon => display_width(&self.agent_icon()),
-            TokenId::AgentLabel => display_width(&self.agent_label()),
+            TokenId::AgentIcon => display_width(&self.agent_icon),
+            TokenId::AgentLabel => display_width(&self.agent_label),
             TokenId::GitStats => {
                 let (spans, width) = self.git_stats_spans(usize::MAX);
                 let _ = spans;
@@ -196,51 +201,42 @@ impl<'a> RowContext<'a> {
     fn project_name(&self) -> String {
         extract_project_name(&self.agent.path)
     }
+}
 
-    fn agent_label(&self) -> String {
-        let Some(ref cmd) = self.agent.agent_command else {
-            return String::new();
-        };
-        let profile = resolve_profile(Some(cmd));
-        let name = profile.name();
-        if name == "default" {
-            String::new()
-        } else {
-            // Capitalize first letter
-            let mut chars = name.chars();
-            match chars.next() {
-                Some(first) => {
-                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
-                }
-                None => String::new(),
-            }
-        }
+fn resolve_agent_label(agent_command: Option<&str>) -> String {
+    let profile = resolve_profile_for_display(agent_command);
+    let name = profile.name();
+    if name == "default" {
+        return String::new();
     }
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+        None => String::new(),
+    }
+}
 
-    fn agent_icon(&self) -> String {
-        let Some(ref cmd) = self.agent.agent_command else {
-            return String::new();
-        };
-        let profile = resolve_profile(Some(cmd));
-        let name = profile.name();
-        if name == "default" {
-            return String::new();
-        }
-        // Check overrides first
-        if let Some(icon) = self.agent_icons.get(name) {
-            return icon.clone();
-        }
-        // Default icons
-        match name {
-            "claude" => "✳".to_string(),
-            "codex" => "CX".to_string(),
-            "opencode" => "OC".to_string(),
-            "gemini" => "G".to_string(),
-            "pi" => "π".to_string(),
-            "kiro-cli" => "K".to_string(),
-            "vibe" => "V".to_string(),
-            _ => name.chars().next().unwrap_or('?').to_string(),
-        }
+fn resolve_agent_icon(
+    agent_command: Option<&str>,
+    agent_icons: &std::collections::BTreeMap<String, String>,
+) -> String {
+    let profile = resolve_profile_for_display(agent_command);
+    let name = profile.name();
+    if name == "default" {
+        return String::new();
+    }
+    if let Some(icon) = agent_icons.get(name) {
+        return icon.clone();
+    }
+    match name {
+        "claude" => "✳".to_string(),
+        "codex" => "CX".to_string(),
+        "opencode" => "OC".to_string(),
+        "gemini" => "G".to_string(),
+        "pi" => "π".to_string(),
+        "kiro-cli" => "K".to_string(),
+        "vibe" => "V".to_string(),
+        _ => name.chars().next().unwrap_or('?').to_string(),
     }
 }
 

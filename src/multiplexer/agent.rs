@@ -286,6 +286,31 @@ pub fn resolve_profile(agent_command: Option<&str>) -> &'static dyn AgentProfile
         .unwrap_or(&DefaultProfile)
 }
 
+/// Resolve an agent command to its profile without doing any I/O.
+///
+/// Unlike [`resolve_profile`], this does not call `tmux show-environment` or
+/// `which` to canonicalize bare command names, so it is safe to call from hot
+/// render paths. The trade-off is that commands invoked via a custom symlink
+/// or wrapper whose own filename does not match a known profile name will
+/// resolve to `DefaultProfile`.
+pub fn resolve_profile_for_display(agent_command: Option<&str>) -> &'static dyn AgentProfile {
+    let Some(cmd) = agent_command else {
+        return &DefaultProfile;
+    };
+
+    let token = find_executable_token(cmd);
+    let stem = Path::new(token)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(token);
+
+    PROFILES
+        .iter()
+        .find(|p| p.name() == stem)
+        .copied()
+        .unwrap_or(&DefaultProfile)
+}
+
 /// Resolve an agent profile with an optional type override.
 ///
 /// First tries normal stem-based detection. If that yields `DefaultProfile`
