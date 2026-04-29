@@ -273,7 +273,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     let agent_count = app.agents.len();
     let pane_suffixes = compute_pane_suffixes(&app.agents);
     let tile_templates: Vec<_> = app.templates.tiles.clone();
-    let body_width = (area.width as usize).saturating_sub(5); // stripe(2) + icon(2) + gap(1)
+    let body_width = (area.width as usize).saturating_sub(6); // stripe(2) + icon(2) + gap(1) + right margin(1)
 
     let mut tile_heights = Vec::new();
 
@@ -352,6 +352,9 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 let body_spans = render_line(&ctx, template, body_width);
                 line_spans.extend(body_spans);
 
+                // Right margin: 1 blank column so content doesn't touch the edge.
+                line_spans.push(Span::raw(" "));
+
                 // Post-pass: apply selection background
                 if ctx.is_selected {
                     for span in &mut line_spans {
@@ -370,6 +373,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                     Span::raw("  "),
                     Span::raw(" "),
                     Span::raw(" ".repeat(body_width)),
+                    Span::raw(" "),
                 ]));
             }
 
