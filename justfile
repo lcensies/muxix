@@ -47,9 +47,16 @@ clippy:
 build:
     cargo build --all
 
-# Install release binary globally
+# Install release binary globally from local source
 install:
     cargo install --offline --path . --locked
+
+# Install release binary globally from GitHub releases
+install-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    install_root="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
+    WORKMUX_INSTALL_DIR="$install_root/bin" bash scripts/install.sh
 
 # Install debug binary globally via symlink
 install-dev:
