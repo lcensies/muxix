@@ -370,20 +370,9 @@ fn add_watch(
 ) {
     let already_watching = watch_to_worktrees.get(path).is_some_and(|s| !s.is_empty());
 
-    if !already_watching {
-        match watcher.watch(path, mode) {
-            Ok(()) => tracing::info!(
-                op = "watch",
-                path = %path.display(),
-                mode = ?mode,
-                total = watch_to_worktrees.len() + 1,
-                "fd-leak debug"
-            ),
-            Err(e) => {
-                tracing::warn!("failed to watch {}: {}", path.display(), e);
-                return;
-            }
-        }
+    if !already_watching && let Err(e) = watcher.watch(path, mode) {
+        tracing::warn!("failed to watch {}: {}", path.display(), e);
+        return;
     }
 
     watch_to_worktrees
@@ -404,14 +393,7 @@ fn remove_worktree_watch(
         worktrees.remove(worktree);
         if worktrees.is_empty() {
             watch_to_worktrees.remove(watch_path);
-            let res = watcher.unwatch(watch_path);
-            tracing::info!(
-                op = "unwatch",
-                path = %watch_path.display(),
-                ok = res.is_ok(),
-                total = watch_to_worktrees.len(),
-                "fd-leak debug"
-            );
+            let _ = watcher.unwatch(watch_path);
         }
     }
 }
@@ -641,7 +623,6 @@ fn spawn_git_worker(
         // Track unique active paths for fallback polling
         let mut unique_active: Vec<PathBuf> = Vec::new();
         let mut last_full_sweep = Instant::now();
-        let mut last_fd_log = Instant::now();
         let full_sweep_interval = if watcher.is_none() {
             // No watcher available: poll frequently as the only change detection
             Duration::from_secs(2)
@@ -836,25 +817,6 @@ fn spawn_git_worker(
             if any_changed {
                 dirty_flag.store(true, Ordering::Relaxed);
                 let _ = wake_tx.try_send(());
-            }
-
-            if last_fd_log.elapsed() >= Duration::from_secs(60) {
-                last_fd_log = Instant::now();
-                let fd_dir = if cfg!(target_os = "linux") {
-                    "/proc/self/fd"
-                } else {
-                    "/dev/fd"
-                };
-                let fd_count = std::fs::read_dir(fd_dir)
-                    .ok()
-                    .map(|it| it.count() as i64)
-                    .unwrap_or(-1);
-                tracing::info!(
-                    fd_count,
-                    watched_paths = watch_to_worktrees.len(),
-                    worktrees = worktree_watches.len(),
-                    "fd-leak debug snapshot"
-                );
             }
         }
     });
