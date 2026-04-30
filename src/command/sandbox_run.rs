@@ -331,8 +331,8 @@ fn run_container(
     // Start network proxy when policy is deny
     let network_deny = config.sandbox.network_policy_is_deny();
     let proxy = if network_deny {
-        let allowed = config.sandbox.network.allowed_domains();
-        let proxy = NetworkProxy::bind(allowed)?;
+        let allowed = config.sandbox.network.allowed_domain_rules();
+        let proxy = NetworkProxy::bind(&allowed)?;
         let proxy_port = proxy.port();
         let proxy_token = proxy.token().to_string();
         let handle = proxy.spawn();

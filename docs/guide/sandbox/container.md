@@ -57,7 +57,7 @@ workmux sandbox pull
 | `extra_mounts`            | `[]`                                    | Additional host paths to mount (see [shared features](./features#extra-mounts)). **Global config only.**                                                                                                          |
 | `agent_config_dir`        | per-agent default                       | Custom host directory for agent config. Supports `{agent}` placeholder. Overrides default mounts (e.g. `~/.claude/`). Auto-created if missing. **Global config only.**                                            |
 | `network.policy`          | `allow`                                 | Network restriction policy: `allow` (no restrictions) or `deny` (block all except allowed domains). See [network restrictions](#network-restrictions). **Global config only.**                                    |
-| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches and `*.` wildcard prefixes. **Global config only.**                                                                                  |
+| `network.allowed_domains` | `[]`                                    | Allowed outbound HTTPS domains when policy is `deny`. Supports exact matches, `*.` wildcard prefixes, and exact-host private destination opt-in. **Global config only.**                                          |
 
 ### Example configurations
 
@@ -236,6 +236,21 @@ sandbox:
 
 Domain entries support exact matches (`github.com`) and wildcard prefixes (`*.github.com`). Wildcards match subdomains only, not the base domain itself (e.g., `*.github.com` matches `api.github.com` but not `github.com`).
 
+By default, allowed domains that resolve to private/internal IP ranges are still rejected. To reach a trusted VPN-hosted mirror, opt in for one exact host with object syntax:
+
+```yaml
+sandbox:
+  enabled: true
+  network:
+    policy: deny
+    allowed_domains:
+      - api.anthropic.com
+      - host: artifactory.example.com
+        allow_private_ips: true
+```
+
+`allow_private_ips: true` permits RFC1918, CGNAT (`100.64.0.0/10`), and IPv6 ULA destinations for that exact host. It does not allow loopback, link-local, unspecified, multicast, or broadcast destinations. IP literals and wildcard private opt-ins like `host: "*.example.com"` are rejected.
+
 ### How it works
 
 Two layers enforce the restrictions:
@@ -245,7 +260,7 @@ Two layers enforce the restrictions:
 
 This means agents cannot bypass restrictions by ignoring proxy environment variables.
 
-Only HTTPS (port 443) to allowed domains gets through. The proxy also rejects connections to private/internal IP ranges (RFC1918, link-local, loopback), so allowed domains cannot be used to reach local network services. Non-HTTPS protocols like `git+ssh` are blocked; use HTTPS git remotes instead. IPv6 is blocked to prevent bypassing the IPv4 firewall.
+Only HTTPS (port 443) to allowed domains gets through. The proxy also rejects connections to private/internal IP ranges by default, so allowed domains cannot be used to reach local network services unless an exact host is explicitly configured with `allow_private_ips: true`. Loopback, link-local, unspecified, multicast, and broadcast destinations are always blocked. Non-HTTPS protocols like `git+ssh` are blocked; use HTTPS git remotes instead. IPv6 is blocked in direct container egress to prevent bypassing the IPv4 firewall.
 
 ### Known limitations
 

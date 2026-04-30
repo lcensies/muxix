@@ -1342,6 +1342,48 @@ pub enum NetworkPolicy {
     Deny,
 }
 
+/// Detailed allowed domain rule: `{ host, allow_private_ips }`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AllowedDomainDetails {
+    pub host: String,
+    #[serde(default)]
+    pub allow_private_ips: bool,
+}
+
+/// Allowed outbound HTTPS domain entry.
+///
+/// Backwards compatible: a bare string parses as a public-only rule.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AllowedDomainEntry {
+    Plain(String),
+    Detailed(AllowedDomainDetails),
+}
+
+impl AllowedDomainEntry {
+    pub fn host(&self) -> &str {
+        match self {
+            Self::Plain(host) => host,
+            Self::Detailed(details) => &details.host,
+        }
+    }
+
+    pub fn allow_private_ips(&self) -> bool {
+        match self {
+            Self::Plain(_) => false,
+            Self::Detailed(details) => details.allow_private_ips,
+        }
+    }
+}
+
+/// Runtime form of an allowed domain rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllowedDomainRule {
+    pub host: String,
+    pub allow_private_ips: bool,
+}
+
 /// Network restriction configuration for the container sandbox.
 ///
 /// When `policy` is `deny`, all outbound connections are blocked except those
@@ -1359,7 +1401,7 @@ pub struct NetworkConfig {
     /// Supports exact matches and wildcard prefixes (e.g., "*.googleapis.com").
     /// The host RPC endpoint is always allowed regardless of this list.
     #[serde(default)]
-    pub allowed_domains: Option<Vec<String>>,
+    pub allowed_domains: Option<Vec<AllowedDomainEntry>>,
 }
 
 impl NetworkConfig {
@@ -1369,14 +1411,32 @@ impl NetworkConfig {
     }
 
     /// Get the allowed domains list (empty if not set).
-    pub fn allowed_domains(&self) -> &[String] {
+    pub fn allowed_domains(&self) -> &[AllowedDomainEntry] {
         self.allowed_domains.as_deref().unwrap_or(&[])
+    }
+
+    /// Get normalized allowed domain rules.
+    pub fn allowed_domain_rules(&self) -> Vec<AllowedDomainRule> {
+        self.allowed_domains()
+            .iter()
+            .map(|entry| AllowedDomainRule {
+                host: entry.host().to_string(),
+                allow_private_ips: entry.allow_private_ips(),
+            })
+            .collect()
     }
 
     /// Validate all domain entries. Called at config load time.
     pub fn validate(&self) -> anyhow::Result<()> {
-        for domain in self.allowed_domains() {
-            validate_domain(domain)?;
+        for entry in self.allowed_domains() {
+            let host = entry.host();
+            validate_domain(host)?;
+            if entry.allow_private_ips() && host.starts_with("*.") {
+                anyhow::bail!(
+                    "allow_private_ips is only allowed for exact domains: {}",
+                    host
+                );
+            }
         }
         Ok(())
     }
@@ -1902,7 +1962,7 @@ impl Config {
             project_config,
             cli_agent,
             &defaults_root,
-        );
+        )?;
 
         debug!(
             agent = ?config.agent,
@@ -1918,7 +1978,7 @@ impl Config {
         project_config: Self,
         cli_agent: Option<&str>,
         defaults_root: &std::path::Path,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let has_explicit_agent =
             cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
 
@@ -1962,12 +2022,18 @@ impl Config {
             }
         }
 
-        // Unwrap is safe: validate only fails for invalid network config,
-        // which would have failed during deserialization already.
-        let _ = config.sandbox.network.validate();
-        let _ = config.sandbox.container.validate();
-
         config
+            .sandbox
+            .network
+            .validate()
+            .context("Invalid sandbox network config")?;
+        config
+            .sandbox
+            .container
+            .validate()
+            .context("Invalid sandbox container config")?;
+
+        Ok(config)
     }
 
     /// Load configuration from a specific path.
@@ -2747,10 +2813,11 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        AgentIconConfig, AgentIconDetails, Config, ContainerConfig, ContainerDevice, ExtraMount,
-        LayoutConfig, LimaConfig, NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig,
-        SandboxRuntime, SandboxTarget, SplitDirection, ToolchainMode, is_agent_command,
-        split_first_token, validate_domain, validate_group_add_entry, validate_layouts_config,
+        AgentIconConfig, AgentIconDetails, AllowedDomainDetails, AllowedDomainEntry, Config,
+        ContainerConfig, ContainerDevice, ExtraMount, LayoutConfig, LimaConfig, NetworkConfig,
+        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SplitDirection,
+        ToolchainMode, is_agent_command, split_first_token, validate_domain,
+        validate_group_add_entry, validate_layouts_config,
     };
 
     #[test]
@@ -4071,7 +4138,9 @@ container:
             sandbox: SandboxConfig {
                 network: NetworkConfig {
                     policy: Some(NetworkPolicy::Deny),
-                    allowed_domains: Some(vec!["api.anthropic.com".to_string()]),
+                    allowed_domains: Some(vec![AllowedDomainEntry::Plain(
+                        "api.anthropic.com".to_string(),
+                    )]),
                 },
                 ..Default::default()
             },
@@ -4081,7 +4150,7 @@ container:
             sandbox: SandboxConfig {
                 network: NetworkConfig {
                     policy: Some(NetworkPolicy::Allow),
-                    allowed_domains: Some(vec!["evil.com".to_string()]),
+                    allowed_domains: Some(vec![AllowedDomainEntry::Plain("evil.com".to_string())]),
                 },
                 ..Default::default()
             },
@@ -4093,7 +4162,7 @@ container:
         assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
         assert_eq!(
             merged.sandbox.network.allowed_domains(),
-            &["api.anthropic.com".to_string()]
+            &[AllowedDomainEntry::Plain("api.anthropic.com".to_string())]
         );
     }
 
@@ -4104,7 +4173,7 @@ container:
             sandbox: SandboxConfig {
                 network: NetworkConfig {
                     policy: Some(NetworkPolicy::Deny),
-                    allowed_domains: Some(vec!["evil.com".to_string()]),
+                    allowed_domains: Some(vec![AllowedDomainEntry::Plain("evil.com".to_string())]),
                 },
                 ..Default::default()
             },
@@ -4122,7 +4191,9 @@ container:
             sandbox: SandboxConfig {
                 network: NetworkConfig {
                     policy: Some(NetworkPolicy::Deny),
-                    allowed_domains: Some(vec!["github.com".to_string()]),
+                    allowed_domains: Some(vec![AllowedDomainEntry::Plain(
+                        "github.com".to_string(),
+                    )]),
                 },
                 ..Default::default()
             },
@@ -4134,7 +4205,7 @@ container:
         assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
         assert_eq!(
             merged.sandbox.network.allowed_domains(),
-            &["github.com".to_string()]
+            &[AllowedDomainEntry::Plain("github.com".to_string())]
         );
     }
 
@@ -4173,7 +4244,10 @@ container:
     fn network_config_validate_catches_bad_domains() {
         let config = NetworkConfig {
             policy: Some(NetworkPolicy::Deny),
-            allowed_domains: Some(vec!["good.com".to_string(), "192.168.1.1".to_string()]),
+            allowed_domains: Some(vec![
+                AllowedDomainEntry::Plain("good.com".to_string()),
+                AllowedDomainEntry::Plain("192.168.1.1".to_string()),
+            ]),
         };
         assert!(config.validate().is_err());
     }
@@ -4183,9 +4257,9 @@ container:
         let config = NetworkConfig {
             policy: Some(NetworkPolicy::Deny),
             allowed_domains: Some(vec![
-                "api.anthropic.com".to_string(),
-                "*.github.com".to_string(),
-                "registry.npmjs.org".to_string(),
+                AllowedDomainEntry::Plain("api.anthropic.com".to_string()),
+                AllowedDomainEntry::Plain("*.github.com".to_string()),
+                AllowedDomainEntry::Plain("registry.npmjs.org".to_string()),
             ]),
         };
         assert!(config.validate().is_ok());
@@ -4203,6 +4277,90 @@ network:
         let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.network.policy(), NetworkPolicy::Deny);
         assert_eq!(config.network.allowed_domains().len(), 2);
+        assert_eq!(
+            config.network.allowed_domain_rules(),
+            vec![
+                super::AllowedDomainRule {
+                    host: "api.anthropic.com".to_string(),
+                    allow_private_ips: false,
+                },
+                super::AllowedDomainRule {
+                    host: "*.github.com".to_string(),
+                    allow_private_ips: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn network_config_yaml_parses_private_domain_rule() {
+        let yaml = r#"
+network:
+  policy: deny
+  allowed_domains:
+    - host: artifactory.example.com
+      allow_private_ips: true
+"#;
+        let config: SandboxConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            config.network.allowed_domains(),
+            &[AllowedDomainEntry::Detailed(AllowedDomainDetails {
+                host: "artifactory.example.com".to_string(),
+                allow_private_ips: true,
+            })]
+        );
+    }
+
+    #[test]
+    fn network_config_yaml_rejects_unknown_allowed_domain_field() {
+        let yaml = r#"
+network:
+  policy: deny
+  allowed_domains:
+    - host: artifactory.example.com
+      alow_private: true
+"#;
+        assert!(serde_yaml::from_str::<SandboxConfig>(yaml).is_err());
+    }
+
+    #[test]
+    fn network_config_validate_rejects_wildcard_private_rule() {
+        let config = NetworkConfig {
+            policy: Some(NetworkPolicy::Deny),
+            allowed_domains: Some(vec![AllowedDomainEntry::Detailed(AllowedDomainDetails {
+                host: "*.example.com".to_string(),
+                allow_private_ips: true,
+            })]),
+        };
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("allow_private_ips"));
+    }
+
+    #[test]
+    fn network_config_load_rejects_wildcard_private_rule() {
+        let config = Config {
+            sandbox: SandboxConfig {
+                network: NetworkConfig {
+                    policy: Some(NetworkPolicy::Deny),
+                    allowed_domains: Some(vec![AllowedDomainEntry::Detailed(
+                        AllowedDomainDetails {
+                            host: "*.example.com".to_string(),
+                            allow_private_ips: true,
+                        },
+                    )]),
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let err = Config::merge_and_apply_defaults(
+            config,
+            Config::default(),
+            None,
+            std::path::Path::new(""),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Invalid sandbox network config"));
     }
 
     // --- ContainerDevice / group_add tests ---

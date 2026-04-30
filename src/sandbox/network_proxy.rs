@@ -18,6 +18,7 @@ use std::thread;
 use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::config::AllowedDomainRule;
 use crate::sandbox::rpc::generate_token;
 
 /// Maximum concurrent proxy connections. Matches RPC server cap.
@@ -41,7 +42,7 @@ pub struct NetworkProxy {
     listener: TcpListener,
     port: u16,
     token: String,
-    allowed_domains: Vec<String>,
+    allowed_domains: Vec<AllowedDomainRule>,
 }
 
 /// Handle to a running proxy server thread.
@@ -51,7 +52,7 @@ pub struct ProxyHandle {
 
 impl NetworkProxy {
     /// Bind to a random port on all interfaces (same as RPC server).
-    pub fn bind(allowed_domains: &[String]) -> Result<Self> {
+    pub fn bind(allowed_domains: &[AllowedDomainRule]) -> Result<Self> {
         let listener =
             TcpListener::bind("0.0.0.0:0").context("Failed to bind network proxy listener")?;
         let port = listener.local_addr()?.port();
@@ -118,7 +119,7 @@ impl NetworkProxy {
 /// Shared context for proxy connection handlers.
 struct ProxyContext {
     token: String,
-    allowed_domains: Vec<String>,
+    allowed_domains: Vec<AllowedDomainRule>,
 }
 
 /// Check if a domain matches a pattern (case-insensitive).
@@ -136,33 +137,81 @@ fn domain_matches(domain: &str, pattern: &str) -> bool {
     }
 }
 
-/// Check if an IP address is private/reserved and should be blocked.
-fn is_private_ip(addr: &IpAddr) -> bool {
+fn matching_rule<'a>(
+    domain: &str,
+    rules: &'a [AllowedDomainRule],
+) -> Option<&'a AllowedDomainRule> {
+    rules
+        .iter()
+        .filter(|rule| domain_matches(domain, &rule.host))
+        .max_by_key(|rule| match rule.host.strip_prefix("*.") {
+            Some(suffix) => suffix.len(),
+            None => usize::MAX,
+        })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AddressClass {
+    Public,
+    PrivateRoutable,
+    AlwaysBlocked,
+}
+
+fn classify_ip(addr: &IpAddr) -> AddressClass {
     match addr {
         IpAddr::V4(ip) => {
-            ip.is_private()
-                || ip.is_loopback()
+            if ip.is_loopback()
                 || ip.is_link_local()
                 || ip.is_broadcast()
                 || ip.is_unspecified()
                 || ip.is_multicast()
+            {
+                AddressClass::AlwaysBlocked
+            } else if ip.is_private()
                 // CGNAT range 100.64.0.0/10
                 || (ip.octets()[0] == 100 && (ip.octets()[1] & 0xC0) == 64)
+            {
+                AddressClass::PrivateRoutable
+            } else {
+                AddressClass::Public
+            }
         }
         IpAddr::V6(ip) => {
-            // Check IPv4-mapped addresses (::ffff:x.x.x.x)
             if let Some(mapped) = ip.to_ipv4_mapped() {
-                return is_private_ip(&IpAddr::V4(mapped));
+                return classify_ip(&IpAddr::V4(mapped));
             }
-            ip.is_loopback()
+            if ip.is_loopback()
                 || ip.is_unspecified()
                 || ip.is_multicast()
-                // ULA fc00::/7
-                || (ip.segments()[0] & 0xfe00) == 0xfc00
                 // Link-local fe80::/10
                 || (ip.segments()[0] & 0xffc0) == 0xfe80
+            {
+                AddressClass::AlwaysBlocked
+            } else if (ip.segments()[0] & 0xfe00) == 0xfc00 {
+                // ULA fc00::/7
+                AddressClass::PrivateRoutable
+            } else {
+                AddressClass::Public
+            }
         }
     }
+}
+
+/// Check if an IP address is private/reserved and should be blocked.
+#[cfg(test)]
+fn is_private_ip(addr: &IpAddr) -> bool {
+    classify_ip(addr) != AddressClass::Public
+}
+
+fn allowed_target_addrs(addrs: &[SocketAddr], allow_private_ips: bool) -> Vec<&SocketAddr> {
+    addrs
+        .iter()
+        .filter(|addr| match classify_ip(&addr.ip()) {
+            AddressClass::Public => true,
+            AddressClass::PrivateRoutable => allow_private_ips,
+            AddressClass::AlwaysBlocked => false,
+        })
+        .collect()
 }
 
 /// Constant-time byte comparison to prevent timing side-channel attacks.
@@ -281,15 +330,11 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
     }
 
     // Check domain allowlist
-    let allowed = ctx
-        .allowed_domains
-        .iter()
-        .any(|pattern| domain_matches(hostname, pattern));
-    if !allowed {
+    let Some(rule) = matching_rule(hostname, &ctx.allowed_domains) else {
         warn!(hostname, "rejected: domain not in allowlist");
         write_error(&mut writer, 403, "Domain not allowed")?;
         return Ok(());
-    }
+    };
 
     // Resolve DNS on host side
     let addrs: Vec<SocketAddr> = match format!("{}:{}", hostname, port).to_socket_addrs() {
@@ -301,17 +346,17 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
         }
     };
 
-    // Filter out private IPs
-    let public_addrs: Vec<&SocketAddr> = addrs.iter().filter(|a| !is_private_ip(&a.ip())).collect();
+    // Filter out disallowed IPs
+    let allowed_addrs = allowed_target_addrs(&addrs, rule.allow_private_ips);
 
-    if public_addrs.is_empty() {
-        warn!(hostname, "rejected: all resolved IPs are private");
-        write_error(&mut writer, 403, "All resolved IPs are private")?;
+    if allowed_addrs.is_empty() {
+        warn!(hostname, "rejected: no resolved IPs are allowed");
+        write_error(&mut writer, 403, "No resolved IPs are allowed")?;
         return Ok(());
     }
 
-    // Connect to first public IP (TOCTOU-safe: use validated SocketAddr directly)
-    let target_addr = *public_addrs[0];
+    // Connect to first allowed IP (TOCTOU-safe: use validated SocketAddr directly)
+    let target_addr = *allowed_addrs[0];
     let target_stream = match TcpStream::connect_timeout(&target_addr, CONNECT_TIMEOUT) {
         Ok(s) => s,
         Err(e) => {
@@ -433,6 +478,17 @@ fn tunnel(client: &TcpStream, target: &TcpStream) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn rule(host: &str, allow_private_ips: bool) -> AllowedDomainRule {
+        AllowedDomainRule {
+            host: host.to_string(),
+            allow_private_ips,
+        }
+    }
+
+    fn addr(s: &str) -> SocketAddr {
+        format!("{}:443", s).parse().unwrap()
+    }
+
     // ── domain_matches tests ────────────────────────────────────────────
 
     #[test]
@@ -464,6 +520,28 @@ mod tests {
         assert!(!domain_matches("evil.com", "example.com"));
         assert!(!domain_matches("notexample.com", "example.com"));
         assert!(!domain_matches("evil.com", "*.example.com"));
+    }
+
+    #[test]
+    fn matching_rule_exact_beats_wildcard_regardless_of_order() {
+        let rules = vec![
+            rule("*.example.com", false),
+            rule("artifactory.example.com", true),
+        ];
+        let matched = matching_rule("artifactory.example.com", &rules).unwrap();
+        assert_eq!(matched.host, "artifactory.example.com");
+        assert!(matched.allow_private_ips);
+    }
+
+    #[test]
+    fn matching_rule_longest_wildcard_wins() {
+        let rules = vec![
+            rule("*.example.com", false),
+            rule("*.internal.example.com", true),
+        ];
+        let matched = matching_rule("npm.internal.example.com", &rules).unwrap();
+        assert_eq!(matched.host, "*.internal.example.com");
+        assert!(matched.allow_private_ips);
     }
 
     // ── is_private_ip tests ─────────────────────────────────────────────
@@ -531,6 +609,51 @@ mod tests {
         assert!(!is_private_ip(&"100.0.0.1".parse().unwrap()));
     }
 
+    #[test]
+    fn allowed_target_addrs_rejects_private_without_opt_in() {
+        let addrs = vec![addr("10.0.0.1"), addr("8.8.8.8")];
+        let allowed = allowed_target_addrs(&addrs, false);
+        assert_eq!(allowed, vec![&addrs[1]]);
+    }
+
+    #[test]
+    fn allowed_target_addrs_accepts_private_routable_with_opt_in() {
+        let addrs = vec![
+            addr("10.0.0.1"),
+            addr("100.64.0.1"),
+            "[fd12::1]:443".parse().unwrap(),
+        ];
+        let allowed = allowed_target_addrs(&addrs, true);
+        assert_eq!(allowed, vec![&addrs[0], &addrs[1], &addrs[2]]);
+    }
+
+    #[test]
+    fn allowed_target_addrs_rejects_always_blocked_with_opt_in() {
+        let addrs = vec![
+            addr("127.0.0.1"),
+            addr("169.254.1.1"),
+            addr("0.0.0.0"),
+            addr("224.0.0.1"),
+            addr("255.255.255.255"),
+            "[::1]:443".parse().unwrap(),
+            "[fe80::1]:443".parse().unwrap(),
+        ];
+        assert!(allowed_target_addrs(&addrs, true).is_empty());
+    }
+
+    #[test]
+    fn allowed_target_addrs_classifies_ipv4_mapped_ipv6() {
+        let addrs = vec![
+            "[::ffff:8.8.8.8]:443".parse().unwrap(),
+            "[::ffff:10.0.0.1]:443".parse().unwrap(),
+            "[::ffff:127.0.0.1]:443".parse().unwrap(),
+        ];
+        let without_private = allowed_target_addrs(&addrs, false);
+        assert_eq!(without_private, vec![&addrs[0]]);
+        let with_private = allowed_target_addrs(&addrs, true);
+        assert_eq!(with_private, vec![&addrs[0], &addrs[1]]);
+    }
+
     // ── parse_host_port tests ───────────────────────────────────────────
 
     #[test]
@@ -569,7 +692,7 @@ mod tests {
 
     #[test]
     fn proxy_binds_to_random_port() {
-        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("example.com", false)]).unwrap();
         assert!(proxy.port() > 0);
     }
 
@@ -581,7 +704,7 @@ mod tests {
 
     #[test]
     fn proxy_rejects_missing_auth() {
-        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("example.com", false)]).unwrap();
         let port = proxy.port();
         let _handle = proxy.spawn();
 
@@ -601,7 +724,7 @@ mod tests {
 
     #[test]
     fn proxy_rejects_wrong_auth() {
-        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("example.com", false)]).unwrap();
         let port = proxy.port();
         let _handle = proxy.spawn();
 
@@ -625,7 +748,7 @@ mod tests {
 
     #[test]
     fn proxy_accepts_lowercase_auth_header() {
-        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("example.com", false)]).unwrap();
         let port = proxy.port();
         let token = proxy.token().to_string();
         let _handle = proxy.spawn();
@@ -656,7 +779,7 @@ mod tests {
 
     #[test]
     fn proxy_rejects_non_443_port() {
-        let proxy = NetworkProxy::bind(&["example.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("example.com", false)]).unwrap();
         let port = proxy.port();
         let token = proxy.token().to_string();
         let _handle = proxy.spawn();
@@ -681,7 +804,7 @@ mod tests {
 
     #[test]
     fn proxy_rejects_unlisted_domain() {
-        let proxy = NetworkProxy::bind(&["allowed.com".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("allowed.com", false)]).unwrap();
         let port = proxy.port();
         let token = proxy.token().to_string();
         let _handle = proxy.spawn();
@@ -773,7 +896,7 @@ mod tests {
 
     #[test]
     fn proxy_rejects_ip_literal_hostname() {
-        let proxy = NetworkProxy::bind(&["8.8.8.8".to_string()]).unwrap();
+        let proxy = NetworkProxy::bind(&[rule("8.8.8.8", false)]).unwrap();
         let port = proxy.port();
         let token = proxy.token().to_string();
         let _handle = proxy.spawn();
