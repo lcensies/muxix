@@ -62,16 +62,13 @@ impl<'a> RowContext<'a> {
         let pane_suffix = pane_suffixes[idx].clone();
 
         let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
-        let is_stale = agent
-            .status_ts
-            .map(|ts| now_secs.saturating_sub(ts) > app.stale_threshold_secs)
-            .unwrap_or(false);
-        let is_stale = is_sleeping
-            || (is_stale
-                && !matches!(
-                    agent.status,
-                    Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-                ));
+        let is_stale = is_agent_stale(
+            agent.status_ts,
+            agent.status,
+            now_secs,
+            app.stale_threshold_secs,
+            is_sleeping,
+        );
         let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
         let is_active = app.host_agent_idx == Some(idx);
         let is_selected = selected_idx == Some(idx);
@@ -360,6 +357,29 @@ fn build_pane_title(
         .map(|s| s.to_string())
 }
 
+fn is_agent_stale(
+    status_ts: Option<u64>,
+    status: Option<AgentStatus>,
+    now_secs: u64,
+    stale_threshold_secs: u64,
+    is_sleeping: bool,
+) -> bool {
+    if is_sleeping {
+        return true;
+    }
+
+    if matches!(
+        status,
+        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+    ) {
+        return false;
+    }
+
+    status_ts
+        .map(|ts| now_secs.saturating_sub(ts) > stale_threshold_secs)
+        .unwrap_or(true)
+}
+
 fn display_width(s: &str) -> usize {
     s.chars()
         .map(|c| unicode_width::UnicodeWidthChar::width(c).unwrap_or(1))
@@ -382,6 +402,40 @@ mod tests {
 
     fn kind(agent_kind: Option<&str>, agent_command: Option<&str>) -> Option<AgentKind> {
         effective_agent_kind(agent_kind, agent_command)
+    }
+
+    #[test]
+    fn missing_status_timestamp_is_stale() {
+        assert!(is_agent_stale(None, None, 100, 60, false));
+    }
+
+    #[test]
+    fn active_statuses_are_not_stale_without_timestamp() {
+        assert!(!is_agent_stale(
+            None,
+            Some(AgentStatus::Working),
+            100,
+            60,
+            false
+        ));
+        assert!(!is_agent_stale(
+            None,
+            Some(AgentStatus::Waiting),
+            100,
+            60,
+            false
+        ));
+    }
+
+    #[test]
+    fn sleeping_agent_is_stale_even_with_active_status() {
+        assert!(is_agent_stale(
+            Some(100),
+            Some(AgentStatus::Working),
+            100,
+            60,
+            true
+        ));
     }
 
     #[test]
