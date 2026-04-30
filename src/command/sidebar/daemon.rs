@@ -1122,7 +1122,18 @@ impl InactivityTracker {
             .map(|(id, _)| id.clone())
             .collect();
         for id in &resumed {
-            self.confirmed.remove(id);
+            if let Some(confirmed_ts) = self.confirmed.remove(id) {
+                let updated_ts = working
+                    .get(id.as_str())
+                    .and_then(|a| a.updated_ts)
+                    .unwrap_or(0);
+                tracing::info!(
+                    pane_id = %id,
+                    confirmed_ts,
+                    updated_ts,
+                    "agent inactivity cleared"
+                );
+            }
             self.entries.remove(id);
         }
 
@@ -1151,8 +1162,20 @@ impl InactivityTracker {
                     if prev_hash == hash && prev_rpc == current_rpc =>
                 {
                     // Same content and same RPC state: check timeout
-                    if now.duration_since(first_seen) >= self.timeout {
-                        self.confirmed.insert(pane_id.to_string(), current_rpc);
+                    let idle_for = now.duration_since(first_seen);
+                    if idle_for >= self.timeout
+                        && self
+                            .confirmed
+                            .insert(pane_id.to_string(), current_rpc)
+                            .is_none()
+                    {
+                        tracing::info!(
+                            pane_id = %pane_id,
+                            updated_ts = current_rpc,
+                            idle_for_ms = idle_for.as_millis(),
+                            timeout_ms = self.timeout.as_millis(),
+                            "agent inactivity detected"
+                        );
                     }
                 }
                 _ => {
