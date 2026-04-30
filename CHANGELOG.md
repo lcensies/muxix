@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.191 (2026-04-30)
+
+- Allow sandbox deny-mode domains to opt in to trusted private network destinations, such as VPN-hosted package mirrors, while keeping loopback and link-local addresses blocked
+- Keep sidebar tile rows stable when template fields are empty, so optional details no longer collapse and shift tile heights unexpectedly
+
 ## v0.1.190 (2026-04-29)
 
 - Add sidebar template customization, letting you choose which labels, git stats, timers, and status details appear in compact and tile layouts. See the [sidebar customization guide](https://workmux.raine.dev/guide/sidebar/customization)
