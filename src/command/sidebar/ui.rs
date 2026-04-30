@@ -16,7 +16,7 @@ use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
 use super::template::context::RowContext;
-use super::template::layout::{is_empty_line, render_line};
+use super::template::layout::{is_blank_template_line, render_line};
 
 /// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
@@ -511,8 +511,7 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             let mut visible_lines = 0;
 
             for (line_idx, template) in tile_templates.iter().enumerate() {
-                // Drop empty lines
-                if is_empty_line(template, &ctx) {
+                if is_blank_template_line(template) {
                     continue;
                 }
                 visible_lines += 1;

@@ -91,37 +91,16 @@ pub fn render_line(ctx: &RowContext, tokens: &[Token], width: usize) -> Vec<Span
     render_with_layout(ctx, &left_info, &right_info, width, available)
 }
 
-/// Check whether a line would be empty after token resolution.
+/// Check whether a configured tile line is intentionally blank.
 ///
-/// A line is empty when all variable-text tokens resolve to empty strings
-/// and the line contains no non-whitespace literals.
-pub fn is_empty_line(tokens: &[Token], ctx: &RowContext) -> bool {
-    let mut has_content = false;
-    for token in tokens {
-        match token {
-            Token::Literal(s) => {
-                if s.trim().is_empty() {
-                    continue;
-                }
-                // Non-whitespace literal means the line is not empty
-                return false;
-            }
-            Token::Fill | Token::Style(_) => {}
-            Token::Field(id) => {
-                if is_git_segment(*id) {
-                    if ctx.natural_width(*id) > 0 {
-                        has_content = true;
-                    }
-                } else {
-                    let text = ctx.resolve(*id);
-                    if !text.is_empty() {
-                        has_content = true;
-                    }
-                }
-            }
-        }
-    }
-    !has_content
+/// Blank tile templates are skipped for every agent. Rows containing fields are
+/// still rendered, even when those fields resolve to empty for a given agent.
+pub fn is_blank_template_line(tokens: &[Token]) -> bool {
+    tokens.iter().all(|token| match token {
+        Token::Literal(s) => s.trim().is_empty(),
+        Token::Fill | Token::Style(_) => true,
+        Token::Field(_) => false,
+    })
 }
 
 #[derive(Clone)]
@@ -570,44 +549,22 @@ mod tests {
     }
 
     #[test]
-    fn empty_line_when_all_variable_tokens_empty() {
-        let agent = test_agent("foo");
-        let ctx = RowContext {
-            agent: &agent,
-            primary: String::new(),
-            secondary: String::new(),
-            pane_suffix: String::new(),
-            elapsed: String::new(),
-            status_icon_spans: vec![],
-            status_color: ratatui::style::Color::Reset,
-            pane_title: None,
-            git_status: None,
-            is_stale: false,
-            is_active: false,
-            is_selected: false,
-            palette: test_palette(),
-            agent_icon: String::new(),
-            agent_icon_color: None,
-            agent_label: String::new(),
-            idx: 0,
-        };
+    fn template_line_with_empty_field_is_not_blank() {
         let tokens = vec![
             Token::Field(TokenId::PaneTitle),
             Token::Literal(" ".to_string()),
             Token::Fill,
         ];
-        assert!(is_empty_line(&tokens, &ctx));
+        assert!(!is_blank_template_line(&tokens));
     }
 
     #[test]
-    fn non_empty_line_with_literal_content() {
-        let agent = test_agent("foo");
-        let ctx = make_context(&agent);
+    fn template_line_with_literal_content_is_not_blank() {
         let tokens = vec![
             Token::Literal("▌ ".to_string()),
             Token::Field(TokenId::Primary),
         ];
-        assert!(!is_empty_line(&tokens, &ctx));
+        assert!(!is_blank_template_line(&tokens));
     }
 
     fn make_git_context<'a>(agent: &'a AgentPane, status: &'a GitStatus) -> RowContext<'a> {
@@ -739,24 +696,15 @@ mod tests {
     }
 
     #[test]
-    fn is_empty_line_with_only_git_committed_empty() {
-        let agent = test_agent("g");
-        let status = GitStatus::default();
-        let ctx = make_git_context(&agent, &status);
+    fn git_token_template_line_is_not_blank_when_git_status_is_empty() {
         let tokens = vec![Token::Field(TokenId::GitCommitted)];
-        assert!(is_empty_line(&tokens, &ctx));
+        assert!(!is_blank_template_line(&tokens));
     }
 
     #[test]
-    fn is_empty_line_false_when_git_committed_has_content() {
-        let agent = test_agent("g");
-        let status = GitStatus {
-            lines_added: 5,
-            ..Default::default()
-        };
-        let ctx = make_git_context(&agent, &status);
+    fn git_token_template_line_is_not_blank_when_git_status_has_content() {
         let tokens = vec![Token::Field(TokenId::GitCommitted)];
-        assert!(!is_empty_line(&tokens, &ctx));
+        assert!(!is_blank_template_line(&tokens));
     }
 
     #[test]
@@ -943,61 +891,17 @@ mod tests {
     }
 
     #[test]
-    fn is_empty_line_ignores_style_tokens() {
-        let agent = test_agent("foo");
-        let ctx = RowContext {
-            agent: &agent,
-            primary: String::new(),
-            secondary: String::new(),
-            pane_suffix: String::new(),
-            elapsed: String::new(),
-            status_icon_spans: vec![],
-            status_color: ratatui::style::Color::Reset,
-            pane_title: None,
-            git_status: None,
-            is_stale: false,
-            is_active: false,
-            is_selected: false,
-            palette: test_palette(),
-            agent_icon: String::new(),
-            agent_icon_color: None,
-            agent_label: String::new(),
-            idx: 0,
-        };
+    fn blank_template_line_ignores_style_tokens() {
         let tokens = vec![
             Token::Style("fg=red".to_string()),
-            Token::Field(TokenId::PaneTitle),
             Token::Style("default".to_string()),
         ];
-        assert!(is_empty_line(&tokens, &ctx));
+        assert!(is_blank_template_line(&tokens));
     }
 
     #[test]
-    fn empty_line_with_only_whitespace_literal() {
-        let agent = test_agent("foo");
-        let ctx = RowContext {
-            agent: &agent,
-            primary: String::new(),
-            secondary: String::new(),
-            pane_suffix: String::new(),
-            elapsed: String::new(),
-            status_icon_spans: vec![],
-            status_color: ratatui::style::Color::Reset,
-            pane_title: None,
-            git_status: None,
-            is_stale: false,
-            is_active: false,
-            is_selected: false,
-            palette: test_palette(),
-            agent_icon: String::new(),
-            agent_icon_color: None,
-            agent_label: String::new(),
-            idx: 0,
-        };
-        let tokens = vec![
-            Token::Literal("   ".to_string()),
-            Token::Field(TokenId::PaneTitle),
-        ];
-        assert!(is_empty_line(&tokens, &ctx));
+    fn template_line_with_only_whitespace_literal_is_blank() {
+        let tokens = vec![Token::Literal("   ".to_string()), Token::Fill];
+        assert!(is_blank_template_line(&tokens));
     }
 }

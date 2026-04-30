@@ -80,9 +80,10 @@ renders cleanly whether or not `{pane_suffix}` is empty.
 
 In tile mode, the stripe, status icon column, and a 1-column right margin are
 drawn as chrome by the renderer. Templates only control the body area, so line
-alignment between tiles is automatic. A tile line that contains no fields with
-content (only literals or empty fields) is dropped, so optional lines like the
-default `{pane_title}` row collapse when there's nothing to show.
+alignment between tiles is automatic. A tile line containing a field still
+renders as a row when that field is empty, preserving tile height for templates
+like the default `{pane_title}` row. Use a blank string in the `tiles` list to
+skip that row entirely.
 
 ## Escaping
 
@@ -238,8 +239,7 @@ sidebar:
       - "{pane_title}"
 ```
 
-Drop the third line entirely (no pane title) and show git stats inline on line
-one:
+Configure only two tile lines and show git stats inline on line one:
 
 ```yaml
 sidebar:
