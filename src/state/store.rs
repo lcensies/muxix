@@ -58,6 +58,11 @@ impl StateStore {
         self.base_path.join("runtime")
     }
 
+    /// Path to Codex status workaround runtime directory.
+    pub(crate) fn codex_status_runtime_dir(&self) -> PathBuf {
+        self.runtime_dir().join("codex-status")
+    }
+
     /// Path to settings file.
     fn settings_path(&self) -> PathBuf {
         self.base_path.join("settings.json")
@@ -116,11 +121,17 @@ impl StateStore {
     /// No-op if the file doesn't exist.
     pub fn delete_agent(&self, key: &PaneKey) -> Result<()> {
         let path = self.agent_path(key);
-        match fs::remove_file(&path) {
+        let agent_result = match fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e).context("Failed to delete agent state"),
+        };
+
+        if let Err(error) = crate::state::codex_status::clear_pane_with_store(self, key) {
+            warn!(error = %error, "failed to clear Codex status state for deleted agent");
         }
+
+        agent_result
     }
 
     /// Load global settings.

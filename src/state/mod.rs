@@ -3,6 +3,7 @@
 //! This module provides persistent state storage that works across all
 //! terminal multiplexer backends (tmux, WezTerm, Zellij).
 
+pub mod codex_status;
 pub mod run;
 pub mod store;
 mod types;

@@ -22,8 +22,13 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         return Ok(());
     }
 
+    // Codex compatibility: hook stdin may identify a specific parent/subagent
+    // turn. Use it to avoid a child Stop hook marking the pane done early.
+    let codex_run_id = crate::state::codex_status::detect_run_id_from_stdin();
+
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
+        // Codex nested hook workaround is host-path only in v1.
         return run_via_rpc(cmd);
     }
 
@@ -35,25 +40,46 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         return Ok(());
     };
 
+    let pane_key = crate::state::PaneKey {
+        backend: mux.name().to_string(),
+        instance: mux.instance_id(),
+        pane_id: pane_id.to_string(),
+    };
+
     match cmd {
         SetWindowStatusCommand::Clear => {
-            // Clear icon only - state file cleanup is handled by reconciliation
+            if let Err(error) = crate::state::codex_status::clear_pane(&pane_key) {
+                warn!(%pane_id, error = %error, "failed to clear Codex status workaround state");
+            }
             mux.clear_status(&pane_id)?;
         }
         SetWindowStatusCommand::Working
         | SetWindowStatusCommand::Waiting
         | SetWindowStatusCommand::Done => {
-            let (status, icon, auto_clear) = match cmd {
-                SetWindowStatusCommand::Working => {
-                    (AgentStatus::Working, config.status_icons.working(), false)
-                }
-                SetWindowStatusCommand::Waiting => {
-                    (AgentStatus::Waiting, config.status_icons.waiting(), true)
-                }
-                SetWindowStatusCommand::Done => {
-                    (AgentStatus::Done, config.status_icons.done(), true)
-                }
+            let requested_status = match cmd {
+                SetWindowStatusCommand::Working => AgentStatus::Working,
+                SetWindowStatusCommand::Waiting => AgentStatus::Waiting,
+                SetWindowStatusCommand::Done => AgentStatus::Done,
                 SetWindowStatusCommand::Clear => unreachable!(),
+            };
+
+            let status = if let Some(run_id) = codex_run_id {
+                match crate::state::codex_status::apply_status(&pane_key, &run_id, requested_status)
+                {
+                    Ok(status) => status,
+                    Err(error) => {
+                        warn!(%pane_id, ?requested_status, error = %error, "failed to update Codex status workaround state");
+                        requested_status
+                    }
+                }
+            } else {
+                requested_status
+            };
+
+            let (icon, auto_clear) = match status {
+                AgentStatus::Working => (config.status_icons.working(), false),
+                AgentStatus::Waiting => (config.status_icons.waiting(), true),
+                AgentStatus::Done => (config.status_icons.done(), true),
             };
 
             // Ensure the status format is applied so the icon actually shows up
