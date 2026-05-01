@@ -13,6 +13,7 @@ verify the state files have the fields needed for reconciliation to work.
 """
 
 import json
+import shlex
 from pathlib import Path
 
 
@@ -50,7 +51,12 @@ def read_agent_state(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-def build_status_cmd(env: MuxEnvironment, workmux_exe: Path, status: str) -> str:
+def build_status_cmd(
+    env: MuxEnvironment,
+    workmux_exe: Path,
+    status: str,
+    env_vars: dict[str, str] | None = None,
+) -> str:
     """Build a set-window-status command with proper env vars for test isolation.
 
     The command runs inside a pane's shell, which doesn't inherit the test's
@@ -60,7 +66,24 @@ def build_status_cmd(env: MuxEnvironment, workmux_exe: Path, status: str) -> str
     Returns a path to a script file (to avoid tmux send-keys line length limits).
     """
     command = f"{workmux_exe} set-window-status {status}"
-    return make_env_script(env, command, {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]})
+    script_env = {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]}
+    if env_vars:
+        script_env.update(env_vars)
+    return make_env_script(env, command, script_env)
+
+
+def build_status_cmd_with_marker(
+    env: MuxEnvironment,
+    workmux_exe: Path,
+    status: str,
+    marker_path: Path,
+    env_vars: dict[str, str] | None = None,
+) -> str:
+    command = f"{workmux_exe} set-window-status {status}; touch {shlex.quote(str(marker_path))}"
+    script_env = {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]}
+    if env_vars:
+        script_env.update(env_vars)
+    return make_env_script(env, command, script_env)
 
 
 # -----------------------------------------------------------------------------
@@ -104,6 +127,37 @@ def test_set_window_status_creates_state_file(
         f"No agent state file created after set-window-status. "
         f"State dir: {get_agents_dir(env)}"
     )
+
+
+def test_set_window_status_disabled_by_env(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature-disabled-status-test"
+    window_name = get_window_name(branch_name)
+
+    write_workmux_config(
+        mux_repo_path,
+        panes=[
+            {"focus": True},
+        ],
+    )
+
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    wait_for_window_ready(env, window_name)
+
+    marker_path = env.tmp_path / "disabled-status-finished"
+    status_cmd = build_status_cmd_with_marker(
+        env,
+        workmux_exe_path,
+        "working",
+        marker_path,
+        {"WORKMUX_DISABLE_SET_WINDOW_STATUS": "1"},
+    )
+    env.send_keys(window_name, status_cmd)
+
+    assert poll_until(lambda: marker_path.exists(), timeout=5.0)
+    assert list_agent_state_files(env) == []
 
 
 def test_state_file_has_correct_fields(

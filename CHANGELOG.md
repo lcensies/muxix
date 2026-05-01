@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.194 (2026-05-01)
+
+- Add `WORKMUX_DISABLE_SET_WINDOW_STATUS=1` to let nested agents skip status hook updates when launched from inside another agent pane. See the [status tracking guide](https://workmux.raine.dev/guide/status-tracking)
+
 ## v0.1.191 (2026-04-30)
 
 - Allow sandbox deny-mode domains to opt in to trusted private network destinations, such as VPN-hosted package mirrors, while keeping loopback and link-local addresses blocked

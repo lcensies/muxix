@@ -48,6 +48,16 @@ This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their co
 
 Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
+## Disabling status hooks for nested agents
+
+If you launch another agent from inside an agent, that nested agent may run its own configured workmux status hooks and report activity from the same pane. Set `WORKMUX_DISABLE_SET_WINDOW_STATUS=1` on the nested command to make `workmux set-window-status` exit successfully without updating tmux or agent state:
+
+```bash
+WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex
+```
+
+Use this when you want only the parent agent pane to drive the workmux status indicator.
+
 ## Claude Code setup
 
 If you prefer manual setup, install the workmux status plugin:
