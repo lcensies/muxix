@@ -286,33 +286,12 @@ fn render_with_layout(
                     // render at natural width and emit the leftover as a fill-space
                     // span between left and right segments (handled after the loop).
                     let allocated = available;
-                    if *id == TokenId::StatusIcon {
-                        let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
-                        used_width += rendered_width;
-                        if rendered_width < allocated {
-                            slack = allocated - rendered_width;
-                        }
-                    } else {
-                        let text = ctx.resolve(*id);
-                        let rendered = if info.natural_width > allocated && allocated > 0 {
-                            truncate_with_ellipsis(&text, allocated)
-                        } else if allocated == 0 {
-                            String::new()
-                        } else {
-                            text
-                        };
-                        let rendered_width = display_width(&rendered);
-                        spans.push(styled_span(
-                            rendered,
-                            ctx.intrinsic_style(*id),
-                            user_style,
-                            ctx,
-                        ));
-                        used_width += rendered_width;
-
-                        if rendered_width < allocated {
-                            slack = allocated - rendered_width;
-                        }
+                    let target_width = info.natural_width.min(allocated);
+                    let rendered_width =
+                        render_field(&mut spans, ctx, *id, target_width, allocated, user_style);
+                    used_width += rendered_width;
+                    if rendered_width < allocated {
+                        slack = allocated - rendered_width;
                     }
 
                     first_flex_assigned = true;
@@ -320,38 +299,14 @@ fn render_with_layout(
                 } else {
                     // Non-flex or subsequent flex: render at natural width
                     let max_w = width.saturating_sub(used_width);
-                    if *id == TokenId::StatusIcon {
-                        let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
-                        if rendered_width < info.natural_width {
-                            spans.push(styled_span(
-                                " ".repeat(info.natural_width - rendered_width),
-                                Style::default(),
-                                user_style,
-                                ctx,
-                            ));
-                        }
-                        used_width += info.natural_width;
-                    } else if is_git_segment(*id) {
-                        let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
-                        for (text, style) in git_spans {
-                            spans.push(styled_span(text, style, user_style, ctx));
-                        }
-                        used_width += git_width;
-                    } else {
-                        let text = ctx.resolve(*id);
-                        let rendered = if info.natural_width > max_w && max_w > 0 {
-                            truncate_with_ellipsis(&text, max_w)
-                        } else {
-                            text
-                        };
-                        spans.push(styled_span(
-                            rendered,
-                            ctx.intrinsic_style(*id),
-                            user_style,
-                            ctx,
-                        ));
-                        used_width += info.natural_width.min(max_w);
-                    }
+                    used_width += render_field(
+                        &mut spans,
+                        ctx,
+                        *id,
+                        info.natural_width.min(max_w),
+                        max_w,
+                        user_style,
+                    );
                 }
             }
         }
@@ -388,38 +343,14 @@ fn render_with_layout(
             }
             Token::Field(id) => {
                 let max_w = width.saturating_sub(used_width);
-                if *id == TokenId::StatusIcon {
-                    let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
-                    if rendered_width < info.natural_width {
-                        spans.push(styled_span(
-                            " ".repeat(info.natural_width - rendered_width),
-                            Style::default(),
-                            user_style,
-                            ctx,
-                        ));
-                    }
-                    used_width += info.natural_width;
-                } else if is_git_segment(*id) {
-                    let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
-                    for (text, style) in git_spans {
-                        spans.push(styled_span(text, style, user_style, ctx));
-                    }
-                    used_width += git_width;
-                } else {
-                    let text = ctx.resolve(*id);
-                    let rendered = if info.natural_width > max_w && max_w > 0 {
-                        truncate_with_ellipsis(&text, max_w)
-                    } else {
-                        text
-                    };
-                    spans.push(styled_span(
-                        rendered,
-                        ctx.intrinsic_style(*id),
-                        user_style,
-                        ctx,
-                    ));
-                    used_width += info.natural_width.min(max_w);
-                }
+                used_width += render_field(
+                    &mut spans,
+                    ctx,
+                    *id,
+                    info.natural_width.min(max_w),
+                    max_w,
+                    user_style,
+                );
             }
         }
     }
@@ -438,15 +369,74 @@ fn render_with_layout(
     spans
 }
 
+fn render_field(
+    spans: &mut Vec<Span<'static>>,
+    ctx: &RowContext,
+    id: TokenId,
+    target_width: usize,
+    max_width: usize,
+    user_style: Style,
+) -> usize {
+    if target_width == 0 {
+        return 0;
+    }
+
+    let rendered_width = if id == TokenId::StatusIcon {
+        render_status_icon_spans(spans, ctx, target_width, user_style)
+    } else if is_git_segment(id) {
+        let (git_spans, git_width) = ctx.git_segment_spans(id, target_width);
+        for (text, style) in git_spans {
+            spans.push(styled_span(text, style, user_style, ctx));
+        }
+        git_width
+    } else {
+        let text = ctx.resolve(id);
+        let rendered = if display_width(&text) > target_width {
+            truncate_with_ellipsis(&text, target_width)
+        } else {
+            text
+        };
+        let rendered_width = display_width(&rendered);
+        spans.push(styled_span(
+            rendered,
+            ctx.intrinsic_style(id),
+            user_style,
+            ctx,
+        ));
+        rendered_width
+    };
+
+    let target_width = target_width.min(max_width);
+    if rendered_width < target_width {
+        spans.push(styled_span(
+            " ".repeat(target_width - rendered_width),
+            Style::default(),
+            user_style,
+            ctx,
+        ));
+    }
+    rendered_width.max(target_width)
+}
+
 fn render_status_icon_spans(
     spans: &mut Vec<Span<'static>>,
     ctx: &RowContext,
+    max_width: usize,
     user_style: Style,
 ) -> usize {
     let mut width = 0;
     for (text, style) in &ctx.status_icon_spans {
-        spans.push(styled_span(text.clone(), *style, user_style, ctx));
-        width += display_width(text);
+        let remaining = max_width.saturating_sub(width);
+        if remaining == 0 {
+            break;
+        }
+        let rendered = if display_width(text) > remaining {
+            truncate_with_ellipsis(text, remaining)
+        } else {
+            text.clone()
+        };
+        width += display_width(&rendered);
+        spans.push(styled_span(rendered, *style, user_style, ctx));
     }
     width
 }
@@ -944,6 +934,46 @@ mod tests {
         ];
         let text = render_text(&ctx, &tokens, 20);
         assert!(text.starts_with("✓ feature-auth"), "{text:?}");
+    }
+
+    #[test]
+    fn field_min_width_pads_non_status_fields() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.agent_label = "CC".to_string();
+        let tokens = vec![
+            Token::Field(TokenId::AgentLabel),
+            Token::Literal(":".to_string()),
+            Token::Field(TokenId::Elapsed),
+        ];
+        let options = RenderOptions::default().with_field_min_width(TokenId::AgentLabel, 5);
+        let text = render_text_with_options(&ctx, &tokens, 20, &options);
+        assert!(text.starts_with("CC   :5:23"), "{text:?}");
+    }
+
+    #[test]
+    fn field_min_width_pads_flex_fields() {
+        let agent = test_agent("foo");
+        let ctx = make_context(&agent);
+        let tokens = vec![
+            Token::Field(TokenId::Primary),
+            Token::Literal(":".to_string()),
+            Token::Field(TokenId::Elapsed),
+        ];
+        let options = RenderOptions::default().with_field_min_width(TokenId::Primary, 15);
+        let text = render_text_with_options(&ctx, &tokens, 20, &options);
+        assert!(text.starts_with("feature-auth   :5:23"), "{text:?}");
+    }
+
+    #[test]
+    fn field_min_width_respects_remaining_width() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.status_icon_spans = vec![("✓".to_string(), Style::default())];
+        let tokens = vec![Token::Field(TokenId::StatusIcon)];
+        let options = RenderOptions::default().with_field_min_width(TokenId::StatusIcon, 2);
+        let text = render_text_with_options(&ctx, &tokens, 1, &options);
+        assert_eq!(display_width(&text), 1, "{text:?}");
     }
 
     #[test]
