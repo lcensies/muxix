@@ -48,16 +48,6 @@ This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their co
 
 Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
-## Disabling status hooks for nested agents
-
-If you launch another agent from inside an agent, that nested agent may run its own configured workmux status hooks and report activity from the same pane. Set `WORKMUX_DISABLE_SET_WINDOW_STATUS=1` on the nested command to make `workmux set-window-status` exit successfully without updating tmux or agent state:
-
-```bash
-WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex
-```
-
-Use this when you want only the parent agent pane to drive the workmux status indicator.
-
 ## Claude Code setup
 
 If you prefer manual setup, install the workmux status plugin:
@@ -158,12 +148,6 @@ status_icons:
   done: "✔️"
 ```
 
-## Interrupted agent detection
-
-When an agent is in "working" status but its pane output hasn't changed for 10 seconds, workmux automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
-
-The detection runs in the sidebar daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
-
 Tmux style codes are supported for colored icons, and work in both the tmux status bar and the dashboard:
 
 ```yaml
@@ -183,6 +167,12 @@ status_format: false
 set -g window-status-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
 set -g window-status-current-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
 ```
+
+## Interrupted agent detection
+
+When an agent is in "working" status but its pane output hasn't changed for 10 seconds, workmux automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
+
+The detection runs in the sidebar daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
 
 ## Jump to completed or waiting agents
 
@@ -211,3 +201,13 @@ bind Tab run-shell "workmux last-agent"
 ```
 
 Then press `prefix + Tab` to toggle between your two most recent agents.
+
+## Disabling status hooks for nested agents
+
+If you launch another agent from inside an agent, that nested agent may run its own configured workmux status hooks and report activity from the same pane. Set `WORKMUX_DISABLE_SET_WINDOW_STATUS=1` on the nested command to make `workmux set-window-status` exit successfully without updating tmux or agent state:
+
+```bash
+WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex
+```
+
+Use this when you want only the parent agent pane to drive the workmux status indicator.
