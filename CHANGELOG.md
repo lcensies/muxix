@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.196 (2026-05-01)
+
+- Fix Codex status tracking so panes stay marked as working while nested subagents are still running ([#154](https://github.com/raine/workmux/issues/154))
+
 ## v0.1.195 (2026-05-01)
 
 - Keep compact sidebar status icons aligned even when icons have different widths
