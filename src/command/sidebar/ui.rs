@@ -15,8 +15,11 @@ use crate::tmux_style;
 use crate::ui::theme::ThemePalette;
 
 use super::app::{SidebarApp, SidebarLayoutMode};
+use super::template::TokenId;
 use super::template::context::RowContext;
-use super::template::layout::{is_blank_template_line, render_line};
+use super::template::layout::{
+    RenderOptions, is_blank_template_line, render_line, render_line_with_options,
+};
 
 /// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
@@ -412,14 +415,26 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     let selected_idx = app.list_state.selected();
     let template = app.templates.compact.clone();
     let width = area.width as usize;
-
-    let items: Vec<ListItem> = app
+    let contexts: Vec<_> = app
         .agents
         .iter()
         .enumerate()
         .map(|(idx, agent)| {
-            let ctx = RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx);
-            let mut spans = render_line(&ctx, &template, width);
+            RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx)
+        })
+        .collect();
+    let status_icon_width = contexts
+        .iter()
+        .map(|ctx| ctx.natural_width(TokenId::StatusIcon))
+        .max()
+        .unwrap_or(0);
+    let render_options =
+        RenderOptions::default().with_field_min_width(TokenId::StatusIcon, status_icon_width);
+
+    let items: Vec<ListItem> = contexts
+        .iter()
+        .map(|ctx| {
+            let mut spans = render_line_with_options(ctx, &template, width, &render_options);
 
             // Post-pass: apply selection background where the template has
             // not already supplied an explicit user `bg=`.

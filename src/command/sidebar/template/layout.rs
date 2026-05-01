@@ -7,6 +7,27 @@ use super::context::RowContext;
 use super::parser::{Token, TokenId};
 use crate::tmux_style::apply_tmux_directives;
 
+/// Optional layout constraints applied while rendering a template line.
+#[derive(Default)]
+pub struct RenderOptions {
+    field_min_widths: Vec<(TokenId, usize)>,
+}
+
+impl RenderOptions {
+    pub fn with_field_min_width(mut self, token: TokenId, width: usize) -> Self {
+        self.field_min_widths.push((token, width));
+        self
+    }
+
+    fn min_width(&self, token: TokenId) -> usize {
+        self.field_min_widths
+            .iter()
+            .rev()
+            .find_map(|(id, width)| (*id == token).then_some(*width))
+            .unwrap_or(0)
+    }
+}
+
 /// Render a line of tokens into spans, fitting within `width` columns.
 ///
 /// The algorithm:
@@ -16,6 +37,15 @@ use crate::tmux_style::apply_tmux_directives;
 /// 4. If total exceeds width: drop right-segment field tokens in reverse order.
 /// 5. If still exceeding: truncate leftmost flex token with ellipsis.
 pub fn render_line(ctx: &RowContext, tokens: &[Token], width: usize) -> Vec<Span<'static>> {
+    render_line_with_options(ctx, tokens, width, &RenderOptions::default())
+}
+
+pub fn render_line_with_options(
+    ctx: &RowContext,
+    tokens: &[Token],
+    width: usize,
+    options: &RenderOptions,
+) -> Vec<Span<'static>> {
     if width == 0 {
         return Vec::new();
     }
@@ -27,10 +57,13 @@ pub fn render_line(ctx: &RowContext, tokens: &[Token], width: usize) -> Vec<Span
     };
 
     // Compute natural widths for all tokens
-    let left_info: Vec<TokenInfo> = left_tokens.iter().map(|t| TokenInfo::new(t, ctx)).collect();
+    let left_info: Vec<TokenInfo> = left_tokens
+        .iter()
+        .map(|t| TokenInfo::new(t, ctx, options))
+        .collect();
     let right_info: Vec<TokenInfo> = right_tokens
         .iter()
-        .map(|t| TokenInfo::new(t, ctx))
+        .map(|t| TokenInfo::new(t, ctx, options))
         .collect();
     let left_info = collapse_empty_fields(left_info);
     let right_info = collapse_empty_fields(right_info);
@@ -112,7 +145,7 @@ struct TokenInfo {
 }
 
 impl TokenInfo {
-    fn new(token: &Token, ctx: &RowContext) -> Self {
+    fn new(token: &Token, ctx: &RowContext, options: &RenderOptions) -> Self {
         match token {
             Token::Literal(s) => Self {
                 token: Token::Literal(s.clone()),
@@ -134,7 +167,7 @@ impl TokenInfo {
             },
             Token::Field(id) => Self {
                 token: Token::Field(*id),
-                natural_width: ctx.natural_width(*id),
+                natural_width: ctx.natural_width(*id).max(options.min_width(*id)),
                 is_flex: id.is_flex(),
                 is_field: true,
             },
@@ -254,9 +287,10 @@ fn render_with_layout(
                     // span between left and right segments (handled after the loop).
                     let allocated = available;
                     if *id == TokenId::StatusIcon {
-                        for (text, style) in &ctx.status_icon_spans {
-                            spans.push(styled_span(text.clone(), *style, user_style, ctx));
-                            used_width += display_width(text);
+                        let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
+                        used_width += rendered_width;
+                        if rendered_width < allocated {
+                            slack = allocated - rendered_width;
                         }
                     } else {
                         let text = ctx.resolve(*id);
@@ -287,10 +321,16 @@ fn render_with_layout(
                     // Non-flex or subsequent flex: render at natural width
                     let max_w = width.saturating_sub(used_width);
                     if *id == TokenId::StatusIcon {
-                        for (text, style) in &ctx.status_icon_spans {
-                            spans.push(styled_span(text.clone(), *style, user_style, ctx));
-                            used_width += display_width(text);
+                        let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
+                        if rendered_width < info.natural_width {
+                            spans.push(styled_span(
+                                " ".repeat(info.natural_width - rendered_width),
+                                Style::default(),
+                                user_style,
+                                ctx,
+                            ));
                         }
+                        used_width += info.natural_width;
                     } else if is_git_segment(*id) {
                         let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
                         for (text, style) in git_spans {
@@ -349,10 +389,16 @@ fn render_with_layout(
             Token::Field(id) => {
                 let max_w = width.saturating_sub(used_width);
                 if *id == TokenId::StatusIcon {
-                    for (text, style) in &ctx.status_icon_spans {
-                        spans.push(styled_span(text.clone(), *style, user_style, ctx));
-                        used_width += display_width(text);
+                    let rendered_width = render_status_icon_spans(&mut spans, ctx, user_style);
+                    if rendered_width < info.natural_width {
+                        spans.push(styled_span(
+                            " ".repeat(info.natural_width - rendered_width),
+                            Style::default(),
+                            user_style,
+                            ctx,
+                        ));
                     }
+                    used_width += info.natural_width;
                 } else if is_git_segment(*id) {
                     let (git_spans, git_width) = ctx.git_segment_spans(*id, max_w);
                     for (text, style) in git_spans {
@@ -390,6 +436,19 @@ fn render_with_layout(
     }
 
     spans
+}
+
+fn render_status_icon_spans(
+    spans: &mut Vec<Span<'static>>,
+    ctx: &RowContext,
+    user_style: Style,
+) -> usize {
+    let mut width = 0;
+    for (text, style) in &ctx.status_icon_spans {
+        spans.push(styled_span(text.clone(), *style, user_style, ctx));
+        width += display_width(text);
+    }
+    width
 }
 
 /// Build a `Span` whose style is the intrinsic base patched by the user
@@ -591,6 +650,18 @@ mod tests {
 
     fn render_text(ctx: &RowContext, tokens: &[Token], width: usize) -> String {
         render_line(ctx, tokens, width)
+            .iter()
+            .map(|s| s.content.clone())
+            .collect()
+    }
+
+    fn render_text_with_options(
+        ctx: &RowContext,
+        tokens: &[Token],
+        width: usize,
+        options: &RenderOptions,
+    ) -> String {
+        render_line_with_options(ctx, tokens, width, options)
             .iter()
             .map(|s| s.content.clone())
             .collect()
@@ -844,6 +915,35 @@ mod tests {
         let spans = render_line(&ctx, &tokens, 25);
         let total_width: usize = spans.iter().map(|s| display_width(&s.content)).sum();
         assert_eq!(total_width, 25);
+    }
+
+    #[test]
+    fn field_min_width_pads_status_icon_before_primary() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.status_icon_spans = vec![("✓".to_string(), Style::default())];
+        let tokens = vec![
+            Token::Field(TokenId::StatusIcon),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::Primary),
+        ];
+        let options = RenderOptions::default().with_field_min_width(TokenId::StatusIcon, 2);
+        let text = render_text_with_options(&ctx, &tokens, 20, &options);
+        assert!(text.starts_with("✓  feature-auth"), "{text:?}");
+    }
+
+    #[test]
+    fn field_min_width_does_not_change_default_render_line() {
+        let agent = test_agent("foo");
+        let mut ctx = make_context(&agent);
+        ctx.status_icon_spans = vec![("✓".to_string(), Style::default())];
+        let tokens = vec![
+            Token::Field(TokenId::StatusIcon),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::Primary),
+        ];
+        let text = render_text(&ctx, &tokens, 20);
+        assert!(text.starts_with("✓ feature-auth"), "{text:?}");
     }
 
     #[test]
