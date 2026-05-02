@@ -40,7 +40,7 @@ This detects your installed agents and copies skills to the right location. The 
 
 You can also copy skills manually from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
 
-**Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`)
+**Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`). If `CLAUDE_CONFIG_DIR` is set, `workmux setup --skills` installs to `$CLAUDE_CONFIG_DIR/skills/` instead.
 
 ## `/workmux`
 

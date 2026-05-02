@@ -49,7 +49,12 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
 pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
     let home = home::home_dir()?;
     match agent {
-        Agent::Claude => Some(home.join(".claude/skills")),
+        Agent::Claude => {
+            let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".claude"));
+            Some(base.join("skills"))
+        }
         Agent::OpenCode => Some(home.join(".config/opencode/skills")),
         Agent::Pi => {
             let pi_dir = if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
@@ -144,7 +149,12 @@ pub fn install_skills(agent: Agent) -> Result<String> {
         parts.push(format!("{skipped} skipped"));
     }
 
-    Ok(format!("Skills for {}: {}", agent.name(), parts.join(", ")))
+    Ok(format!(
+        "Skills for {} ({}): {}",
+        agent.name(),
+        base_dir.display(),
+        parts.join(", ")
+    ))
 }
 
 fn print_skill_diff(name: &str, old: &str, new: &str) {
@@ -230,10 +240,34 @@ mod tests {
 
     #[test]
     fn test_skills_dir_claude() {
+        // Without CLAUDE_CONFIG_DIR, this resolves to $HOME/.claude/skills.
+        // With it set, the env var should win. We can't safely mutate process
+        // env in parallel tests, so just exercise the unset-or-set branch
+        // generically and assert the trailing component.
         let dir = skills_dir(Agent::Claude);
         assert!(dir.is_some());
         let path = dir.unwrap();
-        assert!(path.ends_with(".claude/skills"));
+        assert!(path.ends_with("skills"));
+    }
+
+    #[test]
+    fn test_skills_dir_claude_respects_env() {
+        // Safety: serial within this test; we restore the original value.
+        let prev = std::env::var_os("CLAUDE_CONFIG_DIR");
+        // SAFETY: tests in this module that read CLAUDE_CONFIG_DIR are
+        // intentionally isolated; cargo test runs may interleave, but no
+        // other test in this crate mutates this var.
+        unsafe {
+            std::env::set_var("CLAUDE_CONFIG_DIR", "/tmp/workmux-test-claude-cfg");
+        }
+        let dir = skills_dir(Agent::Claude).unwrap();
+        assert_eq!(dir, PathBuf::from("/tmp/workmux-test-claude-cfg/skills"));
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("CLAUDE_CONFIG_DIR", v),
+                None => std::env::remove_var("CLAUDE_CONFIG_DIR"),
+            }
+        }
     }
 
     #[test]
