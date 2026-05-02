@@ -23,12 +23,16 @@ Toggle the sidebar with:
 
 ```bash
 workmux sidebar            # All sessions (default)
-workmux sidebar --session  # Current session only
+workmux sidebar --session  # Current session only, or opt out of global mode
 ```
 
 By default, the sidebar appears in all existing and newly created tmux windows
 across all sessions. Use `--session` to scope it to the current session only,
 leaving other sessions untouched. Running the command again disables it.
+
+When the global sidebar is active, `workmux sidebar --session` hides it in the
+current tmux session only. Run it again to show the sidebar in that session
+again without affecting other sessions.
 
 Optionally, add a tmux binding for quick access:
 

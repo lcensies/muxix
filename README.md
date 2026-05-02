@@ -1680,7 +1680,7 @@ the dashboard.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off (all sessions)
-workmux sidebar --session  # Toggle sidebar for current session only
+workmux sidebar --session  # Toggle current session only, or opt out of global mode
 ```
 
 The sidebar displays:
@@ -1696,6 +1696,10 @@ The sidebar displays:
 | `g`/`G` | Jump to first/last |
 | `v`     | Toggle layout mode |
 | `q`     | Quit sidebar       |
+
+When the global sidebar is active, `workmux sidebar --session` hides it in the
+current tmux session only. Run the same command again to show it in that session
+again while keeping the global sidebar active elsewhere.
 
 Configure width and layout in `.workmux.yaml`:
 

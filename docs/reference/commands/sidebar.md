@@ -10,7 +10,7 @@ updates.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off (all sessions)
-workmux sidebar --session  # Toggle sidebar for current session only
+workmux sidebar --session  # Toggle current session only, or opt out of global mode
 ```
 
 ## What it shows
@@ -98,8 +98,11 @@ workmux sidebar --session  # Run again to disable
 You can enable session-scoped sidebars in multiple sessions independently. Each
 session can be toggled on/off without affecting others.
 
-Session-scoped and global modes cannot be mixed. Attempting to enable one while
-the other is active will show an error.
+If the global sidebar is already active, `workmux sidebar --session` hides the
+sidebar in the current tmux session only. Run it again to show the sidebar in
+that session again while other sessions remain globally managed.
+
+Starting global mode still replaces any session-scoped sidebars.
 
 ## Limitations
 

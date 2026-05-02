@@ -52,6 +52,7 @@ const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
     "@workmux_sleeping_panes",
     "@workmux_sidebar_scope",
     "@workmux_sidebar_width",
+    "@workmux_sidebar_optout_sessions",
 ];
 
 /// Active sidebar scope on this tmux server.
@@ -105,6 +106,42 @@ fn set_scope(scope: &SidebarScope) {
                 .run();
         }
     }
+}
+
+fn parse_session_id_set(raw: &str) -> std::collections::HashSet<String> {
+    raw.split_whitespace().map(String::from).collect()
+}
+
+fn serialize_session_id_set(ids: &std::collections::HashSet<String>) -> String {
+    let mut val: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+    val.sort_unstable();
+    val.join(" ")
+}
+
+fn current_optout_sessions() -> std::collections::HashSet<String> {
+    Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_optout_sessions"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| parse_session_id_set(&s))
+        .unwrap_or_default()
+}
+
+fn set_optout_sessions(ids: &std::collections::HashSet<String>) {
+    if ids.is_empty() {
+        let _ = Cmd::new("tmux")
+            .args(&["set-option", "-gu", "@workmux_sidebar_optout_sessions"])
+            .run();
+    } else {
+        let val = serialize_session_id_set(ids);
+        let _ = Cmd::new("tmux")
+            .args(&["set-option", "-g", "@workmux_sidebar_optout_sessions", &val])
+            .run();
+    }
+}
+
+fn session_opted_out(session_id: &str) -> bool {
+    current_optout_sessions().contains(session_id)
 }
 
 /// Get the current tmux session's stable ID (e.g., "$0").
@@ -290,9 +327,16 @@ pub fn toggle_session() -> Result<()> {
     let session_id = get_current_session_id()?;
 
     if matches!(&scope, SidebarScope::Global) {
-        return Err(anyhow!(
-            "Global sidebar is active. Run `workmux sidebar` to disable it first."
-        ));
+        let mut optout_sessions = current_optout_sessions();
+        if optout_sessions.remove(&session_id) {
+            set_optout_sessions(&optout_sessions);
+            create_sidebars_in_session(&session_id, &config)?;
+        } else {
+            optout_sessions.insert(session_id.clone());
+            set_optout_sessions(&optout_sessions);
+            kill_sidebars_in_session(&session_id);
+        }
+        return Ok(());
     }
 
     let current_window = Cmd::new("tmux")
@@ -378,11 +422,18 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
     }
 
     // Session filter: skip windows not in a scoped session (or on lookup failure)
-    if let SidebarScope::Sessions(ref ids) = scope {
-        match get_window_session_id(&target) {
-            Some(window_sid) if ids.contains(&window_sid) => {}
+    let window_session_id = get_window_session_id(&target);
+    match &scope {
+        SidebarScope::Global => match window_session_id {
+            Some(ref window_sid) if session_opted_out(window_sid) => return Ok(()),
+            Some(_) => {}
+            None => return Ok(()),
+        },
+        SidebarScope::Sessions(ids) => match window_session_id {
+            Some(ref window_sid) if ids.contains(window_sid) => {}
             _ => return Ok(()),
-        }
+        },
+        SidebarScope::Off => return Ok(()),
     }
 
     // Check if this window already has a sidebar
@@ -422,11 +473,18 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
     }
 
     // Session filter: skip windows not in a scoped session (or on lookup failure)
-    if let SidebarScope::Sessions(ref ids) = scope {
-        match get_window_session_id(&target) {
-            Some(window_sid) if ids.contains(&window_sid) => {}
+    let window_session_id = get_window_session_id(&target);
+    match &scope {
+        SidebarScope::Global => match window_session_id {
+            Some(ref window_sid) if session_opted_out(window_sid) => return Ok(()),
+            Some(_) => {}
+            None => return Ok(()),
+        },
+        SidebarScope::Sessions(ids) => match window_session_id {
+            Some(ref window_sid) if ids.contains(window_sid) => {}
             _ => return Ok(()),
-        }
+        },
+        SidebarScope::Off => return Ok(()),
     }
 
     // Find the sidebar pane ID in this window
@@ -557,6 +615,21 @@ pub fn navigate(action: NavAction) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_session_id_set() {
+        let ids = parse_session_id_set("$2  $0\n$1");
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains("$0"));
+        assert!(ids.contains("$1"));
+        assert!(ids.contains("$2"));
+    }
+
+    #[test]
+    fn serializes_session_id_set_deterministically() {
+        let ids = parse_session_id_set("$2 $0 $1");
+        assert_eq!(serialize_session_id_set(&ids), "$0 $1 $2");
+    }
 
     #[test]
     fn next_wraps_from_last_to_first() {
