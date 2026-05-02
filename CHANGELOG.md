@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.197 (2026-05-02)
+
+- Respect `CLAUDE_CONFIG_DIR` when installing skills, so custom Claude config locations are honored. ([#157](https://github.com/raine/workmux/issues/157))
+
 ## v0.1.196 (2026-05-01)
 
 - Fix Codex status tracking so panes stay marked as working while nested subagents are still running ([#154](https://github.com/raine/workmux/issues/154))
