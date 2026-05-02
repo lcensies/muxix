@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.198 (2026-05-02)
+
+- Allow `workmux sidebar --session` to hide or restore the sidebar for the current tmux session while global sidebar mode stays active.
+
 ## v0.1.197 (2026-05-02)
 
 - Respect `CLAUDE_CONFIG_DIR` when installing skills, so custom Claude config locations are honored. ([#157](https://github.com/raine/workmux/issues/157))
