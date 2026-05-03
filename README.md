@@ -25,17 +25,13 @@ isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
 **Philosophy**: Build on tools you already use. tmux/zellij/kitty/etc. for
-windowing, git for worktrees, your agent for coding — workmux orchestrates the
-rest.
+windowing, git for worktrees, your agent for coding - workmux ties them together.
 
 <sup><sub>\* Also supports
 <a href="https://workmux.raine.dev/guide/kitty">kitty</a>,
 <a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and
 <a href="https://workmux.raine.dev/guide/zellij">Zellij</a> as alternative
 backends.</sub></sup>
-
-📚 See the [full documentation](https://workmux.raine.dev/guide/) for guides and
-configuration reference.
 
 📖 **New to workmux?** Read the
 [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
@@ -48,6 +44,9 @@ quick overview.
 > workmux: let your agents consult another AI model to plan architecture,
 > review changes, debate approaches, or get unstuck on tricky bugs without
 > leaving the worktree.
+>
+> See [How to orchestrate large coding tasks without context bloat](https://raine.dev/blog/phased-implement-workflow/)
+> for a workflow that combines workmux and consult-llm.
 
 ## Why workmux?
 
@@ -129,16 +128,19 @@ brew install raine/workmux/workmux
 <summary>Other methods (Cargo, mise, Nix)</summary>
 
 **Cargo** (requires [rustup](https://rustup.rs/)):
+
 ```bash
 cargo install workmux
 ```
 
 **mise:**
+
 ```bash
 mise use -g cargo:raine/workmux
 ```
 
 **Nix** ([flake and home-manager setup](https://workmux.raine.dev/guide/nix)):
+
 ```bash
 nix profile install github:raine/workmux
 ```
@@ -263,16 +265,16 @@ customize.
 
 #### Basic options
 
-| Option           | Description                                                                                     | Default                     |
-| ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------- |
-| `main_branch`    | Branch to merge into                                                                            | Auto-detected               |
-| `base_branch`    | Default base branch for new worktrees                                                           | Current branch              |
-| `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                   | `<project>__worktrees/`     |
-| `window_prefix`  | Prefix for tmux window/session names                                                            | `wm-`                       |
-| `mode`           | Tmux mode (`window` or `session`)                                                               | `window`                    |
-| `agent`          | Default agent for `<agent>` placeholder                                                         | `claude`                    |
-| `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only) | `{}`                        |
-| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                            | `merge`                     |
+| Option           | Description                                                                                           | Default                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------- |
+| `main_branch`    | Branch to merge into                                                                                  | Auto-detected               |
+| `base_branch`    | Default base branch for new worktrees                                                                 | Current branch              |
+| `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                         | `<project>__worktrees/`     |
+| `window_prefix`  | Prefix for tmux window/session names                                                                  | `wm-`                       |
+| `mode`           | Tmux mode (`window` or `session`)                                                                     | `window`                    |
+| `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
+| `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only)       | `{}`                        |
+| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                                  | `merge`                     |
 | `theme`          | Dashboard color scheme ([custom colors](https://workmux.raine.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
 
 #### Naming options
