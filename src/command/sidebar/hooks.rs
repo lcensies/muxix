@@ -11,6 +11,7 @@ const HOOK_NAMES: &[&str] = &[
     "window-resized[99]",
     "after-select-window[98]",
     "client-session-changed[98]",
+    "client-resized[98]",
     "after-kill-pane[98]",
 ];
 
@@ -24,11 +25,12 @@ pub(super) fn install_hooks() -> Result<()> {
         exe_str
     );
 
-    // Reflow sidebar layout when any window resizes.
+    // Reflow sidebar layout when any window resizes, then signal the daemon
+    // to reconcile stale layouts in other windows.
     // window-resized fires on terminal resize AND when switching to an unattached
     // session (window-size=latest resizes windows to match the new client).
     let reflow_cmd = format!(
-        "run-shell -b '{} _sidebar-reflow --window #{{window_id}}'",
+        "run-shell -b '{} _sidebar-reflow --window #{{window_id}}; kill -USR1 $(tmux show-option -gqv @workmux_sidebar_daemon_pid) 2>/dev/null || true'",
         exe_str
     );
 
@@ -41,6 +43,7 @@ pub(super) fn install_hooks() -> Result<()> {
         ("window-resized[99]", &reflow_cmd),
         ("after-select-window[98]", dirty_cmd),
         ("client-session-changed[98]", dirty_cmd),
+        ("client-resized[98]", dirty_cmd),
         ("after-kill-pane[98]", dirty_cmd),
     ];
 
