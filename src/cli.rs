@@ -674,6 +674,10 @@ enum Commands {
         window: Option<String>,
     },
 
+    /// Reflow sidebar layouts in all windows (internal use, called by tmux hooks)
+    #[command(hide = true, name = "_sidebar-reflow-all")]
+    SidebarReflowAll,
+
     /// Run the sidebar daemon (internal use)
     #[command(hide = true, name = "_sidebar-daemon")]
     SidebarDaemon,
@@ -1051,6 +1055,7 @@ pub fn run() -> Result<()> {
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
         Commands::SidebarReflow { window } => command::sidebar::reflow(window.as_deref()),
+        Commands::SidebarReflowAll => command::sidebar::reflow_all(),
         Commands::SidebarDaemon => command::sidebar::run_daemon(),
         Commands::Dashboard {
             preview_size,

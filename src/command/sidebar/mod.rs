@@ -263,20 +263,36 @@ pub(super) fn reflow_all_sidebars_except(exclude_window_id: &str) {
     }
 }
 
-/// Reconcile sidebar widths across all windows.
-///
-/// For each sidebar pane, computes the desired width from the window's
-/// current dimensions and the synced/config width, then reflows if the
-/// sidebar doesn't match. Owned by the daemon so inactive windows get
-/// their layouts repaired without needing the user to visit them.
-pub(super) fn reconcile_sidebar_layouts() {
+/// Reflow sidebar layouts in all windows. Called by the window-resized hook
+/// so inactive windows get their sidebar widths corrected without waiting for
+/// the user to visit them.
+pub fn reflow_all() -> Result<()> {
+    let scope = current_scope();
+    if matches!(scope, SidebarScope::Off) {
+        return Ok(());
+    }
+
     let config = crate::config::Config::load(None).unwrap_or_default();
     let synced = read_sidebar_width();
-    let sidebars = panes::list_sidebar_panes();
 
-    for (window_id, pane_id) in &sidebars {
+    for (window_id, pane_id) in panes::list_sidebar_panes() {
+        // Scope filter
+        let window_session_id = get_window_session_id(&window_id);
+        match &scope {
+            SidebarScope::Global => match window_session_id {
+                Some(ref sid) if session_opted_out(sid) => continue,
+                Some(_) => {}
+                None => continue,
+            },
+            SidebarScope::Sessions(ids) => match window_session_id {
+                Some(ref sid) if ids.contains(sid) => {}
+                _ => continue,
+            },
+            SidebarScope::Off => continue,
+        }
+
         let window_w: u16 = Cmd::new("tmux")
-            .args(&["display-message", "-t", window_id, "-p", "#{window_width}"])
+            .args(&["display-message", "-t", &window_id, "-p", "#{window_width}"])
             .run_and_capture_stdout()
             .ok()
             .and_then(|s| s.trim().parse().ok())
@@ -284,9 +300,12 @@ pub(super) fn reconcile_sidebar_layouts() {
         if window_w == 0 {
             continue;
         }
-        let desired = resolve_width_for(&config, window_w, synced);
-        layout_tree::reflow_after_sidebar_add(window_id, pane_id, desired);
+
+        let width = resolve_width_for(&config, window_w, synced);
+        layout_tree::reflow_after_sidebar_add(&window_id, &pane_id, width);
     }
+
+    Ok(())
 }
 
 /// Toggle the sidebar globally across all tmux windows.

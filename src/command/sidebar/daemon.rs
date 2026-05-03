@@ -1216,10 +1216,8 @@ pub fn run() -> Result<()> {
     let mut dirty_pending = false;
     let mut last_agent_list = String::new();
     let mut last_health_log = Instant::now();
-    let mut last_layout_reconcile = Instant::now();
     let refresh_interval = Duration::from_secs(2);
     let debounce_interval = Duration::from_millis(50);
-    let layout_reconcile_interval = Duration::from_secs(30);
 
     // Cache of agent_path -> project_config_dir so we don't run the walk-up
     // filesystem search on every tick. Misses (no config found) are NOT
@@ -1361,15 +1359,6 @@ pub fn run() -> Result<()> {
                         .run();
                 }
                 last_agent_list = agent_list;
-            }
-
-            // Layout reconciliation for stale sidebars (eg. inactive windows
-            // whose layouts were not updated after a resize).
-            // Runs periodically; reflow is idempotent so frequent calls
-            // converge without thrashing.
-            if last_layout_reconcile.elapsed() >= layout_reconcile_interval {
-                super::reconcile_sidebar_layouts();
-                last_layout_reconcile = Instant::now();
             }
         }
 

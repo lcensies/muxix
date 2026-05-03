@@ -152,11 +152,8 @@ well. It uses a daemon + client architecture with event-driven rendering:
 4. **Hooks**: tmux hooks handle lifecycle events:
    - `after-new-window` / `after-new-session`: automatically adds a sidebar pane
      to newly created windows
-   - `window-resized`: reflows the layout tree for the resized window and
-     signals the daemon to reconcile stale layouts across all windows
-   - `client-resized`: signals the daemon to reconcile layouts when any
-     client is resized (catches resize events that don't trigger
-     window-resized on every window)
+   - `window-resized`: reflows the layout tree in every sidebar window, keeping
+     all sidebars at the correct width regardless of which window was resized
    - `after-select-window` / `client-session-changed` / `after-kill-pane`:
      signals the daemon for an immediate refresh
 
@@ -164,9 +161,7 @@ well. It uses a daemon + client architecture with event-driven rendering:
    layout tree parser reads the tmux `#{window_layout}` string, scales the
    content subtree proportionally, and applies the result atomically via
    `select-layout`. This preserves existing pane proportions (e.g. a 70/30 split
-   stays 70/30). The daemon also runs a periodic layout reconciliation pass
-   every 30 seconds, repairing stale sidebar widths in inactive windows without
-   requiring the user to visit them.
+   stays 70/30).
 
 6. **Toggle off**: kills all sidebar panes, reflows content panes to fill the
    freed space, stops the daemon, and removes hooks.
