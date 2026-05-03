@@ -599,7 +599,13 @@ impl SidebarApp {
 
         // If pane width differs significantly from expected, treat as manual resize
         if (pane_width as i16 - expected as i16).abs() > 3 {
-            super::set_sidebar_width(pane_width);
+            // Query the actual pane width from tmux rather than using the
+            // crossterm-reported value. Crossterm's SIGWINCH-derived cols may
+            // differ from what tmux considers the pane width, and using tmux's
+            // own measurement ensures consistency when reflow applies the same
+            // width to other windows via select-layout.
+            let actual = query_pane_width_for_pane().unwrap_or(pane_width);
+            super::set_sidebar_width(actual);
             if let Some(wid) = self.host_window_id() {
                 super::reflow_all_sidebars_except(wid);
             }
@@ -715,6 +721,24 @@ fn query_window_width_for_pane() -> Option<u16> {
         .run_and_capture_stdout()
         .ok()
         .and_then(|s| s.trim().parse().ok())
+}
+
+/// Query the actual pane width from tmux. Used to verify the sidebar pane
+/// size after a manual resize, since crossterm's SIGWINCH-derived cols may
+/// differ from what tmux reports via #{pane_width}.
+fn query_pane_width_for_pane() -> Option<u16> {
+    let pane_id = std::env::var("TMUX_PANE").unwrap_or_default();
+    let mut args = vec!["display-message", "-p"];
+    if !pane_id.is_empty() {
+        args.extend_from_slice(&["-t", &pane_id]);
+    }
+    args.push("#{pane_width}");
+    Cmd::new("tmux")
+        .args(&args)
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .filter(|&w| w > 0)
 }
 
 /// Parse new template strings, mutating `templates` and the cached strings.
