@@ -4,6 +4,11 @@ use crate::{config, git, sandbox};
 use anyhow::{Context, Result, anyhow};
 
 pub fn run(name: Option<&str>) -> Result<()> {
+    if crate::sandbox::guest::is_sandbox_guest() {
+        let name_to_close = super::resolve_name(name)?;
+        return run_via_rpc(&name_to_close);
+    }
+
     let config = config::Config::load(None)?;
     let mux = create_backend(detect_backend());
     let prefix = config.window_prefix();
@@ -87,4 +92,123 @@ pub fn run(name: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn run_via_rpc(name: &str) -> Result<()> {
+    use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
+    use std::io::Write;
+
+    let mut client = RpcClient::from_env()?;
+    client.send(&RpcRequest::Close {
+        name: name.to_string(),
+    })?;
+
+    loop {
+        let response = client.recv()?;
+        match response {
+            RpcResponse::Output { message } => {
+                print!("{}", message);
+                std::io::stdout().flush().ok();
+            }
+            RpcResponse::Ok => return Ok(()),
+            RpcResponse::Error { message } => anyhow::bail!("{}", message),
+            other => anyhow::bail!("Unexpected RPC response: {:?}", other),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sandbox::rpc::{RpcRequest, RpcResponse};
+    use serde_json::json;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn set_env(key: &str, value: &str) {
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+
+    fn remove_env(key: &str) {
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn sandbox_guest_close_sends_rpc_request() {
+        let _guard = env_lock().lock().unwrap();
+        let previous_dir = std::env::current_dir().unwrap();
+        let previous_env: Vec<(&str, Option<std::ffi::OsString>)> = [
+            "WM_SANDBOX_GUEST",
+            "WM_RPC_HOST",
+            "WM_RPC_PORT",
+            "WM_RPC_TOKEN",
+        ]
+        .into_iter()
+        .map(|key| (key, std::env::var_os(key)))
+        .collect();
+
+        let result = (|| -> Result<()> {
+            let listener = TcpListener::bind("127.0.0.1:0")?;
+            let port = listener.local_addr()?.port();
+            let token = "close-test-token";
+            let server = std::thread::spawn(move || -> Result<String> {
+                let (stream, _) = listener.accept()?;
+                let mut reader = BufReader::new(stream.try_clone()?);
+                let mut writer = stream;
+
+                let mut auth_line = String::new();
+                reader.read_line(&mut auth_line)?;
+                let auth: serde_json::Value = serde_json::from_str(auth_line.trim())?;
+                assert_eq!(auth["token"], json!(token));
+
+                let mut request_line = String::new();
+                reader.read_line(&mut request_line)?;
+                let request: RpcRequest = serde_json::from_str(request_line.trim())?;
+                let name = match request {
+                    RpcRequest::Close { name } => name,
+                    other => panic!("Expected Close request, got {:?}", other),
+                };
+
+                let mut response = serde_json::to_string(&RpcResponse::Ok)?;
+                response.push('\n');
+                writer.write_all(response.as_bytes())?;
+                Ok(name)
+            });
+
+            let tmp = tempfile::tempdir()?;
+            let worktree_dir = tmp.path().join("repo__worktrees").join("feature-x");
+            std::fs::create_dir_all(&worktree_dir)?;
+            std::env::set_current_dir(&worktree_dir)?;
+
+            set_env("WM_SANDBOX_GUEST", "1");
+            set_env("WM_RPC_HOST", "127.0.0.1");
+            set_env("WM_RPC_PORT", &port.to_string());
+            set_env("WM_RPC_TOKEN", token);
+
+            run(None)?;
+            let name = server.join().unwrap()?;
+            assert_eq!(name, "feature-x");
+            Ok(())
+        })();
+
+        std::env::set_current_dir(previous_dir).unwrap();
+        for (key, value) in previous_env {
+            match value {
+                Some(value) => unsafe { std::env::set_var(key, value) },
+                None => remove_env(key),
+            }
+        }
+
+        result.unwrap();
+    }
 }
