@@ -39,6 +39,17 @@ This will:
 - Set up your configured or the default tmux pane layout
 - Automatically switch your tmux client to the new window
 
+::: tip
+**Highly recommended workflow**: If you're already in an agent session, use the [`/worktree` skill](/guide/skills#-worktree) instead of writing `workmux add` commands yourself:
+
+```text
+> /worktree Add pagination to the users endpoint
+> /worktree Fix it <referring to some agent's question>
+```
+
+The agent writes detailed prompts based on the current context and launches each task in its own worktree.
+:::
+
 ## 4. Do your thing
 
 Work on your feature, fix a bug, or let an AI agent handle it.
