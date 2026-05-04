@@ -501,16 +501,30 @@ fn handle_clipboard_read(mime: &str, worktree_path: &std::path::Path) -> RpcResp
     }
 }
 
+fn host_workmux_command() -> std::process::Command {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+    let mut cmd = std::process::Command::new(exe);
+    cmd.env_remove("WM_SANDBOX_GUEST")
+        .env_remove("WM_RPC_HOST")
+        .env_remove("WM_RPC_PORT")
+        .env_remove("WM_RPC_TOKEN");
+
+    if let Some(config_path) = crate::config::global_config_path()
+        && let Some(config_dir) = config_path.parent().and_then(|p| p.parent())
+    {
+        cmd.env("XDG_CONFIG_HOME", config_dir);
+    }
+
+    cmd
+}
+
 fn handle_spawn_agent(
     prompt: &str,
     branch_name: Option<&str>,
     background: Option<bool>,
     worktree_path: &PathBuf,
 ) -> RpcResponse {
-    use std::process::Command;
-
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
-    let mut cmd = Command::new(exe);
+    let mut cmd = host_workmux_command();
     cmd.arg("add");
 
     if let Some(name) = branch_name {
@@ -563,10 +577,9 @@ fn handle_merge(
     worktree_path: &PathBuf,
     writer: &mut impl Write,
 ) -> Result<()> {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
-    let mut cmd = Command::new(exe);
+    let mut cmd = host_workmux_command();
     cmd.arg("merge");
     cmd.arg(name);
 
@@ -735,10 +748,9 @@ fn sanitized_env() -> std::collections::HashMap<String, String> {
 
 fn handle_close(name: &str, worktree_path: &PathBuf, writer: &mut impl Write) -> Result<()> {
     use std::io::Read;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
-    let mut cmd = Command::new(exe);
+    let mut cmd = host_workmux_command();
     cmd.arg("close").arg(name);
     cmd.current_dir(worktree_path);
     cmd.stdout(Stdio::piped());
@@ -1657,6 +1669,45 @@ mod tests {
     }
 
     // ── Git hook suppression tests ──────────────────────────────────────
+
+    #[test]
+    fn test_host_workmux_command_uses_host_config_env() {
+        use std::ffi::OsStr;
+
+        let cmd = host_workmux_command();
+        let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
+
+        assert_eq!(
+            envs.get(OsStr::new("WM_SANDBOX_GUEST")),
+            Some(&None),
+            "host workmux child must not inherit guest mode"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("WM_RPC_HOST")),
+            Some(&None),
+            "host workmux child must not inherit guest RPC host"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("WM_RPC_PORT")),
+            Some(&None),
+            "host workmux child must not inherit guest RPC port"
+        );
+        assert_eq!(
+            envs.get(OsStr::new("WM_RPC_TOKEN")),
+            Some(&None),
+            "host workmux child must not inherit guest RPC token"
+        );
+
+        if let Some(config_path) = crate::config::global_config_path()
+            && let Some(config_home) = config_path.parent().and_then(|p| p.parent())
+        {
+            assert_eq!(
+                envs.get(OsStr::new("XDG_CONFIG_HOME")),
+                Some(&Some(config_home.as_os_str())),
+                "host workmux child should resolve host global config"
+            );
+        }
+    }
 
     #[test]
     fn test_disable_git_hooks_sets_env_vars() {
