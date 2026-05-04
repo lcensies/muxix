@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.199 (2026-05-04)
+
+- Keep sidebar widths synchronized across tmux windows after manual resizing and terminal resize events.
+
 ## v0.1.198 (2026-05-02)
 
 - Allow `workmux sidebar --session` to hide or restore the sidebar for the current tmux session while global sidebar mode stays active.
