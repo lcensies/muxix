@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.200 (2026-05-04)
+
+- Allow `workmux close` to work from inside sandboxed worktrees by forwarding the request to the host. ([#158](https://github.com/raine/workmux/issues/158))
+- Use the host workmux configuration for sandbox-launched host commands, avoiding accidental reuse of sandbox guest settings.
+
 ## v0.1.199 (2026-05-04)
 
 - Keep sidebar widths synchronized across tmux windows after manual resizing and terminal resize events.
