@@ -552,7 +552,7 @@ impl SidebarApp {
     /// Record a resize event for debounced processing.
     pub fn on_resize_event(&mut self, cols: u16) {
         self.pending_resize_cols = Some(cols);
-        self.resize_deadline = Some(Instant::now() + Duration::from_millis(150));
+        self.resize_deadline = Some(Instant::now() + Duration::from_millis(500));
     }
 
     /// Process any pending resize after the debounce period has elapsed.
@@ -604,8 +604,10 @@ impl SidebarApp {
         let config = Config::load(None).unwrap_or_default();
         let expected = super::effective_width_for(&config, window_w);
 
-        // If pane width differs significantly from expected, treat as manual resize
-        if (actual_width as i16 - expected as i16).abs() > 3 {
+        let delta = (actual_width as i16 - expected as i16).abs();
+
+        // If pane width differs from expected, treat as manual resize
+        if delta > 0 {
             super::set_sidebar_width(actual_width);
             if let Some(wid) = self.host_window_id() {
                 super::reflow_all_sidebars_except(wid);
