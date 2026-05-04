@@ -509,12 +509,6 @@ fn host_workmux_command() -> std::process::Command {
         .env_remove("WM_RPC_PORT")
         .env_remove("WM_RPC_TOKEN");
 
-    if let Some(config_path) = crate::config::global_config_path()
-        && let Some(config_dir) = config_path.parent().and_then(|p| p.parent())
-    {
-        cmd.env("XDG_CONFIG_HOME", config_dir);
-    }
-
     cmd
 }
 
@@ -1671,7 +1665,7 @@ mod tests {
     // ── Git hook suppression tests ──────────────────────────────────────
 
     #[test]
-    fn test_host_workmux_command_uses_host_config_env() {
+    fn test_host_workmux_command_clears_guest_rpc_env() {
         use std::ffi::OsStr;
 
         let cmd = host_workmux_command();
@@ -1697,16 +1691,6 @@ mod tests {
             Some(&None),
             "host workmux child must not inherit guest RPC token"
         );
-
-        if let Some(config_path) = crate::config::global_config_path()
-            && let Some(config_home) = config_path.parent().and_then(|p| p.parent())
-        {
-            assert_eq!(
-                envs.get(OsStr::new("XDG_CONFIG_HOME")),
-                Some(&Some(config_home.as_os_str())),
-                "host workmux child should resolve host global config"
-            );
-        }
     }
 
     #[test]
