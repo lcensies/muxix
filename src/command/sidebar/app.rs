@@ -594,18 +594,19 @@ impl SidebarApp {
             return;
         }
 
+        // Query the actual pane width from tmux. Crossterm's SIGWINCH-derived
+        // cols may reflect a mid-drag position (the kernel coalesces SIGWINCH
+        // signals, so a single event can fire before the drag completes). By
+        // the time the debounce fires the drag is stable, so tmux's authoritative
+        // #{pane_width} gives us the final committed width to compare against.
+        let actual_width = query_pane_width_for_pane().unwrap_or(pane_width);
+
         let config = Config::load(None).unwrap_or_default();
         let expected = super::effective_width_for(&config, window_w);
 
         // If pane width differs significantly from expected, treat as manual resize
-        if (pane_width as i16 - expected as i16).abs() > 3 {
-            // Query the actual pane width from tmux rather than using the
-            // crossterm-reported value. Crossterm's SIGWINCH-derived cols may
-            // differ from what tmux considers the pane width, and using tmux's
-            // own measurement ensures consistency when reflow applies the same
-            // width to other windows via select-layout.
-            let actual = query_pane_width_for_pane().unwrap_or(pane_width);
-            super::set_sidebar_width(actual);
+        if (actual_width as i16 - expected as i16).abs() > 3 {
+            super::set_sidebar_width(actual_width);
             if let Some(wid) = self.host_window_id() {
                 super::reflow_all_sidebars_except(wid);
             }
