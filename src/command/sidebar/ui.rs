@@ -767,14 +767,21 @@ pub(crate) fn status_icon_and_style(
 }
 
 fn render_no_agents(f: &mut Frame, app: &SidebarApp, area: Rect) {
-    if !app.has_loaded_snapshot {
-        return;
+    let text = if app.has_loaded_snapshot {
+        Line::from(Span::styled(
+            "No agents running",
+            Style::default().fg(app.palette.dimmed),
+        ))
+    } else {
+        const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        Line::from(vec![
+            Span::styled(
+                FRAMES[app.spinner_frame as usize % FRAMES.len()],
+                Style::default().fg(app.palette.dimmed),
+            ),
+            Span::styled(" Loading", Style::default().fg(app.palette.dimmed)),
+        ])
     }
-
-    let text = Line::from(Span::styled(
-        "No agents running",
-        Style::default().fg(app.palette.dimmed),
-    ))
     .alignment(Alignment::Center);
     let y = area.y + area.height / 2;
     let centered = Rect::new(area.x, y, area.width, 1);
