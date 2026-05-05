@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.201 (2026-05-05)
+
+- Keep sidebar layouts in sync immediately after terminal resizes, including inactive tmux windows.
+- Fix prompt delivery for custom named agents that specify an agent type.
+
 ## v0.1.200 (2026-05-04)
 
 - Allow `workmux close` to work from inside sandboxed worktrees by forwarding the request to the host. ([#158](https://github.com/raine/workmux/issues/158))
