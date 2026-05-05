@@ -440,8 +440,15 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
             break;
         }
         let chip_width = available.min(24);
+        let has_status_icon = ctx
+            .status_icon_spans
+            .iter()
+            .any(|(text, _)| !text.trim().is_empty());
         let mut chip =
             render_line_with_options(&ctx, &template, chip_width, &RenderOptions::default());
+        if !has_status_icon {
+            trim_leading_whitespace_spans(&mut chip);
+        }
         let width: u16 = chip
             .iter()
             .map(|span| display_width(span.content.as_ref()))
@@ -465,14 +472,30 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         x = x.saturating_add(width);
         visible_count += 1;
 
-        if x.saturating_add(2) <= max_x {
-            spans.push(Span::raw("  "));
-            x = x.saturating_add(2);
+        if x.saturating_add(2) < max_x && idx + 1 < app.agents.len() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("│", Style::default().fg(app.palette.border)));
+            spans.push(Span::raw(" "));
+            x = x.saturating_add(3);
         }
     }
 
     app.ensure_selected_visible(visible_count);
     f.render_widget(Line::from(spans), inner);
+}
+
+fn trim_leading_whitespace_spans(spans: &mut Vec<Span<'static>>) {
+    while let Some(first) = spans.first_mut() {
+        let trimmed = first.content.trim_start();
+        if trimmed.is_empty() {
+            spans.remove(0);
+        } else if trimmed.len() != first.content.len() {
+            *first = Span::styled(trimmed.to_string(), first.style);
+            break;
+        } else {
+            break;
+        }
+    }
 }
 
 /// Compact single-line-per-agent list (original layout).
