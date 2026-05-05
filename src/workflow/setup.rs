@@ -410,8 +410,7 @@ pub fn resolve_pane_configuration(
     config: &config::Config,
     agent: Option<&str>,
 ) -> Vec<config::PaneConfig> {
-    let effective_agent = resolve_effective_agent(config, agent);
-    let Some(agent_cmd) = effective_agent else {
+    let Some(agent_cmd) = agent else {
         return original_panes.to_vec();
     };
 
