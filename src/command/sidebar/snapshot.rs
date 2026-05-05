@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config::StatusIcons;
+use crate::config::{SidebarPosition, StatusIcons};
 use crate::git::GitStatus;
 use crate::multiplexer::{AgentPane, AgentStatus};
 
@@ -14,6 +14,7 @@ use super::app::SidebarLayoutMode;
 /// A complete sidebar state snapshot, pushed from daemon to clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidebarSnapshot {
+    pub position: SidebarPosition,
     pub layout_mode: SidebarLayoutMode,
     pub active_windows: HashSet<(String, String)>,
     #[serde(default)]
@@ -46,6 +47,7 @@ pub fn build_snapshot(
     active_windows: HashSet<(String, String)>,
     active_pane_ids: HashSet<String>,
     window_pane_counts: HashMap<String, usize>,
+    position: SidebarPosition,
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
     git_statuses: HashMap<PathBuf, GitStatus>,
@@ -105,6 +107,7 @@ pub fn build_snapshot(
         .collect();
 
     SidebarSnapshot {
+        position,
         layout_mode,
         active_windows,
         active_pane_ids,

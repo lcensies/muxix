@@ -243,8 +243,8 @@ fn process_event(
             }
             *needs_render = true;
         }
-        AppEvent::Input(Event::Resize(cols, _)) => {
-            app.on_resize_event(cols);
+        AppEvent::Input(Event::Resize(cols, rows)) => {
+            app.on_resize_event(cols, rows);
             *needs_render = true;
         }
         AppEvent::Input(_) => {}

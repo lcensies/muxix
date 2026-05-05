@@ -4,6 +4,7 @@ use anyhow::{Result, anyhow};
 use tracing::debug;
 
 use crate::cmd::Cmd;
+use crate::config::SidebarPosition;
 
 use super::SIDEBAR_ROLE_VALUE;
 use super::daemon_ctrl::kill_daemon;
@@ -20,7 +21,11 @@ pub(super) fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
 }
 
 /// Create a sidebar pane in a specific window (idempotent).
-pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()> {
+pub(super) fn create_sidebar_in_window(
+    window_id: &str,
+    position: SidebarPosition,
+    size: u16,
+) -> Result<()> {
     if find_sidebar_in_window(window_id).unwrap_or(false) {
         debug!(
             window_id,
@@ -31,9 +36,9 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
 
     let exe = std::env::current_exe()?;
     let exe_str = exe.to_str().ok_or_else(|| anyhow!("exe path not UTF-8"))?;
-    let width_str = width.to_string();
+    let size_str = size.to_string();
 
-    debug!(window_id, width, "create_sidebar_in_window: creating");
+    debug!(window_id, position = ?position, size, "create_sidebar_in_window: creating");
 
     // Get the first pane in the window as split target
     let target_pane = Cmd::new("tmux")
@@ -44,12 +49,17 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
         return Ok(());
     }
 
+    let split_flag = match position {
+        SidebarPosition::Left => "-hbf",
+        SidebarPosition::Top => "-vbf",
+    };
+
     let new_pane_id = Cmd::new("tmux")
         .args(&[
             "split-window",
-            "-hbf",
+            split_flag,
             "-l",
-            &width_str,
+            &size_str,
             "-t",
             target_pane,
             "-d",
@@ -74,15 +84,12 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
         ])
         .run()?;
 
-    // Reflow the layout tree so content panes share the remaining width
-    // proportionally. This is an atomic select-layout operation that avoids
-    // the lopsided splits caused by split-window stealing from one pane only.
-    reflow_after_sidebar_add(window_id, &new_pane_id, width);
+    reflow_after_sidebar_add(window_id, &new_pane_id, position, size);
 
     debug!(
         window_id,
         pane_id = new_pane_id.as_str(),
-        requested_width = width,
+        requested_size = size,
         "create_sidebar_in_window: done"
     );
 
@@ -95,21 +102,26 @@ pub(super) fn create_sidebar_in_window(window_id: &str, width: u16) -> Result<()
 /// sidebar proportional to its own dimensions. Unattached sessions may have
 /// stale geometry, but `reflow()` corrects them on reattach.
 pub(super) fn create_sidebars_in_all_windows(config: &crate::config::Config) -> Result<()> {
+    let position = super::read_sidebar_position(config);
+    let format = match position {
+        SidebarPosition::Left => "#{window_id} #{window_width}",
+        SidebarPosition::Top => "#{window_id} #{window_height}",
+    };
     let output = Cmd::new("tmux")
-        .args(&["list-windows", "-a", "-F", "#{window_id} #{window_width}"])
+        .args(&["list-windows", "-a", "-F", format])
         .run_and_capture_stdout()?;
 
-    debug!("create_sidebars_in_all_windows: creating sidebars");
+    debug!(position = ?position, "create_sidebars_in_all_windows: creating sidebars");
 
     for line in output.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
-        let window_w: u16 = width_str.parse().unwrap_or(0);
-        let width = super::effective_width_for(config, window_w);
-        let _ = create_sidebar_in_window(window_id, width);
+        let (window_id, extent_str) = line.split_once(' ').unwrap_or((line, "0"));
+        let window_extent: u16 = extent_str.parse().unwrap_or(0);
+        let size = super::effective_size_for(config, position, window_extent);
+        let _ = create_sidebar_in_window(window_id, position, size);
     }
 
     Ok(())
@@ -120,27 +132,26 @@ pub(super) fn create_sidebars_in_session(
     session_id: &str,
     config: &crate::config::Config,
 ) -> Result<()> {
+    let position = super::read_sidebar_position(config);
+    let format = match position {
+        SidebarPosition::Left => "#{window_id} #{window_width}",
+        SidebarPosition::Top => "#{window_id} #{window_height}",
+    };
     let output = Cmd::new("tmux")
-        .args(&[
-            "list-windows",
-            "-t",
-            session_id,
-            "-F",
-            "#{window_id} #{window_width}",
-        ])
+        .args(&["list-windows", "-t", session_id, "-F", format])
         .run_and_capture_stdout()?;
 
-    debug!(session_id, "create_sidebars_in_session: creating sidebars");
+    debug!(session_id, position = ?position, "create_sidebars_in_session: creating sidebars");
 
     for line in output.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let (window_id, width_str) = line.split_once(' ').unwrap_or((line, "0"));
-        let window_w: u16 = width_str.parse().unwrap_or(0);
-        let width = super::effective_width_for(config, window_w);
-        let _ = create_sidebar_in_window(window_id, width);
+        let (window_id, extent_str) = line.split_once(' ').unwrap_or((line, "0"));
+        let window_extent: u16 = extent_str.parse().unwrap_or(0);
+        let size = super::effective_size_for(config, position, window_extent);
+        let _ = create_sidebar_in_window(window_id, position, size);
     }
     Ok(())
 }
@@ -148,6 +159,8 @@ pub(super) fn create_sidebars_in_session(
 /// Kill sidebar panes only in a specific session (by session_id).
 /// Handles layout restoration for killed panes.
 pub(super) fn kill_sidebars_in_session(session_id: &str) {
+    let config = crate::config::Config::load(None).unwrap_or_default();
+    let position = super::read_sidebar_position(&config);
     let output = Cmd::new("tmux")
         .args(&[
             "list-panes",
@@ -173,7 +186,7 @@ pub(super) fn kill_sidebars_in_session(session_id: &str) {
 
     let layouts: Vec<_> = session_sidebars
         .iter()
-        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id, position))
         .collect();
 
     for (_, pane_id) in &session_sidebars {
@@ -218,12 +231,14 @@ pub(super) fn list_sidebar_panes() -> Vec<(String, String)> {
 /// then applies it after. This preserves pane arrangements the user
 /// created while the sidebar was open.
 pub(super) fn kill_all_sidebars_and_restore_layouts() {
+    let config = crate::config::Config::load(None).unwrap_or_default();
+    let position = super::read_sidebar_position(&config);
     let sidebars = list_sidebar_panes();
 
     // Compute target layouts from the live tree before destroying any panes
     let layouts: Vec<_> = sidebars
         .iter()
-        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id, position))
         .collect();
 
     for (_, pane_id) in &sidebars {
@@ -247,6 +262,8 @@ pub(super) fn kill_all_sidebars_and_restore_layouts() {
 /// our session from the scope set. Full cleanup (daemon, hooks) only happens
 /// when no scoped sessions remain.
 pub(super) fn shutdown_all_sidebars() {
+    let config = crate::config::Config::load(None).unwrap_or_default();
+    let position = super::read_sidebar_position(&config);
     let our_pane = Cmd::new("tmux")
         .args(&["display-message", "-p", "#{pane_id}"])
         .run_and_capture_stdout()
@@ -313,7 +330,7 @@ pub(super) fn shutdown_all_sidebars() {
     // Compute target layouts from the live tree before destroying any panes
     let computed_layouts: Vec<_> = sidebars
         .iter()
-        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id))
+        .map(|(window_id, pane_id)| layout_after_sidebar_remove(window_id, pane_id, position))
         .collect();
 
     let mut other_window_layouts = Vec::new();

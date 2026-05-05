@@ -4,9 +4,9 @@ description: Toggle a live agent status sidebar in tmux
 
 # sidebar
 
-Toggles a live agent status sidebar on the left side of all tmux windows.
-Shows all active agents across all sessions and projects with live status
-updates.
+Toggles a live agent status sidebar on the left or top edge of all tmux
+windows. Shows all active agents across all sessions and projects with live
+status updates.
 
 ```bash
 workmux sidebar            # Toggle sidebar on/off (all sessions)
@@ -65,22 +65,26 @@ bind C-k run-shell "workmux sidebar prev"
 
 ```yaml
 sidebar:
-  width: 40 # absolute columns (default: "10%", clamped 25-50)
-  # width: "15%"  # or percentage of terminal width
-  layout: tiles # "compact" or "tiles" (default)
+  position: left # "left" (default) or "top"
+  width: 40 # left width in columns (default: "10%", clamped 25-50)
+  # width: "15%"
+  height: 3 # top height in rows (default: "10%", clamped 1-5)
+  layout: tiles # left only: "compact" or "tiles" (default)
 ```
 
 Explicit width values bypass the default 25-50 column clamp (minimum 10
 columns). Layout preference can also be toggled at runtime with `v` and is
-persisted across restarts.
+persisted across restarts. The top bar uses a horizontal chip layout, so `v` has
+no effect there. Position changes take effect after toggling the sidebar off and
+on.
 
 ## How it works
 
 When enabled, a background daemon polls tmux state every 2 seconds and pushes
-snapshots to each sidebar pane over a Unix socket. The sidebar creates a narrow
-tmux pane on the left side of every existing window using a full-height split.
-A tmux hook (`after-new-window`) ensures newly created windows also get a
-sidebar automatically.
+snapshots to each sidebar pane over a Unix socket. The sidebar creates a tmux
+pane on the configured edge of every existing window. A tmux hook
+(`after-new-window`) ensures newly created windows also get a sidebar
+automatically.
 
 Running `workmux sidebar` again disables the sidebar globally, killing all
 sidebar panes, the daemon, and removing hooks.

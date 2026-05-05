@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{AgentIcons, Config, SidebarWidth, StatusIcons};
+use crate::config::{AgentIcons, Config, SidebarPosition, SidebarWidth, StatusIcons};
 use crate::git::GitStatus;
 use ratatui::style::Color;
 use std::collections::BTreeMap;
@@ -66,6 +66,13 @@ enum SelectionMode {
 pub struct ResolvedAgentIcons {
     pub icons: BTreeMap<String, String>,
     pub colors: BTreeMap<String, Option<Color>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HitBox {
+    pub idx: usize,
+    pub x_start: u16,
+    pub x_end: u16,
 }
 
 impl ResolvedAgentIcons {
@@ -124,6 +131,7 @@ pub struct SidebarApp {
     pub status_icons: StatusIcons,
     pub spinner_frame: u8,
     pub stale_threshold_secs: u64,
+    pub position: SidebarPosition,
     pub layout_mode: SidebarLayoutMode,
     /// Area where the list was last rendered (for mouse hit testing)
     pub list_area: Rect,
@@ -150,6 +158,10 @@ pub struct SidebarApp {
     pub agent_icons: ResolvedAgentIcons,
     /// Cached tile heights for hit testing (updated each render).
     pub tile_heights: Vec<usize>,
+    /// Cached horizontal chip hitboxes for top bar mouse hit testing.
+    pub horizontal_hitboxes: Vec<HitBox>,
+    /// First agent index rendered in the horizontal top bar.
+    pub first_visible_agent_idx: usize,
     /// Last `config_version` from the daemon snapshot. Increments trigger a
     /// client-side config reload.
     pub last_config_version: u64,
@@ -164,8 +176,12 @@ pub struct SidebarApp {
     pub current_width: Option<SidebarWidth>,
     /// Last known window width (for detecting manual pane resizes).
     last_window_width: Option<u16>,
+    /// Last known window height (for detecting manual top bar resizes).
+    last_window_height: Option<u16>,
     /// Pending resize columns to process after debounce.
     pending_resize_cols: Option<u16>,
+    /// Pending resize rows to process after debounce.
+    pending_resize_rows: Option<u16>,
     /// Deadline after which pending resize should be processed.
     pub(super) resize_deadline: Option<Instant>,
 }
@@ -192,10 +208,12 @@ impl SidebarApp {
         let (current_compact_str, current_tile_strs) = resolved_template_strings(&config);
         let agent_icons = ResolvedAgentIcons::from_config(config.sidebar.agent_icons.as_ref());
         let current_width = config.sidebar.width.clone();
+        let position = super::read_sidebar_position(&config);
 
         // Seed last_window_width so the first resize event after startup grace
         // can be compared against a baseline (fixes first-resize-dropped bug).
         let initial_window_width = query_window_width_for_pane();
+        let initial_window_height = query_window_height_for_pane();
 
         Ok(Self {
             mux,
@@ -207,6 +225,7 @@ impl SidebarApp {
             status_icons,
             spinner_frame: 0,
             stale_threshold_secs: 60 * 60, // 60 minutes
+            position,
             layout_mode: SidebarLayoutMode::default(),
             list_area: Rect::default(),
             window_prefix,
@@ -221,12 +240,16 @@ impl SidebarApp {
             templates,
             agent_icons,
             tile_heights: Vec::new(),
+            horizontal_hitboxes: Vec::new(),
+            first_visible_agent_idx: 0,
             last_config_version: 0,
             current_compact_str,
             current_tile_strs,
             current_width,
             last_window_width: initial_window_width,
+            last_window_height: initial_window_height,
             pending_resize_cols: None,
+            pending_resize_rows: None,
             resize_deadline: None,
         })
     }
@@ -255,6 +278,7 @@ impl SidebarApp {
             self.reload_config_from_disk(&snapshot);
         }
 
+        self.position = snapshot.position;
         self.layout_mode = snapshot.layout_mode;
         self.git_statuses = snapshot.git_statuses;
         self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
@@ -421,13 +445,21 @@ impl SidebarApp {
         }
     }
 
-    pub fn hit_test(&self, _column: u16, row: u16) -> Option<usize> {
+    pub fn hit_test(&self, column: u16, row: u16) -> Option<usize> {
         if self.agents.is_empty() {
             return None;
         }
         let area = self.list_area;
         if row < area.y || row >= area.y + area.height {
             return None;
+        }
+
+        if self.position == SidebarPosition::Top {
+            return self
+                .horizontal_hitboxes
+                .iter()
+                .find(|hit| column >= hit.x_start && column < hit.x_end)
+                .map(|hit| hit.idx);
         }
 
         let relative_row = (row - area.y) as usize;
@@ -449,6 +481,17 @@ impl SidebarApp {
                 }
                 None
             }
+        }
+    }
+
+    pub fn ensure_selected_visible(&mut self, visible_count: usize) {
+        let Some(selected) = self.list_state.selected() else {
+            return;
+        };
+        if selected < self.first_visible_agent_idx {
+            self.first_visible_agent_idx = selected;
+        } else if visible_count > 0 && selected >= self.first_visible_agent_idx + visible_count {
+            self.first_visible_agent_idx = selected + 1 - visible_count;
         }
     }
 
@@ -478,6 +521,9 @@ impl SidebarApp {
     }
 
     pub fn toggle_layout_mode(&mut self) {
+        if self.position == SidebarPosition::Top {
+            return;
+        }
         self.layout_mode = match self.layout_mode {
             SidebarLayoutMode::Compact => SidebarLayoutMode::Tiles,
             SidebarLayoutMode::Tiles => SidebarLayoutMode::Compact,
@@ -550,17 +596,34 @@ impl SidebarApp {
     }
 
     /// Record a resize event for debounced manual pane resize processing.
-    pub fn on_resize_event(&mut self, cols: u16) {
-        let window_w = self.query_host_window_width();
-        if self.last_window_width.is_some_and(|prev| prev != window_w) {
-            self.last_window_width = Some(window_w);
-            self.pending_resize_cols = None;
-            self.resize_deadline = None;
-            let _ = super::reflow_all_to_window_width(Some(window_w));
-            return;
+    pub fn on_resize_event(&mut self, cols: u16, rows: u16) {
+        match self.position {
+            SidebarPosition::Left => {
+                let window_w = self.query_host_window_width();
+                if self.last_window_width.is_some_and(|prev| prev != window_w) {
+                    self.last_window_width = Some(window_w);
+                    self.pending_resize_cols = None;
+                    self.pending_resize_rows = None;
+                    self.resize_deadline = None;
+                    let _ = super::reflow_all_to_window_extent(Some(window_w));
+                    return;
+                }
+                self.pending_resize_cols = Some(cols);
+            }
+            SidebarPosition::Top => {
+                let window_h = self.query_host_window_height();
+                if self.last_window_height.is_some_and(|prev| prev != window_h) {
+                    self.last_window_height = Some(window_h);
+                    self.pending_resize_cols = None;
+                    self.pending_resize_rows = None;
+                    self.resize_deadline = None;
+                    let _ = super::reflow_all_to_window_extent(Some(window_h));
+                    return;
+                }
+                self.pending_resize_rows = Some(rows);
+            }
         }
 
-        self.pending_resize_cols = Some(cols);
         self.resize_deadline = Some(Instant::now() + Duration::from_millis(500));
     }
 
@@ -571,6 +634,7 @@ impl SidebarApp {
             // Suppress detection during startup to avoid false positives from
             // initial pane creation layout divergence.
             self.pending_resize_cols = None;
+            self.pending_resize_rows = None;
             self.resize_deadline = None;
             return;
         }
@@ -582,50 +646,67 @@ impl SidebarApp {
             return;
         }
 
-        let Some(pane_width) = self.pending_resize_cols else {
-            self.resize_deadline = None;
-            return;
-        };
-
-        let window_w = self.query_host_window_width();
-
-        // Store for next comparison before any potential reflow
-        let prev_window_w = self.last_window_width;
-        self.last_window_width = Some(window_w);
-        self.pending_resize_cols = None;
-        self.resize_deadline = None;
-
-        // Skip until we have a previous window width to compare against
-        let Some(prev_ww) = prev_window_w else { return };
-
-        // If window width changed, this is a terminal resize, not manual pane resize
-        if prev_ww != window_w {
-            return;
-        }
-
-        // Query the actual pane width from tmux. Crossterm's SIGWINCH-derived
-        // cols may reflect a mid-drag position (the kernel coalesces SIGWINCH
-        // signals, so a single event can fire before the drag completes). By
-        // the time the debounce fires the drag is stable, so tmux's authoritative
-        // #{pane_width} gives us the final committed width to compare against.
-        let actual_width = query_pane_width_for_pane().unwrap_or(pane_width);
-
         let config = Config::load(None).unwrap_or_default();
-        let expected = super::effective_width_for(&config, window_w);
-
-        let delta = (actual_width as i16 - expected as i16).abs();
-
-        // If pane width differs from expected, treat as manual resize
-        if delta > 0 {
-            super::set_sidebar_width(actual_width);
-            if let Some(wid) = self.host_window_id() {
-                super::reflow_all_sidebars_except(wid);
+        match self.position {
+            SidebarPosition::Left => {
+                let Some(pane_width) = self.pending_resize_cols else {
+                    self.resize_deadline = None;
+                    return;
+                };
+                let window_w = self.query_host_window_width();
+                let prev_window_w = self.last_window_width;
+                self.last_window_width = Some(window_w);
+                self.pending_resize_cols = None;
+                self.pending_resize_rows = None;
+                self.resize_deadline = None;
+                let Some(prev_ww) = prev_window_w else { return };
+                if prev_ww != window_w {
+                    return;
+                }
+                let actual_width = query_pane_width_for_pane().unwrap_or(pane_width);
+                let expected = super::effective_width_for(&config, window_w);
+                let delta = (actual_width as i16 - expected as i16).abs();
+                if delta > 0 {
+                    super::set_sidebar_width(actual_width);
+                    if let Some(wid) = self.host_window_id() {
+                        super::reflow_all_sidebars_except(wid);
+                    }
+                }
+            }
+            SidebarPosition::Top => {
+                let Some(pane_height) = self.pending_resize_rows else {
+                    self.resize_deadline = None;
+                    return;
+                };
+                let window_h = self.query_host_window_height();
+                let prev_window_h = self.last_window_height;
+                self.last_window_height = Some(window_h);
+                self.pending_resize_cols = None;
+                self.pending_resize_rows = None;
+                self.resize_deadline = None;
+                let Some(prev_wh) = prev_window_h else { return };
+                if prev_wh != window_h {
+                    return;
+                }
+                let actual_height = query_pane_height_for_pane().unwrap_or(pane_height);
+                let expected = super::effective_height_for(&config, window_h);
+                let delta = (actual_height as i16 - expected as i16).abs();
+                if delta > 0 {
+                    super::set_sidebar_height(actual_height);
+                    if let Some(wid) = self.host_window_id() {
+                        super::reflow_all_sidebars_except(wid);
+                    }
+                }
             }
         }
     }
 
     fn query_host_window_width(&self) -> u16 {
         query_window_width_for_pane().unwrap_or(0)
+    }
+
+    fn query_host_window_height(&self) -> u16 {
+        query_window_height_for_pane().unwrap_or(0)
     }
 
     /// Resolve the (primary, secondary) label pair for an agent row.
@@ -735,22 +816,44 @@ fn query_window_width_for_pane() -> Option<u16> {
         .and_then(|s| s.trim().parse().ok())
 }
 
-/// Query the actual pane width from tmux. Used to verify the sidebar pane
-/// size after a manual resize, since crossterm's SIGWINCH-derived cols may
-/// differ from what tmux reports via #{pane_width}.
-fn query_pane_width_for_pane() -> Option<u16> {
+fn query_window_height_for_pane() -> Option<u16> {
     let pane_id = std::env::var("TMUX_PANE").unwrap_or_default();
     let mut args = vec!["display-message", "-p"];
     if !pane_id.is_empty() {
         args.extend_from_slice(&["-t", &pane_id]);
     }
-    args.push("#{pane_width}");
+    args.push("#{window_height}");
     Cmd::new("tmux")
         .args(&args)
         .run_and_capture_stdout()
         .ok()
         .and_then(|s| s.trim().parse().ok())
-        .filter(|&w| w > 0)
+}
+
+/// Query the actual pane width from tmux. Used to verify the sidebar pane
+/// size after a manual resize, since crossterm's SIGWINCH-derived cols may
+/// differ from what tmux reports via #{pane_width}.
+fn query_pane_width_for_pane() -> Option<u16> {
+    query_pane_extent_for_pane("#{pane_width}")
+}
+
+fn query_pane_height_for_pane() -> Option<u16> {
+    query_pane_extent_for_pane("#{pane_height}")
+}
+
+fn query_pane_extent_for_pane(format: &str) -> Option<u16> {
+    let pane_id = std::env::var("TMUX_PANE").unwrap_or_default();
+    let mut args = vec!["display-message", "-p"];
+    if !pane_id.is_empty() {
+        args.extend_from_slice(&["-t", &pane_id]);
+    }
+    args.push(format);
+    Cmd::new("tmux")
+        .args(&args)
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .filter(|&extent| extent > 0)
 }
 
 /// Parse new template strings, mutating `templates` and the cached strings.

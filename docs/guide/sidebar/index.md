@@ -4,9 +4,9 @@ description: A persistent agent status sidebar for tmux windows
 
 # Sidebar
 
-The sidebar provides an always-visible agent overview pinned to the left edge of
-every tmux window. Unlike the dashboard (which is a full-screen TUI you open on
-demand), the sidebar stays on screen while you work.
+The sidebar provides an always-visible agent overview pinned to the left edge or
+top edge of every tmux window. Unlike the dashboard, which is a full-screen TUI
+you open on demand, the sidebar stays on screen while you work.
 
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
   <img src="/sidebar.webp" alt="workmux sidebar" style="border-radius: 4px;">
@@ -59,30 +59,40 @@ Configure the sidebar in your global `~/.config/workmux/config.yaml` or project
 
 ```yaml
 sidebar:
-  # Width: absolute columns or percentage of terminal width
+  # Position: "left" (default) or "top"
+  position: left
+
+  # Left sidebar width: absolute columns or percentage of terminal width
   width: 40 # absolute columns
   # width: "15%"  # percentage of terminal width
 
-  # Layout mode: "compact" or "tiles" (default)
+  # Top bar height: absolute rows or percentage of terminal height
+  height: 3
+  # height: "10%"
+
+  # Layout mode for the left sidebar: "compact" or "tiles" (default)
   layout: tiles
 ```
 
 Width defaults to 10% of terminal width, clamped between 25 and 50 columns.
-When set explicitly, the clamp is removed (minimum 10 columns).
+When set explicitly, the clamp is removed (minimum 10 columns). Height defaults
+to 10% of terminal height, clamped between 1 and 5 rows. Position changes take
+effect the next time you toggle the sidebar off and on.
 
 ## Layout modes
 
-The sidebar supports two layout modes, toggled with `v`:
+The left sidebar supports two layout modes, toggled with `v`:
 
 - **Tiles** (default): variable-height cards with status stripe
 - **Compact**: single line per agent
 
-Your preference is persisted across tmux restarts.
+Your preference is persisted across tmux restarts. The top bar always uses a
+horizontal chip layout, so `v` has no effect there.
 
 ## Mouse support
 
-Click an agent tile to jump to its pane, or scroll to navigate the list. Requires
-`set -g mouse on` in your `~/.tmux.conf`.
+Click an agent tile or top-bar chip to jump to its pane, or scroll to navigate
+the list. Requires `set -g mouse on` in your `~/.tmux.conf`.
 
 ## Keybindings
 
@@ -132,9 +142,8 @@ bind -n M-3 run-shell "workmux sidebar jump 3"
 The sidebar is a bit of a hack on top of tmux's pane system, but it works quite
 well. It uses a daemon + client architecture with event-driven rendering:
 
-1. **Toggle on** (`workmux sidebar`): creates a narrow tmux pane on the left
-   side of every window using a full-height split, starts a background daemon,
-   and installs tmux hooks.
+1. **Toggle on** (`workmux sidebar`): creates a tmux pane on the left or top
+   edge of every window, starts a background daemon, and installs tmux hooks.
 
 2. **Daemon**: a single headless process that polls tmux state every 2 seconds
    (or immediately when signaled via SIGUSR1). It reads agent state from the
@@ -153,7 +162,8 @@ well. It uses a daemon + client architecture with event-driven rendering:
    - `after-new-window` / `after-new-session`: automatically adds a sidebar pane
      to newly created windows
    - `window-resized`: reflows the layout tree in every sidebar window, keeping
-     all sidebars at the correct width regardless of which window was resized
+     all sidebars at the correct width or height regardless of which window was
+     resized
    - `after-select-window` / `client-session-changed` / `after-kill-pane`:
      signals the daemon for an immediate refresh
 

@@ -16,6 +16,7 @@
 use tracing::debug;
 
 use crate::cmd::Cmd;
+use crate::config::SidebarPosition;
 
 /// A rectangle in the tmux layout coordinate system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +63,10 @@ impl LayoutNode {
 
     fn width(&self) -> u16 {
         self.rect().w
+    }
+
+    fn height(&self) -> u16 {
+        self.rect().h
     }
 }
 
@@ -243,23 +248,23 @@ fn serialize_layout(root: &LayoutNode) -> String {
 
 // ── Reflow ──────────────────────────────────────────────────────
 
-/// Distribute `available` width among items proportionally to their old widths.
+/// Distribute `available` length among items proportionally to their old lengths.
 /// The last item gets the remainder to avoid rounding gaps.
-fn proportional_widths(old_widths: &[u16], available: u16) -> Vec<u16> {
-    let old_total: u16 = old_widths.iter().sum();
-    if old_total == 0 || old_widths.is_empty() {
-        return vec![0; old_widths.len()];
+fn proportional_lengths(old_lengths: &[u16], available: u16) -> Vec<u16> {
+    let old_total: u16 = old_lengths.iter().sum();
+    if old_total == 0 || old_lengths.is_empty() {
+        return vec![0; old_lengths.len()];
     }
     let mut remaining = available;
-    let last = old_widths.len() - 1;
-    old_widths
+    let last = old_lengths.len() - 1;
+    old_lengths
         .iter()
         .enumerate()
-        .map(|(i, &old_w)| {
+        .map(|(i, &old_len)| {
             if i == last {
                 remaining
             } else {
-                let scaled = (old_w as f64 * available as f64 / old_total as f64).round() as u16;
+                let scaled = (old_len as f64 * available as f64 / old_total as f64).round() as u16;
                 let scaled = scaled.min(remaining);
                 remaining = remaining.saturating_sub(scaled);
                 scaled
@@ -268,41 +273,95 @@ fn proportional_widths(old_widths: &[u16], available: u16) -> Vec<u16> {
         .collect()
 }
 
-/// Recursively scale a subtree's width, preserving internal proportions.
-///
-/// For horizontal splits, children's widths are scaled proportionally.
-/// For vertical splits, all children get the parent's new width.
-/// X positions are recalculated during the traversal.
-fn scale_width(node: &mut LayoutNode, new_w: u16, new_x: u16) {
-    let rect = node.rect_mut();
-    rect.w = new_w;
-    rect.x = new_x;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Axis {
+    Horizontal,
+    Vertical,
+}
 
-    match node {
-        LayoutNode::HSplit { children, .. } => {
-            // Children share width with 1-char separators between them.
-            // parent.w = sum(child.w) + (num_children - 1)
-            let seps = children.len().saturating_sub(1) as u16;
-            let old_widths: Vec<u16> = children.iter().map(|c| c.width()).collect();
-            let new_widths = proportional_widths(&old_widths, new_w.saturating_sub(seps));
-
-            let mut cx = new_x;
-            for (child, &child_w) in children.iter_mut().zip(&new_widths) {
-                scale_width(child, child_w, cx);
-                cx = cx.saturating_add(child_w).saturating_add(1);
-            }
-        }
-        LayoutNode::VSplit { children, .. } => {
-            // All children in a vertical split share the same width
-            for child in children {
-                scale_width(child, new_w, new_x);
-            }
-        }
-        LayoutNode::Leaf { .. } => {
-            // Width and x already set above
+impl Axis {
+    fn for_position(position: SidebarPosition) -> Self {
+        match position {
+            SidebarPosition::Left => Self::Horizontal,
+            SidebarPosition::Top => Self::Vertical,
         }
     }
-    // Heights and y positions are unchanged (sidebar only affects horizontal dimension)
+
+    fn root_matches(self, node: &LayoutNode) -> bool {
+        matches!(
+            (self, node),
+            (Axis::Horizontal, LayoutNode::HSplit { .. })
+                | (Axis::Vertical, LayoutNode::VSplit { .. })
+        )
+    }
+}
+
+fn node_extent(node: &LayoutNode, axis: Axis) -> u16 {
+    match axis {
+        Axis::Horizontal => node.width(),
+        Axis::Vertical => node.height(),
+    }
+}
+
+fn rect_extent(rect: &Rect, axis: Axis) -> u16 {
+    match axis {
+        Axis::Horizontal => rect.w,
+        Axis::Vertical => rect.h,
+    }
+}
+
+fn rect_pos(rect: &Rect, axis: Axis) -> u16 {
+    match axis {
+        Axis::Horizontal => rect.x,
+        Axis::Vertical => rect.y,
+    }
+}
+
+/// Recursively scale a subtree along one axis, preserving internal proportions.
+fn scale_axis(node: &mut LayoutNode, axis: Axis, new_len: u16, new_pos: u16) {
+    let rect = node.rect_mut();
+    match axis {
+        Axis::Horizontal => {
+            rect.w = new_len;
+            rect.x = new_pos;
+        }
+        Axis::Vertical => {
+            rect.h = new_len;
+            rect.y = new_pos;
+        }
+    }
+
+    match (axis, node) {
+        (Axis::Horizontal, LayoutNode::HSplit { children, .. })
+        | (Axis::Vertical, LayoutNode::VSplit { children, .. }) => {
+            let seps = children.len().saturating_sub(1) as u16;
+            let old_lengths: Vec<u16> = children.iter().map(|c| node_extent(c, axis)).collect();
+            let new_lengths = proportional_lengths(&old_lengths, new_len.saturating_sub(seps));
+
+            let mut pos = new_pos;
+            for (child, child_len) in children.iter_mut().zip(new_lengths) {
+                scale_axis(child, axis, child_len, pos);
+                pos = pos.saturating_add(child_len).saturating_add(1);
+            }
+        }
+        (Axis::Horizontal, LayoutNode::VSplit { children, .. })
+        | (Axis::Vertical, LayoutNode::HSplit { children, .. }) => {
+            for child in children {
+                scale_axis(child, axis, new_len, new_pos);
+            }
+        }
+        (_, LayoutNode::Leaf { .. }) => {}
+    }
+}
+
+#[cfg(test)]
+fn scale_width(node: &mut LayoutNode, new_w: u16, new_x: u16) {
+    scale_axis(node, Axis::Horizontal, new_w, new_x);
+}
+
+#[cfg(test)]
+fn scale_height(node: &mut LayoutNode, new_h: u16, new_y: u16) {
+    scale_axis(node, Axis::Vertical, new_h, new_y);
 }
 
 /// Rebalance the window layout after a sidebar pane was added.
@@ -313,15 +372,27 @@ fn scale_width(node: &mut LayoutNode, new_w: u16, new_x: u16) {
 /// tree lopsided. This function scales the content subtree to fill
 /// the remaining space proportionally, then applies the fixed layout
 /// atomically via `select-layout`.
-pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, sidebar_width: u16) {
-    reflow_after_sidebar_add_to_window_width(window_id, sidebar_pane_id, sidebar_width, None);
-}
-
-pub(super) fn reflow_after_sidebar_add_to_window_width(
+pub(super) fn reflow_after_sidebar_add(
     window_id: &str,
     sidebar_pane_id: &str,
-    sidebar_width: u16,
-    window_width: Option<u16>,
+    position: SidebarPosition,
+    sidebar_size: u16,
+) {
+    reflow_after_sidebar_add_to_window_extent(
+        window_id,
+        sidebar_pane_id,
+        position,
+        sidebar_size,
+        None,
+    );
+}
+
+pub(super) fn reflow_after_sidebar_add_to_window_extent(
+    window_id: &str,
+    sidebar_pane_id: &str,
+    position: SidebarPosition,
+    sidebar_size: u16,
+    window_extent: Option<u16>,
 ) {
     let layout_str = match Cmd::new("tmux")
         .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
@@ -334,7 +405,8 @@ pub(super) fn reflow_after_sidebar_add_to_window_width(
     debug!(
         window_id,
         sidebar_pane_id,
-        sidebar_width,
+        sidebar_size,
+        position = ?position,
         layout = layout_str.as_str(),
         "reflow: starting"
     );
@@ -350,15 +422,19 @@ pub(super) fn reflow_after_sidebar_add_to_window_width(
         }
     };
 
-    // After split-window -hbf, root should be an HSplit with the sidebar as
-    // the first child. If the root was already an HSplit, tmux may insert the
-    // sidebar as an additional sibling rather than nesting.
-    let LayoutNode::HSplit { rect, children } = &mut root else {
-        debug!("reflow: root is not HSplit, skipping");
+    let axis = Axis::for_position(position);
+    if !axis.root_matches(&root) {
+        debug!(position = ?position, "reflow: root split does not match sidebar position, skipping");
         return;
+    }
+
+    let (rect, children) = match &mut root {
+        LayoutNode::HSplit { rect, children } | LayoutNode::VSplit { rect, children } => {
+            (rect, children)
+        }
+        LayoutNode::Leaf { .. } => return,
     };
 
-    // Find the sidebar among root children by pane ID
     let sidebar_num: u32 = sidebar_pane_id
         .strip_prefix('%')
         .and_then(|s| s.parse().ok())
@@ -383,43 +459,53 @@ pub(super) fn reflow_after_sidebar_add_to_window_width(
         "reflow: found sidebar"
     );
 
-    if let Some(window_width) = window_width {
-        rect.w = window_width;
+    if let Some(extent) = window_extent {
+        match axis {
+            Axis::Horizontal => rect.w = extent,
+            Axis::Vertical => rect.h = extent,
+        }
     }
 
-    // Fix sidebar to exact desired width
-    children[sidebar_idx].rect_mut().w = sidebar_width;
-    children[sidebar_idx].rect_mut().x = 0;
+    let root_pos = rect_pos(rect, axis);
+    match axis {
+        Axis::Horizontal => {
+            children[sidebar_idx].rect_mut().w = sidebar_size;
+            children[sidebar_idx].rect_mut().x = root_pos;
+        }
+        Axis::Vertical => {
+            children[sidebar_idx].rect_mut().h = sidebar_size;
+            children[sidebar_idx].rect_mut().y = root_pos;
+        }
+    }
 
-    // Scale all content children (everything except sidebar) to share remaining space
-    let window_w = rect.w;
+    let window_len = rect_extent(rect, axis);
     let num_content = children.len() - 1;
-    // Separators: one between each pair of root children
     let total_seps = (children.len() as u16).saturating_sub(1);
-    let available = window_w
-        .saturating_sub(sidebar_width)
+    let available = window_len
+        .saturating_sub(sidebar_size)
         .saturating_sub(total_seps);
 
-    // Collect content child indices and widths before mutating
     let content_indices: Vec<usize> = (0..children.len()).filter(|&i| i != sidebar_idx).collect();
-    let old_widths: Vec<u16> = content_indices
+    let old_lengths: Vec<u16> = content_indices
         .iter()
-        .map(|&i| children[i].width())
+        .map(|&i| node_extent(&children[i], axis))
         .collect();
 
-    debug!(window_w, available, num_content, "reflow: scaling content");
+    debug!(
+        window_len,
+        available, num_content, "reflow: scaling content"
+    );
 
     if available == 0 {
         return;
     }
 
-    // Scale content children proportionally
-    let new_widths = proportional_widths(&old_widths, available);
-    let mut cx = sidebar_width + 1; // start after sidebar + separator
+    let new_lengths = proportional_lengths(&old_lengths, available);
+    let mut pos = root_pos.saturating_add(sidebar_size).saturating_add(1);
 
-    for (&idx, &new_w) in content_indices.iter().zip(&new_widths) {
-        scale_width(&mut children[idx], new_w, cx);
-        cx = cx.saturating_add(new_w).saturating_add(1);
+    for (&idx, new_len) in content_indices.iter().zip(new_lengths) {
+        scale_axis(&mut children[idx], axis, new_len, pos);
+        pos = pos.saturating_add(new_len).saturating_add(1);
     }
 
     // Apply the rebalanced layout
@@ -478,6 +564,7 @@ fn prune_pane(node: LayoutNode, target: u32) -> Option<LayoutNode> {
 pub(super) fn layout_after_sidebar_remove(
     window_id: &str,
     sidebar_pane_id: &str,
+    position: SidebarPosition,
 ) -> Option<String> {
     let layout_str = Cmd::new("tmux")
         .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
@@ -499,8 +586,14 @@ pub(super) fn layout_after_sidebar_remove(
         .strip_prefix('%')
         .and_then(|s| s.parse().ok())?;
 
+    let axis = Axis::for_position(position);
     let mut content = prune_pane(root, sidebar_num)?;
-    scale_width(&mut content, window_rect.w, window_rect.x);
+    scale_axis(
+        &mut content,
+        axis,
+        rect_extent(&window_rect, axis),
+        rect_pos(&window_rect, axis),
+    );
 
     let result = serialize_layout(&content);
     debug!(
@@ -770,6 +863,95 @@ mod tests {
         // Heights unchanged
         assert_eq!(children[0].rect().h, 24);
         assert_eq!(children[1].rect().h, 25);
+    }
+
+    #[test]
+    fn test_scale_height_vsplit_proportional() {
+        let mut node = LayoutNode::VSplit {
+            rect: Rect {
+                w: 100,
+                h: 50,
+                x: 0,
+                y: 0,
+            },
+            children: vec![
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 100,
+                        h: 24,
+                        x: 0,
+                        y: 0,
+                    },
+                    pane_id: 1,
+                },
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 100,
+                        h: 25,
+                        x: 0,
+                        y: 25,
+                    },
+                    pane_id: 2,
+                },
+            ],
+        };
+
+        scale_height(&mut node, 40, 5);
+
+        let children = match &node {
+            LayoutNode::VSplit { children, .. } => children,
+            _ => panic!(),
+        };
+        assert_eq!(children[0].rect().h + children[1].rect().h + 1, 40);
+        assert_eq!(children[0].rect().y, 5);
+        assert_eq!(children[1].rect().y, 25);
+        assert_eq!(children[0].width(), 100);
+        assert_eq!(children[1].width(), 100);
+    }
+
+    #[test]
+    fn test_scale_height_hsplit() {
+        let mut node = LayoutNode::HSplit {
+            rect: Rect {
+                w: 100,
+                h: 50,
+                x: 0,
+                y: 0,
+            },
+            children: vec![
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 49,
+                        h: 50,
+                        x: 0,
+                        y: 0,
+                    },
+                    pane_id: 1,
+                },
+                LayoutNode::Leaf {
+                    rect: Rect {
+                        w: 50,
+                        h: 50,
+                        x: 50,
+                        y: 0,
+                    },
+                    pane_id: 2,
+                },
+            ],
+        };
+
+        scale_height(&mut node, 40, 5);
+
+        let children = match &node {
+            LayoutNode::HSplit { children, .. } => children,
+            _ => panic!(),
+        };
+        assert_eq!(children[0].rect().h, 40);
+        assert_eq!(children[1].rect().h, 40);
+        assert_eq!(children[0].rect().y, 5);
+        assert_eq!(children[1].rect().y, 5);
+        assert_eq!(children[0].width(), 49);
+        assert_eq!(children[1].width(), 50);
     }
 
     /// Simulate what reflow_after_sidebar_add does: sidebar + content VSplit.
@@ -1108,6 +1290,81 @@ mod tests {
                 assert_eq!(rect.x, 0);
             }
             _ => panic!("expected Leaf"),
+        }
+    }
+
+    #[test]
+    fn test_top_sidebar_plus_hsplit_content() {
+        let layout = "0000,186x44,0,0[186x3,0,0,999,186x40,0,4{93x40,0,4,1,92x40,94,4,2}]";
+        let mut root = parse_layout(layout).unwrap();
+
+        if let LayoutNode::VSplit { children, .. } = &mut root {
+            let content_h = 44u16 - 3 - 1;
+            scale_height(&mut children[1], content_h, 4);
+
+            assert_eq!(children[1].height(), content_h);
+            if let LayoutNode::HSplit { children: hc, .. } = &children[1] {
+                assert_eq!(hc[0].rect().h, content_h);
+                assert_eq!(hc[1].rect().h, content_h);
+                assert_eq!(hc[0].rect().y, 4);
+                assert_eq!(hc[1].rect().y, 4);
+            } else {
+                panic!("expected HSplit content");
+            }
+        } else {
+            panic!("expected VSplit root");
+        }
+    }
+
+    #[test]
+    fn test_remove_top_sidebar_two_content_panes_fill_window() {
+        let layout = "0000,186x44,0,0[186x3,0,0,999,186x20,0,4,100,186x19,0,25,101]";
+        let root = parse_layout(layout).unwrap();
+        let window_h = root.rect().h;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_height(&mut content, window_h, 0);
+
+        match &content {
+            LayoutNode::VSplit { rect, children } => {
+                assert_eq!(rect.h, 44);
+                assert_eq!(children.len(), 2);
+                let h0 = children[0].height();
+                let h1 = children[1].height();
+                assert_eq!(h0 + h1 + 1, 44);
+                assert!((h0 as i32 - h1 as i32).abs() <= 1);
+                assert_eq!(children[0].rect().y, 0);
+                assert_eq!(children[1].rect().y, h0 + 1);
+            }
+            _ => panic!("expected VSplit"),
+        }
+    }
+
+    #[test]
+    fn test_remove_top_sidebar_nested_content_fills_height() {
+        let layout =
+            "0000,186x44,0,0[186x3,0,0,999,186x18,0,4{93x18,0,4,1,92x18,94,4,2},186x21,0,23,3]";
+        let root = parse_layout(layout).unwrap();
+        let window_h = root.rect().h;
+
+        let mut content = prune_pane(root, 999).unwrap();
+        scale_height(&mut content, window_h, 0);
+
+        match &content {
+            LayoutNode::VSplit { rect, children } => {
+                assert_eq!(rect.h, 44);
+                assert_eq!(children.len(), 2);
+                let h0 = children[0].height();
+                let h1 = children[1].height();
+                assert_eq!(h0 + h1 + 1, 44);
+                if let LayoutNode::HSplit { children: hc, .. } = &children[0] {
+                    assert_eq!(hc[0].height(), h0);
+                    assert_eq!(hc[1].height(), h0);
+                } else {
+                    panic!("expected HSplit content");
+                }
+            }
+            _ => panic!("expected VSplit"),
         }
     }
 }

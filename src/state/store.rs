@@ -713,6 +713,7 @@ mod tests {
             last_done_cycle: None,
             sidebar_layout: None,
             sidebar_width: None,
+            sidebar_height: None,
         };
 
         store.save_settings(&settings).unwrap();
@@ -722,6 +723,33 @@ mod tests {
         assert_eq!(loaded.hide_stale, settings.hide_stale);
         assert_eq!(loaded.preview_size, settings.preview_size);
         assert_eq!(loaded.last_pane_id, settings.last_pane_id);
+    }
+
+    #[test]
+    fn test_settings_without_sidebar_height_preserve_existing_fields() {
+        let (store, _dir) = test_store();
+        fs::write(
+            store.settings_path(),
+            r#"{
+  "sort_mode": "priority",
+  "hide_stale": true,
+  "preview_size": 30,
+  "last_pane_id": "%5",
+  "dashboard_scope": "session",
+  "worktree_sort_mode": "age",
+  "last_done_cycle": null,
+  "sidebar_layout": null,
+  "sidebar_width": 42
+}"#,
+        )
+        .unwrap();
+
+        let loaded = store.load_settings().unwrap();
+
+        assert_eq!(loaded.sort_mode, "priority");
+        assert_eq!(loaded.sidebar_width, Some(42));
+        assert_eq!(loaded.sidebar_height, None);
+        assert_eq!(loaded.last_pane_id.as_deref(), Some("%5"));
     }
 
     #[test]

@@ -185,6 +185,10 @@ pub struct GlobalSettings {
     /// Sidebar width in columns (manual override synced across windows)
     #[serde(default)]
     pub sidebar_width: Option<u16>,
+
+    /// Sidebar height in rows (manual override synced across windows)
+    #[serde(default)]
+    pub sidebar_height: Option<u16>,
 }
 
 /// Tracks which pane last-done navigated to, so repeated presses cycle

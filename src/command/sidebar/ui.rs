@@ -380,6 +380,11 @@ pub(crate) fn format_rebase_spans(
 pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
     let area = f.area();
 
+    if app.position == crate::config::SidebarPosition::Top {
+        render_horizontal_bar(f, app, area);
+        return;
+    }
+
     let padding = match app.layout_mode {
         // Compact mode: pad both sides for breathing room
         SidebarLayoutMode::Compact => Padding::new(1, 1, 0, 0),
@@ -397,6 +402,77 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
         SidebarLayoutMode::Compact => render_compact_list(f, app, inner),
         SidebarLayoutMode::Tiles => render_tile_list(f, app, inner),
     }
+}
+
+fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
+    let block = Block::default().padding(Padding::new(1, 1, 0, 0));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    app.list_area = inner;
+    app.horizontal_hitboxes.clear();
+
+    if app.agents.is_empty() {
+        render_empty_state(f, app, inner);
+        return;
+    }
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let pane_suffixes = compute_pane_suffixes(&app.agents);
+    let selected_idx = app.list_state.selected();
+    let template = app.templates.compact.clone();
+    let mut visible_count = 0;
+    let mut spans = Vec::new();
+    let mut x = inner.x;
+    let max_x = inner.x.saturating_add(inner.width);
+
+    let start = app
+        .first_visible_agent_idx
+        .min(app.agents.len().saturating_sub(1));
+    app.first_visible_agent_idx = start;
+
+    for (idx, agent) in app.agents.iter().enumerate().skip(start) {
+        let ctx = RowContext::build(app, agent, idx, &pane_suffixes, now_secs, selected_idx);
+        let available = max_x.saturating_sub(x) as usize;
+        if available == 0 {
+            break;
+        }
+        let chip_width = available.min(24);
+        let mut chip =
+            render_line_with_options(&ctx, &template, chip_width, &RenderOptions::default());
+        let width: u16 = chip
+            .iter()
+            .map(|span| display_width(span.content.as_ref()))
+            .sum::<usize>() as u16;
+        if width == 0 || x.saturating_add(width) > max_x {
+            break;
+        }
+        if ctx.is_selected {
+            for span in &mut chip {
+                if span.style.bg.is_none() {
+                    span.style = span.style.bg(app.palette.highlight_row_bg);
+                }
+            }
+        }
+        app.horizontal_hitboxes.push(super::app::HitBox {
+            idx,
+            x_start: x,
+            x_end: x.saturating_add(width),
+        });
+        spans.extend(chip);
+        x = x.saturating_add(width);
+        visible_count += 1;
+
+        if x.saturating_add(2) <= max_x {
+            spans.push(Span::raw("  "));
+            x = x.saturating_add(2);
+        }
+    }
+
+    app.ensure_selected_visible(visible_count);
+    f.render_widget(Line::from(spans), inner);
 }
 
 /// Compact single-line-per-agent list (original layout).

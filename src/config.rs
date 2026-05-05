@@ -180,10 +180,18 @@ pub type AgentIcons = BTreeMap<String, AgentIconConfig>;
 /// Configuration for the sidebar.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SidebarConfig {
-    /// Width of the sidebar. Can be an absolute column count (e.g. 40)
+    /// Position of the sidebar pane. Default: left.
+    pub position: Option<SidebarPosition>,
+
+    /// Width of the left sidebar. Can be an absolute column count (e.g. 40)
     /// or a percentage of terminal width (e.g. "15%").
     /// Default: "10%" (clamped to 25-50 columns)
     pub width: Option<SidebarWidth>,
+
+    /// Height of the top sidebar. Can be an absolute row count (e.g. 3)
+    /// or a percentage of terminal height (e.g. "10%").
+    /// Default: "10%" (clamped to 1-5 rows)
+    pub height: Option<SidebarHeight>,
 
     /// Layout mode: "compact" or "tiles". Default: "tiles"
     pub layout: Option<String>,
@@ -193,6 +201,15 @@ pub struct SidebarConfig {
 
     /// Per-agent icon overrides.
     pub agent_icons: Option<AgentIcons>,
+}
+
+/// Sidebar pane position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarPosition {
+    #[default]
+    Left,
+    Top,
 }
 
 /// Sidebar width: either absolute columns or a percentage of terminal width.
@@ -272,6 +289,80 @@ impl<'de> Deserialize<'de> for SidebarWidth {
         }
 
         deserializer.deserialize_any(SidebarWidthVisitor)
+    }
+}
+
+/// Sidebar height: either absolute rows or a percentage of terminal height.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SidebarHeight {
+    Absolute(u16),
+    Percent(u16),
+}
+
+impl SidebarHeight {
+    /// Resolve to an absolute row count given the terminal height.
+    pub fn resolve(&self, terminal_height: u16) -> u16 {
+        match self {
+            SidebarHeight::Absolute(h) => *h,
+            SidebarHeight::Percent(p) => terminal_height * p / 100,
+        }
+    }
+}
+
+impl Serialize for SidebarHeight {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SidebarHeight::Absolute(h) => serializer.serialize_u16(*h),
+            SidebarHeight::Percent(p) => serializer.serialize_str(&format!("{}%", p)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SidebarHeight {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de;
+
+        struct SidebarHeightVisitor;
+
+        impl<'de> de::Visitor<'de> for SidebarHeightVisitor {
+            type Value = SidebarHeight;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a number (rows) or a string like \"10%\"")
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(SidebarHeight::Absolute(v as u16))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                if v < 0 {
+                    return Err(de::Error::custom("height cannot be negative"));
+                }
+                Ok(SidebarHeight::Absolute(v as u16))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                if let Some(pct) = v.strip_suffix('%') {
+                    let p: u16 = pct
+                        .trim()
+                        .parse()
+                        .map_err(|_| de::Error::custom("invalid percentage"))?;
+                    if p == 0 || p > 100 {
+                        return Err(de::Error::custom("percentage must be 1-100"));
+                    }
+                    Ok(SidebarHeight::Percent(p))
+                } else {
+                    let h: u16 = v
+                        .trim()
+                        .parse()
+                        .map_err(|_| de::Error::custom("invalid height"))?;
+                    Ok(SidebarHeight::Absolute(h))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(SidebarHeightVisitor)
     }
 }
 
@@ -2235,7 +2326,9 @@ impl Config {
 
         // Sidebar config: per-field override
         merged.sidebar = SidebarConfig {
+            position: project.sidebar.position.or(self.sidebar.position),
             width: project.sidebar.width.or(self.sidebar.width),
+            height: project.sidebar.height.or(self.sidebar.height),
             layout: project.sidebar.layout.or(self.sidebar.layout),
             templates: project
                 .sidebar
@@ -2669,13 +2762,21 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #-------------------------------------------------------------------------------
 
 # sidebar:
-#   # Width: absolute columns or percentage of terminal width.
+#   # Position: left (default) or top.
+#   position: left
+#
+#   # Left sidebar width: absolute columns or percentage of terminal width.
 #   # Default: "10%" (clamped to 25-50 columns).
 #   # Explicit values are not clamped (minimum 10 columns).
 #   width: 40       # absolute columns
 #   # width: "15%"  # percentage of terminal width
 #
-#   # Layout mode: "compact" (single line per agent) or "tiles" (cards).
+#   # Top bar height: absolute rows or percentage of terminal height.
+#   # Default: "10%" (clamped to 1-5 rows).
+#   height: 3
+#   # height: "10%"
+#
+#   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
 #   layout: tiles
 
@@ -2816,9 +2917,9 @@ mod tests {
     use super::{
         AgentIconConfig, AgentIconDetails, AllowedDomainDetails, AllowedDomainEntry, Config,
         ContainerConfig, ContainerDevice, ExtraMount, LayoutConfig, LimaConfig, NetworkConfig,
-        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SplitDirection,
-        ToolchainMode, is_agent_command, split_first_token, validate_domain,
-        validate_group_add_entry, validate_layouts_config,
+        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SidebarHeight,
+        SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode, is_agent_command,
+        split_first_token, validate_domain, validate_group_add_entry, validate_layouts_config,
     };
 
     #[test]
@@ -2905,6 +3006,45 @@ sidebar:
                 color: Some("#ff8c00".to_string()),
             }))
         );
+    }
+
+    #[test]
+    fn sidebar_position_and_height_parse() {
+        let yaml = r#"
+sidebar:
+  position: top
+  height: "10%"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+
+        assert_eq!(config.sidebar.position, Some(SidebarPosition::Top));
+        assert_eq!(config.sidebar.height, Some(SidebarHeight::Percent(10)));
+    }
+
+    #[test]
+    fn sidebar_position_and_height_merge_per_field() {
+        let global: Config = serde_yaml::from_str(
+            r#"
+sidebar:
+  position: top
+  width: 40
+  height: 3
+"#,
+        )
+        .unwrap();
+        let project: Config = serde_yaml::from_str(
+            r#"
+sidebar:
+  height: 4
+"#,
+        )
+        .unwrap();
+
+        let merged = global.merge(project);
+
+        assert_eq!(merged.sidebar.position, Some(SidebarPosition::Top));
+        assert_eq!(merged.sidebar.width, Some(SidebarWidth::Absolute(40)));
+        assert_eq!(merged.sidebar.height, Some(SidebarHeight::Absolute(4)));
     }
 
     #[test]

@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::cmd::Cmd;
-use crate::config::Config;
+use crate::config::{Config, SidebarPosition};
 use crate::git::GitStatus;
 use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
 use crate::state::StateStore;
@@ -1248,9 +1248,12 @@ pub fn run() -> Result<()> {
                 .ok();
             let Some(agents) = agents else { continue };
 
-            let layout_mode = {
+            let (position, layout_mode) = {
                 let cfg = config.lock().unwrap();
-                read_sidebar_layout_mode(&cfg).unwrap_or_default()
+                (
+                    super::read_sidebar_position(&cfg),
+                    read_sidebar_layout_mode(&cfg).unwrap_or_default(),
+                )
             };
             let sleeping_pane_ids = read_sleeping_panes();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
@@ -1270,6 +1273,7 @@ pub fn run() -> Result<()> {
                     captured_panes,
                     now,
                     now_ts,
+                    position,
                     layout_mode,
                     git_statuses,
                     sleeping_pane_ids,
@@ -1423,6 +1427,7 @@ struct TickInput {
     captured_panes: HashMap<String, String>,
     now: Instant,
     now_ts: u64,
+    position: SidebarPosition,
     layout_mode: SidebarLayoutMode,
     git_statuses: HashMap<PathBuf, GitStatus>,
     sleeping_pane_ids: HashSet<String>,
@@ -1464,6 +1469,7 @@ fn compute_tick(
         captured_panes,
         now,
         now_ts,
+        position,
         layout_mode,
         git_statuses,
         sleeping_pane_ids,
@@ -1495,6 +1501,7 @@ fn compute_tick(
         tmux_state.active_windows,
         tmux_state.active_pane_ids,
         tmux_state.window_pane_counts,
+        position,
         layout_mode,
         status_icons,
         git_statuses,
@@ -1950,6 +1957,7 @@ mod tests {
                     captured_panes: captures,
                     now,
                     now_ts,
+                    position: SidebarPosition::Left,
                     layout_mode: SidebarLayoutMode::default(),
                     git_statuses: HashMap::new(),
                     sleeping_pane_ids: HashSet::new(),
