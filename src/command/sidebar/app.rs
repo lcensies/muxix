@@ -549,8 +549,17 @@ impl SidebarApp {
         &self.window_prefix
     }
 
-    /// Record a resize event for debounced processing.
+    /// Record a resize event for debounced manual pane resize processing.
     pub fn on_resize_event(&mut self, cols: u16) {
+        let window_w = self.query_host_window_width();
+        if self.last_window_width.is_some_and(|prev| prev != window_w) {
+            self.last_window_width = Some(window_w);
+            self.pending_resize_cols = None;
+            self.resize_deadline = None;
+            let _ = super::reflow_all();
+            return;
+        }
+
         self.pending_resize_cols = Some(cols);
         self.resize_deadline = Some(Instant::now() + Duration::from_millis(500));
     }
