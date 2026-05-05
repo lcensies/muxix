@@ -1873,7 +1873,8 @@ workmux setup
 ```
 
 You can also run specific parts: `workmux setup --hooks` or
-`workmux setup --skills`.
+`workmux setup --skills`. For Claude Code, `CLAUDE_CONFIG_DIR` is respected for
+both hook and skill installation.
 
 Workmux will also prompt you on first run if it detects an agent without status
 tracking or skills configured.

@@ -1,7 +1,7 @@
 //! Claude Code status tracking setup.
 //!
-//! Detects Claude Code via the `~/.claude/` directory.
-//! Installs hooks by merging into `~/.claude/settings.json`.
+//! Detects Claude Code via the Claude config directory.
+//! Installs hooks by merging into Claude Code settings.json.
 
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -13,19 +13,25 @@ use super::StatusCheck;
 /// Hooks extracted from `.claude-plugin/plugin.json` at compile time.
 const PLUGIN_JSON: &str = include_str!("../../.claude-plugin/plugin.json");
 
-fn settings_path() -> Option<PathBuf> {
-    home::home_dir().map(|h| h.join(".claude/settings.json"))
+fn claude_dir_from_config(home: PathBuf, config_dir: Option<std::ffi::OsString>) -> PathBuf {
+    config_dir
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".claude"))
 }
 
 fn claude_dir() -> Option<PathBuf> {
-    home::home_dir().map(|h| h.join(".claude"))
+    home::home_dir().map(|home| claude_dir_from_config(home, std::env::var_os("CLAUDE_CONFIG_DIR")))
+}
+
+fn settings_path() -> Option<PathBuf> {
+    claude_dir().map(|d| d.join("settings.json"))
 }
 
 /// Detect if Claude Code is present via filesystem.
 /// Returns the reason string if detected, None otherwise.
 pub fn detect() -> Option<&'static str> {
     if claude_dir().is_some_and(|d| d.is_dir()) {
-        return Some("found ~/.claude/");
+        return Some("found Claude config directory");
     }
 
     None
@@ -170,7 +176,7 @@ pub fn install() -> Result<String> {
     let output = serde_json::to_string_pretty(&settings)?;
     fs::write(&path, output + "\n").context("Failed to write ~/.claude/settings.json")?;
 
-    Ok("Installed hooks to ~/.claude/settings.json".to_string())
+    Ok(format!("Installed hooks to {}", path.display()))
 }
 
 #[cfg(test)]
@@ -222,6 +228,21 @@ mod tests {
         assert!(obj.contains_key("Notification"));
         assert!(obj.contains_key("PostToolUse"));
         assert!(obj.contains_key("Stop"));
+    }
+
+    #[test]
+    fn test_claude_dir_respects_env() {
+        let path = claude_dir_from_config(
+            PathBuf::from("/home/test"),
+            Some(std::ffi::OsString::from("/tmp/workmux-test-claude-cfg")),
+        );
+        assert_eq!(path, PathBuf::from("/tmp/workmux-test-claude-cfg"));
+    }
+
+    #[test]
+    fn test_claude_dir_defaults_to_home() {
+        let path = claude_dir_from_config(PathBuf::from("/home/test"), None);
+        assert_eq!(path, PathBuf::from("/home/test/.claude"));
     }
 
     #[test]
