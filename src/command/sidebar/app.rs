@@ -556,7 +556,7 @@ impl SidebarApp {
             self.last_window_width = Some(window_w);
             self.pending_resize_cols = None;
             self.resize_deadline = None;
-            let _ = super::reflow_all();
+            let _ = super::reflow_all_to_window_width(Some(window_w));
             return;
         }
 

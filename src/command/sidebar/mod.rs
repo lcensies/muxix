@@ -267,6 +267,10 @@ pub(super) fn reflow_all_sidebars_except(exclude_window_id: &str) {
 /// so inactive windows get their sidebar widths corrected without waiting for
 /// the user to visit them.
 pub fn reflow_all() -> Result<()> {
+    reflow_all_to_window_width(None)
+}
+
+pub(super) fn reflow_all_to_window_width(window_width: Option<u16>) -> Result<()> {
     let scope = current_scope();
     if matches!(scope, SidebarScope::Off) {
         return Ok(());
@@ -291,18 +295,26 @@ pub fn reflow_all() -> Result<()> {
             SidebarScope::Off => continue,
         }
 
-        let window_w: u16 = Cmd::new("tmux")
-            .args(&["display-message", "-t", &window_id, "-p", "#{window_width}"])
-            .run_and_capture_stdout()
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0);
+        let window_w = match window_width {
+            Some(w) => w,
+            None => Cmd::new("tmux")
+                .args(&["display-message", "-t", &window_id, "-p", "#{window_width}"])
+                .run_and_capture_stdout()
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0),
+        };
         if window_w == 0 {
             continue;
         }
 
         let width = resolve_width_for(&config, window_w, synced);
-        layout_tree::reflow_after_sidebar_add(&window_id, &pane_id, width);
+        layout_tree::reflow_after_sidebar_add_to_window_width(
+            &window_id,
+            &pane_id,
+            width,
+            window_width,
+        );
     }
 
     Ok(())

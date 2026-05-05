@@ -314,6 +314,15 @@ fn scale_width(node: &mut LayoutNode, new_w: u16, new_x: u16) {
 /// the remaining space proportionally, then applies the fixed layout
 /// atomically via `select-layout`.
 pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, sidebar_width: u16) {
+    reflow_after_sidebar_add_to_window_width(window_id, sidebar_pane_id, sidebar_width, None);
+}
+
+pub(super) fn reflow_after_sidebar_add_to_window_width(
+    window_id: &str,
+    sidebar_pane_id: &str,
+    sidebar_width: u16,
+    window_width: Option<u16>,
+) {
     let layout_str = match Cmd::new("tmux")
         .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
         .run_and_capture_stdout()
@@ -373,6 +382,10 @@ pub(super) fn reflow_after_sidebar_add(window_id: &str, sidebar_pane_id: &str, s
         root_children = children.len(),
         "reflow: found sidebar"
     );
+
+    if let Some(window_width) = window_width {
+        rect.w = window_width;
+    }
 
     // Fix sidebar to exact desired width
     children[sidebar_idx].rect_mut().w = sidebar_width;
