@@ -412,7 +412,7 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     app.horizontal_hitboxes.clear();
 
     if app.agents.is_empty() {
-        render_empty_state(f, app, inner);
+        render_no_agents(f, app, inner);
         return;
     }
 
@@ -501,7 +501,7 @@ fn trim_leading_whitespace_spans(spans: &mut Vec<Span<'static>>) {
 /// Compact single-line-per-agent list (original layout).
 fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     if app.agents.is_empty() {
-        render_empty_state(f, app, area);
+        render_no_agents(f, app, area);
         return;
     }
 
@@ -557,7 +557,7 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 /// Tile layout: variable-height cards per agent with status stripe.
 fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     if app.agents.is_empty() {
-        render_empty_state(f, app, area);
+        render_no_agents(f, app, area);
         return;
     }
 
@@ -766,7 +766,11 @@ pub(crate) fn status_icon_and_style(
     }
 }
 
-fn render_empty_state(f: &mut Frame, app: &SidebarApp, area: Rect) {
+fn render_no_agents(f: &mut Frame, app: &SidebarApp, area: Rect) {
+    if !app.has_loaded_snapshot {
+        return;
+    }
+
     let text = Line::from(Span::styled(
         "No agents running",
         Style::default().fg(app.palette.dimmed),

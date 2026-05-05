@@ -124,6 +124,7 @@ pub struct ParsedTemplates {
 pub struct SidebarApp {
     pub mux: Arc<dyn Multiplexer>,
     pub agents: Vec<AgentPane>,
+    pub has_loaded_snapshot: bool,
     pub list_state: ListState,
     pub should_quit: bool,
     pub quit_reason: Option<String>,
@@ -218,6 +219,7 @@ impl SidebarApp {
         Ok(Self {
             mux,
             agents: Vec::new(),
+            has_loaded_snapshot: false,
             list_state: ListState::default(),
             should_quit: false,
             quit_reason: None,
@@ -256,6 +258,8 @@ impl SidebarApp {
 
     /// Apply a snapshot received from the daemon.
     pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
+        self.has_loaded_snapshot = true;
+
         // Compute host agent index from the new snapshot first so that a
         // config_version bump anchors the reload to the *current* host path,
         // not whatever was selected from the previous snapshot.
