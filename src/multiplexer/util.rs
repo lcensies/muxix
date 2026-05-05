@@ -68,7 +68,15 @@ pub fn rewrite_agent_command(
     let pane_stem = Path::new(&resolved_pane_path).file_stem();
     let config_stem = Path::new(&resolved_config_path).file_stem();
 
-    if pane_stem != config_stem {
+    let type_stem = type_override.map(|kind| {
+        let token = super::agent::find_executable_token(kind);
+        let resolved =
+            crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
+        Path::new(&resolved).file_stem().map(|stem| stem.to_owned())
+    });
+
+    if pane_stem != config_stem && type_stem.as_ref().and_then(|stem| stem.as_deref()) != pane_stem
+    {
         return None;
     }
 
@@ -503,6 +511,25 @@ mod tests {
         assert_eq!(
             result,
             Some(" claude --verbose -- \"$(cat PROMPT.md)\"".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_typed_wrapper_command_posix() {
+        let prompt_file = PathBuf::from("/tmp/worktree/PROMPT.md");
+        let working_dir = PathBuf::from("/tmp/worktree");
+
+        let result = rewrite_agent_command(
+            "claudeg --dangerously-skip-permissions",
+            &prompt_file,
+            &working_dir,
+            Some("claudeg --dangerously-skip-permissions"),
+            "/bin/bash",
+            Some("claude"),
+        );
+        assert_eq!(
+            result,
+            Some(" claudeg --dangerously-skip-permissions -- \"$(cat PROMPT.md)\"".to_string())
         );
     }
 

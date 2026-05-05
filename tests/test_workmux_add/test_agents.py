@@ -15,6 +15,7 @@ from ..conftest import (
     poll_until,
     run_workmux_command,
     wait_for_file,
+    write_global_workmux_config,
     write_workmux_config,
 )
 from .conftest import add_branch_and_get_worktree
@@ -262,6 +263,77 @@ printf '%s' "$2" > "{agent_output}"
             worktree_path=worktree_path,
         )
         assert not default_agent_output.exists(), "Default agent should not have run"
+        assert agent_output.read_text() == prompt_text
+
+    def test_add_prompt_injects_into_typed_agent_wrapper_pane(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """Named wrapper agents with type: claude should allow prompt injection into Claude panes."""
+        env = mux_server
+        branch_name = "feature-typed-wrapper-pane"
+        window_name = get_window_name(branch_name)
+        prompt_text = "Use the typed wrapper pane"
+        output_filename = "typed_wrapper_prompt.txt"
+
+        fake_agent_installer.install(
+            "claudeg",
+            f"""#!/bin/sh
+set -e
+found_separator=0
+for arg in "$@"; do
+    if [ "$found_separator" = "1" ]; then
+        printf '%s' "$arg" > "{output_filename}"
+        exit 0
+    fi
+    if [ "$arg" = "--" ]; then
+        found_separator=1
+    fi
+done
+exit 1
+""",
+        )
+
+        write_global_workmux_config(
+            env,
+            agent="claude-epic",
+            agents={
+                "claude-epic": {
+                    "command": "claudeg --dangerously-skip-permissions",
+                    "type": "claude",
+                }
+            },
+        )
+        write_workmux_config(
+            mux_repo_path,
+            panes=[
+                {"command": "pnpm install", "focus": True},
+                {
+                    "command": "claudeg --dangerously-skip-permissions",
+                    "split": "horizontal",
+                },
+            ],
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
+        )
+
+        agent_output = worktree_path / output_filename
+        wait_for_file(
+            env,
+            agent_output,
+            timeout=5.0,
+            window_name=window_name,
+            worktree_path=worktree_path,
+        )
         assert agent_output.read_text() == prompt_text
 
 

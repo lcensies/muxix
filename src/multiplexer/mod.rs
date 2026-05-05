@@ -371,9 +371,14 @@ pub trait Multiplexer: Send + Sync {
 
                 // Detect if this is an agent pane for sandbox targeting
                 let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
-                    cmd == "<agent>"
-                        || agent::is_known_agent(cmd)
-                        || effective_agent.is_some_and(|a| crate::config::is_agent_command(cmd, a))
+                    let matches_configured_agent = effective_agent.is_some_and(|agent_cmd| {
+                        crate::config::is_agent_command(cmd, agent_cmd)
+                            || config
+                                .agent_type
+                                .as_deref()
+                                .is_some_and(|kind| crate::config::is_agent_command(cmd, kind))
+                    });
+                    cmd == "<agent>" || agent::is_known_agent(cmd) || matches_configured_agent
                 });
 
                 // Inject resume/continue flag for agent panes when requested
