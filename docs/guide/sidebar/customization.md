@@ -18,10 +18,17 @@ sidebar:
       - "{primary} {pane_suffix} {fill} {elapsed}"
       - "{secondary} {fill} {git_stats}"
       - "{pane_title}"
+
+    # Horizontal mode: one string per visual line in each top bar chip.
+    horizontal:
+      - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+      - "{secondary} {fill} {git_stats}"
+      - "{pane_title}"
 ```
 
 The values shown above are also the built-in defaults, so leaving these keys
-unset gives you the standard rendering.
+unset gives you the standard rendering. `horizontal` also accepts the legacy
+alias `top`.
 
 Templates can be set in either the global config or a project's `.workmux.yaml`.
 Project values override global values. Changes are picked up live by running
@@ -84,6 +91,11 @@ alignment between tiles is automatic. A tile line containing a field still
 renders as a row when that field is empty, preserving tile height for templates
 like the default `{pane_title}` row. Use a blank string in the `tiles` list to
 skip that row entirely.
+
+In horizontal mode, each configured `horizontal` line renders inside every chip.
+The bar shows as many lines as its current height permits, so height 1 uses only
+the first line, height 2 also shows the secondary label and git stats, and height
+3 also shows the pane title.
 
 ## Escaping
 

@@ -70,13 +70,22 @@ sidebar:
   # width: "15%"
   height: 3 # top height in rows (default: "10%", clamped 1-5)
   layout: tiles # left only: "compact" or "tiles" (default)
+  horizontal:
+    item_width: 24 # horizontal chip width in columns (default, clamped 12-80)
+  templates:
+    horizontal:
+      - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+      - "{secondary} {fill} {git_stats}"
+      - "{pane_title}"
 ```
 
 Explicit width values bypass the default 25-50 column clamp (minimum 10
 columns). Layout preference can also be toggled at runtime with `v` and is
 persisted across restarts. The top bar uses a horizontal chip layout, so `v` has
-no effect there. Position changes take effect after toggling the sidebar off and
-on.
+no effect there. Horizontal templates render as many configured lines as the
+current height allows. `horizontal.item_width` controls each chip width and is
+clamped between 12 and 80 columns. Position changes take effect after toggling
+the sidebar off and on.
 
 ## How it works
 

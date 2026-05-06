@@ -124,6 +124,9 @@ pub struct TemplatesConfig {
     pub compact: Option<String>,
     /// Multi-line templates for tile mode (one string per line).
     pub tiles: Option<Vec<String>>,
+    /// Multi-line templates for horizontal bar chips (one string per line).
+    #[serde(alias = "top")]
+    pub horizontal: Option<Vec<String>>,
 }
 
 /// Detailed per-agent icon override: `{ icon, color }`.
@@ -177,6 +180,19 @@ impl AgentIconConfig {
 /// either a bare icon string or `{ icon, color }`.
 pub type AgentIcons = BTreeMap<String, AgentIconConfig>;
 
+/// Configuration for horizontal sidebar rendering.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct HorizontalSidebarConfig {
+    /// Maximum width of each horizontal item in columns. Default: 24.
+    pub item_width: Option<u16>,
+}
+
+impl HorizontalSidebarConfig {
+    pub fn item_width(&self) -> usize {
+        self.item_width.unwrap_or(24).clamp(12, 80) as usize
+    }
+}
+
 /// Configuration for the sidebar.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SidebarConfig {
@@ -195,6 +211,10 @@ pub struct SidebarConfig {
 
     /// Layout mode: "compact" or "tiles". Default: "tiles"
     pub layout: Option<String>,
+
+    /// Horizontal bar configuration.
+    #[serde(default)]
+    pub horizontal: HorizontalSidebarConfig,
 
     /// Custom templates for sidebar rendering.
     pub templates: Option<TemplatesConfig>,
@@ -2330,6 +2350,13 @@ impl Config {
             width: project.sidebar.width.or(self.sidebar.width),
             height: project.sidebar.height.or(self.sidebar.height),
             layout: project.sidebar.layout.or(self.sidebar.layout),
+            horizontal: HorizontalSidebarConfig {
+                item_width: project
+                    .sidebar
+                    .horizontal
+                    .item_width
+                    .or(self.sidebar.horizontal.item_width),
+            },
             templates: project
                 .sidebar
                 .templates
@@ -2779,6 +2806,15 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
 #   layout: tiles
+#
+#   horizontal:
+#     item_width: 24  # horizontal chip width in columns, clamped 12-80
+#
+#   templates:
+#     horizontal:
+#       - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+#       - "{secondary} {fill} {git_stats}"
+#       - "{pane_title}"
 
 #-------------------------------------------------------------------------------
 # Sandbox
@@ -3014,11 +3050,15 @@ sidebar:
 sidebar:
   position: top
   height: "10%"
+  horizontal:
+    item_width: 32
 "#;
         let config: Config = serde_yaml::from_str(yaml).unwrap();
 
         assert_eq!(config.sidebar.position, Some(SidebarPosition::Top));
         assert_eq!(config.sidebar.height, Some(SidebarHeight::Percent(10)));
+        assert_eq!(config.sidebar.horizontal.item_width, Some(32));
+        assert_eq!(config.sidebar.horizontal.item_width(), 32);
     }
 
     #[test]
@@ -3029,6 +3069,8 @@ sidebar:
   position: top
   width: 40
   height: 3
+  horizontal:
+    item_width: 36
 "#,
         )
         .unwrap();
@@ -3045,6 +3087,7 @@ sidebar:
         assert_eq!(merged.sidebar.position, Some(SidebarPosition::Top));
         assert_eq!(merged.sidebar.width, Some(SidebarWidth::Absolute(40)));
         assert_eq!(merged.sidebar.height, Some(SidebarHeight::Absolute(4)));
+        assert_eq!(merged.sidebar.horizontal.item_width, Some(36));
     }
 
     #[test]

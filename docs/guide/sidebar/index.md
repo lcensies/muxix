@@ -72,11 +72,21 @@ sidebar:
 
   # Layout mode for the left sidebar: "compact" or "tiles" (default)
   layout: tiles
+
+  horizontal:
+    item_width: 24 # horizontal chip width in columns
+
+  templates:
+    horizontal:
+      - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+      - "{secondary} {fill} {git_stats}"
+      - "{pane_title}"
 ```
 
 Width defaults to 10% of terminal width, clamped between 25 and 50 columns.
 When set explicitly, the clamp is removed (minimum 10 columns). Height defaults
-to 10% of terminal height, clamped between 1 and 5 rows. Position changes take
+to 10% of terminal height, clamped between 1 and 5 rows. Horizontal item width
+defaults to 24 columns and is clamped between 12 and 80. Position changes take
 effect the next time you toggle the sidebar off and on.
 
 ## Layout modes
@@ -87,7 +97,8 @@ The left sidebar supports two layout modes, toggled with `v`:
 - **Compact**: single line per agent
 
 Your preference is persisted across tmux restarts. The top bar always uses a
-horizontal chip layout, so `v` has no effect there.
+horizontal chip layout, so `v` has no effect there. Horizontal templates render
+as many configured lines as the current height allows.
 
 ## Mouse support
 

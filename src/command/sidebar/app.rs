@@ -112,12 +112,18 @@ const DEFAULT_TILE_TEMPLATES: &[&str] = &[
     "{secondary} {fill} {git_stats}",
     "{pane_title}",
 ];
+const DEFAULT_HORIZONTAL_TEMPLATES: &[&str] = &[
+    "{status_icon} {primary} {pane_suffix} {fill} {elapsed}",
+    "{secondary} {fill} {git_stats}",
+    "{pane_title}",
+];
 
 /// Parsed templates for one sidebar instance.
 #[derive(Debug, Clone)]
 pub struct ParsedTemplates {
     pub compact: Vec<Token>,
     pub tiles: Vec<Vec<Token>>,
+    pub horizontal: Vec<Vec<Token>>,
 }
 
 /// Lightweight sidebar app state. No preview, git, PR, diff, or input mode.
@@ -163,6 +169,8 @@ pub struct SidebarApp {
     pub horizontal_hitboxes: Vec<HitBox>,
     /// First agent index rendered in the horizontal top bar.
     pub first_visible_agent_idx: usize,
+    /// Maximum width of each horizontal item in columns.
+    pub horizontal_item_width: usize,
     /// Last `config_version` from the daemon snapshot. Increments trigger a
     /// client-side config reload.
     pub last_config_version: u64,
@@ -172,6 +180,8 @@ pub struct SidebarApp {
     pub current_compact_str: String,
     /// String forms of tile templates currently parsed into `templates`.
     pub current_tile_strs: Vec<String>,
+    /// String forms of horizontal bar templates currently parsed into `templates`.
+    pub current_horizontal_strs: Vec<String>,
     /// Live sidebar width as last loaded from config. Stored for parity with
     /// other live keys; tmux pane resize is not driven from here.
     pub current_width: Option<SidebarWidth>,
@@ -206,9 +216,11 @@ impl SidebarApp {
         let (host_session, host_window_id) = detect_host_window();
 
         let templates = parse_templates(&config);
-        let (current_compact_str, current_tile_strs) = resolved_template_strings(&config);
+        let (current_compact_str, current_tile_strs, current_horizontal_strs) =
+            resolved_template_strings(&config);
         let agent_icons = ResolvedAgentIcons::from_config(config.sidebar.agent_icons.as_ref());
         let current_width = config.sidebar.width.clone();
+        let horizontal_item_width = config.sidebar.horizontal.item_width();
         let position = super::read_sidebar_position(&config);
 
         // Seed last_window_width so the first resize event after startup grace
@@ -244,9 +256,11 @@ impl SidebarApp {
             tile_heights: Vec::new(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
+            horizontal_item_width,
             last_config_version: 0,
             current_compact_str,
             current_tile_strs,
+            current_horizontal_strs,
             current_width,
             last_window_width: initial_window_width,
             last_window_height: initial_window_height,
@@ -366,18 +380,24 @@ impl SidebarApp {
             }
         };
 
-        let (new_compact, new_tiles) = resolved_template_strings(&cfg);
-        if new_compact != self.current_compact_str || new_tiles != self.current_tile_strs {
+        let (new_compact, new_tiles, new_horizontal) = resolved_template_strings(&cfg);
+        if new_compact != self.current_compact_str
+            || new_tiles != self.current_tile_strs
+            || new_horizontal != self.current_horizontal_strs
+        {
             try_reparse_templates(
                 &mut self.templates,
                 &mut self.current_compact_str,
                 &mut self.current_tile_strs,
+                &mut self.current_horizontal_strs,
                 &new_compact,
                 &new_tiles,
+                &new_horizontal,
             );
         }
 
         self.agent_icons = ResolvedAgentIcons::from_config(cfg.sidebar.agent_icons.as_ref());
+        self.horizontal_item_width = cfg.sidebar.horizontal.item_width();
         self.current_width = cfg.sidebar.width.clone();
     }
 
@@ -751,7 +771,7 @@ impl SidebarApp {
 }
 
 /// Resolve template strings from config, falling back to defaults.
-fn resolved_template_strings(config: &Config) -> (String, Vec<String>) {
+fn resolved_template_strings(config: &Config) -> (String, Vec<String>, Vec<String>) {
     let compact = config
         .sidebar
         .templates
@@ -769,11 +789,46 @@ fn resolved_template_strings(config: &Config) -> (String, Vec<String>) {
                 .map(|s| s.to_string())
                 .collect()
         });
-    (compact, tiles)
+    let horizontal = config
+        .sidebar
+        .templates
+        .as_ref()
+        .and_then(|t| t.horizontal.clone())
+        .unwrap_or_else(|| {
+            DEFAULT_HORIZONTAL_TEMPLATES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
+    (compact, tiles, horizontal)
+}
+
+fn parse_template_lines(lines: &[String], default_lines: &[&str], kind: &str) -> Vec<Vec<Token>> {
+    let mut parsed = Vec::new();
+    for line in lines {
+        match parse_line(line) {
+            Ok(tokens) => parsed.push(tokens),
+            Err(e) => {
+                tracing::warn!(
+                    "failed to parse {kind} template '{}': {}, skipping",
+                    line,
+                    e
+                );
+            }
+        }
+    }
+
+    if parsed.is_empty() {
+        parsed = default_lines
+            .iter()
+            .map(|s| parse_line(s).expect("default template is valid"))
+            .collect();
+    }
+    parsed
 }
 
 fn parse_templates(config: &Config) -> ParsedTemplates {
-    let (compact_str, tile_strs) = resolved_template_strings(config);
+    let (compact_str, tile_strs, horizontal_strs) = resolved_template_strings(config);
 
     let compact = match parse_line(&compact_str) {
         Ok(tokens) => tokens,
@@ -782,26 +837,15 @@ fn parse_templates(config: &Config) -> ParsedTemplates {
             parse_line(DEFAULT_COMPACT_TEMPLATE).expect("default template is valid")
         }
     };
+    let tiles = parse_template_lines(&tile_strs, DEFAULT_TILE_TEMPLATES, "tile");
+    let horizontal =
+        parse_template_lines(&horizontal_strs, DEFAULT_HORIZONTAL_TEMPLATES, "horizontal");
 
-    let mut tiles = Vec::new();
-    for line in &tile_strs {
-        match parse_line(line) {
-            Ok(tokens) => tiles.push(tokens),
-            Err(e) => {
-                tracing::warn!("failed to parse tile template '{}': {}, skipping", line, e);
-            }
-        }
+    ParsedTemplates {
+        compact,
+        tiles,
+        horizontal,
     }
-
-    // If all tile templates failed, use defaults
-    if tiles.is_empty() {
-        tiles = DEFAULT_TILE_TEMPLATES
-            .iter()
-            .map(|s| parse_line(s).expect("default template is valid"))
-            .collect();
-    }
-
-    ParsedTemplates { compact, tiles }
 }
 
 /// Query the window width for the current tmux pane (standalone for use before
@@ -868,11 +912,14 @@ fn try_reparse_templates(
     templates: &mut ParsedTemplates,
     current_compact_str: &mut String,
     current_tile_strs: &mut Vec<String>,
+    current_horizontal_strs: &mut Vec<String>,
     new_compact: &str,
     new_tiles: &[String],
+    new_horizontal: &[String],
 ) {
     let compact_res = parse_line(new_compact);
     let tile_results: Vec<_> = new_tiles.iter().map(|s| parse_line(s)).collect();
+    let horizontal_results: Vec<_> = new_horizontal.iter().map(|s| parse_line(s)).collect();
 
     let mut had_error = false;
     if let Err(e) = &compact_res {
@@ -889,6 +936,16 @@ fn try_reparse_templates(
             had_error = true;
         }
     }
+    for (i, r) in horizontal_results.iter().enumerate() {
+        if let Err(e) = r {
+            tracing::warn!(
+                line = i,
+                "horizontal template parse error, keeping previous: {}",
+                e
+            );
+            had_error = true;
+        }
+    }
 
     if !had_error {
         templates.compact = compact_res.expect("checked above");
@@ -896,9 +953,14 @@ fn try_reparse_templates(
             .into_iter()
             .map(|r| r.expect("checked above"))
             .collect();
+        templates.horizontal = horizontal_results
+            .into_iter()
+            .map(|r| r.expect("checked above"))
+            .collect();
     }
     *current_compact_str = new_compact.to_string();
     *current_tile_strs = new_tiles.to_vec();
+    *current_horizontal_strs = new_horizontal.to_vec();
 }
 
 #[cfg(test)]
@@ -975,6 +1037,7 @@ mod tests {
         ParsedTemplates {
             compact: parse_line(s).unwrap(),
             tiles: vec![parse_line(s).unwrap()],
+            horizontal: vec![parse_line(s).unwrap()],
         }
     }
 
@@ -983,19 +1046,24 @@ mod tests {
         let mut templates = parsed_for("{primary}");
         let mut compact = "{primary}".to_string();
         let mut tiles = vec!["{primary}".to_string()];
+        let mut top = vec!["{primary}".to_string()];
 
         let new_compact = "{secondary} {fill}";
         let new_tiles = vec!["{primary} {fill} {elapsed}".to_string()];
+        let new_top = vec!["{secondary} {fill} {git_stats}".to_string()];
         try_reparse_templates(
             &mut templates,
             &mut compact,
             &mut tiles,
+            &mut top,
             new_compact,
             &new_tiles,
+            &new_top,
         );
 
         assert_eq!(compact, new_compact);
         assert_eq!(tiles, new_tiles);
+        assert_eq!(top, new_top);
         // 3 tokens: secondary field, literal " ", fill
         assert_eq!(templates.compact.len(), 3);
     }
@@ -1007,13 +1075,16 @@ mod tests {
         let original_tokens = templates.compact.clone();
         let mut compact = original_str.clone();
         let mut tiles = vec![original_str.clone()];
+        let mut top = vec![original_str.clone()];
 
         let bad_compact = "{unclosed";
         try_reparse_templates(
             &mut templates,
             &mut compact,
             &mut tiles,
+            &mut top,
             bad_compact,
+            &[original_str.clone()],
             &[original_str.clone()],
         );
 
@@ -1029,13 +1100,16 @@ mod tests {
         let original_tiles = templates.tiles.clone();
         let mut compact = "{primary}".to_string();
         let mut tiles = vec!["{primary}".to_string()];
+        let mut top = vec!["{primary}".to_string()];
 
         try_reparse_templates(
             &mut templates,
             &mut compact,
             &mut tiles,
+            &mut top,
             "{primary}",
             &["{unknown_token}".to_string()],
+            &["{primary}".to_string()],
         );
 
         assert_eq!(templates.tiles, original_tiles);

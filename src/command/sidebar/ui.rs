@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Padding};
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ use super::template::context::RowContext;
 use super::template::layout::{
     RenderOptions, is_blank_template_line, render_line, render_line_with_options,
 };
+use super::template::parser::Token;
 
 /// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
@@ -412,7 +413,7 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     app.horizontal_hitboxes.clear();
 
     if app.agents.is_empty() {
-        render_no_agents(f, app, inner);
+        render_horizontal_no_agents(f, app, inner);
         return;
     }
 
@@ -422,9 +423,22 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         .as_secs();
     let pane_suffixes = compute_pane_suffixes(&app.agents);
     let selected_idx = app.list_state.selected();
-    let template = app.templates.compact.clone();
+    let top_templates: Vec<_> = app
+        .templates
+        .horizontal
+        .iter()
+        .filter(|template| !is_blank_template_line(template))
+        .take(inner.height as usize)
+        .cloned()
+        .collect();
+    let top_templates = if top_templates.is_empty() {
+        vec![app.templates.compact.clone()]
+    } else {
+        top_templates
+    };
+    let row_count = top_templates.len().min(inner.height as usize);
     let mut visible_count = 0;
-    let mut spans = Vec::new();
+    let mut rows = vec![Vec::new(); row_count];
     let mut x = inner.x;
     let max_x = inner.x.saturating_add(inner.width);
 
@@ -439,62 +453,118 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         if available == 0 {
             break;
         }
-        let chip_width = available.min(24);
+        let chip_width = available.min(app.horizontal_item_width);
         let has_status_icon = ctx
             .status_icon_spans
             .iter()
             .any(|(text, _)| !text.trim().is_empty());
-        let mut chip =
-            render_line_with_options(&ctx, &template, chip_width, &RenderOptions::default());
-        if !has_status_icon {
-            trim_leading_whitespace_spans(&mut chip);
-        }
-        let width: u16 = chip
+        let render_options = RenderOptions::default().with_field_min_width(
+            TokenId::StatusIcon,
+            ctx.natural_width(TokenId::StatusIcon) + status_icon_extra_width(&ctx),
+        );
+        let mut chip_lines: Vec<Vec<Span<'static>>> = top_templates
             .iter()
-            .map(|span| display_width(span.content.as_ref()))
-            .sum::<usize>() as u16;
-        if width == 0 || x.saturating_add(width) > max_x {
+            .map(|template| {
+                let template = if has_status_icon {
+                    template.clone()
+                } else {
+                    remove_blank_status_prefix(template)
+                };
+                let mut line =
+                    render_line_with_options(&ctx, &template, chip_width, &render_options);
+                if ctx.is_selected {
+                    for span in &mut line {
+                        if span.style.bg.is_none() {
+                            span.style = span.style.bg(app.palette.highlight_row_bg);
+                        }
+                    }
+                }
+                line
+            })
+            .collect();
+        let has_content = chip_lines.iter().any(|line| {
+            line.iter()
+                .any(|span| !span.content.as_ref().trim().is_empty())
+        });
+        let width = chip_width as u16;
+        if !has_content || x.saturating_add(width) > max_x {
             break;
         }
-        if ctx.is_selected {
-            for span in &mut chip {
-                if span.style.bg.is_none() {
-                    span.style = span.style.bg(app.palette.highlight_row_bg);
-                }
-            }
+        for line in &mut chip_lines {
+            pad_spans_to_width(
+                line,
+                chip_width,
+                ctx.is_selected.then_some(app.palette.highlight_row_bg),
+            );
         }
         app.horizontal_hitboxes.push(super::app::HitBox {
             idx,
             x_start: x,
             x_end: x.saturating_add(width),
         });
-        spans.extend(chip);
+        for (row, chip_line) in rows.iter_mut().zip(chip_lines.iter_mut()) {
+            row.extend(std::mem::take(chip_line));
+        }
         x = x.saturating_add(width);
         visible_count += 1;
 
         if x.saturating_add(2) < max_x && idx + 1 < app.agents.len() {
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled("│", Style::default().fg(app.palette.border)));
-            spans.push(Span::raw(" "));
+            for row in &mut rows {
+                row.push(Span::raw(" "));
+                row.push(Span::styled("│", Style::default().fg(app.palette.border)));
+                row.push(Span::raw(" "));
+            }
             x = x.saturating_add(3);
         }
     }
 
     app.ensure_selected_visible(visible_count);
-    f.render_widget(Line::from(spans), inner);
+    for (row_idx, spans) in rows.into_iter().enumerate() {
+        let area = Rect::new(inner.x, inner.y + row_idx as u16, inner.width, 1);
+        f.render_widget(Line::from(spans), area);
+    }
 }
 
-fn trim_leading_whitespace_spans(spans: &mut Vec<Span<'static>>) {
-    while let Some(first) = spans.first_mut() {
-        let trimmed = first.content.trim_start();
-        if trimmed.is_empty() {
-            spans.remove(0);
-        } else if trimmed.len() != first.content.len() {
-            *first = Span::styled(trimmed.to_string(), first.style);
-            break;
-        } else {
-            break;
+fn remove_blank_status_prefix(template: &[Token]) -> Vec<Token> {
+    let mut output = Vec::with_capacity(template.len());
+    let mut iter = template.iter().peekable();
+    while let Some(token) = iter.next() {
+        if matches!(token, Token::Field(TokenId::StatusIcon)) {
+            if matches!(iter.peek(), Some(Token::Literal(s)) if !s.is_empty() && s.chars().all(char::is_whitespace))
+            {
+                iter.next();
+            }
+            continue;
         }
+        output.push(token.clone());
+    }
+    output
+}
+
+fn pad_spans_to_width(spans: &mut Vec<Span<'static>>, width: usize, bg: Option<Color>) {
+    let current = spans
+        .iter()
+        .map(|span| display_width(span.content.as_ref()))
+        .sum::<usize>();
+    if current < width {
+        let mut style = Style::default();
+        if let Some(bg) = bg {
+            style = style.bg(bg);
+        }
+        spans.push(Span::styled(" ".repeat(width - current), style));
+    }
+}
+
+fn status_icon_extra_width(ctx: &RowContext<'_>) -> usize {
+    if ctx.is_stale
+        || matches!(
+            ctx.agent.status,
+            Some(AgentStatus::Waiting | AgentStatus::Done)
+        )
+    {
+        1
+    } else {
+        0
     }
 }
 
@@ -766,8 +836,26 @@ pub(crate) fn status_icon_and_style(
     }
 }
 
+fn render_horizontal_no_agents(f: &mut Frame, app: &SidebarApp, area: Rect) {
+    let line = no_agents_line(app).alignment(Alignment::Center);
+    let y = if area.height >= 3 {
+        area.y + area.height / 2
+    } else {
+        area.y
+    };
+    let target = Rect::new(area.x, y, area.width, 1);
+    f.render_widget(line, target);
+}
+
 fn render_no_agents(f: &mut Frame, app: &SidebarApp, area: Rect) {
-    let text = if app.has_loaded_snapshot {
+    let text = no_agents_line(app).alignment(Alignment::Center);
+    let y = area.y + area.height / 2;
+    let centered = Rect::new(area.x, y, area.width, 1);
+    f.render_widget(text, centered);
+}
+
+fn no_agents_line(app: &SidebarApp) -> Line<'static> {
+    if app.has_loaded_snapshot {
         Line::from(Span::styled(
             "No agents running",
             Style::default().fg(app.palette.dimmed),
@@ -782,10 +870,6 @@ fn render_no_agents(f: &mut Frame, app: &SidebarApp, area: Rect) {
             Span::styled(" Loading", Style::default().fg(app.palette.dimmed)),
         ])
     }
-    .alignment(Alignment::Center);
-    let y = area.y + area.height / 2;
-    let centered = Rect::new(area.x, y, area.width, 1);
-    f.render_widget(text, centered);
 }
 
 /// Get the display width of a string, counting wide chars as 2.
