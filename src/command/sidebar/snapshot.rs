@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::{SidebarPosition, StatusIcons};
 use crate::git::GitStatus;
+use crate::github::PrSummary;
 use crate::multiplexer::{AgentPane, AgentStatus};
 
 use super::app::SidebarLayoutMode;
@@ -25,6 +26,9 @@ pub struct SidebarSnapshot {
     /// Git status per worktree path (computed by daemon background worker).
     #[serde(default)]
     pub git_statuses: HashMap<PathBuf, GitStatus>,
+    /// PR summary per worktree path (computed by daemon background worker).
+    #[serde(default)]
+    pub pr_statuses: HashMap<PathBuf, PrSummary>,
     /// Pane IDs of agents detected as interrupted (working but no pane output change).
     #[serde(default)]
     pub interrupted_pane_ids: HashSet<String>,
@@ -51,6 +55,7 @@ pub fn build_snapshot(
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
     git_statuses: HashMap<PathBuf, GitStatus>,
+    pr_statuses: HashMap<PathBuf, PrSummary>,
     sleeping_pane_ids: &HashSet<String>,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
@@ -113,6 +118,7 @@ pub fn build_snapshot(
         active_pane_ids,
         window_pane_counts,
         git_statuses,
+        pr_statuses,
         interrupted_pane_ids: HashSet::new(),
         sleeping_pane_ids: live_sleeping,
         agents,

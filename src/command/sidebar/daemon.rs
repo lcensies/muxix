@@ -17,6 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::cmd::Cmd;
 use crate::config::{Config, SidebarPosition};
 use crate::git::GitStatus;
+use crate::github::PrSummary;
 use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
 use crate::state::StateStore;
 
@@ -555,6 +556,173 @@ struct GitWorkerPath {
     /// Whether this agent is stale (idle > threshold). Stale agents only
     /// get git status on the full sweep, not on every poll cycle.
     is_stale: bool,
+}
+
+/// Info about an active agent path sent to the PR worker.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct PrWorkerPath {
+    path: PathBuf,
+    branch: String,
+}
+
+type PrPathCache = Arc<Mutex<HashMap<PathBuf, PrSummary>>>;
+type PrRepoCache = Arc<Mutex<HashMap<PathBuf, HashMap<String, PrSummary>>>>;
+
+fn publish_pr_path_cache(
+    entries: &[PrWorkerPath],
+    repo_roots: &HashMap<PathBuf, PathBuf>,
+    repo_cache: &HashMap<PathBuf, HashMap<String, PrSummary>>,
+    path_cache: &PrPathCache,
+    dirty_flag: &Arc<AtomicBool>,
+    wake_tx: &std::sync::mpsc::SyncSender<()>,
+) {
+    let mut next = HashMap::new();
+    for entry in entries {
+        if let Some(repo_root) = repo_roots.get(&entry.path)
+            && let Some(pr) = repo_cache
+                .get(repo_root)
+                .and_then(|prs| prs.get(&entry.branch))
+        {
+            next.insert(entry.path.clone(), pr.clone());
+        }
+    }
+    if let Ok(mut cache) = path_cache.lock() {
+        *cache = next;
+    }
+    dirty_flag.store(true, Ordering::Relaxed);
+    let _ = wake_tx.try_send(());
+}
+
+fn spawn_pr_worker(
+    term: Arc<AtomicBool>,
+    dirty_flag: Arc<AtomicBool>,
+    wake_tx: std::sync::mpsc::SyncSender<()>,
+) -> (PrPathCache, std::sync::mpsc::Sender<Vec<PrWorkerPath>>) {
+    let path_cache: PrPathCache = Arc::new(Mutex::new(HashMap::new()));
+    let path_cache_clone = path_cache.clone();
+    let repo_cache: PrRepoCache = Arc::new(Mutex::new(crate::github::load_pr_cache()));
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<PrWorkerPath>>();
+
+    thread::spawn(move || {
+        let mut active_entries: Vec<PrWorkerPath> = Vec::new();
+        let mut repo_roots: HashMap<PathBuf, PathBuf> = HashMap::new();
+        let mut last_key: Vec<(PathBuf, String)> = Vec::new();
+        let mut last_fetch = Instant::now() - Duration::from_secs(30);
+
+        while !term.load(Ordering::Relaxed) {
+            let mut paths_changed = false;
+            match rx.recv_timeout(Duration::from_secs(1)) {
+                Ok(entries) => {
+                    active_entries = entries;
+                    paths_changed = true;
+                    while let Ok(entries) = rx.try_recv() {
+                        active_entries = entries;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+
+            if active_entries.is_empty() {
+                if paths_changed {
+                    if let Ok(mut cache) = path_cache_clone.lock() {
+                        cache.clear();
+                    }
+                    dirty_flag.store(true, Ordering::Relaxed);
+                    let _ = wake_tx.try_send(());
+                }
+                continue;
+            }
+
+            active_entries.sort();
+            active_entries.dedup();
+            let key: Vec<(PathBuf, String)> = active_entries
+                .iter()
+                .map(|entry| (entry.path.clone(), entry.branch.clone()))
+                .collect();
+            let branch_set_changed = key != last_key;
+
+            if paths_changed {
+                for entry in &active_entries {
+                    if !repo_roots.contains_key(&entry.path)
+                        && let Ok(root) = crate::git::get_repo_root_for(&entry.path)
+                    {
+                        repo_roots.insert(entry.path.clone(), root);
+                    }
+                }
+                let snapshot = repo_cache
+                    .lock()
+                    .ok()
+                    .map(|c| c.clone())
+                    .unwrap_or_default();
+                publish_pr_path_cache(
+                    &active_entries,
+                    &repo_roots,
+                    &snapshot,
+                    &path_cache_clone,
+                    &dirty_flag,
+                    &wake_tx,
+                );
+            }
+
+            if !branch_set_changed && last_fetch.elapsed() < Duration::from_secs(30) {
+                continue;
+            }
+
+            let mut repo_branches: HashMap<PathBuf, Vec<String>> = HashMap::new();
+            for entry in &active_entries {
+                if let Some(repo_root) = repo_roots.get(&entry.path) {
+                    repo_branches
+                        .entry(repo_root.clone())
+                        .or_default()
+                        .push(entry.branch.clone());
+                }
+            }
+            for branches in repo_branches.values_mut() {
+                branches.sort();
+                branches.dedup();
+            }
+            if repo_branches.is_empty() {
+                last_key = key;
+                continue;
+            }
+
+            let mut fetched = HashMap::new();
+            for (repo_root, branches) in repo_branches {
+                match crate::github::list_prs_for_branches(&repo_root, &branches) {
+                    Ok(prs) => {
+                        fetched.insert(repo_root, prs);
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to fetch PRs for {:?}: {}", repo_root, e);
+                    }
+                }
+            }
+            if !fetched.is_empty()
+                && let Ok(mut cache) = repo_cache.lock() {
+                    for (repo_root, prs) in &fetched {
+                        if prs.is_empty() {
+                            cache.remove(repo_root);
+                        } else {
+                            cache.insert(repo_root.clone(), prs.clone());
+                        }
+                    }
+                    crate::github::save_pr_cache(&fetched);
+                    publish_pr_path_cache(
+                        &active_entries,
+                        &repo_roots,
+                        &cache,
+                        &path_cache_clone,
+                        &dirty_flag,
+                        &wake_tx,
+                    );
+                }
+            last_key = key;
+            last_fetch = Instant::now();
+        }
+    });
+
+    (path_cache, tx)
 }
 
 /// Spawn a background thread that watches for git changes and updates the cache.
@@ -1194,7 +1362,9 @@ pub fn run() -> Result<()> {
     );
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
-    let (git_cache, git_path_tx) = spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx);
+    let (git_cache, git_path_tx) =
+        spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx.clone());
+    let (pr_cache, pr_path_tx) = spawn_pr_worker(term.clone(), dirty_flag.clone(), wake_tx);
 
     // Store PID so toggle-off can kill us and hooks can signal us
     Cmd::new("tmux")
@@ -1257,6 +1427,7 @@ pub fn run() -> Result<()> {
             };
             let sleeping_pane_ids = read_sleeping_panes();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
+            let pr_statuses = pr_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
             let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker);
             let now = Instant::now();
             let now_ts = SystemTime::now()
@@ -1276,6 +1447,7 @@ pub fn run() -> Result<()> {
                     position,
                     layout_mode,
                     git_statuses,
+                    pr_statuses,
                     sleeping_pane_ids,
                 },
                 &mut inactivity_tracker,
@@ -1311,6 +1483,23 @@ pub fn run() -> Result<()> {
                 })
                 .collect();
             let _ = git_path_tx.send(entries);
+
+            let pr_entries: Vec<PrWorkerPath> = output
+                .snapshot
+                .agents
+                .iter()
+                .filter_map(|a| {
+                    let branch = output.snapshot.git_statuses.get(&a.path)?.branch.as_ref()?;
+                    if branch == "main" || branch == "master" {
+                        return None;
+                    }
+                    Some(PrWorkerPath {
+                        path: a.path.clone(),
+                        branch: branch.clone(),
+                    })
+                })
+                .collect();
+            let _ = pr_path_tx.send(pr_entries);
 
             // Update config watcher with current project-config dirs.
             // find_project_config does fs walks, so cache by agent path.
@@ -1430,6 +1619,7 @@ struct TickInput {
     position: SidebarPosition,
     layout_mode: SidebarLayoutMode,
     git_statuses: HashMap<PathBuf, GitStatus>,
+    pr_statuses: HashMap<PathBuf, PrSummary>,
     sleeping_pane_ids: HashSet<String>,
 }
 
@@ -1472,6 +1662,7 @@ fn compute_tick(
         position,
         layout_mode,
         git_statuses,
+        pr_statuses,
         sleeping_pane_ids,
     } = input;
 
@@ -1505,6 +1696,7 @@ fn compute_tick(
         layout_mode,
         status_icons,
         git_statuses,
+        pr_statuses,
         &sleeping_pane_ids,
     );
     snapshot.interrupted_pane_ids = interrupted.clone();
@@ -1960,6 +2152,7 @@ mod tests {
                     position: SidebarPosition::Left,
                     layout_mode: SidebarLayoutMode::default(),
                     git_statuses: HashMap::new(),
+                    pr_statuses: HashMap::new(),
                     sleeping_pane_ids: HashSet::new(),
                 },
                 tracker,

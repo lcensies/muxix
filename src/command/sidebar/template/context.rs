@@ -5,6 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
 use crate::agent_identity::AgentKind;
 use crate::git::GitStatus;
+use crate::github::PrSummary;
 use crate::multiplexer::agent::resolve_profile_for_display;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::ui::theme::ThemePalette;
@@ -31,6 +32,8 @@ pub struct RowContext<'a> {
     pub pane_title: Option<String>,
     /// Git status for this agent's path.
     pub git_status: Option<&'a GitStatus>,
+    /// PR summary for this agent's path.
+    pub pr_summary: Option<&'a PrSummary>,
     /// Row flags.
     pub is_stale: bool,
     pub is_active: bool,
@@ -47,6 +50,8 @@ pub struct RowContext<'a> {
     /// 0-based sidebar row index. Rendered as 1-based via the `idx` and
     /// `jump_key` tokens.
     pub idx: usize,
+    /// Current spinner frame for animated PR checks.
+    pub spinner_frame: u8,
 }
 
 impl<'a> RowContext<'a> {
@@ -88,6 +93,7 @@ impl<'a> RowContext<'a> {
 
         let pane_title = build_pane_title(agent, &primary, &secondary, app.window_prefix());
         let git_status = app.git_statuses.get(&agent.path);
+        let pr_summary = app.pr_statuses.get(&agent.path);
         let kind =
             effective_agent_kind(agent.agent_kind.as_deref(), agent.agent_command.as_deref());
         let agent_icon = resolve_agent_icon(kind, &app.agent_icons);
@@ -104,6 +110,7 @@ impl<'a> RowContext<'a> {
             status_color,
             pane_title,
             git_status,
+            pr_summary,
             is_stale,
             is_active,
             is_selected,
@@ -112,6 +119,7 @@ impl<'a> RowContext<'a> {
             agent_icon_color,
             agent_label,
             idx,
+            spinner_frame: app.spinner_frame,
         }
     }
 
@@ -137,9 +145,10 @@ impl<'a> RowContext<'a> {
             TokenId::GitStats
             | TokenId::GitCommitted
             | TokenId::GitUncommitted
-            | TokenId::GitRebase => {
+            | TokenId::GitRebase
+            | TokenId::PrStatus => {
                 // Span-rendered tokens: empty string at resolution time;
-                // layout engine calls git_segment_spans() for rendering.
+                // layout engine calls segment span helpers for rendering.
                 String::new()
             }
             TokenId::GitAhead => self
@@ -163,6 +172,10 @@ impl<'a> RowContext<'a> {
             TokenId::GitBranch => self
                 .git_status
                 .and_then(|s| s.branch.clone())
+                .unwrap_or_default(),
+            TokenId::PrNumber => self
+                .pr_summary
+                .map(|pr| format!("#{}", pr.number))
                 .unwrap_or_default(),
             TokenId::StatusLabel => match self.agent.status {
                 Some(AgentStatus::Working) => "Working".to_string(),
@@ -196,6 +209,10 @@ impl<'a> RowContext<'a> {
             | TokenId::GitUncommitted
             | TokenId::GitRebase => {
                 let (_, width) = self.git_segment_spans(token, usize::MAX);
+                width
+            }
+            TokenId::PrStatus => {
+                let (_, width) = self.pr_status_spans(usize::MAX);
                 width
             }
             other => display_width(&self.resolve(other)),
@@ -245,6 +262,17 @@ impl<'a> RowContext<'a> {
         }
     }
 
+    /// Render PR status with a given allocated width, returning styled spans and actual width.
+    pub fn pr_status_spans(&self, allocated_width: usize) -> (Vec<(String, Style)>, usize) {
+        super::super::ui::format_sidebar_pr_status(
+            self.pr_summary,
+            self.palette,
+            self.is_stale,
+            self.spinner_frame,
+            allocated_width,
+        )
+    }
+
     /// Intrinsic style for a token (before state/selection post-pass).
     pub fn intrinsic_style(&self, token: TokenId) -> Style {
         if self.is_stale {
@@ -271,6 +299,11 @@ impl<'a> RowContext<'a> {
             TokenId::GitDirty => Style::default().fg(self.palette.warning),
             TokenId::GitConflict => Style::default().fg(self.palette.danger),
             TokenId::GitBranch => Style::default().fg(self.palette.text),
+            TokenId::PrNumber => self
+                .pr_summary
+                .map(|pr| crate::ui::pr_status::pr_state_icon_color(pr, self.palette).1)
+                .map(|color| Style::default().fg(color))
+                .unwrap_or_else(|| Style::default().fg(self.palette.text)),
             TokenId::StatusLabel => Style::default().fg(self.status_color),
             TokenId::Idx => Style::default().fg(self.palette.dimmed),
             TokenId::JumpKey => Style::default().fg(self.palette.dimmed),
@@ -493,6 +526,7 @@ mod tests {
     }
 
     use crate::config::{ThemeMode, ThemeScheme};
+    use crate::github::{CheckState, PrSummary};
     use crate::multiplexer::AgentPane;
     use std::path::PathBuf;
 
@@ -525,6 +559,15 @@ mod tests {
         git: Option<&'a GitStatus>,
         idx: usize,
     ) -> RowContext<'a> {
+        make_context_with_pr(agent, git, None, idx)
+    }
+
+    fn make_context_with_pr<'a>(
+        agent: &'a AgentPane,
+        git: Option<&'a GitStatus>,
+        pr: Option<&'a PrSummary>,
+        idx: usize,
+    ) -> RowContext<'a> {
         RowContext {
             agent,
             primary: String::new(),
@@ -535,6 +578,7 @@ mod tests {
             status_color: Color::Reset,
             pane_title: None,
             git_status: git,
+            pr_summary: pr,
             is_stale: false,
             is_active: false,
             is_selected: false,
@@ -543,6 +587,7 @@ mod tests {
             agent_icon_color: None,
             agent_label: String::new(),
             idx,
+            spinner_frame: 0,
         }
     }
 
@@ -668,6 +713,32 @@ mod tests {
             make_context(&agent, None, 0).resolve(TokenId::GitBranch),
             ""
         );
+    }
+
+    #[test]
+    fn resolve_pr_number_and_status() {
+        let agent = test_agent();
+        let pr = PrSummary {
+            number: 123,
+            title: "Add thing".to_string(),
+            state: "OPEN".to_string(),
+            is_draft: false,
+            checks: Some(CheckState::Success),
+            check_meta: None,
+            url: None,
+        };
+        let ctx = make_context_with_pr(&agent, None, Some(&pr), 0);
+        assert_eq!(ctx.resolve(TokenId::PrNumber), "#123");
+        assert_eq!(ctx.resolve(TokenId::PrStatus), "");
+        assert!(ctx.natural_width(TokenId::PrStatus) > 0);
+    }
+
+    #[test]
+    fn resolve_pr_tokens_empty_without_pr() {
+        let agent = test_agent();
+        let ctx = make_context(&agent, None, 0);
+        assert_eq!(ctx.resolve(TokenId::PrNumber), "");
+        assert_eq!(ctx.natural_width(TokenId::PrStatus), 0);
     }
 
     #[test]

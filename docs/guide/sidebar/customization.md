@@ -52,6 +52,8 @@ sidebars without a restart.
 | `{elapsed}`      | Elapsed time since the agent's last status change.                                                                         |
 | `{git_stats}`    | Composite git diff stats: committed (`+1278 -400`), pen icon, uncommitted (`+21`). Self-degrades to fit the space it gets. |
 | `{git_branch}`   | Current branch name. Empty when detached HEAD or git status unavailable.                                                   |
+| `{pr_number}`    | Pull request number as `#123`. Empty when the current branch has no matching PR.                                           |
+| `{pr_status}`    | Pull request state and check status icons. Self-degrades to fit the space it gets. Empty when no PR is known.              |
 | `{git_ahead}`    | Commits ahead of upstream as `↑N` when N greater than 0. Empty when 0 or no upstream.                                      |
 | `{git_behind}`   | Commits behind upstream as `↓N` when N greater than 0. Empty when 0 or no upstream.                                        |
 | `{git_dirty}`    | Diff glyph when the working tree is dirty. Empty when clean.                                                               |

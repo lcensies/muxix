@@ -12,8 +12,9 @@ pub fn truncate(s: &str, max_len: usize) -> String {
 }
 
 use crate::git::GitStatus;
-use crate::github::{CheckMeta, CheckState, PrSummary};
+use crate::github::PrSummary;
 use crate::nerdfont;
+use crate::ui::pr_status::{PrStatusOptions, format_pr_details as shared_format_pr_details};
 
 use super::super::spinner::SPINNER_FRAMES;
 use super::theme::ThemePalette;
@@ -180,63 +181,17 @@ pub fn format_pr_status(
     spinner_frame: u8,
     palette: &ThemePalette,
 ) -> Vec<(String, Style)> {
-    match pr {
-        Some(pr) => {
-            let icons = nerdfont::pr_icons();
-            let (icon, color) = if pr.is_draft {
-                (icons.draft, palette.dimmed)
-            } else {
-                match pr.state.as_str() {
-                    "OPEN" => (icons.open, palette.success),
-                    "MERGED" => (icons.merged, palette.accent),
-                    "CLOSED" => (icons.closed, palette.danger),
-                    _ => ("?", palette.dimmed),
-                }
-            };
-            let mut spans = vec![
-                (format!("#{} ", pr.number), Style::default().fg(color)),
-                (icon.to_string(), Style::default().fg(color)),
-            ];
-
-            // Append check status if present
-            if let Some(ref checks) = pr.checks {
-                let check_icons = nerdfont::check_icons();
-                let (check_icon, check_color, counts) = match checks {
-                    CheckState::Success => (check_icons.success.to_string(), palette.success, None),
-                    CheckState::Failure { passed, total } => (
-                        check_icons.failure.to_string(),
-                        palette.danger,
-                        Some((*passed, *total)),
-                    ),
-                    CheckState::Pending { passed, total } => {
-                        let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
-                        (frame.to_string(), palette.accent, Some((*passed, *total)))
-                    }
-                };
-
-                spans.push((" ".to_string(), Style::default()));
-                spans.push((check_icon, Style::default().fg(check_color)));
-
-                if show_check_counts && let Some((passed, total)) = counts {
-                    spans.push((
-                        format!(" {}/{}", passed, total),
-                        Style::default().fg(check_color),
-                    ));
-                }
-
-                // Show compact elapsed time for pending checks
-                if let Some(time_str) = format_check_elapsed(checks, pr.check_meta.as_ref()) {
-                    spans.push((
-                        format!(" {}", time_str),
-                        Style::default().fg(palette.dimmed),
-                    ));
-                }
-            }
-
-            spans
-        }
-        None => vec![("-".to_string(), Style::default().fg(palette.dimmed))],
-    }
+    crate::ui::pr_status::format_pr_status(
+        pr,
+        PrStatusOptions {
+            include_number: true,
+            show_check_counts,
+            none_placeholder: Some("-"),
+            is_stale: false,
+        },
+        spinner_frame,
+        palette,
+    )
 }
 
 /// Returns minimal PR detail spans for the preview title.
@@ -248,67 +203,5 @@ pub fn format_pr_details(
     spinner_frame: u8,
     palette: &ThemePalette,
 ) -> Vec<ratatui::text::Span<'static>> {
-    use ratatui::text::Span;
-
-    let Some(checks) = &pr.checks else {
-        return vec![];
-    };
-
-    match checks {
-        CheckState::Failure { .. } => {
-            let Some(meta) = &pr.check_meta else {
-                return vec![];
-            };
-            let Some(name) = &meta.failing_name else {
-                return vec![];
-            };
-            let icon = nerdfont::check_icons().failure;
-            vec![Span::styled(
-                format!("{} {}", icon, name),
-                Style::default().fg(palette.danger),
-            )]
-        }
-        CheckState::Pending { .. } => match format_check_elapsed(checks, pr.check_meta.as_ref()) {
-            Some(time_str) => {
-                let frame = SPINNER_FRAMES[spinner_frame as usize % SPINNER_FRAMES.len()];
-                vec![Span::styled(
-                    format!("{} {}", frame, time_str),
-                    Style::default().fg(palette.dimmed),
-                )]
-            }
-            None => vec![],
-        },
-        CheckState::Success => vec![],
-    }
-}
-
-/// Format elapsed time for inline display in the PR column.
-/// Shows time for pending checks (live) only.
-fn format_check_elapsed(checks: &CheckState, meta: Option<&CheckMeta>) -> Option<String> {
-    let meta = meta?;
-    match checks {
-        CheckState::Pending { .. } => {
-            let start = meta.started_at?;
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .ok()?
-                .as_secs();
-            Some(format_compact_duration(now.saturating_sub(start)))
-        }
-        _ => None,
-    }
-}
-
-/// Format seconds into a compact string for inline display.
-/// Examples: "0s", "45s", "12m", "2h", "3d"
-fn format_compact_duration(secs: u64) -> String {
-    if secs < 60 {
-        format!("{}s", secs)
-    } else if secs < 3600 {
-        format!("{}m", secs / 60)
-    } else if secs < 86400 {
-        format!("{}h", secs / 3600)
-    } else {
-        format!("{}d", secs / 86400)
-    }
+    shared_format_pr_details(pr, spinner_frame, palette)
 }

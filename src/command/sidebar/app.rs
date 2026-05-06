@@ -13,6 +13,7 @@ use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_
 use crate::cmd::Cmd;
 use crate::config::{AgentIcons, Config, SidebarPosition, SidebarWidth, StatusIcons};
 use crate::git::GitStatus;
+use crate::github::PrSummary;
 use ratatui::style::Color;
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -155,6 +156,8 @@ pub struct SidebarApp {
     selection_mode: SelectionMode,
     /// Git status per worktree path (received from daemon snapshots).
     pub git_statuses: HashMap<PathBuf, GitStatus>,
+    /// PR summary per worktree path (received from daemon snapshots).
+    pub pr_statuses: HashMap<PathBuf, PrSummary>,
     /// Pane IDs of agents detected as interrupted by the daemon.
     pub interrupted_pane_ids: std::collections::HashSet<String>,
     /// Pane IDs of agents manually marked as sleeping by the user.
@@ -249,6 +252,7 @@ impl SidebarApp {
             host_window_active: true,
             selection_mode: SelectionMode::FollowHost,
             git_statuses: HashMap::new(),
+            pr_statuses: HashMap::new(),
             interrupted_pane_ids: std::collections::HashSet::new(),
             sleeping_pane_ids: std::collections::HashSet::new(),
             templates,
@@ -299,6 +303,7 @@ impl SidebarApp {
         self.position = snapshot.position;
         self.layout_mode = snapshot.layout_mode;
         self.git_statuses = snapshot.git_statuses;
+        self.pr_statuses = snapshot.pr_statuses;
         self.interrupted_pane_ids = snapshot.interrupted_pane_ids;
         self.sleeping_pane_ids = snapshot.sleeping_pane_ids;
 

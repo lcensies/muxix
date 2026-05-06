@@ -246,6 +246,10 @@ fn is_git_segment(id: TokenId) -> bool {
     )
 }
 
+fn is_pr_segment(id: TokenId) -> bool {
+    id == TokenId::PrStatus
+}
+
 fn is_whitespace_literal(info: &TokenInfo) -> bool {
     if let Token::Literal(s) = &info.token {
         !s.is_empty() && s.chars().all(|c| c.is_whitespace())
@@ -389,6 +393,12 @@ fn render_field(
             spans.push(styled_span(text, style, user_style, ctx));
         }
         git_width
+    } else if is_pr_segment(id) {
+        let (pr_spans, pr_width) = ctx.pr_status_spans(target_width);
+        for (text, style) in pr_spans {
+            spans.push(styled_span(text, style, user_style, ctx));
+        }
+        pr_width
     } else {
         let text = ctx.resolve(id);
         let rendered = if display_width(&text) > target_width {
@@ -490,6 +500,7 @@ mod tests {
     use super::super::parser::{Token, TokenId};
     use super::*;
     use crate::git::GitStatus;
+    use crate::github::{CheckState, PrSummary};
     use crate::multiplexer::AgentPane;
     use crate::ui::theme::ThemePalette;
     use std::path::PathBuf;
@@ -531,6 +542,7 @@ mod tests {
             status_color: ratatui::style::Color::Reset,
             pane_title: None,
             git_status: None,
+            pr_summary: None,
             is_stale: false,
             is_active: false,
             is_selected: false,
@@ -539,6 +551,7 @@ mod tests {
             agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
+            spinner_frame: 0,
         }
     }
 
@@ -627,6 +640,7 @@ mod tests {
             status_color: ratatui::style::Color::Reset,
             pane_title: None,
             git_status: Some(status),
+            pr_summary: None,
             is_stale: false,
             is_active: false,
             is_selected: false,
@@ -635,6 +649,7 @@ mod tests {
             agent_icon_color: None,
             agent_label: String::new(),
             idx: 0,
+            spinner_frame: 0,
         }
     }
 
@@ -655,6 +670,63 @@ mod tests {
             .iter()
             .map(|s| s.content.clone())
             .collect()
+    }
+
+    fn test_pr() -> PrSummary {
+        PrSummary {
+            number: 123,
+            title: "Add PR status".to_string(),
+            state: "OPEN".to_string(),
+            is_draft: false,
+            checks: Some(CheckState::Failure {
+                passed: 2,
+                total: 3,
+            }),
+            check_meta: None,
+            url: None,
+        }
+    }
+
+    fn make_pr_context<'a>(agent: &'a AgentPane, pr: &'a PrSummary) -> RowContext<'a> {
+        let mut ctx = make_context(agent);
+        ctx.pr_summary = Some(pr);
+        ctx
+    }
+
+    #[test]
+    fn pr_status_renders_as_single_composite_token() {
+        let agent = test_agent("pr");
+        let pr = test_pr();
+        let ctx = make_pr_context(&agent, &pr);
+        let text = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 20);
+        assert!(!text.trim().is_empty(), "{text:?}");
+    }
+
+    #[test]
+    fn pr_status_self_fits_when_narrow() {
+        let agent = test_agent("pr");
+        let pr = test_pr();
+        let ctx = make_pr_context(&agent, &pr);
+        let wide = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 20);
+        let narrow = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 1);
+        assert!(wide.contains("2/3"), "{wide:?}");
+        assert!(!narrow.contains("2/3"), "{narrow:?}");
+        assert_eq!(display_width(narrow.trim()), 1, "{narrow:?}");
+    }
+
+    #[test]
+    fn empty_pr_tokens_collapse_joiner_space() {
+        let agent = test_agent("pr");
+        let ctx = make_context(&agent);
+        let tokens = vec![
+            Token::Field(TokenId::Primary),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::PrNumber),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::PrStatus),
+        ];
+        let text = render_text(&ctx, &tokens, 30);
+        assert_eq!(text.trim_end(), "feature-auth");
     }
 
     #[test]

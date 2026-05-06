@@ -882,10 +882,23 @@ pub fn load_pr_cache() -> HashMap<PathBuf, HashMap<String, PrSummary>> {
 
 /// Save the PR status cache to disk
 pub fn save_pr_cache(statuses: &HashMap<PathBuf, HashMap<String, PrSummary>>) {
-    if let Ok(path) = get_pr_cache_path()
-        && let Ok(content) = serde_json::to_string(statuses)
-    {
-        let _ = std::fs::write(path, content);
+    let Ok(path) = get_pr_cache_path() else {
+        return;
+    };
+    let mut merged = load_pr_cache();
+    for (repo, prs) in statuses {
+        if prs.is_empty() {
+            merged.remove(repo);
+        } else {
+            merged.insert(repo.clone(), prs.clone());
+        }
+    }
+    let Ok(content) = serde_json::to_string(&merged) else {
+        return;
+    };
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    if std::fs::write(&tmp, content).is_ok() {
+        let _ = std::fs::rename(tmp, path);
     }
 }
 
