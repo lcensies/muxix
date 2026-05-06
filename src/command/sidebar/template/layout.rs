@@ -247,7 +247,7 @@ fn is_git_segment(id: TokenId) -> bool {
 }
 
 fn is_pr_segment(id: TokenId) -> bool {
-    id == TokenId::PrStatus
+    id == TokenId::PrChecks
 }
 
 fn is_whitespace_literal(info: &TokenInfo) -> bool {
@@ -394,7 +394,7 @@ fn render_field(
         }
         git_width
     } else if is_pr_segment(id) {
-        let (pr_spans, pr_width) = ctx.pr_status_spans(target_width);
+        let (pr_spans, pr_width) = ctx.pr_check_spans(target_width);
         for (text, style) in pr_spans {
             spans.push(styled_span(text, style, user_style, ctx));
         }
@@ -694,21 +694,21 @@ mod tests {
     }
 
     #[test]
-    fn pr_status_renders_as_single_composite_token() {
+    fn pr_checks_renders_as_single_composite_token() {
         let agent = test_agent("pr");
         let pr = test_pr();
         let ctx = make_pr_context(&agent, &pr);
-        let text = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 20);
+        let text = render_text(&ctx, &[Token::Field(TokenId::PrChecks)], 20);
         assert!(!text.trim().is_empty(), "{text:?}");
     }
 
     #[test]
-    fn pr_status_self_fits_when_narrow() {
+    fn pr_checks_self_fits_when_narrow() {
         let agent = test_agent("pr");
         let pr = test_pr();
         let ctx = make_pr_context(&agent, &pr);
-        let wide = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 20);
-        let narrow = render_text(&ctx, &[Token::Field(TokenId::PrStatus)], 1);
+        let wide = render_text(&ctx, &[Token::Field(TokenId::PrChecks)], 20);
+        let narrow = render_text(&ctx, &[Token::Field(TokenId::PrChecks)], 1);
         assert!(wide.contains("2/3"), "{wide:?}");
         assert!(!narrow.contains("2/3"), "{narrow:?}");
         assert_eq!(display_width(narrow.trim()), 1, "{narrow:?}");
@@ -723,7 +723,7 @@ mod tests {
             Token::Literal(" ".to_string()),
             Token::Field(TokenId::PrNumber),
             Token::Literal(" ".to_string()),
-            Token::Field(TokenId::PrStatus),
+            Token::Field(TokenId::PrChecks),
         ];
         let text = render_text(&ctx, &tokens, 30);
         assert_eq!(text.trim_end(), "feature-auth");

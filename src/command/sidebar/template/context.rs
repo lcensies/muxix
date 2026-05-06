@@ -146,7 +146,7 @@ impl<'a> RowContext<'a> {
             | TokenId::GitCommitted
             | TokenId::GitUncommitted
             | TokenId::GitRebase
-            | TokenId::PrStatus => {
+            | TokenId::PrChecks => {
                 // Span-rendered tokens: empty string at resolution time;
                 // layout engine calls segment span helpers for rendering.
                 String::new()
@@ -211,8 +211,8 @@ impl<'a> RowContext<'a> {
                 let (_, width) = self.git_segment_spans(token, usize::MAX);
                 width
             }
-            TokenId::PrStatus => {
-                let (_, width) = self.pr_status_spans(usize::MAX);
+            TokenId::PrChecks => {
+                let (_, width) = self.pr_check_spans(usize::MAX);
                 width
             }
             other => display_width(&self.resolve(other)),
@@ -262,8 +262,8 @@ impl<'a> RowContext<'a> {
         }
     }
 
-    /// Render PR status with a given allocated width, returning styled spans and actual width.
-    pub fn pr_status_spans(&self, allocated_width: usize) -> (Vec<(String, Style)>, usize) {
+    /// Render PR checks with a given allocated width, returning styled spans and actual width.
+    pub fn pr_check_spans(&self, allocated_width: usize) -> (Vec<(String, Style)>, usize) {
         super::super::ui::format_sidebar_pr_status(
             self.pr_summary,
             self.palette,
@@ -729,8 +729,8 @@ mod tests {
         };
         let ctx = make_context_with_pr(&agent, None, Some(&pr), 0);
         assert_eq!(ctx.resolve(TokenId::PrNumber), "#123");
-        assert_eq!(ctx.resolve(TokenId::PrStatus), "");
-        assert!(ctx.natural_width(TokenId::PrStatus) > 0);
+        assert_eq!(ctx.resolve(TokenId::PrChecks), "");
+        assert!(ctx.natural_width(TokenId::PrChecks) > 0);
     }
 
     #[test]
@@ -738,7 +738,7 @@ mod tests {
         let agent = test_agent();
         let ctx = make_context(&agent, None, 0);
         assert_eq!(ctx.resolve(TokenId::PrNumber), "");
-        assert_eq!(ctx.natural_width(TokenId::PrStatus), 0);
+        assert_eq!(ctx.natural_width(TokenId::PrChecks), 0);
     }
 
     #[test]
