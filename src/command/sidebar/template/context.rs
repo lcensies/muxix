@@ -82,14 +82,10 @@ impl<'a> RowContext<'a> {
             super::super::ui::status_icon_and_style(app, agent.status, is_stale, is_interrupted);
         let status_color = status_icon_style.fg.unwrap_or(Color::Reset);
 
-        let elapsed = if is_interrupted {
-            String::new()
-        } else {
-            agent
-                .status_ts
-                .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
-                .unwrap_or_default()
-        };
+        let elapsed = agent
+            .status_ts
+            .map(|ts| format_compact_elapsed(now_secs.saturating_sub(ts)))
+            .unwrap_or_default();
 
         let pane_title = build_pane_title(agent, &primary, &secondary, app.window_prefix());
         let git_status = app.git_statuses.get(&agent.path);
@@ -589,6 +585,36 @@ mod tests {
             idx,
             spinner_frame: 0,
         }
+    }
+
+    #[test]
+    fn interrupted_agent_keeps_elapsed() {
+        let mut agent = test_agent();
+        agent.status = Some(AgentStatus::Working);
+        agent.status_ts = Some(100);
+        let ctx = RowContext {
+            agent: &agent,
+            primary: String::new(),
+            secondary: String::new(),
+            pane_suffix: String::new(),
+            elapsed: format_compact_elapsed(500),
+            status_icon_spans: vec![("!!".to_string(), Style::default())],
+            status_color: Color::Reset,
+            pane_title: None,
+            git_status: None,
+            pr_summary: None,
+            is_stale: false,
+            is_active: false,
+            is_selected: false,
+            palette: test_palette(),
+            agent_icon: String::new(),
+            agent_icon_color: None,
+            agent_label: String::new(),
+            idx: 0,
+            spinner_frame: 0,
+        };
+        assert_eq!(ctx.resolve(TokenId::Elapsed), "8:20");
+        assert!(!ctx.is_stale);
     }
 
     #[test]

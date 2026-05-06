@@ -849,8 +849,13 @@ pub(crate) fn status_icon_and_style(
         return (vec![(icon.to_string(), style)], style);
     }
     if is_interrupted {
-        let style = Style::default().fg(app.palette.dimmed);
-        return (vec![("  ".to_string(), style)], style);
+        let style = Style::default().fg(app.palette.warning);
+        let icon = if use_nf {
+            "\u{f04e5}" // 󰓥 nf-md-pause
+        } else {
+            "!!"
+        };
+        return (vec![(icon.to_string(), style)], style);
     }
     match status {
         Some(AgentStatus::Working) => {
