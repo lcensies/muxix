@@ -71,15 +71,9 @@ pub(super) enum SidebarScope {
     Sessions(std::collections::HashSet<String>),
 }
 
-/// Read the current sidebar scope from tmux.
-pub(super) fn current_scope() -> SidebarScope {
-    let raw = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
-        .run_and_capture_stdout()
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    match raw.as_str() {
+fn parse_scope(raw: &str, enabled: bool) -> SidebarScope {
+    match raw.trim() {
+        "" if enabled => SidebarScope::Global,
         "" => SidebarScope::Off,
         "global" => SidebarScope::Global,
         ids => {
@@ -88,6 +82,22 @@ pub(super) fn current_scope() -> SidebarScope {
             SidebarScope::Sessions(set)
         }
     }
+}
+
+/// Read the current sidebar scope from tmux.
+pub(super) fn current_scope() -> SidebarScope {
+    let raw = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
+        .run_and_capture_stdout()
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let enabled = Cmd::new("tmux")
+        .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
+        .run_and_capture_stdout()
+        .ok()
+        .is_some_and(|s| s.trim() == "1");
+    parse_scope(&raw, enabled)
 }
 
 /// Set the sidebar scope in tmux.
@@ -233,12 +243,12 @@ fn resolve_width_for(config: &crate::config::Config, tw: u16, synced_width: Opti
 
 fn resolve_height_for(config: &crate::config::Config, th: u16, synced_height: Option<u16>) -> u16 {
     let max_h = th.saturating_sub(3).max(1);
-    if let Some(h) = synced_height {
-        return h.clamp(1, max_h);
-    }
-
     if let Some(ref h) = config.sidebar.height {
         return h.resolve(th).clamp(1, max_h);
+    }
+
+    if let Some(h) = synced_height {
+        return h.clamp(1, max_h);
     }
 
     let default = if th == 0 {
@@ -817,6 +827,12 @@ mod tests {
     }
 
     #[test]
+    fn empty_scope_with_enabled_flag_is_global() {
+        assert_eq!(parse_scope("", true), SidebarScope::Global);
+        assert_eq!(parse_scope("", false), SidebarScope::Off);
+    }
+
+    #[test]
     fn serializes_session_id_set_deterministically() {
         let ids = parse_session_id_set("$2 $0 $1");
         assert_eq!(serialize_session_id_set(&ids), "$0 $1 $2");
@@ -916,5 +932,12 @@ mod tests {
         assert_eq!(resolve_width_for(&config, 200, None), 25); // 10% = 20, clamped to 25
         assert_eq!(resolve_width_for(&config, 500, None), 50); // 10% = 50, at max
         assert_eq!(resolve_width_for(&config, 400, None), 40); // 10% = 40
+    }
+
+    #[test]
+    fn resolve_height_uses_explicit_config_before_synced_height() {
+        let mut config = crate::config::Config::default();
+        config.sidebar.height = Some(crate::config::SidebarHeight::Absolute(2));
+        assert_eq!(resolve_height_for(&config, 40, Some(1)), 2);
     }
 }
