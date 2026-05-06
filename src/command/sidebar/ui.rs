@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, List, ListItem, Padding, Paragraph};
+use ratatui::widgets::{Block, List, ListItem, Padding, Paragraph, Wrap};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
@@ -471,14 +471,39 @@ fn render_template_error(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
         return area;
     }
 
+    let message = error.display_message();
+    let warning_height =
+        wrapped_line_count(&message, area.width as usize).min(area.height as usize) as u16;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .constraints([Constraint::Length(warning_height), Constraint::Min(0)])
         .split(area);
-    let warning =
-        Paragraph::new(error.display_message()).style(Style::default().fg(app.palette.warning));
+    let warning = Paragraph::new(message)
+        .style(Style::default().fg(app.palette.warning))
+        .wrap(Wrap { trim: false });
     f.render_widget(warning, chunks[0]);
     chunks[1]
+}
+
+fn wrapped_line_count(s: &str, width: usize) -> usize {
+    if width == 0 {
+        return 1;
+    }
+    let mut lines = 1;
+    let mut current = 0;
+    for word in s.split_inclusive(' ') {
+        let word_width = display_width(word);
+        if current > 0 && current + word_width > width {
+            lines += 1;
+            current = 0;
+        }
+        current += word_width;
+        while current > width {
+            lines += 1;
+            current -= width;
+        }
+    }
+    lines
 }
 
 fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
@@ -962,7 +987,7 @@ mod tests {
 
     #[test]
     fn render_sidebar_shows_template_error_warning() {
-        let backend = TestBackend::new(80, 5);
+        let backend = TestBackend::new(30, 6);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = SidebarApp::test_with_template_error(TemplateError {
             location: "tiles[0]".to_string(),
@@ -972,14 +997,18 @@ mod tests {
         terminal.draw(|f| render_sidebar(f, &mut app)).unwrap();
 
         let buffer = terminal.backend().buffer();
-        let first_line = (0..80).map(|x| buffer[(x, 0)].symbol()).collect::<String>();
-        assert!(
-            first_line
-                .contains("template error: unknown token 'pr_status' at column 1 in tiles[0]")
-        );
-        assert_eq!(app.list_area.y, 1);
-        assert_eq!(app.list_area.height, 4);
+        let text = (0..6)
+            .flat_map(|y| (0..30).map(move |x| buffer[(x, y)].symbol()))
+            .collect::<String>();
+        assert!(text.contains("template error:"));
+        assert!(text.contains("unknown"));
+        assert!(text.contains("token"));
+        assert!(text.contains("pr_status"));
+        assert!(text.contains("tiles[0]"));
+        assert!(app.list_area.y > 1);
+        assert_eq!(app.list_area.y + app.list_area.height, 6);
         assert_eq!(app.hit_test(0, 0), None);
+        assert_eq!(app.hit_test(0, app.list_area.y - 1), None);
     }
 
     #[test]
