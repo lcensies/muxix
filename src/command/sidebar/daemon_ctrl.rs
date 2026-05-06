@@ -68,6 +68,7 @@ pub(super) fn kill_daemon() {
     if let Some(pid) = daemon_pid() {
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid])
+            .stderr(std::process::Stdio::null())
             .status();
     }
     let _ = Cmd::new("tmux")
@@ -80,6 +81,7 @@ pub(super) fn signal_daemon() {
     if let Some(pid) = daemon_pid() {
         let _ = std::process::Command::new("kill")
             .args(["-USR1", &pid])
+            .stderr(std::process::Stdio::null())
             .status();
     }
 }
