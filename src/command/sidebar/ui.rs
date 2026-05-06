@@ -47,7 +47,7 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
         .collect()
 }
 
-/// Format PR status for sidebar display, fitting within `available_width`.
+/// Format PR check status for sidebar display, fitting within `available_width`.
 pub(crate) fn format_sidebar_pr_status(
     pr: Option<&crate::github::PrSummary>,
     palette: &ThemePalette,
@@ -58,34 +58,44 @@ pub(crate) fn format_sidebar_pr_status(
     let Some(pr) = pr else {
         return (Vec::new(), 0);
     };
-
-    let options = crate::ui::pr_status::PrStatusOptions {
-        include_number: false,
-        show_check_counts: true,
-        none_placeholder: None,
-        is_stale,
+    let Some(checks) = pr.checks.as_ref() else {
+        return (Vec::new(), 0);
     };
-    let full = crate::ui::pr_status::format_pr_status(Some(pr), options, spinner_frame, palette);
-    let no_counts = crate::ui::pr_status::format_pr_status(
-        Some(pr),
-        crate::ui::pr_status::PrStatusOptions {
-            show_check_counts: false,
-            ..options
-        },
-        spinner_frame,
-        palette,
-    );
-    let (state_icon, state_color) = crate::ui::pr_status::pr_state_icon_color(pr, palette);
-    let state_style = if is_stale {
+
+    let check_icons = crate::nerdfont::check_icons();
+    let (icon, color, counts) = match checks {
+        crate::github::CheckState::Success => {
+            (check_icons.success.to_string(), palette.success, None)
+        }
+        crate::github::CheckState::Failure { passed, total } => (
+            check_icons.failure.to_string(),
+            palette.danger,
+            Some((*passed, *total)),
+        ),
+        crate::github::CheckState::Pending { passed, total } => {
+            let frame = crate::ui::pr_status::SPINNER_FRAMES
+                [spinner_frame as usize % crate::ui::pr_status::SPINNER_FRAMES.len()];
+            (frame.to_string(), palette.accent, Some((*passed, *total)))
+        }
+    };
+    let style = if is_stale {
         Style::default()
             .fg(palette.dimmed)
             .add_modifier(Modifier::DIM)
     } else {
-        Style::default().fg(state_color)
+        Style::default().fg(color)
     };
-    let state_only = vec![(state_icon.to_string(), state_style)];
+    let full = counts
+        .map(|(passed, total)| {
+            vec![
+                (icon.clone(), style),
+                (format!(" {}/{}", passed, total), style),
+            ]
+        })
+        .unwrap_or_else(|| vec![(icon.clone(), style)]);
+    let icon_only = vec![(icon, style)];
 
-    for spans in [full, no_counts, state_only] {
+    for spans in [full, icon_only] {
         let width: usize = spans.iter().map(|(s, _)| display_width(s)).sum();
         if width > 0 && width <= available_width {
             return (spans, width);
