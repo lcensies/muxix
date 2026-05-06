@@ -1,10 +1,10 @@
 //! Rendering for the sidebar TUI.
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, List, ListItem, Padding};
+use ratatui::widgets::{Block, List, ListItem, Padding, Paragraph};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthChar;
@@ -454,18 +454,38 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
 
     let inner = block.inner(area);
     f.render_widget(block, area);
-    app.list_area = inner;
+    let list_area = render_template_error(f, app, inner);
+    app.list_area = list_area;
 
     match app.layout_mode {
-        SidebarLayoutMode::Compact => render_compact_list(f, app, inner),
-        SidebarLayoutMode::Tiles => render_tile_list(f, app, inner),
+        SidebarLayoutMode::Compact => render_compact_list(f, app, list_area),
+        SidebarLayoutMode::Tiles => render_tile_list(f, app, list_area),
     }
+}
+
+fn render_template_error(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
+    let Some(error) = &app.template_error else {
+        return area;
+    };
+    if area.height == 0 {
+        return area;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(area);
+    let warning =
+        Paragraph::new(error.display_message()).style(Style::default().fg(app.palette.warning));
+    f.render_widget(warning, chunks[0]);
+    chunks[1]
 }
 
 fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     let block = Block::default().padding(Padding::new(1, 1, 0, 0));
     let inner = block.inner(area);
     f.render_widget(block, area);
+    let inner = render_template_error(f, app, inner);
     app.list_area = inner;
     app.horizontal_hitboxes.clear();
 
