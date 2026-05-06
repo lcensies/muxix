@@ -953,7 +953,34 @@ pub(crate) fn display_width(s: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    use super::*;
     use crate::agent_display::{sanitize_pane_title, strip_oc_title_prefix};
+    use crate::command::sidebar::app::TemplateError;
+
+    #[test]
+    fn render_sidebar_shows_template_error_warning() {
+        let backend = TestBackend::new(80, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = SidebarApp::test_with_template_error(TemplateError {
+            location: "tiles[0]".to_string(),
+            message: "unknown token 'pr_status' at column 1".to_string(),
+        });
+
+        terminal.draw(|f| render_sidebar(f, &mut app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let first_line = (0..80).map(|x| buffer[(x, 0)].symbol()).collect::<String>();
+        assert!(
+            first_line
+                .contains("template error: unknown token 'pr_status' at column 1 in tiles[0]")
+        );
+        assert_eq!(app.list_area.y, 1);
+        assert_eq!(app.list_area.height, 4);
+        assert_eq!(app.hit_test(0, 0), None);
+    }
 
     #[test]
     fn strips_oc_prefixes() {

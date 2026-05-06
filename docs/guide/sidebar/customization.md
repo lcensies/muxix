@@ -68,10 +68,10 @@ wrap them with another `↑` / `↓` literal in your template, otherwise a stray
 glyph would remain when the count is zero. The same applies to `{git_dirty}`
 and `{git_conflict}`, which are self-contained glyph indicators.
 
-Unknown tokens or unbalanced braces cause the template to be rejected and the
-previous valid template (or the built-in default) is kept. The sidebar also
-shows a visible warning such as `template error: unknown token 'pr_status' at
-column 1 in tiles[0]` until the template is fixed.
+Unknown tokens or unbalanced braces cause that template section to be rejected
+and the previous valid section (or the built-in default) is kept. The sidebar
+also shows a visible warning such as `template error: unknown token 'pr_status'
+at column 1 in tiles[0]` until the template is fixed.
 
 ## Layout
 

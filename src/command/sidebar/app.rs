@@ -223,6 +223,59 @@ pub struct SidebarApp {
 }
 
 impl SidebarApp {
+    #[cfg(test)]
+    pub(crate) fn test_with_template_error(template_error: TemplateError) -> Self {
+        Self {
+            mux: Arc::new(crate::multiplexer::TmuxBackend::new()),
+            agents: Vec::new(),
+            has_loaded_snapshot: true,
+            list_state: ListState::default(),
+            should_quit: false,
+            quit_reason: None,
+            palette: ThemePalette::from_config(
+                &Config::default().theme,
+                crate::config::ThemeMode::Dark,
+            ),
+            status_icons: StatusIcons::default(),
+            spinner_frame: 0,
+            stale_threshold_secs: 3600,
+            position: SidebarPosition::Left,
+            layout_mode: SidebarLayoutMode::Compact,
+            list_area: Rect::default(),
+            window_prefix: "wm-".to_string(),
+            host_session: None,
+            host_window_id: None,
+            host_agent_idx: None,
+            host_window_active: true,
+            selection_mode: SelectionMode::FollowHost,
+            git_statuses: HashMap::new(),
+            pr_statuses: HashMap::new(),
+            interrupted_pane_ids: std::collections::HashSet::new(),
+            sleeping_pane_ids: std::collections::HashSet::new(),
+            templates: ParsedTemplates {
+                compact: parse_line("{primary}").unwrap(),
+                tiles: vec![parse_line("{primary}").unwrap()],
+                horizontal: vec![parse_line("{primary}").unwrap()],
+            },
+            template_error: Some(template_error),
+            agent_icons: ResolvedAgentIcons::default(),
+            tile_heights: Vec::new(),
+            horizontal_hitboxes: Vec::new(),
+            first_visible_agent_idx: 0,
+            horizontal_item_width: 24,
+            last_config_version: 0,
+            current_compact_str: "{primary}".to_string(),
+            current_tile_strs: vec!["{primary}".to_string()],
+            current_horizontal_strs: vec!["{primary}".to_string()],
+            current_width: None,
+            last_window_width: None,
+            last_window_height: None,
+            pending_resize_cols: None,
+            pending_resize_rows: None,
+            resize_deadline: None,
+        }
+    }
+
     /// Create a new sidebar client. Does config + host detection only, no tmux polling.
     pub fn new_client(mux: Arc<dyn Multiplexer>) -> Result<Self> {
         let config = Config::load(None)?;
@@ -831,58 +884,53 @@ fn resolved_template_strings(config: &Config) -> (String, Vec<String>, Vec<Strin
     (compact, tiles, horizontal)
 }
 
-fn parse_template_lines(
-    lines: &[String],
-    default_lines: &[&str],
-    kind: &str,
-) -> (Vec<Vec<Token>>, Option<TemplateError>) {
-    let mut parsed = Vec::new();
-    let mut latest_error = None;
-    for (i, line) in lines.iter().enumerate() {
-        match parse_line(line) {
-            Ok(tokens) => parsed.push(tokens),
-            Err(e) => {
-                let location = format!("{kind}[{i}]");
-                tracing::warn!(
-                    "failed to parse {location} template '{}': {}, skipping",
-                    line,
-                    e
-                );
-                latest_error = Some(TemplateError::new(location, &e));
-            }
-        }
-    }
+fn default_template_lines(default_lines: &[&str]) -> Vec<Vec<Token>> {
+    default_lines
+        .iter()
+        .map(|s| parse_line(s).expect("default template is valid"))
+        .collect()
+}
 
-    if parsed.is_empty() {
-        parsed = default_lines
-            .iter()
-            .map(|s| parse_line(s).expect("default template is valid"))
-            .collect();
-    }
-    (parsed, latest_error)
+fn parse_template_lines(lines: &[String], kind: &str) -> Result<Vec<Vec<Token>>, TemplateError> {
+    lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            parse_line(line).map_err(|e| {
+                let location = format!("{kind}[{i}]");
+                tracing::warn!("failed to parse {location} template '{}': {}", line, e);
+                TemplateError::new(location, &e)
+            })
+        })
+        .collect()
 }
 
 fn parse_templates(config: &Config) -> (ParsedTemplates, Option<TemplateError>) {
     let (compact_str, tile_strs, horizontal_strs) = resolved_template_strings(config);
-    let mut latest_error = None;
+    let mut first_error = None;
 
     let compact = match parse_line(&compact_str) {
         Ok(tokens) => tokens,
         Err(e) => {
             tracing::warn!("failed to parse compact template: {}, using default", e);
-            latest_error = Some(TemplateError::new("compact", &e));
+            first_error.get_or_insert_with(|| TemplateError::new("compact", &e));
             parse_line(DEFAULT_COMPACT_TEMPLATE).expect("default template is valid")
         }
     };
-    let (tiles, tile_error) = parse_template_lines(&tile_strs, DEFAULT_TILE_TEMPLATES, "tiles");
-    if tile_error.is_some() {
-        latest_error = tile_error;
-    }
-    let (horizontal, horizontal_error) =
-        parse_template_lines(&horizontal_strs, DEFAULT_HORIZONTAL_TEMPLATES, "horizontal");
-    if horizontal_error.is_some() {
-        latest_error = horizontal_error;
-    }
+    let tiles = match parse_template_lines(&tile_strs, "tiles") {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            first_error.get_or_insert(e);
+            default_template_lines(DEFAULT_TILE_TEMPLATES)
+        }
+    };
+    let horizontal = match parse_template_lines(&horizontal_strs, "horizontal") {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            first_error.get_or_insert(e);
+            default_template_lines(DEFAULT_HORIZONTAL_TEMPLATES)
+        }
+    };
 
     (
         ParsedTemplates {
@@ -890,7 +938,7 @@ fn parse_templates(config: &Config) -> (ParsedTemplates, Option<TemplateError>) 
             tiles,
             horizontal,
         },
-        latest_error,
+        first_error,
     )
 }
 
@@ -963,45 +1011,44 @@ fn try_reparse_templates(
     new_tiles: &[String],
     new_horizontal: &[String],
 ) -> Option<TemplateError> {
-    let compact_res = parse_line(new_compact);
-    let tile_results: Vec<_> = new_tiles.iter().map(|s| parse_line(s)).collect();
-    let horizontal_results: Vec<_> = new_horizontal.iter().map(|s| parse_line(s)).collect();
+    let mut first_error = None;
 
-    let mut latest_error = None;
-    if let Err(e) = &compact_res {
-        tracing::warn!("compact template parse error, keeping previous: {}", e);
-        latest_error = Some(TemplateError::new("compact", e));
-    }
-    for (i, r) in tile_results.iter().enumerate() {
-        if let Err(e) = r {
-            let location = format!("tiles[{i}]");
-            tracing::warn!("{location} template parse error, keeping previous: {}", e);
-            latest_error = Some(TemplateError::new(location, e));
-        }
-    }
-    for (i, r) in horizontal_results.iter().enumerate() {
-        if let Err(e) = r {
-            let location = format!("horizontal[{i}]");
-            tracing::warn!("{location} template parse error, keeping previous: {}", e);
-            latest_error = Some(TemplateError::new(location, e));
+    match parse_line(new_compact) {
+        Ok(tokens) => templates.compact = tokens,
+        Err(e) => {
+            tracing::warn!("compact template parse error, keeping previous: {}", e);
+            first_error.get_or_insert_with(|| TemplateError::new("compact", &e));
         }
     }
 
-    if latest_error.is_none() {
-        templates.compact = compact_res.expect("checked above");
-        templates.tiles = tile_results
-            .into_iter()
-            .map(|r| r.expect("checked above"))
-            .collect();
-        templates.horizontal = horizontal_results
-            .into_iter()
-            .map(|r| r.expect("checked above"))
-            .collect();
+    match parse_template_lines(new_tiles, "tiles") {
+        Ok(tokens) => templates.tiles = tokens,
+        Err(e) => {
+            tracing::warn!(
+                "{} template parse error, keeping previous: {}",
+                e.location,
+                e.message
+            );
+            first_error.get_or_insert(e);
+        }
     }
+
+    match parse_template_lines(new_horizontal, "horizontal") {
+        Ok(tokens) => templates.horizontal = tokens,
+        Err(e) => {
+            tracing::warn!(
+                "{} template parse error, keeping previous: {}",
+                e.location,
+                e.message
+            );
+            first_error.get_or_insert(e);
+        }
+    }
+
     *current_compact_str = new_compact.to_string();
     *current_tile_strs = new_tiles.to_vec();
     *current_horizontal_strs = new_horizontal.to_vec();
-    latest_error
+    first_error
 }
 
 #[cfg(test)]
@@ -1182,11 +1229,63 @@ mod tests {
 
         let (templates, error) = parse_templates(&config);
 
-        assert_eq!(templates.horizontal.len(), 1);
+        assert_eq!(
+            templates.horizontal,
+            default_template_lines(DEFAULT_HORIZONTAL_TEMPLATES)
+        );
         assert_eq!(
             error,
             Some(TemplateError {
                 location: "horizontal[1]".to_string(),
+                message: "unknown token 'pr_status' at column 1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_templates_reports_first_error() {
+        let mut config = Config::default();
+        config.sidebar.templates = Some(crate::config::TemplatesConfig {
+            compact: Some("{bad_compact}".to_string()),
+            tiles: Some(vec!["{pr_status}".to_string()]),
+            ..Default::default()
+        });
+
+        let (_, error) = parse_templates(&config);
+
+        assert_eq!(
+            error,
+            Some(TemplateError {
+                location: "compact".to_string(),
+                message: "unknown token 'bad_compact' at column 1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn reparse_updates_valid_sections_when_tile_parse_fails() {
+        let mut templates = parsed_for("{primary}");
+        let mut compact = "{primary}".to_string();
+        let mut tiles = vec!["{primary}".to_string()];
+        let mut top = vec!["{primary}".to_string()];
+
+        let error = try_reparse_templates(
+            &mut templates,
+            &mut compact,
+            &mut tiles,
+            &mut top,
+            "{secondary}",
+            &["{pr_status}".to_string()],
+            &["{elapsed}".to_string()],
+        );
+
+        assert_eq!(templates.compact, parse_line("{secondary}").unwrap());
+        assert_eq!(templates.tiles, vec![parse_line("{primary}").unwrap()]);
+        assert_eq!(templates.horizontal, vec![parse_line("{elapsed}").unwrap()]);
+        assert_eq!(
+            error,
+            Some(TemplateError {
+                location: "tiles[0]".to_string(),
                 message: "unknown token 'pr_status' at column 1".to_string(),
             })
         );
