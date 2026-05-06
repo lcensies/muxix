@@ -67,19 +67,20 @@ impl<'a> RowContext<'a> {
         let pane_suffix = pane_suffixes[idx].clone();
 
         let is_sleeping = app.sleeping_pane_ids.contains(&agent.pane_id);
+        let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
         let is_stale = is_agent_stale(
             agent.status_ts,
             agent.status,
             now_secs,
             app.stale_threshold_secs,
             is_sleeping,
+            is_interrupted,
         );
-        let is_interrupted = app.interrupted_pane_ids.contains(&agent.pane_id);
         let is_active = app.host_agent_idx == Some(idx);
         let is_selected = selected_idx == Some(idx);
 
         let (status_icon_spans, status_icon_style) =
-            super::super::ui::status_icon_and_style(app, agent.status, is_stale, is_interrupted);
+            super::super::ui::status_icon_and_style(app, agent.status, is_stale);
         let status_color = status_icon_style.fg.unwrap_or(Color::Reset);
 
         let elapsed = agent
@@ -392,15 +393,18 @@ fn is_agent_stale(
     now_secs: u64,
     stale_threshold_secs: u64,
     is_sleeping: bool,
+    is_interrupted: bool,
 ) -> bool {
     if is_sleeping {
         return true;
     }
 
-    if matches!(
-        status,
-        Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
-    ) {
+    if !is_interrupted
+        && matches!(
+            status,
+            Some(AgentStatus::Working) | Some(AgentStatus::Waiting)
+        )
+    {
         return false;
     }
 
@@ -435,7 +439,7 @@ mod tests {
 
     #[test]
     fn missing_status_timestamp_is_stale() {
-        assert!(is_agent_stale(None, None, 100, 60, false));
+        assert!(is_agent_stale(None, None, 100, 60, false, false));
     }
 
     #[test]
@@ -445,6 +449,7 @@ mod tests {
             Some(AgentStatus::Working),
             100,
             60,
+            false,
             false
         ));
         assert!(!is_agent_stale(
@@ -452,6 +457,7 @@ mod tests {
             Some(AgentStatus::Waiting),
             100,
             60,
+            false,
             false
         ));
     }
@@ -463,7 +469,8 @@ mod tests {
             Some(AgentStatus::Working),
             100,
             60,
-            true
+            true,
+            false
         ));
     }
 
@@ -588,33 +595,23 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_agent_keeps_elapsed() {
-        let mut agent = test_agent();
-        agent.status = Some(AgentStatus::Working);
-        agent.status_ts = Some(100);
-        let ctx = RowContext {
-            agent: &agent,
-            primary: String::new(),
-            secondary: String::new(),
-            pane_suffix: String::new(),
-            elapsed: format_compact_elapsed(500),
-            status_icon_spans: vec![("!!".to_string(), Style::default())],
-            status_color: Color::Reset,
-            pane_title: None,
-            git_status: None,
-            pr_summary: None,
-            is_stale: false,
-            is_active: false,
-            is_selected: false,
-            palette: test_palette(),
-            agent_icon: String::new(),
-            agent_icon_color: None,
-            agent_label: String::new(),
-            idx: 0,
-            spinner_frame: 0,
-        };
-        assert_eq!(ctx.resolve(TokenId::Elapsed), "8:20");
-        assert!(!ctx.is_stale);
+    fn interrupted_active_agent_can_become_stale() {
+        assert!(is_agent_stale(
+            Some(100),
+            Some(AgentStatus::Working),
+            500,
+            60,
+            false,
+            true
+        ));
+        assert!(!is_agent_stale(
+            Some(480),
+            Some(AgentStatus::Working),
+            500,
+            60,
+            false,
+            true
+        ));
     }
 
     #[test]

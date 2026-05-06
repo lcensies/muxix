@@ -835,7 +835,6 @@ pub(crate) fn status_icon_and_style(
     app: &SidebarApp,
     status: Option<AgentStatus>,
     is_stale: bool,
-    is_interrupted: bool,
 ) -> (Vec<(String, Style)>, Style) {
     let use_nf = crate::nerdfont::is_enabled();
 
@@ -845,15 +844,6 @@ pub(crate) fn status_icon_and_style(
             "\u{f04b2}" // 󰒲 nf-md-sleep
         } else {
             "💤"
-        };
-        return (vec![(icon.to_string(), style)], style);
-    }
-    if is_interrupted {
-        let style = Style::default().fg(app.palette.warning);
-        let icon = if use_nf {
-            "\u{f04e5}" // 󰓥 nf-md-pause
-        } else {
-            "!!"
         };
         return (vec![(icon.to_string(), style)], style);
     }
