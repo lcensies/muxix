@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, anyhow};
+use nix::fcntl::{Flock, FlockArg};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -47,7 +49,7 @@ pub enum CheckState {
 }
 
 /// Summary of a PR found by head ref search
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PrSummary {
     pub number: u32,
     pub title: String,
@@ -66,7 +68,7 @@ pub struct PrSummary {
 }
 
 /// Metadata about PR checks (timing, names) separate from aggregated state
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct CheckMeta {
     /// Earliest start time among pending/running checks (Unix timestamp).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -885,6 +887,22 @@ pub fn save_pr_cache(statuses: &HashMap<PathBuf, HashMap<String, PrSummary>>) {
     let Ok(path) = get_pr_cache_path() else {
         return;
     };
+    let lock_path = path.with_extension("json.lock");
+    let lock_file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+    {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+    let Ok(_lock) = Flock::lock(lock_file, FlockArg::LockExclusive).map_err(|(_file, errno)| errno)
+    else {
+        return;
+    };
+
     let mut merged = load_pr_cache();
     for (repo, prs) in statuses {
         if prs.is_empty() {

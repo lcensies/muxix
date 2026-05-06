@@ -586,11 +586,20 @@ fn publish_pr_path_cache(
             next.insert(entry.path.clone(), pr.clone());
         }
     }
-    if let Ok(mut cache) = path_cache.lock() {
-        *cache = next;
+    let changed = if let Ok(mut cache) = path_cache.lock() {
+        if *cache == next {
+            false
+        } else {
+            *cache = next;
+            true
+        }
+    } else {
+        false
+    };
+    if changed {
+        dirty_flag.store(true, Ordering::Relaxed);
+        let _ = wake_tx.try_send(());
     }
-    dirty_flag.store(true, Ordering::Relaxed);
-    let _ = wake_tx.try_send(());
 }
 
 fn spawn_pr_worker(
@@ -699,24 +708,25 @@ fn spawn_pr_worker(
                 }
             }
             if !fetched.is_empty()
-                && let Ok(mut cache) = repo_cache.lock() {
-                    for (repo_root, prs) in &fetched {
-                        if prs.is_empty() {
-                            cache.remove(repo_root);
-                        } else {
-                            cache.insert(repo_root.clone(), prs.clone());
-                        }
+                && let Ok(mut cache) = repo_cache.lock()
+            {
+                for (repo_root, prs) in &fetched {
+                    if prs.is_empty() {
+                        cache.remove(repo_root);
+                    } else {
+                        cache.insert(repo_root.clone(), prs.clone());
                     }
-                    crate::github::save_pr_cache(&fetched);
-                    publish_pr_path_cache(
-                        &active_entries,
-                        &repo_roots,
-                        &cache,
-                        &path_cache_clone,
-                        &dirty_flag,
-                        &wake_tx,
-                    );
                 }
+                crate::github::save_pr_cache(&fetched);
+                publish_pr_path_cache(
+                    &active_entries,
+                    &repo_roots,
+                    &cache,
+                    &path_cache_clone,
+                    &dirty_flag,
+                    &wake_tx,
+                );
+            }
             last_key = key;
             last_fetch = Instant::now();
         }
