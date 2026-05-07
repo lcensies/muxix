@@ -46,7 +46,7 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
             Ok(worktree) => worktree,
             Err(e) => {
                 if let Some(path) = workflow::fallback_worktree_path(&name, &context)? {
-                    (path, name.clone())
+                    (path, String::new())
                 } else {
                     return Err(anyhow!(
                         "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
@@ -105,6 +105,14 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
         {
             uncommitted.push(handle);
             continue;
+        }
+
+        if branch.is_empty() && !keep_branch {
+            return Err(anyhow!(
+                "Worktree '{}' has broken Git metadata, so its branch cannot be determined. \
+                Use --keep-branch to remove only the worktree directory.",
+                handle
+            ));
         }
 
         // Check unmerged (promptable), only if we're deleting the branch

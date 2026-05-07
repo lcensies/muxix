@@ -147,7 +147,7 @@ def test_remove_with_force_on_uncommitted_changes(
     assert not worktree_path.exists(), "Worktree should be removed"
 
 
-def test_remove_existing_worktree_with_missing_git_admin_dir(
+def test_remove_existing_worktree_with_missing_git_admin_dir_requires_keep_branch(
     mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
     env = mux_server
@@ -162,11 +162,84 @@ def test_remove_existing_worktree_with_missing_git_admin_dir(
         admin_dir = worktree_path / admin_dir
     env.run_command(["rm", "-rf", str(admin_dir)])
 
-    run_workmux_remove(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        branch_name,
+        expect_fail=True,
+    )
+    assert worktree_path.exists(), "Broken worktree should remain without --keep-branch"
+
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        branch_name,
+        keep_branch=True,
+    )
 
     assert not worktree_path.exists(), "Broken worktree should be removed"
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
-    assert branch_name not in branch_list_result.stdout, "Branch should be removed"
+    assert branch_name in branch_list_result.stdout, "Branch should be kept"
+
+
+def test_remove_missing_admin_dir_does_not_guess_branch_from_handle(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature/TICKET-123-fix-bug"
+    handle = "ticket-123-fix-bug"
+    write_workmux_config(mux_repo_path, worktree_naming="basename")
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+
+    worktree_path = mux_repo_path.parent / f"{mux_repo_path.name}__worktrees" / handle
+    git_file = worktree_path / ".git"
+    admin_dir = Path(git_file.read_text().strip().removeprefix("gitdir: "))
+    if not admin_dir.is_absolute():
+        admin_dir = worktree_path / admin_dir
+    env.run_command(["rm", "-rf", str(admin_dir)])
+    env.run_command(["git", "branch", handle], cwd=mux_repo_path)
+
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        handle,
+        expect_fail=True,
+    )
+
+    assert worktree_path.exists(), "Broken worktree should remain without --keep-branch"
+    handle_result = env.run_command(
+        ["git", "branch", "--list", handle], cwd=mux_repo_path
+    )
+    assert handle in handle_result.stdout, "Handle-named branch should not be deleted"
+    real_branch_result = env.run_command(
+        ["git", "branch", "--list", branch_name], cwd=mux_repo_path
+    )
+    assert branch_name in real_branch_result.stdout, "Real branch should not be deleted"
+
+
+def test_remove_missing_admin_dir_rejects_plain_directory(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    handle = "plain-directory"
+    write_workmux_config(mux_repo_path)
+    worktree_parent = mux_repo_path.parent / f"{mux_repo_path.name}__worktrees"
+    plain_dir = worktree_parent / handle
+    plain_dir.mkdir(parents=True)
+    (plain_dir / "file.txt").write_text("not a worktree")
+
+    run_workmux_remove(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        handle,
+        expect_fail=True,
+    )
+
+    assert plain_dir.exists(), "Plain directory should not be removed"
 
 
 def test_remove_from_within_worktree_window_without_branch_arg(

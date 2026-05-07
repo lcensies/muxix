@@ -14,13 +14,9 @@ fn bg_git<'a>() -> Cmd<'a> {
     Cmd::new("git").arg("--no-optional-locks")
 }
 
-pub fn has_missing_admin_dir(worktree_path: &Path) -> bool {
-    let Ok(content) = std::fs::read_to_string(worktree_path.join(".git")) else {
-        return false;
-    };
-    let Some(raw) = content.trim().strip_prefix("gitdir: ") else {
-        return false;
-    };
+pub fn linked_worktree_admin_dir(worktree_path: &Path) -> Option<std::path::PathBuf> {
+    let content = std::fs::read_to_string(worktree_path.join(".git")).ok()?;
+    let raw = content.trim().strip_prefix("gitdir: ")?;
     let gitdir = Path::new(raw.trim());
     let gitdir = if gitdir.is_absolute() {
         gitdir.to_path_buf()
@@ -28,7 +24,11 @@ pub fn has_missing_admin_dir(worktree_path: &Path) -> bool {
         worktree_path.join(gitdir)
     };
 
-    !gitdir.exists()
+    Some(gitdir)
+}
+
+pub fn has_missing_admin_dir(worktree_path: &Path) -> bool {
+    linked_worktree_admin_dir(worktree_path).is_some_and(|gitdir| !gitdir.is_dir())
 }
 
 /// Check if the worktree has uncommitted changes

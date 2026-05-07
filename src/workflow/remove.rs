@@ -26,7 +26,11 @@ pub fn fallback_worktree_path(handle: &str, context: &WorkflowContext) -> Result
     };
 
     let path = base_dir.join(handle);
-    Ok(path.exists().then_some(path))
+    let Some(admin_dir) = git::linked_worktree_admin_dir(&path) else {
+        return Ok(None);
+    };
+    let expected_parent = context.git_common_dir.join("worktrees");
+    Ok((!admin_dir.is_dir() && admin_dir.starts_with(expected_parent)).then_some(path))
 }
 
 /// Remove a worktree without merging
@@ -44,7 +48,7 @@ pub fn remove(
         Ok(worktree) => worktree,
         Err(e) => {
             if let Some(path) = fallback_worktree_path(handle, context)? {
-                (path, handle.to_string())
+                (path, String::new())
             } else {
                 return Err(anyhow!(
                     "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
@@ -96,6 +100,14 @@ pub fn remove(
             branch_name,
             context.main_worktree_root.display(),
             branch_name
+        ));
+    }
+
+    if branch_name.is_empty() && !keep_branch {
+        return Err(anyhow!(
+            "Worktree '{}' has broken Git metadata, so its branch cannot be determined. \
+            Use --keep-branch to remove only the worktree directory.",
+            actual_handle
         ));
     }
 
