@@ -23,7 +23,7 @@ pub use create::{create, create_with_changes};
 pub use list::{list, list_in};
 pub use merge::merge;
 pub use open::open;
-pub use remove::remove;
+pub use remove::{fallback_worktree_path, remove};
 pub use rename::rename;
 pub use setup::write_prompt_file;
 

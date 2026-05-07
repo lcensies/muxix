@@ -35,15 +35,27 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
             .collect::<Result<Vec<_>>>()?
     };
 
+    let config = config::Config::load(None)?;
+    let mux = create_backend(detect_backend());
+    let context = WorkflowContext::new(config, mux, None)?;
+
     // 2. Resolve all targets and validate they exist
     let mut candidates: Vec<(String, PathBuf, String)> = Vec::new();
     for name in resolved_names {
-        let (worktree_path, branch_name) = git::find_worktree(&name).map_err(|_| {
-            anyhow!(
-                "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
-                name
-            )
-        })?;
+        let (worktree_path, branch_name) = match git::find_worktree(&name) {
+            Ok(worktree) => worktree,
+            Err(e) => {
+                if let Some(path) = workflow::fallback_worktree_path(&name, &context)? {
+                    (path, name.clone())
+                } else {
+                    return Err(anyhow!(
+                        "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                        name
+                    )
+                    .context(e));
+                }
+            }
+        };
 
         let handle = worktree_path
             .file_name()
@@ -87,7 +99,10 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
 
     for (handle, path, branch) in candidates {
         // Check uncommitted (blocking)
-        if path.exists() && git::has_uncommitted_changes(&path).unwrap_or(false) {
+        if path.exists()
+            && !git::has_missing_admin_dir(&path)
+            && git::has_uncommitted_changes(&path).unwrap_or(false)
+        {
             uncommitted.push(handle);
             continue;
         }

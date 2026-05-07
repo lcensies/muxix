@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use std::path::PathBuf;
 
 use crate::git;
 use crate::sandbox;
@@ -7,6 +8,26 @@ use tracing::{debug, info};
 use super::cleanup::{self, get_worktree_mode};
 use super::context::WorkflowContext;
 use super::types::RemoveResult;
+
+pub fn fallback_worktree_path(handle: &str, context: &WorkflowContext) -> Result<Option<PathBuf>> {
+    let base_dir = if let Some(ref worktree_dir) = context.config.worktree_dir {
+        crate::util::expand_worktree_dir(worktree_dir, &context.main_worktree_root)?
+    } else {
+        let project_name = context
+            .main_worktree_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow!("Could not determine project name"))?;
+        context
+            .main_worktree_root
+            .parent()
+            .ok_or_else(|| anyhow!("Could not determine parent directory"))?
+            .join(format!("{}__worktrees", project_name))
+    };
+
+    let path = base_dir.join(handle);
+    Ok(path.exists().then_some(path))
+}
 
 /// Remove a worktree without merging
 pub fn remove(
@@ -19,12 +40,20 @@ pub fn remove(
 
     // Get worktree path and branch - this also validates that the worktree exists
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_name) = git::find_worktree(handle).map_err(|_| {
-        anyhow!(
-            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
-            handle
-        )
-    })?;
+    let (worktree_path, branch_name) = match git::find_worktree(handle) {
+        Ok(worktree) => worktree,
+        Err(e) => {
+            if let Some(path) = fallback_worktree_path(handle, context)? {
+                (path, handle.to_string())
+            } else {
+                return Err(anyhow!(
+                    "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                    handle
+                )
+                .context(e));
+            }
+        }
+    };
 
     // Extract actual handle from worktree path (directory name)
     // User may have provided branch name (with slashes) but window names use handle (with dashes)
@@ -78,7 +107,11 @@ pub fn remove(
         ));
     }
 
-    if worktree_path.exists() && git::has_uncommitted_changes(&worktree_path)? && !force {
+    if worktree_path.exists()
+        && !git::has_missing_admin_dir(&worktree_path)
+        && git::has_uncommitted_changes(&worktree_path)?
+        && !force
+    {
         return Err(anyhow!(
             "Worktree has uncommitted changes. Use --force to delete anyway."
         ));

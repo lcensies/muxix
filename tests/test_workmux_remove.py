@@ -147,6 +147,28 @@ def test_remove_with_force_on_uncommitted_changes(
     assert not worktree_path.exists(), "Worktree should be removed"
 
 
+def test_remove_existing_worktree_with_missing_git_admin_dir(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    branch_name = "missing-admin-dir"
+    write_workmux_config(mux_repo_path)
+    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
+    git_file = worktree_path / ".git"
+    admin_dir = Path(git_file.read_text().strip().removeprefix("gitdir: "))
+    if not admin_dir.is_absolute():
+        admin_dir = worktree_path / admin_dir
+    env.run_command(["rm", "-rf", str(admin_dir)])
+
+    run_workmux_remove(env, workmux_exe_path, mux_repo_path, branch_name)
+
+    assert not worktree_path.exists(), "Broken worktree should be removed"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name not in branch_list_result.stdout, "Branch should be removed"
+
+
 def test_remove_from_within_worktree_window_without_branch_arg(
     mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
 ):
