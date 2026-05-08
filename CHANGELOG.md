@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.203 (2026-05-08)
+
+- Stop treating ordinary single-worktree prompts as MiniJinja templates, so examples containing syntax like GitHub Actions `${{ ... }}` pass through without escaping.
+- Let stale worktree directories be removed even when their Git metadata is missing, while still protecting branches unless `--keep-branch` is used.
+
 ## v0.1.202 (2026-05-05)
 
 - Respect `CLAUDE_CONFIG_DIR` when installing Claude Code hooks, so custom Claude config locations are honored.
