@@ -915,25 +915,41 @@ class TestAgentErrors:
 class TestTemplateVariableValidation:
     """Tests for template variable validation."""
 
-    def test_add_fails_with_undefined_prompt_variable(
+    def test_add_single_worktree_leaves_prompt_template_syntax_literal(
         self,
         mux_server: MuxEnvironment,
         workmux_exe_path: Path,
         mux_repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
     ):
-        """Verifies prompt with undefined template variable fails with helpful error."""
+        """Single-worktree prompts should not treat common template syntax as MiniJinja."""
         env = mux_server
-        write_workmux_config(mux_repo_path, panes=[{"command": "<agent>"}])
-        result = run_workmux_command(
+        branch_name = "my-feature"
+        prompt_text = "Use GitHub Actions $" + "{{ secrets.REGISTRY_TOKEN }} here"
+
+        claude_path = fake_agent_installer.install(
+            "claude",
+            "#!/bin/sh\nprintf '%s' \"$2\" > out.txt",
+        )
+        write_workmux_config(
+            mux_repo_path, agent=str(claude_path), panes=[{"command": "<agent>"}]
+        )
+
+        worktree = add_branch_and_get_worktree(
             env,
             workmux_exe_path,
             mux_repo_path,
-            "add my-feature --prompt 'Build for {{ undefined_var }}'",
-            expect_fail=True,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
         )
-        assert "undefined variables" in result.stderr
-        assert "undefined_var" in result.stderr
-        assert "Available variables" in result.stderr
+        window = get_window_name(branch_name)
+        wait_for_file(
+            env,
+            worktree / "out.txt",
+            window_name=window,
+            worktree_path=worktree,
+        )
+        assert (worktree / "out.txt").read_text() == prompt_text
 
     def test_add_fails_with_undefined_branch_template_variable(
         self,

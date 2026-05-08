@@ -481,9 +481,13 @@ pub fn run(
         return Err(anyhow!("No worktree specifications were generated"));
     }
 
+    let prompt_template_enabled =
+        effective_foreach_rows.is_some() || multi.count.is_some() || multi.agent.len() > 1;
+
     // Validate prompt template variables before proceeding to create worktrees.
     // We use the context from the first spec (variable schema is consistent across specs).
-    if let Some(doc) = &prompt_doc
+    if prompt_template_enabled
+        && let Some(doc) = &prompt_doc
         && let Some(first_spec) = specs.first()
     {
         validate_template_variables(&env, &doc.body, &first_spec.template_context)
@@ -510,6 +514,7 @@ pub fn run(
         max_concurrent: multi.max_concurrent,
         sandbox_override,
         prompt_file_only,
+        prompt_template_enabled,
         layout: layout.as_deref(),
         fork_source,
         config_override,
@@ -644,6 +649,7 @@ struct CreationPlan<'a> {
     max_concurrent: Option<u32>,
     sandbox_override: bool,
     prompt_file_only: bool,
+    prompt_template_enabled: bool,
     layout: Option<&'a str>,
     fork_source: Option<crate::workflow::types::ForkSource>,
     config_override: Option<&'a std::path::Path>,
@@ -705,10 +711,16 @@ impl<'a> CreationPlan<'a> {
 
             // Render prompt first (needed for deferred auto-name)
             let rendered_prompt = if let Some(doc) = self.prompt_doc {
-                Some(
-                    render_prompt_body(&doc.body, self.env, &spec.template_context)
-                        .with_context(|| format!("Failed to render prompt for spec index {}", i))?,
-                )
+                if self.prompt_template_enabled {
+                    Some(
+                        render_prompt_body(&doc.body, self.env, &spec.template_context)
+                            .with_context(|| {
+                                format!("Failed to render prompt for spec index {}", i)
+                            })?,
+                    )
+                } else {
+                    Some(doc.body.clone())
+                }
             } else {
                 None
             };

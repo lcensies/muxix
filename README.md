@@ -874,7 +874,9 @@ agents. This is controlled by four mutually exclusive modes:
 - **stdin**: Pipe input lines to create worktrees with templated prompts.
 
 When using any of these modes, branch names are generated from a template, and
-prompts can be templated with variables.
+prompts are templated with variables. Single-worktree prompts are passed through
+literally, so common syntax like GitHub Actions `${{ ... }}` does not need to be
+escaped.
 
 ##### Multi-worktree options
 
@@ -904,7 +906,8 @@ prompts can be templated with variables.
 
 When generating multiple worktrees, any prompt provided via `-p`, `-P`, or `-e`
 is treated as a MiniJinja template. You can use variables from your generation
-mode to create unique prompts for each agent or instance.
+mode to create unique prompts for each agent or instance. For ordinary
+single-worktree `add` commands, prompt text is not templated.
 
 ##### Variable matrices in prompt files
 
