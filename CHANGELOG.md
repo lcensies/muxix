@@ -24,7 +24,7 @@ description: Release notes and version history for workmux
 
 ## v0.1.203 (2026-05-08)
 
-- Stop treating ordinary single-worktree prompts as MiniJinja templates, so examples containing syntax like GitHub Actions `${{ ... }}` pass through without escaping.
+- Stop treating ordinary single-worktree prompts as MiniJinja templates
 - Let stale worktree directories be removed even when their Git metadata is missing, while still protecting branches unless `--keep-branch` is used.
 
 ## v0.1.202 (2026-05-05)
