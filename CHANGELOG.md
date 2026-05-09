@@ -22,7 +22,7 @@ description: Release notes and version history for workmux
 
 # Changelog
 
-## Unreleased
+## v0.1.204 (2026-05-09)
 
 - Allow `workmux add --pr` to reuse an existing local PR branch when it does not already have a worktree. ([#163](https://github.com/raine/workmux/issues/163))
 
