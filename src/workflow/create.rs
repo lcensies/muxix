@@ -207,7 +207,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Auto-detect: create branch if it doesn't exist
     let branch_exists = git::branch_exists(branch_name)?;
-    if branch_exists && remote_branch.is_some() {
+    if branch_exists && remote_branch.is_some() && pr_number.is_none() {
         return Err(anyhow!(
             "Branch '{}' already exists. Remove '--remote' or pick a different branch name.",
             branch_name

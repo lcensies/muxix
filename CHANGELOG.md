@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## Unreleased
+
+- Allow `workmux add --pr` to reuse an existing local PR branch when it does not already have a worktree. ([#163](https://github.com/raine/workmux/issues/163))
+
 ## v0.1.203 (2026-05-08)
 
 - Stop treating ordinary single-worktree prompts as MiniJinja templates

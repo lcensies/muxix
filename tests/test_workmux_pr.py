@@ -116,6 +116,53 @@ def test_add_pr_with_custom_branch_name(mux_server, workmux_exe_path, remote_rep
     assert window_name in windows
 
 
+def test_add_pr_reuses_existing_local_branch(
+    mux_server, workmux_exe_path, remote_repo_path
+):
+    """Test PR checkout when the PR branch already exists locally"""
+    env = mux_server
+    repo_path = env.tmp_path
+    setup_git_repo(repo_path, env.env)
+
+    setup_pr_remote_and_branch(env, repo_path, remote_repo_path, "feature-branch")
+    env.run_command(
+        ["git", "branch", "feature-branch", "origin/feature-branch"],
+        cwd=repo_path,
+    )
+    original_tip = env.run_command(
+        ["git", "rev-parse", "feature-branch"],
+        cwd=repo_path,
+    ).stdout.strip()
+
+    pr_data = {
+        "headRefName": "feature-branch",
+        "headRepositoryOwner": {"login": "testowner"},
+        "state": "OPEN",
+        "isDraft": False,
+        "title": "Add new feature",
+        "author": {"login": "contributor"},
+    }
+    install_fake_gh_cli(env, pr_number=123, json_response=pr_data)
+
+    result = run_workmux_command(env, workmux_exe_path, repo_path, "add --pr 123")
+
+    assert "PR #123" in result.stdout
+
+    worktree_path = get_worktree_path(repo_path, "feature-branch")
+    assert worktree_path.exists()
+    assert (worktree_path / ".git").exists()
+
+    worktree_tip = env.run_command(
+        ["git", "rev-parse", "HEAD"],
+        cwd=worktree_path,
+    ).stdout.strip()
+    assert worktree_tip == original_tip
+
+    window_name = get_window_name("feature-branch")
+    windows = env.list_windows()
+    assert window_name in windows
+
+
 def test_add_pr_merged_state_warning(mux_server, workmux_exe_path, remote_repo_path):
     """Test warning is displayed for merged PRs"""
     env = mux_server

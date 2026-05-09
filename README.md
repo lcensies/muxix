@@ -556,6 +556,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   - Requires the `gh` command-line tool to be installed and authenticated.
   - The local branch name defaults to the PR's head branch name, but can be
     overridden (e.g., `workmux add custom-name --pr 123`).
+  - If that local branch already exists and has no worktree, it is reused.
 - `-A, --auto-name`: Generate branch name from prompt using LLM. See
   [Automatic branch name generation](#automatic-branch-name-generation).
 - `--name <name>`: Override the worktree directory and tmux window name. By
