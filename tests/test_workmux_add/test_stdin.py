@@ -1,5 +1,7 @@
 """Tests for stdin input support in `workmux add`."""
 
+import os
+import subprocess
 from pathlib import Path
 
 from ..conftest import (
@@ -14,6 +16,40 @@ from ..conftest import (
 
 class TestStdinInput:
     """Tests for piping input to workmux add via stdin."""
+
+    def test_open_empty_stdin_pipe_does_not_block(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Verifies that an open stdin pipe with no data is ignored."""
+        env = mux_server
+        write_workmux_config(mux_repo_path)
+
+        read_fd, write_fd = os.pipe()
+        try:
+            with os.fdopen(read_fd, "rb", closefd=True) as stdin:
+                proc = subprocess.Popen(
+                    [str(workmux_exe_path), "add", "topic"],
+                    cwd=mux_repo_path,
+                    env=env.env,
+                    stdin=stdin,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                try:
+                    stdout, stderr = proc.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                    raise AssertionError("workmux add blocked on open empty stdin pipe")
+        finally:
+            os.close(write_fd)
+
+        assert proc.returncode == 0, stderr
+        assert "Successfully created worktree" in stdout
 
     def test_stdin_creates_multiple_worktrees(
         self,

@@ -15,6 +15,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{IsTerminal, Read};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 
 // Re-export the arg types that are used by the CLI
 pub use super::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
@@ -76,12 +78,13 @@ fn generate_branch_name_with_spinner(
 
 /// Check for and read lines from stdin if available.
 fn read_stdin_lines() -> Result<Vec<String>> {
-    if std::io::stdin().is_terminal() {
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() || !stdin_has_data(&stdin)? {
         return Ok(Vec::new());
     }
 
     let mut buffer = String::new();
-    std::io::stdin()
+    stdin
         .take(STDIN_MAX_BYTES)
         .read_to_string(&mut buffer)
         .context("Failed to read from stdin")?;
@@ -93,6 +96,26 @@ fn read_stdin_lines() -> Result<Vec<String>> {
         .collect();
 
     Ok(lines)
+}
+
+#[cfg(unix)]
+fn stdin_has_data(stdin: &std::io::Stdin) -> Result<bool> {
+    let fd = stdin.as_raw_fd();
+    let mut poll_fd = libc::pollfd {
+        fd,
+        events: libc::POLLIN | libc::POLLHUP,
+        revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut poll_fd, 1, 0) };
+    if ready < 0 {
+        return Err(std::io::Error::last_os_error()).context("Failed to poll stdin");
+    }
+    Ok(ready > 0)
+}
+
+#[cfg(not(unix))]
+fn stdin_has_data(_stdin: &std::io::Stdin) -> Result<bool> {
+    Ok(true)
 }
 
 /// Check preconditions for the add command (git repo and multiplexer session).
