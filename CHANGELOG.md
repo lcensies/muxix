@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.206 (2026-05-12)
+
+- Add Pi agent support for container and Lima sandboxes
+- Fix `workmux add` hanging when launched with an open stdin pipe that has no input
+
 ## v0.1.205 (2026-05-12)
 
 - Update Codex setup to enable hooks with the current `hooks` feature flag. ([#164](https://github.com/raine/workmux/issues/164))
