@@ -22,6 +22,10 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.205 (2026-05-12)
+
+- Update Codex setup to enable hooks with the current `hooks` feature flag. ([#164](https://github.com/raine/workmux/issues/164))
+
 ## v0.1.204 (2026-05-09)
 
 - Allow `workmux add --pr` to reuse an existing local PR branch when it does not already have a worktree. ([#163](https://github.com/raine/workmux/issues/163))
