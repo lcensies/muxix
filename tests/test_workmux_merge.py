@@ -503,6 +503,40 @@ def test_merge_falls_back_to_main_when_base_branch_deleted(
     )
 
 
+def test_merge_falls_back_to_main_when_base_is_remote_only(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    """Verifies merge ignores remote-only stored base refs."""
+    env = mux_server
+    branch_name = "feature/remote-base-child"
+    remote_base = "origin/remote-base"
+    write_workmux_config(repo_path, env=env)
+
+    env.run_command(
+        ["git", "update-ref", f"refs/remotes/{remote_base}", "HEAD"], cwd=repo_path
+    )
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    env.run_command(
+        ["git", "config", "--local", f"branch.{branch_name}.workmux-base", remote_base],
+        cwd=repo_path,
+    )
+
+    commit_msg = "feat: remote base child work"
+    create_commit(env, worktree_path, commit_msg)
+    commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=worktree_path
+    ).stdout.strip()
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    assert not worktree_path.exists(), "Worktree should be removed"
+    main_log_result = env.run_command(
+        ["git", "log", "--oneline", "main"], cwd=repo_path
+    )
+    assert commit_hash in main_log_result.stdout
+
+
 def test_merge_succeeds_when_target_branch_checked_out_in_another_worktree(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):

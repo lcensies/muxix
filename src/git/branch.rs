@@ -59,6 +59,22 @@ pub fn branch_exists(branch_name: &str) -> Result<bool> {
     branch_exists_in(branch_name, None)
 }
 
+/// Check if a local branch exists.
+pub fn local_branch_exists(branch_name: &str) -> Result<bool> {
+    local_branch_exists_in(branch_name, None)
+}
+
+/// Check if a local branch exists in a specific workdir.
+pub fn local_branch_exists_in(branch_name: &str, workdir: Option<&Path>) -> Result<bool> {
+    let ref_name = format!("refs/heads/{}", branch_name);
+    let cmd = Cmd::new("git").args(&["show-ref", "--verify", "--quiet", &ref_name]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run_as_check()
+}
+
 /// Check if a branch exists in a specific workdir
 pub fn branch_exists_in(branch_name: &str, workdir: Option<&Path>) -> Result<bool> {
     let cmd = Cmd::new("git").args(&["rev-parse", "--verify", "--quiet", branch_name]);

@@ -76,8 +76,8 @@ pub fn merge(
     } else {
         match git::get_branch_base(&branch_to_merge) {
             Ok(base) => {
-                // Verify the base branch still exists
-                if git::branch_exists(&base)? {
+                // Verify the base branch still exists locally.
+                if git::local_branch_exists(&base)? {
                     info!(
                         branch = %branch_to_merge,
                         base = %base,
@@ -88,7 +88,7 @@ pub fn merge(
                     info!(
                         branch = %branch_to_merge,
                         base = %base,
-                        "merge:base branch not found, defaulting to main"
+                        "merge:base branch not found locally, defaulting to main"
                     );
                     None
                 }
