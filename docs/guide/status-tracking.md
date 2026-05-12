@@ -25,7 +25,7 @@ Workmux can display the status of the agent in your tmux window list, giving you
 
 **Notes:**
 
-- **Codex**: No 💬 waiting state. Requires `codex_hooks = true` in `~/.codex/config.toml` (see [Codex setup](#codex-setup))
+- **Codex**: No 💬 waiting state. Requires `hooks = true` in `~/.codex/config.toml` (see [Codex setup](#codex-setup))
 - **Copilot CLI**: No 💬 waiting state
 - **Pi**: No 💬 waiting state
 - **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
@@ -92,7 +92,7 @@ If you prefer manual setup, first ensure hooks are enabled in your Codex config:
 ```toml
 # ~/.codex/config.toml
 [features]
-codex_hooks = true
+hooks = true
 ```
 
 Then download the hooks configuration:

@@ -6,7 +6,7 @@
 //! Codex hooks require enabling the feature flag in `~/.codex/config.toml`:
 //! ```toml
 //! [features]
-//! codex_hooks = true
+//! hooks = true
 //! ```
 
 use anyhow::{Context, Result};
@@ -97,7 +97,7 @@ fn config_toml_path() -> Option<PathBuf> {
     codex_dir().map(|d| d.join("config.toml"))
 }
 
-/// Ensure `codex_hooks = true` is set under `[features]` in config.toml.
+/// Ensure `hooks = true` is set under `[features]` in config.toml.
 /// Returns true if the file was modified.
 fn ensure_hooks_feature_flag() -> Result<bool> {
     let path =
@@ -115,12 +115,16 @@ fn ensure_hooks_feature_flag() -> Result<bool> {
     }
 
     let updated = if has_hooks_feature_key(&content) {
-        // Replace existing codex_hooks value
+        // Replace existing hooks value
         content
             .lines()
             .map(|line| {
-                if line.trim().starts_with("codex_hooks") && line.contains('=') {
-                    "codex_hooks = true"
+                if line
+                    .trim()
+                    .split_once('=')
+                    .is_some_and(|(key, _)| key.trim() == "hooks")
+                {
+                    "hooks = true"
                 } else {
                     line
                 }
@@ -130,7 +134,7 @@ fn ensure_hooks_feature_flag() -> Result<bool> {
             + if content.ends_with('\n') { "\n" } else { "" }
     } else if content.contains("[features]") {
         // Insert after the [features] line
-        content.replacen("[features]", "[features]\ncodex_hooks = true", 1)
+        content.replacen("[features]", "[features]\nhooks = true", 1)
     } else {
         // Append a new [features] section
         let sep = if content.is_empty() || content.ends_with('\n') {
@@ -138,7 +142,7 @@ fn ensure_hooks_feature_flag() -> Result<bool> {
         } else {
             "\n"
         };
-        format!("{content}{sep}\n[features]\ncodex_hooks = true\n")
+        format!("{content}{sep}\n[features]\nhooks = true\n")
     };
 
     if let Some(parent) = path.parent() {
@@ -149,19 +153,21 @@ fn ensure_hooks_feature_flag() -> Result<bool> {
     Ok(true)
 }
 
-/// Check if `codex_hooks = true` is set in the config content.
+/// Check if `hooks = true` is set in the config content.
 fn is_hooks_feature_enabled(content: &str) -> bool {
     content.lines().any(|line| {
         let trimmed = line.trim();
-        trimmed == "codex_hooks = true" || trimmed == "codex_hooks=true"
+        trimmed == "hooks = true" || trimmed == "hooks=true"
     })
 }
 
-/// Check if `codex_hooks` key exists at all (regardless of value).
+/// Check if `hooks` key exists at all (regardless of value).
 fn has_hooks_feature_key(content: &str) -> bool {
-    content
-        .lines()
-        .any(|line| line.trim().starts_with("codex_hooks") && line.contains('='))
+    content.lines().any(|line| {
+        line.trim()
+            .split_once('=')
+            .is_some_and(|(key, _)| key.trim() == "hooks")
+    })
 }
 
 /// Install workmux hooks into `~/.codex/hooks.json`.
@@ -226,7 +232,7 @@ pub fn install() -> Result<String> {
 
     // Ensure hooks feature flag is enabled in config.toml
     let feature_msg = match ensure_hooks_feature_flag() {
-        Ok(true) => ", enabled codex_hooks in ~/.codex/config.toml",
+        Ok(true) => ", enabled hooks in ~/.codex/config.toml",
         _ => "",
     };
 
@@ -408,35 +414,33 @@ mod tests {
 
     #[test]
     fn test_is_hooks_feature_enabled_true() {
-        assert!(is_hooks_feature_enabled("[features]\ncodex_hooks = true\n"));
+        assert!(is_hooks_feature_enabled("[features]\nhooks = true\n"));
     }
 
     #[test]
     fn test_is_hooks_feature_enabled_no_spaces() {
-        assert!(is_hooks_feature_enabled("[features]\ncodex_hooks=true\n"));
+        assert!(is_hooks_feature_enabled("[features]\nhooks=true\n"));
     }
 
     #[test]
     fn test_is_hooks_feature_enabled_with_other_settings() {
-        let content = "[model]\ndefault = \"gpt-4\"\n\n[features]\ncodex_hooks = true\n";
+        let content = "[model]\ndefault = \"gpt-4\"\n\n[features]\nhooks = true\n";
         assert!(is_hooks_feature_enabled(content));
     }
 
     #[test]
     fn test_is_hooks_feature_enabled_false() {
-        assert!(!is_hooks_feature_enabled(
-            "[features]\ncodex_hooks = false\n"
-        ));
+        assert!(!is_hooks_feature_enabled("[features]\nhooks = false\n"));
     }
 
     #[test]
     fn test_has_hooks_feature_key_true() {
-        assert!(has_hooks_feature_key("[features]\ncodex_hooks = true\n"));
+        assert!(has_hooks_feature_key("[features]\nhooks = true\n"));
     }
 
     #[test]
     fn test_has_hooks_feature_key_false() {
-        assert!(has_hooks_feature_key("[features]\ncodex_hooks = false\n"));
+        assert!(has_hooks_feature_key("[features]\nhooks = false\n"));
     }
 
     #[test]
