@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.207 (2026-05-13)
+
+- Fix `workmux merge` falling back incorrectly when a saved base branch only exists as a remote ref
+- Update the Pi sandbox image to install the current Pi agent package ([#165](https://github.com/raine/workmux/pull/165))
+
 ## v0.1.206 (2026-05-12)
 
 - Add Pi agent support for container and Lima sandboxes
