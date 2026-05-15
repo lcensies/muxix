@@ -22,6 +22,13 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.208 (2026-05-15)
+
+- Add a horizontal top bar option for the sidebar, with configurable height and chip width
+- Allow showing PR status and checks in sidebar
+- Make sidebar template errors visible in sidebar
+- Improve sidebar loading, sync, spacing, and horizontal layout behavior
+
 ## v0.1.207 (2026-05-13)
 
 - Fix `workmux merge` falling back incorrectly when a saved base branch only exists as a remote ref
