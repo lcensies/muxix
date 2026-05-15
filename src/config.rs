@@ -2798,10 +2798,8 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   width: 40       # absolute columns
 #   # width: "15%"  # percentage of terminal width
 #
-#   # Top bar height: absolute rows or percentage of terminal height.
-#   # Default: "10%" (clamped to 1-5 rows).
+#   # Top bar height in rows.
 #   height: 3
-#   # height: "10%"
 #
 #   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.

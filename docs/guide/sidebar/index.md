@@ -66,12 +66,18 @@ sidebar:
   width: 40 # absolute columns
   # width: "15%"  # percentage of terminal width
 
-  # Top bar height: absolute rows or percentage of terminal height
-  height: 3
-  # height: "10%"
-
   # Layout mode for the left sidebar: "compact" or "tiles" (default)
   layout: tiles
+```
+
+For a horizontal top bar:
+
+```yaml
+sidebar:
+  position: top
+
+  # Top bar height in rows
+  height: 3
 
   horizontal:
     item_width: 24 # horizontal chip width in columns
@@ -84,10 +90,11 @@ sidebar:
 ```
 
 Width defaults to 10% of terminal width, clamped between 25 and 50 columns.
-When set explicitly, the clamp is removed (minimum 10 columns). Height defaults
-to 10% of terminal height, clamped between 1 and 5 rows. Horizontal item width
-defaults to 24 columns and is clamped between 12 and 80. Position changes take
-effect the next time you toggle the sidebar off and on.
+When set explicitly, the clamp is removed (minimum 10 columns). Height only
+applies to `position: top`; set it as a row count for the number of horizontal
+lines you want to show. Horizontal item width defaults to 24 columns and is
+clamped between 12 and 80. Position changes take effect the next time you toggle
+the sidebar off and on.
 
 ## Layout modes
 

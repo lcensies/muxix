@@ -27,8 +27,8 @@ sidebar:
 ```
 
 The values shown above are also the built-in defaults, so leaving these keys
-unset gives you the standard rendering. `horizontal` also accepts the legacy
-alias `top`.
+unset gives you the standard rendering. `top` is also accepted as an alias for
+`horizontal`.
 
 Templates can be set in either the global config or a project's `.workmux.yaml`.
 Project values override global values. Changes are picked up live by running

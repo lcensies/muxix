@@ -68,8 +68,15 @@ sidebar:
   position: left # "left" (default) or "top"
   width: 40 # left width in columns (default: "10%", clamped 25-50)
   # width: "15%"
-  height: 3 # top height in rows (default: "10%", clamped 1-5)
   layout: tiles # left only: "compact" or "tiles" (default)
+```
+
+For a horizontal top bar:
+
+```yaml
+sidebar:
+  position: top
+  height: 3 # top height in rows
   horizontal:
     item_width: 24 # horizontal chip width in columns (default, clamped 12-80)
   templates:
@@ -81,11 +88,12 @@ sidebar:
 
 Explicit width values bypass the default 25-50 column clamp (minimum 10
 columns). Layout preference can also be toggled at runtime with `v` and is
-persisted across restarts. The top bar uses a horizontal chip layout, so `v` has
-no effect there. Horizontal templates render as many configured lines as the
-current height allows. `horizontal.item_width` controls each chip width and is
-clamped between 12 and 80 columns. Position changes take effect after toggling
-the sidebar off and on.
+persisted across restarts. Height only applies to `position: top`; set it as a
+row count for the number of horizontal lines you want to show. The top bar uses a
+horizontal chip layout, so `v` has no effect there. Horizontal templates render
+as many configured lines as the current height allows. `horizontal.item_width`
+controls each chip width and is clamped between 12 and 80 columns. Position
+changes take effect after toggling the sidebar off and on.
 
 ## How it works
 
