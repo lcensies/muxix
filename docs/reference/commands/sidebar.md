@@ -20,6 +20,7 @@ Each agent row displays:
 - Status icon (working/waiting/done with spinner animation)
 - Project and worktree name (e.g. `myproject/fix-bug`)
 - Elapsed time since last status change
+- Git diff stats, plus optional pull request number and check status in custom templates
 
 ## Keybindings
 

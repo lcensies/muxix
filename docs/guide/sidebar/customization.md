@@ -68,6 +68,12 @@ wrap them with another `↑` / `↓` literal in your template, otherwise a stray
 glyph would remain when the count is zero. The same applies to `{git_dirty}`
 and `{git_conflict}`, which are self-contained glyph indicators.
 
+`{pr_number}` and `{pr_checks}` are populated from the current git branch's
+matching GitHub pull request. They render empty on `main`/`master`, when the
+branch has no PR, when git status is unavailable, or while PR data has not been
+fetched yet. Check status shows an icon and, when space allows, passed/total
+counts for pending or failing checks.
+
 Unknown tokens or unbalanced braces cause that template section to be rejected
 and the previous valid section (or the built-in default) is kept. The sidebar
 also shows a visible warning such as `template error: unknown token 'pr_status'
@@ -263,4 +269,15 @@ sidebar:
     tiles:
       - "{primary} {fill} {git_stats}"
       - "{secondary} {fill} {elapsed}"
+```
+
+Show pull request number and check status in tile mode:
+
+```yaml
+sidebar:
+  templates:
+    tiles:
+      - "{primary} {pane_suffix} {fill} {elapsed}"
+      - "{secondary} {fill} {git_stats}"
+      - "{pane_title} {fill} {pr_number} {pr_checks}"
 ```

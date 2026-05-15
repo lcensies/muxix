@@ -47,6 +47,7 @@ Each agent is displayed as a tile showing:
 - Status icon with spinner animation (working/waiting/done)
 - Worktree name and elapsed time since last status change
 - Project name and git diff stats (committed + uncommitted lines)
+- Optional pull request number and check status for the current branch
 - Agent task description
 
 The exact layout, styling, and per-agent icons are fully customizable; see
