@@ -32,6 +32,7 @@ The host-side log lives at `$XDG_STATE_HOME/workmux/workmux.log` and includes sa
 ```yaml
 nerdfont: true # Enable nerdfont icons (prompted on first run)
 merge_strategy: rebase # Make workmux merge do rebase by default
+merge_keep: true # Keep worktree, window, and branch after merge by default
 agent: claude
 
 panes:
@@ -82,6 +83,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | `agents`           | Named agent commands (global-only). See [named agents](/guide/agents#named-agents). | `{}`                        |
 | `prompt_file_only` | Write prompt files without injecting into agent commands                            | `false`                     |
 | `merge_strategy`   | Default merge strategy (`merge`, `rebase`, `squash`)                                | `merge`                     |
+| `merge_keep`       | Keep resources after `workmux merge` by default                                     | `false`                     |
 | `theme`            | Dashboard color scheme (see [themes](#themes))                                      | `default` (auto dark/light) |
 | `mode`             | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode).         | `window`                    |
 

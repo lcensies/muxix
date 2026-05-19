@@ -87,6 +87,7 @@ const DEFAULT_GLOBAL_CONFIG: &str = r#"# workmux global configuration
 # nerdfont: true
 # agent: claude
 # merge_strategy: rebase
+# merge_keep: true
 #
 # panes:
 #   - command: <agent>

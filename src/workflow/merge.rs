@@ -310,9 +310,9 @@ pub fn merge(
         ));
     }
 
-    // Skip cleanup if --keep flag is used
+    // Skip cleanup when keep behavior is enabled
     if keep {
-        info!(branch = %branch_to_merge, "merge:skipping cleanup (--keep)");
+        info!(branch = %branch_to_merge, "merge:skipping cleanup");
         return Ok(MergeResult {
             branch_merged: branch_to_merge,
             main_branch: target_branch.to_string(),

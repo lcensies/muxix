@@ -2,7 +2,7 @@ use crate::config::MergeStrategy;
 use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::WorkflowContext;
 use crate::{config, workflow};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -12,10 +12,15 @@ pub fn run(
     mut rebase: bool,
     mut squash: bool,
     keep: bool,
+    cleanup: bool,
     no_verify: bool,
     no_hooks: bool,
     notification: bool,
 ) -> Result<()> {
+    if keep && cleanup {
+        bail!("--keep and --cleanup cannot be used together");
+    }
+
     // Inside a sandbox guest, route through RPC to the host supervisor
     if crate::sandbox::guest::is_sandbox_guest() {
         let name_to_merge = super::resolve_name(name)?;
@@ -26,6 +31,7 @@ pub fn run(
             squash,
             ignore_uncommitted,
             keep,
+            cleanup,
             no_verify,
             no_hooks,
             notification,
@@ -33,6 +39,11 @@ pub fn run(
     }
 
     let config = config::Config::load(None)?;
+    let effective_keep = if cleanup {
+        false
+    } else {
+        keep || config.merge_keep.unwrap_or(false)
+    };
 
     // Apply default strategy from config if no CLI flags are provided
     if !rebase
@@ -61,7 +72,7 @@ pub fn run(
     }
 
     // Only announce pre-remove hooks if we're actually going to run cleanup
-    if !keep && !no_hooks {
+    if !effective_keep && !no_hooks {
         super::announce_hooks(&context.config, None, super::HookPhase::PreRemove);
     }
 
@@ -71,7 +82,7 @@ pub fn run(
         ignore_uncommitted,
         rebase,
         squash,
-        keep,
+        effective_keep,
         no_verify,
         no_hooks,
         notification,
@@ -89,7 +100,7 @@ pub fn run(
     );
     println!("✓ Merged '{}'", result.branch_merged);
 
-    if keep {
+    if effective_keep {
         println!("Worktree, window, and branch kept");
     } else {
         println!(
@@ -110,6 +121,7 @@ fn run_via_rpc(
     squash: bool,
     ignore_uncommitted: bool,
     keep: bool,
+    cleanup: bool,
     no_verify: bool,
     no_hooks: bool,
     notification: bool,
@@ -125,6 +137,7 @@ fn run_via_rpc(
         squash,
         ignore_uncommitted,
         keep,
+        cleanup,
         no_verify,
         no_hooks,
         notification,

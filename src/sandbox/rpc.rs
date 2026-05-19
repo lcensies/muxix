@@ -46,6 +46,8 @@ pub enum RpcRequest {
         squash: bool,
         ignore_uncommitted: bool,
         keep: bool,
+        #[serde(default)]
+        cleanup: bool,
         no_verify: bool,
         no_hooks: bool,
         notification: bool,
@@ -293,6 +295,7 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
             squash,
             ignore_uncommitted,
             keep,
+            cleanup,
             no_verify: _,
             no_hooks: _,
             notification,
@@ -310,6 +313,7 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
                 squash,
                 ignore_uncommitted,
                 keep,
+                cleanup,
                 notification,
                 &ctx.worktree_path,
                 &mut writer,
@@ -567,6 +571,7 @@ fn handle_merge(
     squash: bool,
     ignore_uncommitted: bool,
     keep: bool,
+    cleanup: bool,
     notification: bool,
     worktree_path: &PathBuf,
     writer: &mut impl Write,
@@ -591,6 +596,9 @@ fn handle_merge(
     }
     if keep {
         cmd.arg("--keep");
+    }
+    if cleanup {
+        cmd.arg("--cleanup");
     }
     if notification {
         cmd.arg("--notification");
@@ -1080,7 +1088,7 @@ mod tests {
             r#"{"type":"SetTitle","title":"my agent"}"#,
             r#"{"type":"SpawnAgent","prompt":"do stuff","branch_name":null,"background":null}"#,
             r#"{"type":"Exec","command":"cargo","args":["build","--release"]}"#,
-            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"no_hooks":false,"notification":false}"#,
+            r#"{"type":"Merge","name":"feat","into":null,"rebase":true,"squash":false,"ignore_uncommitted":false,"keep":false,"cleanup":false,"no_verify":false,"no_hooks":false,"notification":false}"#,
             r#"{"type":"Close","name":"feature-x"}"#,
             r#"{"type":"ClipboardRead","mime":"image/png"}"#,
         ];
@@ -1510,6 +1518,7 @@ mod tests {
             squash: false,
             ignore_uncommitted: false,
             keep: true,
+            cleanup: false,
             no_verify: false,
             no_hooks: true,
             notification: true,
@@ -1519,6 +1528,7 @@ mod tests {
         assert!(json.contains("\"name\":\"feature-x\""));
         assert!(json.contains("\"rebase\":true"));
         assert!(json.contains("\"keep\":true"));
+        assert!(json.contains("\"cleanup\":false"));
         assert!(json.contains("\"no_hooks\":true"));
         assert!(json.contains("\"notification\":true"));
 
@@ -1532,6 +1542,7 @@ mod tests {
                 squash,
                 ignore_uncommitted,
                 keep,
+                cleanup,
                 no_verify,
                 no_hooks,
                 notification,
@@ -1542,10 +1553,21 @@ mod tests {
                 assert!(!squash);
                 assert!(!ignore_uncommitted);
                 assert!(keep);
+                assert!(!cleanup);
                 assert!(!no_verify);
                 assert!(no_hooks);
                 assert!(notification);
             }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_request_serialization_merge_defaults_cleanup() {
+        let json = r#"{"type":"Merge","name":"feature-x","into":null,"rebase":false,"squash":false,"ignore_uncommitted":false,"keep":false,"no_verify":false,"no_hooks":false,"notification":false}"#;
+        let parsed: RpcRequest = serde_json::from_str(json).unwrap();
+        match parsed {
+            RpcRequest::Merge { cleanup, .. } => assert!(!cleanup),
             _ => panic!("Wrong variant"),
         }
     }

@@ -8,6 +8,7 @@ from .conftest import (
     get_worktree_path,
     run_workmux_add,
     run_workmux_merge,
+    write_global_workmux_config,
     write_workmux_config,
 )
 
@@ -334,6 +335,105 @@ def test_merge_with_keep_flag_skips_cleanup(
     assert window_name in windows, "Window should still exist"
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name in branch_list_result.stdout, "Local branch should still exist"
+
+
+def test_merge_keep_config_skips_cleanup(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature-config-keep"
+    window_name = get_window_name(branch_name)
+    write_workmux_config(repo_path, env=env, merge_keep=True)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: keep via config")
+    commit_hash = env.run_command(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=worktree_path
+    ).stdout.strip()
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    log_result = env.run_command(["git", "log", "--oneline", "main"])
+    assert commit_hash in log_result.stdout, "Feature commit should be on main branch"
+    assert worktree_path.exists(), "Worktree should still exist with merge_keep"
+    windows = env.list_windows()
+    assert window_name in windows, "Window should still exist with merge_keep"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name in branch_list_result.stdout, (
+        "Local branch should still exist with merge_keep"
+    )
+
+
+def test_merge_cleanup_flag_overrides_merge_keep_config(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature-config-cleanup"
+    window_name = get_window_name(branch_name)
+    write_workmux_config(repo_path, env=env, merge_keep=True)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: cleanup override")
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, cleanup=True)
+
+    assert not worktree_path.exists(), "Worktree should be removed with --cleanup"
+    windows = env.list_windows()
+    assert window_name not in windows, "Window should be closed with --cleanup"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name not in branch_list_result.stdout, (
+        "Local branch should be deleted with --cleanup"
+    )
+
+
+def test_merge_keep_global_config_skips_cleanup(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature-global-keep"
+    window_name = get_window_name(branch_name)
+    write_global_workmux_config(env, merge_keep=True)
+    write_workmux_config(repo_path, env=env)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: global keep")
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    assert worktree_path.exists(), "Worktree should still exist with global merge_keep"
+    windows = env.list_windows()
+    assert window_name in windows, "Window should still exist with global merge_keep"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name in branch_list_result.stdout, (
+        "Local branch should still exist with global merge_keep"
+    )
+
+
+def test_merge_keep_project_config_false_overrides_global_true(
+    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature-project-cleanup"
+    window_name = get_window_name(branch_name)
+    write_global_workmux_config(env, merge_keep=True)
+    write_workmux_config(repo_path, env=env, merge_keep=False)
+    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+
+    worktree_path = get_worktree_path(repo_path, branch_name)
+    create_commit(env, worktree_path, "feat: project cleanup")
+
+    run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+
+    assert not worktree_path.exists(), "Project merge_keep false should clean up"
+    windows = env.list_windows()
+    assert window_name not in windows, "Project merge_keep false should close window"
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name not in branch_list_result.stdout, (
+        "Project merge_keep false should delete local branch"
+    )
 
 
 def test_merge_into_different_branch(

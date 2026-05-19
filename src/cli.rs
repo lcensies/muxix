@@ -461,6 +461,10 @@ enum Commands {
         #[arg(short = 'k', long)]
         keep: bool,
 
+        /// Clean up the worktree, window, and branch after merging
+        #[arg(long, conflicts_with = "keep")]
+        cleanup: bool,
+
         /// Skip running pre-merge hooks
         #[arg(short = 'n', long)]
         no_verify: bool,
@@ -981,6 +985,7 @@ pub fn run() -> Result<()> {
             rebase,
             squash,
             keep,
+            cleanup,
             no_verify,
             no_hooks,
             notification,
@@ -991,6 +996,7 @@ pub fn run() -> Result<()> {
             rebase,
             squash,
             keep,
+            cleanup,
             no_verify,
             no_hooks,
             notification,

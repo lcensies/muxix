@@ -224,6 +224,7 @@ defined in the project config.
 ```yaml
 nerdfont: true # Enable nerdfont icons (prompted on first run)
 merge_strategy: rebase # Make workmux merge do rebase by default
+merge_keep: true # Keep worktree, window, and branch after merge by default
 agent: claude
 
 panes:
@@ -275,6 +276,7 @@ customize.
 | `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
 | `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only)       | `{}`                        |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                                  | `merge`                     |
+| `merge_keep`     | Keep resources after `workmux merge` by default                                                       | `false`                     |
 | `theme`          | Dashboard color scheme ([custom colors](https://workmux.raine.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
 
 #### Naming options
@@ -1089,6 +1091,7 @@ up all associated resources (worktree, tmux window, and local branch).
   opening an editor
 - `--keep`, `-k`: Keep the worktree, window, and branch after merging (skip
   cleanup). Useful when you want to verify the merge before cleaning up.
+- `--cleanup`: Clean up after merging, overriding `merge_keep: true`.
 - `--notification`: Show a system notification on successful merge. Useful when
   delegating merge to an AI agent and you want to be notified when it completes.
 
@@ -1112,6 +1115,16 @@ merge strategy, which does `--rebase` by default.
 merge_strategy: rebase
 ```
 
+To keep the worktree, window, and branch after every merge unless overridden,
+set:
+
+```yaml
+merge_keep: true
+```
+
+Use `workmux merge --cleanup` to clean up for a single merge when this default is
+enabled.
+
 #### What happens
 
 1. Determines which branch to merge (specified branch or current branch if
@@ -1122,10 +1135,12 @@ merge_strategy: rebase
 4. Commits staged changes if present (unless `--ignore-uncommitted` is used)
 5. Merges your branch into the target using the selected strategy (default:
    merge commit)
-6. Deletes the tmux window (including the one you're currently in if you ran
-   this from a worktree) — skipped if `--keep` is used
-7. Removes the worktree — skipped if `--keep` is used
-8. Deletes the local branch — skipped if `--keep` is used
+6. Deletes the tmux window unless keep behavior is enabled via `--keep` or
+   `merge_keep: true`
+7. Removes the worktree unless keep behavior is enabled via `--keep` or
+   `merge_keep: true`
+8. Deletes the local branch unless keep behavior is enabled via `--keep` or
+   `merge_keep: true`
 
 #### Typical workflow
 

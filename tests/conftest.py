@@ -1328,6 +1328,7 @@ def write_workmux_config(
     window_prefix: Optional[str] = None,
     agent: Optional[str] = None,
     merge_strategy: Optional[str] = None,
+    merge_keep: Optional[bool] = None,
     worktree_naming: Optional[str] = None,
     worktree_prefix: Optional[str] = None,
     base_branch: Optional[str] = None,
@@ -1356,6 +1357,8 @@ def write_workmux_config(
         config["agent"] = agent
     if merge_strategy:
         config["merge_strategy"] = merge_strategy
+    if merge_keep is not None:
+        config["merge_keep"] = merge_keep
     if worktree_naming:
         config["worktree_naming"] = worktree_naming
     if worktree_prefix:
@@ -1387,6 +1390,7 @@ def write_global_workmux_config(
     window_prefix: Optional[str] = None,
     agent: Optional[str] = None,
     base_branch: Optional[str] = None,
+    merge_keep: Optional[bool] = None,
     agents: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """Creates the global ~/.config/workmux/config.yaml file within the isolated HOME."""
@@ -1403,6 +1407,8 @@ def write_global_workmux_config(
         config["agent"] = agent
     if base_branch is not None:
         config["base_branch"] = base_branch
+    if merge_keep is not None:
+        config["merge_keep"] = merge_keep
     if agents is not None:
         config["agents"] = agents
 
@@ -1820,6 +1826,7 @@ def run_workmux_merge(
     rebase: bool = False,
     squash: bool = False,
     keep: bool = False,
+    cleanup: bool = False,
     into: Optional[str] = None,
     no_verify: bool = False,
     no_hooks: bool = False,
@@ -1842,6 +1849,7 @@ def run_workmux_merge(
         rebase: Whether to use --rebase flag
         squash: Whether to use --squash flag
         keep: Whether to use --keep flag
+        cleanup: Whether to use --cleanup flag
         into: Optional target branch to merge into (instead of main)
         no_verify: Whether to use --no-verify flag (skip pre-merge hooks)
         notification: Whether to use --notification flag (show system notification)
@@ -1866,6 +1874,8 @@ def run_workmux_merge(
         flags.append("--squash")
     if keep:
         flags.append("--keep")
+    if cleanup:
+        flags.append("--cleanup")
     if into:
         flags.append(f"--into {into}")
     if no_verify:

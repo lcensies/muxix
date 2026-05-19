@@ -27,6 +27,7 @@ If your workflow uses pull requests, the merge happens on the remote after revie
 | `--into <branch>`      | Merge into the specified branch instead of main. Useful for stacked PRs, git-flow workflows, or merging subtasks into a parent feature branch. If the target branch has its own worktree, the merge happens there; otherwise, the main worktree is used. |
 | `--ignore-uncommitted` | Commit any staged changes before merging without opening an editor.                                                                                                                                                                                      |
 | `--keep, -k`           | Keep the worktree, window, and branch after merging (skip cleanup). Useful when you want to verify the merge before cleaning up.                                                                                                                         |
+| `--cleanup`            | Clean up after merging, overriding `merge_keep: true`.                                                                                                                                                                                                   |
 | `--notification`       | Show a system notification on successful merge. Useful when delegating merge to an AI agent and you want to be notified when it completes.                                                                                                               |
 | `--rebase`             | Rebase the feature branch onto the target before merging (creates a linear history via fast-forward merge). If conflicts occur, you'll need to resolve them manually and run `git rebase --continue`.                                                    |
 | `--squash`             | Squash all commits from the feature branch into a single commit on the target. You'll be prompted to provide a commit message in your editor.                                                                                                            |
@@ -45,6 +46,14 @@ If you don't want to have merge commits in your main branch, use the `rebase` me
 merge_strategy: rebase
 ```
 
+To keep the worktree, window, and branch after every merge unless overridden, set:
+
+```yaml
+merge_keep: true
+```
+
+Use `workmux merge --cleanup` to clean up for a single merge when this default is enabled.
+
 ## What happens
 
 1. Determines which branch to merge (specified branch or current branch if omitted)
@@ -52,9 +61,9 @@ merge_strategy: rebase
 3. Checks for uncommitted changes (errors if found, unless `--ignore-uncommitted` is used)
 4. Commits staged changes if present (unless `--ignore-uncommitted` is used)
 5. Merges your branch into the target using the selected strategy (default: merge commit)
-6. Deletes the tmux window (including the one you're currently in if you ran this from a worktree) — skipped if `--keep` is used
-7. Removes the worktree — skipped if `--keep` is used
-8. Deletes the local branch — skipped if `--keep` is used
+6. Deletes the tmux window unless keep behavior is enabled via `--keep` or `merge_keep: true`
+7. Removes the worktree unless keep behavior is enabled via `--keep` or `merge_keep: true`
+8. Deletes the local branch unless keep behavior is enabled via `--keep` or `merge_keep: true`
 
 ## Typical workflow
 

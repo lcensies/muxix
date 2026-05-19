@@ -451,6 +451,10 @@ pub struct Config {
     #[serde(default)]
     pub merge_strategy: Option<MergeStrategy>,
 
+    /// Keep worktree, window, and branch by default after `workmux merge`
+    #[serde(default)]
+    pub merge_keep: Option<bool>,
+
     /// Strategy for deriving worktree/window names from branch names
     #[serde(default)]
     pub worktree_naming: WorktreeNaming,
@@ -2227,6 +2231,7 @@ impl Config {
             window_prefix,
             agent,
             merge_strategy,
+            merge_keep,
             worktree_prefix,
             panes,
             windows,
@@ -2636,6 +2641,10 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # CLI flags (--rebase, --squash) always override this.
 # merge_strategy: rebase
 
+# Keep the worktree, window, and branch after `workmux merge` by default.
+# Keep and cleanup CLI flags always override this.
+# merge_keep: true
+
 #-------------------------------------------------------------------------------
 # Naming & Paths
 #-------------------------------------------------------------------------------
@@ -2955,6 +2964,30 @@ mod tests {
         SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode, is_agent_command,
         split_first_token, validate_domain, validate_group_add_entry, validate_layouts_config,
     };
+
+    #[test]
+    fn merge_keep_parses_boolean_values() {
+        let enabled: Config = serde_yaml::from_str("merge_keep: true").unwrap();
+        assert_eq!(enabled.merge_keep, Some(true));
+
+        let disabled: Config = serde_yaml::from_str("merge_keep: false").unwrap();
+        assert_eq!(disabled.merge_keep, Some(false));
+    }
+
+    #[test]
+    fn merge_keep_project_false_overrides_global_true() {
+        let global = Config {
+            merge_keep: Some(true),
+            ..Default::default()
+        };
+        let project = Config {
+            merge_keep: Some(false),
+            ..Default::default()
+        };
+
+        let merged = global.merge(project);
+        assert_eq!(merged.merge_keep, Some(false));
+    }
 
     #[test]
     fn agent_icon_config_parses_legacy_string() {
