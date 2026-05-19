@@ -1,6 +1,6 @@
 use crate::config::MuxMode;
 use crate::multiplexer::handle::mode_label;
-use crate::multiplexer::{MuxHandle, create_backend, detect_backend, util::prefixed};
+use crate::multiplexer::{create_backend, detect_backend};
 use crate::prompt::{Prompt, PromptDocument, foreach_from_frontmatter};
 use crate::spinner;
 use crate::template::{
@@ -184,6 +184,8 @@ pub fn run(
     auto_name: bool,
     base: Option<&str>,
     name: Option<String>,
+    name_window: Option<String>,
+    name_session: Option<String>,
     prompt_args: PromptArgs,
     setup: SetupFlags,
     rescue: RescueArgs,
@@ -204,6 +206,12 @@ pub fn run(
         }
         if config_override.is_some() {
             bail!("--config is not supported from inside a sandbox");
+        }
+        if name_window.is_some() {
+            bail!("--name-window is not supported from inside a sandbox");
+        }
+        if name_session.is_some() {
+            bail!("--name-session is not supported from inside a sandbox");
         }
         return run_add_via_rpc(
             branch_name,
@@ -391,6 +399,29 @@ pub fn run(
              Use the default naming or set worktree_naming/worktree_prefix in config instead."
         ));
     }
+    if (name_window.is_some() || name_session.is_some()) && has_multi_worktree {
+        return Err(anyhow!(
+            "--name-window and --name-session cannot be used with multi-worktree generation (multiple --agent, --count, --foreach, or stdin)."
+        ));
+    }
+
+    let target_window_name = name_window
+        .as_deref()
+        .map(crate::naming::derive_target_name)
+        .transpose()?;
+    let target_session_name = name_session
+        .as_deref()
+        .map(crate::naming::derive_target_name)
+        .transpose()?;
+    if mode == MuxMode::Session && target_window_name.is_some() {
+        return Err(anyhow!("--name-window requires window mode"));
+    }
+    options.target_window_name = target_window_name;
+    if mode == MuxMode::Session {
+        options.target_session_name = target_session_name;
+    } else {
+        options.window_session_name = target_session_name;
+    }
 
     // Handle rescue flow early if requested
     if rescue.with_changes {
@@ -559,9 +590,6 @@ fn handle_rescue_flow(
         return Ok(false);
     }
 
-    // Capture mode before options is moved
-    let mode = options.mode;
-
     let result = workflow::create_with_changes(
         branch_name,
         handle,
@@ -579,7 +607,15 @@ fn handle_rescue_flow(
     );
 
     if wait {
-        MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, handle).wait_until_closed()?;
+        if result.mode == MuxMode::Session {
+            context
+                .mux
+                .wait_until_session_closed(&result.mux_target_full_name)?;
+        } else {
+            context
+                .mux
+                .wait_until_windows_closed(std::slice::from_ref(&result.mux_target_full_name))?;
+        }
     }
 
     Ok(true)
@@ -820,8 +856,7 @@ impl<'a> CreationPlan<'a> {
                 )
             })?;
 
-            // Use resolved handle for tracking (may differ from original if auto-suffixed)
-            let full_window_name = prefixed(&context.prefix, &result.resolved_handle);
+            let full_window_name = result.mux_target_full_name.clone();
 
             if self.wait {
                 created_targets.push(full_window_name.clone());

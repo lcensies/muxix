@@ -107,6 +107,72 @@ class TestSessionCreation:
         expected_session = f"{custom_prefix}feature-prefix-test"
         assert_session_exists(env, expected_session)
 
+    def test_add_session_name_overrides_session_target(
+        self, mux_server, workmux_exe_path, repo_path
+    ):
+        """Verifies --name-session overrides the session target only."""
+        env = mux_server
+        branch_name = "feature-session-custom-name"
+        custom_session = "review-session"
+
+        write_workmux_config(repo_path)
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            repo_path,
+            branch_name,
+            extra_args=f"--session --name-session {custom_session} --background",
+        )
+
+        assert worktree_path.name == branch_name
+        assert_session_exists(env, get_session_name(custom_session))
+
+    def test_add_session_rejects_name_window(
+        self, mux_server, workmux_exe_path, repo_path
+    ):
+        """Verifies --name-window is invalid in session mode."""
+        env = mux_server
+
+        write_workmux_config(repo_path)
+
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add feature-session-name-window --session --name-window nope --background",
+            expect_fail=True,
+        )
+
+        assert "--name-window requires window mode" in result.stderr
+
+    def test_add_session_name_collision_fails_before_git_state(
+        self, mux_server, workmux_exe_path, repo_path
+    ):
+        """Verifies duplicate --name-session targets are rejected in session mode."""
+        env = mux_server
+        branch_name = "feature-session-custom-name-b"
+
+        write_workmux_config(repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            "add feature-session-custom-name-a --session --name-session shared-session --background",
+        )
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            repo_path,
+            f"add {branch_name} --session --name-session shared-session --background",
+            expect_fail=True,
+        )
+
+        worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
+        assert not (worktrees_dir / branch_name).exists()
+        assert "already exists" in result.stderr
+        assert get_session_name("shared-session") in result.stderr
+
 
 class TestSessionBackground:
     """Tests for --session with --background flag."""

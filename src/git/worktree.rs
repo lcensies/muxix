@@ -243,6 +243,18 @@ pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+pub fn get_worktree_target_window(handle: &str) -> Option<String> {
+    get_worktree_meta(handle, "target-window")
+}
+
+pub fn get_worktree_target_session(handle: &str) -> Option<String> {
+    get_worktree_meta(handle, "target-session")
+}
+
+pub fn get_worktree_window_session(handle: &str) -> Option<String> {
+    get_worktree_meta(handle, "window-session")
+}
+
 /// Determine the tmux mode for a worktree from git metadata.
 /// Returns None if no metadata is found (legacy worktree).
 pub fn get_worktree_mode_opt(handle: &str) -> Option<MuxMode> {
@@ -257,6 +269,35 @@ pub fn get_worktree_mode_opt(handle: &str) -> Option<MuxMode> {
 /// Falls back to Window mode if no metadata is found (backward compatibility).
 pub fn get_worktree_mode(handle: &str) -> MuxMode {
     get_worktree_mode_opt(handle).unwrap_or(MuxMode::Window)
+}
+
+pub fn get_all_worktree_meta_key_in(
+    workdir: Option<&Path>,
+    key_name: &str,
+) -> std::collections::HashMap<String, String> {
+    let pattern = format!(r"^workmux\.worktree\..*\.{}$", regex::escape(key_name));
+    let cmd = Cmd::new("git").args(&["config", "--local", "--get-regexp", &pattern]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let output = cmd.run_and_capture_stdout().unwrap_or_default();
+
+    let mut values = std::collections::HashMap::new();
+    let suffix = format!(".{}", key_name);
+    for line in output.lines() {
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() == 2 {
+            let key = parts[0];
+            let value = parts[1].trim();
+            if let Some(rest) = key.strip_prefix("workmux.worktree.")
+                && let Some(handle) = rest.strip_suffix(&suffix)
+            {
+                values.insert(handle.to_string(), value.to_string());
+            }
+        }
+    }
+    values
 }
 
 /// Batch-load all worktree modes, optionally in a specific workdir.

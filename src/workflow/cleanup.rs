@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use std::{thread, time::Duration};
 
 use crate::config::MuxMode;
-use crate::multiplexer::{Multiplexer, util::prefixed};
+use crate::multiplexer::{Multiplexer, WindowTarget, util::prefixed};
 use crate::shell::shell_quote;
 use crate::{cmd, git};
 use tracing::{debug, info, warn};
@@ -88,9 +88,17 @@ fn remove_dir_contents(path: &Path) {
 
 /// Find all windows matching the base handle pattern (including duplicates).
 /// Matches: {prefix}{handle} and {prefix}{handle}-{N}
-fn find_matching_windows(mux: &dyn Multiplexer, prefix: &str, handle: &str) -> Result<Vec<String>> {
-    let all_windows = mux.get_all_window_names()?;
-    let base_name = prefixed(prefix, handle);
+fn find_matching_windows(
+    mux: &dyn Multiplexer,
+    prefix: &str,
+    target_name: &str,
+    parent_session: Option<&str>,
+) -> Result<Vec<String>> {
+    let all_windows = match parent_session {
+        Some(session) => mux.get_window_names_in_session(session)?,
+        None => mux.get_all_window_names()?,
+    };
+    let base_name = prefixed(prefix, target_name);
     let escaped_base = regex::escape(&base_name);
     let pattern = format!(r"^{}(-\d+)?$", escaped_base);
     let re = Regex::new(&pattern).expect("Invalid regex pattern");
@@ -104,12 +112,19 @@ fn find_matching_windows(mux: &dyn Multiplexer, prefix: &str, handle: &str) -> R
 fn is_inside_matching_target(
     mux: &dyn Multiplexer,
     prefix: &str,
-    handle: &str,
+    target_name: &str,
     mode: MuxMode,
+    parent_session: Option<&str>,
 ) -> Result<Option<String>> {
     let current_name = if mode == MuxMode::Session {
         mux.current_session()
     } else {
+        if let Some(parent) = parent_session {
+            match mux.current_session() {
+                Some(current_session) if current_session == parent => {}
+                _ => return Ok(None),
+            }
+        }
         mux.current_window_name()?
     };
 
@@ -118,7 +133,7 @@ fn is_inside_matching_target(
         None => return Ok(None),
     };
 
-    let base_name = prefixed(prefix, handle);
+    let base_name = prefixed(prefix, target_name);
     let escaped_base = regex::escape(&base_name);
     let pattern = format!(r"^{}(-\d+)?$", escaped_base);
     let re = Regex::new(&pattern).expect("Invalid regex pattern");
@@ -144,7 +159,17 @@ pub fn cleanup(
 ) -> Result<CleanupResult> {
     // Determine if this worktree was created as a session or window
     let mode = get_worktree_mode(handle);
+    let target_name = if mode == MuxMode::Session {
+        git::get_worktree_target_session(handle).unwrap_or_else(|| handle.to_string())
+    } else {
+        git::get_worktree_target_window(handle).unwrap_or_else(|| handle.to_string())
+    };
     let is_session_mode = mode == MuxMode::Session;
+    let parent_session = if is_session_mode {
+        None
+    } else {
+        git::get_worktree_window_session(handle)
+    };
     let kind = crate::multiplexer::handle::mode_label(mode);
 
     info!(
@@ -165,7 +190,13 @@ pub fn cleanup(
 
     // Check if we're running inside ANY matching target (original or duplicate)
     let current_matching_target = if mux_running {
-        is_inside_matching_target(context.mux.as_ref(), &context.prefix, handle, mode)?
+        is_inside_matching_target(
+            context.mux.as_ref(),
+            &context.prefix,
+            &target_name,
+            mode,
+            parent_session.as_deref(),
+        )?
     } else {
         None
     };
@@ -176,6 +207,7 @@ pub fn cleanup(
         worktree_removed: false,
         local_branch_deleted: false,
         window_to_close_later: None,
+        window_target_to_close_later: None,
         trash_path_to_delete: None,
         deferred_cleanup: None,
     };
@@ -364,12 +396,18 @@ pub fn cleanup(
         // Find and kill all OTHER matching windows (not the current one)
         // Note: Sessions don't have duplicates like windows, so skip for session mode
         if mux_running && !is_session_mode {
-            let matching_windows =
-                find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
+            let matching_windows = find_matching_windows(
+                context.mux.as_ref(),
+                &context.prefix,
+                &target_name,
+                parent_session.as_deref(),
+            )?;
             let mut killed_count = 0;
             for window in &matching_windows {
                 if window != &current_target {
-                    if let Err(e) = context.mux.kill_window(window) {
+                    let duplicate_target =
+                        WindowTarget::new(window.clone(), parent_session.clone());
+                    if let Err(e) = context.mux.kill_window_target(&duplicate_target) {
                         warn!(window = window, error = %e, "cleanup:failed to kill duplicate window");
                     } else {
                         killed_count += 1;
@@ -386,7 +424,11 @@ pub fn cleanup(
         }
 
         // Store the current window/session name for deferred close
-        result.window_to_close_later = Some(current_target);
+        result.window_to_close_later = Some(current_target.clone());
+        if !is_session_mode {
+            result.window_target_to_close_later =
+                Some(WindowTarget::new(current_target, parent_session.clone()));
+        }
 
         // Run pre-remove hooks synchronously (they need the worktree intact)
         // Skip if --no-hooks is set (e.g., RPC-triggered merge).
@@ -482,7 +524,7 @@ pub fn cleanup(
         if mux_running {
             if is_session_mode {
                 // For session mode, kill the session directly
-                let session_name = prefixed(&context.prefix, handle);
+                let session_name = prefixed(&context.prefix, &target_name);
                 if context.mux.session_exists(&session_name)? {
                     if let Err(e) = context.mux.kill_session(&session_name) {
                         warn!(session = session_name, error = %e, "cleanup:failed to kill session");
@@ -503,11 +545,17 @@ pub fn cleanup(
                 }
             } else {
                 // For window mode, find and kill all matching windows (including duplicates)
-                let matching_windows =
-                    find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
+                let matching_windows = find_matching_windows(
+                    context.mux.as_ref(),
+                    &context.prefix,
+                    &target_name,
+                    parent_session.as_deref(),
+                )?;
                 let mut killed_count = 0;
                 for window in &matching_windows {
-                    if let Err(e) = context.mux.kill_window(window) {
+                    let duplicate_target =
+                        WindowTarget::new(window.clone(), parent_session.clone());
+                    if let Err(e) = context.mux.kill_window_target(&duplicate_target) {
                         warn!(window = window, error = %e, "cleanup:failed to kill window");
                     } else {
                         killed_count += 1;
@@ -526,8 +574,12 @@ pub fn cleanup(
                     const MAX_RETRIES: u32 = 20;
                     const RETRY_DELAY: Duration = Duration::from_millis(50);
                     for _ in 0..MAX_RETRIES {
-                        let remaining =
-                            find_matching_windows(context.mux.as_ref(), &context.prefix, handle)?;
+                        let remaining = find_matching_windows(
+                            context.mux.as_ref(),
+                            &context.prefix,
+                            &target_name,
+                            parent_session.as_deref(),
+                        )?;
                         if remaining.is_empty() {
                             break;
                         }
@@ -646,7 +698,16 @@ pub fn navigate_to_target_and_close(
 
     // Generate backend-specific shell commands for deferred scripts.
     // Kill uses source mode, select uses target's detected mode.
-    let kill_source_cmd = MuxHandle::shell_kill_cmd_full(mux, mode, &source_full).ok();
+    let kill_source_cmd = if mode == MuxMode::Window {
+        cleanup_result
+            .window_target_to_close_later
+            .as_ref()
+            .map(|target| MuxHandle::shell_kill_window_target_cmd(mux, target))
+            .unwrap_or_else(|| MuxHandle::shell_kill_cmd_full(mux, mode, &source_full))
+            .ok()
+    } else {
+        MuxHandle::shell_kill_cmd_full(mux, mode, &source_full).ok()
+    };
     let select_target_cmd = MuxHandle::shell_select_cmd_full(mux, target_mode, &target_full).ok();
 
     debug!(

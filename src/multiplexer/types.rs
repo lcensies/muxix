@@ -5,6 +5,25 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WindowTarget {
+    pub full_name: String,
+    pub parent_session: Option<String>,
+}
+
+impl WindowTarget {
+    pub fn new(full_name: String, parent_session: Option<String>) -> Self {
+        Self {
+            full_name,
+            parent_session,
+        }
+    }
+
+    pub fn parent_session(&self) -> Option<&str> {
+        self.parent_session.as_deref()
+    }
+}
+
 /// How (if at all) to resume an existing agent conversation when launching.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ResumeMode {

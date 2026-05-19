@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from .conftest import (
     DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
+    TmuxEnvironment,
     WorkmuxCommandResult,
     get_scripts_dir,
     get_window_name,
@@ -97,6 +100,40 @@ def test_close_kills_window_keeps_worktree(
     assert window_name not in windows
 
     # Verify worktree still exists
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
+    assert worktree_path.exists(), "Worktree should still exist after close"
+
+
+@pytest.mark.tmux_only
+def test_close_window_in_parent_session(
+    mux_server: TmuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature/parent-session-close"
+    session_name = "prs-close"
+    window_name = get_window_name(branch_name)
+
+    write_workmux_config(mux_repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        f"add {branch_name} --name-session {session_name} --background",
+    )
+
+    result = env.tmux(
+        ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"]
+    )
+    assert window_name in [w for w in result.stdout.strip().split("\n") if w]
+
+    run_workmux_close(env, workmux_exe_path, mux_repo_path, branch_name)
+
+    result = env.tmux(
+        ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"],
+        check=False,
+    )
+    windows = [w for w in result.stdout.strip().split("\n") if w]
+    assert result.returncode != 0 or window_name not in windows
     worktree_path = get_worktree_path(mux_repo_path, branch_name)
     assert worktree_path.exists(), "Worktree should still exist after close"
 

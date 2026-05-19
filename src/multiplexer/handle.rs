@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::config::MuxMode;
 
 use super::Multiplexer;
+use super::types::WindowTarget;
 use super::util;
 
 /// Returns "window" or "session" for a given mode.
@@ -88,6 +89,10 @@ impl<'a> MuxHandle<'a> {
         }
     }
 
+    pub fn kill_window_target(mux: &dyn Multiplexer, target: &WindowTarget) -> Result<()> {
+        mux.kill_window_target(target)
+    }
+
     /// Schedule a target to close after a delay, by full name.
     pub fn schedule_close_full(
         mux: &dyn Multiplexer,
@@ -101,20 +106,19 @@ impl<'a> MuxHandle<'a> {
         }
     }
 
+    pub fn schedule_window_target_close(
+        mux: &dyn Multiplexer,
+        target: &WindowTarget,
+        delay: Duration,
+    ) -> Result<()> {
+        mux.schedule_window_target_close(target, delay)
+    }
+
     /// Get the current target name (session name or window name).
     pub fn current_name(&self) -> Result<Option<String>> {
         match self.mode {
             MuxMode::Session => Ok(self.mux.current_session()),
             MuxMode::Window => self.mux.current_window_name(),
-        }
-    }
-
-    /// Wait until the target is closed.
-    pub fn wait_until_closed(&self) -> Result<()> {
-        let full = self.full_name();
-        match self.mode {
-            MuxMode::Session => self.mux.wait_until_session_closed(&full),
-            MuxMode::Window => self.mux.wait_until_windows_closed(&[full]),
         }
     }
 
@@ -128,6 +132,13 @@ impl<'a> MuxHandle<'a> {
             MuxMode::Session => mux.shell_kill_session_cmd(full_name),
             MuxMode::Window => mux.shell_kill_window_cmd(full_name),
         }
+    }
+
+    pub fn shell_kill_window_target_cmd(
+        mux: &dyn Multiplexer,
+        target: &WindowTarget,
+    ) -> Result<String> {
+        mux.shell_kill_window_target_cmd(target)
     }
 
     /// Generate a shell command to select a target by full name (for deferred scripts).

@@ -5,6 +5,8 @@ from pathlib import Path
 from ..conftest import (
     DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
+    TmuxEnvironment,
+    assert_session_exists,
     assert_window_exists,
     run_workmux_add,
     run_workmux_command,
@@ -132,6 +134,179 @@ class TestNameFlag:
 
         # Verify original worktree is clean
         assert not (mux_repo_path / "uncommitted.txt").exists()
+
+
+class TestTargetNameOptions:
+    """Tests for tmux target naming flags."""
+
+    def test_add_name_window_names_window_only(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        branch_name = "feature/custom-window-target"
+        custom_name = "review window"
+        expected_handle = slugify(branch_name)
+        expected_window = f"{DEFAULT_WINDOW_PREFIX}{slugify(custom_name)}"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} --name-window '{custom_name}'",
+        )
+
+        worktree_path = (
+            mux_repo_path.parent / f"{mux_repo_path.name}__worktrees" / expected_handle
+        )
+        assert worktree_path.is_dir()
+        assert_window_exists(env, expected_window)
+
+    def test_add_name_session_routes_window_mode_window(
+        self,
+        mux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        branch_name = "feature/custom-parent-session"
+        session_name = "prs"
+        window_name = f"{DEFAULT_WINDOW_PREFIX}review-window"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} --name-session {session_name} --name-window review-window --background",
+        )
+
+        assert_session_exists(env, session_name)
+        result = env.tmux(
+            ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"]
+        )
+        assert window_name in [w for w in result.stdout.strip().split("\n") if w]
+
+    def test_add_name_window_collision_fails_before_git_state(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        branch_name = "feature/custom-target-b"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            "add feature/custom-target-a --name-window shared-review --background",
+        )
+        result = run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} --name-window shared-review --background",
+            expect_fail=True,
+        )
+
+        worktrees_dir = mux_repo_path.parent / f"{mux_repo_path.name}__worktrees"
+        assert not (worktrees_dir / slugify(branch_name)).exists()
+        assert "already exists" in result.stderr
+        assert f"{DEFAULT_WINDOW_PREFIX}shared-review" in result.stderr
+
+    def test_add_name_session_parent_session_can_be_reused(
+        self,
+        mux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        session_name = "prs"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add feature/parent-session-a --name-session {session_name} --background",
+        )
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add feature/parent-session-b --name-session {session_name} --background",
+        )
+
+        result = env.tmux(
+            ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"]
+        )
+        windows = [w for w in result.stdout.strip().split("\n") if w]
+        assert f"{DEFAULT_WINDOW_PREFIX}feature-parent-session-a" in windows
+        assert f"{DEFAULT_WINDOW_PREFIX}feature-parent-session-b" in windows
+
+    def test_custom_parent_session_lifecycle_uses_persisted_target(
+        self,
+        mux_server: TmuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        branch_name = "feature/parent-session-list"
+        session_name = "prs-list"
+        window_name = f"{DEFAULT_WINDOW_PREFIX}{slugify(branch_name)}"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} --name-session {session_name} --background",
+        )
+
+        result = env.tmux(
+            ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"]
+        )
+        assert window_name in [w for w in result.stdout.strip().split("\n") if w]
+
+        list_result = run_workmux_command(env, workmux_exe_path, mux_repo_path, "list")
+        row = next(
+            line for line in list_result.stdout.splitlines() if branch_name in line
+        )
+        assert "✓" in row
+        assert "closed" not in row
+
+    def test_custom_name_lifecycle_uses_persisted_target(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        env = mux_server
+        branch_name = "feature/custom-lifecycle"
+        custom_window = f"{DEFAULT_WINDOW_PREFIX}review-lifecycle"
+
+        write_workmux_config(mux_repo_path)
+        run_workmux_command(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            f"add {branch_name} --name-window review-lifecycle --background",
+        )
+        assert_window_exists(env, custom_window)
+
+        list_result = run_workmux_command(env, workmux_exe_path, mux_repo_path, "list")
+        assert branch_name in list_result.stdout
+        assert "closed" not in list_result.stdout
+
+        run_workmux_command(
+            env, workmux_exe_path, mux_repo_path, f"close {branch_name}"
+        )
+        assert custom_window not in env.list_windows()
 
 
 class TestWorktreeNaming:

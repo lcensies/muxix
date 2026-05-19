@@ -167,6 +167,13 @@ pub fn setup_environment(
         resume_mode: options.resume_mode.clone(),
     };
 
+    let target_window_name = options.target_window_name.as_deref().unwrap_or(handle);
+    let target_session_name = options.target_session_name.as_deref().unwrap_or(handle);
+    let mux_target_full_name = match options.mode {
+        MuxMode::Window => crate::multiplexer::util::prefixed(prefix, target_window_name),
+        MuxMode::Session => crate::multiplexer::util::prefixed(prefix, target_session_name),
+    };
+
     // Track the focus and zoom pane across all windows
     let mut focus_pane_id: Option<String> = None;
     let mut zoom_pane_id: Option<String> = None;
@@ -177,20 +184,41 @@ pub fn setup_environment(
             let panes = window_plans[0].panes.as_deref().unwrap_or(&[]);
             let resolved_panes = resolve_pane_configuration(panes, config, agent);
 
-            let last_wm_window =
-                after_window.or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
+            let initial_pane_id =
+                if let Some(parent_session) = options.window_session_name.as_deref() {
+                    let parent_session_full_name = parent_session.to_string();
+                    if mux.session_exists(&parent_session_full_name)? {
+                        mux.create_window_in_session(CreateWindowInSessionParams {
+                            session_name: &parent_session_full_name,
+                            name: Some(&mux_target_full_name),
+                            cwd: effective_working_dir,
+                        })
+                        .context("Failed to create window in session")?
+                    } else {
+                        mux.create_session(CreateSessionParams {
+                            prefix: "",
+                            name: &parent_session_full_name,
+                            cwd: effective_working_dir,
+                            initial_window_name: Some(&mux_target_full_name),
+                        })
+                        .context("Failed to create session")?
+                    }
+                } else {
+                    let last_wm_window = after_window
+                        .or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
 
-            let initial_pane_id = mux
-                .create_window(CreateWindowParams {
-                    prefix,
-                    name: handle,
-                    cwd: effective_working_dir,
-                    after_window: last_wm_window.as_deref(),
-                })
-                .context("Failed to create window")?;
+                    mux.create_window(CreateWindowParams {
+                        prefix,
+                        name: target_window_name,
+                        cwd: effective_working_dir,
+                        after_window: last_wm_window.as_deref(),
+                    })
+                    .context("Failed to create window")?
+                };
             info!(
                 branch = branch_name,
                 handle = handle,
+                target = %mux_target_full_name,
                 pane_id = %initial_pane_id,
                 "setup_environment:window created"
             );
@@ -210,7 +238,7 @@ pub fn setup_environment(
             zoom_pane_id = result.zoom_pane_id;
         }
         MuxMode::Session => {
-            let session_full_name = crate::multiplexer::util::prefixed(prefix, handle);
+            let session_full_name = crate::multiplexer::util::prefixed(prefix, target_session_name);
 
             for (i, window_plan) in window_plans.iter().enumerate() {
                 let panes = window_plan.panes.as_deref().unwrap_or(&[]);
@@ -221,7 +249,7 @@ pub fn setup_environment(
                     let pane_id = mux
                         .create_session(CreateSessionParams {
                             prefix,
-                            name: handle,
+                            name: target_session_name,
                             cwd: effective_working_dir,
                             initial_window_name: window_plan.name.as_deref(),
                         })
@@ -292,7 +320,9 @@ pub fn setup_environment(
             MuxMode::Window => {
                 // select_pane automatically selects the containing window in tmux.
                 mux.select_pane(&focus_pane_id)?;
-                mux.select_window(prefix, handle)?;
+                if options.window_session_name.is_none() {
+                    mux.select_window(prefix, target_window_name)?;
+                }
             }
             MuxMode::Session => {
                 // switch_to_pane switches the client directly to the pane,
@@ -317,6 +347,7 @@ pub fn setup_environment(
         base_branch: None,
         did_switch: false,
         resolved_handle: handle.to_string(),
+        mux_target_full_name,
         mode: options.mode,
     })
 }
@@ -630,6 +661,9 @@ mod tests {
             config_root: None,
             open_if_exists: false,
             mode: crate::config::MuxMode::default(),
+            target_window_name: None,
+            target_session_name: None,
+            window_session_name: None,
             resume_mode: crate::multiplexer::types::ResumeMode::default(),
         }
     }

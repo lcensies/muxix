@@ -139,6 +139,14 @@ pub fn list_in(
 
     // Batch-load all worktree modes in a single git config call
     let worktree_modes = git::get_all_worktree_modes_in(repo);
+    let target_windows = git::get_all_worktree_meta_key_in(repo, "target-window");
+    let target_sessions = git::get_all_worktree_meta_key_in(repo, "target-session");
+    let window_sessions = git::get_all_worktree_meta_key_in(repo, "window-session");
+    let mux_windows_with_sessions = if mux_running {
+        mux.get_all_windows_with_sessions().unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
 
     let prefix = config.window_prefix();
     let worktrees: Vec<WorktreeInfo> = worktrees_data
@@ -152,13 +160,20 @@ pub fn list_in(
                 .to_string();
 
             // Check if mux target exists (window or session based on stored mode)
-            let prefixed_name = util::prefixed(prefix, &handle);
             let mode = worktree_modes
                 .get(&handle)
                 .copied()
                 .unwrap_or(MuxMode::Window);
+            let target_name = if mode == MuxMode::Session {
+                target_sessions.get(&handle).unwrap_or(&handle)
+            } else {
+                target_windows.get(&handle).unwrap_or(&handle)
+            };
+            let prefixed_name = util::prefixed(prefix, target_name);
             let has_mux_window = if mode == MuxMode::Session {
                 mux_sessions.contains(&prefixed_name)
+            } else if let Some(parent_session) = window_sessions.get(&handle) {
+                mux_windows_with_sessions.contains(&(prefixed_name.clone(), parent_session.clone()))
             } else {
                 mux_windows.contains(&prefixed_name)
             };

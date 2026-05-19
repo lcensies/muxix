@@ -342,6 +342,14 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
 
+        /// Explicit tmux window name for this worktree
+        #[arg(long)]
+        name_window: Option<String>,
+
+        /// Explicit tmux session name for this worktree
+        #[arg(long)]
+        name_session: Option<String>,
+
         #[command(flatten)]
         prompt: PromptArgs,
 
@@ -405,6 +413,14 @@ enum Commands {
         /// Open in session mode (overrides stored mode for this worktree)
         #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
+
+        /// Explicit tmux window name for this worktree
+        #[arg(long)]
+        name_window: Option<String>,
+
+        /// Explicit tmux session name for this worktree
+        #[arg(long)]
+        name_session: Option<String>,
 
         /// Resume the agent's most recent conversation in this worktree
         #[arg(short = 'c', long = "continue")]
@@ -920,6 +936,8 @@ pub fn run() -> Result<()> {
             auto_name,
             base,
             name,
+            name_window,
+            name_session,
             prompt,
             setup,
             rescue,
@@ -940,6 +958,8 @@ pub fn run() -> Result<()> {
                 auto_name,
                 base.as_deref(),
                 name,
+                name_window,
+                name_session,
                 prompt,
                 setup,
                 rescue,
@@ -958,6 +978,8 @@ pub fn run() -> Result<()> {
             new,
             mode,
             session,
+            name_window,
+            name_session,
             continue_session,
             prompt,
             config,
@@ -971,6 +993,8 @@ pub fn run() -> Result<()> {
                 force_files,
                 new,
                 mode_override,
+                name_window,
+                name_session,
                 continue_session,
                 prompt,
                 config.as_deref(),

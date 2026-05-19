@@ -72,6 +72,9 @@ pub fn run(dry_run: bool) -> Result<()> {
             config_root: None,
             open_if_exists: false,
             mode: candidate.mode,
+            target_window_name: None,
+            target_session_name: None,
+            window_session_name: None,
             resume_mode: crate::multiplexer::types::ResumeMode::Continue,
         };
 

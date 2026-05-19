@@ -62,6 +62,17 @@ impl TmuxBackend {
         self.tmux_cmd(&["run-shell", script])
     }
 
+    fn window_target_arg(target: &WindowTarget) -> String {
+        match target.parent_session() {
+            Some(session) => format!("{}:={}", session, target.full_name),
+            None => format!("={}", target.full_name),
+        }
+    }
+
+    fn shell_escape(value: &str) -> String {
+        format!("'{}'", value.replace('\'', r#"'\''"#))
+    }
+
     /// Clear the window status display (status bar icon).
     fn clear_window_status_internal(&self, pane_id: &str) {
         let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status"]);
@@ -338,6 +349,11 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["kill-window", "-t", &target])
     }
 
+    fn kill_window_target(&self, target: &WindowTarget) -> Result<()> {
+        let target_arg = Self::window_target_arg(target);
+        self.tmux_cmd(&["kill-window", "-t", &target_arg])
+    }
+
     fn rename_window(&self, old_full_name: &str, new_full_name: &str) -> Result<()> {
         // `=` prefix forces exact-name match so we don't hit similarly-named windows.
         let target = format!("={}", old_full_name);
@@ -354,6 +370,19 @@ impl Multiplexer for TmuxBackend {
         let delay_secs = format!("{:.3}", delay.as_secs_f64());
         let target = format!("={}", full_name);
         let escaped_target = format!("'{}'", target.replace('\'', r#"'\''"#));
+        let script = format!(
+            "sleep {delay}; tmux kill-window -t {target} >/dev/null 2>&1",
+            delay = delay_secs,
+            target = escaped_target
+        );
+
+        self.run_shell(&script)
+    }
+
+    fn schedule_window_target_close(&self, target: &WindowTarget, delay: Duration) -> Result<()> {
+        let delay_secs = format!("{:.3}", delay.as_secs_f64());
+        let target_arg = Self::window_target_arg(target);
+        let escaped_target = Self::shell_escape(&target_arg);
         let script = format!(
             "sleep {delay}; tmux kill-window -t {target} >/dev/null 2>&1",
             delay = delay_secs,
@@ -387,7 +416,7 @@ impl Multiplexer for TmuxBackend {
             format!("{}:", session)
         };
         let target = format!("{}={}", session_prefix, full_name);
-        let escaped = format!("'{}'", target.replace('\'', r#"'\''"#));
+        let escaped = Self::shell_escape(&target);
         Ok(format!("tmux select-window -t {} >/dev/null 2>&1", escaped))
     }
 
@@ -399,7 +428,13 @@ impl Multiplexer for TmuxBackend {
             format!("{}:", session)
         };
         let target = format!("{}={}", session_prefix, full_name);
-        let escaped = format!("'{}'", target.replace('\'', r#"'\''"#));
+        let escaped = Self::shell_escape(&target);
+        Ok(format!("tmux kill-window -t {} >/dev/null 2>&1", escaped))
+    }
+
+    fn shell_kill_window_target_cmd(&self, target: &WindowTarget) -> Result<String> {
+        let target_arg = Self::window_target_arg(target);
+        let escaped = Self::shell_escape(&target_arg);
         Ok(format!("tmux kill-window -t {} >/dev/null 2>&1", escaped))
     }
 
@@ -423,6 +458,12 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["select-window", "-t", &target])
     }
 
+    fn select_window_target(&self, target: &WindowTarget) -> Result<()> {
+        let target_arg = Self::window_target_arg(target);
+        self.tmux_cmd(&["switch-client", "-t", &target_arg])
+            .or_else(|_| self.tmux_cmd(&["select-window", "-t", &target_arg]))
+    }
+
     fn window_exists(&self, prefix: &str, name: &str) -> Result<bool> {
         let prefixed_name = util::prefixed(prefix, name);
         self.window_exists_by_full_name(&prefixed_name)
@@ -433,6 +474,14 @@ impl Multiplexer for TmuxBackend {
             Ok(output) => Ok(output.lines().any(|line| line == full_name)),
             Err(_) => Ok(false),
         }
+    }
+
+    fn window_target_exists(&self, target: &WindowTarget) -> Result<bool> {
+        let windows = match target.parent_session() {
+            Some(session) => self.get_window_names_in_session(session)?,
+            None => self.get_all_window_names()?,
+        };
+        Ok(windows.contains(&target.full_name))
     }
 
     fn current_window_name(&self) -> Result<Option<String>> {
@@ -454,6 +503,32 @@ impl Multiplexer for TmuxBackend {
             .tmux_query(&["list-windows", "-F", "#{window_name}"])
             .unwrap_or_default();
         Ok(windows.lines().map(String::from).collect())
+    }
+
+    fn get_window_names_in_session(&self, session_name: &str) -> Result<HashSet<String>> {
+        let target = format!("{}:", session_name);
+        let windows = self
+            .tmux_query(&["list-windows", "-t", &target, "-F", "#{window_name}"])
+            .unwrap_or_default();
+        Ok(windows.lines().map(String::from).collect())
+    }
+
+    fn get_all_windows_with_sessions(&self) -> Result<HashSet<(String, String)>> {
+        let windows = self
+            .tmux_query(&[
+                "list-windows",
+                "-a",
+                "-F",
+                "#{window_name}\t#{session_name}",
+            ])
+            .unwrap_or_default();
+        Ok(windows
+            .lines()
+            .filter_map(|line| {
+                let (window, session) = line.split_once('\t')?;
+                Some((window.to_string(), session.to_string()))
+            })
+            .collect())
     }
 
     fn get_all_session_names(&self) -> Result<HashSet<String>> {

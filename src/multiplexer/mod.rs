@@ -86,6 +86,10 @@ pub trait Multiplexer: Send + Sync {
     /// Kill a window by its full name (including prefix)
     fn kill_window(&self, full_name: &str) -> Result<()>;
 
+    fn kill_window_target(&self, target: &WindowTarget) -> Result<()> {
+        self.kill_window(&target.full_name)
+    }
+
     /// Rename a window from its full name to a new full name.
     ///
     /// Default implementation returns an error. Backends that support
@@ -113,6 +117,10 @@ pub trait Multiplexer: Send + Sync {
     /// Schedule a window to close after a delay
     fn schedule_window_close(&self, full_name: &str, delay: Duration) -> Result<()>;
 
+    fn schedule_window_target_close(&self, target: &WindowTarget, delay: Duration) -> Result<()> {
+        self.schedule_window_close(&target.full_name, delay)
+    }
+
     /// Schedule a session to close after a delay
     fn schedule_session_close(&self, full_name: &str, delay: Duration) -> Result<()>;
 
@@ -127,6 +135,10 @@ pub trait Multiplexer: Send + Sync {
     /// Generate a shell command string to close/kill a window by full name.
     /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
     fn shell_kill_window_cmd(&self, full_name: &str) -> Result<String>;
+
+    fn shell_kill_window_target_cmd(&self, target: &WindowTarget) -> Result<String> {
+        self.shell_kill_window_cmd(&target.full_name)
+    }
 
     /// Generate a shell command string to switch to a session by full name.
     /// Used in deferred scripts that run asynchronously via `run_deferred_script`.
@@ -149,17 +161,43 @@ pub trait Multiplexer: Send + Sync {
     /// Select (focus) a window by prefix and name
     fn select_window(&self, prefix: &str, name: &str) -> Result<()>;
 
+    fn select_window_target(&self, target: &WindowTarget) -> Result<()> {
+        let _ = target;
+        Err(anyhow!(
+            "Selecting parent-qualified windows is not supported by the {} backend",
+            self.name()
+        ))
+    }
+
     /// Check if a window exists by prefix and name
     fn window_exists(&self, prefix: &str, name: &str) -> Result<bool>;
 
     /// Check if a window exists by its full name
     fn window_exists_by_full_name(&self, full_name: &str) -> Result<bool>;
 
+    fn window_target_exists(&self, target: &WindowTarget) -> Result<bool> {
+        self.window_exists_by_full_name(&target.full_name)
+    }
+
     /// Get the current window name, if running inside the multiplexer
     fn current_window_name(&self) -> Result<Option<String>>;
 
     /// Get all window names in the current session
     fn get_all_window_names(&self) -> Result<HashSet<String>>;
+
+    fn get_window_names_in_session(&self, session_name: &str) -> Result<HashSet<String>> {
+        let _ = session_name;
+        self.get_all_window_names()
+    }
+
+    fn get_all_windows_with_sessions(&self) -> Result<HashSet<(String, String)>> {
+        let session = self.current_session().unwrap_or_default();
+        Ok(self
+            .get_all_window_names()?
+            .into_iter()
+            .map(|window| (window, session.clone()))
+            .collect())
+    }
 
     /// Get all session names
     fn get_all_session_names(&self) -> Result<HashSet<String>>;

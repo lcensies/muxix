@@ -18,8 +18,7 @@ pub fn derive_handle(
     config: &Config,
 ) -> Result<String> {
     let handle = if let Some(name) = explicit_name {
-        // Explicit --name takes priority and bypasses prefix
-        slugify(name)
+        derive_target_name(name)?
     } else {
         // Apply naming strategy
         let derived = config.worktree_naming.derive_name(branch_name);
@@ -34,6 +33,12 @@ pub fn derive_handle(
         slugify(&with_prefix)
     };
 
+    validate_handle(&handle)?;
+    Ok(handle)
+}
+
+pub fn derive_target_name(name: &str) -> Result<String> {
+    let handle = slugify(name);
     validate_handle(&handle)?;
     Ok(handle)
 }

@@ -1,15 +1,18 @@
 import uuid
 from pathlib import Path
 
+import pytest
 
 from .conftest import (
     DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
+    TmuxEnvironment,
     create_commit,
     create_dirty_file,
     get_window_name,
     get_worktree_path,
     run_workmux_add,
+    run_workmux_command,
     run_workmux_remove,
     write_workmux_config,
 )
@@ -33,6 +36,37 @@ def test_remove_clean_branch_succeeds_without_prompt(
 
     assert not worktree_path.exists()
     assert window_name not in env.list_windows()
+    branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
+    assert branch_name not in branch_list_result.stdout
+
+
+@pytest.mark.tmux_only
+def test_remove_window_in_parent_session(
+    mux_server: TmuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+):
+    env = mux_server
+    branch_name = "feature/parent-session-remove"
+    session_name = "prs-remove"
+    window_name = get_window_name(branch_name)
+
+    write_workmux_config(mux_repo_path)
+    run_workmux_command(
+        env,
+        workmux_exe_path,
+        mux_repo_path,
+        f"add {branch_name} --name-session {session_name} --background",
+    )
+    worktree_path = get_worktree_path(mux_repo_path, branch_name)
+
+    run_workmux_remove(env, workmux_exe_path, mux_repo_path, branch_name, force=True)
+
+    result = env.tmux(
+        ["list-windows", "-t", f"{session_name}:", "-F", "#{window_name}"],
+        check=False,
+    )
+    windows = [w for w in result.stdout.strip().split("\n") if w]
+    assert result.returncode != 0 or window_name not in windows
+    assert not worktree_path.exists(), "Worktree should be removed"
     branch_list_result = env.run_command(["git", "branch", "--list", branch_name])
     assert branch_name not in branch_list_result.stdout
 

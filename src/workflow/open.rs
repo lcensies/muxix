@@ -2,8 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use regex::Regex;
 
 use crate::git;
-use crate::multiplexer::MuxHandle;
 use crate::multiplexer::util::prefixed;
+use crate::multiplexer::{MuxHandle, WindowTarget};
 use crate::prompt::Prompt;
 use tracing::info;
 
@@ -61,6 +61,16 @@ pub fn open(
     // Precedence: CLI override > stored git metadata > config default (from options.mode)
     let stored_mode = git::get_worktree_mode_opt(&base_handle);
     let mode = mode_override.or(stored_mode).unwrap_or(options.mode);
+    if mode == MuxMode::Session && options.target_window_name.is_some() {
+        anyhow::bail!("--name-window requires window mode");
+    }
+    let cli_target_window_name = options.target_window_name.clone();
+    let cli_target_session_name = options.target_session_name.clone();
+    let cli_window_session_name = options.window_session_name.clone();
+    let explicit_primary_target_name = match mode {
+        MuxMode::Window => cli_target_window_name.as_deref(),
+        MuxMode::Session => cli_target_session_name.as_deref(),
+    };
 
     if mode == MuxMode::Session && context.mux.name() != "tmux" {
         anyhow::bail!(
@@ -82,12 +92,37 @@ pub fn open(
     }
 
     let prior_mode = stored_mode.unwrap_or(MuxMode::Window);
+    if let Some(explicit_target_name) = explicit_primary_target_name {
+        let explicit_target = MuxHandle::new(
+            context.mux.as_ref(),
+            mode,
+            &context.prefix,
+            explicit_target_name,
+        );
+        if explicit_target.exists()? {
+            let stored_target_name = match mode {
+                MuxMode::Window => git::get_worktree_target_window(&base_handle),
+                MuxMode::Session => git::get_worktree_target_session(&base_handle),
+            };
+            if stored_target_name.as_deref() != Some(explicit_target_name) {
+                anyhow::bail!(
+                    "A {} {} named '{}' already exists. Use a different target name.",
+                    context.mux.name(),
+                    explicit_target.kind(),
+                    explicit_target.full_name()
+                );
+            }
+        }
+    }
+
     if prior_mode != mode {
         match prior_mode {
             MuxMode::Window => {
                 // Kill all matching window targets (base + any -N numeric duplicates only)
                 let all_names = context.mux.get_all_window_names()?;
-                let full_base = prefixed(&context.prefix, &base_handle);
+                let prior_window_name = git::get_worktree_target_window(&base_handle)
+                    .unwrap_or_else(|| base_handle.clone());
+                let full_base = prefixed(&context.prefix, &prior_window_name);
                 let full_base_dash = format!("{}-", full_base);
                 for name in &all_names {
                     let is_exact = *name == full_base;
@@ -106,7 +141,9 @@ pub fn open(
                 }
             }
             MuxMode::Session => {
-                let full_name = prefixed(&context.prefix, &base_handle);
+                let prior_session_name = git::get_worktree_target_session(&base_handle)
+                    .unwrap_or_else(|| base_handle.clone());
+                let full_name = prefixed(&context.prefix, &prior_session_name);
                 if MuxHandle::exists_full(context.mux.as_ref(), prior_mode, &full_name)? {
                     info!(
                         handle = base_handle,
@@ -119,11 +156,51 @@ pub fn open(
         }
     }
 
-    // Update options with the resolved mode
-    let options = SetupOptions { mode, ..options };
+    let target_window_name = options
+        .target_window_name
+        .clone()
+        .or_else(|| git::get_worktree_target_window(&base_handle));
+    let target_session_name = options
+        .target_session_name
+        .clone()
+        .or_else(|| git::get_worktree_target_session(&base_handle));
+    let window_session_name = options
+        .window_session_name
+        .clone()
+        .or_else(|| git::get_worktree_window_session(&base_handle));
 
-    let target = MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, &base_handle);
-    let target_exists = target.exists()?;
+    // Update options with the resolved mode
+    let options = SetupOptions {
+        mode,
+        target_window_name: if mode == MuxMode::Window {
+            target_window_name.clone()
+        } else {
+            None
+        },
+        target_session_name: if mode == MuxMode::Session {
+            target_session_name.clone()
+        } else {
+            None
+        },
+        window_session_name: if mode == MuxMode::Window {
+            window_session_name.clone()
+        } else {
+            None
+        },
+        ..options
+    };
+
+    let target_name = match mode {
+        MuxMode::Window => target_window_name.as_deref().unwrap_or(&base_handle),
+        MuxMode::Session => target_session_name.as_deref().unwrap_or(&base_handle),
+    };
+    let target = MuxHandle::new(context.mux.as_ref(), mode, &context.prefix, target_name);
+    let window_target = WindowTarget::new(target.full_name(), window_session_name.clone());
+    let target_exists = if mode == MuxMode::Window {
+        context.mux.window_target_exists(&window_target)?
+    } else {
+        target.exists()?
+    };
 
     // If target exists and we're not forcing new, switch to it
     if target_exists && !new_window {
@@ -135,9 +212,22 @@ pub fn open(
                 "window"
             };
             let _ = git::set_worktree_meta(&base_handle, "mode", mode_str);
+            if let Some(target_window_name) = &options.target_window_name {
+                let _ = git::set_worktree_meta(&base_handle, "target-window", target_window_name);
+            }
+            if let Some(target_session_name) = &options.target_session_name {
+                let _ = git::set_worktree_meta(&base_handle, "target-session", target_session_name);
+            }
+            if let Some(window_session_name) = &options.window_session_name {
+                let _ = git::set_worktree_meta(&base_handle, "window-session", window_session_name);
+            }
         }
         if options.focus_window {
-            target.select()?;
+            if mode == MuxMode::Window && window_target.parent_session().is_some() {
+                context.mux.select_window_target(&window_target)?;
+            } else {
+                target.select()?;
+            }
         }
         info!(
             handle = base_handle,
@@ -153,6 +243,7 @@ pub fn open(
             post_create_hooks_run: 0,
             base_branch: None,
             did_switch: true,
+            mux_target_full_name: target.full_name(),
             resolved_handle: base_handle,
             mode,
         });
@@ -181,18 +272,31 @@ pub fn open(
             "open:persisted worktree mode"
         );
     }
+    if let Some(target_window_name) = &cli_target_window_name {
+        git::set_worktree_meta(&base_handle, "target-window", target_window_name)
+            .context("Failed to persist target window")?;
+    }
+    if mode == MuxMode::Session {
+        if let Some(target_session_name) = &cli_target_session_name {
+            git::set_worktree_meta(&base_handle, "target-session", target_session_name)
+                .context("Failed to persist target session")?;
+        }
+    } else if let Some(window_session_name) = &cli_window_session_name {
+        git::set_worktree_meta(&base_handle, "window-session", window_session_name)
+            .context("Failed to persist window session")?;
+    }
 
     // Determine handle: use suffix if forcing new target and one exists
     let (handle, after_window) = if new_window && target_exists {
-        let unique_handle = resolve_unique_handle(context, &base_handle)?;
-        // Insert after the last window in the base handle group (base or -N suffixes)
+        let unique_handle = resolve_unique_handle(context, target_name)?;
+        // Insert after the last window in the target name group (base or -N suffixes)
         let after = context
             .mux
-            .find_last_window_with_base_handle(&context.prefix, &base_handle)
+            .find_last_window_with_base_handle(&context.prefix, target_name)
             .unwrap_or(None);
         (unique_handle, after)
     } else {
-        (base_handle, None)
+        (target_name.to_string(), None)
     };
 
     // Compute working directory from config location
@@ -223,6 +327,11 @@ pub fn open(
     let options_with_workdir = SetupOptions {
         working_dir,
         config_root,
+        target_window_name: if mode == MuxMode::Window {
+            Some(handle.clone())
+        } else {
+            None
+        },
         ..options
     };
 

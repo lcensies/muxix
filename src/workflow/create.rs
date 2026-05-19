@@ -90,7 +90,14 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Check if worktree or target (window/session) already exists
-    let target = MuxHandle::new(context.mux.as_ref(), options.mode, &context.prefix, handle);
+    let requested_target_name = options.primary_mux_target_name(handle);
+    let explicit_target_name = options.has_explicit_primary_mux_target();
+    let target = MuxHandle::new(
+        context.mux.as_ref(),
+        options.mode,
+        &context.prefix,
+        requested_target_name,
+    );
     let full_target_name = target.full_name();
     let mut target_exists = target.exists()?;
     let worktree_exists = git::worktree_exists(branch_name)?;
@@ -101,7 +108,8 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // cleanup's `find_matching_windows` regex (base(-\d+)?) won't confuse it with
     // `open --new` duplicates.
     let mut current_handle = handle.to_string();
-    if target_exists && !worktree_exists && !is_explicit_name {
+    let mut current_target_name = requested_target_name.to_string();
+    if target_exists && !worktree_exists && !is_explicit_name && !explicit_target_name {
         let project_name = context
             .main_worktree_root
             .file_name()
@@ -122,12 +130,13 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             );
         }
         current_handle = format!("{}-{}", handle, project_slug);
+        current_target_name = current_handle.clone();
 
         let suffixed_target = MuxHandle::new(
             context.mux.as_ref(),
             options.mode,
             &context.prefix,
-            &current_handle,
+            &current_target_name,
         );
 
         eprintln!(
@@ -163,6 +172,9 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             config_root: options.config_root.clone(),
             open_if_exists: false,
             mode: options.mode,
+            target_window_name: options.target_window_name.clone(),
+            target_session_name: options.target_session_name.clone(),
+            window_session_name: options.window_session_name.clone(),
             resume_mode: options.resume_mode.clone(),
         };
 
@@ -179,18 +191,18 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
     }
 
-    // Check target using handle (the display name)
+    // Check target using the mux target name that will be created.
     if target_exists {
         return Err(anyhow!(
             "A {} {} named '{}' already exists.\n\
-             Hint: use --name to specify a unique name.",
+             Hint: use --name, --name-window, or --name-session to specify a unique name.",
             context.mux.name(),
             target.kind(),
             MuxHandle::new(
                 context.mux.as_ref(),
                 options.mode,
                 &context.prefix,
-                &current_handle,
+                &current_target_name,
             )
             .full_name()
         ));
@@ -403,6 +415,34 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             current_handle
         )
     })?;
+    if let Some(target_window_name) = &options.target_window_name {
+        git::set_worktree_meta(&current_handle, "target-window", target_window_name).with_context(
+            || {
+                format!(
+                    "Failed to store target window for worktree '{}'",
+                    current_handle
+                )
+            },
+        )?;
+    }
+    if let Some(target_session_name) = &options.target_session_name {
+        git::set_worktree_meta(&current_handle, "target-session", target_session_name)
+            .with_context(|| {
+                format!(
+                    "Failed to store target session for worktree '{}'",
+                    current_handle
+                )
+            })?;
+    }
+    if let Some(window_session_name) = &options.window_session_name {
+        git::set_worktree_meta(&current_handle, "window-session", window_session_name)
+            .with_context(|| {
+                format!(
+                    "Failed to store window session for worktree '{}'",
+                    current_handle
+                )
+            })?;
+    }
     debug!(
         handle = %current_handle,
         mode = mode_str,

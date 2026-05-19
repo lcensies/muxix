@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use crate::config::MuxMode;
 use crate::github::PrSummary;
-use crate::multiplexer::AgentStatus;
 use crate::multiplexer::conversation::{ConversationForker, SessionInfo};
 use crate::multiplexer::types::ResumeMode;
+use crate::multiplexer::{AgentStatus, WindowTarget};
 use crate::prompt::Prompt;
 
 /// Arguments for creating a worktree
@@ -39,6 +39,8 @@ pub struct CreateResult {
     pub did_switch: bool,
     /// The actual handle used (may differ from requested if auto-suffixed for cross-repo collision)
     pub resolved_handle: String,
+    /// The full mux target name that was created or selected.
+    pub mux_target_full_name: String,
     /// The mux mode that was actually used (window or session)
     pub mode: MuxMode,
 }
@@ -92,6 +94,7 @@ pub struct CleanupResult {
     pub local_branch_deleted: bool,
     /// The actual window name to close later (when running inside a duplicate window)
     pub window_to_close_later: Option<String>,
+    pub window_target_to_close_later: Option<WindowTarget>,
     /// Trash directory path to delete after window close (deferred to avoid race condition)
     pub trash_path_to_delete: Option<PathBuf>,
     /// Full cleanup deferred until after window close (rename + prune + branch delete).
@@ -116,6 +119,12 @@ pub struct SetupOptions {
     pub open_if_exists: bool,
     /// Mode for tmux operations: window (default) or session
     pub mode: MuxMode,
+    /// Custom window target name for window mode.
+    pub target_window_name: Option<String>,
+    /// Custom session target name for session mode.
+    pub target_session_name: Option<String>,
+    /// Raw tmux parent session for window mode.
+    pub window_session_name: Option<String>,
     /// How to resume a conversation (continue last, fork specific session, or none).
     pub resume_mode: ResumeMode,
 }
@@ -134,6 +143,9 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            target_window_name: None,
+            target_session_name: None,
+            window_session_name: None,
             resume_mode: ResumeMode::default(),
         }
     }
@@ -150,6 +162,9 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            target_window_name: None,
+            target_session_name: None,
+            window_session_name: None,
             resume_mode: ResumeMode::default(),
         }
     }
@@ -172,7 +187,24 @@ impl SetupOptions {
             config_root: None,
             open_if_exists: false,
             mode: MuxMode::default(),
+            target_window_name: None,
+            target_session_name: None,
+            window_session_name: None,
             resume_mode: ResumeMode::default(),
+        }
+    }
+
+    pub fn primary_mux_target_name<'a>(&'a self, handle: &'a str) -> &'a str {
+        match self.mode {
+            MuxMode::Window => self.target_window_name.as_deref().unwrap_or(handle),
+            MuxMode::Session => self.target_session_name.as_deref().unwrap_or(handle),
+        }
+    }
+
+    pub fn has_explicit_primary_mux_target(&self) -> bool {
+        match self.mode {
+            MuxMode::Window => self.target_window_name.is_some(),
+            MuxMode::Session => self.target_session_name.is_some(),
         }
     }
 }
