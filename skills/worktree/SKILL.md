@@ -87,13 +87,49 @@ do NOT create further worktrees. Your job is to implement the task below
 directly in this worktree.
 ```
 
+## Cross-project dispatch
+
+If the task mentions another repository, absolute project path, or work that
+clearly spans multiple repositories, adapt the dispatch to the target project
+instead of assuming the current repository.
+
+For each target project:
+
+1. Use the project path provided by the user, or the project path already present
+   in the conversation. Do not explore that repository.
+2. Derive the default tmux session name from the repository directory basename.
+   For `/Users/me/code/api-server`, use `api-server`.
+3. Check whether a tmux session already exists for that project with
+   `tmux list-sessions -F '#{session_name} #{session_path}'`. Prefer a session
+   whose path matches the target project. Otherwise use the derived session name.
+4. If no session exists, create one with `tmux new-session -d -s <session> -c
+   <project-path>`.
+5. Run `workmux add` from that project's tmux session by creating a window rooted
+   at the project path:
+
+```bash
+tmux new-window -t <session> -c <project-path> \
+  "workmux add <worktree-name> -b -P <prompt-file>; exit"
+```
+
+If a task touches both the current repository and another repository, create one
+prompt and worktree per repository. Each prompt should explain the cross-repo
+context and reference the other repository by absolute path when useful, but the
+agent assigned to a repository should make changes only in its own worktree
+unless the user explicitly asks for a different arrangement.
+
+If the user's request does not provide enough information to identify the target
+project path or session name, ask for clarification instead of searching.
+
 ## Workflow
 
 Write ALL temp files first, THEN run all workmux commands.
 
-**IMPORTANT:** Run `workmux add` from the CURRENT directory. Do NOT `cd` to the
-main repo or any other directory. The new worktree branches from whatever branch
-is checked out in the current directory.
+**IMPORTANT:** For same-repository tasks, run `workmux add` from the CURRENT
+directory. Do NOT `cd` to the main repo or any other directory. The new worktree
+branches from whatever branch is checked out in the current directory. For
+cross-project tasks, run `workmux add` inside the target project's tmux session
+as described above.
 
 Step 1 - Write all prompt files (in parallel):
 
