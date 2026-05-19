@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.209 (2026-05-19)
+
+- Allow `workmux merge` to keep the worktree, window, and branch by default with `merge_keep: true`.
+- Add `workmux merge --cleanup` to clean up for a single merge when keep-by-default behavior is enabled.
+- Document how worktree dispatch should handle tasks that target another project.
+
 ## v0.1.208 (2026-05-15)
 
 - Add a horizontal top bar option for the sidebar, with configurable height and chip width
