@@ -55,7 +55,7 @@ pub fn build_snapshot(
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
     git_statuses: HashMap<PathBuf, GitStatus>,
-    pr_statuses: HashMap<PathBuf, PrSummary>,
+    mut pr_statuses: HashMap<PathBuf, PrSummary>,
     sleeping_pane_ids: &HashSet<String>,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
@@ -111,6 +111,15 @@ pub fn build_snapshot(
         .cloned()
         .collect();
 
+    let live_paths: HashSet<&PathBuf> = agents.iter().map(|a| &a.path).collect();
+    pr_statuses.retain(|path, _| {
+        live_paths.contains(path)
+            && git_statuses
+                .get(path)
+                .and_then(|status| status.branch.as_deref())
+                .is_some_and(|branch| branch != "main" && branch != "master")
+    });
+
     SidebarSnapshot {
         position,
         layout_mode,
@@ -123,5 +132,117 @@ pub fn build_snapshot(
         sleeping_pane_ids: live_sleeping,
         agents,
         config_version: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent(path: &str) -> AgentPane {
+        AgentPane {
+            session: "s".to_string(),
+            window_name: "w".to_string(),
+            pane_id: "%1".to_string(),
+            window_id: String::new(),
+            path: PathBuf::from(path),
+            pane_title: None,
+            status: None,
+            status_ts: None,
+            updated_ts: None,
+            window_cmd: None,
+            agent_command: None,
+            agent_kind: None,
+        }
+    }
+
+    fn pr(number: u32) -> PrSummary {
+        PrSummary {
+            number,
+            title: "test".to_string(),
+            state: "OPEN".to_string(),
+            is_draft: false,
+            checks: None,
+            check_meta: None,
+            url: None,
+        }
+    }
+
+    fn build(
+        agents: Vec<AgentPane>,
+        git_statuses: HashMap<PathBuf, GitStatus>,
+        pr_statuses: HashMap<PathBuf, PrSummary>,
+    ) -> SidebarSnapshot {
+        build_snapshot(
+            agents,
+            &HashMap::new(),
+            &HashMap::new(),
+            HashSet::new(),
+            HashSet::new(),
+            HashMap::new(),
+            SidebarPosition::Left,
+            SidebarLayoutMode::default(),
+            &StatusIcons::default(),
+            git_statuses,
+            pr_statuses,
+            &HashSet::new(),
+        )
+    }
+
+    #[test]
+    fn pr_statuses_exclude_main_branch_paths() {
+        let path = PathBuf::from("/repo");
+        let git = GitStatus {
+            branch: Some("main".to_string()),
+            base_branch: "main".to_string(),
+            ..Default::default()
+        };
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), git)]),
+            HashMap::from([(path.clone(), pr(10757))]),
+        );
+
+        assert!(!snapshot.pr_statuses.contains_key(&path));
+    }
+
+    #[test]
+    fn pr_statuses_keep_feature_branch_paths() {
+        let path = PathBuf::from("/repo");
+        let git = GitStatus {
+            branch: Some("feature".to_string()),
+            ..Default::default()
+        };
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), git)]),
+            HashMap::from([(path.clone(), pr(123))]),
+        );
+
+        assert_eq!(
+            snapshot.pr_statuses.get(&path).map(|pr| pr.number),
+            Some(123)
+        );
+    }
+
+    #[test]
+    fn pr_statuses_exclude_stale_paths() {
+        let live_path = PathBuf::from("/repo");
+        let stale_path = PathBuf::from("/old-repo");
+        let git = GitStatus {
+            branch: Some("feature".to_string()),
+            ..Default::default()
+        };
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(live_path.clone(), git.clone()), (stale_path.clone(), git)]),
+            HashMap::from([(live_path.clone(), pr(1)), (stale_path.clone(), pr(2))]),
+        );
+
+        assert!(snapshot.pr_statuses.contains_key(&live_path));
+        assert!(!snapshot.pr_statuses.contains_key(&stale_path));
     }
 }
