@@ -22,7 +22,7 @@ use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
 use crate::state::StateStore;
 
 use super::app::SidebarLayoutMode;
-use super::snapshot::build_snapshot;
+use super::snapshot::{PrPathEntry, build_snapshot};
 
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
@@ -565,7 +565,7 @@ struct PrWorkerPath {
     branch: String,
 }
 
-type PrPathCache = Arc<Mutex<HashMap<PathBuf, PrSummary>>>;
+type PrPathCache = Arc<Mutex<HashMap<PathBuf, PrPathEntry>>>;
 type PrRepoCache = Arc<Mutex<HashMap<PathBuf, HashMap<String, PrSummary>>>>;
 
 fn publish_pr_path_cache(
@@ -583,7 +583,13 @@ fn publish_pr_path_cache(
                 .get(repo_root)
                 .and_then(|prs| prs.get(&entry.branch))
         {
-            next.insert(entry.path.clone(), pr.clone());
+            next.insert(
+                entry.path.clone(),
+                PrPathEntry {
+                    branch: entry.branch.clone(),
+                    summary: pr.clone(),
+                },
+            );
         }
     }
     let changed = if let Ok(mut cache) = path_cache.lock() {
@@ -1629,7 +1635,7 @@ struct TickInput {
     position: SidebarPosition,
     layout_mode: SidebarLayoutMode,
     git_statuses: HashMap<PathBuf, GitStatus>,
-    pr_statuses: HashMap<PathBuf, PrSummary>,
+    pr_statuses: HashMap<PathBuf, PrPathEntry>,
     sleeping_pane_ids: HashSet<String>,
 }
 
@@ -1804,6 +1810,46 @@ mod tests {
             status: Some(AgentStatus::Done),
             ..working_agent(pane_id, 1)
         }
+    }
+
+    #[test]
+    fn pr_path_cache_records_branch() {
+        let path = PathBuf::from("/repo");
+        let repo_root = PathBuf::from("/repo");
+        let summary = PrSummary {
+            number: 123,
+            title: "test".to_string(),
+            state: "OPEN".to_string(),
+            is_draft: false,
+            checks: None,
+            check_meta: None,
+            url: None,
+        };
+        let entries = vec![PrWorkerPath {
+            path: path.clone(),
+            branch: "feature".to_string(),
+        }];
+        let repo_roots = HashMap::from([(path.clone(), repo_root.clone())]);
+        let repo_cache =
+            HashMap::from([(repo_root, HashMap::from([("feature".to_string(), summary)]))]);
+        let path_cache: PrPathCache = Arc::new(Mutex::new(HashMap::new()));
+        let dirty_flag = Arc::new(AtomicBool::new(false));
+        let (wake_tx, _wake_rx) = std::sync::mpsc::sync_channel(1);
+
+        publish_pr_path_cache(
+            &entries,
+            &repo_roots,
+            &repo_cache,
+            &path_cache,
+            &dirty_flag,
+            &wake_tx,
+        );
+
+        let cache = path_cache.lock().unwrap();
+        let entry = cache.get(&path).unwrap();
+        assert_eq!(entry.branch, "feature");
+        assert_eq!(entry.summary.number, 123);
+        assert!(dirty_flag.load(Ordering::Relaxed));
     }
 
     #[test]

@@ -12,6 +12,12 @@ use crate::multiplexer::{AgentPane, AgentStatus};
 
 use super::app::SidebarLayoutMode;
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PrPathEntry {
+    pub branch: String,
+    pub summary: PrSummary,
+}
+
 /// A complete sidebar state snapshot, pushed from daemon to clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidebarSnapshot {
@@ -55,7 +61,7 @@ pub fn build_snapshot(
     layout_mode: SidebarLayoutMode,
     status_icons: &StatusIcons,
     git_statuses: HashMap<PathBuf, GitStatus>,
-    mut pr_statuses: HashMap<PathBuf, PrSummary>,
+    pr_statuses: HashMap<PathBuf, PrPathEntry>,
     sleeping_pane_ids: &HashSet<String>,
 ) -> SidebarSnapshot {
     let done_icon = status_icons.done();
@@ -112,13 +118,21 @@ pub fn build_snapshot(
         .collect();
 
     let live_paths: HashSet<&PathBuf> = agents.iter().map(|a| &a.path).collect();
-    pr_statuses.retain(|path, _| {
-        live_paths.contains(path)
-            && git_statuses
-                .get(path)
-                .and_then(|status| status.branch.as_deref())
-                .is_some_and(|branch| branch != "main" && branch != "master")
-    });
+    let pr_statuses = pr_statuses
+        .into_iter()
+        .filter_map(|(path, entry)| {
+            let branch = git_statuses.get(&path)?.branch.as_deref()?;
+            if live_paths.contains(&path)
+                && branch != "main"
+                && branch != "master"
+                && branch == entry.branch
+            {
+                Some((path, entry.summary))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     SidebarSnapshot {
         position,
@@ -168,10 +182,17 @@ mod tests {
         }
     }
 
+    fn pr_entry(branch: &str, number: u32) -> PrPathEntry {
+        PrPathEntry {
+            branch: branch.to_string(),
+            summary: pr(number),
+        }
+    }
+
     fn build(
         agents: Vec<AgentPane>,
         git_statuses: HashMap<PathBuf, GitStatus>,
-        pr_statuses: HashMap<PathBuf, PrSummary>,
+        pr_statuses: HashMap<PathBuf, PrPathEntry>,
     ) -> SidebarSnapshot {
         build_snapshot(
             agents,
@@ -201,7 +222,7 @@ mod tests {
         let snapshot = build(
             vec![agent("/repo")],
             HashMap::from([(path.clone(), git)]),
-            HashMap::from([(path.clone(), pr(10757))]),
+            HashMap::from([(path.clone(), pr_entry("main", 10757))]),
         );
 
         assert!(!snapshot.pr_statuses.contains_key(&path));
@@ -218,13 +239,61 @@ mod tests {
         let snapshot = build(
             vec![agent("/repo")],
             HashMap::from([(path.clone(), git)]),
-            HashMap::from([(path.clone(), pr(123))]),
+            HashMap::from([(path.clone(), pr_entry("feature", 123))]),
         );
 
         assert_eq!(
             snapshot.pr_statuses.get(&path).map(|pr| pr.number),
             Some(123)
         );
+    }
+
+    #[test]
+    fn pr_statuses_exclude_master_branch_paths() {
+        let path = PathBuf::from("/repo");
+        let git = GitStatus {
+            branch: Some("master".to_string()),
+            base_branch: "master".to_string(),
+            ..Default::default()
+        };
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), git)]),
+            HashMap::from([(path.clone(), pr_entry("master", 10757))]),
+        );
+
+        assert!(!snapshot.pr_statuses.contains_key(&path));
+    }
+
+    #[test]
+    fn pr_statuses_exclude_mismatched_branch() {
+        let path = PathBuf::from("/repo");
+        let git = GitStatus {
+            branch: Some("feature-b".to_string()),
+            ..Default::default()
+        };
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), git)]),
+            HashMap::from([(path.clone(), pr_entry("feature-a", 123))]),
+        );
+
+        assert!(!snapshot.pr_statuses.contains_key(&path));
+    }
+
+    #[test]
+    fn pr_statuses_exclude_missing_branch() {
+        let path = PathBuf::from("/repo");
+
+        let snapshot = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), GitStatus::default())]),
+            HashMap::from([(path.clone(), pr_entry("feature", 123))]),
+        );
+
+        assert!(!snapshot.pr_statuses.contains_key(&path));
     }
 
     #[test]
@@ -239,7 +308,10 @@ mod tests {
         let snapshot = build(
             vec![agent("/repo")],
             HashMap::from([(live_path.clone(), git.clone()), (stale_path.clone(), git)]),
-            HashMap::from([(live_path.clone(), pr(1)), (stale_path.clone(), pr(2))]),
+            HashMap::from([
+                (live_path.clone(), pr_entry("feature", 1)),
+                (stale_path.clone(), pr_entry("feature", 2)),
+            ]),
         );
 
         assert!(snapshot.pr_statuses.contains_key(&live_path));
