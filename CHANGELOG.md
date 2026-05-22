@@ -22,6 +22,11 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.211 (2026-05-22)
+
+- Respect each repository's configured base branch when adding worktrees from the dashboard.
+- Keep dashboard worktree creation and PR checkout actions tied to the selected repository instead of the shell's current repository.
+
 ## v0.1.210 (2026-05-22)
 
 - Add custom tmux target names for `workmux add` and `workmux open`, so the worktree directory can stay separate from the window or session name. ([#139](https://github.com/raine/workmux/issues/139))
