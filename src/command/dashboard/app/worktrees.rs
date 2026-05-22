@@ -1147,13 +1147,14 @@ impl App {
 
     /// Checkout a PR in a background thread (quiet, no stdout/spinner).
     fn do_checkout_pr(&mut self, pr_number: u32, repo_path: PathBuf) {
-        let config = self.config.clone();
         let mux = self.mux.clone();
         let tx = self.event_tx.clone();
 
         std::thread::spawn(move || {
             let result = (|| -> anyhow::Result<String> {
                 std::env::set_current_dir(&repo_path)?;
+                let (config, config_location) =
+                    crate::config::Config::load_with_location_from(&repo_path, None)?;
 
                 // Quiet PR resolution (no println/spinner like resolve_pr_ref)
                 let pr_details = crate::github::get_pr_details(pr_number)
@@ -1177,7 +1178,7 @@ impl App {
                 };
                 let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
 
-                let ctx = workflow::WorkflowContext::new(config.clone(), mux, None)?;
+                let ctx = workflow::WorkflowContext::new(config.clone(), mux, config_location)?;
                 let handle = crate::naming::derive_handle(&local_branch, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
