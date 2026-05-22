@@ -426,32 +426,46 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         )
     })?;
     if let Some(target_window_name) = &options.target_window_name {
-        git::set_worktree_meta(&current_handle, "target-window", target_window_name).with_context(
-            || {
-                format!(
-                    "Failed to store target window for worktree '{}'",
-                    current_handle
-                )
-            },
-        )?;
+        git::set_worktree_meta_in(
+            &current_handle,
+            "target-window",
+            target_window_name,
+            Some(&context.execution_dir),
+        )
+        .with_context(|| {
+            format!(
+                "Failed to store target window for worktree '{}'",
+                current_handle
+            )
+        })?;
     }
     if let Some(target_session_name) = &options.target_session_name {
-        git::set_worktree_meta(&current_handle, "target-session", target_session_name)
-            .with_context(|| {
-                format!(
-                    "Failed to store target session for worktree '{}'",
-                    current_handle
-                )
-            })?;
+        git::set_worktree_meta_in(
+            &current_handle,
+            "target-session",
+            target_session_name,
+            Some(&context.execution_dir),
+        )
+        .with_context(|| {
+            format!(
+                "Failed to store target session for worktree '{}'",
+                current_handle
+            )
+        })?;
     }
     if let Some(window_session_name) = &options.window_session_name {
-        git::set_worktree_meta(&current_handle, "window-session", window_session_name)
-            .with_context(|| {
-                format!(
-                    "Failed to store window session for worktree '{}'",
-                    current_handle
-                )
-            })?;
+        git::set_worktree_meta_in(
+            &current_handle,
+            "window-session",
+            window_session_name,
+            Some(&context.execution_dir),
+        )
+        .with_context(|| {
+            format!(
+                "Failed to store window session for worktree '{}'",
+                current_handle
+            )
+        })?;
     }
     debug!(
         handle = %current_handle,
