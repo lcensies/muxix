@@ -5,7 +5,6 @@ use tracing::debug;
 
 use crate::cmd::Cmd;
 
-use super::repo::has_commits;
 use super::{ForkBranchSpec, RemoteBranchSpec};
 
 /// Get the default branch (main or master)
@@ -40,7 +39,7 @@ pub fn get_default_branch_in(workdir: Option<&Path>) -> Result<String> {
     }
 
     // Check if repo has any commits at all
-    if !has_commits()? {
+    if !super::repo::has_commits_in(workdir)? {
         return Err(anyhow!(
             "The repository has no commits yet. Please make an initial commit before using workmux, \
             or specify the main branch in .workmux.yaml using the 'main_branch' key."
@@ -320,34 +319,51 @@ pub fn get_gone_branches() -> Result<HashSet<String>> {
 }
 
 /// Unset the upstream tracking for a branch
+#[allow(dead_code)]
 pub fn unset_branch_upstream(branch_name: &str) -> Result<()> {
-    if !branch_has_upstream(branch_name)? {
+    unset_branch_upstream_in(branch_name, None)
+}
+
+/// Unset the upstream tracking for a branch in a specific workdir
+pub fn unset_branch_upstream_in(branch_name: &str, workdir: Option<&Path>) -> Result<()> {
+    if !branch_has_upstream_in(branch_name, workdir)? {
         return Ok(());
     }
 
-    Cmd::new("git")
-        .args(&["branch", "--unset-upstream", branch_name])
-        .run()
-        .context("Failed to unset branch upstream")?;
+    let cmd = Cmd::new("git").args(&["branch", "--unset-upstream", branch_name]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run().context("Failed to unset branch upstream")?;
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(super) fn branch_has_upstream(branch_name: &str) -> Result<bool> {
-    // Check for the existence of tracking config for this branch.
-    // We check both 'merge' and 'remote' to catch edge cases where one might be set without the other.
-    // This confirms if tracking configuration exists (which is what we want to unset),
-    // rather than checking if it resolves to a valid commit (which rev-parse does).
-    let has_merge = Cmd::new("git")
-        .args(&["config", "--get", &format!("branch.{}.merge", branch_name)])
-        .run_as_check()?;
+    branch_has_upstream_in(branch_name, None)
+}
+
+pub(super) fn branch_has_upstream_in(branch_name: &str, workdir: Option<&Path>) -> Result<bool> {
+    let merge_key = format!("branch.{}.merge", branch_name);
+    let has_merge_cmd = Cmd::new("git").args(&["config", "--get", &merge_key]);
+    let has_merge_cmd = match workdir {
+        Some(path) => has_merge_cmd.workdir(path),
+        None => has_merge_cmd,
+    };
+    let has_merge = has_merge_cmd.run_as_check()?;
 
     if has_merge {
         return Ok(true);
     }
 
-    Cmd::new("git")
-        .args(&["config", "--get", &format!("branch.{}.remote", branch_name)])
-        .run_as_check()
+    let remote_key = format!("branch.{}.remote", branch_name);
+    let has_remote_cmd = Cmd::new("git").args(&["config", "--get", &remote_key]);
+    let has_remote_cmd = match workdir {
+        Some(path) => has_remote_cmd.workdir(path),
+        None => has_remote_cmd,
+    };
+    has_remote_cmd.run_as_check()
 }
 
 /// Store the base branch/commit that a branch was created from

@@ -5,11 +5,17 @@ use crate::cmd::Cmd;
 use crate::config::MuxMode;
 
 use super::WorktreeNotFound;
-use super::branch::unset_branch_upstream;
+use super::branch::unset_branch_upstream_in;
 
 /// Check if a worktree already exists for a branch
+#[allow(dead_code)]
 pub fn worktree_exists(branch_name: &str) -> Result<bool> {
-    match get_worktree_path(branch_name) {
+    worktree_exists_in(branch_name, None)
+}
+
+/// Check if a worktree already exists for a branch in a specific workdir
+pub fn worktree_exists_in(branch_name: &str, workdir: Option<&Path>) -> Result<bool> {
+    match get_worktree_path_in(branch_name, workdir) {
         Ok(_) => Ok(true),
         Err(e) => {
             // Check if this is a WorktreeNotFound error
@@ -23,6 +29,7 @@ pub fn worktree_exists(branch_name: &str) -> Result<bool> {
 }
 
 /// Create a new git worktree
+#[allow(dead_code)]
 pub fn create_worktree(
     worktree_path: &Path,
     branch_name: &str,
@@ -30,11 +37,33 @@ pub fn create_worktree(
     base_branch: Option<&str>,
     track_upstream: bool,
 ) -> Result<()> {
+    create_worktree_in(
+        worktree_path,
+        branch_name,
+        create_branch,
+        base_branch,
+        track_upstream,
+        None,
+    )
+}
+
+/// Create a new git worktree from a specific workdir
+pub fn create_worktree_in(
+    worktree_path: &Path,
+    branch_name: &str,
+    create_branch: bool,
+    base_branch: Option<&str>,
+    track_upstream: bool,
+    workdir: Option<&Path>,
+) -> Result<()> {
     let path_str = worktree_path
         .to_str()
         .ok_or_else(|| anyhow!("Invalid worktree path"))?;
 
     let mut cmd = Cmd::new("git").arg("worktree").arg("add");
+    if let Some(path) = workdir {
+        cmd = cmd.workdir(path);
+    }
 
     if create_branch {
         cmd = cmd.arg("-b").arg(branch_name).arg(path_str);
@@ -47,12 +76,8 @@ pub fn create_worktree(
 
     cmd.run().context("Failed to create worktree")?;
 
-    // When creating a new branch from a remote tracking branch (e.g., origin/main),
-    // git automatically sets up tracking for the new branch. This is desirable when
-    // opening a remote branch locally, but we unset the upstream when the new branch
-    // should be independent.
     if create_branch && !track_upstream {
-        unset_branch_upstream(branch_name)?;
+        unset_branch_upstream_in(branch_name, workdir)?;
     }
 
     Ok(())
@@ -150,12 +175,12 @@ pub(super) fn parse_worktree_list_porcelain(output: &str) -> Result<Vec<(PathBuf
 
 /// Get the path to a worktree for a given branch
 pub fn get_worktree_path(branch_name: &str) -> Result<PathBuf> {
-    let list_str = Cmd::new("git")
-        .args(&["worktree", "list", "--porcelain"])
-        .run_and_capture_stdout()
-        .context("Failed to list worktrees while locating worktree path")?;
+    get_worktree_path_in(branch_name, None)
+}
 
-    let worktrees = parse_worktree_list_porcelain(&list_str)?;
+/// Get the path to a worktree for a given branch in a specific workdir
+pub fn get_worktree_path_in(branch_name: &str, workdir: Option<&Path>) -> Result<PathBuf> {
+    let worktrees = list_worktrees_in(workdir)?;
 
     for (path, branch) in worktrees {
         if branch == branch_name {
@@ -170,12 +195,12 @@ pub fn get_worktree_path(branch_name: &str) -> Result<PathBuf> {
 /// Tries handle first, then falls back to branch lookup.
 /// Returns both the path and the branch name checked out in that worktree.
 pub fn find_worktree(name: &str) -> Result<(PathBuf, String)> {
-    let list_str = Cmd::new("git")
-        .args(&["worktree", "list", "--porcelain"])
-        .run_and_capture_stdout()
-        .context("Failed to list worktrees")?;
+    find_worktree_in(name, None)
+}
 
-    let worktrees = parse_worktree_list_porcelain(&list_str)?;
+/// Find a worktree by handle or branch name in a specific workdir.
+pub fn find_worktree_in(name: &str, workdir: Option<&Path>) -> Result<(PathBuf, String)> {
+    let worktrees = list_worktrees_in(workdir)?;
 
     // First: try to match by handle (directory name)
     for (path, branch) in &worktrees {
@@ -215,50 +240,80 @@ pub fn list_worktrees_in(workdir: Option<&Path>) -> Result<Vec<(PathBuf, String)
 }
 
 /// Store per-worktree metadata in git config.
+#[allow(dead_code)]
 pub fn set_worktree_meta(handle: &str, key: &str, value: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            &format!("workmux.worktree.{}.{}", handle, key),
-            value,
-        ])
-        .run()
+    set_worktree_meta_in(handle, key, value, None)
+}
+
+/// Store per-worktree metadata in git config in a specific workdir.
+pub fn set_worktree_meta_in(
+    handle: &str,
+    key: &str,
+    value: &str,
+    workdir: Option<&Path>,
+) -> Result<()> {
+    let config_key = format!("workmux.worktree.{}.{}", handle, key);
+    let cmd = Cmd::new("git").args(&["config", "--local", &config_key, value]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to set worktree metadata {}.{}", handle, key))?;
     Ok(())
 }
 
 /// Retrieve per-worktree metadata from git config.
 /// Returns None if the key doesn't exist.
+#[allow(dead_code)]
 pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
-    Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            "--get",
-            &format!("workmux.worktree.{}.{}", handle, key),
-        ])
-        .run_and_capture_stdout()
-        .ok()
-        .filter(|s| !s.is_empty())
+    get_worktree_meta_in(handle, key, None)
+}
+
+/// Retrieve per-worktree metadata from git config in a specific workdir.
+pub fn get_worktree_meta_in(handle: &str, key: &str, workdir: Option<&Path>) -> Option<String> {
+    let config_key = format!("workmux.worktree.{}.{}", handle, key);
+    let cmd = Cmd::new("git").args(&["config", "--local", "--get", &config_key]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run_and_capture_stdout().ok().filter(|s| !s.is_empty())
 }
 
 pub fn get_worktree_target_window(handle: &str) -> Option<String> {
-    get_worktree_meta(handle, "target-window")
+    get_worktree_target_window_in(handle, None)
+}
+
+pub fn get_worktree_target_window_in(handle: &str, workdir: Option<&Path>) -> Option<String> {
+    get_worktree_meta_in(handle, "target-window", workdir)
 }
 
 pub fn get_worktree_target_session(handle: &str) -> Option<String> {
-    get_worktree_meta(handle, "target-session")
+    get_worktree_target_session_in(handle, None)
+}
+
+pub fn get_worktree_target_session_in(handle: &str, workdir: Option<&Path>) -> Option<String> {
+    get_worktree_meta_in(handle, "target-session", workdir)
 }
 
 pub fn get_worktree_window_session(handle: &str) -> Option<String> {
-    get_worktree_meta(handle, "window-session")
+    get_worktree_window_session_in(handle, None)
+}
+
+pub fn get_worktree_window_session_in(handle: &str, workdir: Option<&Path>) -> Option<String> {
+    get_worktree_meta_in(handle, "window-session", workdir)
 }
 
 /// Determine the tmux mode for a worktree from git metadata.
 /// Returns None if no metadata is found (legacy worktree).
 pub fn get_worktree_mode_opt(handle: &str) -> Option<MuxMode> {
-    match get_worktree_meta(handle, "mode") {
+    get_worktree_mode_opt_in(handle, None)
+}
+
+/// Determine the tmux mode for a worktree from git metadata in a specific workdir.
+pub fn get_worktree_mode_opt_in(handle: &str, workdir: Option<&Path>) -> Option<MuxMode> {
+    match get_worktree_meta_in(handle, "mode", workdir) {
         Some(mode) if mode == "session" => Some(MuxMode::Session),
         Some(mode) if mode == "window" => Some(MuxMode::Window),
         _ => None,
@@ -358,8 +413,17 @@ pub fn remove_worktree_meta(handle: &str) -> Result<()> {
 /// For bare repositories with linked worktrees, this returns the bare repo path.
 /// For regular repositories, this returns the first worktree that exists on disk.
 pub fn get_main_worktree_root() -> Result<PathBuf> {
-    let list_str = Cmd::new("git")
-        .args(&["worktree", "list", "--porcelain"])
+    get_main_worktree_root_in(None)
+}
+
+/// Get the main worktree root directory from a specific workdir
+pub fn get_main_worktree_root_in(workdir: Option<&Path>) -> Result<PathBuf> {
+    let cmd = Cmd::new("git").args(&["worktree", "list", "--porcelain"]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let list_str = cmd
         .run_and_capture_stdout()
         .context("Failed to list worktrees while locating main worktree")?;
 
@@ -402,5 +466,101 @@ pub fn get_main_worktree_root() -> Result<PathBuf> {
         Ok(path.clone())
     } else {
         Err(anyhow!("No main worktree found"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use std::sync::Mutex;
+
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(repo)
+            .args(args)
+            .output()
+            .expect("git command should run");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn init_repo(dir: &Path) {
+        let output = Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output()
+            .expect("git init should run");
+        assert!(
+            output.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        run_git(dir, &["config", "user.email", "test@example.com"]);
+        run_git(dir, &["config", "user.name", "Test User"]);
+        std::fs::write(dir.join("README.md"), "test\n").unwrap();
+        run_git(dir, &["add", "README.md"]);
+        run_git(dir, &["commit", "-m", "initial"]);
+    }
+
+    #[test]
+    fn create_worktree_in_uses_explicit_repo_not_process_cwd() {
+        let _guard = CWD_LOCK.lock().unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let repo_a = temp.path().join("repo-a");
+        let repo_b = temp.path().join("repo-b");
+        std::fs::create_dir_all(&repo_a).unwrap();
+        std::fs::create_dir_all(&repo_b).unwrap();
+        init_repo(&repo_a);
+        init_repo(&repo_b);
+
+        std::env::set_current_dir(&repo_a).unwrap();
+        let result = (|| {
+            let worktree_path = temp.path().join("repo-b__worktrees").join("feature");
+            create_worktree_in(
+                &worktree_path,
+                "feature",
+                true,
+                Some("main"),
+                false,
+                Some(&repo_b),
+            )
+            .unwrap();
+            set_worktree_meta_in("feature", "mode", "window", Some(&repo_b)).unwrap();
+
+            let repo_b_worktrees = Command::new("git")
+                .current_dir(&repo_b)
+                .args(["worktree", "list", "--porcelain"])
+                .output()
+                .unwrap();
+            assert!(repo_b_worktrees.status.success());
+            let repo_b_list = String::from_utf8(repo_b_worktrees.stdout).unwrap();
+            assert!(repo_b_list.contains("branch refs/heads/feature"));
+            assert_eq!(
+                get_worktree_meta_in("feature", "mode", Some(&repo_b)).as_deref(),
+                Some("window")
+            );
+
+            let repo_a_has_branch = Command::new("git")
+                .current_dir(&repo_a)
+                .args(["rev-parse", "--verify", "--quiet", "feature"])
+                .status()
+                .unwrap()
+                .success();
+            assert!(!repo_a_has_branch);
+            assert_eq!(
+                std::env::current_dir().unwrap(),
+                repo_a.canonicalize().unwrap()
+            );
+        })();
+        std::env::set_current_dir(original_cwd).unwrap();
+        result
     }
 }

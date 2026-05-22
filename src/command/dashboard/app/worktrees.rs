@@ -1154,21 +1154,20 @@ impl App {
 
         std::thread::spawn(move || {
             let result = (|| -> anyhow::Result<String> {
-                std::env::set_current_dir(&repo_path)?;
                 let (config, config_location) =
                     crate::config::Config::load_with_location_from(&repo_path, None)?;
 
                 // Quiet PR resolution (no println/spinner like resolve_pr_ref)
-                let pr_details = crate::github::get_pr_details(pr_number)
+                let pr_details = crate::github::get_pr_details_in(Some(&repo_path), pr_number)
                     .with_context(|| format!("Failed to fetch PR #{}", pr_number))?;
 
-                let current_repo_owner =
-                    git::get_repo_owner().context("Failed to determine repository owner")?;
+                let current_repo_owner = git::get_repo_owner_in(Some(&repo_path))
+                    .context("Failed to determine repository owner")?;
                 let is_fork = pr_details.is_fork(&current_repo_owner);
                 let fork_owner = &pr_details.head_repository_owner.login;
 
                 let remote_name = if is_fork {
-                    git::ensure_fork_remote(fork_owner)?
+                    git::ensure_fork_remote_in(fork_owner, Some(&repo_path))?
                 } else {
                     "origin".to_string()
                 };
@@ -1180,7 +1179,12 @@ impl App {
                 };
                 let remote_branch = format!("{}/{}", remote_name, pr_details.head_ref_name);
 
-                let ctx = workflow::WorkflowContext::new(config.clone(), mux, config_location)?;
+                let ctx = workflow::WorkflowContext::new_in(
+                    &repo_path,
+                    config.clone(),
+                    mux,
+                    config_location,
+                )?;
                 let handle = crate::naming::derive_handle(&local_branch, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
@@ -1193,7 +1197,7 @@ impl App {
                         handle: &handle,
                         base_branch: None,
                         remote_branch: Some(&remote_branch),
-                        pr_number: None,
+                        pr_number: Some(pr_number),
                         prompt: None,
                         options,
                         mode_override: None,
@@ -1235,10 +1239,14 @@ impl App {
 
         std::thread::spawn(move || {
             let result = (|| -> anyhow::Result<String> {
-                std::env::set_current_dir(&repo_path)?;
                 let (config, config_location) =
                     crate::config::Config::load_with_location_from(&repo_path, None)?;
-                let ctx = workflow::WorkflowContext::new(config.clone(), mux, config_location)?;
+                let ctx = workflow::WorkflowContext::new_in(
+                    &repo_path,
+                    config.clone(),
+                    mux,
+                    config_location,
+                )?;
                 let handle = crate::naming::derive_handle(&name, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;

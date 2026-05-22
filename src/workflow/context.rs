@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::multiplexer::Multiplexer;
@@ -11,6 +11,7 @@ use tracing::debug;
 /// This struct centralizes pre-flight checks and holds essential data
 /// needed by workflow modules, reducing code duplication.
 pub struct WorkflowContext {
+    pub execution_dir: PathBuf,
     pub main_worktree_root: PathBuf,
     pub git_common_dir: PathBuf,
     pub main_branch: String,
@@ -36,20 +37,39 @@ impl WorkflowContext {
         mux: Arc<dyn Multiplexer>,
         config_location: Option<config::ConfigLocation>,
     ) -> Result<Self> {
-        if !git::is_git_repo()? {
+        let execution_dir = std::env::current_dir().context("Failed to get current directory")?;
+        Self::new_in(&execution_dir, config, mux, config_location)
+    }
+
+    /// Create a new workflow context for an explicit repository path
+    pub fn new_in(
+        repo_path: &Path,
+        config: config::Config,
+        mux: Arc<dyn Multiplexer>,
+        config_location: Option<config::ConfigLocation>,
+    ) -> Result<Self> {
+        let execution_dir = repo_path.canonicalize().with_context(|| {
+            format!(
+                "Could not resolve repository path '{}'",
+                repo_path.display()
+            )
+        })?;
+
+        if !git::is_git_repo_in(Some(&execution_dir))? {
             return Err(anyhow!("Not in a git repository"));
         }
 
-        let main_worktree_root =
-            git::get_main_worktree_root().context("Could not find the main git worktree")?;
+        let main_worktree_root = git::get_main_worktree_root_in(Some(&execution_dir))
+            .context("Could not find the main git worktree")?;
 
-        let git_common_dir =
-            git::get_git_common_dir().context("Could not find the git common directory")?;
+        let git_common_dir = git::get_git_common_dir_in(Some(&execution_dir))
+            .context("Could not find the git common directory")?;
 
         let main_branch = if let Some(ref branch) = config.main_branch {
             branch.clone()
         } else {
-            git::get_default_branch().context("Failed to determine the main branch")?
+            git::get_default_branch_in(Some(&execution_dir))
+                .context("Failed to determine the main branch")?
         };
 
         let prefix = config.window_prefix().to_string();
@@ -60,6 +80,7 @@ impl WorkflowContext {
         };
 
         debug!(
+            execution_dir = %execution_dir.display(),
             main_worktree_root = %main_worktree_root.display(),
             git_common_dir = %git_common_dir.display(),
             main_branch = %main_branch,
@@ -71,6 +92,7 @@ impl WorkflowContext {
         );
 
         Ok(Self {
+            execution_dir,
             main_worktree_root,
             git_common_dir,
             main_branch,

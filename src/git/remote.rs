@@ -1,14 +1,24 @@
 use anyhow::{Context, Result, anyhow};
 use git_url_parse::GitUrl;
 use git_url_parse::types::provider::GenericProvider;
+use std::path::Path;
 use tracing::info;
 
 use crate::cmd::Cmd;
 
 /// Return a list of configured git remotes
 pub fn list_remotes() -> Result<Vec<String>> {
-    let output = Cmd::new("git")
-        .arg("remote")
+    list_remotes_in(None)
+}
+
+/// Return a list of configured git remotes in a specific workdir
+pub fn list_remotes_in(workdir: Option<&Path>) -> Result<Vec<String>> {
+    let cmd = Cmd::new("git").arg("remote");
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let output = cmd
         .run_and_capture_stdout()
         .context("Failed to list git remotes")?;
 
@@ -21,15 +31,31 @@ pub fn list_remotes() -> Result<Vec<String>> {
 }
 
 /// Check if a remote exists
+#[allow(dead_code)]
 pub fn remote_exists(remote: &str) -> Result<bool> {
-    Ok(list_remotes()?.into_iter().any(|name| name == remote))
+    remote_exists_in(remote, None)
+}
+
+/// Check if a remote exists in a specific workdir
+pub fn remote_exists_in(remote: &str, workdir: Option<&Path>) -> Result<bool> {
+    Ok(list_remotes_in(workdir)?
+        .into_iter()
+        .any(|name| name == remote))
 }
 
 /// Fetch updates from the given remote
 pub fn fetch_remote(remote: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&["fetch", remote])
-        .run()
+    fetch_remote_in(remote, None)
+}
+
+/// Fetch updates from the given remote in a specific workdir
+pub fn fetch_remote_in(remote: &str, workdir: Option<&Path>) -> Result<()> {
+    let cmd = Cmd::new("git").args(&["fetch", remote]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to fetch from remote '{}'", remote))?;
     Ok(())
 }
@@ -45,53 +71,95 @@ pub fn fetch_prune() -> Result<()> {
 
 /// Fetch a specific refspec from a remote.
 /// Used for PR checkout to fetch refs/pull/N/head into a remote-tracking ref.
+#[allow(dead_code)]
 pub fn fetch_refspec(remote: &str, refspec: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&["fetch", remote, refspec])
-        .run()
-        .with_context(|| {
-            format!(
-                "Failed to fetch refspec '{}' from remote '{}'",
-                refspec, remote
-            )
-        })?;
+    fetch_refspec_in(remote, refspec, None)
+}
+
+/// Fetch a specific refspec from a remote in a specific workdir.
+pub fn fetch_refspec_in(remote: &str, refspec: &str, workdir: Option<&Path>) -> Result<()> {
+    let cmd = Cmd::new("git").args(&["fetch", remote, refspec]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run().with_context(|| {
+        format!(
+            "Failed to fetch refspec '{}' from remote '{}'",
+            refspec, remote
+        )
+    })?;
     Ok(())
 }
 
 /// Add a git remote if it doesn't exist
+#[allow(dead_code)]
 pub fn add_remote(name: &str, url: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&["remote", "add", name, url])
-        .run()
+    add_remote_in(name, url, None)
+}
+
+/// Add a git remote if it doesn't exist in a specific workdir
+pub fn add_remote_in(name: &str, url: &str, workdir: Option<&Path>) -> Result<()> {
+    let cmd = Cmd::new("git").args(&["remote", "add", name, url]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to add remote '{}' with URL '{}'", name, url))?;
     Ok(())
 }
 
 /// Set the URL for an existing git remote
+#[allow(dead_code)]
 pub fn set_remote_url(name: &str, url: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&["remote", "set-url", name, url])
-        .run()
+    set_remote_url_in(name, url, None)
+}
+
+/// Set the URL for an existing git remote in a specific workdir
+pub fn set_remote_url_in(name: &str, url: &str, workdir: Option<&Path>) -> Result<()> {
+    let cmd = Cmd::new("git").args(&["remote", "set-url", name, url]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to set URL for remote '{}' to '{}'", name, url))?;
     Ok(())
 }
 
 /// Get the remote URL for a given remote name
 /// Note: Returns the configured URL, not the resolved URL after insteadOf substitution
+#[allow(dead_code)]
 pub fn get_remote_url(remote: &str) -> Result<String> {
-    // Use git config to get the raw URL, not the insteadOf-resolved one
-    // git remote get-url resolves insteadOf, which breaks our owner parsing in tests
-    Cmd::new("git")
-        .args(&["config", "--get", &format!("remote.{}.url", remote)])
-        .run_and_capture_stdout()
+    get_remote_url_in(remote, None)
+}
+
+/// Get the remote URL for a given remote name in a specific workdir
+pub fn get_remote_url_in(remote: &str, workdir: Option<&Path>) -> Result<String> {
+    let config_key = format!("remote.{}.url", remote);
+    let cmd = Cmd::new("git").args(&["config", "--get", &config_key]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run_and_capture_stdout()
         .with_context(|| format!("Failed to get URL for remote '{}'", remote))
 }
 
 /// Find an existing remote that matches the given repository identity.
 /// Returns the remote name if found, None otherwise.
+#[allow(dead_code)]
 fn find_remote_for_repo(target: &RepoIdentity) -> Result<Option<String>> {
-    for remote_name in list_remotes()? {
-        let url = match get_remote_url(&remote_name) {
+    find_remote_for_repo_in(target, None)
+}
+
+fn find_remote_for_repo_in(
+    target: &RepoIdentity,
+    workdir: Option<&Path>,
+) -> Result<Option<String>> {
+    for remote_name in list_remotes_in(workdir)? {
+        let url = match get_remote_url_in(&remote_name, workdir) {
             Ok(u) => u,
             Err(_) => continue,
         };
@@ -110,8 +178,13 @@ fn find_remote_for_repo(target: &RepoIdentity) -> Result<Option<String>> {
 /// Returns the name of the remote (e.g., "origin" or "fork-username").
 /// If the remote needs to be created, it constructs the URL based on the origin URL's scheme.
 pub fn ensure_fork_remote(fork_owner: &str) -> Result<String> {
+    ensure_fork_remote_in(fork_owner, None)
+}
+
+/// Ensure a remote exists for a specific fork owner in a specific workdir.
+pub fn ensure_fork_remote_in(fork_owner: &str, workdir: Option<&Path>) -> Result<String> {
     // Parse origin URL to get base repo identity
-    let origin_url = get_remote_url("origin")?;
+    let origin_url = get_remote_url_in("origin", workdir)?;
     let origin_parsed = GitUrl::parse(&origin_url).with_context(|| {
         format!(
             "Failed to parse origin URL for fork remote construction: {}",
@@ -140,7 +213,7 @@ pub fn ensure_fork_remote(fork_owner: &str) -> Result<String> {
     };
 
     // Strict matching: look for any remote pointing to the exact same repo
-    if let Some(existing) = find_remote_for_repo(&target_identity)? {
+    if let Some(existing) = find_remote_for_repo_in(&target_identity, workdir)? {
         info!(remote = %existing, "git:reusing existing remote for fork");
         return Ok(existing);
     }
@@ -157,16 +230,16 @@ pub fn ensure_fork_remote(fork_owner: &str) -> Result<String> {
     };
 
     // Check if remote exists and update URL if needed
-    if remote_exists(&remote_name)? {
-        let current_url = get_remote_url(&remote_name)?;
+    if remote_exists_in(&remote_name, workdir)? {
+        let current_url = get_remote_url_in(&remote_name, workdir)?;
         if current_url != fork_url {
             info!(remote = %remote_name, url = %fork_url, "git:updating fork remote URL");
-            set_remote_url(&remote_name, &fork_url)
+            set_remote_url_in(&remote_name, &fork_url, workdir)
                 .with_context(|| format!("Failed to update remote for fork '{}'", fork_owner))?;
         }
     } else {
         info!(remote = %remote_name, url = %fork_url, "git:adding fork remote");
-        add_remote(&remote_name, &fork_url)
+        add_remote_in(&remote_name, &fork_url, workdir)
             .with_context(|| format!("Failed to add remote for fork '{}'", fork_owner))?;
     }
 
@@ -215,7 +288,12 @@ fn parse_owner_from_git_url(url: &str) -> Option<&str> {
 
 /// Get the repository owner from the origin remote URL
 pub fn get_repo_owner() -> Result<String> {
-    let url = get_remote_url("origin")?;
+    get_repo_owner_in(None)
+}
+
+/// Get the repository owner from the origin remote URL in a specific workdir
+pub fn get_repo_owner_in(workdir: Option<&Path>) -> Result<String> {
+    let url = get_remote_url_in("origin", workdir)?;
 
     parse_owner_from_git_url(&url)
         .ok_or_else(|| anyhow!("Could not parse repository owner from origin URL: {}", url))

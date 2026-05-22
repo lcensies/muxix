@@ -392,9 +392,18 @@ pub fn list_open_prs(repo_root: &Path) -> Result<Vec<PrListEntry>> {
 
 /// Fetches pull request details using the GitHub CLI
 pub fn get_pr_details(pr_number: u32) -> Result<PrDetails> {
+    get_pr_details_in(None, pr_number)
+}
+
+/// Fetches pull request details using the GitHub CLI in a specific repository path
+pub fn get_pr_details_in(repo_root: Option<&Path>, pr_number: u32) -> Result<PrDetails> {
     // Fetch PR details using gh CLI
     // Note: We don't pre-check with 'which' because it doesn't respect test PATH modifications
-    let output = Command::new("gh")
+    let mut command = Command::new("gh");
+    if let Some(path) = repo_root {
+        command.current_dir(path);
+    }
+    let output = command
         .args([
             "pr",
             "view",

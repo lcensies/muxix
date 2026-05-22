@@ -8,14 +8,14 @@ use tracing::{debug, info, warn};
 
 /// Check if a path is registered as a git worktree.
 /// Uses canonicalize() to handle symlinks, case sensitivity, and relative paths.
-fn is_registered_worktree(path: &Path) -> Result<bool> {
+fn is_registered_worktree(path: &Path, context: &WorkflowContext) -> Result<bool> {
     // Canonicalize the input path for reliable comparison
     let abs_path = match std::fs::canonicalize(path) {
         Ok(p) => p,
         Err(_) => return Ok(false), // Can't canonicalize = not a valid worktree
     };
 
-    let worktrees = git::list_worktrees()?;
+    let worktrees = git::list_worktrees_in(Some(&context.execution_dir))?;
     for (wt_path, _) in worktrees {
         // Canonicalize git's reported path as well
         if let Ok(abs_wt) = std::fs::canonicalize(&wt_path) {
@@ -100,7 +100,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     );
     let full_target_name = target.full_name();
     let mut target_exists = target.exists()?;
-    let worktree_exists = git::worktree_exists(branch_name)?;
+    let worktree_exists = git::worktree_exists_in(branch_name, Some(&context.execution_dir))?;
 
     // Detect cross-repo collision: mux target exists but local worktree does not.
     // This means the target belongs to a different repository. Auto-suffix with the
@@ -218,7 +218,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     }
 
     // Auto-detect: create branch if it doesn't exist
-    let branch_exists = git::branch_exists(branch_name)?;
+    let branch_exists = git::branch_exists_in(branch_name, Some(&context.execution_dir))?;
     if branch_exists && remote_branch.is_some() && pr_number.is_none() {
         return Err(anyhow!(
             "Branch '{}' already exists. Remove '--remote' or pick a different branch name.",
@@ -235,11 +235,11 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Determine the base for the new branch
     let base_branch_for_creation = if let Some(remote_spec) = remote_branch {
         let spec = git::parse_remote_branch_spec(remote_spec)?;
-        if !git::remote_exists(&spec.remote)? {
+        if !git::remote_exists_in(&spec.remote, Some(&context.execution_dir))? {
             return Err(anyhow!(
                 "Remote '{}' does not exist. Available remotes: {:?}",
                 spec.remote,
-                git::list_remotes()?
+                git::list_remotes_in(Some(&context.execution_dir))?
             ));
         }
 
@@ -255,23 +255,23 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             );
             let pr_fetch =
                 spinner::with_spinner(&format!("Fetching PR #{} from origin", pr_number), || {
-                    git::fetch_refspec("origin", &pr_refspec)
+                    git::fetch_refspec_in("origin", &pr_refspec, Some(&context.execution_dir))
                 });
             if pr_fetch.is_err() {
                 spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
-                    git::fetch_remote(&spec.remote)
+                    git::fetch_remote_in(&spec.remote, Some(&context.execution_dir))
                 })
                 .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
             }
         } else {
             spinner::with_spinner(&format!("Fetching from '{}'", spec.remote), || {
-                git::fetch_remote(&spec.remote)
+                git::fetch_remote_in(&spec.remote, Some(&context.execution_dir))
             })
             .with_context(|| format!("Failed to fetch from remote '{}'", spec.remote))?;
         }
 
         let remote_ref = format!("{}/{}", spec.remote, spec.branch);
-        if !git::branch_exists(&remote_ref)? {
+        if !git::branch_exists_in(&remote_ref, Some(&context.execution_dir))? {
             return Err(anyhow!(
                 "Remote branch '{}' was not found. Double-check the name or fetch it manually.",
                 remote_ref
@@ -285,7 +285,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             Some(base.to_string())
         } else {
             // Default to the current branch when no explicit base was provided
-            let current_branch = git::get_current_branch()
+            let current_branch = git::get_current_branch_in(&context.execution_dir)
                 .context("Failed to determine the current branch to use as the base")?;
             let current_branch = current_branch.trim().to_string();
 
@@ -328,7 +328,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         // Check if this is an orphan directory (exists on disk but not registered with git).
         // This can happen when cleanup renames a worktree but a background process (build tool,
         // file watcher, shell prompt) recreates the directory structure using stale $PWD.
-        if is_registered_worktree(&worktree_path)? {
+        if is_registered_worktree(&worktree_path, context)? {
             return Err(anyhow!(
                 "Worktree directory '{}' already exists and is registered with git.\n\
                  This may be from another branch with the same handle.\n\
@@ -379,23 +379,26 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     let _config_lock = git::GitConfigLock::acquire(&context.git_common_dir)
         .context("Failed to acquire git config lock")?;
 
-    git::create_worktree(
+    git::create_worktree_in(
         &worktree_path,
         branch_name,
         create_new,
         base_branch_for_creation.as_deref(),
         track_upstream,
+        Some(&context.execution_dir),
     )
     .context("Failed to create git worktree")?;
 
     // Store the base branch in git config for future reference (used during removal checks)
     if let Some(ref base) = base_branch_for_creation {
-        git::set_branch_base(branch_name, base).with_context(|| {
-            format!(
-                "Failed to store base branch '{}' for branch '{}'",
-                base, branch_name
-            )
-        })?;
+        git::set_branch_base_in(branch_name, base, Some(&context.execution_dir)).with_context(
+            || {
+                format!(
+                    "Failed to store base branch '{}' for branch '{}'",
+                    base, branch_name
+                )
+            },
+        )?;
         debug!(
             branch = branch_name,
             base = base,
@@ -409,7 +412,13 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         MuxMode::Session => "session",
         MuxMode::Window => "window",
     };
-    git::set_worktree_meta(&current_handle, "mode", mode_str).with_context(|| {
+    git::set_worktree_meta_in(
+        &current_handle,
+        "mode",
+        mode_str,
+        Some(&context.execution_dir),
+    )
+    .with_context(|| {
         format!(
             "Failed to store tmux mode for worktree '{}'",
             current_handle
@@ -507,11 +516,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     };
 
     // Use config_source_dir for file operations (the directory where config was found)
-    let config_root = if !context.config_rel_dir.as_os_str().is_empty() {
-        Some(context.config_source_dir.clone())
-    } else {
-        None
-    };
+    let config_root = Some(context.config_source_dir.clone());
 
     // Merge options
     let options_with_prompt = SetupOptions {
@@ -668,5 +673,343 @@ pub fn create_with_changes(
                 branch_name
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::multiplexer::types::{
+        CreateSessionParams, CreateWindowInSessionParams, CreateWindowParams, LivePaneInfo,
+        PaneSetupOptions, PaneSetupResult,
+    };
+    use crate::multiplexer::{Multiplexer, PaneHandshake};
+    use std::collections::{HashMap, HashSet};
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    static CWD_LOCK: Mutex<()> = Mutex::new(());
+
+    struct TestMux;
+
+    impl Multiplexer for TestMux {
+        fn name(&self) -> &'static str {
+            "tmux"
+        }
+
+        fn is_running(&self) -> Result<bool> {
+            Ok(true)
+        }
+
+        fn current_pane_id(&self) -> Option<String> {
+            None
+        }
+
+        fn active_pane_id(&self) -> Option<String> {
+            None
+        }
+
+        fn get_client_active_pane_path(&self) -> Result<PathBuf> {
+            Ok(PathBuf::new())
+        }
+
+        fn create_window(&self, _params: CreateWindowParams) -> Result<String> {
+            Ok("pane-1".to_string())
+        }
+
+        fn create_session(&self, _params: CreateSessionParams) -> Result<String> {
+            Ok("pane-1".to_string())
+        }
+
+        fn create_window_in_session(&self, _params: CreateWindowInSessionParams) -> Result<String> {
+            Ok("pane-1".to_string())
+        }
+
+        fn switch_to_session(&self, _prefix: &str, _name: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn session_exists(&self, _full_name: &str) -> Result<bool> {
+            Ok(false)
+        }
+
+        fn kill_session(&self, _full_name: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn kill_window(&self, _full_name: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn schedule_window_close(&self, _full_name: &str, _delay: Duration) -> Result<()> {
+            Ok(())
+        }
+
+        fn schedule_session_close(&self, _full_name: &str, _delay: Duration) -> Result<()> {
+            Ok(())
+        }
+
+        fn run_deferred_script(&self, _script: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn shell_select_window_cmd(&self, _full_name: &str) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn shell_kill_window_cmd(&self, _full_name: &str) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn shell_switch_session_cmd(&self, _full_name: &str) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn shell_kill_session_cmd(&self, _full_name: &str) -> Result<String> {
+            Ok(String::new())
+        }
+
+        fn select_window(&self, _prefix: &str, _name: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn window_exists(&self, _prefix: &str, _name: &str) -> Result<bool> {
+            Ok(false)
+        }
+
+        fn window_exists_by_full_name(&self, _full_name: &str) -> Result<bool> {
+            Ok(false)
+        }
+
+        fn current_window_name(&self) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn get_all_window_names(&self) -> Result<HashSet<String>> {
+            Ok(HashSet::new())
+        }
+
+        fn get_all_session_names(&self) -> Result<HashSet<String>> {
+            Ok(HashSet::new())
+        }
+
+        fn filter_active_windows(&self, _windows: &[String]) -> Result<Vec<String>> {
+            Ok(Vec::new())
+        }
+
+        fn find_last_window_with_prefix(&self, _prefix: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn find_last_window_with_base_handle(
+            &self,
+            _prefix: &str,
+            _base_handle: &str,
+        ) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn wait_until_windows_closed(&self, _full_window_names: &[String]) -> Result<()> {
+            Ok(())
+        }
+
+        fn wait_until_session_closed(&self, _full_session_name: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn select_pane(&self, _pane_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn switch_to_pane(&self, _pane_id: &str, _window_hint: Option<&str>) -> Result<()> {
+            Ok(())
+        }
+
+        fn kill_pane(&self, _pane_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn respawn_pane(&self, pane_id: &str, _cwd: &Path, _cmd: Option<&str>) -> Result<String> {
+            Ok(pane_id.to_string())
+        }
+
+        fn capture_pane(&self, _pane_id: &str, _lines: u16) -> Option<String> {
+            None
+        }
+
+        fn send_keys(&self, _pane_id: &str, _command: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn send_keys_to_agent(
+            &self,
+            _pane_id: &str,
+            _command: &str,
+            _agent: Option<&str>,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn send_key(&self, _pane_id: &str, _key: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn paste_multiline(&self, _pane_id: &str, _content: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn get_default_shell(&self) -> Result<String> {
+            Ok("/bin/sh".to_string())
+        }
+
+        fn create_handshake(&self) -> Result<Box<dyn PaneHandshake>> {
+            Err(anyhow::anyhow!("not used"))
+        }
+
+        fn set_status(
+            &self,
+            _pane_id: &str,
+            _icon: &str,
+            _auto_clear_on_focus: bool,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        fn clear_status(&self, _pane_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn ensure_status_format(&self, _pane_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn split_pane(
+            &self,
+            _target_pane_id: &str,
+            _direction: &crate::config::SplitDirection,
+            _cwd: &Path,
+            _size: Option<u16>,
+            _percentage: Option<u8>,
+            _command: Option<&str>,
+        ) -> Result<String> {
+            Ok("pane-2".to_string())
+        }
+
+        fn setup_panes(
+            &self,
+            initial_pane_id: &str,
+            _panes: &[crate::config::PaneConfig],
+            _working_dir: &Path,
+            _options: PaneSetupOptions<'_>,
+            _config: &Config,
+            _task_agent: Option<&str>,
+        ) -> Result<PaneSetupResult> {
+            Ok(PaneSetupResult {
+                focus_pane_id: initial_pane_id.to_string(),
+                zoom_pane_id: None,
+            })
+        }
+
+        fn instance_id(&self) -> String {
+            "test".to_string()
+        }
+
+        fn get_live_pane_info(&self, _pane_id: &str) -> Result<Option<LivePaneInfo>> {
+            Ok(None)
+        }
+
+        fn get_all_live_pane_info(&self) -> Result<HashMap<String, LivePaneInfo>> {
+            Ok(HashMap::new())
+        }
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(repo)
+            .args(args)
+            .output()
+            .expect("git command should run");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn init_repo(dir: &Path) {
+        let output = Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output()
+            .expect("git init should run");
+        assert!(
+            output.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        run_git(dir, &["config", "user.email", "test@example.com"]);
+        run_git(dir, &["config", "user.name", "Test User"]);
+        std::fs::write(dir.join("README.md"), "test\n").unwrap();
+        run_git(dir, &["add", "README.md"]);
+        run_git(dir, &["commit", "-m", "initial"]);
+    }
+
+    #[test]
+    fn workflow_create_uses_explicit_repo_not_process_cwd() {
+        let _guard = CWD_LOCK.lock().unwrap();
+        let original_cwd = std::env::current_dir().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let repo_a = temp.path().join("repo-a");
+        let repo_b = temp.path().join("repo-b");
+        let non_repo = temp.path().join("not-a-repo");
+        std::fs::create_dir_all(&repo_a).unwrap();
+        std::fs::create_dir_all(&repo_b).unwrap();
+        std::fs::create_dir_all(&non_repo).unwrap();
+        init_repo(&repo_a);
+        init_repo(&repo_b);
+
+        std::env::set_current_dir(&non_repo).unwrap();
+        let result = (|| {
+            let config = Config::default();
+            let ctx =
+                WorkflowContext::new_in(&repo_b, config.clone(), Arc::new(TestMux), None).unwrap();
+            let mut options = SetupOptions::new(false, false, false);
+            options.focus_window = false;
+            let result = create(
+                &ctx,
+                CreateArgs {
+                    branch_name: "feature",
+                    handle: "feature",
+                    base_branch: Some("main"),
+                    remote_branch: None,
+                    pr_number: None,
+                    prompt: None,
+                    options,
+                    mode_override: None,
+                    agent: None,
+                    is_explicit_name: false,
+                    prompt_file_only: false,
+                    fork_source: None,
+                },
+            )
+            .unwrap();
+
+            assert!(result.worktree_path.exists());
+            assert_eq!(
+                git::get_worktree_meta_in("feature", "mode", Some(&repo_b)).as_deref(),
+                Some("window")
+            );
+            assert!(!git::branch_exists_in("feature", Some(&repo_a)).unwrap());
+            assert_eq!(
+                std::env::current_dir().unwrap(),
+                non_repo.canonicalize().unwrap()
+            );
+        })();
+        std::env::set_current_dir(original_cwd).unwrap();
+        result
     }
 }

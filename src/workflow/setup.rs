@@ -54,8 +54,10 @@ pub fn setup_environment(
         "setup_environment:start"
     );
     let prefix = config.window_prefix();
-    // Use main worktree root for file operations since source files live there
-    let repo_root = git::get_main_worktree_root()?;
+    let repo_root = match &options.config_root {
+        Some(path) => path.clone(),
+        None => git::get_main_worktree_root()?,
+    };
 
     // Determine effective working directory (config-relative or worktree root)
     let effective_working_dir = options.working_dir.as_deref().unwrap_or(worktree_path);
