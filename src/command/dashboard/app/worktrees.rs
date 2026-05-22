@@ -28,6 +28,20 @@ fn delete_word_backward(s: &mut String) {
     }
 }
 
+fn default_add_worktree_base(repo_path: &Path) -> String {
+    crate::config::Config::load_with_location_from(repo_path, None)
+        .ok()
+        .and_then(|(config, _)| config.base_branch)
+        .or_else(|| {
+            git::get_current_branch_in(repo_path)
+                .ok()
+                .map(|branch| branch.trim().to_string())
+                .filter(|branch| !branch.is_empty())
+        })
+        .or_else(|| git::get_default_branch_in(Some(repo_path)).ok())
+        .unwrap_or_else(|| "main".to_string())
+}
+
 impl App {
     /// Reset the worktree fetch timer to trigger an immediate refetch
     pub fn trigger_worktree_refetch(&mut self) {
@@ -799,8 +813,7 @@ impl App {
             }
         };
 
-        let default_branch =
-            git::get_default_branch_in(Some(&repo_path)).unwrap_or_else(|_| "main".to_string());
+        let default_branch = default_add_worktree_base(&repo_path);
 
         // Collect branches that already have worktrees
         let occupied_branches: std::collections::HashSet<String> =
@@ -1213,21 +1226,20 @@ impl App {
         base_branch: Option<String>,
         repo_path: PathBuf,
     ) {
-        let config = self.config.clone();
         let mux = self.mux.clone();
         let tx = self.event_tx.clone();
         let status_name = name.clone();
 
         std::thread::spawn(move || {
             let result = (|| -> anyhow::Result<String> {
-                let ctx = workflow::WorkflowContext::new(config.clone(), mux, None)?;
+                std::env::set_current_dir(&repo_path)?;
+                let (config, config_location) =
+                    crate::config::Config::load_with_location_from(&repo_path, None)?;
+                let ctx = workflow::WorkflowContext::new(config.clone(), mux, config_location)?;
                 let handle = crate::naming::derive_handle(&name, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
                 options.mode = config.mode();
-
-                // Set working directory for git operations
-                std::env::set_current_dir(&repo_path)?;
 
                 let result = workflow::create(
                     &ctx,

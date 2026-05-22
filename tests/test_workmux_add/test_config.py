@@ -1,6 +1,7 @@
 """Tests for config file precedence and global/project config merging."""
 
 from pathlib import Path
+import shlex
 
 import yaml
 
@@ -14,6 +15,7 @@ from ..conftest import (
     create_commit,
     file_for_commit,
     get_window_name,
+    get_worktree_path,
     run_workmux_command,
     slugify,
     wait_for_file,
@@ -321,6 +323,33 @@ class TestGlobalAgentDefault:
 class TestBaseBranchConfig:
     """Tests for base_branch config option."""
 
+    def _add_from_dashboard(
+        self,
+        env: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        new_branch: str,
+        expected_file: Path,
+    ) -> Path:
+        command = (
+            f"cd {shlex.quote(str(mux_repo_path))} && "
+            f"{shlex.quote(str(workmux_exe_path))} dashboard --tab worktrees"
+        )
+        env.send_keys("test:", command)
+        wait_for_pane_output(env, "test", "Worktrees", timeout=10.0)
+        env.send_keys("test:", "a", enter=False)
+        wait_for_pane_output(env, "test", "Add Worktree", timeout=10.0)
+        env.send_keys("test:", new_branch)
+        worktree_path = get_worktree_path(mux_repo_path, new_branch)
+        wait_for_file(
+            env,
+            expected_file,
+            timeout=10.0,
+            window_name="test",
+            worktree_path=worktree_path,
+        )
+        return worktree_path
+
     def test_config_base_branch_used_when_base_flag_omitted(
         self,
         mux_server: MuxEnvironment,
@@ -351,6 +380,105 @@ class TestBaseBranchConfig:
         # The new worktree should have the commit from the configured base branch
         expected_file = file_for_commit(worktree_path, commit_msg)
         assert expected_file.exists()
+
+    def test_dashboard_add_uses_project_base_branch_over_global(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Dashboard add should use project base_branch before global base_branch."""
+        env = mux_server
+        global_base = "dashboard-global-base"
+        project_base = "dashboard-project-base"
+        new_branch = "dashboard-project-created"
+        global_commit = "Commit on dashboard global base"
+        project_commit = "Commit on dashboard project base"
+
+        env.run_command(["git", "checkout", "-b", global_base], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, global_commit)
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+        env.run_command(["git", "checkout", "-b", project_base], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, project_commit)
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+
+        write_global_workmux_config(env, base_branch=global_base)
+        write_workmux_config(mux_repo_path, base_branch=project_base)
+
+        expected_file = file_for_commit(
+            get_worktree_path(mux_repo_path, new_branch), project_commit
+        )
+        worktree_path = self._add_from_dashboard(
+            env, workmux_exe_path, mux_repo_path, new_branch, expected_file
+        )
+
+        assert expected_file.exists()
+        assert not file_for_commit(worktree_path, global_commit).exists()
+        result = env.run_command(
+            ["git", "config", "--local", f"branch.{new_branch}.workmux-base"],
+            cwd=mux_repo_path,
+        )
+        assert result.stdout.strip() == project_base
+
+    def test_dashboard_add_uses_global_base_branch(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Dashboard add should use global base_branch when project config is absent."""
+        env = mux_server
+        base_branch = "dashboard-global-only-base"
+        new_branch = "dashboard-global-created"
+        commit_msg = "Commit on dashboard global only base"
+
+        env.run_command(["git", "checkout", "-b", base_branch], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, commit_msg)
+        env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
+        write_global_workmux_config(env, base_branch=base_branch)
+
+        expected_file = file_for_commit(
+            get_worktree_path(mux_repo_path, new_branch), commit_msg
+        )
+        self._add_from_dashboard(
+            env, workmux_exe_path, mux_repo_path, new_branch, expected_file
+        )
+
+        assert expected_file.exists()
+        result = env.run_command(
+            ["git", "config", "--local", f"branch.{new_branch}.workmux-base"],
+            cwd=mux_repo_path,
+        )
+        assert result.stdout.strip() == base_branch
+
+    def test_dashboard_add_without_config_uses_current_branch(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Dashboard add should fall back to current branch when base_branch is unset."""
+        env = mux_server
+        base_branch = "dashboard-current-base"
+        new_branch = "dashboard-current-created"
+        commit_msg = "Commit on dashboard current base"
+
+        env.run_command(["git", "checkout", "-b", base_branch], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, commit_msg)
+
+        expected_file = file_for_commit(
+            get_worktree_path(mux_repo_path, new_branch), commit_msg
+        )
+        self._add_from_dashboard(
+            env, workmux_exe_path, mux_repo_path, new_branch, expected_file
+        )
+
+        assert expected_file.exists()
+        result = env.run_command(
+            ["git", "config", "--local", f"branch.{new_branch}.workmux-base"],
+            cwd=mux_repo_path,
+        )
+        assert result.stdout.strip() == base_branch
 
     def test_cli_base_overrides_config_base_branch(
         self,

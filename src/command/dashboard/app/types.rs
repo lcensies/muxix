@@ -178,7 +178,7 @@ pub struct AddWorktreeState {
     pub filter: String,
     /// Original typed prefix preserved during Tab cycling (cleared on typing).
     pub tab_prefix: Option<String>,
-    /// Base branch for new worktree creation (defaults to main/master).
+    /// Base branch for new worktree creation.
     pub base_branch: String,
     /// Whether the base branch field is being edited (Ctrl+b toggles).
     pub editing_base: bool,
