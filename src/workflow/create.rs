@@ -195,7 +195,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     if target_exists {
         return Err(anyhow!(
             "A {} {} named '{}' already exists.\n\
-             Hint: use --name, --name-window, or --name-session to specify a unique name.",
+             Hint: use --name or --target-name to specify a unique name.",
             context.mux.name(),
             target.kind(),
             MuxHandle::new(

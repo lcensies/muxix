@@ -184,8 +184,8 @@ pub fn run(
     auto_name: bool,
     base: Option<&str>,
     name: Option<String>,
-    name_window: Option<String>,
-    name_session: Option<String>,
+    target_name: Option<String>,
+    parent_session: Option<String>,
     prompt_args: PromptArgs,
     setup: SetupFlags,
     rescue: RescueArgs,
@@ -207,11 +207,11 @@ pub fn run(
         if config_override.is_some() {
             bail!("--config is not supported from inside a sandbox");
         }
-        if name_window.is_some() {
-            bail!("--name-window is not supported from inside a sandbox");
+        if target_name.is_some() {
+            bail!("--target-name is not supported from inside a sandbox");
         }
-        if name_session.is_some() {
-            bail!("--name-session is not supported from inside a sandbox");
+        if parent_session.is_some() {
+            bail!("--parent-session is not supported from inside a sandbox");
         }
         return run_add_via_rpc(
             branch_name,
@@ -399,28 +399,28 @@ pub fn run(
              Use the default naming or set worktree_naming/worktree_prefix in config instead."
         ));
     }
-    if (name_window.is_some() || name_session.is_some()) && has_multi_worktree {
+    if (target_name.is_some() || parent_session.is_some()) && has_multi_worktree {
         return Err(anyhow!(
-            "--name-window and --name-session cannot be used with multi-worktree generation (multiple --agent, --count, --foreach, or stdin)."
+            "--target-name and --parent-session cannot be used with multi-worktree generation (multiple --agent, --count, --foreach, or stdin)."
         ));
     }
 
-    let target_window_name = name_window
+    let target_name = target_name
         .as_deref()
         .map(crate::naming::derive_target_name)
         .transpose()?;
-    let target_session_name = name_session
+    let parent_session = parent_session
         .as_deref()
         .map(crate::naming::derive_target_name)
         .transpose()?;
-    if mode == MuxMode::Session && target_window_name.is_some() {
-        return Err(anyhow!("--name-window requires window mode"));
+    if mode == MuxMode::Session && parent_session.is_some() {
+        return Err(anyhow!("--parent-session requires window mode"));
     }
-    options.target_window_name = target_window_name;
     if mode == MuxMode::Session {
-        options.target_session_name = target_session_name;
+        options.target_session_name = target_name;
     } else {
-        options.window_session_name = target_session_name;
+        options.target_window_name = target_name;
+        options.window_session_name = parent_session;
     }
 
     // Handle rescue flow early if requested

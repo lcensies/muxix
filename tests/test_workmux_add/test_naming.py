@@ -139,7 +139,7 @@ class TestNameFlag:
 class TestTargetNameOptions:
     """Tests for tmux target naming flags."""
 
-    def test_add_name_window_names_window_only(
+    def test_add_target_name_names_window_only(
         self,
         mux_server: MuxEnvironment,
         workmux_exe_path: Path,
@@ -156,7 +156,7 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add {branch_name} --name-window '{custom_name}'",
+            f"add {branch_name} --target-name '{custom_name}'",
         )
 
         worktree_path = (
@@ -165,7 +165,7 @@ class TestTargetNameOptions:
         assert worktree_path.is_dir()
         assert_window_exists(env, expected_window)
 
-    def test_add_name_session_routes_window_mode_window(
+    def test_add_parent_session_routes_window_mode_window(
         self,
         mux_server: TmuxEnvironment,
         workmux_exe_path: Path,
@@ -181,7 +181,7 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add {branch_name} --name-session {session_name} --name-window review-window --background",
+            f"add {branch_name} --parent-session {session_name} --target-name review-window --background",
         )
 
         assert_session_exists(env, session_name)
@@ -190,7 +190,7 @@ class TestTargetNameOptions:
         )
         assert window_name in [w for w in result.stdout.strip().split("\n") if w]
 
-    def test_add_name_window_collision_fails_before_git_state(
+    def test_add_target_name_collision_fails_before_git_state(
         self,
         mux_server: MuxEnvironment,
         workmux_exe_path: Path,
@@ -204,13 +204,13 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            "add feature/custom-target-a --name-window shared-review --background",
+            "add feature/custom-target-a --target-name shared-review --background",
         )
         result = run_workmux_command(
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add {branch_name} --name-window shared-review --background",
+            f"add {branch_name} --target-name shared-review --background",
             expect_fail=True,
         )
 
@@ -219,7 +219,7 @@ class TestTargetNameOptions:
         assert "already exists" in result.stderr
         assert f"{DEFAULT_WINDOW_PREFIX}shared-review" in result.stderr
 
-    def test_add_name_session_parent_session_can_be_reused(
+    def test_add_parent_session_parent_session_can_be_reused(
         self,
         mux_server: TmuxEnvironment,
         workmux_exe_path: Path,
@@ -233,13 +233,13 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add feature/parent-session-a --name-session {session_name} --background",
+            f"add feature/parent-session-a --parent-session {session_name} --background",
         )
         run_workmux_command(
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add feature/parent-session-b --name-session {session_name} --background",
+            f"add feature/parent-session-b --parent-session {session_name} --background",
         )
 
         result = env.tmux(
@@ -265,7 +265,7 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add {branch_name} --name-session {session_name} --background",
+            f"add {branch_name} --parent-session {session_name} --background",
         )
 
         result = env.tmux(
@@ -295,7 +295,7 @@ class TestTargetNameOptions:
             env,
             workmux_exe_path,
             mux_repo_path,
-            f"add {branch_name} --name-window review-lifecycle --background",
+            f"add {branch_name} --target-name review-lifecycle --background",
         )
         assert_window_exists(env, custom_window)
 

@@ -937,7 +937,7 @@ def test_open_multiple_with_prompt_fails(
     assert "cannot be used when opening multiple worktrees" in result.stderr
 
 
-def test_open_name_window_names_window_only(
+def test_open_target_name_names_window_only(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies open can recreate an existing worktree with a custom window name."""
@@ -950,14 +950,14 @@ def test_open_name_window_names_window_only(
     env.kill_window(get_window_name(branch_name))
 
     run_workmux_open(
-        env, workmux_exe_path, repo_path, branch_name, name_window="review-open"
+        env, workmux_exe_path, repo_path, branch_name, target_name="review-open"
     )
 
     assert custom_window in _get_all_windows(env)
     assert get_window_name(branch_name) not in _get_all_windows(env)
 
 
-def test_open_name_window_collision_fails(
+def test_open_target_name_collision_fails(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     env = mux_server
@@ -967,7 +967,7 @@ def test_open_name_window_collision_fails(
         env,
         workmux_exe_path,
         repo_path,
-        "add feature/open-target-a --name-window shared-open --background",
+        "add feature/open-target-a --target-name shared-open --background",
     )
     run_workmux_add(env, workmux_exe_path, repo_path, "feature/open-target-b")
     env.kill_window(get_window_name("feature/open-target-b"))
@@ -977,7 +977,7 @@ def test_open_name_window_collision_fails(
         workmux_exe_path,
         repo_path,
         "feature/open-target-b",
-        name_window="shared-open",
+        target_name="shared-open",
         expect_fail=True,
     )
 
@@ -985,7 +985,7 @@ def test_open_name_window_collision_fails(
     assert f"{DEFAULT_WINDOW_PREFIX}shared-open" in result.stderr
 
 
-def test_open_name_window_owner_can_switch_existing_target(
+def test_open_target_name_owner_can_switch_existing_target(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     env = mux_server
@@ -995,7 +995,7 @@ def test_open_name_window_owner_can_switch_existing_target(
         env,
         workmux_exe_path,
         repo_path,
-        "add feature/open-target-owner --name-window owned-open --background",
+        "add feature/open-target-owner --target-name owned-open --background",
     )
 
     result = run_workmux_open(
@@ -1003,14 +1003,14 @@ def test_open_name_window_owner_can_switch_existing_target(
         workmux_exe_path,
         repo_path,
         "feature/open-target-owner",
-        name_window="owned-open",
+        target_name="owned-open",
     )
 
     assert "Switched to existing tmux window" in result.stdout
 
 
 @pytest.mark.tmux_only
-def test_open_name_session_routes_window_mode_window(
+def test_open_parent_session_routes_window_mode_window(
     mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies open can route a window-mode worktree into a named tmux session."""
@@ -1028,8 +1028,8 @@ def test_open_name_session_routes_window_mode_window(
         workmux_exe_path,
         repo_path,
         branch_name,
-        name_session=session_name,
-        name_window="review-open-session",
+        parent_session=session_name,
+        target_name="review-open-session",
     )
 
     assert_session_exists(env, session_name)
@@ -1053,7 +1053,7 @@ def test_open_reuses_window_in_parent_session(
         env,
         workmux_exe_path,
         repo_path,
-        f"add {branch_name} --name-session {session_name} --background",
+        f"add {branch_name} --parent-session {session_name} --background",
     )
 
     run_workmux_open(env, workmux_exe_path, repo_path, branch_name)
@@ -1084,7 +1084,7 @@ def test_open_window_parent_session_does_not_pollute_session_target(
         workmux_exe_path,
         repo_path,
         branch_name,
-        name_session=parent_session,
+        parent_session=parent_session,
     )
     run_workmux_command(env, workmux_exe_path, repo_path, f"close {branch_name}")
 
@@ -1120,7 +1120,7 @@ def test_open_mode_session_name_overrides_session_target(
         repo_path,
         branch_name,
         mode="session",
-        name_session="review-open-session",
+        target_name="review-open-session",
         expect_fail=True,
     )
 
@@ -1128,7 +1128,7 @@ def test_open_mode_session_name_overrides_session_target(
 
 
 @pytest.mark.tmux_only
-def test_open_name_session_collision_fails(
+def test_open_target_name_session_collision_fails(
     mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     env = mux_server
@@ -1138,7 +1138,7 @@ def test_open_name_session_collision_fails(
         env,
         workmux_exe_path,
         repo_path,
-        "add feature/open-session-target-a --session --name-session shared-open-session --background",
+        "add feature/open-session-target-a --session --target-name shared-open-session --background",
     )
     run_workmux_add(env, workmux_exe_path, repo_path, "feature/open-session-target-b")
 
@@ -1148,7 +1148,7 @@ def test_open_name_session_collision_fails(
         repo_path,
         "feature/open-session-target-b",
         mode="session",
-        name_session="shared-open-session",
+        target_name="shared-open-session",
         expect_fail=True,
     )
 
@@ -1157,7 +1157,7 @@ def test_open_name_session_collision_fails(
 
 
 @pytest.mark.tmux_only
-def test_open_name_session_owner_can_switch_existing_target(
+def test_open_target_name_session_owner_can_switch_existing_target(
     mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     env = mux_server
@@ -1167,7 +1167,7 @@ def test_open_name_session_owner_can_switch_existing_target(
         env,
         workmux_exe_path,
         repo_path,
-        "add feature/open-session-owner --session --name-session owned-open-session --background",
+        "add feature/open-session-owner --session --target-name owned-open-session --background",
     )
 
     result = run_workmux_open(
@@ -1176,17 +1176,17 @@ def test_open_name_session_owner_can_switch_existing_target(
         repo_path,
         "feature/open-session-owner",
         mode="session",
-        name_session="owned-open-session",
+        target_name="owned-open-session",
         expect_fail=True,
     )
 
     assert "no current client" in result.stderr
 
 
-def test_open_rejects_name_window_in_session_mode(
+def test_open_rejects_parent_session_in_session_mode(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
-    """Verifies --name-window is rejected after effective session mode resolution."""
+    """Verifies --parent-session is rejected after effective session mode resolution."""
     env = mux_server
     branch_name = "feature-open-session-name-window"
 
@@ -1203,14 +1203,14 @@ def test_open_rejects_name_window_in_session_mode(
         workmux_exe_path,
         repo_path,
         branch_name,
-        name_window="nope",
+        parent_session="nope",
         expect_fail=True,
     )
 
-    assert "--name-window requires window mode" in result.stderr
+    assert "--parent-session requires window mode" in result.stderr
 
 
-def test_open_new_name_window_suffixes_custom_name(
+def test_open_new_target_name_suffixes_custom_name(
     mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
 ):
     """Verifies --new suffixes the custom window name rather than the worktree handle."""
@@ -1223,7 +1223,7 @@ def test_open_new_name_window_suffixes_custom_name(
     env.kill_window(get_window_name(branch_name))
 
     run_workmux_open(
-        env, workmux_exe_path, repo_path, branch_name, name_window="review-new"
+        env, workmux_exe_path, repo_path, branch_name, target_name="review-new"
     )
     run_workmux_open(
         env,
@@ -1231,7 +1231,7 @@ def test_open_new_name_window_suffixes_custom_name(
         repo_path,
         branch_name,
         new_window=True,
-        name_window="review-new",
+        target_name="review-new",
     )
 
     windows = _get_all_windows(env)

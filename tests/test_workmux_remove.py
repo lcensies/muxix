@@ -54,7 +54,7 @@ def test_remove_window_in_parent_session(
         env,
         workmux_exe_path,
         mux_repo_path,
-        f"add {branch_name} --name-session {session_name} --background",
+        f"add {branch_name} --parent-session {session_name} --background",
     )
     worktree_path = get_worktree_path(mux_repo_path, branch_name)
 

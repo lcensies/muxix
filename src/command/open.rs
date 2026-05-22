@@ -13,8 +13,8 @@ pub fn run(
     force_files: bool,
     new_window: bool,
     mode_override: Option<MuxMode>,
-    name_window: Option<String>,
-    name_session: Option<String>,
+    target_name: Option<String>,
+    parent_session: Option<String>,
     continue_session: bool,
     prompt_args: PromptArgs,
     config_override: Option<&std::path::Path>,
@@ -22,11 +22,11 @@ pub fn run(
     if crate::sandbox::guest::is_sandbox_guest() && config_override.is_some() {
         bail!("--config is not supported from inside a sandbox");
     }
-    if crate::sandbox::guest::is_sandbox_guest() && name_window.is_some() {
-        bail!("--name-window is not supported from inside a sandbox");
+    if crate::sandbox::guest::is_sandbox_guest() && target_name.is_some() {
+        bail!("--target-name is not supported from inside a sandbox");
     }
-    if crate::sandbox::guest::is_sandbox_guest() && name_session.is_some() {
-        bail!("--name-session is not supported from inside a sandbox");
+    if crate::sandbox::guest::is_sandbox_guest() && parent_session.is_some() {
+        bail!("--parent-session is not supported from inside a sandbox");
     }
 
     // Resolve names: use provided names, or infer from current directory with --new
@@ -47,15 +47,15 @@ pub fn run(
     if resolved_names.len() > 1 && prompt_args.has_any() {
         bail!("Prompt arguments (-p, -P, -e) cannot be used when opening multiple worktrees");
     }
-    if resolved_names.len() > 1 && (name_window.is_some() || name_session.is_some()) {
-        bail!("--name-window and --name-session cannot be used when opening multiple worktrees");
+    if resolved_names.len() > 1 && (target_name.is_some() || parent_session.is_some()) {
+        bail!("--target-name and --parent-session cannot be used when opening multiple worktrees");
     }
 
-    let target_window_name = name_window
+    let target_name = target_name
         .as_deref()
         .map(crate::naming::derive_target_name)
         .transpose()?;
-    let target_session_name = name_session
+    let parent_session = parent_session
         .as_deref()
         .map(crate::naming::derive_target_name)
         .transpose()?;
@@ -111,9 +111,9 @@ pub fn run(
         if continue_session {
             options.resume_mode = crate::multiplexer::types::ResumeMode::Continue;
         }
-        options.target_window_name = target_window_name.clone();
-        options.target_session_name = target_session_name.clone();
-        options.window_session_name = target_session_name.clone();
+        options.target_window_name = target_name.clone();
+        options.target_session_name = target_name.clone();
+        options.window_session_name = parent_session.clone();
 
         // Only announce hooks if we're forcing a new target (otherwise we might just switch)
         if new_window {

@@ -342,13 +342,13 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
 
-        /// Explicit tmux window name for this worktree
-        #[arg(long)]
-        name_window: Option<String>,
+        /// Explicit name for the workmux-managed tmux target
+        #[arg(long = "target-name")]
+        target_name: Option<String>,
 
-        /// Explicit tmux session name for this worktree
-        #[arg(long)]
-        name_session: Option<String>,
+        /// Parent tmux session for window-mode targets
+        #[arg(long = "parent-session")]
+        parent_session: Option<String>,
 
         #[command(flatten)]
         prompt: PromptArgs,
@@ -414,13 +414,13 @@ enum Commands {
         #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
 
-        /// Explicit tmux window name for this worktree
-        #[arg(long)]
-        name_window: Option<String>,
+        /// Explicit name for the workmux-managed tmux target
+        #[arg(long = "target-name")]
+        target_name: Option<String>,
 
-        /// Explicit tmux session name for this worktree
-        #[arg(long)]
-        name_session: Option<String>,
+        /// Parent tmux session for window-mode targets
+        #[arg(long = "parent-session")]
+        parent_session: Option<String>,
 
         /// Resume the agent's most recent conversation in this worktree
         #[arg(short = 'c', long = "continue")]
@@ -936,8 +936,8 @@ pub fn run() -> Result<()> {
             auto_name,
             base,
             name,
-            name_window,
-            name_session,
+            target_name,
+            parent_session,
             prompt,
             setup,
             rescue,
@@ -958,8 +958,8 @@ pub fn run() -> Result<()> {
                 auto_name,
                 base.as_deref(),
                 name,
-                name_window,
-                name_session,
+                target_name,
+                parent_session,
                 prompt,
                 setup,
                 rescue,
@@ -978,8 +978,8 @@ pub fn run() -> Result<()> {
             new,
             mode,
             session,
-            name_window,
-            name_session,
+            target_name,
+            parent_session,
             continue_session,
             prompt,
             config,
@@ -993,8 +993,8 @@ pub fn run() -> Result<()> {
                 force_files,
                 new,
                 mode_override,
-                name_window,
-                name_session,
+                target_name,
+                parent_session,
                 continue_session,
                 prompt,
                 config.as_deref(),

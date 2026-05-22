@@ -118,7 +118,7 @@ def test_close_window_in_parent_session(
         env,
         workmux_exe_path,
         mux_repo_path,
-        f"add {branch_name} --name-session {session_name} --background",
+        f"add {branch_name} --parent-session {session_name} --background",
     )
 
     result = env.tmux(

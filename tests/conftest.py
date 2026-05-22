@@ -1655,8 +1655,8 @@ def run_workmux_open(
     new_window: bool = False,
     session: bool = False,
     mode: Optional[str] = None,
-    name_window: Optional[str] = None,
-    name_session: Optional[str] = None,
+    target_name: Optional[str] = None,
+    parent_session: Optional[str] = None,
     prompt: Optional[str] = None,
     prompt_file: Optional[Path] = None,
     pre_run_mux_cmds: Optional[List[List[str]]] = None,
@@ -1690,10 +1690,10 @@ def run_workmux_open(
         flags.append("-s")
     if mode:
         flags.append(f"--mode {shlex.quote(mode)}")
-    if name_window:
-        flags.append(f"--name-window {shlex.quote(name_window)}")
-    if name_session:
-        flags.append(f"--name-session {shlex.quote(name_session)}")
+    if target_name:
+        flags.append(f"--target-name {shlex.quote(target_name)}")
+    if parent_session:
+        flags.append(f"--parent-session {shlex.quote(parent_session)}")
     if prompt:
         flags.append(f"-p {shlex.quote(prompt)}")
     if prompt_file:

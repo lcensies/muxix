@@ -61,8 +61,8 @@ pub fn open(
     // Precedence: CLI override > stored git metadata > config default (from options.mode)
     let stored_mode = git::get_worktree_mode_opt(&base_handle);
     let mode = mode_override.or(stored_mode).unwrap_or(options.mode);
-    if mode == MuxMode::Session && options.target_window_name.is_some() {
-        anyhow::bail!("--name-window requires window mode");
+    if mode == MuxMode::Session && options.window_session_name.is_some() {
+        anyhow::bail!("--parent-session requires window mode");
     }
     let cli_target_window_name = options.target_window_name.clone();
     let cli_target_session_name = options.target_session_name.clone();
