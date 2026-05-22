@@ -480,6 +480,35 @@ class TestBaseBranchConfig:
         )
         assert result.stdout.strip() == base_branch
 
+    def test_empty_config_base_branch_falls_back_to_current_branch(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+    ):
+        """Empty base_branch should not block the current-branch fallback."""
+        env = mux_server
+        base_branch = "empty-config-current-base"
+        new_branch = "empty-config-created"
+        commit_msg = "Commit on empty config current base"
+
+        env.run_command(["git", "checkout", "-b", base_branch], cwd=mux_repo_path)
+        create_commit(env, mux_repo_path, commit_msg)
+        (mux_repo_path / ".workmux.yaml").write_text(
+            'base_branch: ""\nnerdfont: false\n'
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env, workmux_exe_path, mux_repo_path, new_branch
+        )
+
+        assert file_for_commit(worktree_path, commit_msg).exists()
+        result = env.run_command(
+            ["git", "config", "--local", f"branch.{new_branch}.workmux-base"],
+            cwd=mux_repo_path,
+        )
+        assert result.stdout.strip() == base_branch
+
     def test_cli_base_overrides_config_base_branch(
         self,
         mux_server: MuxEnvironment,

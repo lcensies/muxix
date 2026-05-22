@@ -32,6 +32,8 @@ fn default_add_worktree_base(repo_path: &Path) -> String {
     crate::config::Config::load_with_location_from(repo_path, None)
         .ok()
         .and_then(|(config, _)| config.base_branch)
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty())
         .or_else(|| {
             git::get_current_branch_in(repo_path)
                 .ok()
@@ -788,8 +790,8 @@ impl App {
         self.worktree_project_override
             .as_ref()
             .map(|(_, p)| p.clone())
-            .or_else(|| self.worktrees.first().map(|w| w.path.clone()))
             .or_else(|| self.current_worktree.clone())
+            .or_else(|| self.worktrees.first().map(|w| w.path.clone()))
     }
 
     /// Open the add-worktree modal with unified picker (branches pre-fetched).

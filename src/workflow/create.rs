@@ -280,7 +280,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         track_upstream = true;
         Some(remote_ref)
     } else if create_new {
-        if let Some(base) = base_branch {
+        if let Some(base) = base_branch.filter(|base| !base.trim().is_empty()) {
             // Use the explicitly provided base branch/commit/tag
             Some(base.to_string())
         } else {
