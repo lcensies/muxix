@@ -237,8 +237,16 @@ def test_state_file_contains_pane_info(
     wait_for_window_ready(env, window_name)
 
     # Create state file
-    status_cmd = build_status_cmd(env, workmux_exe_path, "working")
+    marker_path = env.tmp_path / "pane-info-status-finished"
+    status_cmd = build_status_cmd_with_marker(
+        env,
+        workmux_exe_path,
+        "working",
+        marker_path,
+    )
     env.send_keys(window_name, status_cmd)
+
+    assert poll_until(lambda: marker_path.exists(), timeout=5.0)
 
     def state_file_exists():
         return len(list_agent_state_files(env)) > 0
