@@ -379,17 +379,8 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     let _config_lock = git::GitConfigLock::acquire(&context.git_common_dir)
         .context("Failed to acquire git config lock")?;
 
-    git::create_worktree_in(
-        &worktree_path,
-        branch_name,
-        create_new,
-        base_branch_for_creation.as_deref(),
-        track_upstream,
-        Some(&context.execution_dir),
-    )
-    .context("Failed to create git worktree")?;
-
-    // Store the base branch in git config for future reference (used during removal checks)
+    // Store the base branch before checkout so observers that see the worktree
+    // appear on disk also see complete branch metadata.
     if let Some(ref base) = base_branch_for_creation {
         git::set_branch_base_in(branch_name, base, Some(&context.execution_dir)).with_context(
             || {
@@ -405,6 +396,16 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             "create:stored base branch in git config"
         );
     }
+
+    git::create_worktree_in(
+        &worktree_path,
+        branch_name,
+        create_new,
+        base_branch_for_creation.as_deref(),
+        track_upstream,
+        Some(&context.execution_dir),
+    )
+    .context("Failed to create git worktree")?;
 
     // Store the tmux mode in git config for cleanup and reopen operations.
     // This allows remove/close/merge/open to know whether to kill a window or session.
