@@ -22,6 +22,12 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## v0.1.210 (2026-05-22)
+
+- Add custom tmux target names for `workmux add` and `workmux open`, so the worktree directory can stay separate from the window or session name. ([#139](https://github.com/raine/workmux/issues/139))
+- Allow window-mode worktrees to open inside a chosen parent tmux session.
+- Keep sidebar PR status tied to the correct branch, avoiding stale PR details on base branches.
+
 ## v0.1.209 (2026-05-19)
 
 - Allow `workmux merge` to keep the worktree, window, and branch by default with `merge_keep: true`.
