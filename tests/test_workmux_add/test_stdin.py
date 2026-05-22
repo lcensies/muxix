@@ -1,13 +1,14 @@
 """Tests for stdin input support in `workmux add`."""
 
-import os
-import subprocess
+import shlex
 from pathlib import Path
 
 from ..conftest import (
     DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
     assert_window_exists,
+    get_scripts_dir,
+    poll_until_file_has_content,
     run_workmux_command,
     slugify,
     write_workmux_config,
@@ -27,28 +28,59 @@ class TestStdinInput:
         env = mux_server
         write_workmux_config(mux_repo_path)
 
-        read_fd, write_fd = os.pipe()
-        try:
-            with os.fdopen(read_fd, "rb", closefd=True) as stdin:
-                proc = subprocess.Popen(
-                    [str(workmux_exe_path), "add", "topic"],
-                    cwd=mux_repo_path,
-                    env=env.env,
-                    stdin=stdin,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                try:
-                    stdout, stderr = proc.communicate(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.communicate()
-                    raise AssertionError("workmux add blocked on open empty stdin pipe")
-        finally:
-            os.close(write_fd)
+        scripts_dir = get_scripts_dir(env)
+        stdout_file = scripts_dir / "empty_stdin_stdout.txt"
+        stderr_file = scripts_dir / "empty_stdin_stderr.txt"
+        exit_code_file = scripts_dir / "empty_stdin_exit_code.txt"
+        script_file = scripts_dir / "empty_stdin_run.py"
 
-        assert proc.returncode == 0, stderr
+        for path in [stdout_file, stderr_file, exit_code_file]:
+            if path.exists():
+                path.unlink()
+
+        script_file.write_text(
+            "import os\n"
+            "import subprocess\n"
+            "import sys\n"
+            "read_fd, write_fd = os.pipe()\n"
+            "try:\n"
+            "    with os.fdopen(read_fd, 'rb', closefd=True) as stdin:\n"
+            "        proc = subprocess.Popen([sys.argv[1], 'add', 'topic'], cwd=sys.argv[2], stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)\n"
+            "        try:\n"
+            "            stdout, stderr = proc.communicate(timeout=3)\n"
+            "        except subprocess.TimeoutExpired:\n"
+            "            proc.kill()\n"
+            "            proc.communicate()\n"
+            "            raise AssertionError('workmux add blocked on open empty stdin pipe')\n"
+            "finally:\n"
+            "    os.close(write_fd)\n"
+            "open(sys.argv[3], 'w').write(stdout)\n"
+            "open(sys.argv[4], 'w').write(stderr)\n"
+            "open(sys.argv[5], 'w').write(str(proc.returncode))\n"
+        )
+
+        env.send_keys(
+            "test:",
+            " ".join(
+                shlex.quote(str(arg))
+                for arg in [
+                    "python3",
+                    script_file,
+                    workmux_exe_path,
+                    mux_repo_path,
+                    stdout_file,
+                    stderr_file,
+                    exit_code_file,
+                ]
+            ),
+            enter=True,
+        )
+
+        assert poll_until_file_has_content(exit_code_file, timeout=5.0)
+        stdout = stdout_file.read_text()
+        stderr = stderr_file.read_text()
+
+        assert int(exit_code_file.read_text()) == 0, stderr
         assert "Successfully created worktree" in stdout
 
     def test_stdin_creates_multiple_worktrees(
