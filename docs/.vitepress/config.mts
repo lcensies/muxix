@@ -161,6 +161,7 @@ export default defineConfig({
           { text: "close", link: "/reference/commands/close" },
           { text: "sync-files", link: "/reference/commands/sync-files" },
           { text: "path", link: "/reference/commands/path" },
+          { text: "task", link: "/reference/commands/task" },
           { text: "dashboard", link: "/reference/commands/dashboard" },
           { text: "sidebar", link: "/reference/commands/sidebar" },
           { text: "init", link: "/reference/commands/init" },

@@ -26,7 +26,7 @@ pre_merge:
   - just test
 
 # Pipeline event tracing (`~/.local/state/workmux.log`), see
-# docs/reference/pipeline-events.md. WORKMUX_EVENTS overrides `level`.
+# docs/reference/events.md. WORKMUX_EVENTS overrides `level`.
 # events:
 #   enabled: true
 #   level: info

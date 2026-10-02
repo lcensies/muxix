@@ -2191,7 +2191,7 @@ fn validate_domain(domain: &str) -> anyhow::Result<()> {
 ///
 /// `WORKMUX_EVENTS` / `RUST_LOG` set the level; this section lets `.workmux.yaml`
 /// set that level too and, beyond it, silence specific event kinds or whole
-/// groups. See `docs/reference/pipeline-events.md`.
+/// groups. See `docs/reference/events.md`.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct EventsConfig {
     /// Master switch. Default: true. `false` silences all `wm::event` output.

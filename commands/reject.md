@@ -1,10 +1,10 @@
 ---
-description: Reject the current workmux pipeline gate with optional feedback (re-runs the stage)
+description: Signal that this pane's gate is rejected, with optional feedback (the stage re-runs)
 argument-hint: [feedback]
 allowed-tools: Bash(workmux signal reject:*)
 ---
 
 !`workmux signal reject --feedback "$ARGUMENTS"`
 
-Signalled the workmux pipeline to reject the current gate. The stage will re-run with
-the feedback above (if any).
+Wrote the `reject` signal for this pane, with the feedback above (if any).
+Whatever harness is waiting on this gate decides what to re-run.

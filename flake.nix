@@ -125,8 +125,8 @@
           # Cargo.toml, not the git rev: a dirty tree changed the derivation on
           # every edit, so no build was ever reused.
           version = (nixpkgs.lib.importTOML ./Cargo.toml).package.version;
-          # Only what the build reads. Editing docs/ or openspec/ used to
-          # invalidate the source hash and recompile all 421 dependencies.
+          # Only what the build reads. Editing docs/ used to invalidate the
+          # source hash and recompile all 421 dependencies.
           # The non-obvious entries are `include_str!` targets compiled into
           # the binary (`rg include_str src`), not just the crate sources.
           src = nixpkgs.lib.fileset.toSource {
@@ -146,7 +146,6 @@
               ./.pi/extensions
               ./skills
               ./scripts
-              ./.workmux.yaml
             ] ++ rustVendorCrates);
           };
           # Cargo.toml's `release` is fat LTO + codegen-units=1, so the final

@@ -285,7 +285,7 @@ bootstrap:
   default_prompt_components:
     - caveman-full     # .workmux/prompt-components/caveman-full.md
     - fff
-    - ~/repos/harness/prompt-components/jj.md
+    - ~/dotfiles/prompt-components/jj.md   # absolute paths work too
   agents:
     claude code:
       additional_prompt_components:

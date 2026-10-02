@@ -38,7 +38,7 @@ workmux config resolve --format json --profile corp
 `--explain` annotates every key with the layer that set it:
 
 ```yaml
-merge_strategy: rebase  # from /home/you/.config/workmux/base.yaml
+merge_strategy: rebase  # from ~/.config/workmux/base.yaml
 agent: codex  # from profile `corp` (--profile)
 ```
 
@@ -224,7 +224,7 @@ agent_profiles:
     agents:
       pi:
         additional_plugins:
-          - ~/repos/harness/pi/pi-provider-litellm
+          - ~/dotfiles/pi/pi-provider-litellm
         exclude_plugins:            # base packages entries, exact match
           - npm:pi-cliproxyapi
         additional_skills: []       # source paths, linked at skills/<basename>

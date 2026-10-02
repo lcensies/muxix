@@ -7,37 +7,18 @@ use crate::provision::profile::ProfileSnapshot;
 use crate::provision::types::{GatewayEndpoint, OrgPolicy, ProvisionConfig};
 
 /// Environment variables naming the provision server and bearer token.
-///
-/// The `WORKMUX_SC_*` names are the pre-rename spelling, kept working for one
-/// release so shell profiles and CI configs workmux cannot edit keep working.
-/// The neutral names win when both are set.
 pub const URL_ENV: &str = "WORKMUX_PROVISION_URL";
 pub const TOKEN_ENV: &str = "WORKMUX_PROVISION_TOKEN";
-const DEPRECATED_URL_ENV: &str = "WORKMUX_SC_URL";
-const DEPRECATED_TOKEN_ENV: &str = "WORKMUX_SC_TOKEN";
 
-/// Read `name`, falling back to `deprecated` with a warning.
-///
-/// Returns `None` when neither is set or both are empty.
-fn env_with_fallback(name: &str, deprecated: &str) -> Option<String> {
-    if let Ok(value) = std::env::var(name) {
-        let value = value.trim();
-        if !value.is_empty() {
-            return Some(value.to_string());
-        }
-    }
-    if let Ok(value) = std::env::var(deprecated) {
-        let value = value.trim();
-        if !value.is_empty() {
-            eprintln!("warning: {deprecated} is deprecated; use {name} instead");
-            return Some(value.to_string());
-        }
-    }
-    None
+/// Read `name`, treating an empty value as unset.
+fn env_var(name: &str) -> Option<String> {
+    let value = std::env::var(name).ok()?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 /// Resolve the provision server URL. Resolution order:
-/// 1. `WORKMUX_PROVISION_URL` env var (or the deprecated `WORKMUX_SC_URL`)
+/// 1. `WORKMUX_PROVISION_URL` env var
 /// 2. `provision.server_url` in config
 ///
 /// The env var lets a dev container / CI runner point workmux at its server
@@ -45,7 +26,7 @@ fn env_with_fallback(name: &str, deprecated: &str) -> Option<String> {
 /// `WORKMUX_PROVISION_TOKEN` for the token. Returns `None` when neither source
 /// is set.
 pub fn resolve_server_url(config: Option<&ProvisionConfig>) -> Option<String> {
-    if let Some(url) = env_with_fallback(URL_ENV, DEPRECATED_URL_ENV) {
+    if let Some(url) = env_var(URL_ENV) {
         return Some(url);
     }
     config
@@ -55,7 +36,7 @@ pub fn resolve_server_url(config: Option<&ProvisionConfig>) -> Option<String> {
 }
 
 /// Resolve the bearer token. Resolution order:
-/// 1. `WORKMUX_PROVISION_TOKEN` env var (or the deprecated `WORKMUX_SC_TOKEN`)
+/// 1. `WORKMUX_PROVISION_TOKEN` env var
 /// 2. `provision.token` in config
 /// 3. `provision.token_path` file (must be mode 600)
 ///
@@ -63,7 +44,7 @@ pub fn resolve_server_url(config: Option<&ProvisionConfig>) -> Option<String> {
 /// here rather than during config resolution so the token never appears in a
 /// resolved config.
 pub fn resolve_token(config: &ProvisionConfig) -> Result<String> {
-    if let Some(token) = env_with_fallback(TOKEN_ENV, DEPRECATED_TOKEN_ENV) {
+    if let Some(token) = env_var(TOKEN_ENV) {
         return crate::config::secrets::expand(&token, TOKEN_ENV);
     }
 
@@ -225,8 +206,6 @@ mod tests {
         vec![
             (URL_ENV, None),
             (TOKEN_ENV, None),
-            (DEPRECATED_URL_ENV, None),
-            (DEPRECATED_TOKEN_ENV, None),
         ]
     }
 
@@ -241,28 +220,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deprecated_url_env_still_works() {
-        let mut vars = clear_all();
-        vars[2] = (DEPRECATED_URL_ENV, Some("https://old.example.com"));
-        let _g = EnvGuard::new(&vars);
-        assert_eq!(
-            resolve_server_url(None).as_deref(),
-            Some("https://old.example.com")
-        );
-    }
 
-    #[test]
-    fn neutral_url_env_beats_deprecated() {
-        let mut vars = clear_all();
-        vars[0] = (URL_ENV, Some("https://new.example.com"));
-        vars[2] = (DEPRECATED_URL_ENV, Some("https://old.example.com"));
-        let _g = EnvGuard::new(&vars);
-        assert_eq!(
-            resolve_server_url(None).as_deref(),
-            Some("https://new.example.com")
-        );
-    }
 
     #[test]
     fn config_url_used_when_no_env_is_set() {
@@ -294,28 +252,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deprecated_token_env_still_works() {
-        let mut vars = clear_all();
-        vars[3] = (DEPRECATED_TOKEN_ENV, Some("tok-old"));
-        let _g = EnvGuard::new(&vars);
-        assert_eq!(
-            resolve_token(&ProvisionConfig::default()).unwrap(),
-            "tok-old"
-        );
-    }
 
-    #[test]
-    fn neutral_token_env_beats_deprecated() {
-        let mut vars = clear_all();
-        vars[1] = (TOKEN_ENV, Some("tok-new"));
-        vars[3] = (DEPRECATED_TOKEN_ENV, Some("tok-old"));
-        let _g = EnvGuard::new(&vars);
-        assert_eq!(
-            resolve_token(&ProvisionConfig::default()).unwrap(),
-            "tok-new"
-        );
-    }
 
     /// The point of the inline `token:` field: name your own env var rather
     /// than adopt workmux's.
@@ -350,6 +287,5 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains(TOKEN_ENV), "{err}");
-        assert!(!err.contains("WORKMUX_SC_TOKEN"), "{err}");
     }
 }

@@ -264,23 +264,6 @@ nothing and workmux reports that a re-sync is required. **No command other than
 `workmux provision` makes a network request for policy** — the cache is read
 locally on every config load.
 
-## Migrating from `WORKMUX_SC_*`
-
-The `WORKMUX_SC_URL` and `WORKMUX_SC_TOKEN` variables were renamed to
-`WORKMUX_PROVISION_URL` and `WORKMUX_PROVISION_TOKEN` so the names describe the
-capability rather than one vendor's product. The old names still work for one
-release and print a deprecation warning; when both are set, the new name wins.
-
-```bash
-# before
-export WORKMUX_SC_URL=...
-export WORKMUX_SC_TOKEN=...
-
-# after
-export WORKMUX_PROVISION_URL=...
-export WORKMUX_PROVISION_TOKEN=...
-```
-
 ## Examples
 
 ```bash

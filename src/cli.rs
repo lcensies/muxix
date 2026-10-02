@@ -953,24 +953,10 @@ enum Commands {
 
 
 
-    /// Emit an out-of-band agent signal (called from Claude Code hooks, agent tools, or `/implement` slash command).
-    ///
-    /// Supports two modes:
-    /// 1. PANE-KEYED TURN SIGNALS (keyed by $TMUX_PANE):
-    ///    - turn-done   — agent finished a response turn (Stop hook)
-    ///    - needs-input — agent blocked on a user question (Notification hook)
-    ///    - working     — agent resumed; clears needs-input (PostToolUse/UserPromptSubmit)
-    ///    - proceed     — release current gate node and continue (e.g. /implement)
-    ///    - reject      — release current gate node with rejection + optional feedback
-    ///
-    /// 2. NODE-KEYED AGENT SIGNALS (keyed by --node, for inter-stage messaging):
-    ///    - done        — agent finished this stage explicitly (triggers hook signal routing)
-    ///    - error       — agent encountered error; request retry with feedback
-    ///
-    /// `done`/`error` are dual-mode: with --node, writes the pipeline hook-signal
-    /// file above; without --node, writes an agent-authored completion onto the
-    /// pane's AgentState (keyed by $TMUX_PANE or --pane), read by `wait`/`status`.
     /// Read and mutate the task graph from the shell (list/get/create/update/delete).
+    ///
+    /// workmux stores the graph and serialises writes to it; deciding what to run
+    /// next is the calling harness's job.
     ///
     /// Relative `--graph` paths resolve against the main worktree root, so agents
     /// in a feature worktree share the project's single graph.
@@ -979,6 +965,24 @@ enum Commands {
         action: TaskAction,
     },
 
+    /// Emit an out-of-band agent signal (called from agent hooks, agent tools, or
+    /// the `/implement` slash command).
+    ///
+    /// Supports two modes:
+    /// 1. PANE-KEYED TURN SIGNALS (keyed by $TMUX_PANE):
+    ///    - turn-done   — agent finished a response turn (Stop hook)
+    ///    - needs-input — agent blocked on a user question (Notification hook)
+    ///    - working     — agent resumed; clears needs-input (PostToolUse/UserPromptSubmit)
+    ///    - proceed     — the gate this pane waits on is approved (e.g. /implement)
+    ///    - reject      — the gate is refused, with optional feedback
+    ///
+    /// 2. NODE-KEYED SIGNALS (keyed by --node, for stage-to-stage messaging):
+    ///    - done        — agent finished this stage explicitly
+    ///    - error       — agent hit an error; asks for a retry, with feedback
+    ///
+    /// `done`/`error` are dual-mode: with --node, writes the node-keyed signal file
+    /// a harness polls; without --node, writes an agent-authored completion onto the
+    /// pane's AgentState (keyed by $TMUX_PANE or --pane), read by `wait`/`status`.
     Signal {
         /// Signal kind: turn-done | needs-input | working | proceed | reject | done | error
         kind: String,

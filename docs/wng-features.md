@@ -477,8 +477,8 @@ so a container needs no config file:
 
 ```yaml
 provision:
-  server_url: https://sc.corp.example.com   # env: WORKMUX_SC_URL
-  token_path: ~/.config/workmux/sc-token    # env: WORKMUX_SC_TOKEN; file must be mode 600
+  server_url: https://policy.corp.example.com  # env: WORKMUX_PROVISION_URL
+  token_path: ~/.config/workmux/provision-token  # env: WORKMUX_PROVISION_TOKEN; file must be mode 600
   grace_period_secs: 259200                 # use an expired policy for 72h more
 ```
 
@@ -517,7 +517,7 @@ so agent traffic routes through it — no hand-set `ANTHROPIC_BASE_URL`:
 
 Secrets never land on disk: the token is referenced by env var name
 (`{env:VAR}` for OpenCode, `apiKeyHelper` for Claude), defaulting to
-`WORKMUX_SC_TOKEN`. Both files are merged, not rewritten.
+`WORKMUX_PROVISION_TOKEN`. Both files are merged, not rewritten.
 
 ### Profile snapshot (`workmux profile`)
 

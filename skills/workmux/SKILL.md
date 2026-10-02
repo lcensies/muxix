@@ -139,7 +139,7 @@ depends on that agent's own session store:
 - **Resumable session found** — relaunched with the agent's continue flag,
   picking up the previous conversation.
 - **No resumable session** — relaunched fresh, with the stored task prompt
-  re-sent (`.workmux/PROMPT-<branch>.md`, or the orchestrate task workflow).
+  re-sent (`.workmux/PROMPT-<branch>.md`).
   The re-sent prompt names the parent agent that spawned the worktree, so the
   restored agent knows who to report back to. The original prompt file is
   never overwritten.
@@ -253,25 +253,17 @@ workmux task create --title "..." [--id X] [--depends-on Y] [--label L]
                     [--priority N] [--worktree <handle>]
 workmux task update <id> ...            # only the flags you pass change
 workmux task delete <id>
-workmux graph [--all]                   # frontier / stats
-workmux tasks                           # interactive task graph TUI
-
-workmux orchestrate                     # run the loop over the graph
-    [--slots N] [--workflow <yaml>] [--auto-merge] [--base-branch <b>]
-    [--pre-merge-cmd "..."] [--dry-run]
-workmux notify --task-id <id> [--status done]   # signal completion
-
-workmux pipeline run <workflow.yaml>    # single DAG run
-workmux pipeline validate <workflow.yaml>
-workmux pipeline tui | orchestrator-tui
-workmux pipeline approve <node> | reject <node> --feedback "..."
-
-workmux daemon start|stop|restart|status
+workmux task list --ready --json        # tasks whose dependencies are all done
+workmux task claim <id> --branch <b> --base <b> --worktree <path>
+workmux task resolve <id> --retry|--abandon
 workmux project-state get-capability|set-fact|get-fact|show
 ```
 
-Inside a pipeline, `/implement` and `/approve` release approval gates from
-the agent pane.
+workmux stores the graph and serialises writes to it; it never decides what to
+run next. Scheduling is the harness's job: read the ready frontier, pick a task,
+`workmux add` its worktree, and mark the result back with `workmux task update`.
+
+The `workmux dashboard -t tasks` tab is a view over the same file.
 
 ### Org policy and profiles
 
@@ -382,8 +374,9 @@ step. This cleans up the worktree, tmux window, and branch.
 Use `/worktree` to spin off tasks into parallel worktree agents. The
 agent writes a prompt file and runs `workmux add -b -P <file>`.
 
-For full lifecycle orchestration (spawn, monitor, merge), use
-`/coordinator`.
+Spawning, monitoring and merging many of them in a loop is the harness's job:
+workmux reports state (`workmux list --json`, `workmux status`, signals) and
+performs single actions, it does not run the loop.
 
 ### Cross-project worktree creation
 
@@ -423,6 +416,5 @@ other projects by path and let the agent explore on its own.
 - **`/merge`**: commit, rebase, and merge the current branch
 - **`/rebase`**: rebase with smart conflict resolution
 - **`/worktree`**: delegate tasks to parallel worktree agents
-- **`/coordinator`**: orchestrate multiple agents (spawn, monitor, merge)
 - **`/open-pr`**: write PR description and open in browser
-- **`/implement`**, **`/approve`**: release pipeline approval gates
+- **`/implement`**, **`/reject`**: release or refuse a gate the harness is waiting on

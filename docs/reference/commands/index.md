@@ -16,6 +16,7 @@ description: Complete reference for all workmux commands
 | [`status`](./status)           | Query agent status and completion for worktrees |
 | [`wait`](./wait)               | Wait for agents to reach a target status        |
 | [`signal`](./signal)           | Emit an out-of-band agent signal                |
+| [`task`](./task)               | Read and mutate the project task graph          |
 | [`open`](./open)               | Open a tmux window for an existing worktree     |
 | [`close`](./close)             | Close a worktree's tmux window (keeps worktree) |
 | [`resurrect`](./resurrect)     | Restore worktree windows after a crash          |
