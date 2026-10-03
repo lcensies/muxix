@@ -4,20 +4,20 @@ description: Sync local config with an org provision server, apply org policy, a
 
 # provision
 
-`workmux provision` syncs the machine with an **org provision server**: it pushes
+`muxix provision` syncs the machine with an **org provision server**: it pushes
 a sanitised profile snapshot, fetches the org policy, caches it locally, audits
 the current config against it, and (when the server advertises a gateway) points
 the local coding agents at that gateway.
 
 ```bash
-workmux provision              # same as `provision status`
-workmux provision status       # show the cached policy, offline
-workmux provision sync         # push profile -> fetch policy -> cache -> audit
-workmux provision --dry-run    # sync without writing anything
+muxix provision              # same as `provision status`
+muxix provision status       # show the cached policy, offline
+muxix provision sync         # push profile -> fetch policy -> cache -> audit
+muxix provision --dry-run    # sync without writing anything
 ```
 
 Everything is opt-in: with no server configured, `provision status` reports
-`not configured` and every other workmux command behaves as if the feature did
+`not configured` and every other muxix command behaves as if the feature did
 not exist.
 
 ## Options
@@ -27,7 +27,7 @@ not exist.
 | `--dry-run` | Fetch and audit, but write no policy cache, no agent config, and push no profile |
 | `--strict`  | Exit non-zero on any policy violation or fetch failure (default: warn only)      |
 
-Both flags apply to `sync`. `workmux provision --dry-run` with no subcommand
+Both flags apply to `sync`. `muxix provision --dry-run` with no subcommand
 runs a dry-run sync; with no subcommand and no `--dry-run`, it runs `status`.
 
 ## Subcommands
@@ -40,23 +40,23 @@ runs a dry-run sync; with no subcommand and no `--dry-run`, it runs `status`.
 ## Configuration
 
 The server URL and token resolve **from the environment first**, then from the
-*global* config (`~/.config/workmux/config.yaml`). The env-var path exists so a
+*global* config (`~/.config/muxix/config.yaml`). The env-var path exists so a
 dev container or CI runner can provision with no config file at all.
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 provision:
   server_url: https://provision.corp.example.com
   token: ${env:MY_ORG_TOKEN} # or use token_path below
-  token_path: ~/.config/workmux/provision-token # must be mode 600
+  token_path: ~/.config/muxix/provision-token # must be mode 600
   grace_period_secs: 259200 # keep using an expired policy for 72h
 ```
 
 | Setting                    | Env var (wins)      | Default  | Description                                             |
 | -------------------------- | ------------------- | -------- | ------------------------------------------------------- |
-| `provision.server_url`     | `WORKMUX_PROVISION_URL`   | –  | Provision server root                                   |
-| `provision.token`          | `WORKMUX_PROVISION_TOKEN` | –  | Bearer token, or a `${env:VAR}` / `${file:/path}` reference to one |
-| `provision.token_path`     | `WORKMUX_PROVISION_TOKEN` | –  | File holding the bearer token; must be mode `600`       |
+| `provision.server_url`     | `MUXIX_PROVISION_URL`   | –  | Provision server root                                   |
+| `provision.token`          | `MUXIX_PROVISION_TOKEN` | –  | Bearer token, or a `${env:VAR}` / `${file:/path}` reference to one |
+| `provision.token_path`     | `MUXIX_PROVISION_TOKEN` | –  | File holding the bearer token; must be mode `600`       |
 | `provision.grace_period_secs` | –                | `259200` | How long an expired policy stays usable before it is dropped |
 
 ::: warning Token file permissions
@@ -67,8 +67,8 @@ rather than read. `chmod 600` it.
 ::: info Accepted but not yet honored
 `provision.sync_on_setup`, `provision.policy_ttl_secs`, and
 `provision.insecure_skip_tls` parse without error but are not wired up today.
-Policy TTL comes from the server's `ttl_seconds`; `workmux setup` never syncs
-on its own — run `workmux provision sync` explicitly.
+Policy TTL comes from the server's `ttl_seconds`; `muxix setup` never syncs
+on its own — run `muxix provision sync` explicitly.
 :::
 
 ## What `sync` does
@@ -81,11 +81,11 @@ on its own — run `workmux provision sync` explicitly.
 3. **Audit** — the policy is applied to the merged config and every violation is
    reported. Under `--strict`, violations fail the command.
 4. **Cache** — the policy is written atomically to
-   `~/.config/workmux/policy.yaml`, stamped with `issued_at` / `expires_at`.
+   `~/.config/muxix/policy.yaml`, stamped with `issued_at` / `expires_at`.
 5. **Configure agents** — when the response carries a `gateway`, the local
    agents are pointed at it (see [Gateway wiring](#gateway-wiring)).
 6. **Audit log** — one JSON line is appended to
-   `~/.local/state/workmux/provision-audit.jsonl`.
+   `~/.local/state/muxix/provision-audit.jsonl`.
 
 `--dry-run` stops after step 3.
 
@@ -93,7 +93,7 @@ on its own — run `workmux provision sync` explicitly.
 
 The cached policy is applied on **every config load**, not only during `sync`.
 `Config::load` reads `policy.yaml`, merges the locked fields over the user's
-config, and prints violations. So a policy takes effect for `workmux add`,
+config, and prints violations. So a policy takes effect for `muxix add`,
 `dashboard`, `pipeline`, and everything else without a re-sync.
 
 | Policy field              | Effect                                                                   |
@@ -105,7 +105,7 @@ config, and prints violations. So a policy takes effect for `workmux add`,
 | `allowed_agent_kinds`     | When non-empty, restricts `agent:` to those CLI stems (`claude`, `codex`) |
 | `deny_external_providers` | With `allowed_providers`, flags any `providers:` entry off the allowlist  |
 | `violation_severity`      | `warn` (default) or `error` — the severity stamped on each violation      |
-| `team_profile_url`        | Where `workmux profile diff` would fetch the team baseline                |
+| `team_profile_url`        | Where `muxix profile diff` would fetch the team baseline                |
 
 Locked fields are **applied regardless of severity** — the severity only decides
 how loudly the override is reported. Violations are always printed to stderr
@@ -136,7 +136,7 @@ config so agent traffic routes through it without hand-wiring
 
 **Secrets are never written to disk.** The token is referenced by env var name —
 OpenCode's `{env:VAR}` interpolation and Claude's `apiKeyHelper` both resolve it
-at runtime. The var defaults to `WORKMUX_PROVISION_TOKEN` when the gateway does not
+at runtime. The var defaults to `MUXIX_PROVISION_TOKEN` when the gateway does not
 name one. Both files are merged: only the keys above are touched.
 
 ## Profile snapshot
@@ -146,21 +146,21 @@ env values, no MCP commands:
 
 | Field                          | Content                                                    |
 | ------------------------------ | ---------------------------------------------------------- |
-| `workmux_version`, `platform`  | Build and OS                                                |
+| `muxix_version`, `platform`  | Build and OS                                                |
 | `agent_kind`                   | CLI stem of `agent:` (`claude`), path and args stripped     |
 | `mcp_names`                    | MCP server **names** only                                   |
 | `provider_names`               | Provider prefixes taken from agent definitions' `model:`    |
 | `features`                     | `sandbox_enabled`, `proxy_chain_enabled`, `bootstrap_enabled` |
 | `hostname_hash`                | djb2 hash of the hostname — dedup without machine identity  |
 
-### `workmux profile`
+### `muxix profile`
 
 Inspect and share that snapshot without talking to a server:
 
 ```bash
-workmux profile show              # print the snapshot as YAML
-workmux profile export -o me.yaml # write it to a file (stdout when -o is omitted)
-workmux profile diff              # compare against the org's team profile
+muxix profile show              # print the snapshot as YAML
+muxix profile export -o me.yaml # write it to a file (stdout when -o is omitted)
+muxix profile diff              # compare against the org's team profile
 ```
 
 `profile diff` currently reports the `team_profile_url` from the cached policy;
@@ -170,8 +170,8 @@ downloading and diffing the team baseline is not implemented yet.
 
 | Path                                            | Content                       |
 | ----------------------------------------------- | ----------------------------- |
-| `~/.config/workmux/policy.yaml`                 | Cached org policy             |
-| `~/.local/state/workmux/provision-audit.jsonl`  | One JSON line per sync        |
+| `~/.config/muxix/policy.yaml`                 | Cached org policy             |
+| `~/.local/state/muxix/provision-audit.jsonl`  | One JSON line per sync        |
 
 Both honor `XDG_CONFIG_HOME` / `XDG_STATE_HOME`.
 
@@ -190,13 +190,13 @@ auditing — is identical.
 ```yaml
 provision:
   backend: file
-  path: /etc/workmux/policy.json
+  path: /etc/muxix/policy.json
 ```
 
 ```yaml
 provision:
   backend: exec
-  command: /usr/local/bin/fetch-workmux-policy
+  command: /usr/local/bin/fetch-muxix-policy
   timeout_secs: 30
 ```
 
@@ -225,7 +225,7 @@ Unset paths default to `/api/provision/policy` and `/api/provision/profile`.
 
 ### Schema version
 
-A policy carries a `schema_version`. One newer than the running workmux
+A policy carries a `schema_version`. One newer than the running muxix
 understands is rejected, naming both versions, and nothing is cached — better
 than half-applying semantics from a newer contract. Unknown fields within a
 supported version are ignored, so a server can add fields without breaking older
@@ -245,7 +245,7 @@ layers, at deliberately opposite ends of the stack:
 Which means you can ask where a value came from:
 
 ```bash
-workmux config resolve --explain
+muxix config resolve --explain
 ```
 
 ```yaml
@@ -253,33 +253,33 @@ merge_strategy: rebase  # from org policy v-layered (defaults)
     policy: deny  # from org policy v-layered (locked)
 ```
 
-`workmux provision sync` names every setting a lock overrides, so an overridden
+`muxix provision sync` names every setting a lock overrides, so an overridden
 value is reported at the moment you sync rather than discovered later.
 
 ### Offline behaviour
 
 The last policy obtained is cached. While fresh it applies silently; past its
 TTL it still applies with a warning; past `grace_period_secs` it contributes
-nothing and workmux reports that a re-sync is required. **No command other than
-`workmux provision` makes a network request for policy** — the cache is read
+nothing and muxix reports that a re-sync is required. **No command other than
+`muxix provision` makes a network request for policy** — the cache is read
 locally on every config load.
 
 ## Examples
 
 ```bash
 # One-time setup on a corporate machine
-export WORKMUX_PROVISION_URL=https://provision.corp.example.com
-export WORKMUX_PROVISION_TOKEN=$(cat ~/.secrets/provision-token)
-workmux provision sync
+export MUXIX_PROVISION_URL=https://provision.corp.example.com
+export MUXIX_PROVISION_TOKEN=$(cat ~/.secrets/provision-token)
+muxix provision sync
 
 # CI gate: fail the build on any policy violation
-workmux provision sync --strict
+muxix provision sync --strict
 
 # See what a sync would change, touching nothing
-workmux provision --dry-run
+muxix provision --dry-run
 
 # Offline check of the cached policy
-workmux provision status
+muxix provision status
 ```
 
 ## See also

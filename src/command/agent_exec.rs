@@ -1,8 +1,8 @@
-//! `workmux exec [--profile <name>] <agent> [args...]`
+//! `muxix exec [--profile <name>] <agent> [args...]`
 //!
 //! A thin, stateless launcher: it selects an agent config profile, points the
 //! agent's config-dir env var at that profile's derived overlay dir, and execs
-//! the agent. It never writes — building overlay dirs is `workmux setup`'s job.
+//! the agent. It never writes — building overlay dirs is `muxix setup`'s job.
 //!
 //! Profile selection precedence:
 //!   1. `--profile <name>` (the global flag)  — `--profile ""` forces base
@@ -32,9 +32,9 @@ fn resolve_profile(cli_profile: Option<&str>, config: &Config) -> Option<String>
 }
 
 pub fn run(agent_cmd: &str, args: &[String], cli_profile: Option<&str>) -> Result<()> {
-    // Load config without resolving *workmux* config profiles: the global
+    // Load config without resolving *muxix* config profiles: the global
     // `--profile` flag here names an *agent* profile, so passing it into config
-    // resolution would error on an unknown workmux profile name.
+    // resolution would error on an unknown muxix profile name.
     let config = Config::load_with_options(
         &std::env::current_dir().unwrap_or_default(),
         None,
@@ -82,7 +82,7 @@ fn apply_profile(
     let dest = ap::build_dir(profile, agent_id)?;
     if !dest.exists() {
         bail!(
-            "agent profile '{profile}' has not been built for {agent_id}; run `workmux setup` first \
+            "agent profile '{profile}' has not been built for {agent_id}; run `muxix setup` first \
              (expected {})",
             dest.display()
         );

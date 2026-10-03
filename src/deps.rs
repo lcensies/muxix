@@ -1,5 +1,5 @@
 //! Dependencies declared next to harness entities (`requires:` on skill and
-//! MCP entries): npm packages workmux installs into a user prefix, and
+//! MCP entries): npm packages muxix installs into a user prefix, and
 //! executables it only asserts are on PATH.
 
 use anyhow::{Context, Result, bail};
@@ -13,7 +13,7 @@ pub const DEFAULT_NPM_PREFIX: &str = "~/.local";
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Requires {
-    /// npm specs (`name` or `name@version`); installed by workmux.
+    /// npm specs (`name` or `name@version`); installed by muxix.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub npm: Vec<String>,
     /// Executable names; asserted on PATH, never installed.

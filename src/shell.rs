@@ -26,19 +26,19 @@ pub fn shell_quote(s: &str) -> String {
     }
 }
 
-/// Return the absolute path to the currently running `workmux` executable,
+/// Return the absolute path to the currently running `muxix` executable,
 /// falling back to the bare command name if it cannot be determined.
 ///
-/// Harness panes are spawned in worktree directories where `workmux` is often
+/// Harness panes are spawned in worktree directories where `muxix` is often
 /// not on `PATH`; using the same binary that is running the dashboard/orchestrator
 /// avoids "command not found" failures.
-pub fn workmux_exe() -> String {
+pub fn muxix_exe() -> String {
     std::env::current_exe()
         .ok()
         .and_then(|p| std::fs::canonicalize(&p).ok().or_else(|| Some(p)))
         .and_then(|p| p.to_str().map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "workmux".to_string())
+        .unwrap_or_else(|| "muxix".to_string())
 }
 
 #[cfg(test)]

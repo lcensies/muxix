@@ -2,7 +2,7 @@
 //! layout DSL ([`crate::tui::dsl`]).
 //!
 //! The layout is described by [`DEFAULT_AGENTS_SPEC`] (or an on-disk override at
-//! `.workmux/ui/agents.yaml` for live prototyping). Agent rows and section
+//! `.muxix/ui/agents.yaml` for live prototyping). Agent rows and section
 //! headers are projected from [`App`] via [`AgentsCtx`].
 
 use ratatui::Frame;
@@ -17,7 +17,7 @@ use crate::ui::theme::ThemePalette;
 use super::super::app::App;
 
 /// Built-in layout for the grouped agents view. Overridable at
-/// `.workmux/ui/agents.yaml`. Must always parse.
+/// `.muxix/ui/agents.yaml`. Must always parse.
 pub const DEFAULT_AGENTS_SPEC: &str = r#"
 type: list
 source: agents

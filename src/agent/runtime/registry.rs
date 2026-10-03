@@ -14,7 +14,7 @@ use anyhow::{Result, bail};
 use super::local::LocalRuntime;
 use super::{AgentRuntime, LOCAL, RuntimeFeatures, RuntimeHealth};
 
-/// One row of `workmux runtimes`.
+/// One row of `muxix runtimes`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeInfo {
     pub name: String,
@@ -24,7 +24,7 @@ pub struct RuntimeInfo {
     pub is_default: bool,
 }
 
-/// Every runtime available to this workmux.
+/// Every runtime available to this muxix.
 pub struct RuntimeRegistry {
     runtimes: BTreeMap<String, Arc<dyn AgentRuntime>>,
 }
@@ -87,9 +87,9 @@ impl RuntimeRegistry {
     /// The runtime that owns a given agent, by the runtime named in its ref.
     ///
     /// Operations route by the agent, not by configuration: an agent started in
-    /// an ADE stays drivable from workmux even when this project's configured
+    /// an ADE stays drivable from muxix even when this project's configured
     /// runtime is `local`, and vice versa. Selection decides who *creates* new
-    /// agents; it does not decide who workmux is allowed to talk to.
+    /// agents; it does not decide who muxix is allowed to talk to.
     pub fn runtime_for(&self, agent: &crate::agent::runtime::AgentRef) -> Result<Arc<dyn AgentRuntime>> {
         self.get(&agent.runtime).ok_or_else(|| {
             anyhow::anyhow!(
@@ -101,7 +101,7 @@ impl RuntimeRegistry {
 
     /// Agents from every healthy runtime.
     ///
-    /// Process ownership is exclusive, but visibility is not: workmux shows
+    /// Process ownership is exclusive, but visibility is not: muxix shows
     /// what it started locally *and* what an ADE started, side by side. An
     /// unhealthy runtime contributes nothing and is reported, never silently
     /// treated as owning no agents.
@@ -142,7 +142,7 @@ impl Default for RuntimeRegistry {
     }
 }
 
-/// `workmux runtimes` — list runtimes, their health, and their features.
+/// `muxix runtimes` — list runtimes, their health, and their features.
 ///
 /// Succeeds even when a runtime is unhealthy: an unreachable manager is
 /// information, not a failure of the listing.

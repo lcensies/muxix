@@ -1,19 +1,19 @@
-# Packages the microsandbox `msb` CLI + libkrunfw so workmux can use the
+# Packages the microsandbox `msb` CLI + libkrunfw so muxix can use the
 # microsandbox backend on hosts where `msb` is not installed natively.
 #
-# Built locally by `workmux sandbox build` (microsandbox backend) — NOT pulled
+# Built locally by `muxix sandbox build` (microsandbox backend) — NOT pulled
 # from a registry, since it bundles release binaries fetched at build time.
 #
 # IMPORTANT: `msb` launches libkrun microVMs, which require /dev/kvm. Any
 # container started from this image must be run with `--device /dev/kvm` (and
 # typically a mounted host state dir so sandbox metadata survives across
-# invocations). See src/sandbox/microsandbox.rs for how workmux invokes it.
+# invocations). See src/sandbox/microsandbox.rs for how muxix invokes it.
 FROM ubuntu:24.04
 
-LABEL org.opencontainers.image.description="microsandbox msb CLI for workmux"
+LABEL org.opencontainers.image.description="microsandbox msb CLI for muxix"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
-# Pinned to match the version workmux was developed against.
+# Pinned to match the version muxix was developed against.
 ARG MSB_VERSION=0.5.6
 # Set automatically by buildkit: "amd64" or "arm64".
 ARG TARGETARCH

@@ -1,6 +1,6 @@
-//! `workmux task` — CLI CRUD over the task graph (`tasks/index.json`).
+//! `muxix task` — CLI CRUD over the task graph (`tasks/index.json`).
 //!
-//! This is the non-interactive counterpart to the `workmux tasks` TUI: it lets
+//! This is the non-interactive counterpart to the `muxix tasks` TUI: it lets
 //! humans and agents read and mutate the graph from a shell (or worktree)
 //! without hand-editing JSON. All writes go through the same atomic, locked
 //! `tasks::graph` operations, as a CLI an external harness can drive.
@@ -26,7 +26,7 @@ pub(crate) fn resolve_graph(graph: &Path) -> PathBuf {
     }
 }
 
-/// `workmux task list` — print tasks, optionally filtered.
+/// `muxix task list` — print tasks, optionally filtered.
 pub fn list(
     graph: &Path,
     status: Option<String>,
@@ -86,14 +86,14 @@ fn task_attention(t: &GraphTask) -> String {
     }
 }
 
-/// Main worktree root (the project's single `.workmux/`), falling back to cwd.
+/// Main worktree root (the project's single `.muxix/`), falling back to cwd.
 fn repo_root() -> PathBuf {
     crate::git::get_main_worktree_root()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 
-/// `workmux task get` — exact id match, else fuzzy search over id+title.
+/// `muxix task get` — exact id match, else fuzzy search over id+title.
 pub fn get(graph: &Path, query: &str, json: bool) -> Result<()> {
     let path = resolve_graph(graph);
     let tasks = graph::load(&path)?;
@@ -136,7 +136,7 @@ pub fn get(graph: &Path, query: &str, json: bool) -> Result<()> {
     }
 }
 
-/// `workmux task create` — append a new task.
+/// `muxix task create` — append a new task.
 #[allow(clippy::too_many_arguments)]
 pub fn create(
     graph: &Path,
@@ -181,7 +181,7 @@ pub fn create(
     Ok(())
 }
 
-/// `workmux task update` — patch fields of an existing task.
+/// `muxix task update` — patch fields of an existing task.
 #[allow(clippy::too_many_arguments)]
 pub fn update(
     graph: &Path,
@@ -230,7 +230,7 @@ pub fn update(
     Ok(())
 }
 
-/// `workmux task delete` — remove a task by id.
+/// `muxix task delete` — remove a task by id.
 pub fn delete(graph: &Path, id: &str) -> Result<()> {
     let path = resolve_graph(graph);
     graph::delete_task(&path, id)?;

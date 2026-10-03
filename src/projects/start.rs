@@ -1,9 +1,9 @@
-//! `workmux start` — launch every tracked project: one tmux session per
-//! project (base layout), plus one window per workmux worktree. With
+//! `muxix start` — launch every tracked project: one tmux session per
+//! project (base layout), plus one window per muxix worktree. With
 //! `--continue`, relaunch the last coding agent in each of them via the
 //! resurrect resume machinery.
 //!
-//! `workmux project open <name>` does the same for a single tracked project
+//! `muxix project open <name>` does the same for a single tracked project
 //! and then focuses its session.
 
 use std::path::Path;
@@ -30,7 +30,7 @@ struct BaseWindow {
 pub fn run(continue_session: bool) -> Result<()> {
     let registry = Registry::load()?;
     if registry.projects.is_empty() {
-        println!("No tracked projects. Add one with 'workmux project add <dir>'.");
+        println!("No tracked projects. Add one with 'muxix project add <dir>'.");
         return Ok(());
     }
 
@@ -59,7 +59,7 @@ pub fn run(continue_session: bool) -> Result<()> {
 pub fn open(target: &str, continue_session: bool) -> Result<()> {
     let registry = Registry::load()?;
     let Some(entry) = registry.find(target).cloned() else {
-        bail!("No tracked project matches '{target}'. Add it with 'workmux project add <dir>'.");
+        bail!("No tracked project matches '{target}'. Add it with 'muxix project add <dir>'.");
     };
     if !entry.root.is_dir() {
         bail!(
@@ -194,7 +194,7 @@ fn open_worktree_windows(
 }
 
 /// Resolve how a worktree's agent should come back: resume a session, re-send
-/// the stored task prompt, or start bare. Same ladder as `workmux resurrect`.
+/// the stored task prompt, or start bare. Same ladder as `muxix resurrect`.
 fn apply_resume(options: &mut SetupOptions, worktree_path: &Path, handle: &str, agent_name: &str) {
     if crate::multiplexer::conversation::resolve_forker(agent_name).is_none()
         && crate::agent::profile::resolve_profile(Some(agent_name))
@@ -258,7 +258,7 @@ fn resume_root_agent(entry: &ProjectEntry, cfg: &Config, mux: &dyn Multiplexer, 
     }
 }
 
-/// Base layout for a project session. Priority: project `.workmux.yaml`
+/// Base layout for a project session. Priority: project `.muxix.yaml`
 /// `windows:` → `~/.config/tmuxrs/<name>.yml` → `~/.config/tmuxinator/<name>.yml`
 /// → single default window at the project root.
 fn resolve_layout(name: &str, _root: &Path, cfg: &Config) -> Vec<BaseWindow> {
@@ -269,7 +269,7 @@ fn resolve_layout(name: &str, _root: &Path, cfg: &Config) -> Vec<BaseWindow> {
             .iter()
             .map(|w| BaseWindow {
                 name: w.name.clone(),
-                // Base-session windows take only the window name from workmux
+                // Base-session windows take only the window name from muxix
                 // config; pane commands stay a worktree concern.
                 command: None,
             })
@@ -345,8 +345,8 @@ mod tests {
         assert!(options.prompt_file_path.is_none());
 
         // No session but stored task prompt → re-prompt
-        std::fs::create_dir_all(tmp.path().join(".workmux")).unwrap();
-        std::fs::write(tmp.path().join(".workmux/PROMPT-wt.md"), "task").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".muxix")).unwrap();
+        std::fs::write(tmp.path().join(".muxix/PROMPT-wt.md"), "task").unwrap();
         let mut options = SetupOptions::new(false, false, true);
         apply_resume(&mut options, tmp.path(), "wt", "claude");
         assert_eq!(options.resume_mode, ResumeMode::None);
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn workmux_windows_config_wins() {
+    fn muxix_windows_config_wins() {
         let cfg: Config =
             serde_yaml::from_str("windows:\n  - name: editor\n  - name: shell\n").unwrap();
         let layout = resolve_layout("x", Path::new("/tmp"), &cfg);

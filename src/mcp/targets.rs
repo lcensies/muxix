@@ -1,6 +1,6 @@
 //! Agent-agnostic MCP config targets.
 //!
-//! A single `mcp:` declaration in `.workmux.yaml` is the source of truth.
+//! A single `mcp:` declaration in `.muxix.yaml` is the source of truth.
 //! Each coding agent, however, reads MCP servers from its own native config
 //! file in its own format. An [`McpTarget`] knows, for one agent, *where* that
 //! file lives and *how* to merge the declared servers into it without
@@ -242,11 +242,11 @@ fn merge_opencode_mcp(
 
 /// One coding agent's MCP support — **exhaustive** over [`Agent`], so adding a
 /// new agent (or switching to one like `pi`) forces a decision here and shows up
-/// in `workmux mcp status` instead of silently doing nothing.
+/// in `muxix mcp status` instead of silently doing nothing.
 pub enum McpSupport {
-    /// workmux writes this agent's MCP config and pre-approves the servers.
+    /// muxix writes this agent's MCP config and pre-approves the servers.
     Supported(Box<dyn McpTarget>),
-    /// No workmux MCP adapter yet — carries a short TODO reason for visibility.
+    /// No muxix MCP adapter yet — carries a short TODO reason for visibility.
     Unsupported(&'static str),
 }
 
@@ -268,7 +268,7 @@ pub fn mcp_support(agent: Agent) -> McpSupport {
     }
 }
 
-/// All MCP targets workmux can render today, derived from [`mcp_support`] over
+/// All MCP targets muxix can render today, derived from [`mcp_support`] over
 /// every agent (so the set is never out of sync with the typed declaration).
 pub fn all_targets() -> Vec<Box<dyn McpTarget>> {
     Agent::ALL
@@ -280,7 +280,7 @@ pub fn all_targets() -> Vec<Box<dyn McpTarget>> {
         .collect()
 }
 
-/// Per-agent MCP support for display (`workmux mcp status`): `(agent, Ok(()) |
+/// Per-agent MCP support for display (`muxix mcp status`): `(agent, Ok(()) |
 /// Err(reason))`. Lists EVERY agent so unimplemented ones are visible.
 pub fn support_overview() -> Vec<(Agent, Result<(), &'static str>)> {
     Agent::ALL

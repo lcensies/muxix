@@ -7,8 +7,8 @@ use crate::provision::profile::ProfileSnapshot;
 use crate::provision::types::{GatewayEndpoint, OrgPolicy, ProvisionConfig};
 
 /// Environment variables naming the provision server and bearer token.
-pub const URL_ENV: &str = "WORKMUX_PROVISION_URL";
-pub const TOKEN_ENV: &str = "WORKMUX_PROVISION_TOKEN";
+pub const URL_ENV: &str = "MUXIX_PROVISION_URL";
+pub const TOKEN_ENV: &str = "MUXIX_PROVISION_TOKEN";
 
 /// Read `name`, treating an empty value as unset.
 fn env_var(name: &str) -> Option<String> {
@@ -18,12 +18,12 @@ fn env_var(name: &str) -> Option<String> {
 }
 
 /// Resolve the provision server URL. Resolution order:
-/// 1. `WORKMUX_PROVISION_URL` env var
+/// 1. `MUXIX_PROVISION_URL` env var
 /// 2. `provision.server_url` in config
 ///
-/// The env var lets a dev container / CI runner point workmux at its server
+/// The env var lets a dev container / CI runner point muxix at its server
 /// without templating a config file -- the same story as
-/// `WORKMUX_PROVISION_TOKEN` for the token. Returns `None` when neither source
+/// `MUXIX_PROVISION_TOKEN` for the token. Returns `None` when neither source
 /// is set.
 pub fn resolve_server_url(config: Option<&ProvisionConfig>) -> Option<String> {
     if let Some(url) = env_var(URL_ENV) {
@@ -36,7 +36,7 @@ pub fn resolve_server_url(config: Option<&ProvisionConfig>) -> Option<String> {
 }
 
 /// Resolve the bearer token. Resolution order:
-/// 1. `WORKMUX_PROVISION_TOKEN` env var
+/// 1. `MUXIX_PROVISION_TOKEN` env var
 /// 2. `provision.token` in config
 /// 3. `provision.token_path` file (must be mode 600)
 ///
@@ -49,7 +49,7 @@ pub fn resolve_token(config: &ProvisionConfig) -> Result<String> {
     }
 
     // An inline `token:` is the natural place for a `${env:...}` reference, so
-    // an org can name its own variable rather than adopt workmux's.
+    // an org can name its own variable rather than adopt muxix's.
     if let Some(ref token) = config.token {
         let token = crate::config::secrets::expand(token, "provision.token")?;
         if !token.trim().is_empty() {
@@ -255,7 +255,7 @@ mod tests {
 
 
     /// The point of the inline `token:` field: name your own env var rather
-    /// than adopt workmux's.
+    /// than adopt muxix's.
     #[test]
     fn config_token_expands_an_env_placeholder() {
         let mut vars = clear_all();

@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use super::resolve::{Layer, LayerKind};
 
 /// Environment variable naming the profile(s) to apply.
-pub const PROFILE_ENV: &str = "WORKMUX_PROFILE";
+pub const PROFILE_ENV: &str = "MUXIX_PROFILE";
 
 /// The `--profile` flag's value, captured once at startup.
 ///
@@ -72,10 +72,10 @@ fn split_names(raw: &str) -> Vec<String> {
 
 /// Resolve which profiles apply.
 ///
-/// Precedence, highest first: the `--profile` flag, `WORKMUX_PROFILE`, the
+/// Precedence, highest first: the `--profile` flag, `MUXIX_PROFILE`, the
 /// config's `default_profile`. A higher-precedence source *replaces* the list
 /// from lower ones rather than adding to it, so `--profile x` on a machine with
-/// `WORKMUX_PROFILE=y` applies only `x`.
+/// `MUXIX_PROFILE=y` applies only `x`.
 ///
 /// An explicitly empty value at any level disables profiles entirely — that is
 /// how a user turns off a `default_profile` for one command.
@@ -95,11 +95,11 @@ pub fn select(cli: Option<&str>, default_profile: Option<&str>) -> Selection {
     if let Ok(raw) = std::env::var(PROFILE_ENV) {
         let names = split_names(&raw);
         return if names.is_empty() {
-            Selection::none("WORKMUX_PROFILE (empty)")
+            Selection::none("MUXIX_PROFILE (empty)")
         } else {
             Selection {
                 names,
-                source: "WORKMUX_PROFILE",
+                source: "MUXIX_PROFILE",
             }
         };
     }
@@ -212,7 +212,7 @@ mod tests {
         serde_yaml::from_str(s).unwrap()
     }
 
-    /// `WORKMUX_PROFILE` is process-global, so the tests that touch it are
+    /// `MUXIX_PROFILE` is process-global, so the tests that touch it are
     /// serialized behind this lock rather than racing each other.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

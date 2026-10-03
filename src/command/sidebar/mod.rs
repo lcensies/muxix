@@ -1,4 +1,4 @@
-//! Sidebar TUI for monitoring active workmux agents.
+//! Sidebar TUI for monitoring active muxix agents.
 //!
 //! Uses a daemon process that polls tmux and pushes state snapshots to
 //! render-only sidebar clients via Unix socket. Each sidebar pane connects
@@ -58,14 +58,14 @@ const MAX_HEIGHT: u16 = 5;
 
 /// Global tmux options set while the sidebar is active.
 const SIDEBAR_GLOBAL_OPTIONS: &[&str] = &[
-    "@workmux_sidebar_enabled",
-    "@workmux_sidebar_agents",
-    "@workmux_sleeping_panes",
-    "@workmux_sidebar_scope",
-    "@workmux_sidebar_width",
-    "@workmux_sidebar_height",
-    "@workmux_sidebar_position",
-    "@workmux_sidebar_optout_sessions",
+    "@muxix_sidebar_enabled",
+    "@muxix_sidebar_agents",
+    "@muxix_sleeping_panes",
+    "@muxix_sidebar_scope",
+    "@muxix_sidebar_width",
+    "@muxix_sidebar_height",
+    "@muxix_sidebar_position",
+    "@muxix_sidebar_optout_sessions",
 ];
 
 /// Active sidebar scope on this tmux server.
@@ -95,13 +95,13 @@ fn parse_scope(raw: &str, enabled: bool) -> SidebarScope {
 /// Read the current sidebar scope from tmux.
 pub(super) fn current_scope() -> SidebarScope {
     let raw = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_scope"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_scope"])
         .run_and_capture_stdout()
         .ok()
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let enabled = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_enabled"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_enabled"])
         .run_and_capture_stdout()
         .ok()
         .is_some_and(|s| s.trim() == "1");
@@ -113,19 +113,19 @@ fn set_scope(scope: &SidebarScope) {
     match scope {
         SidebarScope::Off => {
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-gu", "@workmux_sidebar_scope"])
+                .args(&["set-option", "-gu", "@muxix_sidebar_scope"])
                 .run();
         }
         SidebarScope::Global => {
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-g", "@workmux_sidebar_scope", "global"])
+                .args(&["set-option", "-g", "@muxix_sidebar_scope", "global"])
                 .run();
         }
         SidebarScope::Sessions(ids) => {
             let val: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
             let val = val.join(" ");
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-g", "@workmux_sidebar_scope", &val])
+                .args(&["set-option", "-g", "@muxix_sidebar_scope", &val])
                 .run();
         }
     }
@@ -143,7 +143,7 @@ fn serialize_session_id_set(ids: &std::collections::HashSet<String>) -> String {
 
 fn current_optout_sessions() -> std::collections::HashSet<String> {
     Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_optout_sessions"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_optout_sessions"])
         .run_and_capture_stdout()
         .ok()
         .map(|s| parse_session_id_set(&s))
@@ -153,12 +153,12 @@ fn current_optout_sessions() -> std::collections::HashSet<String> {
 fn set_optout_sessions(ids: &std::collections::HashSet<String>) {
     if ids.is_empty() {
         let _ = Cmd::new("tmux")
-            .args(&["set-option", "-gu", "@workmux_sidebar_optout_sessions"])
+            .args(&["set-option", "-gu", "@muxix_sidebar_optout_sessions"])
             .run();
     } else {
         let val = serialize_session_id_set(ids);
         let _ = Cmd::new("tmux")
-            .args(&["set-option", "-g", "@workmux_sidebar_optout_sessions", &val])
+            .args(&["set-option", "-g", "@muxix_sidebar_optout_sessions", &val])
             .run();
     }
 }
@@ -203,7 +203,7 @@ fn configured_position(config: &crate::config::Config) -> SidebarPosition {
 
 pub(super) fn read_sidebar_position(config: &crate::config::Config) -> SidebarPosition {
     if let Ok(output) = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_position"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_position"])
         .run_and_capture_stdout()
     {
         match output.trim() {
@@ -222,7 +222,7 @@ fn set_sidebar_position(position: SidebarPosition) {
         SidebarPosition::Top => "top",
     };
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-g", "@workmux_sidebar_position", value])
+        .args(&["set-option", "-g", "@muxix_sidebar_position", value])
         .run();
 }
 
@@ -272,7 +272,7 @@ fn resolve_height_for(config: &crate::config::Config, th: u16, synced_height: Op
 /// Read the synced sidebar width from tmux global option, falling back to settings.
 fn read_sidebar_width() -> Option<u16> {
     if let Ok(output) = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_width"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_width"])
         .run_and_capture_stdout()
         && let Ok(w) = output.trim().parse::<u16>()
         && w > 0
@@ -291,7 +291,7 @@ fn read_sidebar_width() -> Option<u16> {
 
 fn read_sidebar_height() -> Option<u16> {
     if let Ok(output) = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_height"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_height"])
         .run_and_capture_stdout()
         && let Ok(h) = output.trim().parse::<u16>()
         && h > 0
@@ -314,7 +314,7 @@ fn set_sidebar_width(width: u16) {
         .args(&[
             "set-option",
             "-g",
-            "@workmux_sidebar_width",
+            "@muxix_sidebar_width",
             &width.to_string(),
         ])
         .run();
@@ -332,7 +332,7 @@ fn set_sidebar_height(height: u16) {
         .args(&[
             "set-option",
             "-g",
-            "@workmux_sidebar_height",
+            "@muxix_sidebar_height",
             &height.to_string(),
         ])
         .run();
@@ -516,7 +516,7 @@ pub fn toggle() -> Result<()> {
 
     // Current window missing sidebar → enable/repair globally
     Cmd::new("tmux")
-        .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
+        .args(&["set-option", "-g", "@muxix_sidebar_enabled", "1"])
         .run()?;
     let position = configured_position(&config);
     set_sidebar_position(position);
@@ -588,7 +588,7 @@ pub fn toggle_session() -> Result<()> {
     let _ = std::thread::spawn(crate::tips::mark_sidebar_used);
 
     Cmd::new("tmux")
-        .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
+        .args(&["set-option", "-g", "@muxix_sidebar_enabled", "1"])
         .run()?;
     let position = configured_position(&config);
     set_sidebar_position(position);
@@ -677,7 +677,7 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
     // Hook path: `after-new-window` runs `run-shell -b`, so this executes after
     // the hook returns and the window may be mid-teardown by now — the split
     // then fails with tmux's "no such window/pane" and the nonzero exit
-    // surfaces to the user as `'workmux _sidebar-sync …' returned 1`. Nothing
+    // surfaces to the user as `'muxix _sidebar-sync …' returned 1`. Nothing
     // here can recover a window that is going away, and a missing sidebar in a
     // closing window is not worth an error. Callers that create sidebars
     // deliberately (session/all-windows paths) still propagate.
@@ -729,12 +729,12 @@ fn activation_scope(
 }
 
 /// Ensure the sidebar is active and present in the window that owns `target`
-/// (a window or pane id). `workmux open` calls this so an opened worktree comes
+/// (a window or pane id). `muxix open` calls this so an opened worktree comes
 /// up with the sidebar even on a tmux server where nobody toggled it yet:
 /// scope lives in tmux globals, so it is `Off` again after every server restart.
 ///
 /// `sidebar.default_scope: session` keeps the activation to that window's
-/// session, matching what a plain `workmux sidebar` would have done.
+/// session, matching what a plain `muxix sidebar` would have done.
 pub fn ensure_for_target(target: &str) -> Result<()> {
     let Some(window_id) = resolve_window_id(target) else {
         return Ok(());
@@ -743,7 +743,7 @@ pub fn ensure_for_target(target: &str) -> Result<()> {
     if matches!(current_scope(), SidebarScope::Off) {
         let config = crate::config::Config::load(None).unwrap_or_default();
         Cmd::new("tmux")
-            .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
+            .args(&["set-option", "-g", "@muxix_sidebar_enabled", "1"])
             .run()?;
         set_sidebar_position(configured_position(&config));
         let scope = activation_scope(
@@ -797,7 +797,7 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
             "-t",
             &target,
             "-F",
-            "#{pane_id} #{@workmux_role}",
+            "#{pane_id} #{@muxix_role}",
         ])
         .run_and_capture_stdout()?;
 
@@ -883,7 +883,7 @@ pub fn navigate(action: NavAction) -> Result<()> {
     }
 
     let agents_str = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_agents"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_agents"])
         .run_and_capture_stdout()
         .unwrap_or_default();
     let agents_str = agents_str.trim();

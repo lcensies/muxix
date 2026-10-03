@@ -51,7 +51,7 @@ pub fn remove(
                 (path, String::new())
             } else {
                 return Err(anyhow!(
-                    "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                    "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
                     handle
                 )
                 .context(e));

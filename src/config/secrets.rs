@@ -2,10 +2,10 @@
 //!
 //! Config values may name a secret rather than contain one. These placeholders
 //! are resolved at the point of *use*, never during config resolution, so a
-//! resolved config — the thing `workmux config resolve` prints, the thing a Nix
+//! resolved config — the thing `muxix config resolve` prints, the thing a Nix
 //! module renders into the store — never holds secret material.
 //!
-//! Workmux is deliberately not a secret manager. This exists so that
+//! Muxix is deliberately not a secret manager. This exists so that
 //! sops-nix, agenix, a password manager, or a plain mode-600 file can be the
 //! source of truth without the secret having to pass through a config file.
 
@@ -139,7 +139,7 @@ mod tests {
 
     fn tmpfile(name: &str, body: &str, mode: u32) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "workmux-secret-test-{}-{:?}",
+            "muxix-secret-test-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -164,9 +164,9 @@ mod tests {
 
     #[test]
     fn expands_an_env_placeholder() {
-        with_var("WORKMUX_TEST_SECRET", Some("s3cret"), || {
+        with_var("MUXIX_TEST_SECRET", Some("s3cret"), || {
             assert_eq!(
-                expand("${env:WORKMUX_TEST_SECRET}", "provision.token").unwrap(),
+                expand("${env:MUXIX_TEST_SECRET}", "provision.token").unwrap(),
                 "s3cret"
             );
         });
@@ -174,9 +174,9 @@ mod tests {
 
     #[test]
     fn expands_within_surrounding_text() {
-        with_var("WORKMUX_TEST_SECRET", Some("mid"), || {
+        with_var("MUXIX_TEST_SECRET", Some("mid"), || {
             assert_eq!(
-                expand("a-${env:WORKMUX_TEST_SECRET}-b", "k").unwrap(),
+                expand("a-${env:MUXIX_TEST_SECRET}-b", "k").unwrap(),
                 "a-mid-b"
             );
         });
@@ -186,12 +186,12 @@ mod tests {
     fn expands_several_placeholders() {
         with_vars(
             &[
-                ("WORKMUX_TEST_A", Some("1")),
-                ("WORKMUX_TEST_B", Some("2")),
+                ("MUXIX_TEST_A", Some("1")),
+                ("MUXIX_TEST_B", Some("2")),
             ],
             || {
                 assert_eq!(
-                    expand("${env:WORKMUX_TEST_A}/${env:WORKMUX_TEST_B}", "k").unwrap(),
+                    expand("${env:MUXIX_TEST_A}/${env:MUXIX_TEST_B}", "k").unwrap(),
                     "1/2"
                 );
             },
@@ -200,19 +200,19 @@ mod tests {
 
     #[test]
     fn unset_env_var_names_the_key_and_the_variable() {
-        with_var("WORKMUX_TEST_MISSING", None, || {
-            let err = expand("${env:WORKMUX_TEST_MISSING}", "provision.token")
+        with_var("MUXIX_TEST_MISSING", None, || {
+            let err = expand("${env:MUXIX_TEST_MISSING}", "provision.token")
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("provision.token"), "{err}");
-            assert!(err.contains("WORKMUX_TEST_MISSING"), "{err}");
+            assert!(err.contains("MUXIX_TEST_MISSING"), "{err}");
         });
     }
 
     #[test]
     fn empty_env_var_is_an_error() {
-        with_var("WORKMUX_TEST_EMPTY", Some(""), || {
-            assert!(expand("${env:WORKMUX_TEST_EMPTY}", "k").is_err());
+        with_var("MUXIX_TEST_EMPTY", Some(""), || {
+            assert!(expand("${env:MUXIX_TEST_EMPTY}", "k").is_err());
         });
     }
 
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn missing_file_is_an_error() {
-        let err = expand("${file:/nonexistent/workmux/secret}", "k")
+        let err = expand("${file:/nonexistent/muxix/secret}", "k")
             .unwrap_err()
             .to_string();
         assert!(err.contains("does not exist"), "{err}");

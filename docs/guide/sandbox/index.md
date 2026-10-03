@@ -4,9 +4,9 @@ description: Run agents in isolated containers or VMs for enhanced security
 
 # Sandbox
 
-workmux provides first-class sandboxing for agents in containers or VMs. Agents are isolated from host secrets like SSH keys, AWS credentials, and other sensitive files. That makes YOLO mode safe to use without risking your host.
+muxix provides first-class sandboxing for agents in containers or VMs. Agents are isolated from host secrets like SSH keys, AWS credentials, and other sensitive files. That makes YOLO mode safe to use without risking your host.
 
-Status indicators, the dashboard, [spawning agents](/guide/workflows#from-an-ongoing-agent-session), [merging](/guide/workflows#direct-merge), and [image pasting](./features#clipboard-proxy) all work the same with or without a sandbox. A built-in RPC bridge keeps host-side workmux features in sync with agent activity inside the sandbox.
+Status indicators, the dashboard, [spawning agents](/guide/workflows#from-an-ongoing-agent-session), [merging](/guide/workflows#direct-merge), and [image pasting](./features#clipboard-proxy) all work the same with or without a sandbox. A built-in RPC bridge keeps host-side muxix features in sync with agent activity inside the sandbox.
 
 <style>
 .sandbox-screenshot {
@@ -37,7 +37,7 @@ Outbound network access can be restricted to only approved domains using [networ
 
 ## Choosing a backend
 
-workmux supports two sandboxing backends:
+muxix supports two sandboxing backends:
 
 |                      | Container (Docker/Podman/Apple Container)                                    | Lima VM                                                          |
 | -------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -68,7 +68,7 @@ Agents often need project tooling (compilers, linters, build tools) available in
 Install [Docker](https://www.docker.com/), [Podman](https://podman.io/), or [Apple Container](https://github.com/apple/container) (macOS 26+, Apple Silicon), then enable in config:
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 sandbox:
   enabled: true
 ```
@@ -80,7 +80,7 @@ The pre-built image is pulled automatically on first run. See the [container bac
 Install [Lima](https://lima-vm.io/) (`brew install lima`), then enable in config:
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 sandbox:
   enabled: true
   backend: lima

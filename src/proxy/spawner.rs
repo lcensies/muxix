@@ -61,12 +61,12 @@ impl ProxySpawner {
             self.worktree_handle, self.gateway_port
         );
 
-        // 1. Ensure .workmux directory exists
-        let workmux_dir = self.worktree_path.join(".workmux");
-        fs::create_dir_all(&workmux_dir).context("Failed to create .workmux directory")?;
+        // 1. Ensure .muxix directory exists
+        let muxix_dir = self.worktree_path.join(".muxix");
+        fs::create_dir_all(&muxix_dir).context("Failed to create .muxix directory")?;
 
         // 2. Generate agentgateway config
-        let ag_config_path = self.generate_agentgateway_config(&workmux_dir)?;
+        let ag_config_path = self.generate_agentgateway_config(&muxix_dir)?;
 
         // 3. Spawn agentgateway subprocess — currently returns a not-implemented
         //    error so we never persist a non-functional proxy as healthy.
@@ -90,9 +90,9 @@ impl ProxySpawner {
     }
 
     /// Generate agentgateway config file with routes.
-    fn generate_agentgateway_config(&self, workmux_dir: &PathBuf) -> Result<PathBuf> {
+    fn generate_agentgateway_config(&self, muxix_dir: &PathBuf) -> Result<PathBuf> {
         let config = self.build_agentgateway_config()?;
-        let config_path = workmux_dir.join("agentgateway.yaml");
+        let config_path = muxix_dir.join("agentgateway.yaml");
 
         fs::write(&config_path, &config).context("Failed to write agentgateway config")?;
 
@@ -189,9 +189,9 @@ backends:
         ))
     }
 
-    /// Store resolved proxy config in .workmux/config.json
+    /// Store resolved proxy config in .muxix/config.json
     fn store_resolved_config(&self, resolved: &ResolvedProxyChain) -> Result<()> {
-        let config_path = self.worktree_path.join(".workmux/config.json");
+        let config_path = self.worktree_path.join(".muxix/config.json");
         let json = serde_json::to_string_pretty(resolved)
             .context("Failed to serialize resolved config")?;
 
@@ -282,6 +282,6 @@ mod tests {
         let err = spawner.spawn().unwrap_err().to_string();
         assert!(err.contains("not yet implemented"), "got: {err}");
         // No resolved config should have been persisted.
-        assert!(!dir.path().join(".workmux/config.json").exists());
+        assert!(!dir.path().join(".muxix/config.json").exists());
     }
 }

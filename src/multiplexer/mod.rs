@@ -1,6 +1,6 @@
 //! Multiplexer abstraction layer for terminal multiplexer backends.
 //!
-//! This module provides a trait-based abstraction that allows workmux to work
+//! This module provides a trait-based abstraction that allows muxix to work
 //! with different terminal multiplexers (tmux, WezTerm) interchangeably.
 
 use crate::agent::profile as agent;
@@ -416,7 +416,7 @@ pub trait Multiplexer: Send + Sync {
         // `"$(cat PROMPT.md)"` evaluated by the pane's shell, so an unreadable
         // file, or a shell whose rc files had changed directory, expanded to
         // the empty string and launched the agent with no prompt at all — while
-        // workmux still painted the "working" status. Reading it here turns
+        // muxix still painted the "working" status. Reading it here turns
         // that class of failure into an error before anything is spawned.
         let prompt_text: Option<String> = match options.prompt_file_path {
             Some(path) if options.run_commands => {
@@ -608,7 +608,7 @@ pub trait Multiplexer: Send + Sync {
                 // Skip-permissions (e.g. --yolo for kimi/codex/gemini,
                 // --dangerously-skip-permissions for claude) is applied to all
                 // agent panes, not only sandboxed ones, so unattended workflows
-                // like `workmux orchestrate` do not hang on approval prompts.
+                // like `muxix orchestrate` do not hang on approval prompts.
                 if is_agent_pane {
                     match &options.resume_mode {
                         crate::multiplexer::types::ResumeMode::Continue => {
@@ -687,7 +687,7 @@ pub trait Multiplexer: Send + Sync {
                                 let vm_name = options.lima_vm_name.ok_or_else(|| {
                                     anyhow!(
                                         "Lima VM name missing despite sandbox wrap request. \
-                                         This is a bug in workmux."
+                                         This is a bug in muxix."
                                     )
                                 })?;
                                 crate::sandbox::wrap_for_lima(
@@ -821,7 +821,7 @@ pub trait Multiplexer: Send + Sync {
         if prompt_text.is_some() && !prompt_delivered {
             eprintln!(
                 "Warning: a prompt was provided but no pane received it. \
-                 workmux injects the prompt only into a pane whose command is the \
+                 muxix injects the prompt only into a pane whose command is the \
                  configured agent; wrapper commands (e.g. `npx claude`) aren't \
                  recognized. Set the pane command to the agent itself, or to `<agent>`."
             );
@@ -913,12 +913,12 @@ pub trait Multiplexer: Send + Sync {
 
 /// Detect which backend to use based on environment.
 ///
-/// Checks `$WORKMUX_BACKEND` first for an explicit override, then auto-detects
+/// Checks `$MUXIX_BACKEND` first for an explicit override, then auto-detects
 /// from multiplexer environment variables. Session-specific variables (set only
 /// when inside the multiplexer) are checked before ambient variables (inherited
 /// from the parent terminal):
 ///
-/// 1. `$WORKMUX_BACKEND` set → use that backend
+/// 1. `$MUXIX_BACKEND` set → use that backend
 /// 2. `$TMUX` set → tmux
 /// 3. `$WEZTERM_PANE` set → WezTerm
 /// 4. `$ZELLIJ` set → Zellij
@@ -939,7 +939,7 @@ pub trait Multiplexer: Send + Sync {
 ///
 /// Skip-permissions (e.g. `--yolo` for kimi/codex/gemini,
 /// `--dangerously-skip-permissions` for claude) applies to all agent panes, not
-/// only sandboxed ones, so unattended workflows like `workmux orchestrate` do
+/// only sandboxed ones, so unattended workflows like `muxix orchestrate` do
 /// not hang on approval prompts.
 fn resume_and_permission_flags(
     resume_mode: &types::ResumeMode,
@@ -1013,12 +1013,12 @@ fn checkpoint_outgoing_pane_agent(
 }
 
 pub fn detect_backend() -> BackendType {
-    if let Ok(val) = std::env::var("WORKMUX_BACKEND") {
+    if let Ok(val) = std::env::var("MUXIX_BACKEND") {
         match val.parse() {
             Ok(bt) => return bt,
             Err(_) => {
                 eprintln!(
-                    "workmux: invalid WORKMUX_BACKEND={val:?}, expected tmux|wezterm|kitty|zellij"
+                    "muxix: invalid MUXIX_BACKEND={val:?}, expected tmux|wezterm|kitty|zellij"
                 );
             }
         }

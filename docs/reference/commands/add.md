@@ -7,7 +7,7 @@ description: Create git worktrees and tmux windows, with support for AI prompts 
 Creates a new git worktree with a matching tmux window and switches you to it immediately. If the branch doesn't exist, it will be created automatically.
 
 ```bash
-workmux add <branch-name> [flags]
+muxix add <branch-name> [flags]
 ```
 
 ## Arguments
@@ -19,11 +19,11 @@ workmux add <branch-name> [flags]
 | Flag                           | Description                                                                                                                                                                                                                                                             |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--base <branch\|commit\|tag>` | Specify a base branch, commit, or tag to branch from when creating a new branch. Overrides `base_branch` config. Defaults to `base_branch` from config, then the currently checked out branch.                                                                          |
-| `--pr <number>`                | Checkout a GitHub pull request by its number into a new worktree. Requires the `gh` command-line tool to be installed and authenticated. The local branch name defaults to the PR's head branch name, but can be overridden (e.g., `workmux add custom-name --pr 123`). |
+| `--pr <number>`                | Checkout a GitHub pull request by its number into a new worktree. Requires the `gh` command-line tool to be installed and authenticated. The local branch name defaults to the PR's head branch name, but can be overridden (e.g., `muxix add custom-name --pr 123`). |
 | `-A, --auto-name`              | Generate branch name from prompt using LLM. See [Automatic branch name generation](#automatic-branch-name-generation).                                                                                                                                                  |
 | `--name <name>`                | Override the worktree directory and default tmux target name. By default, these are derived from the branch name (slugified). Cannot be used with multi-worktree generation (`--count`, `--foreach`, or multiple `--agent`).                                            |
-| `--target-name <name>`         | Override the workmux-managed tmux target name for this command. In window mode, creates or selects window `<window_prefix><name>`. In session mode, creates or selects session `<window_prefix><name>`. Cannot be used with multi-worktree generation.                  |
-| `--parent-session <name>`      | Window mode only. Creates the workmux-managed window inside the named tmux session without applying `window_prefix` to that parent session. Cannot be used with session mode or multi-worktree generation.                                                              |
+| `--target-name <name>`         | Override the muxix-managed tmux target name for this command. In window mode, creates or selects window `<window_prefix><name>`. In session mode, creates or selects session `<window_prefix><name>`. Cannot be used with multi-worktree generation.                  |
+| `--parent-session <name>`      | Window mode only. Creates the muxix-managed window inside the named tmux session without applying `window_prefix` to that parent session. Cannot be used with session mode or multi-worktree generation.                                                              |
 | `-b, --background`             | Create the tmux window in the background without switching to it. Useful with `--prompt-editor`.                                                                                                                                                                        |
 | `-w, --with-changes`           | Move uncommitted changes from the current worktree to the new worktree, then reset the original worktree to a clean state. Useful when you've started working on main and want to move your branches to a new worktree.                                                 |
 | `--patch`                      | Interactively select which changes to move (requires `--with-changes`). Opens an interactive prompt for selecting hunks to stash.                                                                                                                                       |
@@ -31,14 +31,14 @@ workmux add <branch-name> [flags]
 | `-p, --prompt <text>`          | Provide an inline prompt that will be automatically passed to AI agent panes.                                                                                                                                                                                           |
 | `-P, --prompt-file <path>`     | Provide a path to a file whose contents will be used as the prompt.                                                                                                                                                                                                     |
 | `-e, --prompt-editor`          | Open your `$EDITOR` (or `$VISUAL`) to write the prompt interactively.                                                                                                                                                                                                   |
-| `--prompt-file-only`           | Write the prompt file to `.workmux/PROMPT-<branch>.md` without injecting it into agent commands. No agent pane is required. Useful when your editor has an embedded agent that reads the prompt file directly. Can also be set in config with `prompt_file_only: true`. |
+| `--prompt-file-only`           | Write the prompt file to `.muxix/PROMPT-<branch>.md` without injecting it into agent commands. No agent pane is required. Useful when your editor has an embedded agent that reads the prompt file directly. Can also be set in config with `prompt_file_only: true`. |
 | `-l, --layout <name>`          | Use a named pane layout from config instead of the default panes. See [named layouts](/guide/configuration#named-layouts). Cannot be combined with `--agent`.                                                                                                           |
 | `-a, --agent <name>`           | The agent(s) to use for the worktree(s). Can be specified multiple times to generate a worktree for each agent. Overrides the `agent` from your config file.                                                                                                            |
-| `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `workmux remove --keep-branch`.                                                                 |
+| `-W, --wait`                   | Block until the created tmux window is closed. Useful for scripting when you want to wait for an agent to complete its work. The agent can signal completion by running `muxix remove --keep-branch`.                                                                 |
 | `-o, --open-if-exists`         | If a worktree for the branch already exists, open it instead of failing. Similar to `tmux new-session -A`. Useful when you don't know or care whether the worktree already exists. Any mode override is forwarded when reopening the existing worktree.                 |
 | `--mode <window\|session>`     | Override the multiplexer mode for this command only. Useful for forcing window mode when config defaults to sessions, or creating a one-off session without changing config. Session mode is only supported with tmux.                                                  |
 | `-s, --session`                | Shorthand for `--mode session`. Cannot be combined with `--mode`.                                                                                                                                                                                                       |
-| `--config <path>`              | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `workmux add feat/my-branch --config .workmux.window.yaml`.                                                                             |
+| `--config <path>`              | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `muxix add feat/my-branch --config .muxix.window.yaml`.                                                                             |
 | `--fork`                       | Fork the last conversation from the current worktree into the new one. The agent resumes with the forked conversation context. Use `--fork=<session-id>` to fork a specific session (prefix matching supported). Currently supports Claude Code.                        |
 
 ## Skip options
@@ -54,7 +54,7 @@ These options allow you to skip expensive setup steps when they're not needed (e
 ## What happens
 
 1. Determines the **handle** for the worktree by slugifying the branch name (e.g., `feature/auth` becomes `feature-auth`). This can be overridden with the `--name` flag.
-2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is configurable and defaults to a sibling directory of your project; supports `~` and a `{project}` placeholder, e.g. `~/.workmux/{project}`)
+2. Creates a git worktree at `<worktree_dir>/<handle>` (the `worktree_dir` is configurable and defaults to a sibling directory of your project; supports `~` and a `{project}` placeholder, e.g. `~/.muxix/{project}`)
 3. Runs any configured file operations (copy/symlink)
 4. Executes `post_create` commands if defined (runs before the tmux window/session opens, so keep them fast)
 5. Creates a new tmux window named `<window_prefix><handle>` (e.g., `wm-feature-auth` with `window_prefix: wm-`). With `--target-name`, the managed tmux target uses that name instead of `<handle>`. With `--parent-session`, a window-mode target is created inside that tmux session. With `--mode session` or `--session`, the worktree is created in its own dedicated tmux session.
@@ -67,124 +67,124 @@ These options allow you to skip expensive setup steps when they're not needed (e
 
 ```bash [Basic usage]
 # Create a new branch and worktree
-workmux add user-auth
+muxix add user-auth
 
 # Use an existing branch
-workmux add existing-work
+muxix add existing-work
 
 # Create a new branch from a specific base
-workmux add hotfix --base production
+muxix add hotfix --base production
 
 # Create a worktree from a remote branch (creates local branch "user-auth-pr")
-workmux add origin/user-auth-pr
+muxix add origin/user-auth-pr
 
 # Remote branches with slashes work too (creates local branch "feature/foo")
-workmux add origin/feature/foo
+muxix add origin/feature/foo
 
 # Create a worktree in the background without switching to it
-workmux add feature/parallel-task --background
+muxix add feature/parallel-task --background
 
 # Use a custom name for the worktree directory and default tmux target
-workmux add feature/long-descriptive-branch-name --name short
+muxix add feature/long-descriptive-branch-name --name short
 
 # Use a custom window name while keeping the branch-derived worktree path
-workmux add feature/long-descriptive-branch-name --target-name review-short
+muxix add feature/long-descriptive-branch-name --target-name review-short
 
 # Create a custom-named window inside an existing PR review session
-workmux add feature/review --parent-session prs --target-name review-123
+muxix add feature/review --parent-session prs --target-name review-123
 
 # Open existing worktree if it exists, create if it doesn't (idempotent)
-workmux add my-feature -o
+muxix add my-feature -o
 ```
 
 ```bash [Pull requests & forks]
 # Checkout PR #123. Same-repo PRs use the PR's branch name;
 # fork PRs are prefixed with the owner (e.g., "forkowner-main").
-workmux add --pr 123
+muxix add --pr 123
 
 # Checkout PR #456 with a custom local branch name
-workmux add fix/api-bug --pr 456
+muxix add fix/api-bug --pr 456
 
 # Checkout a fork branch using GitHub's owner:branch format (copy from GitHub UI)
 # Creates local branch "someuser-feature-branch" tracking the fork
-workmux add someuser:feature-branch
+muxix add someuser:feature-branch
 ```
 
 ```bash [Moving changes]
 # Move uncommitted changes to a new worktree (including untracked files)
-workmux add feature/new-thing --with-changes -u
+muxix add feature/new-thing --with-changes -u
 
 # Move only staged/modified files (not untracked files)
-workmux add fix/bug --with-changes
+muxix add fix/bug --with-changes
 
 # Interactively select which changes to move
-workmux add feature/partial --with-changes --patch
+muxix add feature/partial --with-changes --patch
 ```
 
 ```bash [AI agent prompts]
 # Create a worktree with an inline prompt for AI agents
-workmux add feature/ai --prompt "Implement user authentication with OAuth"
+muxix add feature/ai --prompt "Implement user authentication with OAuth"
 
 # Override the default agent for a specific worktree
-workmux add feature/testing -a gemini
+muxix add feature/testing -a gemini
 
 # Create a worktree with a prompt from a file
-workmux add feature/refactor --prompt-file task-description.md
+muxix add feature/refactor --prompt-file task-description.md
 
 # Open your editor to write a prompt interactively
-workmux add feature/new-api --prompt-editor
+muxix add feature/new-api --prompt-editor
 
 # Write prompt file only (for editors with embedded agents like neovim)
-workmux add feature/task -P task.md --prompt-file-only
+muxix add feature/task -P task.md --prompt-file-only
 ```
 
 ```bash [Skip setup steps]
 # Skip expensive setup for documentation-only changes
-workmux add docs-update --no-hooks --no-file-ops --no-pane-cmds
+muxix add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
-workmux add quick-fix --no-file-ops
+muxix add quick-fix --no-file-ops
 ```
 
 ```bash [Scripting with --wait]
 # Block until the agent completes and closes the window
-workmux add feature/api --wait -p "Implement the REST API, then run: workmux remove --keep-branch"
+muxix add feature/api --wait -p "Implement the REST API, then run: muxix remove --keep-branch"
 
 # Use in a script to run sequential agent tasks
 for task in task1.md task2.md task3.md; do
-  workmux add "task-$(basename $task .md)" --wait -P "$task"
+  muxix add "task-$(basename $task .md)" --wait -P "$task"
 done
 ```
 
 ```bash [Session mode]
 # Create a worktree in its own tmux session (instead of the current session)
-workmux add feature/isolated --mode session
+muxix add feature/isolated --mode session
 
 # Create a session-mode worktree with a custom session target
-workmux add feature/review --mode session --target-name review-123
+muxix add feature/review --mode session --target-name review-123
 
 # Override a session-mode config for one command and keep a normal window
-workmux add feature/quick-fix --mode window
+muxix add feature/quick-fix --mode window
 
 # Create in a new session without switching to it
-workmux add feature/background-task --mode session --background
+muxix add feature/background-task --mode session --background
 
 # Session mode works with all other flags
-workmux add feature/ai-session --mode session -p "Implement the new API"
+muxix add feature/ai-session --mode session -p "Implement the new API"
 ```
 
 :::
 
 ## AI agent integration
 
-When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`, workmux automatically injects the prompt into panes running the configured agent command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`, `pi`, or whatever you've set via the `agent` config or `--agent` flag) without requiring any `.workmux.yaml` changes:
+When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`, muxix automatically injects the prompt into panes running the configured agent command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`, `pi`, or whatever you've set via the `agent` config or `--agent` flag) without requiring any `.muxix.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started with the given prompt.
-- You can keep your `.workmux.yaml` pane configuration simple (e.g., `panes: [{ command: "<agent>" }]`) and let workmux handle prompt injection at runtime.
+- You can keep your `.muxix.yaml` pane configuration simple (e.g., `panes: [{ command: "<agent>" }]`) and let muxix handle prompt injection at runtime.
 
 This means you can launch AI agents with task-specific prompts without modifying your project configuration for each task.
 
-If your editor has an embedded agent (e.g., neovim with an agent plugin), use `--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md` without requiring an agent pane. Your editor can then detect and consume the file on startup. This can also be set permanently in config with `prompt_file_only: true`.
+If your editor has an embedded agent (e.g., neovim with an agent plugin), use `--prompt-file-only` to write the prompt to `.muxix/PROMPT-<branch>.md` without requiring an agent pane. Your editor can then detect and consume the file on startup. This can also be set permanently in config with `prompt_file_only: true`.
 
 ## Automatic branch name generation
 
@@ -198,20 +198,20 @@ The `--auto-name` (`-A`) flag generates a branch name from your prompt using an 
 
 ```bash
 # Opens editor for prompt, generates branch name
-workmux add -A
+muxix add -A
 
 # With inline prompt
-workmux add -A -p "Add OAuth authentication"
+muxix add -A -p "Add OAuth authentication"
 
 # With prompt file
-workmux add -A -P task-spec.md
+muxix add -A -P task-spec.md
 ```
 
 ### Requirements
 
-When `agent` is configured (e.g., `agent: claude`), workmux automatically uses that agent's CLI for branch naming. No additional setup is required beyond having the agent installed.
+When `agent` is configured (e.g., `agent: claude`), muxix automatically uses that agent's CLI for branch naming. No additional setup is required beyond having the agent installed.
 
-If no agent is configured and no `auto_name.command` is set, workmux uses the `llm` CLI tool:
+If no agent is configured and no `auto_name.command` is set, muxix uses the `llm` CLI tool:
 
 ```bash
 pipx install llm
@@ -244,7 +244,7 @@ To override back to `llm` when an agent is configured, set `auto_name.command: "
 
 ### Configuration
 
-Optionally configure auto-name behavior in `.workmux.yaml`:
+Optionally configure auto-name behavior in `.muxix.yaml`:
 
 ```yaml
 auto_name:
@@ -307,7 +307,7 @@ Recommended models for fast, cheap branch name generation (with `llm`):
 
 ## Parallel workflows & multi-worktree generation
 
-workmux can generate multiple worktrees from a single `add` command, which is ideal for running parallel experiments or delegating tasks to multiple AI agents. This is controlled by four mutually exclusive modes:
+muxix can generate multiple worktrees from a single `add` command, which is ideal for running parallel experiments or delegating tasks to multiple AI agents. This is controlled by four mutually exclusive modes:
 
 - (`-a`, `--agent`): Create a worktree for each specified agent.
 - (`-n`, `--count`): Create a specific number of worktrees.
@@ -324,7 +324,7 @@ When using any of these modes, branch names are generated from a template, and p
 | `-n, --count <number>`         | Creates `<number>` worktree instances. Can be combined with a single `--agent` flag to apply that agent to all instances.                                                                                                                                                                       |
 | `--foreach <matrix>`           | Creates worktrees from a variable matrix string. The format is `"var1:valA,valB;var2:valX,valY"`. All value lists must have the same length. Values are paired by index position (zip, not Cartesian product): the first value of each variable goes together, the second with the second, etc. |
 | `--branch-template <template>` | A [MiniJinja](https://docs.rs/minijinja/latest/minijinja/) (Jinja2-compatible) template for generating branch names. Available variables: `{{ base_name }}`, `{{ agent }}`, `{{ num }}`, `{{ index }}`, `{{ input }}` (stdin), and any variables from `--foreach`.                              |
-| `--max-concurrent <number>`    | Limits how many worktrees run simultaneously. When set, workmux creates up to `<number>` worktrees, then waits for any window to close before starting the next. Requires agents to close windows when done (e.g., via prompt instruction to run `workmux remove --keep-branch`).               |
+| `--max-concurrent <number>`    | Limits how many worktrees run simultaneously. When set, muxix creates up to `<number>` worktrees, then waits for any window to close before starting the next. Requires agents to close windows when done (e.g., via prompt instruction to run `muxix remove --keep-branch`).               |
 
 ### Prompt templating
 
@@ -351,7 +351,7 @@ Build a {{ platform }} app using {{ lang }}. Implement user authentication and d
 ```
 
 ```bash
-workmux add mobile-app --prompt-file mobile-task.md
+muxix add mobile-app --prompt-file mobile-task.md
 # Generates worktrees: mobile-app-ios-swift, mobile-app-android-kotlin
 ```
 
@@ -367,7 +367,7 @@ Implement the dashboard refactor using your preferred approach.
 ```
 
 ```bash
-workmux add refactor --prompt-file agent-task.md
+muxix add refactor --prompt-file agent-task.md
 # Generates worktrees: refactor-claude, refactor-gemini
 ```
 
@@ -380,22 +380,22 @@ workmux add refactor --prompt-file agent-task.md
 
 ### Stdin input
 
-You can pipe input lines to `workmux add` to create multiple worktrees. Each line becomes available as the `{{ input }}` template variable in your prompt. This is useful for batch-processing tasks from external sources.
+You can pipe input lines to `muxix add` to create multiple worktrees. Each line becomes available as the `{{ input }}` template variable in your prompt. This is useful for batch-processing tasks from external sources.
 
 **Plain text:** Each line becomes `{{ input }}`
 
 ```bash
-echo -e "api\nauth\ndatabase" | workmux add refactor -P task.md
+echo -e "api\nauth\ndatabase" | muxix add refactor -P task.md
 # {{ input }} = "api", "auth", "database"
 ```
 
 **JSON lines:** Each key becomes a template variable
 
 ```bash
-gh repo list --json url,name --jq -c '.[]' | workmux add analyze \
+gh repo list --json url,name --jq -c '.[]' | muxix add analyze \
   --branch-template '{{ base_name }}-{{ name }}' \
   -P prompt.md
-# Line: {"url":"https://github.com/raine/workmux","name":"workmux"}
+# Line: {"url":"https://github.com/lcensies/muxix","name":"muxix"}
 # Variables: {{ url }}, {{ name }}, {{ input }} (raw JSON line)
 ```
 
@@ -413,19 +413,19 @@ This lets you structure data upstream with `jq` and use meaningful branch names 
 
 ```bash
 # Create one worktree for claude and one for gemini with a focused prompt
-workmux add my-feature -a claude -a gemini -p "Implement the new search API integration"
+muxix add my-feature -a claude -a gemini -p "Implement the new search API integration"
 # Generates worktrees: my-feature-claude, my-feature-gemini
 
 # Create 2 instances of the default agent
-workmux add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
+muxix add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
 # Generates worktrees: my-feature-1, my-feature-2
 
 # Create worktrees from a variable matrix
-workmux add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platform }}"
+muxix add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platform }}"
 # Generates worktrees: my-feature-ios, my-feature-android
 
 # Create agent-specific worktrees via --foreach
-workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
+muxix add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
 # Generates worktrees: my-feature-claude, my-feature-gemini
 
 # Use frontmatter in a prompt file for cleaner syntax
@@ -436,12 +436,12 @@ workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboa
 #   task: [smoke-tests, integration-tests]
 # ---
 # Run {{ task }} against the {{ env }} environment
-workmux add testing --prompt-file task.md
+muxix add testing --prompt-file task.md
 # Generates worktrees: testing-staging-smoke-tests, testing-production-integration-tests
 
 # Pipe input from stdin to create worktrees
 # review.md contains: Review the {{ input }} module for security issues.
-echo -e "auth\npayments\napi" | workmux add review -A -P review.md
+echo -e "auth\npayments\napi" | muxix add review -A -P review.md
 # Generates worktrees with LLM-generated branch names for each module
 ```
 
@@ -455,10 +455,10 @@ Combine stdin input, prompt templating, and concurrency limits to create a worke
 # generate-tests.md contains:
 # Read the file at {{ input }} and generate a test suite covering
 # the exported functions. Focus on happy path and edge cases.
-# When done, run: workmux remove --keep-branch
+# When done, run: muxix remove --keep-branch
 
 find src/utils -name "*.ts" ! -name "*.test.ts" | \
-  workmux add add-tests \
+  muxix add add-tests \
     --branch-template '{{ base_name }}-{{ index }}' \
     --prompt-file generate-tests.md \
     --max-concurrent 3 \

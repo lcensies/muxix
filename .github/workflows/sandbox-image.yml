@@ -15,7 +15,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: raine/workmux-sandbox
+  IMAGE_NAME: lcensies/muxix-sandbox
 
 jobs:
   setup:

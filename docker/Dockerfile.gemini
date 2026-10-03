@@ -1,4 +1,4 @@
-ARG BASE=ghcr.io/raine/workmux-sandbox:base
+ARG BASE=ghcr.io/lcensies/muxix-sandbox:base
 FROM ${BASE}
 
 # Install Node.js (required for Gemini CLI)

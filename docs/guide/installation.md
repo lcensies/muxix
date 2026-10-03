@@ -1,5 +1,5 @@
 ---
-description: Install workmux via Homebrew, pre-built binaries, Cargo, mise, or Nix
+description: Install muxix via Homebrew, pre-built binaries, Cargo, mise, or Nix
 ---
 
 # Installation
@@ -7,13 +7,13 @@ description: Install workmux via Homebrew, pre-built binaries, Cargo, mise, or N
 ## Bash YOLO
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
 ```
 
 ## Homebrew (macOS/Linux)
 
 ```bash
-brew install raine/workmux/workmux
+brew install lcensies/muxix/muxix
 ```
 
 ## Other methods
@@ -23,13 +23,13 @@ brew install raine/workmux/workmux
 Requires Rust. Install via [rustup](https://rustup.rs/) if you don't have it.
 
 ```bash
-cargo install workmux
+cargo install muxix
 ```
 
 ### mise
 
 ```bash
-mise use -g cargo:raine/workmux
+mise use -g cargo:lcensies/muxix
 ```
 
 ### Nix
@@ -37,27 +37,27 @@ mise use -g cargo:raine/workmux
 Requires [Nix with flakes enabled](https://nixos.wiki/wiki/Flakes).
 
 ```bash
-nix profile install github:raine/workmux
+nix profile install github:lcensies/muxix
 ```
 
 Or try without installing:
 
 ```bash
-nix run github:raine/workmux -- --help
+nix run github:lcensies/muxix -- --help
 ```
 
 See [Nix guide](/guide/nix) for flake integration and home-manager setup.
 
 ---
 
-For manual installation, see [pre-built binaries](https://github.com/raine/workmux/releases/latest).
+For manual installation, see [pre-built binaries](https://github.com/lcensies/muxix/releases/latest).
 
 ## Shell alias (recommended)
 
-For faster typing, alias `workmux` to `wm`:
+For faster typing, alias `muxix` to `wm`:
 
 ```bash
-alias wm='workmux'
+alias wm='muxix'
 ```
 
 Add this to your `.bashrc`, `.zshrc`, or equivalent shell configuration file.
@@ -70,17 +70,17 @@ To enable tab completions for commands and branch names, add the following to yo
 
 ```bash [Bash]
 # Add to ~/.bashrc
-eval "$(workmux completions bash)"
+eval "$(muxix completions bash)"
 ```
 
 ```bash [Zsh]
 # Add to ~/.zshrc
-eval "$(workmux completions zsh)"
+eval "$(muxix completions zsh)"
 ```
 
 ```bash [Fish]
 # Add to ~/.config/fish/config.fish
-workmux completions fish | source
+muxix completions fish | source
 ```
 
 :::

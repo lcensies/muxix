@@ -520,7 +520,7 @@ impl SidebarApp {
 
     /// Re-read the merged config from disk and apply live-reloadable fields:
     /// templates, agent icons, and width. Templates are anchored at the host
-    /// agent's worktree path so per-project `.workmux.yaml` overrides are
+    /// agent's worktree path so per-project `.muxix.yaml` overrides are
     /// honored. On any parse error, keep the previously valid templates.
     fn reload_config_from_disk(&mut self, snapshot: &SidebarSnapshot) {
         let host_path = self
@@ -811,7 +811,7 @@ impl SidebarApp {
             .args(&[
                 "set-option",
                 "-g",
-                "@workmux_sidebar_layout",
+                "@muxix_sidebar_layout",
                 self.layout_mode.as_str(),
             ])
             .run();
@@ -840,7 +840,7 @@ impl SidebarApp {
         // Read current set from tmux (source of truth) to avoid losing
         // toggles made by other sidebar clients since our last snapshot.
         let mut current: std::collections::HashSet<String> = Cmd::new("tmux")
-            .args(&["show-option", "-gqv", "@workmux_sleeping_panes"])
+            .args(&["show-option", "-gqv", "@muxix_sleeping_panes"])
             .run_and_capture_stdout()
             .ok()
             .map(|s| s.split_whitespace().map(String::from).collect())
@@ -857,11 +857,11 @@ impl SidebarApp {
         let panes: String = current.into_iter().collect::<Vec<_>>().join(" ");
         if panes.is_empty() {
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
+                .args(&["set-option", "-gu", "@muxix_sleeping_panes"])
                 .run();
         } else {
             let _ = Cmd::new("tmux")
-                .args(&["set-option", "-g", "@workmux_sleeping_panes", &panes])
+                .args(&["set-option", "-g", "@muxix_sleeping_panes", &panes])
                 .run();
         }
 
@@ -991,7 +991,7 @@ impl SidebarApp {
 
     /// Resolve the (primary, secondary) label pair for an agent row.
     ///
-    /// Strips the workmux prefix from session/window names so the resolver only
+    /// Strips the muxix prefix from session/window names so the resolver only
     /// considers user-authored values. The window name is never promoted for
     /// non-tmux backends (signaled by `window_cmd: None`).
     pub fn resolve_agent_labels(&self, agent: &AgentPane) -> (String, String) {
@@ -1003,7 +1003,7 @@ impl SidebarApp {
             &agent.path,
         );
 
-        // Workmux-managed names start with the configured prefix; treat them as
+        // Muxix-managed names start with the configured prefix; treat them as
         // not user-authored by clearing them before the resolver sees them.
         let session = if agent.session.starts_with(&self.window_prefix) {
             ""

@@ -20,7 +20,7 @@ pub fn run(name: Option<&str>) -> Result<()> {
         Some(n) => {
             let (path, _branch) = git::find_worktree(n).map_err(|_| {
                 anyhow!(
-                    "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                    "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
                     n
                 )
             })?;
@@ -65,15 +65,15 @@ pub fn run(name: Option<&str>) -> Result<()> {
             (full, is_current)
         }
         None => {
-            // No name provided - check if we're in a workmux window/session
+            // No name provided - check if we're in a muxix window/session
             let target = MuxHandle::new(mux.as_ref(), mode, prefix, &target_name);
             let current_name = target.current_name()?;
             if let Some(current) = current_name {
                 if current.starts_with(prefix) {
-                    // We're in a workmux target, use it directly
+                    // We're in a muxix target, use it directly
                     (current.clone(), true)
                 } else {
-                    // Not in a workmux target, fall back to resolved handle
+                    // Not in a muxix target, fall back to resolved handle
                     (target.full_name(), false)
                 }
             } else {

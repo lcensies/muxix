@@ -154,7 +154,7 @@ fn project_root(name: &str) -> Result<PathBuf> {
         .iter()
         .find(|p| p.name == name)
         .map(|p| p.root.clone())
-        .with_context(|| format!("No tracked project named '{name}' (see `workmux project list`)"))
+        .with_context(|| format!("No tracked project named '{name}' (see `muxix project list`)"))
 }
 
 fn run_agent(command: AgentCommand) -> Result<()> {
@@ -523,14 +523,14 @@ fn run_reference() -> Result<()> {
     Ok(())
 }
 
-const DEFAULT_GLOBAL_CONFIG: &str = r#"# workmux global configuration
-# Settings here apply to all projects. Project-specific .workmux.yaml overrides these.
-# See: https://workmux.raine.dev/guide/configuration
+const DEFAULT_GLOBAL_CONFIG: &str = r#"# muxix global configuration
+# Settings here apply to all projects. Project-specific .muxix.yaml overrides these.
+# See: https://muxix.dev/guide/configuration
 
 # nerdfont: true
 # agent: claude
 #
-# Per-project agent, first match wins (see `workmux config agent --help`):
+# Per-project agent, first match wins (see `muxix config agent --help`):
 # agent_rules:
 #   - match: "^~/repos/work/"
 #     agent: opencode

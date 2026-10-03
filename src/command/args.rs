@@ -20,7 +20,7 @@ pub struct PromptArgs {
     pub prompt_editor: bool,
 
     /// Write the prompt file without injecting it into agent commands.
-    /// The prompt is written to .workmux/PROMPT-<branch>.md in the worktree,
+    /// The prompt is written to .muxix/PROMPT-<branch>.md in the worktree,
     /// but no agent pane is required. Useful when your editor has an embedded
     /// agent that reads the prompt file directly.
     #[arg(long)]

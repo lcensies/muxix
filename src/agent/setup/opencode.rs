@@ -5,7 +5,7 @@
 //! 2. `XDG_CONFIG_HOME/opencode`
 //! 3. `~/.config/opencode`
 //!
-//! Installs plugin by writing `package.json` and `workmux-status.ts` to the
+//! Installs plugin by writing `package.json` and `muxix-status.ts` to the
 //! OpenCode config directory.
 
 use anyhow::{Context, Result};
@@ -16,7 +16,7 @@ use std::process::Command;
 use super::StatusCheck;
 
 /// OpenCode distribution files, embedded at compile time.
-const PLUGIN_SOURCE: &str = include_str!("../../../resources/opencode/plugins/workmux-status.ts");
+const PLUGIN_SOURCE: &str = include_str!("../../../resources/opencode/plugins/muxix-status.ts");
 const PACKAGE_JSON: &str = include_str!("../../../resources/opencode/package.json");
 
 pub fn opencode_config_dir() -> Option<PathBuf> {
@@ -30,14 +30,14 @@ pub fn opencode_config_dir() -> Option<PathBuf> {
 }
 
 /// OpenCode's own config file. OpenCode merges `config.json`, `opencode.json`
-/// and `opencode.jsonc`; workmux writes the middle one, same as theme and
+/// and `opencode.jsonc`; muxix writes the middle one, same as theme and
 /// provider sync.
 pub fn settings_file() -> Option<PathBuf> {
     opencode_config_dir().map(|d| d.join("opencode.json"))
 }
 
 fn plugin_path() -> Option<PathBuf> {
-    opencode_config_dir().map(|d| d.join("plugins/workmux-status.ts"))
+    opencode_config_dir().map(|d| d.join("plugins/muxix-status.ts"))
 }
 
 /// Where OpenCode's `opencode-claude-hooks` compat plugin reads Claude-format
@@ -64,7 +64,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
 }
 
 fn legacy_plugin_path() -> Option<PathBuf> {
-    opencode_config_dir().map(|d| d.join("plugin/workmux-status.ts"))
+    opencode_config_dir().map(|d| d.join("plugin/muxix-status.ts"))
 }
 
 fn package_json_path() -> Option<PathBuf> {
@@ -106,7 +106,7 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux plugin is installed for OpenCode.
+/// Check if muxix plugin is installed for OpenCode.
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = plugin_path() else {
         return Ok(StatusCheck::NotInstalled);
@@ -141,7 +141,7 @@ pub fn plugin_installed(module: &str) -> bool {
 ///
 /// This is the correct mechanism — `opencode plugin <module> --global` installs
 /// the module *and* registers it in the global config, so it loads on every
-/// OpenCode start, including bare launches not managed by workmux. `--force`
+/// OpenCode start, including bare launches not managed by muxix. `--force`
 /// keeps re-runs idempotent by replacing an already-installed version instead of
 /// failing.
 pub fn install_plugin(module: &str) -> Result<String> {
@@ -261,7 +261,7 @@ fn render_provider(id: &str, cfg: &crate::model::ProviderConfig) -> serde_json::
 }
 
 /// Merge synced providers into an `opencode.json` root, replacing only the
-/// `provider.<id>` keys workmux owns. Returns the ids whose entries changed.
+/// `provider.<id>` keys muxix owns. Returns the ids whose entries changed.
 fn merge_providers(
     root: &mut serde_json::Value,
     registry: &crate::model::ProviderRegistry,
@@ -333,7 +333,7 @@ pub fn sync_providers(
         .collect())
 }
 
-/// Install workmux plugin for OpenCode.
+/// Install muxix plugin for OpenCode.
 /// Returns a description of what was done.
 pub fn install() -> Result<String> {
     let path =

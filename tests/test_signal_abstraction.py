@@ -20,14 +20,14 @@ def test_signal_temp_file_paths():
     node_id = "approve-me"
     pane = "%5"
 
-    # Breakpoint signal path format: workmux-bp-{task_id}-{node_id}.json
-    bp_path = Path(tempfile.gettempdir()) / f"workmux-bp-{task_id}-{node_id}.json"
-    assert "workmux-bp" in bp_path.name
+    # Breakpoint signal path format: muxix-bp-{task_id}-{node_id}.json
+    bp_path = Path(tempfile.gettempdir()) / f"muxix-bp-{task_id}-{node_id}.json"
+    assert "muxix-bp" in bp_path.name
     assert node_id in bp_path.name
 
-    # Pane signal path format: workmux-proceed-{sanitized_pane}.json
-    proceed_path = Path(tempfile.gettempdir()) / f"workmux-proceed-{pane.lstrip('%')}.json"
-    assert "workmux-proceed" in proceed_path.name
+    # Pane signal path format: muxix-proceed-{sanitized_pane}.json
+    proceed_path = Path(tempfile.gettempdir()) / f"muxix-proceed-{pane.lstrip('%')}.json"
+    assert "muxix-proceed" in proceed_path.name
 
 
 def test_signal_json_format():

@@ -48,7 +48,7 @@ build:
 
 # Build release binary via Docker (cached deps, portable)
 build-docker:
-    DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.build -t workmux:build .
+    DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.build -t muxix:build .
 
 # Install optimized binary globally from local source (fast thin-LTO profile)
 install:
@@ -64,11 +64,11 @@ install-docker: build-docker
     set -euo pipefail
     install_dir="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin"
     mkdir -p "$install_dir"
-    docker run --rm --entrypoint cat workmux:build /usr/local/bin/workmux > "$install_dir/workmux"
-    chmod +x "$install_dir/workmux"
-    echo "Installed to $install_dir/workmux"
+    docker run --rm --entrypoint cat muxix:build /usr/local/bin/muxix > "$install_dir/muxix"
+    chmod +x "$install_dir/muxix"
+    echo "Installed to $install_dir/muxix"
 
-# Patch the local fork's workmux into the pulled sandbox image (needed because
+# Patch the local fork's muxix into the pulled sandbox image (needed because
 # the upstream ghcr.io image lacks fork subcommands like `signal`/`hooks-report`).
 # Uses the Docker-built bookworm-glibc binary since the host toolchain has no musl std.
 sandbox-install-dev: build-docker
@@ -78,26 +78,26 @@ sandbox-install-dev: build-docker
     # bookworm-glibc binary works in the bookworm image, so we park it there.
     dest=target/x86_64-unknown-linux-musl/release
     mkdir -p "$dest"
-    docker run --rm --entrypoint cat workmux:build /usr/local/bin/workmux > "$dest/workmux"
-    chmod +x "$dest/workmux"
-    workmux sandbox install-dev --skip-build --release
+    docker run --rm --entrypoint cat muxix:build /usr/local/bin/muxix > "$dest/muxix"
+    chmod +x "$dest/muxix"
+    muxix sandbox install-dev --skip-build --release
 
 # Install release binary globally from GitHub releases
 install-release:
     #!/usr/bin/env bash
     set -euo pipefail
     install_root="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
-    WORKMUX_INSTALL_DIR="$install_root/bin" bash scripts/install.sh
+    MUXIX_INSTALL_DIR="$install_root/bin" bash scripts/install.sh
 
 # Install debug binary globally via symlink
 install-dev:
-    cargo build && ln -sf $(pwd)/target/debug/workmux ~/.cargo/bin/workmux
+    cargo build && ln -sf $(pwd)/target/debug/muxix ~/.cargo/bin/muxix
 
 # Run unit tests
 unit-tests:
     #!/usr/bin/env bash
     set -euo pipefail
-    output=$(cargo test --bin workmux --quiet 2>&1) || { echo "$output"; exit 1; }
+    output=$(cargo test --bin muxix --quiet 2>&1) || { echo "$output"; exit 1; }
     echo "$output" | tail -1
 
 # Run ruff linter on Python tests
@@ -137,7 +137,7 @@ test *ARGS: build
     #!/usr/bin/env bash
     set -euo pipefail
     source tests/venv/bin/activate
-    export WORKMUX_TEST=1
+    export MUXIX_TEST=1
     quiet_flag=""
     [[ -n "${CLAUDECODE:-}" ]] && quiet_flag="-q"
     if [ $# -eq 0 ]; then
@@ -147,14 +147,14 @@ test *ARGS: build
     fi
 
 # Real CRIU checkpoint/resume e2e (needs criu + rootful runtime; uses sudo).
-# Auto-skips in the normal `just test` run unless WORKMUX_CRIU_E2E=1 is set.
-# Rootless podman cannot CRIU-checkpoint, so the test drives workmux under sudo;
+# Auto-skips in the normal `just test` run unless MUXIX_CRIU_E2E=1 is set.
+# Rootless podman cannot CRIU-checkpoint, so the test drives muxix under sudo;
 # pre-cache credentials with `sudo -v` so it doesn't stall mid-run.
 test-criu-e2e: build
     #!/usr/bin/env bash
     set -euo pipefail
     sudo -v
-    export WORKMUX_CRIU_E2E=1 WORKMUX_TEST=1
+    export MUXIX_CRIU_E2E=1 MUXIX_TEST=1
     criu_run() { if command -v criu >/dev/null; then "$@"; else nix-shell -p criu --run "$*"; fi; }
     criu_run tests/venv/bin/python -m pytest tests/test_sandbox_checkpoint_e2e.py -v -s
 

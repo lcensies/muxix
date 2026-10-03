@@ -1,5 +1,5 @@
 ---
-description: Configure Claude Code permissions and settings for use with workmux worktrees
+description: Configure Claude Code permissions and settings for use with muxix worktrees
 ---
 
 # Claude Code
@@ -18,7 +18,7 @@ files:
     - .claude/settings.local.json
 ```
 
-Add this to your global config (`~/.config/workmux/config.yaml`) or project's `.workmux.yaml`. Since this file contains user-specific permissions, also add it to `.gitignore`:
+Add this to your global config (`~/.config/muxix/config.yaml`) or project's `.muxix.yaml`. Since this file contains user-specific permissions, also add it to `.gitignore`:
 
 ```
 .claude/settings.local.json
@@ -29,21 +29,21 @@ Add this to your global config (`~/.config/workmux/config.yaml`) or project's `.
 To skip prompts entirely, define a named agent with the flag:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 agents:
   claude: "claude --dangerously-skip-permissions"
 ```
 
-This shadows the built-in `claude` name so all workmux-created worktrees use the flag automatically, without affecting `claude` outside of workmux.
+This shadows the built-in `claude` name so all muxix-created worktrees use the flag automatically, without affecting `claude` outside of muxix.
 
 You can also use a separate name and reference it per-project:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 agents:
   cc-yolo: "claude --dangerously-skip-permissions"
 
-# .workmux.yaml (in projects that need it)
+# .muxix.yaml (in projects that need it)
 agent: cc-yolo
 ```
 
@@ -64,7 +64,7 @@ Select a conversation and press `Ctrl+F` to fork it. When the conversation belon
 If you use separate Claude configurations for work and personal projects, define [named agents](/guide/agents#named-agents) in your global config:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 agents:
   cc-work: "env CLAUDE_CONFIG_DIR=~/.claude-work claude"
   cc-personal: "env CLAUDE_CONFIG_DIR=~/.claude-personal claude"
@@ -73,15 +73,15 @@ agents:
 Then set the agent per project:
 
 ```yaml
-# work project .workmux.yaml
+# work project .muxix.yaml
 agent: cc-work
 ```
 
-Or use it directly: `workmux add feature -a cc-work`.
+Or use it directly: `muxix add feature -a cc-work`.
 
 ### Alternative: direnv
 
-You can also use [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) with [direnv](https://direnv.net/) to switch configurations per directory. This affects `claude` everywhere, not just workmux:
+You can also use [`CLAUDE_CONFIG_DIR`](https://code.claude.com/docs/en/env-vars) with [direnv](https://direnv.net/) to switch configurations per directory. This affects `claude` everywhere, not just muxix:
 
 ```bash
 # .envrc

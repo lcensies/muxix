@@ -7,7 +7,7 @@ description: Wait for one or more agents to reach a target status
 Blocks until the named worktrees' agents reach a target status, or a timeout elapses. Used by coordinator skills and scripts to synchronize on agent progress instead of polling `status` in a loop.
 
 ```bash
-workmux wait <name...> [flags]
+muxix wait <name...> [flags]
 ```
 
 ## Arguments
@@ -24,8 +24,8 @@ workmux wait <name...> [flags]
 
 ## Status vs. completion
 
-- `working` / `waiting` / `done` match the turn-boundary `AgentStatus` — the same status `workmux status` shows, driven by agent lifecycle hooks. `done` here means "agent finished a turn", not "task finished".
-- `completed` / `failed` match an agent-authored *completion record*, written by [`workmux signal done`](./signal) / `workmux signal error` from inside the agent's own turn. Use these to wait on actual task completion rather than a turn boundary.
+- `working` / `waiting` / `done` match the turn-boundary `AgentStatus` — the same status `muxix status` shows, driven by agent lifecycle hooks. `done` here means "agent finished a turn", not "task finished".
+- `completed` / `failed` match an agent-authored *completion record*, written by [`muxix signal done`](./signal) / `muxix signal error` from inside the agent's own turn. Use these to wait on actual task completion rather than a turn boundary.
 - `merged` matches "the agent was seen running, then its worktree disappeared" (i.e. `/merge` or equivalent ran). `completed` also treats a vanished worktree as a hit (historical merge-success fallback); `failed` does not — a vanished worktree is never treated as a failure.
 
 When several requested targets could match at once (e.g. `--status completed,merged` after a merge), targets are checked in a fixed order — `working`, `waiting`, `done`, `completed`, `failed`, `merged` — and the first match wins.
@@ -42,25 +42,25 @@ Previously, one crashed agent aborted the entire `wait` immediately with exit co
 
 ```bash
 # Wait for a turn boundary (agent stopped responding)
-workmux wait user-auth
+muxix wait user-auth
 
 # Wait for the agent to actually signal task completion
-workmux wait user-auth --status completed
+muxix wait user-auth --status completed
 
 # Wait for either completion or failure, whichever comes first
-workmux wait user-auth --status completed,failed
+muxix wait user-auth --status completed,failed
 
 # Wait for several worktrees, returning as soon as any one finishes
-workmux wait user-auth api-refactor --status completed --any
+muxix wait user-auth api-refactor --status completed --any
 
 # Wait up to 10 minutes, otherwise give up
-workmux wait user-auth --status completed --timeout 600
+muxix wait user-auth --status completed --timeout 600
 
 # Wait for a worktree that a /merge may have already removed
-workmux wait user-auth --status merged
+muxix wait user-auth --status merged
 ```
 
 ## Related
 
-- [`workmux signal`](./signal) — how agents write the completion record `wait --status completed|failed` reads.
-- [`workmux status`](./status) — inspect current status/completion without blocking.
+- [`muxix signal`](./signal) — how agents write the completion record `wait --status completed|failed` reads.
+- [`muxix status`](./status) — inspect current status/completion without blocking.

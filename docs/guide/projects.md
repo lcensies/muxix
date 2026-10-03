@@ -1,18 +1,18 @@
 # Projects
 
-Workmux can track multiple project directories and launch them all at once —
+Muxix can track multiple project directories and launch them all at once —
 one tmux session per project, one window per worktree — turning it into a
 single entry point for your whole agentic dev environment.
 
 ## Tracking projects
 
 ```bash
-workmux project add ~/repos/my-app     # track a project
-workmux project list                   # name + root, one per line
-workmux project rm my-app              # untrack (by name or path)
+muxix project add ~/repos/my-app     # track a project
+muxix project list                   # name + root, one per line
+muxix project rm my-app              # untrack (by name or path)
 ```
 
-The registry lives in `~/.config/workmux/projects.yaml` as a plain list and is
+The registry lives in `~/.config/muxix/projects.yaml` as a plain list and is
 safe to hand-edit:
 
 ```yaml
@@ -20,25 +20,25 @@ safe to hand-edit:
   root: /home/user/repos/my-app
 ```
 
-As a shortcut, `workmux add <dir>` tracks the directory as a project whenever
+As a shortcut, `muxix add <dir>` tracks the directory as a project whenever
 the argument is an existing directory containing `.git` — otherwise it keeps
 its usual meaning of creating a worktree.
 
 ## Opening one project
 
 ```bash
-workmux project open my-app        # by name or path
-workmux project open my-app -c     # ...and resume the last agent
+muxix project open my-app        # by name or path
+muxix project open my-app -c     # ...and resume the last agent
 ```
 
-Same session/layout/worktree-window setup as `workmux start`, scoped to one
+Same session/layout/worktree-window setup as `muxix start`, scoped to one
 project, then it focuses that session: switching the client when run inside
 tmux, attaching when run from a plain shell.
 
 ## Starting everything
 
 ```bash
-workmux start
+muxix start
 ```
 
 For every tracked project:
@@ -46,8 +46,8 @@ For every tracked project:
 - Ensures a tmux session named after the project exists (existing sessions are
   left untouched — the command is idempotent).
 - Creates the session's base windows from a layout (see below).
-- Opens one window per workmux worktree inside the project session, using the
-  normal workmux window naming — so the dashboard, sidebar, `status`, and
+- Opens one window per muxix worktree inside the project session, using the
+  normal muxix window naming — so the dashboard, sidebar, `status`, and
   cross-project `project:handle` targeting all see them.
 
 Projects whose directory no longer exists are skipped with a warning.
@@ -60,7 +60,7 @@ only strategy.
 
 The base windows of a project session are resolved in priority order:
 
-1. `windows:` in the project's `.workmux.yaml` (window names only)
+1. `windows:` in the project's `.muxix.yaml` (window names only)
 2. `~/.config/tmuxrs/<name>.yml`
 3. `~/.config/tmuxinator/<name>.yml`
 4. A single shell window at the project root
@@ -68,16 +68,16 @@ The base windows of a project session are resolved in priority order:
 For tmuxrs/tmuxinator files only simple `windows:` entries of the form
 `- name: command` are honored; nested panes, ERB templating, and hooks are
 ignored. This means existing tmuxinator projects keep working — just
-`workmux project add` their roots.
+`muxix project add` their roots.
 
 ## Resuming agents
 
 ```bash
-workmux start -c   # --continue
+muxix start -c   # --continue
 ```
 
 Additionally relaunches the last coding agent in each project and worktree,
-using the same resume ladder as [`workmux resurrect`](/reference/commands/):
+using the same resume ladder as [`muxix resurrect`](/reference/commands/):
 
 1. **Resume** the journalled (or latest) conversation with the agent's own
    resume flag, verified against the agent's session store.

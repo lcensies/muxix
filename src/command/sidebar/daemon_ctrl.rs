@@ -56,7 +56,7 @@ fn wait_for_socket(instance_id: &str, timeout: Duration) -> bool {
 /// Read the daemon PID from the tmux global option.
 fn daemon_pid() -> Option<String> {
     Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_daemon_pid"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_daemon_pid"])
         .run_and_capture_stdout()
         .ok()
         .map(|s| s.trim().to_string())
@@ -72,7 +72,7 @@ pub(super) fn kill_daemon() {
             .status();
     }
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
+        .args(&["set-option", "-gu", "@muxix_sidebar_daemon_pid"])
         .run();
 }
 

@@ -133,7 +133,7 @@ pub fn setup_environment(
         let project_root_str = abs_project_root.to_string_lossy();
         let config_dir_str = abs_config_dir.to_string_lossy();
         let hook_env = [
-            ("WORKMUX_HANDLE", handle),
+            ("MUXIX_HANDLE", handle),
             ("WM_HANDLE", handle),
             ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
             ("WM_PROJECT_ROOT", project_root_str.as_ref()),
@@ -518,8 +518,8 @@ pub fn resolve_pane_configuration(
 
 /// Write a prompt file for agent consumption.
 ///
-/// When `working_dir` is provided, writes to `<working_dir>/.workmux/PROMPT-<branch>.md`
-/// so the prompt is accessible inside container sandboxes. Also adds `.workmux/` to
+/// When `working_dir` is provided, writes to `<working_dir>/.muxix/PROMPT-<branch>.md`
+/// so the prompt is accessible inside container sandboxes. Also adds `.muxix/` to
 /// `.git/info/exclude` to avoid polluting git status.
 ///
 /// When `working_dir` is None, writes to a temp directory (legacy behavior for open command
@@ -540,29 +540,29 @@ pub fn write_prompt_file(
     let safe_branch_name = branch_name.replace(['/', '\\', ':'], "-");
 
     let prompt_path = if let Some(dir) = working_dir {
-        // Write to .workmux/ inside the worktree so it's accessible in container sandbox
-        let workmux_dir = dir.join(".workmux");
-        fs::create_dir_all(&workmux_dir).with_context(|| {
-            format!("Failed to create .workmux directory in '{}'", dir.display())
+        // Write to .muxix/ inside the worktree so it's accessible in container sandbox
+        let muxix_dir = dir.join(".muxix");
+        fs::create_dir_all(&muxix_dir).with_context(|| {
+            format!("Failed to create .muxix directory in '{}'", dir.display())
         })?;
 
-        // Add .workmux/ to git exclude to avoid polluting git status
+        // Add .muxix/ to git exclude to avoid polluting git status
         // In worktrees, .git is a file pointing to the real git dir, so we need to resolve it
         if let Some(exclude_path) = resolve_git_exclude_path(dir)
             && exclude_path.exists()
             && let Ok(content) = fs::read_to_string(&exclude_path)
-            && !content.lines().any(|line| line.trim() == ".workmux/")
+            && !content.lines().any(|line| line.trim() == ".muxix/")
             && let Ok(mut file) = fs::OpenOptions::new().append(true).open(&exclude_path)
         {
             use std::io::Write;
-            let _ = writeln!(file, "\n# workmux prompt files\n.workmux/");
+            let _ = writeln!(file, "\n# muxix prompt files\n.muxix/");
         }
 
         let prompt_filename = format!("PROMPT-{}.md", safe_branch_name);
-        workmux_dir.join(prompt_filename)
+        muxix_dir.join(prompt_filename)
     } else {
         // Legacy: write to temp directory for open command
-        let prompt_filename = format!("workmux-prompt-{}.md", safe_branch_name);
+        let prompt_filename = format!("muxix-prompt-{}.md", safe_branch_name);
         std::env::temp_dir().join(prompt_filename)
     };
 
@@ -971,8 +971,8 @@ mod tests {
         let path = super::write_prompt_file(Some(temp.path()), branch_name, &prompt)
             .expect("Should create prompt file");
 
-        // Verify it's in .workmux/ directory
-        assert!(path.starts_with(temp.path().join(".workmux")));
+        // Verify it's in .muxix/ directory
+        assert!(path.starts_with(temp.path().join(".muxix")));
         assert!(
             path.file_name()
                 .unwrap()

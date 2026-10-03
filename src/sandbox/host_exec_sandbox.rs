@@ -24,7 +24,7 @@ const DENY_READ_DIRS: &[&str] = &[
     ".kube",
     ".azure",
     ".config/gcloud",
-    ".config/workmux",
+    ".config/muxix",
     ".docker",
     ".claude",               // Claude credentials
     ".gemini",               // Gemini credentials
@@ -98,16 +98,16 @@ fn extra_xdg_write_dirs(home: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// Resolve the workmux config dir if custom XDG_CONFIG_HOME is set.
+/// Resolve the muxix config dir if custom XDG_CONFIG_HOME is set.
 ///
 /// Returns the path to deny-read so sandboxed processes can't read the
-/// workmux config at a non-default location.
+/// muxix config at a non-default location.
 fn extra_xdg_deny_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
         let path = PathBuf::from(&val);
         if path.is_absolute() && path.starts_with(home) && path != home.join(".config") {
-            dirs.push(path.join("workmux"));
+            dirs.push(path.join("muxix"));
         }
     }
     dirs

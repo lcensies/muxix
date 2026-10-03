@@ -173,7 +173,7 @@ fn global_config_path() -> Option<PathBuf> {
 /// Returns None if stdin is not a TTY (non-interactive) or in CI/test environments.
 pub fn prompt_setup() -> Result<Option<bool>> {
     // Skip prompt in CI or test environments
-    if std::env::var("CI").is_ok() || std::env::var("WORKMUX_TEST").is_ok() {
+    if std::env::var("CI").is_ok() || std::env::var("MUXIX_TEST").is_ok() {
         return Ok(None);
     }
 
@@ -247,7 +247,7 @@ pub fn prompt_setup() -> Result<Option<bool>> {
                 enabled,
                 crate::config::global_config_path()
                     .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string()),
+                    .unwrap_or_else(|| "~/.config/muxix/config.yaml".to_string()),
             ))
             .dim()
         );
@@ -258,7 +258,7 @@ pub fn prompt_setup() -> Result<Option<bool>> {
                 "Set nerdfont: true in {} to enable later",
                 crate::config::global_config_path()
                     .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string()),
+                    .unwrap_or_else(|| "~/.config/muxix/config.yaml".to_string()),
             ))
             .dim()
         );

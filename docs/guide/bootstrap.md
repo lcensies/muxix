@@ -4,11 +4,11 @@ description: Configure plugins, skills, prompt components, and cross-agent featu
 
 # Agent bootstrap
 
-The `bootstrap` section of your project config (`.workmux.yaml`) is a single
+The `bootstrap` section of your project config (`.muxix.yaml`) is a single
 manifest that configures **plugins**, **skills**, **subagents**, **prompt
 components**, **features**, and the **theme** uniformly across every coding agent
 (Claude Code, Codex, Copilot, Gemini, OpenCode, pi, omp). Running
-[`workmux setup`](../reference/commands/setup.md) detects the agents you have
+[`muxix setup`](../reference/commands/setup.md) detects the agents you have
 installed and applies the manifest to each of them.
 
 ```yaml
@@ -44,7 +44,7 @@ so the harness installs the hook deterministically instead of asking the agent
 to do it:
 
 ```yaml
-# ~/.config/workmux/config.yaml -- hooks are global-only (see below)
+# ~/.config/muxix/config.yaml -- hooks are global-only (see below)
 bootstrap:
   default_skills:
     - path: ./skills/auto-git
@@ -57,7 +57,7 @@ bootstrap:
 Events are agent-agnostic — `session-ready` and `turn-done` — and translate to
 each agent's native mechanism: Claude Code `SessionStart`/`Stop`, Codex `Stop`
 (it has no per-session event), Gemini `BeforeAgent`/`AfterAgent`. OpenCode and
-pi have no shell-hook config of their own, so workmux writes Claude-format
+pi have no shell-hook config of their own, so muxix writes Claude-format
 hooks for their compat plugins — [`opencode-claude-hooks`](https://github.com/magarcia/opencode-claude-hooks)
 (`~/.config/opencode/hooks.json`) and [`@hsingjui/pi-hooks`](https://github.com/hsingjui/pi-hooks)
 (`~/.pi/agent/settings.json`) — and auto-adds the plugin to that agent's
@@ -66,7 +66,7 @@ any existing entry matching the plugin name). Two caveats: the OpenCode plugin
 also reads `.claude/settings*.json` and concatenates all files, so a hook
 installed for Claude Code may fire in OpenCode sessions too — write hook
 scripts to tolerate running twice per event (the auto-git sweeper does); and
-omp/Copilot still report `skipped` in `workmux setup`, so that gap stays
+omp/Copilot still report `skipped` in `muxix setup`, so that gap stays
 visible rather than silent.
 
 Hooks not tied to any skill go under `bootstrap.hooks` with the same shape;
@@ -75,16 +75,16 @@ Hooks not tied to any skill go under `bootstrap.hooks` with the same shape;
 **Hooks are global-only.** A project config declaring one gets it stripped with
 a warning, the same as `agents:`. A shipped SKILL.md is text an agent may act
 on; a hook is a command the harness runs unattended on every turn — cloning a
-repository and running `workmux setup` must not execute that repository's
+repository and running `muxix setup` must not execute that repository's
 script on your machine. The repo may ship the skill; turning the hook on is
 yours.
 
-`sha256` is optional and pins the script: `workmux setup` hashes the installed
+`sha256` is optional and pins the script: `muxix setup` hashes the installed
 copy before writing the hook and fails closed on mismatch, printing both
 digests (so the workflow is: omit it, run once, paste what it reports). The pin
 covers install time; ongoing tamper detection is the skills section's content
 comparison, which reports a modified installed copy as drift in
-`workmux setup --check`.
+`muxix setup --check`.
 
 Removing a hook from config stops it being asserted but does not uninstall the
 already-written entry — delete it from the agent's own config if you need it
@@ -95,7 +95,7 @@ gone.
 
 A skill's scripts or an MCP server's `command` often need something outside
 the skill itself: a CLI from npm, `python3`, a binary the OS provides. Declare
-it next to the entry, and `workmux setup` (section `deps`) makes it true or
+it next to the entry, and `muxix setup` (section `deps`) makes it true or
 says why it cannot:
 
 ```yaml
@@ -104,7 +104,7 @@ bootstrap:
   default_skills:
     - path: ./skills/openspec-taskflow
       requires:
-        npm: ["@fission-ai/openspec@1.6.0"]   # installed by workmux, pinned
+        npm: ["@fission-ai/openspec@1.6.0"]   # installed by muxix, pinned
         bin: [python3]                         # asserted on PATH, never installed
 mcp:
   context7:
@@ -120,11 +120,11 @@ mcp:
   `npm install -g --prefix <npm_prefix>`, so nothing touches a system or Nix
   store prefix. The same package declared by several entities is installed
   once; two different pins for one package fail with both entities named.
-- `bin`: workmux only checks PATH. Missing → `[failed]`, exit non-zero, with
+- `bin`: muxix only checks PATH. Missing → `[failed]`, exit non-zero, with
   the hint to provide it via the system (on Nix, `home.packages`).
 - `--check` reports a missing/mismatched package or a missing binary as drift
   (exit 2) without running npm.
-- Prune: when no entity declares a package workmux installed, the next setup
+- Prune: when no entity declares a package muxix installed, the next setup
   uninstalls it (`--no-prune` keeps it). Packages you installed by hand under
   the prefix are left alone unless `bootstrap.deps_strict: true`, which makes
   the whole prefix declarative.
@@ -134,7 +134,7 @@ already declares plugins and MCP commands.
 
 ## How resolution works
 
-For a given agent, `workmux setup` computes four merged lists:
+For a given agent, `muxix setup` computes four merged lists:
 
 | List                  | Sources (in order)                                                                 |
 | --------------------- | ---------------------------------------------------------------------------------- |
@@ -187,7 +187,7 @@ Resolution per agent:
 1. If the feature declares a plugin for that agent (`pi:`, `omp:`, `claude code:`,
    …), the agent **installs that plugin** and does **not** get the prompt fallback.
 2. Otherwise, if the feature has a `default`, the agent **merges that prompt
-   component** (from `.workmux/prompt-components/<name>.md`).
+   component** (from `.muxix/prompt-components/<name>.md`).
 3. Otherwise the feature is a no-op for that agent.
 
 A feature's prompt fallback can still be suppressed for a specific agent via that
@@ -223,17 +223,17 @@ claude code: DietrichGebert/ponytail#ponytail@ponytail
 #            └─ marketplace source ─┘ └─ plugin@marketplace ─┘
 ```
 
-workmux runs `claude plugin marketplace add DietrichGebert/ponytail` first, then
+muxix runs `claude plugin marketplace add DietrichGebert/ponytail` first, then
 `claude plugin install ponytail@ponytail`. Drop the `#` prefix for a marketplace
 that is already registered. Re-adding a registered marketplace is tolerated, so
-`workmux setup` stays re-runnable.
+`muxix setup` stays re-runnable.
 
 ::: tip Why the CLI, not settings.json
 Declaring `enabledPlugins` / `extraKnownMarketplaces` in `settings.json` records
 *intent* only: Claude Code
 [does not load such a plugin until it is installed](https://code.claude.com/docs/en/discover-plugins#configure-team-marketplaces),
 and instead prompts the user at the trust gate. That prompt would stall an
-unattended harness agent before its first turn, so workmux shells out to the
+unattended harness agent before its first turn, so muxix shells out to the
 installer.
 :::
 
@@ -249,7 +249,7 @@ falls back to their prompt component instead.
 
 ### Detecting already-installed plugins
 
-Before shelling out to an installer, `workmux setup` probes whether a declared
+Before shelling out to an installer, `muxix setup` probes whether a declared
 plugin is already installed, so a converged machine reports `up-to-date`
 instead of re-running the agent CLI:
 
@@ -274,7 +274,7 @@ skipping a plugin that never landed.
 ## Prompt components
 
 Prompt components are Markdown files. A bare name (without the `.md` extension)
-loads `.workmux/prompt-components/<name>.md`; an entry containing `/` is a path to
+loads `.muxix/prompt-components/<name>.md`; an entry containing `/` is a path to
 a `.md` file (absolute, `~`, or relative to the project root), which lets a
 machine-global config reference components kept outside any project. They are
 merged into the agent's system prompt during setup. How the prompt is injected depends on the agent — for pi/omp
@@ -283,7 +283,7 @@ see [Injection method](#pi-and-omp-injection-method).
 ```yaml
 bootstrap:
   default_prompt_components:
-    - caveman-full     # .workmux/prompt-components/caveman-full.md
+    - caveman-full     # .muxix/prompt-components/caveman-full.md
     - fff
     - ~/dotfiles/prompt-components/jj.md   # absolute paths work too
   agents:
@@ -505,10 +505,10 @@ bootstrap:
 
 This is what makes one config work across machines. `providers:` merges as a
 whole-field override (project beats global), so leave it out of the committed
-`.workmux.yaml` and let each machine's global config supply its own:
+`.muxix.yaml` and let each machine's global config supply its own:
 
 ```yaml
-# ~/.config/workmux/config.yaml — personal machine
+# ~/.config/muxix/config.yaml — personal machine
 providers:
   anthropic:
     limit: 200000
@@ -518,7 +518,7 @@ providers:
 ```
 
 ```yaml
-# ~/.config/workmux/config.yaml — corporate machine
+# ~/.config/muxix/config.yaml — corporate machine
 providers:
   bedrock:
     limit: 200000
@@ -530,7 +530,7 @@ providers:
 The shared subagent stays `model: haiku` on both.
 
 A provider can also declare *connection* fields (`base_url`, `api_key_env`,
-`npm`, `api`, `options`); `workmux setup` then renders it into each supported
+`npm`, `api`, `options`); `muxix setup` then renders it into each supported
 agent's native provider config — see
 [provider sync](./models.md#provider-sync).
 
@@ -538,7 +538,7 @@ agent's native provider config — see
 
 Harness items are *what an agent carries*. `agents.<id>.settings` is *how the
 agent is configured*: an RFC 7386 merge patch applied to the agent's own
-settings file by `workmux setup`.
+settings file by `muxix setup`.
 
 ```yaml
 bootstrap:
@@ -565,7 +565,7 @@ Semantics:
 
 Two caveats worth stating plainly:
 
-- **Removing a declaration does not restore the old value.** Workmux cannot know
+- **Removing a declaration does not restore the old value.** Muxix cannot know
   what the value was before it patched, and restoring a stale one is worse than
   leaving the current one. To remove a key, set it to `null` and keep the
   declaration until the key is gone everywhere.
@@ -589,7 +589,7 @@ CLI has no known global settings file. A patch declared for either is reported
 as skipped rather than written somewhere guessed.
 
 Each agent's keys are its own — `defaultTools` means nothing to Claude Code,
-`autoCompact` means nothing to pi. Workmux does not validate them against any
+`autoCompact` means nothing to pi. Muxix does not validate them against any
 schema; a wrong key surfaces in the agent's own error, not here.
 
 ## pi and omp injection method
@@ -605,7 +605,7 @@ bootstrap:
 
 | Method               | Behavior                                                                                           |
 | -------------------- | -------------------------------------------------------------------------------------------------- |
-| `before_agent_start` | (default) Writes to `workmux-pre-inject.md`; injected via pi's `before_agent_start` hook. Survives cliproxy, which strips system prompts at the API level. |
+| `before_agent_start` | (default) Writes to `muxix-pre-inject.md`; injected via pi's `before_agent_start` hook. Survives cliproxy, which strips system prompts at the API level. |
 | `append_system`      | Writes directly to `APPEND_SYSTEM.md` (native pi mechanism). Does **not** survive cliproxy.         |
 
 ## Full example
@@ -638,12 +638,12 @@ bootstrap:
 ## Removing a feature
 
 Bootstrap is declarative in both directions: dropping something from
-`.workmux.yaml` and re-running `workmux setup` removes it from the machine.
+`.muxix.yaml` and re-running `muxix setup` removes it from the machine.
 
 The config alone cannot make that safe — an undeclared skill in
-`~/.claude/skills/` might be one workmux copied there or one you wrote by hand.
+`~/.claude/skills/` might be one muxix copied there or one you wrote by hand.
 So setup records what it installs in a manifest at
-`$XDG_STATE_HOME/workmux/managed.json`, and **only what the manifest claims is
+`$XDG_STATE_HOME/muxix/managed.json`, and **only what the manifest claims is
 ever removed**:
 
 | Section | What removal does |
@@ -659,19 +659,19 @@ Rules worth knowing:
 - **Only the declaring project prunes.** Manifest entries carry the project
   root, and a feature another project still declares survives — agent config
   dirs are global, so the *last* project to drop a shared skill removes it.
-- **`--only` limits pruning too.** `workmux setup --only skills` never touches
+- **`--only` limits pruning too.** `muxix setup --only skills` never touches
   a plugin entry.
-- **Removals are drift.** `workmux setup --check` reports them as `removed`
+- **Removals are drift.** `muxix setup --check` reports them as `removed`
   and exits 2 without deleting anything.
 - **The first run after upgrading prunes nothing.** There is no manifest yet;
   that run writes one, and removal works from the next one on.
 - **A failed removal keeps its entry** so the next run retries it.
-- `workmux setup --no-prune` converges without removing anything, and leaves
+- `muxix setup --no-prune` converges without removing anything, and leaves
   the entries in place for a later run.
 
 ## See also
 
-- [`workmux setup`](../reference/commands/setup.md) — apply the manifest
-- [`workmux provision`](../reference/commands/provision.md) — org policy that can override parts of this config
+- [`muxix setup`](../reference/commands/setup.md) — apply the manifest
+- [`muxix provision`](../reference/commands/provision.md) — org policy that can override parts of this config
 - [Models](./models.md) — the unified provider/model registry
 - [Skills](./skills.md) — authoring and installing skills

@@ -1,4 +1,4 @@
-//! `workmux agent …` — manage the project's agent definition registry.
+//! `muxix agent …` — manage the project's agent definition registry.
 //!
 //! `list`  — show all resolved agent definitions (inline + file-based).
 //! `show`  — show one definition's capabilities and trust summary.
@@ -40,8 +40,8 @@ pub fn run(command: AgentRegistryCommand) -> Result<()> {
             if defs.is_empty() {
                 println!(concat!(
                     "No agent definitions found.\n\n",
-                    "Add inline definitions to .workmux.yaml under `agent_defs:`, or\n",
-                    "place <name>.yaml files in .workmux/agents/.\n\n",
+                    "Add inline definitions to .muxix.yaml under `agent_defs:`, or\n",
+                    "place <name>.yaml files in .muxix/agents/.\n\n",
                     "Example:\n\n",
                     "  agent_defs:\n",
                     "    planner:\n",

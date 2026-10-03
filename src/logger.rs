@@ -17,17 +17,17 @@ static GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 static FILTER_RELOAD: OnceLock<reload::Handle<EnvFilter, Registry>> = OnceLock::new();
 
 /// Build the base env filter, optionally pinning the `wm::event` target to
-/// `event_level`. `WORKMUX_EVENTS` (if set) always wins over `event_level`.
+/// `event_level`. `MUXIX_EVENTS` (if set) always wins over `event_level`.
 fn build_env_filter(event_level: Option<&str>) -> EnvFilter {
     let mut env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // Pipeline event tracing (target `wm::event`) is on by default at `info` and
-    // follows the global level otherwise. `WORKMUX_EVENTS` overrides just that
+    // follows the global level otherwise. `MUXIX_EVENTS` overrides just that
     // target — `off` silences it in production, `debug`/`trace` turn on the
     // high-frequency per-poll events — without touching the rest of the filter.
-    // Config (`events.level`) is the fallback when `WORKMUX_EVENTS` is unset.
-    let level = std::env::var("WORKMUX_EVENTS")
+    // Config (`events.level`) is the fallback when `MUXIX_EVENTS` is unset.
+    let level = std::env::var("MUXIX_EVENTS")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -44,10 +44,10 @@ fn build_env_filter(event_level: Option<&str>) -> EnvFilter {
 }
 
 /// Adjust the `wm::event` trace level from config after init. No-op if
-/// `WORKMUX_EVENTS` is set (env wins) or the subscriber was never installed
+/// `MUXIX_EVENTS` is set (env wins) or the subscriber was never installed
 /// (e.g. sandbox guest). Invalid levels are warned about, not fatal.
 pub fn set_event_level(level: &str) {
-    if std::env::var("WORKMUX_EVENTS")
+    if std::env::var("MUXIX_EVENTS")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false)
     {
@@ -94,15 +94,15 @@ fn init_inner() -> Result<()> {
 
     // Wrap the env filter in a reload layer so config (`events.level`) can adjust
     // the `wm::event` level after the subscriber is installed. The base level
-    // still honours `WORKMUX_EVENTS` / `RUST_LOG` first.
+    // still honours `MUXIX_EVENTS` / `RUST_LOG` first.
     let env_filter = build_env_filter(None);
     let (filter_layer, reload_handle) = reload::Layer::new(env_filter);
     let _ = FILTER_RELOAD.set(reload_handle);
 
     // Format: JSON lines by default (one object per line — both `jq`-queryable
     // and grep-friendly), so structured event/span fields stay machine-readable.
-    // `WORKMUX_LOG_FORMAT=text` switches back to the human-readable formatter.
-    let text_format = std::env::var("WORKMUX_LOG_FORMAT")
+    // `MUXIX_LOG_FORMAT=text` switches back to the human-readable formatter.
+    let text_format = std::env::var("MUXIX_LOG_FORMAT")
         .map(|v| {
             matches!(
                 v.trim().to_ascii_lowercase().as_str(),
@@ -142,11 +142,11 @@ fn init_inner() -> Result<()> {
 
 fn determine_log_path() -> Result<PathBuf> {
     if let Ok(state_dir) = crate::xdg::state_dir() {
-        return Ok(state_dir.join("workmux.log"));
+        return Ok(state_dir.join("muxix.log"));
     }
 
     // Fallback to current directory if home cannot be determined
-    Ok(std::env::current_dir()?.join("workmux.log"))
+    Ok(std::env::current_dir()?.join("muxix.log"))
 }
 
 fn split_path(path: &Path) -> Result<(PathBuf, &str)> {

@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1.4
 #
-# Build the workmux binary against Debian bookworm glibc (2.36) so it runs on any
+# Build the muxix binary against Debian bookworm glibc (2.36) so it runs on any
 # bookworm-based runtime — including node:20, the demo devstation. Built via
-# `just build-docker` or the `make demo-build-workmux`, then consumed with
+# `just build-docker` or the `make demo-build-muxix`, then consumed with
 # `COPY --from=<image>`.
 #
 # Caching model (fast incremental rebuilds):
 #   • The dependency layer compiles crates.io deps + vendor/* path deps against a
 #     stub main.rs. It stays cached until Cargo.toml/Cargo.lock/vendor//build.rs
 #     change.
-#   • Editing src/ only re-runs the final workmux-crate compile — not the dep graph.
+#   • Editing src/ only re-runs the final muxix-crate compile — not the dep graph.
 #   • registry/git cache mounts speed dep *downloads*. target/ is deliberately NOT
 #     cache-mounted: compiled artifacts are glibc-specific and a target/ cache from a
 #     different base image (e.g. trixie, glibc 2.39) poisons a bookworm build.
@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     mkdir -p src && echo 'fn main() {}' > src/main.rs && \
     cargo build --release && \
-    rm -rf src target/release/workmux target/release/deps/workmux-*
+    rm -rf src target/release/muxix target/release/deps/muxix-*
 
 # --- Application layer ------------------------------------------------------
 # Only this layer rebuilds on code changes; the dependency layer above stays cached.
@@ -57,7 +57,7 @@ COPY CHANGELOG.md README.md LICENSE ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo build --release && \
-    cp target/release/workmux /workmux
+    cp target/release/muxix /muxix
 
 # --- Runtime ----------------------------------------------------------------
 FROM debian:bookworm-slim
@@ -66,5 +66,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /workmux /usr/local/bin/workmux
-ENTRYPOINT ["workmux"]
+COPY --from=builder /muxix /usr/local/bin/muxix
+ENTRYPOINT ["muxix"]

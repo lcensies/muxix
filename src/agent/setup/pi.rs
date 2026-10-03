@@ -3,7 +3,7 @@
 //! Detects pi via its config directory at `~/.pi/agent/`.
 //! Override with `PI_CODING_AGENT_DIR` env var.
 //!
-//! Installs extension by writing `workmux-status.ts` to the extensions directory.
+//! Installs extension by writing `muxix-status.ts` to the extensions directory.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -14,9 +14,9 @@ use std::process::Command;
 use super::StatusCheck;
 
 /// The pi extension source, embedded at compile time.
-const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/workmux-status.ts");
+const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
 
-/// How workmux injects the configured system prompt into pi.
+/// How muxix injects the configured system prompt into pi.
 ///
 /// When pi runs through cliproxy, the proxy forces its own system prompt and
 /// discards `APPEND_SYSTEM.md` at the API level. `BeforeAgentStart` is the
@@ -28,7 +28,7 @@ const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/workmux-sta
 pub enum PiInjectionMethod {
     /// Inject via the extension's `context` hook (default), appending the
     /// content to the first user message. Writes to
-    /// `~/.pi/agent/workmux-pre-inject.md`.
+    /// `~/.pi/agent/muxix-pre-inject.md`.
     #[default]
     BeforeAgentStart,
     /// Write directly to `APPEND_SYSTEM.md` (native pi mechanism).
@@ -39,7 +39,7 @@ pub enum PiInjectionMethod {
 /// Pi-specific bootstrap configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PiBootstrapConfig {
-    /// How to inject the workmux system prompt. Default: `before_agent_start`.
+    /// How to inject the muxix system prompt. Default: `before_agent_start`.
     #[serde(default)]
     pub injection_method: PiInjectionMethod,
 }
@@ -80,7 +80,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
 }
 
 fn extension_path() -> Option<PathBuf> {
-    pi_agent_dir().map(|d| d.join("extensions/workmux-status.ts"))
+    pi_agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
 }
 
 pub struct Bootstrapper {
@@ -105,7 +105,7 @@ impl Bootstrapper {
 
     /// Path where the `BeforeAgentStart` method writes the inject content.
     fn pre_inject_path(&self) -> PathBuf {
-        self.agent_dir.join("workmux-pre-inject.md")
+        self.agent_dir.join("muxix-pre-inject.md")
     }
 }
 
@@ -156,10 +156,10 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux extension is installed for pi, and current.
+/// Check if muxix extension is installed for pi, and current.
 ///
 /// The installed file is a copy of `EXTENSION_SOURCE`, so anything else means
-/// workmux was upgraded without a re-setup; existence alone would pin users to
+/// muxix was upgraded without a re-setup; existence alone would pin users to
 /// whichever version first ran setup.
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = extension_path() else {
@@ -170,7 +170,7 @@ pub fn check() -> Result<StatusCheck> {
         Err(_) => Ok(StatusCheck::NotInstalled),
         Ok(body) if body == EXTENSION_SOURCE => Ok(StatusCheck::Installed),
         Ok(_) => Ok(StatusCheck::Stale {
-            missing: vec!["workmux-status.ts differs from this workmux build".into()],
+            missing: vec!["muxix-status.ts differs from this muxix build".into()],
         }),
     }
 }
@@ -218,7 +218,7 @@ pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
 ///
 /// This is the correct mechanism — `pi install` registers the extension in
 /// `settings.json` so it loads on every pi startup, including bare launches
-/// not managed by workmux.
+/// not managed by muxix.
 pub fn install_plugin_from_url(url: &str) -> Result<String> {
     let plugin_name = url
         .trim_end_matches('/')
@@ -255,7 +255,7 @@ pub fn remove_plugin(spec: &str) -> Result<String> {
     Ok(format!("Removed pi extension: {}", spec))
 }
 
-/// Install workmux extension for pi.
+/// Install muxix extension for pi.
 /// Returns a description of what was done.
 pub fn install() -> Result<String> {
     let path =
@@ -296,12 +296,12 @@ mod plugin_installed_tests {
     #[test]
     fn outdated_extension_copy_is_stale_not_installed() {
         let tmp = tempfile::tempdir().unwrap();
-        let ext = tmp.path().join("extensions/workmux-status.ts");
+        let ext = tmp.path().join("extensions/muxix-status.ts");
         fs::create_dir_all(ext.parent().unwrap()).unwrap();
         with_agent_dir(tmp.path(), || {
             assert!(matches!(check().unwrap(), StatusCheck::NotInstalled));
 
-            fs::write(&ext, "// an older workmux build").unwrap();
+            fs::write(&ext, "// an older muxix build").unwrap();
             assert!(matches!(check().unwrap(), StatusCheck::Stale { .. }));
 
             fs::write(&ext, EXTENSION_SOURCE).unwrap();

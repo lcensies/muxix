@@ -1,8 +1,8 @@
 //! Filesystem-backed read/write API for the per-project runtime state store.
 //!
-//! Layout (relative to the project's `.workmux/` directory):
+//! Layout (relative to the project's `.muxix/` directory):
 //! ```text
-//! .workmux/state/
+//! .muxix/state/
 //! ├── project.json        # the ProjectState document
 //! └── project.lock        # O_EXCL mutex guarding read-modify-write
 //! ```
@@ -28,15 +28,15 @@ pub const DEFAULT_CAPABILITY_TTL_SECS: u64 = 300;
 
 /// Read/write handle for a project's runtime state store.
 pub struct ProjectStateStore {
-    /// The `.workmux/state` directory.
+    /// The `.muxix/state` directory.
     dir: PathBuf,
 }
 
 impl ProjectStateStore {
-    /// Open the store for `project_dir`, locating the project's `.workmux/`
-    /// directory and ensuring `.workmux/state/` exists.
+    /// Open the store for `project_dir`, locating the project's `.muxix/`
+    /// directory and ensuring `.muxix/state/` exists.
     pub fn open(project_dir: &Path) -> Result<Self> {
-        let dir = crate::config::find_workmux_dir(project_dir).join("state");
+        let dir = crate::config::find_muxix_dir(project_dir).join("state");
         Self::with_dir(dir)
     }
 
@@ -44,8 +44,8 @@ impl ProjectStateStore {
     /// Open the single project-wide store, regardless of which worktree the
     /// caller is in.
     ///
-    /// [`Self::open`] resolves the *nearest* `.workmux/`, and since every
-    /// worktree is a full checkout carrying its own `.workmux.yaml`, calling it
+    /// [`Self::open`] resolves the *nearest* `.muxix/`, and since every
+    /// worktree is a full checkout carrying its own `.muxix.yaml`, calling it
     /// from a worktree yields that worktree's private store. Anything shared
     /// across worktrees — the worktree/session journal above all — must go
     /// through here so there is exactly one journal per project.
@@ -228,7 +228,7 @@ impl ProjectStateStore {
 
     // ── Worktree / session journal ──────────────────────────────────────────
 
-    /// What workmux knows about `handle`, if it created it.
+    /// What muxix knows about `handle`, if it created it.
     pub fn get_worktree(&self, handle: &str) -> Result<Option<WorktreeRecord>> {
         Ok(self.read()?.worktrees.get(handle).cloned())
     }

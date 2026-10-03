@@ -7,11 +7,11 @@ description: A TUI for monitoring agents, reviewing changes, staging hunks, and 
 When running agents in multiple worktrees across many projects, it's helpful to have a centralized view of what each agent is doing. The dashboard provides a TUI for monitoring agents, reviewing their changes, staging hunks, and sending commands.
 
 ::: info Optional feature
-The dashboard is entirely optional. It becomes especially useful when running multiple agents across several projects, but workmux's core workflow works great on its own.
+The dashboard is entirely optional. It becomes especially useful when running multiple agents across several projects, but muxix's core workflow works great on its own.
 :::
 
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
-  <img src="/dashboard.webp" alt="workmux dashboard" style="border-radius: 4px;">
+  <img src="/dashboard.webp" alt="muxix dashboard" style="border-radius: 4px;">
 </div>
 
 For an always-visible, non-intrusive alternative, see the [sidebar](/guide/sidebar/).
@@ -25,7 +25,7 @@ The dashboard requires [status tracking hooks](/guide/status-tracking) to be con
 Add this binding to your `~/.tmux.conf`:
 
 ```bash
-bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
+bind C-s display-popup -h 30 -w 100 -E "muxix dashboard"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup. Feel free to adjust the keybinding and popup dimensions (`-h` and `-w`) as needed.

@@ -1,7 +1,7 @@
 //! Turning a cached org policy into config layers.
 //!
 //! A policy participates in ordinary config resolution rather than being a
-//! post-hoc patch, which is what makes `workmux config resolve --explain` able
+//! post-hoc patch, which is what makes `muxix config resolve --explain` able
 //! to say "this value came from the org policy" at all.
 //!
 //! The two halves sit at opposite ends of the layer stack, and that is
@@ -113,7 +113,7 @@ fn get_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
 /// Which locked paths a lower layer had already set, and to what.
 ///
 /// Reported so a user whose explicit setting was overridden learns why, rather
-/// than concluding workmux ignored their config.
+/// than concluding muxix ignored their config.
 pub fn overrides(base: &Value, locks: &Layer) -> Vec<String> {
     locked_paths(locks)
         .into_iter()

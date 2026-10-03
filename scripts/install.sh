@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# workmux installation script
-# Usage: curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+# muxix installation script
+# Usage: curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
 #
 # Environment variables:
-#   WORKMUX_VERSION      - Pin a specific version (e.g., v0.1.96)
-#   WORKMUX_INSTALL_DIR  - Override install directory (default: /usr/local/bin or ~/.local/bin)
+#   MUXIX_VERSION      - Pin a specific version (e.g., v0.1.96)
+#   MUXIX_INSTALL_DIR  - Override install directory (default: /usr/local/bin or ~/.local/bin)
 #
 # Examples:
-#   WORKMUX_VERSION=v0.1.96 bash install.sh
-#   WORKMUX_INSTALL_DIR=/opt/bin bash install.sh
+#   MUXIX_VERSION=v0.1.96 bash install.sh
+#   MUXIX_INSTALL_DIR=/opt/bin bash install.sh
 #
 # ⚠️ IMPORTANT: This script must be EXECUTED, never SOURCED
 # ❌ WRONG: source install.sh (will exit your shell on errors)
@@ -56,9 +56,9 @@ detect_platform() {
 	*)
 		log_error "Unsupported operating system: $(uname -s)"
 		echo ""
-		echo "workmux supports macOS and Linux."
+		echo "muxix supports macOS and Linux."
 		echo "For other platforms, try building from source with Cargo:"
-		echo "  cargo install workmux"
+		echo "  cargo install muxix"
 		echo ""
 		exit 1
 		;;
@@ -74,9 +74,9 @@ detect_platform() {
 	*)
 		log_error "Unsupported architecture: $(uname -m)"
 		echo ""
-		echo "workmux prebuilt binaries are available for amd64 and arm64."
+		echo "muxix prebuilt binaries are available for amd64 and arm64."
 		echo "For other architectures, try building from source with Cargo:"
-		echo "  cargo install workmux"
+		echo "  cargo install muxix"
 		echo ""
 		exit 1
 		;;
@@ -100,20 +100,20 @@ check_dependencies() {
 	if [ ${#missing[@]} -gt 0 ]; then
 		log_warning "Missing required dependencies: ${missing[*]}"
 		echo ""
-		echo "workmux requires git and tmux to function."
+		echo "muxix requires git and tmux to function."
 		echo "Please install them first:"
 		echo "  - macOS: brew install git tmux"
 		echo "  - Ubuntu/Debian: sudo apt install git tmux"
 		echo "  - Other Linux: Use your distro's package manager"
 		echo ""
-		echo "Installation will continue, but workmux won't work until dependencies are installed."
+		echo "Installation will continue, but muxix won't work until dependencies are installed."
 		echo ""
 	fi
 }
 
 # Download and install from GitHub releases
 install_from_release() {
-	log_info "Installing workmux from GitHub releases..."
+	log_info "Installing muxix from GitHub releases..."
 
 	local platform=$1
 	local tmp_dir
@@ -121,11 +121,11 @@ install_from_release() {
 	trap 'rm -rf "$tmp_dir"' EXIT
 
 	# Get latest release version (or use override)
-	local version="${WORKMUX_VERSION:-}"
+	local version="${MUXIX_VERSION:-}"
 
 	if [ -z "$version" ]; then
 		log_info "Fetching latest release..."
-		local latest_url="https://api.github.com/repos/raine/workmux/releases/latest"
+		local latest_url="https://api.github.com/repos/lcensies/muxix/releases/latest"
 		local release_json
 
 		if command -v curl &>/dev/null; then
@@ -144,7 +144,7 @@ install_from_release() {
 			echo ""
 			echo "This might be due to network issues or GitHub API rate limits."
 			echo "You can specify a version manually:"
-			echo "  WORKMUX_VERSION=v0.1.96 bash install.sh"
+			echo "  MUXIX_VERSION=v0.1.96 bash install.sh"
 			echo ""
 			exit 1
 		fi
@@ -153,8 +153,8 @@ install_from_release() {
 	log_info "Installing version: $version"
 
 	# Download URL
-	local archive_name="workmux-${platform}.tar.gz"
-	local download_url="https://github.com/raine/workmux/releases/download/${version}/${archive_name}"
+	local archive_name="muxix-${platform}.tar.gz"
+	local download_url="https://github.com/lcensies/muxix/releases/download/${version}/${archive_name}"
 
 	log_info "Downloading $archive_name..."
 
@@ -165,7 +165,7 @@ install_from_release() {
 			echo ""
 			echo "The release may not have a prebuilt binary for your platform."
 			echo "Try installing with Cargo instead:"
-			echo "  cargo install workmux"
+			echo "  cargo install muxix"
 			echo ""
 			cd - >/dev/null || cd "$HOME"
 			exit 1
@@ -176,7 +176,7 @@ install_from_release() {
 			echo ""
 			echo "The release may not have a prebuilt binary for your platform."
 			echo "Try installing with Cargo instead:"
-			echo "  cargo install workmux"
+			echo "  cargo install muxix"
 			echo ""
 			cd - >/dev/null || cd "$HOME"
 			exit 1
@@ -186,7 +186,7 @@ install_from_release() {
 	# Download and verify checksum
 	log_info "Verifying checksum..."
 	local checksum_file="${archive_name%.tar.gz}.sha256"
-	local checksum_url="https://github.com/raine/workmux/releases/download/${version}/${checksum_file}"
+	local checksum_url="https://github.com/lcensies/muxix/releases/download/${version}/${checksum_file}"
 
 	if command -v curl &>/dev/null; then
 		if ! curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-time 30 -o "$checksum_file" "$checksum_url"; then
@@ -237,7 +237,7 @@ install_from_release() {
 	fi
 
 	# Determine install location (with override support)
-	local install_dir="${WORKMUX_INSTALL_DIR:-}"
+	local install_dir="${MUXIX_INSTALL_DIR:-}"
 	if [ -z "$install_dir" ]; then
 		if [[ -w /usr/local/bin ]]; then
 			install_dir="/usr/local/bin"
@@ -248,36 +248,36 @@ install_from_release() {
 	fi
 
 	# Check for existing installation
-	if [ -f "$install_dir/workmux" ]; then
+	if [ -f "$install_dir/muxix" ]; then
 		local existing_version
-		existing_version=$("$install_dir/workmux" --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+		existing_version=$("$install_dir/muxix" --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 		log_info "Existing installation found: $existing_version"
 		log_info "Upgrading to: $version"
 	fi
 
 	# Install binary atomically
 	log_info "Installing to $install_dir..."
-	local tmp_binary="$install_dir/workmux.tmp.$$"
+	local tmp_binary="$install_dir/muxix.tmp.$$"
 
 	if [[ -w "$install_dir" ]]; then
-		cp workmux "$tmp_binary"
+		cp muxix "$tmp_binary"
 		chmod +x "$tmp_binary"
-		mv -f "$tmp_binary" "$install_dir/workmux"
+		mv -f "$tmp_binary" "$install_dir/muxix"
 	else
-		if ! sudo cp workmux "$tmp_binary"; then
+		if ! sudo cp muxix "$tmp_binary"; then
 			log_error "Failed to install to $install_dir (sudo required)"
 			exit 1
 		fi
 		sudo chmod +x "$tmp_binary"
-		sudo mv -f "$tmp_binary" "$install_dir/workmux"
+		sudo mv -f "$tmp_binary" "$install_dir/muxix"
 	fi
 
 	# Remove macOS quarantine attribute if present
 	if [[ "$(uname -s)" == "Darwin" ]] && command -v xattr &>/dev/null; then
-		xattr -d com.apple.quarantine "$install_dir/workmux" 2>/dev/null || true
+		xattr -d com.apple.quarantine "$install_dir/muxix" 2>/dev/null || true
 	fi
 
-	log_success "workmux installed to $install_dir/workmux"
+	log_success "muxix installed to $install_dir/muxix"
 
 	# Check if install_dir is in PATH
 	if [[ ":$PATH:" != *":$install_dir:"* ]]; then
@@ -299,24 +299,24 @@ verify_installation() {
 	local install_dir="$1"
 
 	# Verify the binary exists and is executable
-	if [ ! -x "$install_dir/workmux" ]; then
-		log_error "workmux binary not found or not executable at $install_dir/workmux"
+	if [ ! -x "$install_dir/muxix" ]; then
+		log_error "muxix binary not found or not executable at $install_dir/muxix"
 		exit 1
 	fi
 
 	# Test the binary works
-	if ! "$install_dir/workmux" --version &>/dev/null; then
-		log_error "workmux binary exists but failed to run"
+	if ! "$install_dir/muxix" --version &>/dev/null; then
+		log_error "muxix binary exists but failed to run"
 		exit 1
 	fi
 
-	log_success "workmux is installed and ready!"
+	log_success "muxix is installed and ready!"
 	echo ""
-	"$install_dir/workmux" --version
+	"$install_dir/muxix" --version
 	echo ""
 
 	# Check if install_dir is in PATH
-	if ! command -v workmux &>/dev/null; then
+	if ! command -v muxix &>/dev/null; then
 		log_warning "$install_dir is not in your PATH"
 		echo ""
 		echo "Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
@@ -326,20 +326,20 @@ verify_installation() {
 
 	echo "Get started:"
 	echo "  cd your-project"
-	echo "  workmux init         # (optional) create .workmux.yaml config"
-	echo "  workmux add feature  # create a worktree and tmux window"
+	echo "  muxix init         # (optional) create .muxix.yaml config"
+	echo "  muxix add feature  # create a worktree and tmux window"
 	echo ""
 	echo "Recommended:"
-	echo "  alias wm='workmux'   # add to your shell profile for faster typing"
+	echo "  alias wm='muxix'   # add to your shell profile for faster typing"
 	echo ""
-	echo "Documentation: https://workmux.raine.dev"
+	echo "Documentation: https://muxix.dev"
 	echo ""
 }
 
 # Main installation flow
 main() {
 	echo ""
-	echo "🚀 workmux installer"
+	echo "🚀 muxix installer"
 	echo ""
 
 	log_info "Detecting platform..."

@@ -1,25 +1,25 @@
-"""Tests for pre_remove hooks in `workmux remove` and `workmux merge`."""
+"""Tests for pre_remove hooks in `muxix remove` and `muxix merge`."""
 
 from pathlib import Path
 
 from .conftest import (
     MuxEnvironment,
     get_worktree_path,
-    run_workmux_add,
-    run_workmux_merge,
-    run_workmux_remove,
-    write_workmux_config,
+    run_muxix_add,
+    run_muxix_merge,
+    run_muxix_remove,
+    write_muxix_config,
     create_commit,
 )
 
 
 class TestPreRemoveHooksRemove:
-    """Tests for pre_remove hook execution during `workmux remove`."""
+    """Tests for pre_remove hook execution during `muxix remove`."""
 
     def test_pre_remove_hook_runs_on_remove(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks run when removing a worktree."""
@@ -27,16 +27,16 @@ class TestPreRemoveHooksRemove:
         branch_name = "feature-pre-remove"
         marker_file = env.tmp_path / "pre_remove_ran.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f"touch {marker_file}"],
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         worktree_path = get_worktree_path(repo_path, branch_name)
         assert worktree_path.exists()
 
-        run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+        run_muxix_remove(env, muxix_exe_path, repo_path, branch_name, force=True)
 
         assert marker_file.exists(), "pre_remove hook should have created marker file"
         assert not worktree_path.exists(), "Worktree should be removed after hook runs"
@@ -44,7 +44,7 @@ class TestPreRemoveHooksRemove:
     def test_pre_remove_hook_receives_wm_handle(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_HANDLE environment variable is set correctly."""
@@ -52,13 +52,13 @@ class TestPreRemoveHooksRemove:
         branch_name = "feature-handle-test"
         env_file = env.tmp_path / "hook_env.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f'echo "$WM_HANDLE" > {env_file}'],
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
-        run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
+        run_muxix_remove(env, muxix_exe_path, repo_path, branch_name, force=True)
 
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
@@ -69,7 +69,7 @@ class TestPreRemoveHooksRemove:
     def test_pre_remove_hook_receives_wm_worktree_path(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_WORKTREE_PATH environment variable is set correctly."""
@@ -77,15 +77,15 @@ class TestPreRemoveHooksRemove:
         branch_name = "feature-path-test"
         env_file = env.tmp_path / "hook_worktree_path.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f'echo "$WM_WORKTREE_PATH" > {env_file}'],
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         expected_path = get_worktree_path(repo_path, branch_name)
 
-        run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+        run_muxix_remove(env, muxix_exe_path, repo_path, branch_name, force=True)
 
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
@@ -96,7 +96,7 @@ class TestPreRemoveHooksRemove:
     def test_pre_remove_hook_receives_wm_project_root(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that WM_PROJECT_ROOT environment variable is set correctly."""
@@ -104,13 +104,13 @@ class TestPreRemoveHooksRemove:
         branch_name = "feature-root-test"
         env_file = env.tmp_path / "hook_project_root.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f'echo "$WM_PROJECT_ROOT" > {env_file}'],
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
-        run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
+        run_muxix_remove(env, muxix_exe_path, repo_path, branch_name, force=True)
 
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
@@ -121,7 +121,7 @@ class TestPreRemoveHooksRemove:
     def test_pre_remove_hook_can_copy_files_to_project_root(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that hooks can use env vars to copy files to the project root."""
@@ -130,7 +130,7 @@ class TestPreRemoveHooksRemove:
         artifacts_dir = "artifacts"
 
         # Hook creates artifacts dir and copies a file there
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             post_create=["echo 'test content' > artifact.txt"],
             pre_remove=[
@@ -139,8 +139,8 @@ class TestPreRemoveHooksRemove:
             ],
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
-        run_workmux_remove(env, workmux_exe_path, repo_path, branch_name, force=True)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
+        run_muxix_remove(env, muxix_exe_path, repo_path, branch_name, force=True)
 
         # Verify the artifact was copied to the main project
         copied_file = repo_path / artifacts_dir / branch_name / "artifact.txt"
@@ -149,12 +149,12 @@ class TestPreRemoveHooksRemove:
 
 
 class TestPreRemoveHooksMerge:
-    """Tests for pre_remove hook execution during `workmux merge`."""
+    """Tests for pre_remove hook execution during `muxix merge`."""
 
     def test_pre_remove_hook_runs_on_merge(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks run when merging a worktree."""
@@ -162,17 +162,17 @@ class TestPreRemoveHooksMerge:
         branch_name = "feature-merge-hook"
         marker_file = env.tmp_path / "pre_remove_merge_ran.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f"touch {marker_file}"],
             env=env,  # Commit config to avoid uncommitted changes error
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         worktree_path = get_worktree_path(repo_path, branch_name)
         create_commit(env, worktree_path, "feat: test commit")
 
-        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_merge(env, muxix_exe_path, repo_path, branch_name)
 
         assert marker_file.exists(), "pre_remove hook should have run during merge"
         assert not worktree_path.exists(), "Worktree should be removed after merge"
@@ -180,7 +180,7 @@ class TestPreRemoveHooksMerge:
     def test_pre_remove_hook_not_run_on_merge_with_keep(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that pre_remove hooks do NOT run with --keep flag."""
@@ -188,17 +188,17 @@ class TestPreRemoveHooksMerge:
         branch_name = "feature-merge-keep"
         marker_file = env.tmp_path / "pre_remove_keep_ran.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[f"touch {marker_file}"],
             env=env,
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         worktree_path = get_worktree_path(repo_path, branch_name)
         create_commit(env, worktree_path, "feat: test commit")
 
-        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name, keep=True)
+        run_muxix_merge(env, muxix_exe_path, repo_path, branch_name, keep=True)
 
         assert not marker_file.exists(), (
             "pre_remove hook should NOT run when using --keep"
@@ -208,7 +208,7 @@ class TestPreRemoveHooksMerge:
     def test_pre_remove_hook_receives_all_env_vars_on_merge(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies all environment variables are set correctly during merge."""
@@ -216,7 +216,7 @@ class TestPreRemoveHooksMerge:
         branch_name = "feature-merge-env"
         env_file = env.tmp_path / "merge_hook_env.txt"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=[
                 f'echo "HANDLE=$WM_HANDLE" >> {env_file}',
@@ -226,11 +226,11 @@ class TestPreRemoveHooksMerge:
             env=env,
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         expected_worktree = get_worktree_path(repo_path, branch_name)
         create_commit(env, expected_worktree, "feat: test commit")
 
-        run_workmux_merge(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_merge(env, muxix_exe_path, repo_path, branch_name)
 
         assert env_file.exists(), "Hook should have written environment variables"
         content = env_file.read_text()
@@ -245,23 +245,23 @@ class TestPreRemoveHookFailure:
     def test_pre_remove_hook_failure_aborts_remove(
         self,
         mux_server: MuxEnvironment,
-        workmux_exe_path: Path,
+        muxix_exe_path: Path,
         repo_path: Path,
     ):
         """Verifies that a failing pre_remove hook aborts the removal."""
         env = mux_server
         branch_name = "feature-fail-hook"
 
-        write_workmux_config(
+        write_muxix_config(
             repo_path,
             pre_remove=["exit 1"],  # Hook that fails
         )
 
-        run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+        run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
         worktree_path = get_worktree_path(repo_path, branch_name)
 
-        run_workmux_remove(
-            env, workmux_exe_path, repo_path, branch_name, force=True, expect_fail=True
+        run_muxix_remove(
+            env, muxix_exe_path, repo_path, branch_name, force=True, expect_fail=True
         )
 
         assert worktree_path.exists(), "Worktree should NOT be removed when hook fails"

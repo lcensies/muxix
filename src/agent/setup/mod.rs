@@ -2,7 +2,7 @@
 //!
 //! Detects which agent CLIs the user has, checks if status tracking
 //! hooks are installed, and offers to install them. Used by both the
-//! `workmux setup` command and the first-run wizard.
+//! `muxix setup` command and the first-run wizard.
 
 pub mod claude;
 pub mod codex;
@@ -112,9 +112,9 @@ impl Agent {
 }
 
 /// Where this agent keeps its own **JSON** settings file — the file the agent
-/// itself reads, not a workmux-owned copy.
+/// itself reads, not a muxix-owned copy.
 ///
-/// `None` for an agent whose settings workmux cannot patch: Codex keeps its
+/// `None` for an agent whose settings muxix cannot patch: Codex keeps its
 /// config in TOML (`~/.codex/config.toml`), and Copilot CLI has no known
 /// global settings file. A declared settings patch for those is skipped rather
 /// than written to a guessed path or a format the merge patch cannot express.
@@ -134,8 +134,8 @@ pub fn settings_file(agent: Agent) -> Option<PathBuf> {
 pub enum StatusCheck {
     /// Hooks are installed and current (all required commands present).
     Installed,
-    /// Some workmux hooks are present but the required set is incomplete —
-    /// typically workmux was updated (new hooks added to plugin.json) without a
+    /// Some muxix hooks are present but the required set is incomplete —
+    /// typically muxix was updated (new hooks added to plugin.json) without a
     /// re-setup. `missing` lists the required hook commands not found. Re-running
     /// install merges them in.
     Stale { missing: Vec<String> },
@@ -283,7 +283,7 @@ pub fn install(agent: Agent) -> Result<String> {
     }
 }
 
-/// Whether an agent emits workmux's **pane-keyed pipeline signals**
+/// Whether an agent emits muxix's **pane-keyed pipeline signals**
 /// (`session-ready`, `turn-done`) natively via its installed hook/plugin, or the
 /// harness must rely on the agent-agnostic echo probe + content idle fallback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,14 +298,14 @@ pub enum SignalSupport {
 
 /// Pipeline-signal support for an agent. **Exhaustive** over [`Agent`], so adding
 /// a new agent (or wiring its hook/plugin) forces a decision here and shows up in
-/// `workmux mcp status`.
+/// `muxix mcp status`.
 pub fn signal_support(agent: Agent) -> SignalSupport {
     match agent {
         // Claude: SessionStart/Stop hooks in .claude-plugin/plugin.json.
         Agent::Claude => SignalSupport::Native,
-        // OpenCode: resources/opencode/plugins/workmux-status.ts (init + idle).
+        // OpenCode: resources/opencode/plugins/muxix-status.ts (init + idle).
         Agent::OpenCode => SignalSupport::Native,
-        // pi: .pi/extensions/workmux-status.ts (load + agent_end).
+        // pi: .pi/extensions/muxix-status.ts (load + agent_end).
         Agent::Pi => SignalSupport::Native,
         // omp (oh-my-pi): pi-compatible extension (load + agent_end).
         Agent::Omp => SignalSupport::Native,
@@ -340,8 +340,8 @@ pub trait AgentBootstrapper {
     }
 }
 
-const SENTINEL_BEGIN: &str = "<!-- workmux-bootstrap-begin -->";
-const SENTINEL_END: &str = "<!-- workmux-bootstrap-end -->";
+const SENTINEL_BEGIN: &str = "<!-- muxix-bootstrap-begin -->";
+const SENTINEL_END: &str = "<!-- muxix-bootstrap-end -->";
 
 /// Write prompt content into a file using sentinel comments (idempotent).
 pub(super) fn inline_sentinels(path: &std::path::Path, prompt: &str) -> Result<()> {
@@ -540,7 +540,7 @@ pub(crate) fn print_description(prefix: &str) {
     println!("{prefix}  🤖 = working  💬 = waiting for input  ✅ = done");
     println!(
         "{prefix}  {}",
-        style("https://workmux.raine.dev/guide/status-tracking").dim()
+        style("https://muxix.dev/guide/status-tracking").dim()
     );
 }
 
@@ -593,7 +593,7 @@ pub fn prompt_wizard() -> Result<()> {
         return Ok(());
     }
 
-    if std::env::var("CI").is_ok() || std::env::var("WORKMUX_TEST").is_ok() {
+    if std::env::var("CI").is_ok() || std::env::var("MUXIX_TEST").is_ok() {
         return Ok(());
     }
 
@@ -659,14 +659,14 @@ pub fn prompt_wizard() -> Result<()> {
                 .map(|s| s.name)
                 .collect();
             println!(
-                "{}  workmux includes skills: {}",
+                "{}  muxix includes skills: {}",
                 dim,
                 skill_names.join(", ")
             );
             println!(
                 "{}  Learn more: {}",
                 dim,
-                style("https://workmux.raine.dev/guide/skills").dim()
+                style("https://muxix.dev/guide/skills").dim()
             );
             println!("{}", dim);
 

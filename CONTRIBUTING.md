@@ -1,4 +1,4 @@
-# Contributing to workmux
+# Contributing to muxix
 
 Thanks for your interest in contributing! This guide covers development setup,
 testing, and the PR process.
@@ -23,8 +23,8 @@ To avoid wasted effort, open an issue first to discuss your proposed change.
 
 ```bash
 # Clone and build
-git clone https://github.com/raine/workmux.git
-cd workmux
+git clone https://github.com/lcensies/muxix.git
+cd muxix
 cargo build
 
 # Set up Python test environment
@@ -46,7 +46,7 @@ environment.
 just test
 
 # Run specific test file
-just test tests/test_workmux_add/test_basic.py
+just test tests/test_muxix_add/test_basic.py
 
 # Run with verbose output (shows backend in test names)
 just test tests/test_agent_state.py -vvv
@@ -58,7 +58,7 @@ By default, tests run against **tmux only**.
 
 ```bash
 # Test with WezTerm (requires WezTerm to be running)
-WORKMUX_TEST_BACKEND=wezterm just test
+MUXIX_TEST_BACKEND=wezterm just test
 
 # Test both backends
 just test --backend=tmux,wezterm

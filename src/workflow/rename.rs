@@ -27,7 +27,7 @@ pub fn rename(
     let repo = repo.as_path();
     let (old_path, branch_name) = git::find_worktree_in(user_target, Some(repo)).with_context(|| {
         format!(
-            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+            "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
             user_target
         )
     })?;
@@ -162,7 +162,7 @@ pub fn rename(
         info!(old = branch_name, new = nb, "rename:branch renamed");
     }
 
-    // 12. Migrate workmux.worktree.<handle>.* metadata
+    // 12. Migrate muxix.worktree.<handle>.* metadata
     if new_handle != old_handle
         && let Err(e) = git::migrate_worktree_meta_in(&old_handle, &new_handle, Some(repo))
     {

@@ -1,4 +1,4 @@
-//! Per-project runtime state store at `.workmux/state/project.json`.
+//! Per-project runtime state store at `.muxix/state/project.json`.
 //!
 //! Holds tri-state capability flags and free-form facts discovered/produced by
 //! setup (e.g. `test_command`, `build_command`). Setup steps and harness bash
@@ -7,7 +7,7 @@
 //! stale-lock reclaim guarding against a crashed owner deadlocking the rest.
 //!
 //! This is runtime FACTS, not workflow config — the workflow lives in
-//! `.workmux/workflows/harness.yaml`.
+//! `.muxix/workflows/harness.yaml`.
 
 mod lock;
 pub mod store;

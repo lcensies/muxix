@@ -4,8 +4,8 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 use tracing::debug;
 
-/// RAII guard that holds an exclusive advisory lock on a `.workmux.lock` file
-/// in the git common directory. Serializes concurrent workmux processes that
+/// RAII guard that holds an exclusive advisory lock on a `.muxix.lock` file
+/// in the git common directory. Serializes concurrent muxix processes that
 /// write to `.git/config`.
 pub struct GitConfigLock {
     _lock: Flock<File>,
@@ -14,7 +14,7 @@ pub struct GitConfigLock {
 impl GitConfigLock {
     /// Acquire an exclusive lock, blocking until available.
     pub fn acquire(git_common_dir: &Path) -> Result<Self> {
-        let lock_path = git_common_dir.join(".workmux.lock");
+        let lock_path = git_common_dir.join(".muxix.lock");
         debug!(path = %lock_path.display(), "config_lock:acquiring");
 
         let file = OpenOptions::new()

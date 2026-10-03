@@ -1,7 +1,7 @@
 //! Copilot CLI status tracking setup.
 //!
 //! Detects Copilot CLI via the `~/.copilot/` directory.
-//! Installs hooks by writing hooks.json to `.github/hooks/workmux-status/`
+//! Installs hooks by writing hooks.json to `.github/hooks/muxix-status/`
 //! in the current git repository.
 //!
 //! Unlike Claude/OpenCode which install globally, Copilot hooks are per-repo.
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use super::StatusCheck;
 
 /// Hooks configuration embedded at compile time.
-const HOOKS_JSON: &str = include_str!("../../../.github/hooks/workmux-status/hooks.json");
+const HOOKS_JSON: &str = include_str!("../../../.github/hooks/muxix-status/hooks.json");
 
 fn copilot_dir() -> Option<PathBuf> {
     home::home_dir().map(|h| h.join(".copilot"))
@@ -32,7 +32,7 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux hooks are installed for Copilot in the current repo.
+/// Check if muxix hooks are installed for Copilot in the current repo.
 pub fn check() -> Result<StatusCheck> {
     let root = match crate::git::get_repo_root() {
         Ok(r) => r,
@@ -53,7 +53,7 @@ pub fn check() -> Result<StatusCheck> {
             let hooks_file = entry.path().join("hooks.json");
             if hooks_file.exists()
                 && let Ok(content) = fs::read_to_string(&hooks_file)
-                && content.contains("workmux set-window-status")
+                && content.contains("muxix set-window-status")
             {
                 return Ok(StatusCheck::Installed);
             }
@@ -63,13 +63,13 @@ pub fn check() -> Result<StatusCheck> {
     Ok(StatusCheck::NotInstalled)
 }
 
-/// Install workmux hooks for Copilot CLI in the current repo.
+/// Install muxix hooks for Copilot CLI in the current repo.
 pub fn install() -> Result<String> {
     let root = crate::git::get_repo_root()
         .context("Must be in a git repository to install Copilot hooks")?;
-    let hooks_dir = root.join(".github/hooks/workmux-status");
+    let hooks_dir = root.join(".github/hooks/muxix-status");
 
-    fs::create_dir_all(&hooks_dir).context("Failed to create .github/hooks/workmux-status/")?;
+    fs::create_dir_all(&hooks_dir).context("Failed to create .github/hooks/muxix-status/")?;
 
     let hooks_file = hooks_dir.join("hooks.json");
     fs::write(&hooks_file, HOOKS_JSON).context("Failed to write hooks.json")?;
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hooks_json_contains_workmux_command() {
-        assert!(HOOKS_JSON.contains("workmux set-window-status"));
+    fn test_hooks_json_contains_muxix_command() {
+        assert!(HOOKS_JSON.contains("muxix set-window-status"));
     }
 }

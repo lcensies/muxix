@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             Ok(result)
         }
         Err(err) => {
-            error!(error = ?err, "workmux failed");
+            error!(error = ?err, "muxix failed");
             // Full anyhow chain (Debug renders every `.context()` cause) so the
             // log alone pins the source of the failure.
             crate::wm_evt!("app.fail", err = %err, chain = ?err);

@@ -6,10 +6,10 @@ use crate::multiplexer::MuxHandle;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
-/// Handle of the worktree a `workmux add` was issued from, or None when it was
+/// Handle of the worktree a `muxix add` was issued from, or None when it was
 /// issued from the main worktree.
 ///
-/// An agent that delegates work runs `workmux add` inside its own worktree, so
+/// An agent that delegates work runs `muxix add` inside its own worktree, so
 /// the execution directory identifies the spawning agent. A spawn from the main
 /// worktree is top-level and has no parent agent.
 fn spawning_worktree_handle(execution_dir: &Path) -> Option<String> {
@@ -184,7 +184,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
 
         eprintln!(
-            "workmux: {} '{}' exists in another repository, using '{}'",
+            "muxix: {} '{}' exists in another repository, using '{}'",
             target.kind(),
             full_target_name,
             suffixed_target.full_name()
@@ -255,7 +255,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Check if branch already has a worktree
     if worktree_exists {
         return Err(anyhow!(
-            "A worktree for branch '{}' already exists. Use 'workmux open {}' to open it.",
+            "A worktree for branch '{}' already exists. Use 'muxix open {}' to open it.",
             branch_name,
             branch_name
         ));
@@ -418,7 +418,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     );
 
     // Acquire an exclusive lock to serialize .git/config writes across parallel
-    // workmux processes. Without this, concurrent `workmux add` commands race on
+    // muxix processes. Without this, concurrent `muxix add` commands race on
     // git's config.lock file and fail with "could not lock config file".
     let _config_lock = git::GitConfigLock::acquire(&context.git_common_dir)
         .context("Failed to acquire git config lock")?;
@@ -470,7 +470,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         )
     })?;
     // Journal the worktree in the project store, including who spawned it. An
-    // agent delegating work runs `workmux add` from inside its own worktree, so
+    // agent delegating work runs `muxix add` from inside its own worktree, so
     // the execution dir names the parent; a restored child uses this to know
     // which agent to report back to.
     //
@@ -687,7 +687,7 @@ pub fn create_with_changes(
 
     if !has_tracked_changes && !has_movable_untracked {
         return Err(anyhow!(
-            "No uncommitted changes to move. Use 'workmux add {}' to create a clean worktree.",
+            "No uncommitted changes to move. Use 'muxix add {}' to create a clean worktree.",
             branch_name
         ));
     }
@@ -697,7 +697,7 @@ pub fn create_with_changes(
     }
 
     // 1. Stash changes
-    let stash_message = format!("workmux: moving changes to {}", branch_name);
+    let stash_message = format!("muxix: moving changes to {}", branch_name);
     git::stash_push(&stash_message, include_untracked, patch)
         .context("Failed to stash current changes")?;
     info!(branch = branch_name, "create_with_changes: changes stashed");

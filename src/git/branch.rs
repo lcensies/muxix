@@ -41,15 +41,15 @@ pub fn get_default_branch_in(workdir: Option<&Path>) -> Result<String> {
     // Check if repo has any commits at all
     if !super::repo::has_commits_in(workdir)? {
         return Err(anyhow!(
-            "The repository has no commits yet. Please make an initial commit before using workmux, \
-            or specify the main branch in .workmux.yaml using the 'main_branch' key."
+            "The repository has no commits yet. Please make an initial commit before using muxix, \
+            or specify the main branch in .muxix.yaml using the 'main_branch' key."
         ));
     }
 
     // No default branch could be determined - require explicit configuration
     Err(anyhow!(
         "Could not determine the default branch (e.g., 'main' or 'master'). \
-        Please specify it in .workmux.yaml using the 'main_branch' key."
+        Please specify it in .muxix.yaml using the 'main_branch' key."
     ))
 }
 
@@ -198,7 +198,7 @@ pub fn list_local_branches_in(workdir: Option<&Path>) -> Result<Vec<String>> {
 /// Rename a local branch using `git branch -m`.
 ///
 /// Git automatically migrates `branch.<old>.*` config (including
-/// `branch.<old>.workmux-base`) to `branch.<new>.*`, so we don't need to
+/// `branch.<old>.muxix-base`) to `branch.<new>.*`, so we don't need to
 /// touch branch-base metadata manually.
 pub fn rename_branch_in(old: &str, new: &str, workdir: Option<&Path>) -> Result<()> {
     let cmd = Cmd::new("git").args(&["branch", "-m", old, new]);
@@ -377,13 +377,13 @@ pub fn set_branch_base(branch: &str, base: &str) -> Result<()> {
 
 /// Store the base branch/commit in a specific workdir
 pub fn set_branch_base_in(branch: &str, base: &str, workdir: Option<&Path>) -> Result<()> {
-    let config_key = format!("branch.{}.workmux-base", branch);
+    let config_key = format!("branch.{}.muxix-base", branch);
     let cmd = Cmd::new("git").args(&["config", "--local", &config_key, base]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
         None => cmd,
     };
-    cmd.run().context("Failed to set workmux-base config")?;
+    cmd.run().context("Failed to set muxix-base config")?;
     Ok(())
 }
 
@@ -394,7 +394,7 @@ pub fn get_branch_base(branch: &str) -> Result<String> {
 
 /// Get the base branch for a given branch in a specific workdir
 pub fn get_branch_base_in(branch: &str, workdir: Option<&Path>) -> Result<String> {
-    let config_key = format!("branch.{}.workmux-base", branch);
+    let config_key = format!("branch.{}.muxix-base", branch);
     let cmd = Cmd::new("git").args(&["config", "--local", &config_key]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
@@ -402,10 +402,10 @@ pub fn get_branch_base_in(branch: &str, workdir: Option<&Path>) -> Result<String
     };
     let output = cmd
         .run_and_capture_stdout()
-        .context("Failed to get workmux-base config")?;
+        .context("Failed to get muxix-base config")?;
 
     if output.is_empty() {
-        return Err(anyhow!("No workmux-base found for branch '{}'", branch));
+        return Err(anyhow!("No muxix-base found for branch '{}'", branch));
     }
 
     Ok(output)

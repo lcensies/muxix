@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct ProvisionConfig {
     /// Provision server URL (e.g. "https://provision.corp.example.com").
-    /// Env var: WORKMUX_PROVISION_URL (takes precedence over this field).
+    /// Env var: MUXIX_PROVISION_URL (takes precedence over this field).
     pub server_url: Option<String>,
 
     /// Bearer token, or a `${env:VAR}` / `${file:/path}` reference to one.
@@ -12,18 +12,18 @@ pub struct ProvisionConfig {
     /// Placeholders are expanded at use, never during config resolution, so a
     /// resolved config never holds the secret. Prefer a placeholder over a
     /// literal -- this field lives in a config file.
-    /// Env var: WORKMUX_PROVISION_TOKEN (takes precedence over this field).
+    /// Env var: MUXIX_PROVISION_TOKEN (takes precedence over this field).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
 
     /// Path to a file containing the bearer token (must be mode 600).
-    /// Env var: WORKMUX_PROVISION_TOKEN (takes precedence over this field).
+    /// Env var: MUXIX_PROVISION_TOKEN (takes precedence over this field).
     pub token_path: Option<String>,
 
     /// Where the policy comes from: `http` (default), `file`, or `exec`.
     ///
     /// Pluggable so an organization can be governed without standing up a
-    /// workmux-shaped HTTP server: `file` reads a policy dropped on disk,
+    /// muxix-shaped HTTP server: `file` reads a policy dropped on disk,
     /// `exec` runs a helper that already knows how to authenticate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
@@ -45,7 +45,7 @@ pub struct ProvisionConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoints: Option<ProvisionEndpoints>,
 
-    /// Run provision sync automatically during `workmux setup`. Default: false.
+    /// Run provision sync automatically during `muxix setup`. Default: false.
     pub sync_on_setup: Option<bool>,
 
     /// How long fetched policy stays fresh (seconds). Default: 86400 (24h).
@@ -187,7 +187,7 @@ pub struct GatewayEndpoint {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<String>,
     /// Provider id written into the agent's own config. Supplied by the server
-    /// so each organization names its own gateway; workmux falls back to a
+    /// so each organization names its own gateway; muxix falls back to a
     /// neutral default rather than carrying any vendor's branding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,

@@ -4,8 +4,8 @@
 //! and exposes them through the Multiplexer trait interface.
 //!
 //! Note on terminology:
-//! - Kitty "window" = workmux "pane" (a terminal split)
-//! - Kitty "tab" = workmux "window" (a named tab)
+//! - Kitty "window" = muxix "pane" (a terminal split)
+//! - Kitty "tab" = muxix "window" (a named tab)
 //! - Kitty "OS window" = the actual window on screen
 
 use crate::cmd::Cmd;
@@ -32,7 +32,7 @@ struct KittyProcess {
     cmdline: Vec<String>,
 }
 
-/// Kitty window (= workmux pane) from `kitten @ ls`
+/// Kitty window (= muxix pane) from `kitten @ ls`
 #[derive(Debug, Deserialize)]
 struct KittyWindow {
     id: u64,
@@ -46,7 +46,7 @@ struct KittyWindow {
     foreground_processes: Vec<KittyProcess>,
 }
 
-/// Kitty tab (= workmux window) from `kitten @ ls`
+/// Kitty tab (= muxix window) from `kitten @ ls`
 #[derive(Debug, Deserialize)]
 struct KittyTab {
     id: u64,
@@ -283,8 +283,8 @@ impl Multiplexer for KittyBackend {
 
         // Otherwise treat `target` as a window/tab name (e.g. `wm-alpha`) and
         // return the active/focused pane in that tab. Kitty tabs correspond to
-        // workmux windows, and each tab normally contains one or more windows
-        // (workmux panes). We scope the search to the current OS window so the
+        // muxix windows, and each tab normally contains one or more windows
+        // (muxix panes). We scope the search to the current OS window so the
         // orchestrator finds the worktree it just created in this instance.
         let panes = self.list_panes().ok()?;
         let scoped = self.panes_in_current_scope(&panes);
@@ -797,7 +797,7 @@ impl Multiplexer for KittyBackend {
                 "set-user-vars",
                 "--match",
                 &match_arg,
-                &format!("workmux_status={}", icon),
+                &format!("muxix_status={}", icon),
             ])
             .run();
 
@@ -809,7 +809,7 @@ impl Multiplexer for KittyBackend {
                 "set-user-vars",
                 "--match",
                 &match_arg,
-                &format!("workmux_auto_clear={}", auto_clear_val),
+                &format!("muxix_auto_clear={}", auto_clear_val),
             ])
             .run();
 
@@ -824,7 +824,7 @@ impl Multiplexer for KittyBackend {
                 "set-user-vars",
                 "--match",
                 &format!("id:{}", pane_id),
-                "workmux_status=",
+                "muxix_status=",
             ])
             .run();
         Ok(())

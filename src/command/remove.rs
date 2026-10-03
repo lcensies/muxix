@@ -49,7 +49,7 @@ fn run_specified(names: Vec<String>, force: bool, keep_branch: bool) -> Result<(
                     (path, String::new())
                 } else {
                     return Err(anyhow!(
-                        "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                        "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
                         name
                     )
                     .context(e));

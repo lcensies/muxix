@@ -1,13 +1,18 @@
 {
-  "name": "workmux-status",
-  "description": "Display Claude agent status in tmux window names via workmux",
+  "name": "muxix-status",
+  "description": "Display Claude agent status in tmux window names via muxix",
   "version": "1.0.0",
   "author": {
-    "name": "raine"
+    "name": "muxix contributors"
   },
-  "repository": "https://github.com/raine/workmux",
+  "repository": "https://github.com/lcensies/muxix",
   "license": "MIT",
-  "keywords": ["tmux", "workmux", "status", "agent"],
+  "keywords": [
+    "tmux",
+    "muxix",
+    "status",
+    "agent"
+  ],
   "commands": "./commands/",
   "hooks": {
     "UserPromptSubmit": [
@@ -15,11 +20,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status working"
+            "command": "muxix set-window-status working"
           },
           {
             "type": "command",
-            "command": "workmux signal working"
+            "command": "muxix signal working"
           }
         ]
       }
@@ -30,11 +35,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status waiting"
+            "command": "muxix set-window-status waiting"
           },
           {
             "type": "command",
-            "command": "workmux signal needs-input"
+            "command": "muxix signal needs-input"
           }
         ]
       }
@@ -44,11 +49,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status working"
+            "command": "muxix set-window-status working"
           },
           {
             "type": "command",
-            "command": "workmux signal working"
+            "command": "muxix signal working"
           }
         ]
       }
@@ -58,11 +63,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status done"
+            "command": "muxix set-window-status done"
           },
           {
             "type": "command",
-            "command": "workmux signal turn-done"
+            "command": "muxix signal turn-done"
           }
         ]
       }
@@ -72,11 +77,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux signal session-ready"
+            "command": "muxix signal session-ready"
           },
           {
             "type": "command",
-            "command": "workmux hooks-report"
+            "command": "muxix hooks-report"
           }
         ]
       }

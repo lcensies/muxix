@@ -1,7 +1,7 @@
-# Example project config — copy to `.workmux.yaml` at your repo root and trim.
+# Example project config — copy to `.muxix.yaml` at your repo root and trim.
 # Only project-specific things belong here; personal defaults go in
-# ~/.config/workmux/config.yaml (see docs/guide/configuration.md).
-# `workmux init` writes a fully annotated version of this file for you.
+# ~/.config/muxix/config.yaml (see docs/guide/configuration.md).
+# `muxix init` writes a fully annotated version of this file for you.
 
 panes:
   - command: <agent> # the configured agent (claude, pi, codex, ...)
@@ -20,13 +20,13 @@ files:
   # copy:
   #   - .env
 
-# Gate `workmux merge` on the project's own checks.
+# Gate `muxix merge` on the project's own checks.
 pre_merge:
   - just check-ci
   - just test
 
-# Pipeline event tracing (`~/.local/state/workmux.log`), see
-# docs/reference/events.md. WORKMUX_EVENTS overrides `level`.
+# Pipeline event tracing (`~/.local/state/muxix.log`), see
+# docs/reference/events.md. MUXIX_EVENTS overrides `level`.
 # events:
 #   enabled: true
 #   level: info

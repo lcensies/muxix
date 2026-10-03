@@ -299,7 +299,7 @@ fn handle_proxy_connection(stream: TcpStream, ctx: &ProxyContext) -> Result<()> 
     debug!(hostname, port, "CONNECT request");
 
     // Verify auth token
-    let expected = format!("Basic {}", base64_encode(&format!("workmux:{}", ctx.token)));
+    let expected = format!("Basic {}", base64_encode(&format!("muxix:{}", ctx.token)));
     match proxy_auth {
         None => {
             debug!(hostname, "proxy auth missing");
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn base64_encode_basic_auth() {
-        assert_eq!(base64_encode("workmux:mytoken"), "d29ya211eDpteXRva2Vu");
+        assert_eq!(base64_encode("muxix:mytoken"), "bXV4aXg6bXl0b2tlbg==");
         assert_eq!(base64_encode(""), "");
         assert_eq!(base64_encode("a"), "YQ==");
         assert_eq!(base64_encode("ab"), "YWI=");
@@ -754,7 +754,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(50));
 
-        let auth = format!("Basic {}", base64_encode("workmux:wrong-token"));
+        let auth = format!("Basic {}", base64_encode("muxix:wrong-token"));
         let request = format!(
             "CONNECT example.com:443 HTTP/1.1\r\nProxy-Authorization: {}\r\n\r\n",
             auth
@@ -780,7 +780,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
 
         // Use lowercase "proxy-authorization" like hyper/reqwest do
-        let auth = format!("Basic {}", base64_encode(&format!("workmux:{}", token)));
+        let auth = format!("Basic {}", base64_encode(&format!("muxix:{}", token)));
         let request = format!(
             "CONNECT example.com:443 HTTP/1.1\r\nproxy-authorization: {}\r\n\r\n",
             auth
@@ -810,7 +810,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(50));
 
-        let auth = format!("Basic {}", base64_encode(&format!("workmux:{}", token)));
+        let auth = format!("Basic {}", base64_encode(&format!("muxix:{}", token)));
         let request = format!(
             "CONNECT example.com:80 HTTP/1.1\r\nProxy-Authorization: {}\r\n\r\n",
             auth
@@ -835,7 +835,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(50));
 
-        let auth = format!("Basic {}", base64_encode(&format!("workmux:{}", token)));
+        let auth = format!("Basic {}", base64_encode(&format!("muxix:{}", token)));
         let request = format!(
             "CONNECT denied.com:443 HTTP/1.1\r\nProxy-Authorization: {}\r\n\r\n",
             auth
@@ -927,7 +927,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(50));
 
-        let auth = format!("Basic {}", base64_encode(&format!("workmux:{}", token)));
+        let auth = format!("Basic {}", base64_encode(&format!("muxix:{}", token)));
         let request = format!(
             "CONNECT 8.8.8.8:443 HTTP/1.1\r\nProxy-Authorization: {}\r\n\r\n",
             auth

@@ -64,9 +64,9 @@ pub fn merge(
             branch,
         } => {
             let retry_cmd = if into_branch.is_some() {
-                format!("workmux merge {} --into {}", branch, target_branch)
+                format!("muxix merge {} --into {}", branch, target_branch)
             } else {
-                format!("workmux merge {}", branch)
+                format!("muxix merge {}", branch)
             };
             Err(anyhow!(
                 "Merge failed due to conflicts. Target worktree kept clean.\n\n\
@@ -156,7 +156,7 @@ fn merge_inner(
     // Smart resolution: try handle first, then branch name
     let (worktree_path, branch_to_merge) = git::find_worktree_in(name, Some(repo)).map_err(|_| {
         anyhow!(
-            "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+            "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
             name
         )
     })?;
@@ -185,7 +185,7 @@ fn merge_inner(
 
     // Determine the target branch:
     // 1. Use explicit --into if provided
-    // 2. Otherwise, check if branch has a stored base (from workmux add)
+    // 2. Otherwise, check if branch has a stored base (from muxix add)
     // 3. Fall back to main_branch
     let detected_base: Option<String> = if into_branch.is_some() {
         None // User explicitly specified target, no auto-detection needed
@@ -333,7 +333,7 @@ fn merge_inner(
         let project_root_str = abs_project_root.to_string_lossy();
 
         let hook_env = [
-            ("WORKMUX_HANDLE", handle),
+            ("MUXIX_HANDLE", handle),
             ("WM_BRANCH_NAME", branch_to_merge.as_str()),
             ("WM_TARGET_BRANCH", target_branch),
             ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
@@ -526,7 +526,7 @@ fn show_notification(message: &str) {
             tracing::debug!("Failed to set notification application: {:?}", e);
         }
         if let Err(e) = Notification::default()
-            .title("workmux")
+            .title("muxix")
             .message(message)
             .send()
         {
@@ -537,7 +537,7 @@ fn show_notification(message: &str) {
     #[cfg(not(target_os = "macos"))]
     {
         if let Err(e) = notify_rust::Notification::new()
-            .summary("workmux")
+            .summary("muxix")
             .body(message)
             .show()
         {

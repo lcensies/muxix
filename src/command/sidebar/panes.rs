@@ -14,7 +14,7 @@ use super::layout_tree::{layout_after_sidebar_remove, reflow_after_sidebar_add};
 /// Check if a window already has a sidebar pane.
 pub(super) fn find_sidebar_in_window(window_id: &str) -> Result<bool> {
     let output = Cmd::new("tmux")
-        .args(&["list-panes", "-t", window_id, "-F", "#{@workmux_role}"])
+        .args(&["list-panes", "-t", window_id, "-F", "#{@muxix_role}"])
         .run_and_capture_stdout()?;
 
     Ok(output.lines().any(|l| l.trim() == SIDEBAR_ROLE_VALUE))
@@ -79,7 +79,7 @@ pub(super) fn create_sidebar_in_window(
             "-p",
             "-t",
             &new_pane_id,
-            "@workmux_role",
+            "@muxix_role",
             SIDEBAR_ROLE_VALUE,
         ])
         .run()?;
@@ -171,7 +171,7 @@ pub(super) fn kill_sidebars_in_session(session_id: &str) {
             "list-panes",
             "-a",
             "-F",
-            "#{session_id} #{window_id} #{pane_id} #{@workmux_role}",
+            "#{session_id} #{window_id} #{pane_id} #{@muxix_role}",
         ])
         .run_and_capture_stdout()
         .unwrap_or_default();
@@ -214,7 +214,7 @@ pub(super) fn list_sidebar_panes() -> Vec<(String, String)> {
             "list-panes",
             "-a",
             "-F",
-            "#{window_id} #{pane_id} #{@workmux_role}",
+            "#{window_id} #{pane_id} #{@muxix_role}",
         ])
         .run_and_capture_stdout()
         .unwrap_or_default();
@@ -300,7 +300,7 @@ pub(super) fn shutdown_all_sidebars() {
                     "list-panes",
                     "-a",
                     "-F",
-                    "#{session_id} #{window_id} #{pane_id} #{@workmux_role}",
+                    "#{session_id} #{window_id} #{pane_id} #{@muxix_role}",
                 ])
                 .run_and_capture_stdout()
                 .unwrap_or_default();

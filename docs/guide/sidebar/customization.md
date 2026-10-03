@@ -30,7 +30,7 @@ The values shown above are also the built-in defaults, so leaving these keys
 unset gives you the standard rendering. `top` is also accepted as an alias for
 `horizontal`.
 
-Templates can be set in either the global config or a project's `.workmux.yaml`.
+Templates can be set in either the global config or a project's `.muxix.yaml`.
 Project values override global values. Changes are picked up live by running
 sidebars without a restart.
 
@@ -42,7 +42,7 @@ sidebars without a restart.
 | `{secondary}`    | Secondary label from the same chain, with worktree appended if not already primary.                                        |
 | `{worktree}`     | Worktree directory name.                                                                                                   |
 | `{project}`      | Project name (parent of the worktree).                                                                                     |
-| `{session}`      | Tmux session name (blank for workmux-prefixed sessions).                                                                   |
+| `{session}`      | Tmux session name (blank for muxix-prefixed sessions).                                                                   |
 | `{window}`       | Tmux window name (blank for generic shell names like `zsh`, `bash`).                                                       |
 | `{pane_title}`   | Sanitized agent task title from the pane title.                                                                            |
 | `{pane_suffix}`  | Disambiguator like `(1)`, `(2)` when multiple agents share a window. Empty otherwise.                                      |
@@ -114,7 +114,7 @@ literal `}`.
 
 ## Styling
 
-Templates accept the same tmux-style `#[...]` directives that workmux uses
+Templates accept the same tmux-style `#[...]` directives that muxix uses
 elsewhere (see [configuration](/guide/configuration#status-icons)). A
 directive is stateful: it applies to all subsequent literals, fields, and
 fill spaces on the same line until the next directive or `#[default]`. Each
@@ -163,7 +163,7 @@ Notes:
 
 Adding `{agent_icon}` or `{agent_label}` to a template surfaces which agent is
 running in each pane. Identity is detected from the stored agent command via
-the same profile system used elsewhere in workmux.
+the same profile system used elsewhere in muxix.
 
 Default icons:
 

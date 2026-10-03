@@ -8,7 +8,7 @@ use tracing::debug;
 // ─── Prompt template registry ────────────────────────────────────────────────
 
 /// A named prompt template with `{{VARIABLE}}` holes, stored in
-/// `.workmux/prompts/<name>.md` or inline in `prompt_defs:` of `.workmux.yaml`.
+/// `.muxix/prompts/<name>.md` or inline in `prompt_defs:` of `.muxix.yaml`.
 ///
 /// Referenced by agent definitions via `prompt_ref:` and resolved at node
 /// execution time after `input_variables` are bound.
@@ -29,15 +29,15 @@ pub struct PromptTemplate {
 /// Registry of named prompt templates loaded from the project.
 ///
 /// Resolution order (first match wins):
-///   1. Inline `prompt_defs:` in `.workmux.yaml`
-///   2. Files in `.workmux/prompts/<name>.md` (content only; no frontmatter)
+///   1. Inline `prompt_defs:` in `.muxix.yaml`
+///   2. Files in `.muxix/prompts/<name>.md` (content only; no frontmatter)
 #[derive(Debug, Default, Clone)]
 pub struct PromptRegistry {
     templates: BTreeMap<String, PromptTemplate>,
 }
 
 impl PromptRegistry {
-    /// Load a registry from inline defs and the default `.workmux/prompts/` dir.
+    /// Load a registry from inline defs and the default `.muxix/prompts/` dir.
     pub fn load(
         inline_defs: &BTreeMap<String, PromptTemplate>,
         project_root: &Path,
@@ -49,8 +49,8 @@ impl PromptRegistry {
             registry.templates.insert(name.clone(), tmpl.clone());
         }
 
-        // Scan .workmux/prompts/ for *.md files.
-        let prompts_dir = project_root.join(".workmux/prompts");
+        // Scan .muxix/prompts/ for *.md files.
+        let prompts_dir = project_root.join(".muxix/prompts");
         if prompts_dir.exists() {
             let mut entries: Vec<_> = fs::read_dir(&prompts_dir)
                 .with_context(|| format!("reading prompts dir {}", prompts_dir.display()))?

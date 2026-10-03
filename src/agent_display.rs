@@ -21,7 +21,7 @@ pub fn extract_worktree_name(
         // Session mode: worktree name is in the session name
         (stripped.to_string(), false)
     } else {
-        // Non-workmux agent: derive from filesystem path
+        // Non-muxix agent: derive from filesystem path
         derive_worktree_name_from_path(path)
     }
 }
@@ -306,7 +306,7 @@ mod tests {
     fn test_extract_worktree_name_window_mode() {
         let path = Path::new("/home/user/myproject__worktrees/fix-bug");
         let (name, is_main) =
-            extract_worktree_name("main-session", "workmux:fix-bug", "workmux:", path);
+            extract_worktree_name("main-session", "muxix:fix-bug", "muxix:", path);
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
@@ -315,7 +315,7 @@ mod tests {
     fn test_extract_worktree_name_session_mode() {
         let path = Path::new("/home/user/myproject__worktrees/feature-auth");
         let (name, is_main) =
-            extract_worktree_name("workmux:feature-auth", "zsh", "workmux:", path);
+            extract_worktree_name("muxix:feature-auth", "zsh", "muxix:", path);
         assert_eq!(name, "feature-auth");
         assert!(!is_main);
     }
@@ -324,9 +324,9 @@ mod tests {
     fn test_extract_worktree_name_window_preferred_over_session() {
         let path = Path::new("/home/user/myproject__worktrees/from-window");
         let (name, is_main) = extract_worktree_name(
-            "workmux:from-session",
-            "workmux:from-window",
-            "workmux:",
+            "muxix:from-session",
+            "muxix:from-window",
+            "muxix:",
             path,
         );
         assert_eq!(name, "from-window");
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn test_extract_worktree_name_path_fallback_sibling() {
         let path = Path::new("/home/user/myproject__worktrees/fix-bug");
-        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        let (name, is_main) = extract_worktree_name("0", "zsh", "muxix:", path);
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn test_extract_worktree_name_path_fallback_subdir() {
         let path = Path::new("/home/user/myproject/.worktrees/fix-bug");
-        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        let (name, is_main) = extract_worktree_name("0", "zsh", "muxix:", path);
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
@@ -353,7 +353,7 @@ mod tests {
     fn test_extract_worktree_name_path_fallback_nested_cwd() {
         // Agent cwd is a subdirectory of the worktree
         let path = Path::new("/home/user/myproject__worktrees/fix-bug/src/lib");
-        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        let (name, is_main) = extract_worktree_name("0", "zsh", "muxix:", path);
         assert_eq!(name, "fix-bug");
         assert!(!is_main);
     }
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn test_extract_worktree_name_path_fallback_main() {
         let path = Path::new("/home/user/myproject");
-        let (name, is_main) = extract_worktree_name("0", "zsh", "workmux:", path);
+        let (name, is_main) = extract_worktree_name("0", "zsh", "muxix:", path);
         assert_eq!(name, "main");
         assert!(is_main);
     }

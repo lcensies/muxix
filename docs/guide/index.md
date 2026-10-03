@@ -4,24 +4,24 @@ description:
   development environments for AI agents
 ---
 
-# What is workmux?
+# What is muxix?
 
-workmux is a giga opinionated zero-friction workflow tool for managing
+muxix is a giga opinionated zero-friction workflow tool for managing
 [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
 isolated development environments. Also supports [kitty](/guide/kitty),
 [WezTerm](/guide/wezterm), and [Zellij](/guide/zellij) (experimental). Perfect
 for running multiple AI agents in parallel without conflict.
 
 **Philosophy**: Build on tools you already use. tmux/zellij/kitty/etc. for
-windowing, git for worktrees, your agent for coding — workmux orchestrates the
+windowing, git for worktrees, your agent for coding — muxix orchestrates the
 rest.
 
 <!-- prettier-ignore -->
-::: tip New to workmux?
+::: tip New to muxix?
 Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
 :::
 
-## Why workmux?
+## Why muxix?
 
 **Parallel workflows.** Work on multiple features at the same time, each with
 its own AI agent. No stashing, no branch switching, no conflicts.
@@ -31,10 +31,10 @@ state, editor session, dev server, and AI agent. Context switching is switching
 tabs.
 
 **Automated setup.** New worktrees start broken (no `.env`, no `node_modules`,
-no dev server). workmux can copy config files, symlink dependencies, and run
+no dev server). muxix can copy config files, symlink dependencies, and run
 install commands on creation.
 
-**One-command cleanup.** `workmux merge` handles the full lifecycle: merge the
+**One-command cleanup.** `muxix merge` handles the full lifecycle: merge the
 branch, delete the worktree, close the tmux window, remove the local branch. Or
 go next level and use the [`/merge` skill](/guide/skills#merge) to let your
 agent commit, rebase, and merge autonomously.
@@ -162,10 +162,10 @@ supports [Kitty](/guide/kitty), [WezTerm](/guide/wezterm), and
 
 ## Before and after
 
-workmux turns a multi-step manual workflow into simple commands, making parallel
+muxix turns a multi-step manual workflow into simple commands, making parallel
 development workflows practical.
 
-### Without workmux
+### Without muxix
 
 ```bash
 # 1. Manually create the worktree and environment
@@ -191,16 +191,16 @@ git worktree remove ../worktrees/user-auth
 git branch -d user-auth
 ```
 
-### With workmux
+### With muxix
 
 ```bash
 # Create the environment
-workmux add user-auth
+muxix add user-auth
 
 # ... work on the feature ...
 
 # Merge and clean up
-workmux merge
+muxix merge
 ```
 
 ## Why git worktrees?
@@ -222,7 +222,7 @@ setup:
   on different tasks.
 
 In a standard Git setup, switching branches disrupts your flow by requiring a
-clean working tree. Worktrees remove this friction. `workmux` automates the
+clean working tree. Worktrees remove this friction. `muxix` automates the
 entire process and pairs each worktree with a dedicated tmux window, creating
 fully isolated development environments.
 
@@ -234,15 +234,15 @@ fully isolated development environments.
 
 ## Inspiration and related tools
 
-workmux is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
+muxix is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
 worktree management tool. While wtp streamlines worktree creation and setup,
-workmux takes this further by tightly coupling worktrees with tmux window
+muxix takes this further by tightly coupling worktrees with tmux window
 management.
 
 For managing multiple AI agents in parallel, tools like
 [claude-squad](https://github.com/smtg-ai/claude-squad) and
 [vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
-interfaces, like a TUI or kanban board. In contrast, workmux adheres to its
+interfaces, like a TUI or kanban board. In contrast, muxix adheres to its
 philosophy that **tmux is the interface**, providing a native tmux experience
 for managing parallel workflows without requiring a separate interface to learn.
 

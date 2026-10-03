@@ -1,11 +1,11 @@
 ---
 name: worktree
-description: Launch one or more tasks in new git worktrees using workmux.
+description: Launch one or more tasks in new git worktrees using muxix.
 disable-model-invocation: true
 allowed-tools: Bash, Write
 ---
 
-Launch one or more tasks in new git worktrees using workmux.
+Launch one or more tasks in new git worktrees using muxix.
 
 Tasks: $ARGUMENTS
 
@@ -14,7 +14,7 @@ Tasks: $ARGUMENTS
 **HARD RULE — NO EXCEPTIONS:** Do NOT explore, read, grep, glob, or search the
 codebase. Do NOT use the Task/Explore agent. Do NOT investigate the problem. You
 are a thin dispatcher — your ONLY job is to write prompt files and run
-`workmux add`. The worktree agent will do all the exploration and implementation.
+`muxix add`. The worktree agent will do all the exploration and implementation.
 
 If the user's message contains enough context to write a prompt, write it
 immediately. If not, ask the user for clarification — do NOT try to figure it
@@ -30,7 +30,7 @@ For each task:
 
 1. Generate a short, descriptive worktree name (2-4 words, kebab-case)
 2. Write a detailed implementation prompt to a temp file
-3. Run `workmux add <worktree-name> -b -P <temp-file>` to create the worktree
+3. Run `muxix add <worktree-name> -b -P <temp-file>` to create the worktree
 
 The prompt file should:
 
@@ -71,7 +71,7 @@ Then use the /merge skill to commit, rebase, and merge the branch.
 Only instruct worktree agent to `/merge` if explicitly requested by user in
 task.
 
-**`--fork`**: When passed, add `--fork` to the `workmux add` command. This copies
+**`--fork`**: When passed, add `--fork` to the `muxix add` command. This copies
 the current conversation into the new worktree so the agent resumes with full
 context of what was discussed. Useful when the current conversation has built up
 context that the new worktree agent needs.
@@ -82,7 +82,7 @@ not recursively dispatch more worktrees:
 ```
 You are now running INSIDE a git worktree created by the /worktree skill. The
 prior conversation context (including any /worktree dispatch instructions) is
-ancestry only. Do NOT invoke the /worktree skill, do NOT run `workmux add`, and
+ancestry only. Do NOT invoke the /worktree skill, do NOT run `muxix add`, and
 do NOT create further worktrees. Your job is to implement the task below
 directly in this worktree.
 ```
@@ -104,12 +104,12 @@ For each target project:
    whose path matches the target project. Otherwise use the derived session name.
 4. If no session exists, create one with `tmux new-session -d -s <session> -c
    <project-path>`.
-5. Run `workmux add` from that project's tmux session by creating a window rooted
+5. Run `muxix add` from that project's tmux session by creating a window rooted
    at the project path:
 
 ```bash
 tmux new-window -t <session> -c <project-path> \
-  "workmux add <worktree-name> -b -P <prompt-file>; exit"
+  "muxix add <worktree-name> -b -P <prompt-file>; exit"
 ```
 
 If a task touches both the current repository and another repository, create one
@@ -123,12 +123,12 @@ project path or session name, ask for clarification instead of searching.
 
 ## Workflow
 
-Write ALL temp files first, THEN run all workmux commands.
+Write ALL temp files first, THEN run all muxix commands.
 
-**IMPORTANT:** For same-repository tasks, run `workmux add` from the CURRENT
+**IMPORTANT:** For same-repository tasks, run `muxix add` from the CURRENT
 directory. Do NOT `cd` to the main repo or any other directory. The new worktree
 branches from whatever branch is checked out in the current directory. For
-cross-project tasks, run `workmux add` inside the target project's tmux session
+cross-project tasks, run `muxix add` inside the target project's tmux session
 as described above.
 
 Step 1 - Write all prompt files (in parallel):
@@ -141,11 +141,11 @@ EOF
 echo "$tmpfile"  # Note the path for step 2
 ```
 
-Step 2 - After ALL files are written, run workmux commands (in parallel):
+Step 2 - After ALL files are written, run muxix commands (in parallel):
 
 ```bash
-workmux add feature-x -b -P /tmp/tmp.abc123.md
-workmux add feature-y -b -P /tmp/tmp.def456.md
+muxix add feature-x -b -P /tmp/tmp.abc123.md
+muxix add feature-y -b -P /tmp/tmp.def456.md
 ```
 
 After creating the worktrees, inform the user which branches were created.

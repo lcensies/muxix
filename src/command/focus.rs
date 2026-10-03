@@ -1,4 +1,4 @@
-//! `workmux focus <agent-id | name>` — switch multiplexer focus to an agent pane.
+//! `muxix focus <agent-id | name>` — switch multiplexer focus to an agent pane.
 //!
 //! Resolution order:
 //!   1. Exact `agent_id` UUID match (stable, globally unique)

@@ -1,4 +1,4 @@
-//! Keeping workmux's project registry and an ADE's project list in agreement.
+//! Keeping muxix's project registry and an ADE's project list in agreement.
 //!
 //! ADEs track projects too, so a directory added in one tool should not have to
 //! be added again in the other. Identity is the **canonical root path**, never
@@ -33,9 +33,9 @@ pub struct SyncProject {
 /// and the real thing share one code path.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct SyncPlan {
-    pub add_to_workmux: Vec<SyncProject>,
+    pub add_to_muxix: Vec<SyncProject>,
     pub add_to_ade: Vec<SyncProject>,
-    pub remove_from_workmux: Vec<SyncProject>,
+    pub remove_from_muxix: Vec<SyncProject>,
     pub remove_from_ade: Vec<SyncProject>,
     /// Projects present on both sides whose names differ, when name
     /// propagation is off or the policy is manual.
@@ -44,9 +44,9 @@ pub struct SyncPlan {
 
 impl SyncPlan {
     pub fn is_empty(&self) -> bool {
-        self.add_to_workmux.is_empty()
+        self.add_to_muxix.is_empty()
             && self.add_to_ade.is_empty()
-            && self.remove_from_workmux.is_empty()
+            && self.remove_from_muxix.is_empty()
             && self.remove_from_ade.is_empty()
             && self.conflicts.is_empty()
     }
@@ -90,7 +90,7 @@ fn canon(p: &Path) -> PathBuf {
 
 /// Build the plan. Pure: no I/O, so every rule is directly testable.
 pub fn plan(
-    workmux: &[SyncProject],
+    muxix: &[SyncProject],
     ade: &[SyncProject],
     cfg: &crate::config::ProjectSyncConfig,
     last: &LastSynced,
@@ -102,7 +102,7 @@ pub fn plan(
     let pull = matches!(cfg.direction, SyncDirection::Pull | SyncDirection::Bidirectional);
     let push = matches!(cfg.direction, SyncDirection::Push | SyncDirection::Bidirectional);
 
-    let wm_roots: BTreeSet<PathBuf> = workmux.iter().map(|p| canon(&p.root)).collect();
+    let wm_roots: BTreeSet<PathBuf> = muxix.iter().map(|p| canon(&p.root)).collect();
     let ade_roots: BTreeSet<PathBuf> = ade.iter().map(|p| canon(&p.root)).collect();
 
     for p in ade {
@@ -110,25 +110,25 @@ pub fn plan(
         if wm_roots.contains(&root) {
             continue;
         }
-        // Known at last sync and now gone from workmux → a removal to mirror,
+        // Known at last sync and now gone from muxix → a removal to mirror,
         // not an addition to replay. Without the record it is an addition.
         if cfg.removals && last.roots.contains(&root) {
             if push {
                 plan.remove_from_ade.push(p.clone());
             }
         } else if pull {
-            plan.add_to_workmux.push(p.clone());
+            plan.add_to_muxix.push(p.clone());
         }
     }
 
-    for p in workmux {
+    for p in muxix {
         let root = canon(&p.root);
         if ade_roots.contains(&root) {
             continue;
         }
         if cfg.removals && last.roots.contains(&root) {
             if pull {
-                plan.remove_from_workmux.push(p.clone());
+                plan.remove_from_muxix.push(p.clone());
             }
         } else if push {
             plan.add_to_ade.push(p.clone());
@@ -138,7 +138,7 @@ pub fn plan(
     // Same root, different names: not two projects, and not a conflict unless
     // the user asked for names to travel.
     if cfg.names {
-        for w in workmux {
+        for w in muxix {
             let root = canon(&w.root);
             if let Some(a) = ade.iter().find(|a| canon(&a.root) == root)
                 && a.name != w.name
@@ -153,7 +153,7 @@ pub fn plan(
 
 /// A tool that tracks projects.
 ///
-/// Workmux implements this for its own registry rather than being special-cased
+/// Muxix implements this for its own registry rather than being special-cased
 /// on one side of the sync: it has project management, a daemon, and agent
 /// management, which is exactly what makes something an ADE. Keeping it under
 /// the same interface means the sync has no privileged side, and syncing two
@@ -166,12 +166,12 @@ pub trait ProjectRegistrySource {
     fn remove(&self, p: &SyncProject) -> Result<()>;
 }
 
-/// Workmux's own project registry (`~/.config/workmux/projects.yaml`).
-pub struct WorkmuxProjects;
+/// Muxix's own project registry (`~/.config/muxix/projects.yaml`).
+pub struct MuxixProjects;
 
-impl ProjectRegistrySource for WorkmuxProjects {
+impl ProjectRegistrySource for MuxixProjects {
     fn name(&self) -> &str {
-        "workmux"
+        "muxix"
     }
 
     fn list(&self) -> Result<Vec<SyncProject>> {
@@ -288,9 +288,9 @@ pub fn parse_projects(v: &Value, root_field: &str, name_field: &str) -> Vec<Sync
 }
 
 /// Apply a plan between two sources. Neither side is privileged.
-fn apply(plan: &SyncPlan, workmux: &dyn ProjectRegistrySource, ade: &dyn ProjectRegistrySource) {
+fn apply(plan: &SyncPlan, muxix: &dyn ProjectRegistrySource, ade: &dyn ProjectRegistrySource) {
     for (target, adds, removes) in [
-        (workmux, &plan.add_to_workmux, &plan.remove_from_workmux),
+        (muxix, &plan.add_to_muxix, &plan.remove_from_muxix),
         (ade, &plan.add_to_ade, &plan.remove_from_ade),
     ] {
         for p in adds {
@@ -316,23 +316,23 @@ pub fn sync_one(ade_name: &str, ade: &AdeConfig, dry_run: bool) -> Result<SyncPl
         return Ok(SyncPlan::default());
     }
 
-    let workmux = WorkmuxProjects;
+    let muxix = MuxixProjects;
     let other = AdeProjects {
         name: ade_name,
         command: &ade.command,
         cfg: pcfg,
     };
     let last = LastSynced::load(ade_name);
-    let plan = plan(&workmux.list()?, &other.list()?, &pcfg.sync, &last);
+    let plan = plan(&muxix.list()?, &other.list()?, &pcfg.sync, &last);
 
     if dry_run || plan.is_empty() {
         return Ok(plan);
     }
-    apply(&plan, &workmux, &other);
+    apply(&plan, &muxix, &other);
 
     // Record what both sides hold now, so a later removal can be told apart
     // from a later addition.
-    let after: BTreeSet<PathBuf> = workmux
+    let after: BTreeSet<PathBuf> = muxix
         .list()
         .unwrap_or_default()
         .iter()
@@ -344,7 +344,7 @@ pub fn sync_one(ade_name: &str, ade: &AdeConfig, dry_run: bool) -> Result<SyncPl
     Ok(plan)
 }
 
-/// `workmux project sync [--dry-run] [--ade <name>]`.
+/// `muxix project sync [--dry-run] [--ade <name>]`.
 pub fn cli_sync(only: Option<&str>, dry_run: bool) -> Result<()> {
     let cfg = crate::config::Config::load(None).unwrap_or_default();
     let ades = effective_ades(&cfg);
@@ -371,20 +371,20 @@ pub fn cli_sync(only: Option<&str>, dry_run: bool) -> Result<()> {
             continue;
         }
         let verb = if dry_run { "would " } else { "" };
-        for p in &plan.add_to_workmux {
+        for p in &plan.add_to_muxix {
             println!("{name}: {verb}track {}", p.root.display());
         }
         for p in &plan.add_to_ade {
             println!("{name}: {verb}add {} to {name}", p.root.display());
         }
-        for p in &plan.remove_from_workmux {
+        for p in &plan.remove_from_muxix {
             println!("{name}: {verb}untrack {}", p.root.display());
         }
         for p in &plan.remove_from_ade {
             println!("{name}: {verb}remove {} from {name}", p.root.display());
         }
         for (w, a) in &plan.conflicts {
-            println!("{name}: name conflict for {}: workmux '{}' vs {name} '{}'",
+            println!("{name}: name conflict for {}: muxix '{}' vs {name} '{}'",
                 w.root.display(), w.name, a.name);
         }
     }
@@ -472,14 +472,14 @@ mod tests {
     }
 
     #[test]
-    fn pull_only_touches_workmux() {
+    fn pull_only_touches_muxix() {
         let plan = plan(
             &[p("/a", "a")],
             &[p("/b", "b")],
             &cfg(SyncDirection::Pull),
             &LastSynced::default(),
         );
-        assert_eq!(plan.add_to_workmux, vec![p("/b", "b")]);
+        assert_eq!(plan.add_to_muxix, vec![p("/b", "b")]);
         assert!(plan.add_to_ade.is_empty());
     }
 
@@ -492,7 +492,7 @@ mod tests {
             &LastSynced::default(),
         );
         assert_eq!(plan.add_to_ade, vec![p("/a", "a")]);
-        assert!(plan.add_to_workmux.is_empty());
+        assert!(plan.add_to_muxix.is_empty());
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
             &cfg(SyncDirection::Bidirectional),
             &LastSynced::default(),
         );
-        assert_eq!(plan.add_to_workmux, vec![p("/b", "b")]);
+        assert_eq!(plan.add_to_muxix, vec![p("/b", "b")]);
         assert_eq!(plan.add_to_ade, vec![p("/a", "a")]);
     }
 
@@ -549,7 +549,7 @@ mod tests {
             roots: BTreeSet::from([PathBuf::from("/a")]),
         };
         let plan = plan(&[p("/a", "a")], &[], &cfg(SyncDirection::Bidirectional), &last);
-        assert!(plan.remove_from_workmux.is_empty());
+        assert!(plan.remove_from_muxix.is_empty());
         assert_eq!(plan.add_to_ade, vec![p("/a", "a")]);
     }
 
@@ -564,7 +564,7 @@ mod tests {
             roots: BTreeSet::from([PathBuf::from("/a")]),
         };
         let plan = plan(&[p("/a", "a")], &[], &c, &last);
-        assert_eq!(plan.remove_from_workmux, vec![p("/a", "a")]);
+        assert_eq!(plan.remove_from_muxix, vec![p("/a", "a")]);
         assert!(plan.add_to_ade.is_empty());
     }
 
@@ -577,7 +577,7 @@ mod tests {
             ..Default::default()
         };
         let plan = plan(&[p("/new", "new")], &[], &c, &LastSynced::default());
-        assert!(plan.remove_from_workmux.is_empty());
+        assert!(plan.remove_from_muxix.is_empty());
         assert_eq!(plan.add_to_ade, vec![p("/new", "new")]);
     }
 
@@ -595,7 +595,7 @@ mod tests {
         };
         let plan = plan(&[], &[p("/a", "a")], &c, &last);
         assert_eq!(plan.remove_from_ade, vec![p("/a", "a")]);
-        assert!(plan.add_to_workmux.is_empty());
+        assert!(plan.add_to_muxix.is_empty());
     }
 }
 

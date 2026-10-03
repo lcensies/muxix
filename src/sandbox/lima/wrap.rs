@@ -9,7 +9,7 @@ use crate::shell::shell_escape;
 
 /// Wrap a command to run inside a Lima VM via the sandbox supervisor.
 ///
-/// Generates a `workmux sandbox run` command that manages the VM lifecycle,
+/// Generates a `muxix sandbox run` command that manages the VM lifecycle,
 /// starts an RPC server, and executes the agent command inside the VM.
 ///
 /// The supervisor handles:
@@ -21,7 +21,7 @@ use crate::shell::shell_escape;
 ///
 /// # Arguments
 /// * `command` - The command string to run (may contain shell operators)
-/// * `_config` - The workmux configuration (env passthrough handled by supervisor)
+/// * `_config` - The muxix configuration (env passthrough handled by supervisor)
 /// * `_vm_name` - The Lima VM instance name (supervisor resolves this itself)
 /// * `working_dir` - Working directory inside the VM
 pub fn wrap_for_lima(
@@ -39,7 +39,7 @@ pub fn wrap_for_lima(
     // which is necessary because limactl/SSH flattens separate args.
     // Prefix with space to prevent shell history entry (same as rewrite_agent_command)
     Ok(format!(
-        " workmux sandbox run '{}' -- '{}'",
+        " muxix sandbox run '{}' -- '{}'",
         shell_escape(&working_dir.to_string_lossy()),
         shell_escape(command)
     ))
@@ -82,7 +82,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(result.starts_with(" workmux sandbox run"));
+        assert!(result.starts_with(" muxix sandbox run"));
         assert!(result.contains("/Users/test/project"));
         // Command is passed as a single quoted arg (no sh -lc at this level)
         assert!(result.contains("-- 'claude'"));
@@ -124,7 +124,7 @@ mod tests {
     fn test_wrap_with_complex_command() {
         let config = Config::default();
         let result = wrap_for_lima(
-            "claude --dangerously-skip-permissions -- \"$(cat .workmux/prompts/PROMPT.md)\"",
+            "claude --dangerously-skip-permissions -- \"$(cat .muxix/prompts/PROMPT.md)\"",
             &config,
             "wm-abc",
             Path::new("/tmp/wt"),

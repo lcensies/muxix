@@ -24,7 +24,7 @@ impl Scratch {
     fn new(name: &str) -> Self {
         let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!(
-            "workmux-setup-test-{}-{}-{:?}",
+            "muxix-setup-test-{}-{}-{:?}",
             std::process::id(),
             name,
             std::thread::current().id()
@@ -64,7 +64,7 @@ fn agent_profiles_reconcile_build_idempotence_and_prune() {
 
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = std::env::temp_dir().join(format!(
-        "workmux-ap-test-{}-{:?}",
+        "muxix-ap-test-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));
@@ -86,7 +86,7 @@ fn agent_profiles_reconcile_build_idempotence_and_prune() {
     std::fs::write(base.join("pi/skills/b/SKILL.md"), "base-b").unwrap();
 
     // Profile "corp" source overrides skill a.
-    let src = xdg_config.join("workmux/agent-profiles/corp/skills/a");
+    let src = xdg_config.join("muxix/agent-profiles/corp/skills/a");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(src.join("SKILL.md"), "corp-a").unwrap();
 
@@ -154,7 +154,7 @@ fn agent_profiles_apply_declared_deltas() {
 
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let root = std::env::temp_dir().join(format!(
-        "workmux-apd-test-{}-{:?}",
+        "muxix-apd-test-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));
@@ -281,7 +281,7 @@ fn agent_profiles_apply_declared_deltas() {
 // --- managed state: record and prune ---------------------------------------
 
 /// The declarative loop end to end: declare a skill and a subagent, converge,
-/// then drop both from the config and converge again. Whatever workmux put on
+/// then drop both from the config and converge again. Whatever muxix put on
 /// the machine has to come back off it, and nothing else may.
 #[test]
 fn dropping_a_declared_feature_removes_it_on_the_next_run() {
@@ -375,7 +375,7 @@ fn dropping_a_declared_feature_removes_it_on_the_next_run() {
     }
 }
 
-/// The safety property that makes pruning acceptable at all: a skill workmux
+/// The safety property that makes pruning acceptable at all: a skill muxix
 /// never installed is never deleted, however undeclared it is.
 #[test]
 fn a_hand_installed_skill_is_never_pruned() {
@@ -568,7 +568,7 @@ fn setup_resolves_config_with_the_requested_profile() {
 
     let _s = Scratch::new("profile-threading");
     let root = std::env::temp_dir().join(format!(
-        "workmux-setup-profile-{}-{:?}",
+        "muxix-setup-profile-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));
@@ -580,7 +580,7 @@ fn setup_resolves_config_with_the_requested_profile() {
         .output()
         .unwrap();
     std::fs::write(
-        root.join(".workmux.yaml"),
+        root.join(".muxix.yaml"),
         "agent: base\nprofiles:\n  corp:\n    agent: profiled\n",
     )
     .unwrap();
@@ -611,7 +611,7 @@ fn provider_sync_end_to_end() {
     use crate::model::{ProviderConfig, ProviderRegistry};
 
     let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let root = std::env::temp_dir().join(format!("workmux-provider-sync-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("muxix-provider-sync-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let oc_dir = root.join("opencode");
     let home = root.join("home");

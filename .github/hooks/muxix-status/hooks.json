@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "muxix set-window-status working"
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "muxix set-window-status working"
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "muxix set-window-status done"
+      }
+    ]
+  }
+}

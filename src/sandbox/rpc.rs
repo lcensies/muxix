@@ -1,7 +1,7 @@
 //! TCP RPC protocol for guest-host communication in sandboxed environments.
 //!
 //! The host-side supervisor runs an RPC server on a random port. The guest
-//! workmux binary connects via a host-internal address and sends JSON-lines
+//! muxix binary connects via a host-internal address and sends JSON-lines
 //! requests.
 
 use anyhow::{Context, Result};
@@ -302,7 +302,7 @@ fn handle_connection(stream: TcpStream, ctx: &RpcContext) -> Result<()> {
         } = request
         {
             // SECURITY: Force --no-verify --no-hooks regardless of guest request.
-            // Workmux hooks are user-configured shell commands that run unsandboxed
+            // Muxix hooks are user-configured shell commands that run unsandboxed
             // on the host. Git native hooks are also disabled in handle_merge via
             // core.hooksPath=/dev/null to prevent a compromised guest from planting
             // hooks in the bind-mounted .git/hooks/ directory.
@@ -505,8 +505,8 @@ fn handle_clipboard_read(mime: &str, worktree_path: &std::path::Path) -> RpcResp
     }
 }
 
-fn host_workmux_command() -> std::process::Command {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+fn host_muxix_command() -> std::process::Command {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("muxix"));
     let mut cmd = std::process::Command::new(exe);
     cmd.env_remove("WM_SANDBOX_GUEST")
         .env_remove("WM_RPC_HOST")
@@ -522,7 +522,7 @@ fn handle_spawn_agent(
     background: Option<bool>,
     worktree_path: &PathBuf,
 ) -> RpcResponse {
-    let mut cmd = host_workmux_command();
+    let mut cmd = host_muxix_command();
     cmd.arg("add");
 
     if let Some(name) = branch_name {
@@ -539,8 +539,8 @@ fn handle_spawn_agent(
         cmd.arg("--background");
     }
 
-    // SECURITY: Skip workmux hooks AND git native hooks when triggered via RPC.
-    // Workmux hooks are arbitrary shell commands from config that run unsandboxed
+    // SECURITY: Skip muxix hooks AND git native hooks when triggered via RPC.
+    // Muxix hooks are arbitrary shell commands from config that run unsandboxed
     // on the host. Git native hooks (e.g. post-checkout from `git worktree add`)
     // could be planted by a compromised guest in the bind-mounted .git/hooks/.
     cmd.arg("--no-hooks");
@@ -554,11 +554,11 @@ fn handle_spawn_agent(
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             RpcResponse::Error {
-                message: format!("workmux add failed: {}", stderr.trim()),
+                message: format!("muxix add failed: {}", stderr.trim()),
             }
         }
         Err(e) => RpcResponse::Error {
-            message: format!("Failed to run workmux add: {}", e),
+            message: format!("Failed to run muxix add: {}", e),
         },
     }
 }
@@ -578,7 +578,7 @@ fn handle_merge(
 ) -> Result<()> {
     use std::process::Stdio;
 
-    let mut cmd = host_workmux_command();
+    let mut cmd = host_muxix_command();
     cmd.arg("merge");
     cmd.arg(name);
 
@@ -604,8 +604,8 @@ fn handle_merge(
         cmd.arg("--notification");
     }
 
-    // SECURITY: Skip workmux hooks AND git native hooks when triggered via RPC.
-    // --no-verify/--no-hooks skip workmux's own pre_merge hooks (arbitrary shell
+    // SECURITY: Skip muxix hooks AND git native hooks when triggered via RPC.
+    // --no-verify/--no-hooks skip muxix's own pre_merge hooks (arbitrary shell
     // commands from config). disable_git_hooks() sets core.hooksPath=/dev/null to
     // prevent git native hooks (post-merge, post-rewrite, post-checkout) that a
     // compromised guest could plant in the bind-mounted .git/hooks/ directory.
@@ -623,7 +623,7 @@ fn handle_merge(
             write_response(
                 writer,
                 &RpcResponse::Error {
-                    message: format!("Failed to run workmux merge: {}", e),
+                    message: format!("Failed to run muxix merge: {}", e),
                 },
             )?;
             return Ok(());
@@ -697,7 +697,7 @@ fn handle_merge(
             writer,
             &RpcResponse::Error {
                 message: format!(
-                    "workmux merge exited with code {}",
+                    "muxix merge exited with code {}",
                     status.code().unwrap_or(1)
                 ),
             },
@@ -752,7 +752,7 @@ fn handle_close(name: &str, worktree_path: &PathBuf, writer: &mut impl Write) ->
     use std::io::Read;
     use std::process::Stdio;
 
-    let mut cmd = host_workmux_command();
+    let mut cmd = host_muxix_command();
     cmd.arg("close").arg(name);
     cmd.current_dir(worktree_path);
     cmd.stdout(Stdio::piped());
@@ -764,7 +764,7 @@ fn handle_close(name: &str, worktree_path: &PathBuf, writer: &mut impl Write) ->
             write_response(
                 writer,
                 &RpcResponse::Error {
-                    message: format!("Failed to run workmux close: {}", e),
+                    message: format!("Failed to run muxix close: {}", e),
                 },
             )?;
             return Ok(());
@@ -800,7 +800,7 @@ fn handle_close(name: &str, worktree_path: &PathBuf, writer: &mut impl Write) ->
     } else {
         let message = if stderr.trim().is_empty() {
             format!(
-                "workmux close exited with code {}",
+                "muxix close exited with code {}",
                 status.code().unwrap_or(1)
             )
         } else {
@@ -955,7 +955,7 @@ fn handle_exec(
 
 /// RPC client for guest-side use. Connects to the host supervisor.
 ///
-/// Used by the guest workmux binary to send requests to the host supervisor
+/// Used by the guest muxix binary to send requests to the host supervisor
 /// when `WM_SANDBOX_GUEST=1` is set. Commands like `set-window-status` route
 /// through RPC instead of calling tmux directly.
 pub struct RpcClient {
@@ -1617,12 +1617,12 @@ mod tests {
         // This prevents creating blank prompt files on the host
         let tmp = tempfile::tempdir().unwrap();
         let resp = handle_spawn_agent("", Some("test-branch"), None, &tmp.path().to_path_buf());
-        // The handler will try to run workmux add, which will fail because
+        // The handler will try to run muxix add, which will fail because
         // we're not in a real environment, but the key assertion is that it
         // doesn't hang or crash with empty prompt
         match resp {
-            RpcResponse::Error { .. } => {} // Expected - no real workmux binary
-            RpcResponse::Ok => {}           // Would happen if workmux existed
+            RpcResponse::Error { .. } => {} // Expected - no real muxix binary
+            RpcResponse::Ok => {}           // Would happen if muxix existed
             other => panic!("Unexpected response: {:?}", other),
         }
     }
@@ -1637,10 +1637,10 @@ mod tests {
             Some(true),
             &tmp.path().to_path_buf(),
         );
-        // The handler will fail to run workmux add, but we're testing that
+        // The handler will fail to run muxix add, but we're testing that
         // it doesn't crash when background is Some(true)
         match resp {
-            RpcResponse::Error { .. } => {} // Expected - no real workmux binary
+            RpcResponse::Error { .. } => {} // Expected - no real muxix binary
             RpcResponse::Ok => {}
             other => panic!("Unexpected response: {:?}", other),
         }
@@ -1694,31 +1694,31 @@ mod tests {
     // ── Git hook suppression tests ──────────────────────────────────────
 
     #[test]
-    fn test_host_workmux_command_clears_guest_rpc_env() {
+    fn test_host_muxix_command_clears_guest_rpc_env() {
         use std::ffi::OsStr;
 
-        let cmd = host_workmux_command();
+        let cmd = host_muxix_command();
         let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
 
         assert_eq!(
             envs.get(OsStr::new("WM_SANDBOX_GUEST")),
             Some(&None),
-            "host workmux child must not inherit guest mode"
+            "host muxix child must not inherit guest mode"
         );
         assert_eq!(
             envs.get(OsStr::new("WM_RPC_HOST")),
             Some(&None),
-            "host workmux child must not inherit guest RPC host"
+            "host muxix child must not inherit guest RPC host"
         );
         assert_eq!(
             envs.get(OsStr::new("WM_RPC_PORT")),
             Some(&None),
-            "host workmux child must not inherit guest RPC port"
+            "host muxix child must not inherit guest RPC port"
         );
         assert_eq!(
             envs.get(OsStr::new("WM_RPC_TOKEN")),
             Some(&None),
-            "host workmux child must not inherit guest RPC token"
+            "host muxix child must not inherit guest RPC token"
         );
     }
 
@@ -1765,7 +1765,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::process::Command;
 
-        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("muxix"));
         let mut cmd = Command::new(exe);
         cmd.arg("merge").arg("test-branch");
         cmd.args(["--no-verify", "--no-hooks"]);
@@ -1791,7 +1791,7 @@ mod tests {
         use std::ffi::OsStr;
         use std::process::Command;
 
-        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("workmux"));
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("muxix"));
         let mut cmd = Command::new(exe);
         cmd.arg("add").arg("--auto-name");
         cmd.arg("--no-hooks");
@@ -1828,7 +1828,7 @@ mod tests {
     #[test]
     fn test_response_serialization_clipboard_data() {
         let resp = RpcResponse::ClipboardData {
-            path: "/tmp/test/.workmux/tmp/clipboard-123-456.png".to_string(),
+            path: "/tmp/test/.muxix/tmp/clipboard-123-456.png".to_string(),
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"type\":\"ClipboardData\""));

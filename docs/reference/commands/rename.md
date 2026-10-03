@@ -5,11 +5,11 @@ description: Rename a worktree, its tmux window/session, and optionally the bran
 # rename
 
 Renames a worktree's directory, its tmux window or session, and the per-worktree
-workmux metadata stored in git config. Optionally also renames the underlying
+muxix metadata stored in git config. Optionally also renames the underlying
 git branch.
 
 ```bash
-workmux rename [old-name] <new-name> [--branch]
+muxix rename [old-name] <new-name> [--branch]
 ```
 
 ## Arguments
@@ -27,8 +27,8 @@ workmux rename [old-name] <new-name> [--branch]
 
 1. The worktree directory (`git worktree move`)
 2. The tmux window or session (matching duplicates like `wm-feature-2` are renamed preserving their `-N` suffix)
-3. `workmux.worktree.<handle>.*` git config entries (e.g. the stored window/session mode)
-4. Agent state files in `$XDG_STATE_HOME/workmux/agents/*.json` (updates `workdir`, `window_name`, `session_name`)
+3. `muxix.worktree.<handle>.*` git config entries (e.g. the stored window/session mode)
+4. Agent state files in `$XDG_STATE_HOME/muxix/agents/*.json` (updates `workdir`, `window_name`, `session_name`)
 5. Sandbox container marker directory, if present
 6. The local git branch, only when `--branch` is passed
 
@@ -36,13 +36,13 @@ workmux rename [old-name] <new-name> [--branch]
 
 ```bash
 # Rename a worktree from inside it
-workmux rename feature-new
+muxix rename feature-new
 
 # Rename a specific worktree by name
-workmux rename feature-old feature-new
+muxix rename feature-old feature-new
 
 # Also rename the branch to match
-workmux rename feature-old feature-new --branch
+muxix rename feature-old feature-new --branch
 ```
 
 ## Notes

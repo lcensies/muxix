@@ -1,19 +1,19 @@
 ---
-description: Configure workmux with global defaults and project-specific settings
+description: Configure muxix with global defaults and project-specific settings
 ---
 
 # Configuration
 
-workmux uses a two-level configuration system:
+muxix uses a two-level configuration system:
 
-- **Global** (`~/.config/workmux/config.yaml`): Personal defaults for all projects. Run `workmux config edit` to open it in your editor.
-- **Project** (`.workmux.yaml`): Project-specific overrides
+- **Global** (`~/.config/muxix/config.yaml`): Personal defaults for all projects. Run `muxix config edit` to open it in your editor.
+- **Project** (`.muxix.yaml`): Project-specific overrides
 
-Project settings override global settings. When you run workmux from a subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing nested configs for monorepos. See [Monorepos](./monorepos.md#nested-configuration) for details. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
+Project settings override global settings. When you run muxix from a subdirectory, it walks upward to find the nearest `.muxix.yaml`, allowing nested configs for monorepos. See [Monorepos](./monorepos.md#nested-configuration) for details. For `post_create` and file operation lists (`files.copy`, `files.symlink`), you can use `"<global>"` to include global values alongside project-specific ones. Other settings like `panes` are replaced entirely when defined in the project config.
 
 ### XDG Base Directory support
 
-workmux respects the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/):
+muxix respects the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/):
 
 | Purpose       | Environment variable | Default          |
 | ------------- | -------------------- | ---------------- |
@@ -21,17 +21,17 @@ workmux respects the [XDG Base Directory Specification](https://specifications.f
 | Cache         | `XDG_CACHE_HOME`     | `~/.cache`       |
 | State         | `XDG_STATE_HOME`     | `~/.local/state` |
 
-All workmux files live under a `workmux/` subdirectory within these base directories. If you have an existing config at the default location and later set a custom `XDG_CONFIG_HOME`, workmux will fall back to reading from `~/.config/workmux/` if no config exists at the new location.
+All muxix files live under a `muxix/` subdirectory within these base directories. If you have an existing config at the default location and later set a custom `XDG_CONFIG_HOME`, muxix will fall back to reading from `~/.config/muxix/` if no config exists at the new location.
 
-The host-side log lives at `$XDG_STATE_HOME/workmux/workmux.log` and includes sandbox network-proxy rejections — see [Debugging blocked requests](./sandbox/features.md#debugging-blocked-requests).
+The host-side log lives at `$XDG_STATE_HOME/muxix/muxix.log` and includes sandbox network-proxy rejections — see [Debugging blocked requests](./sandbox/features.md#debugging-blocked-requests).
 
 ## Global configuration example
 
-`~/.config/workmux/config.yaml`:
+`~/.config/muxix/config.yaml`:
 
 ```yaml
 nerdfont: true # Enable nerdfont icons (prompted on first run)
-merge_strategy: rebase # Make workmux merge do rebase by default
+merge_strategy: rebase # Make muxix merge do rebase by default
 merge_keep: true # Keep worktree, window, and branch after merge by default
 agent: claude
 
@@ -43,7 +43,7 @@ panes:
 
 ## Project configuration example
 
-`.workmux.yaml`:
+`.muxix.yaml`:
 
 ```yaml
 post_create:
@@ -84,15 +84,15 @@ Most options have sensible defaults. You only need to configure what you want to
 | `agent_rules`      | Per-project agent by path regex (global-only). See [per-project agents](#per-project-agents). | `[]`             |
 | `prompt_file_only` | Write prompt files without injecting into agent commands                            | `false`                     |
 | `merge_strategy`   | Default merge strategy (`merge`, `rebase`, `squash`)                                | `merge`                     |
-| `merge_keep`       | Keep resources after `workmux merge` by default                                     | `false`                     |
+| `merge_keep`       | Keep resources after `muxix merge` by default                                     | `false`                     |
 | `theme`            | Dashboard color scheme (see [themes](#themes))                                      | `default` (auto dark/light) |
 | `mode`             | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode).         | `window`                    |
 
 ### Per-project agents
 
 `agent_rules` maps project paths to agents in one place, so a repo does not need its own
-`.workmux.yaml` to get the right CLI. Rules live in the **global** config only (like `agents`, a
-rule names a command workmux executes) and are matched in order against the project's **main
+`.muxix.yaml` to get the right CLI. Rules live in the **global** config only (like `agents`, a
+rule names a command muxix executes) and are matched in order against the project's **main
 worktree root** — every worktree of a project resolves the same agent.
 
 ```yaml
@@ -101,14 +101,14 @@ agent: claude # fallback for anything no rule matches
 agent_rules:
   - match: "^~/repos/work/" # a leading ~/ expands to your home dir
     agent: cpi # a key of `agents:`, or a bare command
-  - match: "^~/repos/workmux(/|$)"
+  - match: "^~/repos/muxix(/|$)"
     agent: pi
 ```
 
 Precedence, highest first:
 
 1. `--agent` flag
-2. `agent:` in a project `.workmux.yaml`, a file it includes, or a selected profile
+2. `agent:` in a project `.muxix.yaml`, a file it includes, or a selected profile
 3. the first matching `agent_rules` entry
 4. the agent detected from the parent process, when `inherit_agent: true`
 5. `agent:` in the global config
@@ -117,24 +117,24 @@ Precedence, highest first:
 Edit and inspect rules from the CLI:
 
 ```bash
-workmux config agent list                      # default agent + rules, in evaluation order
-workmux config agent which [DIR]               # resolved agent + what decided it
-workmux config agent set cpi --path ~/repos/work   # rule for a dir and everything under it
-workmux config agent set pi --project workmux      # rule for a tracked project's root
-workmux config agent set opencode --match '/work/' # raw regex
-workmux config agent set codex --default           # global `agent:` instead of a rule
-workmux config agent unset --index 0               # also --match / --project
+muxix config agent list                      # default agent + rules, in evaluation order
+muxix config agent which [DIR]               # resolved agent + what decided it
+muxix config agent set cpi --path ~/repos/work   # rule for a dir and everything under it
+muxix config agent set pi --project muxix      # rule for a tracked project's root
+muxix config agent set opencode --match '/work/' # raw regex
+muxix config agent set codex --default           # global `agent:` instead of a rule
+muxix config agent unset --index 0               # also --match / --project
 ```
 
 `set`/`unset` rewrite only the `agent_rules` block of your global config; comments and every other
-key are left untouched. When an agent is not what you expect, `workmux config agent which` names
+key are left untouched. When an agent is not what you expect, `muxix config agent which` names
 the deciding source — a repo's own config, a rule (with its index), inheritance, or the default.
 
 ### Themes
 
 The dashboard supports 12 color schemes, each with dark and light variants. Dark/light mode is auto-detected from your terminal background.
 
-Press `T` (shift+t) in the dashboard to cycle through schemes. The selection persists to your global config (`~/.config/workmux/config.yaml`).
+Press `T` (shift+t) in the dashboard to cycle through schemes. The selection persists to your global config (`~/.config/muxix/config.yaml`).
 
 Available schemes: `default`, `emberforge`, `glacier-signal`, `obsidian-pop`, `slate-garden`, `phosphor-arcade`, `lasergrid`, `mossfire`, `night-sorbet`, `graphite-code`, `festival-circuit`, `teal-drift`.
 
@@ -250,7 +250,7 @@ layouts:
 ```
 
 ```bash
-workmux add my-feature -l design
+muxix add my-feature -l design
 ```
 
 When `-l` is used, the layout's `panes` replace the top-level `panes` for that worktree. All other config (hooks, files, agent, etc.) comes from the top-level as usual. The `-l` flag cannot be combined with `--agent`.
@@ -287,7 +287,7 @@ files:
 
 Both `copy` and `symlink` accept glob patterns.
 
-To re-apply file operations to existing worktrees (e.g., after updating the config), use [`workmux sync-files`](/reference/commands/sync-files).
+To re-apply file operations to existing worktrees (e.g., after updating the config), use [`muxix sync-files`](/reference/commands/sync-files).
 
 ### Lifecycle hooks
 
@@ -299,7 +299,7 @@ Run commands at specific points in the worktree lifecycle, such as installing de
 | `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
 | `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
 
-`WM_CONFIG_DIR` points to the directory containing the `.workmux.yaml` that was used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
+`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
 
 Example:
 
@@ -360,13 +360,13 @@ To override back to `llm` when an agent is configured, set `auto_name.command: "
 | `background`    | Always run in background when using `--auto-name`                | `false`                    |
 | `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt            |
 
-See [`workmux add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
+See [`muxix add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
 
 ### Agent bootstrap
 
 The `bootstrap` section configures plugins, skills, prompt components, and
 cross-agent **features** once and applies them to every detected agent via
-[`workmux setup`](../reference/commands/setup.md). See the dedicated
+[`muxix setup`](../reference/commands/setup.md). See the dedicated
 [Agent bootstrap](./bootstrap.md) guide.
 
 ```yaml
@@ -385,24 +385,24 @@ bootstrap:
 
 #### Declaring items from the CLI
 
-`workmux bootstrap` edits the `bootstrap:` block and then applies it, so a plugin
+`muxix bootstrap` edits the `bootstrap:` block and then applies it, so a plugin
 is declared in config and installed in one step — never installed behind
-workmux's back, where it would be untracked and never pruned:
+muxix's back, where it would be untracked and never pruned:
 
 ```bash
-workmux bootstrap plugin   add git:github.com/x/y --agent pi
-workmux bootstrap skill    add ./skills/auto-git          # every agent
-workmux bootstrap subagent add ./.workmux/subagents/x.md
-workmux bootstrap prompt   add fff --agent claude
+muxix bootstrap plugin   add git:github.com/x/y --agent pi
+muxix bootstrap skill    add ./skills/auto-git          # every agent
+muxix bootstrap subagent add ./.muxix/subagents/x.md
+muxix bootstrap prompt   add fff --agent claude
 
-workmux bootstrap plugin rm git:github.com/x/y --agent pi  # uninstalls on sync
-workmux bootstrap list --agent pi   # what pi resolves to, with each item's origin
-workmux bootstrap sync              # apply hand-edited config (full `workmux setup`)
+muxix bootstrap plugin rm git:github.com/x/y --agent pi  # uninstalls on sync
+muxix bootstrap list --agent pi   # what pi resolves to, with each item's origin
+muxix bootstrap sync              # apply hand-edited config (full `muxix setup`)
 ```
 
 - `--agent <name>` writes to `bootstrap.agents.<name>.additional_*`; without it
   the entry goes to the shared `default_*` list.
-- Edits land in the project `.workmux.yaml` when one is discoverable, otherwise
+- Edits land in the project `.muxix.yaml` when one is discoverable, otherwise
   the global config. `--global` and `--project` force the choice; the file
   written is always printed.
 - `--no-sync` declares without applying. `rm` relies on setup's managed manifest
@@ -432,7 +432,7 @@ providers:
 ## Default behavior
 
 - Worktrees are created in `<project>__worktrees` as a sibling directory to your project by default
-- If no `panes` configuration is defined, workmux provides opinionated defaults:
+- If no `panes` configuration is defined, muxix provides opinionated defaults:
   - For projects with a `CLAUDE.md` file: Opens the configured agent (see `agent` option) in the first pane, defaulting to `claude` if none is set.
   - For all other projects: Opens your default shell.
   - Both configurations include a second pane split horizontally

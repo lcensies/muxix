@@ -1,6 +1,6 @@
 ---
 layout: home
-title: workmux - parallel AI agents in your terminal
+title: muxix - parallel AI agents in your terminal
 description: Terminal-first workflow for parallel AI agents using git worktrees
 ---
 
@@ -13,12 +13,12 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
   </div>
   <div class="ed-container ed-hero-inner">
     <div class="ed-hero-text">
-      <span class="ed-hero-name">workmux</span>
+      <span class="ed-hero-name">muxix</span>
       <h1 class="ed-hero-headline">Terminal-first workflow for parallel AI agents.</h1>
       <p class="ed-hero-tagline">Turn your terminal into a multi-agent workspace. Every task gets a dedicated <span class="ed-term">git worktree</span> and <span class="ed-term">tmux window</span>, letting agents code conflict-free.</p>
       <div class="ed-hero-actions">
         <a href="/guide/quick-start" class="ed-btn-primary">Get started</a>
-        <a href="https://github.com/raine/workmux" class="ed-btn-github">GitHub</a>
+        <a href="https://github.com/lcensies/muxix" class="ed-btn-github">GitHub</a>
       </div>
     </div>
     <div class="ed-hero-logo">
@@ -40,7 +40,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
         </div>
         <div class="window-title">Terminal</div>
       </div>
-      <img src="/hero-screenshot.webp" alt="workmux in action: multiple AI agents working in parallel across tmux windows" class="dashboard-img">
+      <img src="/hero-screenshot.webp" alt="muxix in action: multiple AI agents working in parallel across tmux windows" class="dashboard-img">
     </div>
   </div>
 </section>
@@ -48,7 +48,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
 <section class="ed-why">
   <div class="ed-container">
     <div class="ed-accent-rule"></div>
-    <span class="ed-section-label">Why workmux?</span>
+    <span class="ed-section-label">Why muxix?</span>
     <div class="ed-why-grid">
       <div class="ed-why-item">
         <div class="ed-why-header">
@@ -79,15 +79,15 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
   <div class="ed-container">
     <div class="ed-accent-rule"></div>
     <span class="ed-section-label">Worktree pain points, solved</span>
-    <p class="ed-section-desc">Git worktrees are powerful, but managing them manually is painful. workmux automates the rough edges.</p>
+    <p class="ed-section-desc">Git worktrees are powerful, but managing them manually is painful. muxix automates the rough edges.</p>
     <div class="ed-pain-points-list">
       <div class="ed-pain-point">
         <h3>"You need to reinstall everything"</h3>
-        <p>New worktrees are clean checkouts with no <code>.env</code>, no <code>node_modules</code>, no dev server. workmux can <a href="/guide/configuration#file-operations">copy config files, symlink dependencies</a>, and <a href="/guide/configuration#lifecycle-hooks">run setup commands</a> on creation.</p>
+        <p>New worktrees are clean checkouts with no <code>.env</code>, no <code>node_modules</code>, no dev server. muxix can <a href="/guide/configuration#file-operations">copy config files, symlink dependencies</a>, and <a href="/guide/configuration#lifecycle-hooks">run setup commands</a> on creation.</p>
       </div>
       <div class="ed-pain-point">
         <h3>"You need to clean up after"</h3>
-        <p><code>workmux merge</code> handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. One command. Or go next level and use the <a href="/guide/skills#merge"><code>/merge</code> skill</a> to let your agent commit, rebase, and merge autonomously.</p>
+        <p><code>muxix merge</code> handles the full lifecycle: merge the branch, delete the worktree, close the tmux window, remove the local branch. One command. Or go next level and use the <a href="/guide/skills#merge"><code>/merge</code> skill</a> to let your agent commit, rebase, and merge autonomously.</p>
       </div>
       <div class="ed-pain-point">
         <h3>"Conflicts arise on merge"</h3>
@@ -112,7 +112,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
           <span class="control yellow"></span>
           <span class="control green"></span>
         </div>
-        <div class="window-title">workmux demo</div>
+        <div class="window-title">muxix demo</div>
       </div>
       <div class="video-container">
         <video src="/demo.mp4" controls muted playsinline preload="metadata"></video>
@@ -147,9 +147,9 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
           <span class="control yellow"></span>
           <span class="control green"></span>
         </div>
-        <div class="window-title">workmux dashboard</div>
+        <div class="window-title">muxix dashboard</div>
       </div>
-      <img src="/dashboard.webp" alt="workmux dashboard" class="dashboard-img">
+      <img src="/dashboard.webp" alt="muxix dashboard" class="dashboard-img">
     </div>
   </div>
 </section>
@@ -162,7 +162,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
     <div class="ed-modes">
       <div class="ed-mode">
         <h3 class="ed-mode-title">Solo</h3>
-        <p class="ed-mode-cmd">workmux add -A "Add cursor-based pagination to /api/users"</p>
+        <p class="ed-mode-cmd">muxix add -A "Add cursor-based pagination to /api/users"</p>
         <p class="ed-mode-benefit">One command creates a branch, worktree, and starts an agent with your prompt in a new tab.</p>
       </div>
       <div class="ed-mode">
@@ -171,9 +171,9 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
         <p class="ed-mode-benefit">From inside an agent, spin off a subtask to a new worktree with full context.</p>
       </div>
       <div class="ed-mode">
-        <h3 class="ed-mode-title">Coordinated</h3>
-        <p class="ed-mode-cmd"><code>/coordinator</code> Break down the auth refactor into parallel tasks</p>
-        <p class="ed-mode-benefit">One agent spawns, monitors, and merges multiple worktree agents.</p>
+        <h3 class="ed-mode-title">Harness-driven</h3>
+        <p class="ed-mode-cmd"><code>muxix task list --ready --json</code></p>
+        <p class="ed-mode-benefit">Your harness reads the task graph, muxix gives each task a worktree and a window.</p>
       </div>
     </div>
     <a href="/guide/workflows" class="ed-workflows-link">Learn more →</a>
@@ -186,11 +186,11 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
     <span class="ed-section-label">What people are saying</span>
     <div class="ed-testimonial-list">
       <div class="ed-testimonial">
-        <blockquote>"I've been using (and loving) workmux which brings together tmux, git worktrees, and CLI agents into an opinionated workflow."</blockquote>
+        <blockquote>"I've been using (and loving) muxix which brings together tmux, git worktrees, and CLI agents into an opinionated workflow."</blockquote>
         <cite>— @Coolin96 <a href="https://news.ycombinator.com/item?id=46029809">via Hacker News</a></cite>
       </div>
       <div class="ed-testimonial">
-        <blockquote>"Thank you so much for your work with workmux! It's a tool I've been wanting to exist for a long time."</blockquote>
+        <blockquote>"Thank you so much for your work with muxix! It's a tool I've been wanting to exist for a long time."</blockquote>
         <cite>— @rstacruz <a href="https://github.com/raine/workmux/issues/2">via GitHub</a></cite>
       </div>
       <div class="ed-testimonial">
@@ -198,7 +198,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
         <cite>— @cisaacstern <a href="https://github.com/raine/workmux/issues/33">via GitHub</a></cite>
       </div>
       <div class="ed-testimonial">
-        <blockquote>"I have to mention workmux at every opportunity because it's the perfect glue between worktrees, agents and tmux windows."</blockquote>
+        <blockquote>"I have to mention muxix at every opportunity because it's the perfect glue between worktrees, agents and tmux windows."</blockquote>
         <cite>— @dedbrizz <a href="https://www.threads.com/@dedbrizz/post/DVt1DtLkr_l">via Threads</a></cite>
       </div>
     </div>
@@ -212,7 +212,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
         Get started
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
       </a>
-      <a href="https://github.com/raine/workmux" class="ed-btn-secondary">
+      <a href="https://github.com/lcensies/muxix" class="ed-btn-secondary">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
         View on GitHub
       </a>

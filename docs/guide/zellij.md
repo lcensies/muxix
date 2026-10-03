@@ -10,7 +10,7 @@ The Zellij backend is new and experimental. It depends on unreleased Zellij feat
 
 [Zellij](https://zellij.dev/) can be used as an alternative to tmux. Detected automatically via `$ZELLIJ`.
 
-<img src="/zellij-screenshot.webp" alt="workmux running in zellij with multiple agents" style="border-radius: 4px;">
+<img src="/zellij-screenshot.webp" alt="muxix running in zellij with multiple agents" style="border-radius: 4px;">
 
 ## Differences from tmux
 
@@ -24,7 +24,7 @@ The Zellij backend is new and experimental. It depends on unreleased Zellij feat
 | Dashboard preview    | Yes                  | No                |
 
 - **Tab ordering**: New tabs appear at the end of the tab bar (no "insert after" support like tmux)
-- **Session isolation**: workmux operates within the current Zellij session. Tabs in other sessions are not affected.
+- **Session isolation**: muxix operates within the current Zellij session. Tabs in other sessions are not affected.
 - **Window mode only**: Session mode (`--session`) is not supported. Use window mode instead.
 - **Pane splits**: All splits are 50/50 — percentage-based sizing is not available via the Zellij CLI.
 - **No dashboard preview**: Zellij's `dump-screen` only captures the focused pane, so preview in the dashboard is disabled.
@@ -47,12 +47,12 @@ cargo install --path .
 
 ## Configuration
 
-No special Zellij configuration is required. workmux uses Zellij's built-in CLI actions (`zellij action`) which work out of the box.
+No special Zellij configuration is required. muxix uses Zellij's built-in CLI actions (`zellij action`) which work out of the box.
 
-If you want to override the auto-detected backend, set the `WORKMUX_BACKEND` environment variable:
+If you want to override the auto-detected backend, set the `MUXIX_BACKEND` environment variable:
 
 ```bash
-export WORKMUX_BACKEND=zellij
+export MUXIX_BACKEND=zellij
 ```
 
 ## Known limitations

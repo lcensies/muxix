@@ -1,14 +1,14 @@
 //! Agent definition registry — loads and resolves named `AgentDefinition` profiles.
 //!
 //! Resolution order (first match wins):
-//!   1. Inline `agent_defs:` in `.workmux.yaml`
-//!   2. Files in `.workmux/agents/<name>.yaml`
+//!   1. Inline `agent_defs:` in `.muxix.yaml`
+//!   2. Files in `.muxix/agents/<name>.yaml`
 //!   3. Remote sources (git/url) — fetched and cached locally (stub in Phase 1)
 //!
-//! Registry sources are declared in `.workmux.yaml` under `agent_registries:`:
+//! Registry sources are declared in `.muxix.yaml` under `agent_registries:`:
 //! ```yaml
 //! agent_registries:
-//!   - local: .workmux/agents        # always searched first (default location)
+//!   - local: .muxix/agents        # always searched first (default location)
 //!   - git:
 //!       url: https://github.com/example-org/agent-registry
 //!       ref: v1.0.0
@@ -27,14 +27,14 @@ use tracing::debug;
 ///
 /// Local sources are scanned eagerly at load time. Remote sources are fetched
 /// on demand and cached (Phase 1: remote fetch is stubbed — returns an error
-/// suggesting `workmux agent add` to vendor the profile locally).
+/// suggesting `muxix agent add` to vendor the profile locally).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RegistrySource {
     /// Local directory of `<name>.yaml` agent definition files.
     Local {
         /// Path relative to the project root, or absolute. Defaults to
-        /// `.workmux/agents` if omitted.
+        /// `.muxix/agents` if omitted.
         #[serde(default)]
         local: Option<String>,
     },
@@ -64,7 +64,7 @@ pub struct GitRegistrySource {
 /// The resolved agent definition registry.
 ///
 /// Constructed once at runner setup from:
-/// - Inline `agent_defs:` from `.workmux.yaml`
+/// - Inline `agent_defs:` from `.muxix.yaml`
 /// - Files scanned from local registry directories
 ///
 /// Remote registry resolution is not yet implemented (Phase 1 stub).
@@ -92,7 +92,7 @@ impl AgentRegistry {
     ) -> Result<Self> {
         let mut registry = Self::new();
 
-        // 1. Inline defs from .workmux.yaml win over everything else.
+        // 1. Inline defs from .muxix.yaml win over everything else.
         for (name, def) in inline_defs {
             registry.definitions.insert(name.clone(), def.clone());
         }
@@ -101,7 +101,7 @@ impl AgentRegistry {
         for source in sources {
             match source {
                 RegistrySource::Local { local } => {
-                    let dir = local.as_deref().unwrap_or(".workmux/agents");
+                    let dir = local.as_deref().unwrap_or(".muxix/agents");
                     let dir_path = if Path::new(dir).is_absolute() {
                         PathBuf::from(dir)
                     } else {
@@ -113,25 +113,25 @@ impl AgentRegistry {
                 }
                 RegistrySource::Git { git } => {
                     // Phase 1 stub: remote git registries are not yet fetched.
-                    // Use `workmux agent add <url>` to vendor a remote profile locally.
+                    // Use `muxix agent add <url>` to vendor a remote profile locally.
                     debug!(
                         url = %git.url,
-                        "remote git registry not yet fetched; use `workmux agent add` to vendor"
+                        "remote git registry not yet fetched; use `muxix agent add` to vendor"
                     );
                 }
                 RegistrySource::Url { url } => {
                     debug!(
                         url = %url,
-                        "remote url registry not yet fetched; use `workmux agent add` to vendor"
+                        "remote url registry not yet fetched; use `muxix agent add` to vendor"
                     );
                 }
             }
         }
 
         // Always scan the default local directory if not already declared.
-        let default_dir = project_root.join(".workmux/agents");
+        let default_dir = project_root.join(".muxix/agents");
         let default_declared = sources.iter().any(|s| {
-            matches!(s, RegistrySource::Local { local } if local.as_deref().unwrap_or(".workmux/agents") == ".workmux/agents")
+            matches!(s, RegistrySource::Local { local } if local.as_deref().unwrap_or(".muxix/agents") == ".muxix/agents")
         });
         if !default_declared && default_dir.exists() {
             registry.load_from_dir(&default_dir)?;
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn loads_yaml_files_from_dir() {
         let dir = TempDir::new().unwrap();
-        let agents_dir = dir.path().join(".workmux").join("agents");
+        let agents_dir = dir.path().join(".muxix").join("agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
         let def_yaml = "permission_mode: plan\ndescription: test planner\n";
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn inline_overrides_file() {
         let dir = TempDir::new().unwrap();
-        let agents_dir = dir.path().join(".workmux").join("agents");
+        let agents_dir = dir.path().join(".muxix").join("agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
         // File says "plan", inline says "implement" — inline wins.

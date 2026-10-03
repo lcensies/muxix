@@ -247,7 +247,7 @@ impl clap::builder::TypedValueParser for GitBranchParser {
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-#[command(name = "workmux")]
+#[command(name = "muxix")]
 #[command(about = "An opinionated workflow tool that orchestrates git worktrees and tmux")]
 #[command(help_template = "\
 {about}
@@ -264,18 +264,18 @@ Worktree lifecycle:
   resurrect    Restore worktree windows after a tmux or computer crash
 
 Projects:
-  project      Track project directories for 'workmux start'
+  project      Track project directories for 'muxix start'
   start        Start all tracked projects (session per project, window per worktree)
 
 Monitoring:
-  dashboard    Show a TUI dashboard of all active workmux agents
+  dashboard    Show a TUI dashboard of all active muxix agents
   sidebar      Toggle a live agent status sidebar in tmux
   list         List all worktrees [ls]
   path         Get the filesystem path of a worktree
   status       Query agent status for worktrees
 
 Setup and configuration:
-  init         Generate example .workmux.yaml configuration file
+  init         Generate example .muxix.yaml configuration file
   setup        Set up agent status tracking hooks and install skills
   config       Manage global configuration
   sandbox      Manage sandbox settings
@@ -292,7 +292,7 @@ Agent interaction:
 Help and updates:
   docs         Show detailed documentation (renders README.md)
   changelog    Show the changelog (what's new in each version)
-  update       Update workmux to the latest version
+  update       Update muxix to the latest version
   completions  Generate shell completions
   help         Print help for a command
 
@@ -301,11 +301,11 @@ Options:
   -V, --version  Print version
       --profile <NAME>  Config profile(s) to apply (comma-separated)
 
-Run 'workmux docs' for detailed documentation.
+Run 'muxix docs' for detailed documentation.
 ")]
 struct Cli {
     /// Config profile(s) to apply, comma-separated for several (applied left
-    /// to right). Overrides WORKMUX_PROFILE and `default_profile:` in config;
+    /// to right). Overrides MUXIX_PROFILE and `default_profile:` in config;
     /// pass an empty value to disable a configured default_profile.
     #[arg(long, global = true, value_name = "NAME")]
     profile: Option<String>,
@@ -360,7 +360,7 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
 
-        /// Explicit name for the workmux-managed tmux target
+        /// Explicit name for the muxix-managed tmux target
         #[arg(long = "target-name")]
         target_name: Option<String>,
 
@@ -432,7 +432,7 @@ enum Commands {
         #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
 
-        /// Explicit name for the workmux-managed tmux target
+        /// Explicit name for the muxix-managed tmux target
         #[arg(long = "target-name")]
         target_name: Option<String>,
 
@@ -491,7 +491,7 @@ enum Commands {
         json: bool,
     },
 
-    /// Manage tracked project directories (used by `workmux start`)
+    /// Manage tracked project directories (used by `muxix start`)
     Project {
         #[command(subcommand)]
         command: ProjectCommands,
@@ -699,7 +699,7 @@ enum Commands {
         all: bool,
     },
 
-    /// Generate example .workmux.yaml configuration file
+    /// Generate example .muxix.yaml configuration file
     Init,
 
     /// Set up agent status tracking hooks and install skills
@@ -725,7 +725,7 @@ enum Commands {
         /// hooks, skills, subagents, plugins, agent-settings, prompts, theme, mcp, agent-profiles, deps
         #[arg(long, value_name = "SECTIONS")]
         only: Option<String>,
-        /// Keep harness features workmux installed that the config no longer
+        /// Keep harness features muxix installed that the config no longer
         /// declares, instead of removing them.
         #[arg(long = "no-prune")]
         no_prune: bool,
@@ -743,7 +743,7 @@ enum Commands {
         strict: bool,
     },
 
-    /// Export, import, or diff workmux config profiles for team sharing
+    /// Export, import, or diff muxix config profiles for team sharing
     Profile {
         #[command(subcommand)]
         command: ProfileCommand,
@@ -755,7 +755,7 @@ enum Commands {
     /// Show the changelog (what's new in each version)
     Changelog,
 
-    /// Update workmux to the latest version
+    /// Update muxix to the latest version
     Update,
 
     /// Toggle a live agent status sidebar in tmux
@@ -798,7 +798,7 @@ enum Commands {
     #[command(hide = true, name = "_sidebar-daemon")]
     SidebarDaemon,
 
-    /// Show a TUI dashboard of all active workmux agents across all sessions
+    /// Show a TUI dashboard of all active muxix agents across all sessions
     Dashboard {
         /// Preview pane size as percentage (10-90). Larger = more preview, less table.
         #[arg(long, short = 'P', value_parser = clap::value_parser!(u8).range(10..=90))]
@@ -881,7 +881,7 @@ enum Commands {
     /// the agent's real config dir, then execs the agent. Select the profile
     /// with the global `--profile <name>` flag; with no profile it falls
     /// through to the untouched base config dir. Build profiles with
-    /// `workmux setup`.
+    /// `muxix setup`.
     #[command(name = "exec")]
     AgentExec {
         /// The agent command to launch (e.g. `pi`, `claude`)
@@ -894,7 +894,7 @@ enum Commands {
 
     /// Switch multiplexer focus to an agent by agent ID or window-name fragment
     Focus {
-        /// Agent ID / UUID prefix (see `workmux status`) or window-name substring
+        /// Agent ID / UUID prefix (see `muxix status`) or window-name substring
         /// (e.g. feature-auth)
         target: String,
     },
@@ -955,7 +955,7 @@ enum Commands {
 
     /// Read and mutate the task graph from the shell (list/get/create/update/delete).
     ///
-    /// workmux stores the graph and serialises writes to it; deciding what to run
+    /// muxix stores the graph and serialises writes to it; deciding what to run
     /// next is the calling harness's job.
     ///
     /// Relative `--graph` paths resolve against the main worktree root, so agents
@@ -999,7 +999,7 @@ enum Commands {
         feedback: Option<String>,
     },
 
-    /// Internal: emit an `agent.session` capability report (which workmux hooks
+    /// Internal: emit an `agent.session` capability report (which muxix hooks
     /// are installed) to the event log. Run from the agent's SessionStart hook so
     /// a missing/stale hook setup is visible from the start of every session.
     #[command(hide = true)]
@@ -1053,7 +1053,7 @@ pub enum ProjectCommands {
 pub enum AgentsCommand {
     /// Stop an agent by reference (`<runtime>:<id>`, or a pane id for local)
     Stop {
-        /// Agent reference as printed by `workmux agents`
+        /// Agent reference as printed by `muxix agents`
         reference: String,
     },
 }
@@ -1211,7 +1211,7 @@ pub fn run() -> Result<()> {
     nerdfont::init(Some(nerdfont_enabled), has_pua);
 
     // Check agent status tracking setup after nerdfont.
-    // Uses a separate gate to avoid double-prompting when running `workmux setup`.
+    // Uses a separate gate to avoid double-prompting when running `muxix setup`.
     if config_ok
         && should_prompt_status_setup(&command)
         && let Err(e) = crate::agent::setup::prompt_wizard()
@@ -1250,7 +1250,7 @@ pub fn run() -> Result<()> {
             session,
             config,
         } => {
-            // Sugar: `workmux add <existing-repo-dir>` tracks the project
+            // Sugar: `muxix add <existing-repo-dir>` tracks the project
             // instead of creating a worktree (directory containing .git wins
             // over a same-named branch).
             if let Some(bn) = branch_name.as_deref() {
@@ -1258,7 +1258,7 @@ pub fn run() -> Result<()> {
                 if path.is_dir() && path.join(".git").exists() {
                     println!(
                         "'{}' is a git repository — tracking it as a project \
-                         (run `workmux add <branch>` inside a repo to create worktrees)",
+                         (run `muxix add <branch>` inside a repo to create worktrees)",
                         bn
                     );
                     return projects::cli_add(path);
@@ -1693,10 +1693,10 @@ fn generate_completions(shell: Shell) {
 }
 
 /// Rename the clap-generated zsh completion function so the dynamic wrapper
-/// (in `zsh_dynamic.zsh`) can take the primary `_workmux` name.
+/// (in `zsh_dynamic.zsh`) can take the primary `_muxix` name.
 ///
-/// The dynamic wrapper needs to BE `_workmux` — the function zsh autoloads
-/// from fpath. It delegates flag completion to `_workmux_base` (the renamed
+/// The dynamic wrapper needs to BE `_muxix` — the function zsh autoloads
+/// from fpath. It delegates flag completion to `_muxix_base` (the renamed
 /// clap output) and handles positional args with dynamic helpers.
 ///
 /// The `replace("_{name}", "_{name}_base")` is precise: `_{name}` (with the
@@ -1710,7 +1710,7 @@ fn prepare_zsh_base(script: &str, name: &str) -> String {
     let script = script.replace(&fn_prefix, &base_fn_prefix);
 
     // Strip the autoload/eval detection block clap appends at the end.
-    // After renaming it registers _workmux_base, which conflicts with our
+    // After renaming it registers _muxix_base, which conflicts with our
     // dynamic wrapper's own registration.
     let funcstack_block = format!(
         "\nif [ \"$funcstack[1]\" = \"{base_fn_prefix}\" ]; then\n    \
@@ -1859,7 +1859,7 @@ pub enum TaskAction {
         /// Why the task stopped (read by the failure steward)
         #[arg(long)]
         blocked_reason: Option<String>,
-        /// Read the blocked reason from a file (e.g. .workmux/blocked/<id>.md)
+        /// Read the blocked reason from a file (e.g. .muxix/blocked/<id>.md)
         #[arg(long, conflicts_with = "blocked_reason")]
         blocked_reason_file: Option<PathBuf>,
         /// Add a label, keeping the existing ones
@@ -1889,64 +1889,64 @@ mod tests {
     #[test]
     fn prepare_zsh_base_renames_function_identifiers() {
         let input = concat!(
-            "#compdef workmux\n",
-            "_workmux() {\n",
-            "  \":: :_workmux_commands\"\n",
+            "#compdef muxix\n",
+            "_muxix() {\n",
+            "  \":: :_muxix_commands\"\n",
             "}\n",
-            "(( $+functions[_workmux_commands] )) ||\n",
-            "_workmux_commands() {\n",
-            "  _describe -t commands 'workmux commands' commands\n",
+            "(( $+functions[_muxix_commands] )) ||\n",
+            "_muxix_commands() {\n",
+            "  _describe -t commands 'muxix commands' commands\n",
             "}\n",
-            "\nif [ \"$funcstack[1]\" = \"_workmux\" ]; then\n",
-            "    _workmux \"$@\"\n",
+            "\nif [ \"$funcstack[1]\" = \"_muxix\" ]; then\n",
+            "    _muxix \"$@\"\n",
             "else\n",
-            "    compdef _workmux workmux\n",
+            "    compdef _muxix muxix\n",
             "fi\n",
         );
-        let result = prepare_zsh_base(input, "workmux");
+        let result = prepare_zsh_base(input, "muxix");
 
         // Function identifiers are renamed
-        assert!(result.contains("_workmux_base()"));
-        assert!(result.contains("_workmux_base_commands"));
-        assert!(!result.contains("_workmux()"));
+        assert!(result.contains("_muxix_base()"));
+        assert!(result.contains("_muxix_base_commands"));
+        assert!(!result.contains("_muxix()"));
 
-        // Bare "workmux" in #compdef and _describe strings is preserved
-        assert!(result.contains("#compdef workmux"));
-        assert!(result.contains("'workmux commands'"));
+        // Bare "muxix" in #compdef and _describe strings is preserved
+        assert!(result.contains("#compdef muxix"));
+        assert!(result.contains("'muxix commands'"));
 
         // funcstack block is stripped
         assert!(!result.contains("funcstack"));
-        assert!(!result.contains("compdef _workmux_base"));
+        assert!(!result.contains("compdef _muxix_base"));
     }
 
     #[test]
     fn prepare_zsh_base_preserves_state_and_curcontext() {
         let input = concat!(
-            "#compdef workmux\n",
-            "_workmux() {\n",
-            "  \"*::: :->workmux\"\n",
-            "  curcontext=\"workmux-command-$line[1]:\"\n",
+            "#compdef muxix\n",
+            "_muxix() {\n",
+            "  \"*::: :->muxix\"\n",
+            "  curcontext=\"muxix-command-$line[1]:\"\n",
             "}\n",
-            "\nif [ \"$funcstack[1]\" = \"_workmux\" ]; then\n",
-            "    _workmux \"$@\"\n",
+            "\nif [ \"$funcstack[1]\" = \"_muxix\" ]; then\n",
+            "    _muxix \"$@\"\n",
             "else\n",
-            "    compdef _workmux workmux\n",
+            "    compdef _muxix muxix\n",
             "fi\n",
         );
-        let result = prepare_zsh_base(input, "workmux");
+        let result = prepare_zsh_base(input, "muxix");
 
-        // State names and curcontext use bare "workmux" (no underscore), unchanged
-        assert!(result.contains("->workmux"));
-        assert!(result.contains("workmux-command-"));
+        // State names and curcontext use bare "muxix" (no underscore), unchanged
+        assert!(result.contains("->muxix"));
+        assert!(result.contains("muxix-command-"));
     }
 
     #[test]
     fn prepare_zsh_base_tolerates_missing_funcstack_block() {
-        let input = "_workmux() {\n  echo hello\n}\n";
-        let result = prepare_zsh_base(input, "workmux");
+        let input = "_muxix() {\n  echo hello\n}\n";
+        let result = prepare_zsh_base(input, "muxix");
 
-        assert!(result.contains("_workmux_base()"));
-        assert!(!result.contains("_workmux()"));
+        assert!(result.contains("_muxix_base()"));
+        assert!(!result.contains("_muxix()"));
     }
 
     #[test]
@@ -1960,23 +1960,23 @@ mod tests {
         let result = prepare_zsh_base(&base_script, &name);
 
         // Main function is renamed
-        assert!(result.contains("_workmux_base()"));
-        assert!(!result.contains("\n_workmux()"));
+        assert!(result.contains("_muxix_base()"));
+        assert!(!result.contains("\n_muxix()"));
 
         // Helpers are renamed
-        assert!(result.contains("_workmux_base_commands"));
+        assert!(result.contains("_muxix_base_commands"));
 
         // #compdef header preserved
-        assert!(result.starts_with("#compdef workmux\n"));
+        assert!(result.starts_with("#compdef muxix\n"));
 
         // _describe strings preserved
-        assert!(result.contains("'workmux commands'"));
+        assert!(result.contains("'muxix commands'"));
 
         // funcstack block stripped
         assert!(!result.contains("funcstack"));
     }
 
-    /// Helper: produce the full `workmux completions zsh` output
+    /// Helper: produce the full `muxix completions zsh` output
     /// (base post-processed by prepare_zsh_base + dynamic wrapper).
     fn generate_full_zsh_completions() -> String {
         let mut cmd = Cli::command();
@@ -1990,25 +1990,25 @@ mod tests {
     }
 
     #[test]
-    fn zsh_full_output_has_no_stale_workmux_functions() {
+    fn zsh_full_output_has_no_stale_muxix_functions() {
         let output = generate_full_zsh_completions();
 
-        // The only _workmux() definition should be the dynamic wrapper.
-        // There must be no clap-generated _workmux() left (it was renamed).
-        let workmux_fn_count = output.matches("\n_workmux()").count();
+        // The only _muxix() definition should be the dynamic wrapper.
+        // There must be no clap-generated _muxix() left (it was renamed).
+        let muxix_fn_count = output.matches("\n_muxix()").count();
         assert_eq!(
-            workmux_fn_count, 1,
-            "Expected exactly one _workmux() definition (the dynamic wrapper)"
+            muxix_fn_count, 1,
+            "Expected exactly one _muxix() definition (the dynamic wrapper)"
         );
 
-        // The wrapper must call _workmux_base, not itself
+        // The wrapper must call _muxix_base, not itself
         let wrapper_section: &str = output
-            .split("\n_workmux()")
+            .split("\n_muxix()")
             .nth(1)
-            .expect("_workmux() not found");
+            .expect("_muxix() not found");
         assert!(
-            wrapper_section.contains("_workmux_base"),
-            "Dynamic wrapper must delegate to _workmux_base"
+            wrapper_section.contains("_muxix_base"),
+            "Dynamic wrapper must delegate to _muxix_base"
         );
     }
 
@@ -2017,9 +2017,9 @@ mod tests {
         let output = generate_full_zsh_completions();
 
         // The dynamic wrapper's case branches for handle commands should
-        // call _workmux_handles, not _workmux_base (which has _default).
+        // call _muxix_handles, not _muxix_base (which has _default).
         // Extract the case block from the wrapper.
-        let wrapper_start = output.find("\n_workmux()").expect("_workmux() not found");
+        let wrapper_start = output.find("\n_muxix()").expect("_muxix() not found");
         let wrapper = &output[wrapper_start..];
 
         // The handle commands should appear in the case pattern
@@ -2027,12 +2027,12 @@ mod tests {
             assert!(wrapper.contains(cmd), "Wrapper should handle {cmd}");
         }
         assert!(
-            wrapper.contains("_workmux_handles"),
-            "Wrapper should call _workmux_handles for handle commands"
+            wrapper.contains("_muxix_handles"),
+            "Wrapper should call _muxix_handles for handle commands"
         );
         assert!(
-            wrapper.contains("_workmux_git_branches"),
-            "Wrapper should call _workmux_git_branches for add"
+            wrapper.contains("_muxix_git_branches"),
+            "Wrapper should call _muxix_git_branches for add"
         );
     }
 
@@ -2042,26 +2042,26 @@ mod tests {
 
         // Must start with #compdef for fpath autoloading
         assert!(
-            output.starts_with("#compdef workmux\n"),
+            output.starts_with("#compdef muxix\n"),
             "Must start with #compdef for fpath autoloading"
         );
 
         // Must have funcstack detection for autoload/eval compatibility
         assert!(
-            output.contains(r#""$funcstack[1]" = "_workmux""#),
+            output.contains(r#""$funcstack[1]" = "_muxix""#),
             "Must have funcstack check for autoload detection"
         );
 
         // Must have compdef registration for eval case
         assert!(
-            output.contains("compdef _workmux workmux"),
-            "Must register _workmux via compdef for eval case"
+            output.contains("compdef _muxix muxix"),
+            "Must register _muxix via compdef for eval case"
         );
 
-        // Must NOT have compdef for _workmux_base (that was stripped)
+        // Must NOT have compdef for _muxix_base (that was stripped)
         assert!(
-            !output.contains("compdef _workmux_base"),
-            "Must not register _workmux_base directly"
+            !output.contains("compdef _muxix_base"),
+            "Must not register _muxix_base directly"
         );
     }
 
@@ -2075,12 +2075,12 @@ mod tests {
         let dynamic = include_str!("scripts/completions/bash_dynamic.bash");
         let output = format!("{base_script}{dynamic}");
 
-        // Bash uses _workmux directly (no _base rename)
-        assert!(output.contains("_workmux()"));
-        assert!(!output.contains("_workmux_base"));
+        // Bash uses _muxix directly (no _base rename)
+        assert!(output.contains("_muxix()"));
+        assert!(!output.contains("_muxix_base"));
 
         // Dynamic wrapper registered
-        assert!(output.contains("complete -F _workmux_dynamic"));
+        assert!(output.contains("complete -F _muxix_dynamic"));
     }
 
     #[test]
@@ -2093,12 +2093,12 @@ mod tests {
         let dynamic = include_str!("scripts/completions/fish_dynamic.fish");
         let output = format!("{base_script}{dynamic}");
 
-        // Fish uses workmux directly (no _base rename)
-        assert!(output.contains("__fish_workmux"));
-        assert!(!output.contains("workmux_base"));
+        // Fish uses muxix directly (no _base rename)
+        assert!(output.contains("__fish_muxix"));
+        assert!(!output.contains("muxix_base"));
 
         // Dynamic completions registered
-        assert!(output.contains("__workmux_handles"));
-        assert!(output.contains("__workmux_git_branches"));
+        assert!(output.contains("__muxix_handles"));
+        assert!(output.contains("__muxix_git_branches"));
     }
 }

@@ -9,7 +9,7 @@ pub fn run(all: bool) -> Result<()> {
 
     // Discover config nesting from CWD (e.g., "backend/" for monorepo configs).
     // We only need the rel_dir, not the config content, since the worktree's
-    // checked-out branch may have an outdated .workmux.yaml.
+    // checked-out branch may have an outdated .muxix.yaml.
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     let cwd_rel_dir = config::find_project_config(&cwd)?
         .map(|loc| loc.rel_dir)

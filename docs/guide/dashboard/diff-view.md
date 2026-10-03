@@ -14,7 +14,7 @@ Press `Tab` while in diff view to toggle between modes. The footer displays whic
 When [delta](https://github.com/dandavison/delta) is installed, diffs are rendered with syntax highlighting for better readability. Without delta, basic diff coloring is used as a fallback.
 
 <p>
-  <img src="/diff-view.webp" alt="workmux diff view" style="border-radius: 4px;">
+  <img src="/diff-view.webp" alt="muxix diff view" style="border-radius: 4px;">
 </p>
 <p style="text-align: center; color: var(--vp-c-text-2); font-size: 0.9em; margin-top: -0.5rem;">
   Diff view showing WIP changes across multiple files

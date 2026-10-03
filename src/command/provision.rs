@@ -27,18 +27,18 @@ pub fn run_status() -> Result<()> {
         }
         CacheStatus::Stale(policy) => {
             eprintln!(
-                "warning: org policy is stale (version {}). Run 'workmux provision sync' to refresh.",
+                "warning: org policy is stale (version {}). Run 'muxix provision sync' to refresh.",
                 policy.policy_version
             );
         }
         CacheStatus::Expired => {
             eprintln!(
-                "error: org policy has expired. Run 'workmux provision sync' to re-sync."
+                "error: org policy has expired. Run 'muxix provision sync' to re-sync."
             );
         }
         CacheStatus::Missing => {
             println!("org policy: not configured");
-            println!("  Run 'workmux provision sync' after setting the WORKMUX_PROVISION_URL env var");
+            println!("  Run 'muxix provision sync' after setting the MUXIX_PROVISION_URL env var");
             println!("  (or provision.server_url in your global config).");
         }
     }
@@ -69,8 +69,8 @@ pub fn run_sync(dry_run: bool, strict: bool) -> Result<()> {
 
     let snapshot = profile::generate_snapshot(&config);
     println!(
-        "provision sync: profile workmux/{} on {}",
-        snapshot.workmux_version, snapshot.platform
+        "provision sync: profile muxix/{} on {}",
+        snapshot.muxix_version, snapshot.platform
     );
 
     let now_secs = SystemTime::now()
@@ -246,7 +246,7 @@ pub fn run_dry_run() -> Result<()> {
             }
         }
         CacheStatus::Expired => {
-            eprintln!("org policy has expired — run 'workmux provision sync'");
+            eprintln!("org policy has expired — run 'muxix provision sync'");
         }
         CacheStatus::Missing => {
             println!("no cached policy found — nothing to apply");

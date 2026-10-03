@@ -138,7 +138,7 @@ def get_shells_to_test() -> list[str]:
 # By default, tests run against tmux only (for CI compatibility).
 # To run tests against WezTerm:
 #   pytest --backend=wezterm tests/
-#   WORKMUX_TEST_BACKEND=wezterm pytest tests/
+#   MUXIX_TEST_BACKEND=wezterm pytest tests/
 #
 # To run against both backends:
 #   pytest --backend=tmux,wezterm tests/
@@ -310,7 +310,7 @@ class MuxEnvironment(ABC):
         """Configure the default shell for new panes.
 
         For tmux: sets the default-shell option.
-        For WezTerm: sets SHELL env var (workmux already starts with -l).
+        For WezTerm: sets SHELL env var (muxix already starts with -l).
         """
         pass
 
@@ -440,7 +440,7 @@ class WezTermEnvironment(MuxEnvironment):
 
         import uuid
 
-        self.workspace_name = f"workmux_test_{uuid.uuid4().hex[:8]}"
+        self.workspace_name = f"muxix_test_{uuid.uuid4().hex[:8]}"
         self._created_pane_ids: list[str] = []
 
         # Remove TMUX env var to ensure we use WezTerm
@@ -476,10 +476,10 @@ class WezTermEnvironment(MuxEnvironment):
     def stop_server(self) -> None:
         """Clean up all panes in the test workspace.
 
-        Workmux commands spawn additional tabs/panes that aren't tracked
+        Muxix commands spawn additional tabs/panes that aren't tracked
         in _created_pane_ids, so we clean up everything in our workspace.
         """
-        # Get all panes in our workspace (includes those created by workmux)
+        # Get all panes in our workspace (includes those created by muxix)
         for pane in self._list_panes():
             pane_id = str(pane["pane_id"])
             self.run_command(
@@ -640,7 +640,7 @@ class WezTermEnvironment(MuxEnvironment):
         """Configure the default shell for WezTerm panes.
 
         WezTerm doesn't have a session-level default-shell option like tmux.
-        Instead, workmux already starts shells with -l flag for login shell behavior.
+        Instead, muxix already starts shells with -l flag for login shell behavior.
         We just set the SHELL env var so subprocesses know which shell to use.
         """
         self.env["SHELL"] = shell
@@ -857,11 +857,11 @@ def wait_for_file(
 def prompt_file_for_branch(worktree_path: Path, branch_name: str) -> Path:
     """Return the path to the prompt file for the given branch.
 
-    Prompt files are now stored in <worktree>/.workmux/PROMPT-<sanitized-branch>.md
+    Prompt files are now stored in <worktree>/.muxix/PROMPT-<sanitized-branch>.md
     Branch names with slashes are sanitized to dashes.
     """
     sanitized_branch = branch_name.replace("/", "-")
-    return worktree_path / ".workmux" / f"PROMPT-{sanitized_branch}.md"
+    return worktree_path / ".muxix" / f"PROMPT-{sanitized_branch}.md"
 
 
 def assert_prompt_file_contents(
@@ -873,7 +873,7 @@ def assert_prompt_file_contents(
     """Assert that a prompt file exists for the branch and matches the expected text."""
     if worktree_path is None:
         raise ValueError(
-            "worktree_path is required - prompt files are now in <worktree>/.workmux/"
+            "worktree_path is required - prompt files are now in <worktree>/.muxix/"
         )
     prompt_file = prompt_file_for_branch(worktree_path, branch_name)
     assert prompt_file.exists(), f"Prompt file not found at {prompt_file}"
@@ -1057,7 +1057,7 @@ def get_test_backends(config) -> list[str]:
 
     Priority:
     1. --backend command line option
-    2. WORKMUX_TEST_BACKEND environment variable
+    2. MUXIX_TEST_BACKEND environment variable
     3. Default to tmux
     """
     # Check command line option
@@ -1066,7 +1066,7 @@ def get_test_backends(config) -> list[str]:
         return [b.strip() for b in backend_opt.split(",")]
 
     # Check environment variable
-    env_backend = os.environ.get("WORKMUX_TEST_BACKEND")
+    env_backend = os.environ.get("MUXIX_TEST_BACKEND")
     if env_backend:
         return [b.strip() for b in env_backend.split(",")]
 
@@ -1097,8 +1097,8 @@ def mux_server(request, tmp_path: Path) -> Generator[MuxEnvironment, None, None]
 
     Configure via:
     - Command line: pytest --backend=wezterm
-    - Environment: WORKMUX_TEST_BACKEND=wezterm pytest
-    - Multiple backends: --backend=tmux,wezterm or WORKMUX_TEST_BACKEND=tmux,wezterm
+    - Environment: MUXIX_TEST_BACKEND=wezterm pytest
+    - Multiple backends: --backend=tmux,wezterm or MUXIX_TEST_BACKEND=tmux,wezterm
 
     Tests using this fixture will run once per enabled backend.
     """
@@ -1161,7 +1161,7 @@ def setup_git_repo(path: Path, env_vars: Optional[dict] = None):
     # Ignore test_home directory and test output files to prevent uncommitted changes
     gitignore_path = path / ".gitignore"
     gitignore_path.write_text(
-        "test_home/\nworkmux_*.txt\n"  # Test helper output files
+        "test_home/\nmuxix_*.txt\n"  # Test helper output files
     )
     subprocess.run(
         ["git", "add", ".gitignore"],
@@ -1298,8 +1298,8 @@ def poll_until_file_has_content(file_path: Path, timeout: float = 5.0) -> bool:
 
 
 @dataclass
-class WorkmuxCommandResult:
-    """Represents the result of running a workmux command inside tmux."""
+class MuxixCommandResult:
+    """Represents the result of running a muxix command inside tmux."""
 
     exit_code: int
     stdout: str
@@ -1307,17 +1307,17 @@ class WorkmuxCommandResult:
 
 
 @pytest.fixture(scope="session")
-def workmux_exe_path() -> Path:
+def muxix_exe_path() -> Path:
     """
-    Returns the path to the local workmux build for testing.
+    Returns the path to the local muxix build for testing.
     """
-    local_path = Path(__file__).parent.parent / "target/debug/workmux"
+    local_path = Path(__file__).parent.parent / "target/debug/muxix"
     if not local_path.exists():
-        pytest.fail("Could not find workmux executable. Run 'cargo build' first.")
+        pytest.fail("Could not find muxix executable. Run 'cargo build' first.")
     return local_path
 
 
-def write_workmux_config(
+def write_muxix_config(
     repo_path: Path,
     panes: Optional[List[Dict[str, Any]]] = None,
     post_create: Optional[List[str]] = None,
@@ -1335,7 +1335,7 @@ def write_workmux_config(
     prompt_file_only: Optional[bool] = None,
     layouts: Optional[Dict[str, Any]] = None,
 ):
-    """Creates a .workmux.yaml file from structured data and optionally commits it."""
+    """Creates a .muxix.yaml file from structured data and optionally commits it."""
     # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
     # regardless of user's global config
     config: Dict[str, Any] = {"nerdfont": False}
@@ -1367,22 +1367,22 @@ def write_workmux_config(
         config["base_branch"] = base_branch
     if prompt_file_only is not None:
         config["prompt_file_only"] = prompt_file_only
-    (repo_path / ".workmux.yaml").write_text(yaml.dump(config))
+    (repo_path / ".muxix.yaml").write_text(yaml.dump(config))
 
     # If env is provided, commit the config file to avoid uncommitted changes in merge tests
     if env:
         subprocess.run(
-            ["git", "add", ".workmux.yaml"], cwd=repo_path, check=True, env=env.env
+            ["git", "add", ".muxix.yaml"], cwd=repo_path, check=True, env=env.env
         )
         subprocess.run(
-            ["git", "commit", "-m", "Add workmux config"],
+            ["git", "commit", "-m", "Add muxix config"],
             cwd=repo_path,
             check=True,
             env=env.env,
         )
 
 
-def write_global_workmux_config(
+def write_global_muxix_config(
     env: MuxEnvironment,
     panes: Optional[List[Dict[str, Any]]] = None,
     post_create: Optional[List[str]] = None,
@@ -1393,7 +1393,7 @@ def write_global_workmux_config(
     merge_keep: Optional[bool] = None,
     agents: Optional[Dict[str, Any]] = None,
 ) -> Path:
-    """Creates the global ~/.config/workmux/config.yaml file within the isolated HOME."""
+    """Creates the global ~/.config/muxix/config.yaml file within the isolated HOME."""
     config: Dict[str, Any] = {}
     if panes is not None:
         config["panes"] = panes
@@ -1412,7 +1412,7 @@ def write_global_workmux_config(
     if agents is not None:
         config["agents"] = agents
 
-    config_dir = env.home_path / ".config" / "workmux"
+    config_dir = env.home_path / ".config" / "muxix"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_path = config_dir / "config.yaml"
     config_path.write_text(yaml.dump(config))
@@ -1423,7 +1423,7 @@ def get_worktree_path(repo_path: Path, branch_name: str) -> Path:
     """Returns the expected path for a worktree directory.
 
     The directory name is the slugified version of the branch name,
-    matching the Rust workmux behavior.
+    matching the Rust muxix behavior.
     """
     handle = slugify(branch_name)
     return repo_path.parent / f"{repo_path.name}__worktrees" / handle
@@ -1433,7 +1433,7 @@ def get_window_name(branch_name: str) -> str:
     """Returns the expected tmux window name for a worktree.
 
     The window name uses the slugified version of the branch name,
-    matching the Rust workmux behavior.
+    matching the Rust muxix behavior.
     """
     handle = slugify(branch_name)
     return f"{DEFAULT_WINDOW_PREFIX}{handle}"
@@ -1457,7 +1457,7 @@ def get_scripts_dir(env: MuxEnvironment) -> Path:
     # Cache the scripts dir on the env object for consistent paths
     if env._scripts_dir is None:
         # Use mkdtemp for guaranteed uniqueness (avoids hash collisions)
-        env._scripts_dir = Path(tempfile.mkdtemp(prefix="workmux_scripts_"))
+        env._scripts_dir = Path(tempfile.mkdtemp(prefix="muxix_scripts_"))
     return env._scripts_dir
 
 
@@ -1492,15 +1492,15 @@ def get_session_name(branch_name: str) -> str:
     """Returns the expected tmux session name for a worktree created with --session.
 
     The session name uses the slugified version of the branch name,
-    matching the Rust workmux behavior.
+    matching the Rust muxix behavior.
     """
     handle = slugify(branch_name)
     return f"{DEFAULT_WINDOW_PREFIX}{handle}"
 
 
-def run_workmux_command(
+def run_muxix_command(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     command: str,
     pre_run_mux_cmds: Optional[List[List[str]]] = None,
@@ -1508,17 +1508,17 @@ def run_workmux_command(
     working_dir: Optional[Path] = None,
     stdin_input: Optional[str] = None,
     pre_run_env: Optional[dict] = None,
-) -> WorkmuxCommandResult:
+) -> MuxixCommandResult:
     """
-    Helper to run a workmux command inside the isolated multiplexer session.
+    Helper to run a muxix command inside the isolated multiplexer session.
 
     Allows tests to optionally expect failure while still capturing stdout/stderr.
 
     Args:
         env: The isolated multiplexer environment
-        workmux_exe_path: Path to the workmux executable
+        muxix_exe_path: Path to the muxix executable
         repo_path: Path to the git repository
-        command: The workmux command to run (e.g., "add feature-branch")
+        command: The muxix command to run (e.g., "add feature-branch")
         pre_run_mux_cmds: Optional list of mux commands to run before the command
         expect_fail: Whether the command is expected to fail (non-zero exit)
         working_dir: Optional directory to run the command from (defaults to repo_path)
@@ -1526,10 +1526,10 @@ def run_workmux_command(
         pre_run_env: Optional dict of environment variables to export before running
     """
     scripts_dir = get_scripts_dir(env)
-    stdout_file = scripts_dir / "workmux_stdout.txt"
-    stderr_file = scripts_dir / "workmux_stderr.txt"
-    exit_code_file = scripts_dir / "workmux_exit_code.txt"
-    script_file = scripts_dir / "workmux_run.sh"
+    stdout_file = scripts_dir / "muxix_stdout.txt"
+    stderr_file = scripts_dir / "muxix_stderr.txt"
+    exit_code_file = scripts_dir / "muxix_exit_code.txt"
+    script_file = scripts_dir / "muxix_run.sh"
 
     for f in [stdout_file, stderr_file, exit_code_file]:
         if f.exists():
@@ -1562,9 +1562,9 @@ export PATH={shlex.quote(env.env["PATH"])}
 export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
 export HOME={shlex.quote(env.env.get("HOME", ""))}
 export SHELL={shlex.quote(env.env.get("SHELL", os.environ.get("SHELL", "/bin/sh")))}
-export WORKMUX_TEST=1
+export MUXIX_TEST=1
 {extra_env_lines}cd {shlex.quote(str(workdir))}
-{pipe_cmd}{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
+{pipe_cmd}{shlex.quote(str(muxix_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
 """
     script_file.write_text(script_content)
     script_file.chmod(0o755)
@@ -1576,10 +1576,10 @@ export WORKMUX_TEST=1
         # Capture pane content for debugging
         pane_content = env.capture_pane("test") or "(empty)"
         raise AssertionError(
-            f"workmux command did not complete in time\nPane content:\n{pane_content}"
+            f"muxix command did not complete in time\nPane content:\n{pane_content}"
         )
 
-    result = WorkmuxCommandResult(
+    result = MuxixCommandResult(
         exit_code=int(exit_code_file.read_text().strip()),
         stdout=stdout_file.read_text() if stdout_file.exists() else "",
         stderr=stderr_file.read_text() if stderr_file.exists() else "",
@@ -1588,20 +1588,20 @@ export WORKMUX_TEST=1
     if expect_fail:
         if result.exit_code == 0:
             raise AssertionError(
-                f"workmux {command} was expected to fail but succeeded.\nStdout:\n{result.stdout}"
+                f"muxix {command} was expected to fail but succeeded.\nStdout:\n{result.stdout}"
             )
     else:
         if result.exit_code != 0:
             raise AssertionError(
-                f"workmux {command} failed with exit code {result.exit_code}\n{result.stderr}"
+                f"muxix {command} failed with exit code {result.exit_code}\n{result.stderr}"
             )
 
     return result
 
 
-def run_workmux_add(
+def run_muxix_add(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     branch_name: str,
     pre_run_mux_cmds: Optional[List[List[str]]] = None,
@@ -1611,16 +1611,16 @@ def run_workmux_add(
     config: Optional[Path] = None,
 ) -> None:
     """
-    Helper to run `workmux add` command inside the isolated multiplexer session.
+    Helper to run `muxix add` command inside the isolated multiplexer session.
 
     Asserts that the command completes successfully.
 
     Args:
         env: The isolated multiplexer environment
-        workmux_exe_path: Path to the workmux executable
+        muxix_exe_path: Path to the muxix executable
         repo_path: Path to the git repository
         branch_name: Name of the branch/worktree to create
-        pre_run_mux_cmds: Optional list of mux commands to run before workmux add
+        pre_run_mux_cmds: Optional list of mux commands to run before muxix add
         base: Optional base branch for the new worktree (passed as `--base`)
         background: If True, pass `--background` so the window is created without focus
         config: Optional path to an alternate config file (passed as `--config`)
@@ -1635,18 +1635,18 @@ def run_workmux_add(
 
     command = " ".join(args)
 
-    run_workmux_command(
+    run_muxix_command(
         env,
-        workmux_exe_path,
+        muxix_exe_path,
         repo_path,
         command,
         pre_run_mux_cmds=pre_run_mux_cmds,
     )
 
 
-def run_workmux_open(
+def run_muxix_open(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     branch_name: Union[Optional[str], List[str]] = None,
     *,
@@ -1663,9 +1663,9 @@ def run_workmux_open(
     expect_fail: bool = False,
     working_dir: Optional[Path] = None,
     config: Optional[Path] = None,
-) -> WorkmuxCommandResult:
+) -> MuxixCommandResult:
     """
-    Helper to run `workmux open` command inside the isolated multiplexer session.
+    Helper to run `muxix open` command inside the isolated multiplexer session.
 
     Returns the command result so tests can assert on stdout/stderr.
 
@@ -1706,9 +1706,9 @@ def run_workmux_open(
         name_part = " " + " ".join(branch_name) if branch_name else ""
     else:
         name_part = f" {branch_name}" if branch_name else ""
-    return run_workmux_command(
+    return run_muxix_command(
         env,
-        workmux_exe_path,
+        muxix_exe_path,
         repo_path,
         f"open{name_part}{flag_str}",
         pre_run_mux_cmds=pre_run_mux_cmds,
@@ -1731,9 +1731,9 @@ def create_dirty_file(path: Path, filename: str = "dirty.txt"):
     (path / filename).write_text("uncommitted changes")
 
 
-def run_workmux_remove(
+def run_muxix_remove(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     branch_name: Optional[str] = None,
     force: bool = False,
@@ -1745,14 +1745,14 @@ def run_workmux_remove(
     from_window: Optional[str] = None,
 ) -> None:
     """
-    Helper to run `workmux remove` command inside the isolated multiplexer session.
+    Helper to run `muxix remove` command inside the isolated multiplexer session.
 
     Uses background execution to avoid hanging when remove kills its own window.
     Asserts that the command completes successfully unless expect_fail is True.
 
     Args:
         env: The isolated multiplexer environment
-        workmux_exe_path: Path to the workmux executable
+        muxix_exe_path: Path to the muxix executable
         repo_path: Path to the git repository
         branch_name: Optional name of the branch/worktree to remove (omit to auto-detect from current branch)
         force: Whether to use -f flag to skip confirmation
@@ -1764,9 +1764,9 @@ def run_workmux_remove(
         from_window: Optional window name to run the command from (useful for testing remove from within worktree window)
     """
     scripts_dir = get_scripts_dir(env)
-    stdout_file = scripts_dir / "workmux_remove_stdout.txt"
-    stderr_file = scripts_dir / "workmux_remove_stderr.txt"
-    exit_code_file = scripts_dir / "workmux_remove_exit_code.txt"
+    stdout_file = scripts_dir / "muxix_remove_stdout.txt"
+    stderr_file = scripts_dir / "muxix_remove_stderr.txt"
+    exit_code_file = scripts_dir / "muxix_remove_exit_code.txt"
 
     # Clean up any previous files
     for f in [stdout_file, stderr_file, exit_code_file]:
@@ -1788,7 +1788,7 @@ def run_workmux_remove(
         remove_script = (
             f"cd {worktree_path} && "
             f"{input_cmd}"
-            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
+            f"{muxix_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
             f"> {stdout_file} 2> {stderr_file}; "
             f"echo $? > {exit_code_file}"
         )
@@ -1796,7 +1796,7 @@ def run_workmux_remove(
         remove_script = (
             f"cd {repo_path} && "
             f"{input_cmd}"
-            f"{workmux_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
+            f"{muxix_exe_path} remove {force_flag}{keep_branch_flag}{gone_flag}{all_flag}{branch_arg} "
             f"> {stdout_file} 2> {stderr_file}; "
             f"echo $? > {exit_code_file}"
         )
@@ -1805,7 +1805,7 @@ def run_workmux_remove(
 
     # Wait for command to complete (longer timeout for --gone which runs git fetch)
     assert poll_until_file_has_content(exit_code_file, timeout=15.0), (
-        "workmux remove did not complete in time"
+        "muxix remove did not complete in time"
     )
 
     exit_code = int(exit_code_file.read_text().strip())
@@ -1814,18 +1814,18 @@ def run_workmux_remove(
     if expect_fail:
         if exit_code == 0:
             raise AssertionError(
-                f"workmux remove was expected to fail but succeeded.\nStderr:\n{stderr}"
+                f"muxix remove was expected to fail but succeeded.\nStderr:\n{stderr}"
             )
     else:
         if exit_code != 0:
             raise AssertionError(
-                f"workmux remove failed with exit code {exit_code}\nStderr:\n{stderr}"
+                f"muxix remove failed with exit code {exit_code}\nStderr:\n{stderr}"
             )
 
 
-def run_workmux_merge(
+def run_muxix_merge(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     branch_name: Optional[str] = None,
     ignore_uncommitted: bool = False,
@@ -1841,14 +1841,14 @@ def run_workmux_merge(
     from_window: Optional[str] = None,
 ) -> None:
     """
-    Helper to run `workmux merge` command inside the isolated multiplexer session.
+    Helper to run `muxix merge` command inside the isolated multiplexer session.
 
     Uses background execution to avoid hanging when merge kills its own window.
     Asserts that the command completes successfully unless expect_fail is True.
 
     Args:
         env: The isolated multiplexer environment
-        workmux_exe_path: Path to the workmux executable
+        muxix_exe_path: Path to the muxix executable
         repo_path: Path to the git repository
         branch_name: Optional name of the branch to merge (omit to auto-detect from current branch)
         ignore_uncommitted: Whether to use --ignore-uncommitted flag
@@ -1863,9 +1863,9 @@ def run_workmux_merge(
         from_window: Optional window name to run the command from
     """
     scripts_dir = get_scripts_dir(env)
-    stdout_file = scripts_dir / "workmux_merge_stdout.txt"
-    stderr_file = scripts_dir / "workmux_merge_stderr.txt"
-    exit_code_file = scripts_dir / "workmux_merge_exit_code.txt"
+    stdout_file = scripts_dir / "muxix_merge_stdout.txt"
+    stderr_file = scripts_dir / "muxix_merge_stderr.txt"
+    exit_code_file = scripts_dir / "muxix_merge_exit_code.txt"
 
     for f in [stdout_file, stderr_file, exit_code_file]:
         if f.exists():
@@ -1909,7 +1909,7 @@ def run_workmux_merge(
     merge_script = (
         f"export GIT_EDITOR={shlex.quote(str(editor_script))} && "
         f"cd {workdir} && "
-        f"{workmux_exe_path} merge {flags_str} {branch_arg} "
+        f"{muxix_exe_path} merge {flags_str} {branch_arg} "
         f"> {stdout_file} 2> {stderr_file}; "
         f"echo $? > {exit_code_file}"
     )
@@ -1917,7 +1917,7 @@ def run_workmux_merge(
     env.run_shell_background(merge_script)
 
     assert poll_until_file_has_content(exit_code_file, timeout=10.0), (
-        "workmux merge did not complete in time"
+        "muxix merge did not complete in time"
     )
 
     exit_code = int(exit_code_file.read_text().strip())
@@ -1926,12 +1926,12 @@ def run_workmux_merge(
     if expect_fail:
         if exit_code == 0:
             raise AssertionError(
-                f"workmux merge was expected to fail but succeeded.\nStderr:\n{stderr}"
+                f"muxix merge was expected to fail but succeeded.\nStderr:\n{stderr}"
             )
     else:
         if exit_code != 0:
             raise AssertionError(
-                f"workmux merge failed with exit code {exit_code}\nStderr:\n{stderr}"
+                f"muxix merge failed with exit code {exit_code}\nStderr:\n{stderr}"
             )
 
 
@@ -1992,7 +1992,7 @@ exit 1
     # Add the bin directory to PATH
     new_path = f"{bin_dir}:{env.env.get('PATH', '')}"
     env.env["PATH"] = new_path
-    # Set PATH in the multiplexer session so workmux can find the fake gh
+    # Set PATH in the multiplexer session so muxix can find the fake gh
     env.set_session_env("PATH", new_path)
 
 

@@ -974,7 +974,7 @@ fn send_pane_switch_signal(workspace: &str, tab_title: &str) {
     });
     let encoded = base64::engine::general_purpose::STANDARD.encode(payload.to_string());
     // OSC 1337 ; SetUserVar=name=base64_value BEL
-    print!("\x1b]1337;SetUserVar=workmux-switch-pane={}\x07", encoded);
+    print!("\x1b]1337;SetUserVar=muxix-switch-pane={}\x07", encoded);
     // Flush to ensure it's sent immediately
     let _ = std::io::stdout().flush();
 }

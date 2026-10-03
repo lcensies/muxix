@@ -1,6 +1,6 @@
 //! Where a provisioning policy comes from.
 //!
-//! Workmux does not assume any particular organization's server. A policy can
+//! Muxix does not assume any particular organization's server. A policy can
 //! arrive over HTTPS, be dropped on disk by a configuration-management system,
 //! or be produced by a helper the organization already trusts to authenticate.
 //! Each shape is a [`PolicySource`]; everything downstream — caching, layering,
@@ -100,8 +100,8 @@ pub fn check_schema_version(resp: &FetchPolicyResponse) -> Result<()> {
     let got = if got == 0 { 1 } else { got };
     if got > SUPPORTED_SCHEMA_VERSION {
         bail!(
-            "policy schema version {got} is newer than this workmux supports \
-             (max {SUPPORTED_SCHEMA_VERSION}); upgrade workmux to use this policy"
+            "policy schema version {got} is newer than this muxix supports \
+             (max {SUPPORTED_SCHEMA_VERSION}); upgrade muxix to use this policy"
         );
     }
     Ok(())
@@ -266,7 +266,7 @@ impl PolicySource for ExecSource {
             .with_context(|| format!("failed to run provision command `{}`", self.command))?;
 
         // Poll rather than block: a helper that hangs must not wedge every
-        // workmux invocation behind it.
+        // muxix invocation behind it.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(self.timeout_secs);
         let status = loop {
             match child.try_wait()? {
@@ -349,7 +349,7 @@ pub fn source_for(config: &ProvisionConfig) -> Result<Box<dyn PolicySource>> {
         Backend::Http => {
             let server_url = crate::provision::client::resolve_server_url(Some(config))
                 .context(
-                    "no provision server configured -- set the WORKMUX_PROVISION_URL env var, \
+                    "no provision server configured -- set the MUXIX_PROVISION_URL env var, \
                      or provision.server_url in your global config",
                 )?;
             let token = crate::provision::client::resolve_token(config)?;
@@ -524,7 +524,7 @@ mod tests {
 
     fn tmpfile(name: &str, body: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "workmux-provision-src-{}-{:?}",
+            "muxix-provision-src-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn file_backend_reports_a_missing_file() {
         let src = FileSource {
-            path: "/nonexistent/workmux/policy.json".into(),
+            path: "/nonexistent/muxix/policy.json".into(),
         };
         let err = src.fetch_policy().unwrap_err().to_string();
         assert!(err.contains("not found"), "{err}");
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn exec_backend_reports_a_missing_command() {
         let src = ExecSource {
-            command: "workmux-no-such-helper".into(),
+            command: "muxix-no-such-helper".into(),
             args: vec![],
             timeout_secs: 5,
         };

@@ -2,7 +2,7 @@
 //!
 //! This is runtime FACTS — tri-state capability flags and facts discovered or
 //! produced by setup (e.g. `test_command`, `build_command`). It is *not*
-//! workflow config; the workflow itself lives in `.workmux/workflows/harness.yaml`.
+//! workflow config; the workflow itself lives in `.muxix/workflows/harness.yaml`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -92,7 +92,7 @@ impl Capability {
 ///
 /// This is a *journal entry*, not the truth: the agent's own session store owns
 /// the conversation and a user may delete it at any time. Anything acting on a
-/// recorded id (e.g. `workmux resurrect`) must verify it against that store
+/// recorded id (e.g. `muxix resurrect`) must verify it against that store
 /// first — launching a resume for a session that no longer exists makes the
 /// agent exit immediately and takes its pane down with it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,10 +112,10 @@ pub struct SessionRecord {
     pub ended_at: Option<u64>,
 }
 
-/// What workmux knows about a worktree it created.
+/// What muxix knows about a worktree it created.
 ///
 /// Holds the worktree/agent/session facts outright. `parent` in particular used
-/// to live in git config (`workmux.worktree.<handle>.parent`); keeping one owner
+/// to live in git config (`muxix.worktree.<handle>.parent`); keeping one owner
 /// avoids the two stores disagreeing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorktreeRecord {
@@ -137,11 +137,11 @@ pub struct WorktreeRecord {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<SessionRecord>,
 
-    /// Unix seconds when workmux created the worktree.
+    /// Unix seconds when muxix created the worktree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawned_at: Option<u64>,
 
-    /// Unix seconds of the most recent activity workmux observed.
+    /// Unix seconds of the most recent activity muxix observed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<u64>,
 }
@@ -176,7 +176,7 @@ pub struct ProjectState {
     #[serde(default)]
     pub facts: BTreeMap<String, String>,
 
-    /// Worktrees workmux created in this project, keyed by handle.
+    /// Worktrees muxix created in this project, keyed by handle.
     ///
     /// `default` keeps files written before this field existed readable, so no
     /// schema version bump is needed.

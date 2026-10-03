@@ -1,8 +1,8 @@
-//! `workmux agents` — every agent, whoever owns it.
+//! `muxix agents` — every agent, whoever owns it.
 //!
-//! `workmux status` shows agents in the local repo's worktrees, which is a
+//! `muxix status` shows agents in the local repo's worktrees, which is a
 //! worktree-shaped view and stays that way. This is the runtime-shaped view:
-//! agents workmux started in a pane sit next to agents an ADE started and is
+//! agents muxix started in a pane sit next to agents an ADE started and is
 //! driving from someone's phone. Process ownership is exclusive; seeing them is
 //! not.
 
@@ -68,7 +68,7 @@ pub fn run(json: bool) -> Result<()> {
     Ok(())
 }
 
-/// `workmux agents stop <ref>` — end an agent, whichever runtime owns it.
+/// `muxix agents stop <ref>` — end an agent, whichever runtime owns it.
 pub fn stop(reference: &str) -> Result<()> {
     let cfg = crate::config::Config::load(None).unwrap_or_default();
     let agent = crate::agent::runtime::AgentRef::from_wire(reference);

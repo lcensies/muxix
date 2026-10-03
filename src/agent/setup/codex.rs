@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use super::StatusCheck;
 
 /// Hooks configuration embedded at compile time.
-const HOOKS_JSON: &str = include_str!("../../../.codex/hooks/workmux-status.json");
+const HOOKS_JSON: &str = include_str!("../../../.codex/hooks/muxix-status.json");
 
 fn codex_dir() -> Option<PathBuf> {
     home::home_dir().map(|h| h.join(".codex"))
@@ -35,7 +35,7 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux hooks are installed in Codex hooks.json.
+/// Check if muxix hooks are installed in Codex hooks.json.
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = hooks_path() else {
         return Ok(StatusCheck::NotInstalled);
@@ -49,15 +49,15 @@ pub fn check() -> Result<StatusCheck> {
     let config: Value =
         serde_json::from_str(&content).context("~/.codex/hooks.json is not valid JSON")?;
 
-    if has_workmux_hooks(&config) {
+    if has_muxix_hooks(&config) {
         Ok(StatusCheck::Installed)
     } else {
         Ok(StatusCheck::NotInstalled)
     }
 }
 
-/// Check if the hooks object contains any workmux set-window-status commands.
-fn has_workmux_hooks(config: &Value) -> bool {
+/// Check if the hooks object contains any muxix set-window-status commands.
+fn has_muxix_hooks(config: &Value) -> bool {
     let Some(hooks) = config.get("hooks").and_then(|v| v.as_object()) else {
         return false;
     };
@@ -72,7 +72,7 @@ fn has_workmux_hooks(config: &Value) -> bool {
             };
             for hook in hook_list {
                 if let Some(cmd) = hook.get("command").and_then(|v| v.as_str())
-                    && cmd.contains("workmux set-window-status")
+                    && cmd.contains("muxix set-window-status")
                 {
                     return true;
                 }
@@ -97,8 +97,8 @@ fn config_toml_path() -> Option<PathBuf> {
     codex_dir().map(|d| d.join("config.toml"))
 }
 
-const PROVIDERS_BEGIN: &str = "# workmux:providers begin";
-const PROVIDERS_END: &str = "# workmux:providers end";
+const PROVIDERS_BEGIN: &str = "# muxix:providers begin";
+const PROVIDERS_END: &str = "# muxix:providers end";
 
 /// Render the marker-delimited `[model_providers.*]` region for all syncable
 /// registry providers. Also returns skip warnings. Codex has no env-var
@@ -302,7 +302,7 @@ fn has_hooks_feature_key(content: &str) -> bool {
     })
 }
 
-/// Install workmux hooks into `~/.codex/hooks.json`.
+/// Install muxix hooks into `~/.codex/hooks.json`.
 ///
 /// Merges hook groups into existing hooks without clobbering or creating
 /// duplicates. Returns a description of what was done.
@@ -444,33 +444,33 @@ mod tests {
     }
 
     #[test]
-    fn test_hooks_json_contains_workmux_command() {
-        assert!(HOOKS_JSON.contains("workmux set-window-status"));
+    fn test_hooks_json_contains_muxix_command() {
+        assert!(HOOKS_JSON.contains("muxix set-window-status"));
     }
 
     #[test]
-    fn test_has_workmux_hooks_empty() {
+    fn test_has_muxix_hooks_empty() {
         let config = json!({});
-        assert!(!has_workmux_hooks(&config));
+        assert!(!has_muxix_hooks(&config));
     }
 
     #[test]
-    fn test_has_workmux_hooks_present() {
+    fn test_has_muxix_hooks_present() {
         let config = json!({
             "hooks": {
                 "Stop": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
         });
-        assert!(has_workmux_hooks(&config));
+        assert!(has_muxix_hooks(&config));
     }
 
     #[test]
-    fn test_has_workmux_hooks_other_hooks_only() {
+    fn test_has_muxix_hooks_other_hooks_only() {
         let config = json!({
             "hooks": {
                 "Stop": [{
@@ -481,7 +481,7 @@ mod tests {
                 }]
             }
         });
-        assert!(!has_workmux_hooks(&config));
+        assert!(!has_muxix_hooks(&config));
     }
 
     #[test]
@@ -516,7 +516,7 @@ mod tests {
                 "Stop": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
@@ -584,7 +584,7 @@ mod tests {
             }
         }
 
-        // Stop should have 2 groups (original + workmux)
+        // Stop should have 2 groups (original + muxix)
         let stop = config
             .get("hooks")
             .unwrap()

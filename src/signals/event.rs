@@ -17,17 +17,17 @@
 //! span close lines report elapsed time (`time.busy`) for free.
 //!
 //! Every event/span uses the dedicated tracing target [`TARGET`], so they land
-//! in the normal `workmux.log` (file, never the pane) and are trivially
+//! in the normal `muxix.log` (file, never the pane) and are trivially
 //! greppable, and can be silenced wholesale in production:
 //!
 //! ```text
-//! grep 'ev=' ~/.local/state/workmux.log               # whole event timeline
-//! grep 'ev="turn.done"' ~/.local/state/workmux.log     # one event kind
-//! grep 'node=implement' ~/.local/state/workmux.log     # one node (span context)
-//! grep 'pane=%5' ~/.local/state/workmux.log            # one pane (span context)
+//! grep 'ev=' ~/.local/state/muxix.log               # whole event timeline
+//! grep 'ev="turn.done"' ~/.local/state/muxix.log     # one event kind
+//! grep 'node=implement' ~/.local/state/muxix.log     # one node (span context)
+//! grep 'pane=%5' ~/.local/state/muxix.log            # one pane (span context)
 //! ```
 //!
-//! Because `workmux signal …` (the agent hook subprocess) also initialises the
+//! Because `muxix signal …` (the agent hook subprocess) also initialises the
 //! logger, its `signal.write` events interleave with the runner's observe
 //! events in the *same* file — so signal-write→observe latency is directly
 //! measurable from the timestamps (and the convenience `age_ms` field),
@@ -38,24 +38,24 @@
 //! Lifecycle events (`node.run`, `prompt.sent`, `turn.done`, …) are `info` and
 //! on by default. High-frequency per-poll/per-tick events are `debug` so the
 //! default log isn't flooded. Control the *level* independently of everything
-//! else via the `WORKMUX_EVENTS` env var (`off` | `info` | `debug` | `trace`),
+//! else via the `MUXIX_EVENTS` env var (`off` | `info` | `debug` | `trace`),
 //! or with a standard `RUST_LOG=wm::event=debug` directive. See [`crate::logger`].
 //!
 //! # Per-kind filtering from config
 //!
 //! The level is all-or-nothing per level; to silence *specific* kinds or whole
-//! groups, the `events:` section of `.workmux.yaml` installs an [`EventFilter`]
+//! groups, the `events:` section of `.muxix.yaml` installs an [`EventFilter`]
 //! (via [`set_filter`]) that the emit macros consult through [`should_emit`]:
 //!
 //! ```yaml
 //! events:
 //!   enabled: true            # master switch; false silences all wm::event
-//!   level: debug             # off|info|debug|trace (ignored if WORKMUX_EVENTS set)
+//!   level: debug             # off|info|debug|trace (ignored if MUXIX_EVENTS set)
 //!   disable: [pane.probe, turn.poll]   # group prefix or exact kind
 //!   only: []                 # allowlist; non-empty => only these are emitted
 //! ```
 //!
-//! Precedence: `enabled: false` wins over all; level is `WORKMUX_EVENTS` env >
+//! Precedence: `enabled: false` wins over all; level is `MUXIX_EVENTS` env >
 //! `events.level` > default `info`; per-kind `only` then `disable` are applied
 //! on top of whatever the level lets through.
 
@@ -65,12 +65,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Tracing target every pipeline span and event shares. Filter or silence with
-/// `WORKMUX_EVENTS=off` / `RUST_LOG=wm::event=off`.
+/// `MUXIX_EVENTS=off` / `RUST_LOG=wm::event=off`.
 pub const TARGET: &str = "wm::event";
 
-/// Runtime per-event-kind filter, configured from `.workmux.yaml` (`events:`).
+/// Runtime per-event-kind filter, configured from `.muxix.yaml` (`events:`).
 ///
-/// The `WORKMUX_EVENTS` env var / `RUST_LOG` directive controls the *level*
+/// The `MUXIX_EVENTS` env var / `RUST_LOG` directive controls the *level*
 /// (`off|info|debug|trace`) at the tracing subscriber, but it cannot single out
 /// individual event kinds. This filter does: it is consulted by the [`wm_evt!`]
 /// / [`wm_evt_dbg!`] macros before they emit, so specific kinds or whole groups
@@ -192,7 +192,7 @@ macro_rules! wm_evt {
 }
 
 /// Emit a high-frequency pipeline event (`debug` — enable with
-/// `WORKMUX_EVENTS=debug`). Use for per-poll / per-tick traces that would
+/// `MUXIX_EVENTS=debug`). Use for per-poll / per-tick traces that would
 /// otherwise flood the default log.
 #[macro_export]
 macro_rules! wm_evt_dbg {

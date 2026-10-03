@@ -4,7 +4,7 @@ description: Create worktrees in their own tmux sessions instead of windows
 
 # Session mode
 
-By default, workmux creates tmux **windows** within your current session. With session mode, each worktree gets its own **tmux session** instead.
+By default, muxix creates tmux **windows** within your current session. With session mode, each worktree gets its own **tmux session** instead.
 
 This is useful when you want each worktree to have multiple windows, or when you prefer the isolation of separate sessions (each with its own window list, history, and layout).
 
@@ -13,22 +13,22 @@ This is useful when you want each worktree to have multiple windows, or when you
 Per-project via config:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 mode: session
 ```
 
 Globally via config:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 mode: session
 ```
 
 Or per-command via flag:
 
 ```bash
-workmux add feature-branch --mode session
-workmux open feature-branch --mode window
+muxix add feature-branch --mode session
+muxix open feature-branch --mode window
 ```
 
 `--mode` overrides the config for the current command. This lets you use window mode by default but create individual worktrees as sessions when needed, or temporarily reopen a session-mode worktree as a window. `--session` is shorthand for `--mode session`.
@@ -36,7 +36,7 @@ workmux open feature-branch --mode window
 ## How it works
 
 - **Persistence**: The mode is stored per-worktree in git config. Once a worktree is created with session mode, `open`, `close`, `remove`, and `merge` automatically use the correct mode.
-- **Navigation**: `workmux add` switches your client to the new session. `merge` and `remove` switch you back to the previous session.
+- **Navigation**: `muxix add` switches your client to the new session. `merge` and `remove` switch you back to the previous session.
 
 ## Multiple windows per session
 

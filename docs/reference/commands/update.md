@@ -1,13 +1,13 @@
 ---
-description: Update workmux to the latest version
+description: Update muxix to the latest version
 ---
 
 # update
 
-Updates workmux to the latest version by downloading the prebuilt binary from GitHub Releases.
+Updates muxix to the latest version by downloading the prebuilt binary from GitHub Releases.
 
 ```bash
-workmux update
+muxix update
 ```
 
 ## What happens
@@ -18,14 +18,14 @@ workmux update
 4. Verifies the SHA-256 checksum
 5. Atomically replaces the current binary (with rollback on failure)
 
-If workmux is already up to date, it reports this and exits.
+If muxix is already up to date, it reports this and exits.
 
 ## Homebrew installs
 
-If workmux was installed via Homebrew, the command will detect this and instruct you to use `brew upgrade` instead:
+If muxix was installed via Homebrew, the command will detect this and instruct you to use `brew upgrade` instead:
 
 ```bash
-brew upgrade workmux
+brew upgrade muxix
 ```
 
 ## Supported platforms
@@ -37,10 +37,10 @@ The command downloads prebuilt binaries for:
 
 ## Automatic update check
 
-Workmux periodically checks for new versions in the background. When an update is available, a one-line notice is printed to stderr:
+Muxix periodically checks for new versions in the background. When an update is available, a one-line notice is printed to stderr:
 
 ```
-Update available: workmux v0.1.124 -> v0.1.125 (run `workmux update`)
+Update available: muxix v0.1.124 -> v0.1.125 (run `muxix update`)
 ```
 
 The check runs at most once every 24 hours via a detached background process and never slows down your commands. The notice is shown at most once per day and only in interactive terminals.
@@ -49,12 +49,12 @@ The check runs at most once every 24 hours via a detached background process and
 
 To disable the automatic update check, either:
 
-- Set `auto_update_check: false` in the global config (`~/.config/workmux/config.yaml`)
-- Set the environment variable `WORKMUX_NO_UPDATE_CHECK=1`
+- Set `auto_update_check: false` in the global config (`~/.config/muxix/config.yaml`)
+- Set the environment variable `MUXIX_NO_UPDATE_CHECK=1`
 
 ## Requirements
 
 - `curl` must be available in PATH (used for downloading)
 - `tar` must be available in PATH (used for extraction)
 - `sha256sum` or `shasum` must be available (used for checksum verification)
-- Write permission to the directory containing the workmux binary
+- Write permission to the directory containing the muxix binary

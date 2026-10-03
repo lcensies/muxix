@@ -1204,14 +1204,14 @@ mod tests {
         let json = r#"{
             "tab_id": 3,
             "position": 1,
-            "name": "workmux-feature",
+            "name": "muxix-feature",
             "active": true
         }"#;
 
         let tab: TabInfo = serde_json::from_str(json).unwrap();
         assert_eq!(tab.tab_id(), 3);
         assert_eq!(tab.position, 1);
-        assert_eq!(tab.name, "workmux-feature");
+        assert_eq!(tab.name, "muxix-feature");
         assert!(tab.active);
     }
 

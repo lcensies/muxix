@@ -1,4 +1,4 @@
-//! The result model shared by every `workmux setup` section.
+//! The result model shared by every `muxix setup` section.
 //!
 //! Sections return data rather than printing it, so the interactive TUI, the
 //! non-interactive log, `--json`, and `--check` are four renderers over one
@@ -20,9 +20,9 @@ pub enum Outcome {
     /// Already matches the declared state. No write.
     UpToDate,
     /// Deliberately not applied — an uninstalled agent, an unsupported
-    /// capability, a source workmux cannot fetch. Not a failure.
+    /// capability, a source muxix cannot fetch. Not a failure.
     Skipped,
-    /// Was installed by workmux, is no longer declared, and has been deleted.
+    /// Was installed by muxix, is no longer declared, and has been deleted.
     Removed,
     /// Tried and failed. The only outcome that makes the command exit non-zero.
     Failed,
@@ -58,7 +58,7 @@ impl fmt::Display for Outcome {
     }
 }
 
-/// The sections `workmux setup` can apply, in the order it applies them.
+/// The sections `muxix setup` can apply, in the order it applies them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Section {
@@ -155,7 +155,7 @@ pub struct ItemResult {
     /// Why it was skipped or how it failed. Absent when there is nothing to say.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
-    /// Set when workmux owns this item: how to remove it later (a filesystem
+    /// Set when muxix owns this item: how to remove it later (a filesystem
     /// path, a plugin spec, a hook command). Internal provenance for the
     /// managed-state manifest, not part of the `--json` contract.
     #[serde(skip)]
@@ -179,7 +179,7 @@ impl ItemResult {
         self
     }
 
-    /// Mark this item as workmux-managed, recording how to remove it.
+    /// Mark this item as muxix-managed, recording how to remove it.
     pub fn managed_at(mut self, target: impl Into<String>) -> Self {
         self.managed = Some(target.into());
         self
@@ -194,7 +194,7 @@ impl ItemResult {
     }
 }
 
-/// Everything one `workmux setup` run did (or would do).
+/// Everything one `muxix setup` run did (or would do).
 #[derive(Debug, Default, Serialize)]
 pub struct SetupReport {
     pub items: Vec<ItemResult>,
@@ -351,7 +351,7 @@ mod tests {
     fn json_shape_is_stable() {
         let mut r = SetupReport::default();
         r.push(
-            ItemResult::new(Section::Skills, Some("claude"), "workmux", Outcome::Installed)
+            ItemResult::new(Section::Skills, Some("claude"), "muxix", Outcome::Installed)
                 .with_detail("created"),
         );
         let json = r.to_json();

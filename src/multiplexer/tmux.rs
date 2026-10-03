@@ -76,10 +76,10 @@ impl TmuxBackend {
 
     /// Clear the window status display (status bar icon).
     fn clear_window_status_internal(&self, pane_id: &str) {
-        let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@workmux_status"]);
+        let _ = self.tmux_cmd(&["set-option", "-uw", "-t", pane_id, "@muxix_status"]);
     }
 
-    /// Updates a single tmux format option for the target window to include workmux status.
+    /// Updates a single tmux format option for the target window to include muxix status.
     fn update_format_option(&self, pane: &str, option: &str) -> Result<()> {
         // Read current format. Try window-level first, fall back to global.
         //
@@ -106,7 +106,7 @@ impl TmuxBackend {
                 .unwrap_or_else(|| "#I:#W#{?window_flags,#{window_flags}, }".to_string()),
         };
 
-        if !current.contains("@workmux_status") {
+        if !current.contains("@muxix_status") {
             let new_format = inject_status_format(&current);
             // Set per-window to avoid affecting other windows/sessions
             self.tmux_cmd(&["set-option", "-w", "-t", pane, option, &new_format])?;
@@ -247,7 +247,7 @@ impl Multiplexer for TmuxBackend {
 
         let mut cmd = Cmd::new("tmux").args(&["new-window", "-d"]);
 
-        // Insert after the target window if specified (keeps workmux windows grouped)
+        // Insert after the target window if specified (keeps muxix windows grouped)
         if let Some(target) = params.after_window {
             cmd = cmd.arg("-a").args(&["-t", target]);
         }
@@ -793,9 +793,9 @@ impl Multiplexer for TmuxBackend {
 
     fn set_status(&self, pane_id: &str, icon: &str, auto_clear_on_focus: bool) -> Result<()> {
         // Window-level option for tmux status bar display (shared across panes in a window).
-        if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@workmux_status", icon])
+        if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@muxix_status", icon])
         {
-            eprintln!("workmux: failed to set window status: {}", e);
+            eprintln!("muxix: failed to set window status: {}", e);
         }
 
         // Pane-level option for per-agent sidebar tracking. Unlike the window option,
@@ -806,7 +806,7 @@ impl Multiplexer for TmuxBackend {
             "-p",
             "-t",
             pane_id,
-            "@workmux_pane_status",
+            "@muxix_pane_status",
             icon,
         ]);
 
@@ -817,7 +817,7 @@ impl Multiplexer for TmuxBackend {
             // `set-option -up` targets that specific pane's option. This makes
             // auto-clear work per-agent even with multiple agents in one window.
             let hook_cmd = format!(
-                "set-option -up @workmux_pane_status ; if-shell -F \"#{{==:#{{@workmux_status}},{}}}\" \"set-option -uw @workmux_status\"",
+                "set-option -up @muxix_pane_status ; if-shell -F \"#{{==:#{{@muxix_status}},{}}}\" \"set-option -uw @muxix_status\"",
                 icon
             );
             let _ = self.tmux_cmd(&["set-hook", "-w", "-t", pane_id, "pane-focus-in", &hook_cmd]);
@@ -828,7 +828,7 @@ impl Multiplexer for TmuxBackend {
 
     fn clear_status(&self, pane_id: &str) -> Result<()> {
         self.clear_window_status_internal(pane_id);
-        let _ = self.tmux_cmd(&["set-option", "-up", "-t", pane_id, "@workmux_pane_status"]);
+        let _ = self.tmux_cmd(&["set-option", "-up", "-t", pane_id, "@muxix_pane_status"]);
         Ok(())
     }
 
@@ -1038,18 +1038,18 @@ impl Multiplexer for TmuxBackend {
     }
 }
 /// Format string to inject into tmux window-status-format.
-const WORKMUX_STATUS_FORMAT: &str = "#{?@workmux_status, #{@workmux_status},}";
+const MUXIX_STATUS_FORMAT: &str = "#{?@muxix_status, #{@muxix_status},}";
 
-/// Injects workmux status format into an existing format string.
+/// Injects muxix status format into an existing format string.
 fn inject_status_format(format: &str) -> String {
     let patterns = ["#{window_flags", "#{?window_flags", "#{F}"];
     let insert_pos = patterns.iter().filter_map(|p| format.find(p)).min();
 
     if let Some(pos) = insert_pos {
         let (before, after) = format.split_at(pos);
-        format!("{}{}{}", before, WORKMUX_STATUS_FORMAT, after)
+        format!("{}{}{}", before, MUXIX_STATUS_FORMAT, after)
     } else {
-        format!("{}{}", format, WORKMUX_STATUS_FORMAT)
+        format!("{}{}", format, MUXIX_STATUS_FORMAT)
     }
 }
 
@@ -1063,7 +1063,7 @@ mod tests {
         let result = inject_status_format(input);
         assert_eq!(
             result,
-            "#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }"
+            "#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }"
         );
     }
 
@@ -1071,14 +1071,14 @@ mod tests {
     fn test_inject_status_format_short_flags() {
         let input = "#I:#W#{F}";
         let result = inject_status_format(input);
-        assert_eq!(result, "#I:#W#{?@workmux_status, #{@workmux_status},}#{F}");
+        assert_eq!(result, "#I:#W#{?@muxix_status, #{@muxix_status},}#{F}");
     }
 
     #[test]
     fn test_inject_status_format_no_flags() {
         let input = "#I:#W";
         let result = inject_status_format(input);
-        assert_eq!(result, "#I:#W#{?@workmux_status, #{@workmux_status},}");
+        assert_eq!(result, "#I:#W#{?@muxix_status, #{@muxix_status},}");
     }
 
     #[test]
@@ -1087,7 +1087,7 @@ mod tests {
         let result = inject_status_format(input);
         assert_eq!(
             result,
-            "#[fg=blue]#I#[default] #{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags},}"
+            "#[fg=blue]#I#[default] #{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags},}"
         );
     }
 
@@ -1098,7 +1098,7 @@ mod tests {
         let result = inject_status_format(input);
         assert_eq!(
             result,
-            " #I:#W#{?@workmux_status, #{@workmux_status},}#{window_flags} "
+            " #I:#W#{?@muxix_status, #{@muxix_status},}#{window_flags} "
         );
     }
 
@@ -1113,7 +1113,7 @@ mod tests {
         let result = inject_status_format(&processed);
         assert_eq!(
             result,
-            " #I:#W#{?@workmux_status, #{@workmux_status},}#{window_flags} "
+            " #I:#W#{?@muxix_status, #{@muxix_status},}#{window_flags} "
         );
     }
 }

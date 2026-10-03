@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const REPO: &str = "raine/workmux";
+const REPO: &str = "lcensies/muxix";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const NOTIFY_COOLDOWN_SECS: u64 = 7 * 24 * 60 * 60;
@@ -136,12 +136,12 @@ fn replace_binary(new_binary: &std::path::Path, current_exe: &std::path::Path) -
         .context("Could not determine binary directory")?;
 
     // Copy to destination directory to avoid EXDEV (cross-device rename)
-    let staged = exe_dir.join(".workmux.new");
+    let staged = exe_dir.join(".muxix.new");
     std::fs::copy(new_binary, &staged).context("Failed to copy new binary to install directory")?;
     std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
 
     // Rename current -> .old, then staged -> current
-    let backup = exe_dir.join(".workmux.old");
+    let backup = exe_dir.join(".muxix.old");
     std::fs::rename(current_exe, &backup).context("Failed to move current binary aside")?;
 
     if let Err(e) = std::fs::rename(&staged, current_exe) {
@@ -186,15 +186,15 @@ fn do_update(
     std::fs::create_dir(&extract_dir)?;
     extract_tar(&tar_path, &extract_dir)?;
 
-    let new_binary = extract_dir.join("workmux");
+    let new_binary = extract_dir.join("muxix");
     if !new_binary.exists() {
-        bail!("Extracted archive does not contain 'workmux' binary");
+        bail!("Extracted archive does not contain 'muxix' binary");
     }
 
     replace_binary(&new_binary, current_exe)?;
 
     Ok(format!(
-        "Updated workmux v{CURRENT_VERSION} -> v{latest_version}"
+        "Updated muxix v{CURRENT_VERSION} -> v{latest_version}"
     ))
 }
 
@@ -205,11 +205,11 @@ pub fn run() -> Result<()> {
     // Guard: Homebrew-managed installs (canonicalize to resolve symlinks)
     let canonical_exe = std::fs::canonicalize(&current_exe).unwrap_or(current_exe.clone());
     if is_homebrew_install(&canonical_exe) {
-        bail!("workmux is managed by Homebrew. Run `brew upgrade workmux` instead.");
+        bail!("muxix is managed by Homebrew. Run `brew upgrade muxix` instead.");
     }
 
     let platform = platform_suffix()?;
-    let artifact_name = format!("workmux-{platform}");
+    let artifact_name = format!("muxix-{platform}");
 
     let pb = indicatif::ProgressBar::new_spinner();
     pb.set_style(
@@ -287,7 +287,7 @@ pub fn check_and_notify(config: &crate::config::Config) {
     }
 
     // Opt-out via environment variable
-    if std::env::var("WORKMUX_NO_UPDATE_CHECK").is_ok() {
+    if std::env::var("MUXIX_NO_UPDATE_CHECK").is_ok() {
         return;
     }
 
@@ -347,13 +347,13 @@ pub fn check_and_notify(config: &crate::config::Config) {
                 .is_some_and(|p| is_homebrew_install(&p));
 
             let update_cmd = if is_brew {
-                "brew upgrade workmux"
+                "brew upgrade muxix"
             } else {
-                "workmux update"
+                "muxix update"
             };
 
             eprintln!(
-                "Update available: workmux v{CURRENT_VERSION} -> v{latest} (run `{update_cmd}`)"
+                "Update available: muxix v{CURRENT_VERSION} -> v{latest} (run `{update_cmd}`)"
             );
 
             cache.last_notified = Some(now);
@@ -426,28 +426,28 @@ mod tests {
     #[test]
     fn test_is_homebrew_cellar() {
         assert!(is_homebrew_install(std::path::Path::new(
-            "/opt/homebrew/Cellar/workmux/0.1.124/bin/workmux"
+            "/opt/homebrew/Cellar/muxix/0.1.124/bin/muxix"
         )));
     }
 
     #[test]
     fn test_is_homebrew_prefix() {
         assert!(is_homebrew_install(std::path::Path::new(
-            "/usr/local/Cellar/workmux/0.1.124/bin/workmux"
+            "/usr/local/Cellar/muxix/0.1.124/bin/muxix"
         )));
     }
 
     #[test]
     fn test_is_not_homebrew_local_bin() {
         assert!(!is_homebrew_install(std::path::Path::new(
-            "/usr/local/bin/workmux"
+            "/usr/local/bin/muxix"
         )));
     }
 
     #[test]
     fn test_is_not_homebrew_home() {
         assert!(!is_homebrew_install(std::path::Path::new(
-            "/home/user/.local/bin/workmux"
+            "/home/user/.local/bin/muxix"
         )));
     }
 

@@ -1,13 +1,13 @@
 //! Codex-specific workaround for nested hook status updates.
 //!
-//! Codex currently runs Workmux status hooks for both a parent agent and its
+//! Codex currently runs Muxix status hooks for both a parent agent and its
 //! spawned subagents in the same tmux pane. A subagent `Stop` hook can therefore
 //! run before the parent `Stop` hook and incorrectly mark the pane/window as
 //! done while the parent is still active.
 //!
 //! Codex hook payloads do not currently expose an explicit root/subagent marker
 //! such as `agent_path`, `parent_thread_id`, or `is_subagent`. Until they do,
-//! Workmux tracks active Codex turns by `session_id` + `turn_id` and renders the
+//! Muxix tracks active Codex turns by `session_id` + `turn_id` and renders the
 //! pane as working while any tracked Codex turn is active.
 //!
 //! Keep this module isolated so it can be removed or replaced if Codex adds

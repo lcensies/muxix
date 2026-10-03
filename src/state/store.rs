@@ -10,11 +10,11 @@ use tracing::{info, trace, warn};
 use super::types::{AgentState, GlobalSettings, PaneKey};
 use crate::config::SandboxRuntime;
 
-/// Manages filesystem-based state persistence for workmux agents.
+/// Manages filesystem-based state persistence for muxix agents.
 ///
 /// Directory structure:
 /// ```text
-/// $XDG_STATE_HOME/workmux/           # ~/.local/state/workmux/
+/// $XDG_STATE_HOME/muxix/           # ~/.local/state/muxix/
 /// ├── settings.json                   # Global dashboard settings
 /// └── agents/
 ///     ├── tmux__default__%1.json     # {backend}__{instance}__{pane_id}.json
@@ -467,7 +467,7 @@ impl StateStore {
                         valid_agents.push(agent_pane);
                     } else if state.boot_id.is_some() && state.boot_id != current_boot_id {
                         // Server restarted since this state was written. Preserve
-                        // the state file for `workmux resurrect` to use.
+                        // the state file for `muxix resurrect` to use.
                         trace!(
                             pane_id,
                             "reconcile: preserving agent from previous server lifecycle for resurrect"
@@ -660,7 +660,7 @@ pub(crate) fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Get the workmux state directory (`$XDG_STATE_HOME/workmux`).
+/// Get the muxix state directory (`$XDG_STATE_HOME/muxix`).
 ///
 /// Delegates to `crate::xdg::state_dir()`.
 pub fn get_state_dir() -> Result<PathBuf> {

@@ -1,6 +1,6 @@
 //! Where an agent runs, and who owns its process.
 //!
-//! Workmux already abstracts two *other* things about agents, and this is
+//! Muxix already abstracts two *other* things about agents, and this is
 //! neither of them:
 //!
 //! - [`crate::agent::profile::AgentProfile`] — one agent CLI's quirks (bang
@@ -8,10 +8,10 @@
 //! - [`crate::agent::definition::AgentDefinition`] — how a run is configured:
 //!   model, permission mode, prompt template, bootstrap.
 //!
-//! Both assume workmux forked the agent into a multiplexer pane it owns. That
+//! Both assume muxix forked the agent into a multiplexer pane it owns. That
 //! assumption is what [`AgentRuntime`] removes: an agent may instead be owned by
 //! an external agent development environment (ADE) with its own daemon and its
-//! own phone/web clients, in which case workmux drives it rather than spawning
+//! own phone/web clients, in which case muxix drives it rather than spawning
 //! it.
 //!
 //! Naming note: the declared abilities of a runtime are **features**, not
@@ -172,7 +172,7 @@ impl RuntimeFeatures {
         }
     }
 
-    /// Names of the supported features, for `workmux runtimes`.
+    /// Names of the supported features, for `muxix runtimes`.
     pub fn names(&self) -> Vec<&'static str> {
         Feature::ALL
             .iter()
@@ -323,7 +323,7 @@ impl RuntimeHealth {
     }
 }
 
-/// Who owns an agent's process, and how workmux drives it.
+/// Who owns an agent's process, and how muxix drives it.
 pub trait AgentRuntime: Send + Sync {
     /// Registry name, e.g. `local` or `paseo`.
     fn name(&self) -> &str;
@@ -332,7 +332,7 @@ pub trait AgentRuntime: Send + Sync {
     fn features(&self) -> RuntimeFeatures;
 
     /// Whether the runtime is usable right now. Never panics or blocks long:
-    /// this runs before every selection and in `workmux runtimes`.
+    /// this runs before every selection and in `muxix runtimes`.
     fn health(&self) -> RuntimeHealth;
 
     /// Create and start an agent.
@@ -348,7 +348,7 @@ pub trait AgentRuntime: Send + Sync {
     fn status(&self, agent: &AgentRef) -> Result<RuntimeStatus>;
 
     /// Every agent this runtime currently owns. Authoritative: agents it does
-    /// not list are gone, however workmux last recorded them.
+    /// not list are gone, however muxix last recorded them.
     fn list(&self) -> Result<Vec<RuntimeAgent>>;
 
     /// Stop an agent. Stopping an already-gone agent is not an error.

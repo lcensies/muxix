@@ -231,18 +231,18 @@ fn normalize_wrapper_name(name: &str) -> String {
     }
 }
 
-/// Detect the agent this workmux invocation is running *inside*, so a spawned
+/// Detect the agent this muxix invocation is running *inside*, so a spawned
 /// worktree can inherit its parent's agent instead of the configured default.
 ///
 /// Signals, highest priority first:
-/// 1. `WORKMUX_AGENT` — explicit override, forces an agent for a whole subtree.
+/// 1. `MUXIX_AGENT` — explicit override, forces an agent for a whole subtree.
 /// 2. The current tmux pane's foreground command and title.
 /// 3. A walk up the process tree.
 ///
 /// Returns the canonical profile name (e.g. `"claude"`), or `None` when not
 /// running under a recognizable agent.
 pub fn detect_parent_agent() -> Option<String> {
-    if let Ok(explicit) = std::env::var("WORKMUX_AGENT")
+    if let Ok(explicit) = std::env::var("MUXIX_AGENT")
         && !explicit.trim().is_empty()
     {
         return Some(explicit.trim().to_string());
@@ -272,7 +272,7 @@ fn detect_from_tmux_pane() -> Option<AgentKind> {
 
 /// Walk up the process tree, classifying each ancestor.
 ///
-/// Catches the case where the pane's foreground command is a shell (workmux
+/// Catches the case where the pane's foreground command is a shell (muxix
 /// invoked from an agent's shell tool) but an agent sits further up. Uses `ps`
 /// rather than `/proc` so it works on macOS too.
 fn detect_from_ancestry() -> Option<AgentKind> {

@@ -2,8 +2,8 @@
 REAL end-to-end checkpoint/restore test for the container (CRIU) backend.
 
 Unlike `test_sandbox_checkpoint.py` (which uses fake `msb`/`podman`/`criu` and
-only asserts the *commands* workmux builds), this test drives the actual
-`workmux sandbox checkpoint` / `workmux sandbox resume` binary against a REAL
+only asserts the *commands* muxix builds), this test drives the actual
+`muxix sandbox checkpoint` / `muxix sandbox resume` binary against a REAL
 running container and a REAL CRIU checkpoint, then proves the agent process was
 genuinely RESUMED — not restarted:
 
@@ -14,10 +14,10 @@ genuinely RESUMED — not restarted:
 
 It is opt-in and self-skipping. It needs a runtime that can actually CRIU-
 checkpoint a container. Rootless podman refuses ("checkpointing a container
-requires root"), so this drives the workmux binary under `sudo` with `criu` on
+requires root"), so this drives the muxix binary under `sudo` with `criu` on
 PATH. Run it with:
 
-    WORKMUX_CRIU_E2E=1 nix-shell -p criu --run \
+    MUXIX_CRIU_E2E=1 nix-shell -p criu --run \
       'tests/venv/bin/python -m pytest tests/test_sandbox_checkpoint_e2e.py -v -s'
 
 A plain agent (opencode/claude) is deliberately NOT used as the in-container
@@ -69,9 +69,9 @@ def _require_e2e() -> str:
     """Skip unless explicitly enabled and all prerequisites are present.
 
     Returns the directory containing the `criu` binary (to put on PATH for the
-    privileged workmux invocations)."""
-    if os.environ.get("WORKMUX_CRIU_E2E") != "1":
-        pytest.skip("set WORKMUX_CRIU_E2E=1 to run the real CRIU e2e test")
+    privileged muxix invocations)."""
+    if os.environ.get("MUXIX_CRIU_E2E") != "1":
+        pytest.skip("set MUXIX_CRIU_E2E=1 to run the real CRIU e2e test")
     criu = shutil.which("criu")
     if not criu:
         pytest.skip("criu not found on PATH (try: nix-shell -p criu)")
@@ -82,10 +82,10 @@ def _require_e2e() -> str:
     return str(Path(criu).parent)
 
 
-def workmux_exe() -> Path:
-    candidate = Path(__file__).parent.parent / "target" / "debug" / "workmux"
+def muxix_exe() -> Path:
+    candidate = Path(__file__).parent.parent / "target" / "debug" / "muxix"
     if not candidate.exists():
-        pytest.skip(f"workmux binary not found at {candidate} — run `cargo build` first")
+        pytest.skip(f"muxix binary not found at {candidate} — run `cargo build` first")
     return candidate
 
 
@@ -162,13 +162,13 @@ def _seed_project(base: Path, *, keep: int = 2) -> Path:
             "checkpoint": {"enabled": True, "strategy": "manual", "keep": keep},
         }
     }
-    (project / ".workmux.yaml").write_text(yaml.safe_dump(cfg))
+    (project / ".muxix.yaml").write_text(yaml.safe_dump(cfg))
     subprocess.run(["git", "init", "-q"], cwd=project, check=True, capture_output=True)
     return project
 
 
 def _seed_agent_state(xdg: Path, *, workdir: str) -> Path:
-    agents_dir = xdg / "workmux" / "agents"
+    agents_dir = xdg / "muxix" / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
 
     backend, instance, pane_id = "tmux", "default", "%42"
@@ -199,7 +199,7 @@ def _seed_agent_state(xdg: Path, *, workdir: str) -> Path:
 
 
 def _read_state(state_file: Path) -> dict:
-    # workmux runs as root and rewrites the state file (root-owned), so read it
+    # muxix runs as root and rewrites the state file (root-owned), so read it
     # back with sudo to avoid permission surprises.
     raw = subprocess.run(
         ["sudo", "cat", str(state_file)], capture_output=True, text=True, check=True
@@ -214,7 +214,7 @@ def _read_state(state_file: Path) -> dict:
 
 def test_container_checkpoint_resume_resumes_process(tmp_path):
     criu_dir = _require_e2e()
-    wm = workmux_exe()
+    wm = muxix_exe()
 
     xdg = tmp_path / "state"
     home = tmp_path / "home"
@@ -224,7 +224,7 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
 
     snap_path_holder: dict = {}
 
-    def workmux(sub: str) -> subprocess.CompletedProcess:
+    def muxix(sub: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             _sudo_env(
                 criu_dir,
@@ -250,8 +250,8 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
         before = _parse(_wait_output(criu_dir, lambda s: "tick=" in s))
         assert "tick" in before, f"container did not produce output: {before}"
 
-        # 2. Checkpoint via the actual workmux binary.
-        r = workmux("checkpoint")
+        # 2. Checkpoint via the actual muxix binary.
+        r = muxix("checkpoint")
         assert r.returncode == 0, f"checkpoint failed:\nstdout={r.stdout}\nstderr={r.stderr}"
         assert "Checkpoint saved" in r.stdout, r.stdout
 
@@ -271,8 +271,8 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
             not in _podman(criu_dir, "ps", "-a", "--format", "{{.Names}}").stdout
         )
 
-        # 4. Resume via the actual workmux binary (tmux focus warning is OK).
-        r = workmux("resume")
+        # 4. Resume via the actual muxix binary (tmux focus warning is OK).
+        r = muxix("resume")
         assert r.returncode == 0, f"resume failed:\nstdout={r.stdout}\nstderr={r.stderr}"
 
         # 5. Container is back; wait for it to be live, feed NEW input, and let
@@ -299,5 +299,5 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
         snap = snap_path_holder.get("snap")
         if snap:
             subprocess.run(["sudo", "rm", "-f", snap], check=False)
-        # state dir is rewritten root-owned by the privileged workmux run.
+        # state dir is rewritten root-owned by the privileged muxix run.
         subprocess.run(["sudo", "rm", "-rf", str(xdg)], check=False)

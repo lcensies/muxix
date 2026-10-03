@@ -4,10 +4,10 @@ description: Declare providers, models, and context/compaction limits once and r
 
 # Models
 
-The top-level `providers` section of `.workmux.yaml` is a **unified,
+The top-level `providers` section of `.muxix.yaml` is a **unified,
 provider-centric model registry**. You declare each *provider* (the source that
 serves a model) and the models it offers, along with context-window and
-compaction limits. Declaring a model once lets the rest of workmux resolve its
+compaction limits. Declaring a model once lets the rest of muxix resolve its
 limits by provider id or logical name instead of hard-coding them per agent — a
 policy-style single source of truth.
 
@@ -90,7 +90,7 @@ rather than a fixed default, so compaction is not triggered prematurely.
 ## Provider sync
 
 A provider that declares any of `base_url`, `api_key_env`, or `npm` is a
-**connectable** provider: `workmux setup` renders it into each supported
+**connectable** provider: `muxix setup` renders it into each supported
 agent's native provider config, so one registry entry replaces N hand-edited
 agent files. A provider without connection fields keeps its current
 resolution-only role and is never written anywhere.
@@ -113,11 +113,11 @@ Renders as:
   `@ai-sdk/anthropic` otherwise; `api_key_env` renders as an `{env:...}`
   reference in `options.apiKey`;
   registry models project into `models.<id>` with `limit.context`). Only the
-  `provider.<id>` keys workmux declares are touched — hand-written provider
+  `provider.<id>` keys muxix declares are touched — hand-written provider
   entries under other ids survive every sync. Caveat: OpenCode merges
   `opencode.jsonc` last, so a provider block there still wins.
 - **Codex** — a `[model_providers.<id>]` table inside a
-  `# workmux:providers begin`/`end` marker region of `~/.codex/config.toml`
+  `# muxix:providers begin`/`end` marker region of `~/.codex/config.toml`
   (`env_key` carries the variable name; `wire_api = "chat"`). Text outside the
   markers is never modified; edits inside them are overwritten on the next
   sync. Codex config has no env substitution, so a `base_url` embedding
@@ -125,7 +125,7 @@ Renders as:
 - Other agents have no confirmed declarative provider format and are skipped
   (pi's `pi-provider-litellm` plugin reads the same env vars directly).
 
-Secrets flow by environment variable **name** only: workmux never reads,
+Secrets flow by environment variable **name** only: muxix never reads,
 validates, or writes the values. The registry merges as a whole-field override
 (project beats global), and sync writes global agent configs — so the same
 provider id declared in two projects should mean the same backend

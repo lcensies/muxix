@@ -1,7 +1,7 @@
 //! Agent bootstrap configuration and installation.
 //!
 //! Configures plugins, skills, and prompts uniformly across agents
-//! through a single manifest in `.workmux.yaml`.
+//! through a single manifest in `.muxix.yaml`.
 
 #![allow(dead_code)]
 
@@ -369,7 +369,7 @@ pub struct AgentBootstrapOverrides {
     /// machine. `null` deletes a key; unmentioned keys — including ones the
     /// agent writes itself — survive.
     ///
-    /// Removing a declaration does not restore the previous value: workmux
+    /// Removing a declaration does not restore the previous value: muxix
     /// cannot know what it should be. Use an explicit `null` to remove a key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<serde_json::Value>,
@@ -455,7 +455,7 @@ pub struct BootstrapConfig {
     pub npm_prefix: Option<String>,
 
     /// Prune every package under the npm prefix that no entity declares, not
-    /// only the ones workmux installed. Off: hand-installed packages survive.
+    /// only the ones muxix installed. Off: hand-installed packages survive.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deps_strict: bool,
 
@@ -467,7 +467,7 @@ pub struct BootstrapConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub template_vars: BTreeMap<String, TemplateVar>,
 
-    /// Color theme applied to each agent's own config by `workmux setup`.
+    /// Color theme applied to each agent's own config by `muxix setup`.
     ///
     /// A scalar sets the same theme everywhere; a map keys it per agent (same
     /// key forms as `agents:`) with an optional `default`, since theme names
@@ -487,7 +487,7 @@ pub struct BootstrapConfig {
     pub default_subagents: Vec<SubagentDef>,
 
     /// Default prompt components to merge for all agents.
-    /// Components are loaded from `.workmux/prompt-components/` directory.
+    /// Components are loaded from `.muxix/prompt-components/` directory.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub default_prompt_components: Vec<String>,
 
@@ -717,7 +717,7 @@ pub fn merge_prompt_components(
             if p.is_absolute() { p } else { project_root.join(p) }
         } else {
             project_root
-                .join(".workmux/prompt-components")
+                .join(".muxix/prompt-components")
                 .join(format!("{}.md", component_name))
         };
 
@@ -800,7 +800,7 @@ pub enum SkillInstall {
     UpToDate(String),
     /// Not installed, with the reason why (e.g. remote sources are not
     /// fetched yet). Reported rather than raised so one bad entry does not
-    /// abort the rest of `workmux setup`.
+    /// abort the rest of `muxix setup`.
     Skipped(String, String),
 }
 
@@ -913,7 +913,7 @@ pub fn render_model(
     default_provider: Option<&str>,
 ) -> String {
     // pi subagents run under taskflow, which resolves tier roles via
-    // `settings.json.modelRoles` rather than the workmux provider registry.
+    // `settings.json.modelRoles` rather than the muxix provider registry.
     // Map bare tier aliases before (and independent of) registry lookup.
     if agent == Agent::Pi {
         match spec {
@@ -1237,7 +1237,7 @@ fn skill_install_up_to_date(src: &Path, dest: &Path, rendered_skill_md: &str) ->
 }
 
 /// Compare two skill directories file-by-file so an unchanged skill is not
-/// reported as an update on every `workmux setup`.
+/// reported as an update on every `muxix setup`.
 fn dirs_have_same_contents(src: &Path, dest: &Path) -> Result<bool> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -1317,7 +1317,7 @@ mod tests {
     fn test_merge_component_by_name_and_path() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let dir = root.join(".workmux/prompt-components");
+        let dir = root.join(".muxix/prompt-components");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("terse.md"), "Be concise.\n").unwrap();
         fs::write(root.join("outside.md"), "Outside rule.\n").unwrap();
@@ -1539,9 +1539,9 @@ mod tests {
     #[test]
     fn test_skill_name_from_source() {
         let name = |s: &str| skill_name_from_source(&Source::LocalPath(s.to_string())).unwrap();
-        assert_eq!(name("./skills/workmux"), "workmux");
-        assert_eq!(name("./skills/workmux/"), "workmux");
-        assert_eq!(name("./skills/workmux/SKILL.md"), "workmux");
+        assert_eq!(name("./skills/muxix"), "muxix");
+        assert_eq!(name("./skills/muxix/"), "muxix");
+        assert_eq!(name("./skills/muxix/SKILL.md"), "muxix");
         assert_eq!(name("/abs/path/my-skill"), "my-skill");
 
         let remote = Source::Remote {
@@ -1661,7 +1661,7 @@ agents:
     #[test]
     fn test_install_skills_for_agent_without_skills_dir_is_noop() {
         let config = BootstrapConfig {
-            default_skills: vec![Source::LocalPath("./skills/workmux".to_string()).into()],
+            default_skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
             ..Default::default()
         };
         // Codex has no skills directory, so nothing is installed and the
@@ -1682,9 +1682,9 @@ agents:
             .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let project_root = tmp.path().join("project");
-        let skill_src = project_root.join("skills/workmux");
+        let skill_src = project_root.join("skills/muxix");
         fs::create_dir_all(&skill_src).unwrap();
-        fs::write(skill_src.join("SKILL.md"), "---\nname: workmux\n---\nv1").unwrap();
+        fs::write(skill_src.join("SKILL.md"), "---\nname: muxix\n---\nv1").unwrap();
 
         let agent_dir = tmp.path().join("omp-agent");
         // SAFETY: OMP_CODING_AGENT_DIR is read by no other test in this crate,
@@ -1697,25 +1697,25 @@ agents:
         }
 
         let config = BootstrapConfig {
-            default_skills: vec![Source::LocalPath("./skills/workmux".to_string()).into()],
+            default_skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
             ..Default::default()
         };
 
-        let installed = agent_dir.join("skills/workmux/SKILL.md");
+        let installed = agent_dir.join("skills/muxix/SKILL.md");
 
         let first = install_skills_for_agent(Agent::Omp, &config, &project_root, false).unwrap();
-        let first_ok = first == vec![SkillInstall::Installed("workmux".to_string())]
-            && fs::read_to_string(&installed).unwrap_or_default() == "---\nname: workmux\n---\nv1";
+        let first_ok = first == vec![SkillInstall::Installed("muxix".to_string())]
+            && fs::read_to_string(&installed).unwrap_or_default() == "---\nname: muxix\n---\nv1";
 
         // Re-running is idempotent.
         let second = install_skills_for_agent(Agent::Omp, &config, &project_root, false).unwrap();
-        let second_ok = second == vec![SkillInstall::UpToDate("workmux".to_string())];
+        let second_ok = second == vec![SkillInstall::UpToDate("muxix".to_string())];
 
         // Editing the source re-installs it.
-        fs::write(skill_src.join("SKILL.md"), "---\nname: workmux\n---\nv2").unwrap();
+        fs::write(skill_src.join("SKILL.md"), "---\nname: muxix\n---\nv2").unwrap();
         let third = install_skills_for_agent(Agent::Omp, &config, &project_root, false).unwrap();
-        let third_ok = third == vec![SkillInstall::Updated("workmux".to_string())]
-            && fs::read_to_string(&installed).unwrap_or_default() == "---\nname: workmux\n---\nv2";
+        let third_ok = third == vec![SkillInstall::Updated("muxix".to_string())]
+            && fs::read_to_string(&installed).unwrap_or_default() == "---\nname: muxix\n---\nv2";
 
         unsafe {
             match prev {
@@ -1810,7 +1810,7 @@ agents:
 
     #[test]
     fn test_default_skills_parses_from_yaml() {
-        let yaml = "default_skills:\n  - ./skills/workmux\n  - url: https://github.com/u/r\n    ref: main\n";
+        let yaml = "default_skills:\n  - ./skills/muxix\n  - url: https://github.com/u/r\n    ref: main\n";
         let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.default_skills.len(), 2);
         assert!(matches!(config.default_skills[0].source, Source::LocalPath(_)));
@@ -2202,7 +2202,7 @@ mod skill_install_dir_tests {
     #[test]
     fn installed_skill_md_contains_the_absolute_path() {
         let tmp = std::env::temp_dir().join(format!(
-            "workmux-sid-{}-{:?}",
+            "muxix-sid-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

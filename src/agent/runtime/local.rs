@@ -1,8 +1,8 @@
-//! The runtime workmux has always had: a git worktree, a multiplexer window,
+//! The runtime muxix has always had: a git worktree, a multiplexer window,
 //! an agent CLI, and hook-driven status.
 //!
-//! This is a wrapper, not a rewrite. Creation goes through `workmux add` and
-//! input through `workmux send` — exactly the calls the orchestration loop
+//! This is a wrapper, not a rewrite. Creation goes through `muxix add` and
+//! input through `muxix send` — exactly the calls the orchestration loop
 //! already makes — and status comes from the same reconciled [`StateStore`] the
 //! dashboard and sidebar read. Behaviour is meant to be indistinguishable from
 //! before the trait existed.
@@ -52,7 +52,7 @@ impl AgentRuntime for LocalRuntime {
             send: true,
             freeze: true,
             fork: true,
-            // Status arrives via hooks writing state files, which workmux polls.
+            // Status arrives via hooks writing state files, which muxix polls.
             events: false,
             // Importing a foreign session into a tmux pane would mean taking
             // over a process this runtime did not start. It cannot.
@@ -75,7 +75,7 @@ impl AgentRuntime for LocalRuntime {
         if req.handle.is_empty() {
             bail!("local runtime: agent handle is required");
         }
-        let mut cmd = Command::new("workmux");
+        let mut cmd = Command::new("muxix");
         cmd.current_dir(&req.project_root).arg("add").arg(&req.handle);
         if let Some(kind) = &req.kind {
             cmd.arg("--agent").arg(kind);
@@ -86,7 +86,7 @@ impl AgentRuntime for LocalRuntime {
         let out = cmd.output()?;
         if !out.status.success() {
             bail!(
-                "local runtime: `workmux add {}` failed: {}",
+                "local runtime: `muxix add {}` failed: {}",
                 req.handle,
                 String::from_utf8_lossy(&out.stderr).trim()
             );

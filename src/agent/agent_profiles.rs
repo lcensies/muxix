@@ -4,7 +4,7 @@
 //! # Model
 //!
 //! The real agent config dir (e.g. `~/.pi/agent/`, `~/.claude/`) is the
-//! **base** — it is also the **default**, and workmux never wholesale-overrides
+//! **base** — it is also the **default**, and muxix never wholesale-overrides
 //! it. A named profile layers *on top* of base:
 //!
 //! ```text
@@ -16,18 +16,18 @@
 //!
 //! Two directories per profile, with opposite ownership:
 //!
-//! * **source** — `~/.config/workmux/agent-profiles/<name>/` — user-authored.
+//! * **source** — `~/.config/muxix/agent-profiles/<name>/` — user-authored.
 //!   Setup only *reads* it and **never prunes** it.
-//! * **derived** — `~/.local/state/workmux/agent-profiles/<name>/<agent>/` — a
+//! * **derived** — `~/.local/state/muxix/agent-profiles/<name>/<agent>/` — a
 //!   symlink-farm merge of base + source (source wins on conflicts). Fully
-//!   workmux-owned: rebuilt and pruned freely, because it is reconstructable.
+//!   muxix-owned: rebuilt and pruned freely, because it is reconstructable.
 //!
 //! Because pruning only ever touches the derived tree, deleting a removed
 //! profile can never destroy user data — the source tree is left untouched.
 //!
-//! `workmux exec --profile <name> <agent>` points the agent's config-dir env
+//! `muxix exec --profile <name> <agent>` points the agent's config-dir env
 //! var at the derived dir; with no profile it falls through to base, so a bare
-//! agent and `workmux exec` with no profile use the exact same directory and
+//! agent and `muxix exec` with no profile use the exact same directory and
 //! can never drift.
 
 use anyhow::{Context, Result};
@@ -99,7 +99,7 @@ pub fn config_dir_env(agent_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Root of user-authored profile sources: `~/.config/workmux/agent-profiles/`.
+/// Root of user-authored profile sources: `~/.config/muxix/agent-profiles/`.
 pub fn source_root() -> Result<PathBuf> {
     Ok(crate::xdg::config_dir()?.join("agent-profiles"))
 }
@@ -110,7 +110,7 @@ pub fn source_dir(profile: &str) -> Result<PathBuf> {
     Ok(source_root()?.join(profile))
 }
 
-/// Root of derived overlay dirs: `~/.local/state/workmux/agent-profiles/`.
+/// Root of derived overlay dirs: `~/.local/state/muxix/agent-profiles/`.
 pub fn build_root() -> Result<PathBuf> {
     Ok(crate::xdg::state_dir()?.join("agent-profiles"))
 }
@@ -170,7 +170,7 @@ pub fn session_dir_env(agent_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Root of persistent per-profile agent data: `~/.local/state/workmux/agent-profile-data/`.
+/// Root of persistent per-profile agent data: `~/.local/state/muxix/agent-profile-data/`.
 ///
 /// Deliberately a sibling of `agent-profiles/` (the derived overlay root) rather than
 /// a child: `materialize` removes the overlay wholesale, and anything the agent
@@ -529,7 +529,7 @@ fn generate_pi_prompt(
         .unwrap_or_default();
     let rel = match method {
         PiInjectionMethod::AppendSystem => "APPEND_SYSTEM.md",
-        PiInjectionMethod::BeforeAgentStart => "workmux-pre-inject.md",
+        PiInjectionMethod::BeforeAgentStart => "muxix-pre-inject.md",
     };
     Ok(Some((PathBuf::from(rel), format!("{}\n", prompt.trim()))))
 }

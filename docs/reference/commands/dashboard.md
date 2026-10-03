@@ -7,7 +7,7 @@ description: Open a TUI dashboard showing all active AI agents
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 
 ```bash
-workmux dashboard
+muxix dashboard
 ```
 
 ## Options
@@ -21,19 +21,19 @@ workmux dashboard
 
 ```bash
 # Open dashboard with default layout
-workmux dashboard
+muxix dashboard
 
 # Open with smaller preview pane (40% of height)
-workmux dashboard --preview-size 40
+muxix dashboard --preview-size 40
 
 # Open diff view directly for current worktree
-workmux dashboard --diff
+muxix dashboard --diff
 
 # Show only agents in the current tmux session
-workmux dashboard --session
+muxix dashboard --session
 
 # Open directly on the Worktrees tab
-workmux dashboard --tab worktrees
+muxix dashboard --tab worktrees
 ```
 
 See the [Dashboard guide](/guide/dashboard/) for keybindings and detailed documentation.

@@ -10,7 +10,7 @@ The kitty backend is new and experimental. Expect rough edges and potential issu
 
 [kitty](https://sw.kovidgoyal.net/kitty/) can be used as an alternative to tmux. Detected automatically via `$KITTY_WINDOW_ID`.
 
-<img src="/kitty-screenshot.webp" alt="workmux running in kitty with multiple agents" style="border-radius: 4px;">
+<img src="/kitty-screenshot.webp" alt="muxix running in kitty with multiple agents" style="border-radius: 4px;">
 
 ## Differences from tmux
 
@@ -21,8 +21,8 @@ The kitty backend is new and experimental. Expect rough edges and potential issu
 | Scope                | tmux session         | OS window              |
 
 - **Tab ordering**: New tabs appear at the end of the tab bar (no "insert after" support like tmux)
-- **OS window isolation**: workmux operates within the current OS window. Tabs in other OS windows are not affected.
-- **Terminology note**: What workmux calls a "pane" is called a "window" in kitty, and what workmux calls a "window" (tab) is called a "tab" in kitty
+- **OS window isolation**: muxix operates within the current OS window. Tabs in other OS windows are not affected.
+- **Terminology note**: What muxix calls a "pane" is called a "window" in kitty, and what muxix calls a "window" (tab) is called a "tab" in kitty
 
 ## Requirements
 
@@ -33,7 +33,7 @@ The kitty backend is new and experimental. Expect rough edges and potential issu
 
 ## Required kitty configuration
 
-workmux relies on kitty's remote control API. Add these settings to your `kitty.conf`:
+muxix relies on kitty's remote control API. Add these settings to your `kitty.conf`:
 
 ```bash
 # REQUIRED: Enable remote control
@@ -49,7 +49,7 @@ enabled_layouts splits,stack
 
 ## Agent status display
 
-workmux stores agent status in kitty [user variables](https://sw.kovidgoyal.net/kitty/remote-control/#kitten-set-user-vars) (`workmux_status`), which can be displayed in tab titles using kitty's `{custom}` template placeholder.
+muxix stores agent status in kitty [user variables](https://sw.kovidgoyal.net/kitty/remote-control/#kitten-set-user-vars) (`muxix_status`), which can be displayed in tab titles using kitty's `{custom}` template placeholder.
 
 ::: tip Agent setup
 Copy this page as markdown and paste it to your coding agent to have it set up the configuration files for you.
@@ -66,13 +66,13 @@ def draw_title(data):
     tab = get_boss().tab_for_id(data['tab'].tab_id)
     if tab:
         for window in tab:
-            status = window.user_vars.get('workmux_status', '')
+            status = window.user_vars.get('muxix_status', '')
             if status:
                 return ' ' + status
     return ''
 ```
 
-2. Create `~/.config/kitty/workmux_watcher.py` for live status updates and auto-clear on focus:
+2. Create `~/.config/kitty/muxix_watcher.py` for live status updates and auto-clear on focus:
 
 ```python
 from kitty.boss import Boss
@@ -82,15 +82,15 @@ from kitty.window import Window
 def on_focus_change(boss: Boss, window: Window, data: dict) -> None:
     if not data.get('focused'):
         return
-    if window.user_vars.get('workmux_auto_clear') == '1':
+    if window.user_vars.get('muxix_auto_clear') == '1':
         boss.call_remote_control(window, (
             'set-user-vars', f'--match=id:{window.id}',
-            'workmux_status=', 'workmux_auto_clear=',
+            'muxix_status=', 'muxix_auto_clear=',
         ))
 
 
 def on_set_user_var(boss: Boss, window: Window, data: dict) -> None:
-    if data.get('key') == 'workmux_status':
+    if data.get('key') == 'muxix_status':
         tm = boss.os_window_map.get(window.os_window_id)
         if tm is not None:
             tm.update_tab_bar_data()
@@ -101,10 +101,10 @@ def on_set_user_var(boss: Boss, window: Window, data: dict) -> None:
 
 ```bash
 tab_title_template "{title}{custom}"
-watcher workmux_watcher.py
+watcher muxix_watcher.py
 ```
 
-The `{custom}` placeholder calls the `draw_title` function, which checks each window in the tab for a `workmux_status` user variable and appends it to the title. The watcher refreshes the tab bar when status changes and auto-clears "waiting" and "done" statuses when the tab receives focus.
+The `{custom}` placeholder calls the `draw_title` function, which checks each window in the tab for a `muxix_status` user variable and appends it to the title. The watcher refreshes the tab bar when status changes and auto-clears "waiting" and "done" statuses when the tab receives focus.
 
 ## Known limitations
 

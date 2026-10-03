@@ -7,7 +7,7 @@ description: Open or switch to a tmux window for an existing worktree
 Opens or switches to a tmux window for a pre-existing git worktree. If the window already exists, switches to it. If not, creates a new window with the configured pane layout and environment. Accepts multiple names to open several worktrees at once.
 
 ```bash
-workmux open [name...] [flags]
+muxix open [name...] [flags]
 ```
 
 ## Arguments
@@ -21,9 +21,9 @@ workmux open [name...] [flags]
 | `-n, --new`                | Force opening in a new window even if one already exists. Creates a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having multiple terminal views into the same worktree. Cannot be used with session mode.                           |
 | `--mode <window\|session>` | Override the multiplexer mode for this command. `session` persists the mode change for subsequent opens. `window` converts a session-mode worktree back to window mode. Session mode is only supported with tmux.                                    |
 | `-s, --session`            | Shorthand for `--mode session`. Persists the mode change for subsequent opens. Cannot be combined with `--mode`.                                                                                                                                     |
-| `--target-name <name>`     | Override the workmux-managed tmux target name for this command. In window mode, creates or selects window `<window_prefix><name>`. In session mode, creates or selects session `<window_prefix><name>`. Cannot be used with multiple worktree names. |
-| `--parent-session <name>`  | Window mode only. Creates the workmux-managed window inside the named tmux session without applying `window_prefix` to that parent session. Cannot be used with session mode or multiple worktree names.                                             |
-| `--config <path>`          | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `workmux open feat/my-branch --config /path/to/workmux.session.yaml`.                                                |
+| `--target-name <name>`     | Override the muxix-managed tmux target name for this command. In window mode, creates or selects window `<window_prefix><name>`. In session mode, creates or selects session `<window_prefix><name>`. Cannot be used with multiple worktree names. |
+| `--parent-session <name>`  | Window mode only. Creates the muxix-managed window inside the named tmux session without applying `window_prefix` to that parent session. Cannot be used with session mode or multiple worktree names.                                             |
+| `--config <path>`          | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `muxix open feat/my-branch --config /path/to/muxix.session.yaml`.                                                |
 | `--run-hooks`              | Re-runs the `post_create` commands (these block window creation).                                                                                                                                                                                    |
 | `--force-files`            | Re-applies file copy/symlink operations. Useful for restoring a deleted `.env` file.                                                                                                                                                                 |
 | `-p, --prompt <text>`      | Provide an inline prompt for AI agent panes.                                                                                                                                                                                                         |
@@ -45,41 +45,41 @@ workmux open [name...] [flags]
 
 ```bash
 # Open or switch to a window for an existing worktree
-workmux open user-auth
+muxix open user-auth
 
 # Force open a second window for the same worktree (creates user-auth-2)
-workmux open user-auth --new
+muxix open user-auth --new
 
 # Open a new window for the current worktree (run from within the worktree)
-workmux open --new
+muxix open --new
 
 # Open in session mode (converts from window mode if needed)
-workmux open user-auth --mode session
+muxix open user-auth --mode session
 
 # Convert a session-mode worktree back to a window
-workmux open user-auth --mode window
+muxix open user-auth --mode window
 
 # Recreate a closed worktree with a custom window target
-workmux open user-auth --target-name review-auth
+muxix open user-auth --target-name review-auth
 
 # Recreate a window-mode worktree inside a named tmux session
-workmux open user-auth --parent-session prs --target-name review-auth
+muxix open user-auth --parent-session prs --target-name review-auth
 
 # Recreate a worktree as a custom-named session
-workmux open user-auth --mode session --target-name review-auth
+muxix open user-auth --mode session --target-name review-auth
 
 # Resume the agent's last conversation
-workmux open user-auth --continue
+muxix open user-auth --continue
 
 # Resume and send a follow-up prompt
-workmux open user-auth --continue -p "Continue implementing the login flow"
+muxix open user-auth --continue -p "Continue implementing the login flow"
 
 # Open and re-run dependency installation
-workmux open user-auth --run-hooks
+muxix open user-auth --run-hooks
 
 # Open and restore configuration files
-workmux open user-auth --force-files
+muxix open user-auth --force-files
 
 # Open multiple worktrees at once
-workmux open user-auth api-refactor bugfix-login
+muxix open user-auth api-refactor bugfix-login
 ```

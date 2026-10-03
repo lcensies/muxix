@@ -34,40 +34,40 @@
         };
       });
       # A pure attrs -> config-file renderer, usable without the module system:
-      #   workmux.lib.mkWorkmuxConfig { agent = "claude"; }
+      #   muxix.lib.mkMuxixConfig { agent = "claude"; }
       lib = {
-        mkWorkmuxConfig =
+        mkMuxixConfig =
           settings:
           let
             pkgs = nixpkgs.legacyPackages.${builtins.currentSystem or "x86_64-linux"};
           in
-          builtins.readFile ((pkgs.formats.yaml { }).generate "workmux-config.yaml" settings);
+          builtins.readFile ((pkgs.formats.yaml { }).generate "muxix-config.yaml" settings);
       };
 
-      homeManagerModules.workmux =
+      homeManagerModules.muxix =
         { config, lib, pkgs, ... }:
         import ./nix/module.nix {
           installPackage = cfg: { home.packages = [ cfg.package ]; };
           defaultPackage = self.packages.${pkgs.system}.default or null;
           mkConfigFile = file: {
-            xdg.configFile."workmux/config.yaml".source = file;
+            xdg.configFile."muxix/config.yaml".source = file;
           };
           # Item failures must not fail activation: a missing agent CLI is a
           # normal state, not a broken system generation.
           mkActivation = command: {
-            home.activation.workmuxSetup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-              ${command} || echo "workmux setup reported failures (activation continues)"
+            home.activation.muxixSetup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+              ${command} || echo "muxix setup reported failures (activation continues)"
             '';
           };
         } { inherit config lib pkgs; };
 
-      nixosModules.workmux =
+      nixosModules.muxix =
         { config, lib, pkgs, ... }:
         import ./nix/module.nix {
           installPackage = cfg: { environment.systemPackages = [ cfg.package ]; };
           defaultPackage = self.packages.${pkgs.system}.default or null;
           mkConfigFile = file: {
-            environment.etc."workmux/config.yaml".source = file;
+            environment.etc."muxix/config.yaml".source = file;
           };
           # NixOS has no per-user activation hook here; setup is a user-level
           # action, so it stays a Home Manager concern.
@@ -78,9 +78,9 @@
       # real binary resolve it. Catches the drift that matters: the Rust config
       # schema changing under the hand-written nix options.
       checks = forAllSystems (pkgs: {
-        workmux-module =
+        muxix-module =
           let
-            workmux = self.packages.${pkgs.system}.default;
+            muxix = self.packages.${pkgs.system}.default;
             settings = {
               agent = "claude";
               merge_strategy = "rebase";
@@ -92,9 +92,9 @@
                 args = [ "-y" "@upstash/context7-mcp" ];
               };
             };
-            rendered = (pkgs.formats.yaml { }).generate "workmux-config.yaml" settings;
+            rendered = (pkgs.formats.yaml { }).generate "muxix-config.yaml" settings;
           in
-          pkgs.runCommand "workmux-module-check" { nativeBuildInputs = [ workmux ]; } ''
+          pkgs.runCommand "muxix-module-check" { nativeBuildInputs = [ muxix ]; } ''
             export HOME=$TMPDIR
             cd $TMPDIR
             cp ${rendered} config.yaml
@@ -102,10 +102,10 @@
             # merely tolerate it.
             echo 'worktree_prefix: from-include' > extra.yaml
 
-            workmux config validate --file config.yaml --strict
+            muxix config validate --file config.yaml --strict
 
-            base=$(workmux config resolve --file config.yaml --format json)
-            corp=$(workmux config resolve --file config.yaml --format json --profile corp)
+            base=$(muxix config resolve --file config.yaml --format json)
+            corp=$(muxix config resolve --file config.yaml --format json --profile corp)
 
             check() { # <label> <jq-ish grep> <haystack>
               echo "$3" | grep -q "$2" || { echo "FAIL: $1"; echo "$3"; exit 1; }
@@ -121,7 +121,7 @@
 
       packages = forAllSystems (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
-          pname = "workmux";
+          pname = "muxix";
           # Cargo.toml, not the git rev: a dirty tree changed the derivation on
           # every edit, so no build was ever reused.
           version = (nixpkgs.lib.importTOML ./Cargo.toml).package.version;
@@ -172,10 +172,10 @@
           ];
           postInstall = ''
             export HOME=$TMPDIR
-            installShellCompletion --cmd workmux \
-              --bash <($out/bin/workmux completions bash) \
-              --fish <($out/bin/workmux completions fish) \
-              --zsh <($out/bin/workmux completions zsh)
+            installShellCompletion --cmd muxix \
+              --bash <($out/bin/muxix completions bash) \
+              --fish <($out/bin/muxix completions fish) \
+              --zsh <($out/bin/muxix completions zsh)
           '';
         };
       });

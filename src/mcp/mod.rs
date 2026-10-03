@@ -1,21 +1,21 @@
 //! Reusable per-project MCP (Model Context Protocol) server registration.
 //!
-//! workmux reads MCP server declarations from the `mcp:` section of
-//! `.workmux.yaml` and renders them into a project-level `.mcp.json` (Claude
+//! muxix reads MCP server declarations from the `mcp:` section of
+//! `.muxix.yaml` and renders them into a project-level `.mcp.json` (Claude
 //! Code's native format, `{ "mcpServers": { ... } }`). That file is propagated
 //! into each worktree as a relative symlink (see `workflow::setup`), so any
 //! agent that reads a project `.mcp.json` picks the servers up automatically.
 //!
-//! The render is a *merge*: server entries declared in `.workmux.yaml` are
-//! upserted under `mcpServers`, while hand-added entries workmux doesn't manage
-//! are preserved. A `x-workmux-managed` array tracks which keys workmux owns so
+//! The render is a *merge*: server entries declared in `.muxix.yaml` are
+//! upserted under `mcpServers`, while hand-added entries muxix doesn't manage
+//! are preserved. A `x-muxix-managed` array tracks which keys muxix owns so
 //! that removing/disabling a server in config also removes it from the file
 //! without disturbing the user's own entries.
 //!
 //! This mechanism is intentionally generic (socraticode is just the first
 //! consumer). Per-project harness status — configured servers, sync state, and
 //! integration capabilities such as a code indexer — is exposed via
-//! [`harness_status`] for the CLI (`workmux mcp status`) and the dashboard's
+//! [`harness_status`] for the CLI (`muxix mcp status`) and the dashboard's
 //! Project view, backed by the [`crate::project_state`] store.
 
 use anyhow::{Context, Result};
@@ -32,8 +32,8 @@ pub use targets::{support_overview, sync_agent_mcp_configs};
 /// The project-level MCP config filename (Claude Code's native format).
 pub const MCP_JSON_FILENAME: &str = ".mcp.json";
 
-/// Top-level key in `.mcp.json` tracking which server keys workmux manages.
-const MANAGED_KEY: &str = "x-workmux-managed";
+/// Top-level key in `.mcp.json` tracking which server keys muxix manages.
+const MANAGED_KEY: &str = "x-muxix-managed";
 
 /// `project_state` fact recorded after a successful `.mcp.json` sync.
 pub const MCP_SYNCED_FACT: &str = "mcp.synced";
@@ -82,7 +82,7 @@ pub fn render_mcp_servers(servers: &BTreeMap<String, McpServerConfig>) -> Map<St
 
 /// Merge declared servers into an existing `.mcp.json` value.
 ///
-/// Preserves unmanaged (hand-added) servers, upserts workmux-managed ones, and
+/// Preserves unmanaged (hand-added) servers, upserts muxix-managed ones, and
 /// removes managed entries that are no longer declared/enabled. Idempotent:
 /// applying it twice with the same input yields the same value.
 pub fn merge_mcp_json(

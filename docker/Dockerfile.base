@@ -114,15 +114,15 @@ RUN chmod +x /usr/local/bin/network-init.sh
 # Ensure host-exec shim directory is on PATH for login shells.
 # Agents like Codex run commands via login shell (bash -lc) which sources
 # /etc/profile, resetting PATH to system defaults and losing the shim
-# directory that workmux prepends. This profile.d script re-adds it.
-RUN cat <<'SCRIPT' > /etc/profile.d/workmux-shims.sh
-if [ -d /tmp/.workmux-shims/bin ]; then
-    PATH="/tmp/.workmux-shims/bin:$PATH"
+# directory that muxix prepends. This profile.d script re-adds it.
+RUN cat <<'SCRIPT' > /etc/profile.d/muxix-shims.sh
+if [ -d /tmp/.muxix-shims/bin ]; then
+    PATH="/tmp/.muxix-shims/bin:$PATH"
     export PATH
 fi
 SCRIPT
 
 ARG CACHE_BUST=1
 
-# Install workmux (needed for sandbox RPC)
-RUN curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+# Install muxix (needed for sandbox RPC)
+RUN curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash

@@ -30,7 +30,7 @@ Lima commands:
 General commands:
   agent            Run an agent inside a sandbox with RPC support
   shell            Start an interactive shell in a sandbox
-  install-dev      Cross-compile and install workmux into sandboxes
+  install-dev      Cross-compile and install muxix into sandboxes
   help             Print this message or the help of the given subcommand(s)
 
 {options}")]
@@ -42,7 +42,7 @@ pub struct SandboxArgs {
 #[derive(Debug, Subcommand)]
 pub enum SandboxCommand {
     /// Build the sandbox container image locally.
-    /// Note: a pre-built image is available via `workmux sandbox pull`.
+    /// Note: a pre-built image is available via `muxix sandbox pull`.
     Build,
     /// Pull the latest sandbox image from the container registry.
     Pull,
@@ -54,7 +54,7 @@ pub enum SandboxCommand {
     },
     /// Delete unused Lima VMs to reclaim disk space.
     Prune {
-        /// Skip confirmation and delete all workmux VMs
+        /// Skip confirmation and delete all muxix VMs
         #[arg(short, long)]
         force: bool,
     },
@@ -70,7 +70,7 @@ pub enum SandboxCommand {
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
-    /// Cross-compile and install workmux into containers and running Lima VMs for development.
+    /// Cross-compile and install muxix into containers and running Lima VMs for development.
     InstallDev {
         /// Skip cross-compilation and use existing binary
         #[arg(long)]
@@ -84,7 +84,7 @@ pub enum SandboxCommand {
         /// VM name to stop (if not provided, show interactive list)
         #[arg(conflicts_with = "all")]
         name: Option<String>,
-        /// Stop all workmux VMs (wm-* prefix)
+        /// Stop all muxix VMs (wm-* prefix)
         #[arg(long)]
         all: bool,
         /// Skip confirmation prompt
@@ -93,7 +93,7 @@ pub enum SandboxCommand {
     },
     /// Run the configured agent inside a sandbox with full RPC support.
     /// Unlike `shell`, this starts an RPC server so the agent can call
-    /// workmux commands (e.g., `workmux add` to spawn sub-agents).
+    /// muxix commands (e.g., `muxix add` to spawn sub-agents).
     Agent {
         /// Command to run instead of the configured agent
         #[arg(last = true)]
@@ -112,13 +112,13 @@ pub enum SandboxCommand {
     },
     /// Restore an agent sandbox from its last checkpoint and switch focus to it.
     Resume {
-        /// Agent ID (UUID) to resume. Run `workmux status` to see agent IDs.
+        /// Agent ID (UUID) to resume. Run `muxix status` to see agent IDs.
         /// If omitted, lists agents with checkpoints interactively.
         agent_id: Option<String>,
     },
     /// Checkpoint a running agent sandbox immediately (manual trigger).
     Checkpoint {
-        /// Agent ID (UUID) to checkpoint. Run `workmux status` to see agent IDs.
+        /// Agent ID (UUID) to checkpoint. Run `muxix status` to see agent IDs.
         agent_id: String,
     },
 }
@@ -140,7 +140,7 @@ fn run_agent(command: Vec<String>) -> Result<()> {
     // Validate git repo early -- sandbox needs git dirs for mounts
     let worktree_root = crate::git::get_repo_root()
         .context(
-            "Not inside a git repository. workmux sandbox agent requires a git repo for mounting.",
+            "Not inside a git repository. muxix sandbox agent requires a git repo for mounting.",
         )?
         .canonicalize()
         .unwrap_or_else(|_| cwd.clone());
@@ -201,7 +201,7 @@ fn run_build() -> Result<()> {
         sandbox::DEFAULT_IMAGE_REGISTRY,
         agent
     );
-    println!("     Use `workmux sandbox pull` to pull it instead of building locally.");
+    println!("     Use `muxix sandbox pull` to pull it instead of building locally.");
 
     Ok(())
 }
@@ -267,7 +267,7 @@ fn run_init_dockerfile(force: bool) -> Result<()> {
         "  2. Build: {}",
         style("docker build -t my-sandbox -f Dockerfile.sandbox .").dim()
     );
-    println!("  3. Configure {}:", style(".workmux.yaml").bold());
+    println!("  3. Configure {}:", style(".muxix.yaml").bold());
     println!("       {}", style("sandbox:").dim());
     println!("         {}", style("enabled: true").dim());
     println!("         {}", style("image: my-sandbox").dim());
@@ -320,7 +320,7 @@ fn native_build(release: bool) -> Result<PathBuf> {
     let profile = if release { "release" } else { "debug" };
     let profile_dir = if release { "release" } else { "debug" };
 
-    println!("Building workmux ({}, {})...\n", profile, target);
+    println!("Building muxix ({}, {})...\n", profile, target);
 
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--target", target]);
@@ -334,7 +334,7 @@ fn native_build(release: bool) -> Result<PathBuf> {
         bail!("Build failed");
     }
 
-    let binary = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
+    let binary = workspace.join(format!("target/{}/{}/muxix", target, profile_dir));
     if !binary.exists() {
         bail!("Expected binary not found at {}", binary.display());
     }
@@ -379,7 +379,7 @@ fn cross_compile(target: &str, release: bool) -> Result<PathBuf> {
     let profile = if release { "release" } else { "debug" };
     let profile_dir = if release { "release" } else { "debug" };
 
-    println!("Cross-compiling workmux for {} ({})...\n", target, profile);
+    println!("Cross-compiling muxix for {} ({})...\n", target, profile);
 
     let mut cmd = Command::new("cargo");
     cmd.args(["build", "--target", target]);
@@ -398,7 +398,7 @@ fn cross_compile(target: &str, release: bool) -> Result<PathBuf> {
         bail!("Cross-compilation failed");
     }
 
-    let binary = workspace.join(format!("target/{}/{}/workmux", target, profile_dir));
+    let binary = workspace.join(format!("target/{}/{}/muxix", target, profile_dir));
     if !binary.exists() {
         bail!("Expected binary not found at {}", binary.display());
     }
@@ -427,7 +427,7 @@ fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
     }
 
     // Copy to temp location to avoid "text file busy"
-    let tmp_dest = format!("{}:/tmp/workmux.new", vm_name);
+    let tmp_dest = format!("{}:/tmp/muxix.new", vm_name);
     let cp = Command::new("limactl")
         .args(["cp", &binary_path.to_string_lossy(), &tmp_dest])
         .output()
@@ -445,7 +445,7 @@ fn install_to_vm(binary_path: &Path, vm_name: &str) -> Result<()> {
             "--",
             "bash",
             "-c",
-            "install -m 755 /tmp/workmux.new \"$HOME/.local/bin/workmux\"",
+            "install -m 755 /tmp/muxix.new \"$HOME/.local/bin/muxix\"",
         ])
         .output()
         .context("Failed to run limactl shell for install")?;
@@ -476,10 +476,10 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
         let profile_dir = if release { "release" } else { "debug" };
         let path = if native {
             let target = linux_musl_target_triple()?;
-            workspace.join(format!("target/{}/{}/workmux", target, profile_dir))
+            workspace.join(format!("target/{}/{}/muxix", target, profile_dir))
         } else {
             let target = linux_target_triple()?;
-            workspace.join(format!("target/{}/{}/workmux", target, profile_dir))
+            workspace.join(format!("target/{}/{}/muxix", target, profile_dir))
         };
         if !path.exists() {
             bail!(
@@ -517,7 +517,7 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
 
         if !running.is_empty() {
             println!(
-                "Installing workmux into {} running VM(s)...\n",
+                "Installing muxix into {} running VM(s)...\n",
                 running.len()
             );
             let mut failed: Vec<(String, String)> = Vec::new();
@@ -558,7 +558,7 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
     Ok(())
 }
 
-/// Build a thin overlay image to replace workmux in the container image.
+/// Build a thin overlay image to replace muxix in the container image.
 /// Returns Ok(true) if the image was patched, Ok(false) if the base image
 /// doesn't exist.
 fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) -> Result<bool> {
@@ -578,7 +578,7 @@ fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) 
 
     println!("Patching container image '{}'...", image_name);
 
-    sandbox::overlay_workmux_binary(runtime, binary_path, image_name)?;
+    sandbox::overlay_muxix_binary(runtime, binary_path, image_name)?;
 
     println!("  {} ... ok", image_name);
     Ok(true)
@@ -646,12 +646,12 @@ fn run_prune(force: bool) -> Result<()> {
     }
 
     if vm_infos.is_empty() {
-        println!("No workmux Lima VMs found.");
+        println!("No muxix Lima VMs found.");
         return Ok(());
     }
 
     // Display VM information
-    println!("Found {} workmux Lima VM(s):\n", vm_infos.len());
+    println!("Found {} muxix Lima VM(s):\n", vm_infos.len());
 
     for (i, vm) in vm_infos.iter().enumerate() {
         println!("{}. {} ({})", i + 1, vm.name, vm.status);
@@ -789,27 +789,27 @@ fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
         anyhow::bail!("limactl not found. Please install Lima first.");
     }
 
-    // Get list of all workmux VMs
+    // Get list of all muxix VMs
     let all_vms = LimaInstance::list()?;
-    let workmux_vms: Vec<LimaInstanceInfo> = all_vms
+    let muxix_vms: Vec<LimaInstanceInfo> = all_vms
         .into_iter()
         .filter(|vm| vm.name.starts_with(VM_PREFIX))
         .collect();
 
     // Filter to running VMs for display/selection
     let running_vms: Vec<&LimaInstanceInfo> =
-        workmux_vms.iter().filter(|vm| vm.is_running()).collect();
+        muxix_vms.iter().filter(|vm| vm.is_running()).collect();
 
     let vms_to_stop: Vec<&LimaInstanceInfo> = if all {
         // Stop all running VMs
         if running_vms.is_empty() {
-            println!("No running workmux VMs found.");
+            println!("No running muxix VMs found.");
             return Ok(());
         }
         running_vms
     } else if let Some(ref vm_name) = name {
         // Stop specific VM - check all VMs (not just running) for better error messages
-        let vm = workmux_vms.iter().find(|v| v.name == *vm_name);
+        let vm = muxix_vms.iter().find(|v| v.name == *vm_name);
         match vm {
             Some(v) if v.is_running() => vec![v],
             Some(v) => {
@@ -821,7 +821,7 @@ fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
             }
             None => {
                 anyhow::bail!(
-                    "VM '{}' not found. Use 'workmux sandbox stop' to see available VMs.",
+                    "VM '{}' not found. Use 'muxix sandbox stop' to see available VMs.",
                     vm_name
                 );
             }
@@ -833,7 +833,7 @@ fn run_stop(name: Option<String>, all: bool, skip_confirm: bool) -> Result<()> {
         }
 
         if running_vms.is_empty() {
-            println!("No running workmux VMs found.");
+            println!("No running muxix VMs found.");
             return Ok(());
         }
 
@@ -947,7 +947,7 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         if containers.is_empty() {
             bail!(
                 "No running container found for worktree '{}'. \n\
-                 Start a sandbox first with 'workmux add --sandbox' or use 'workmux sandbox shell' without --exec.",
+                 Start a sandbox first with 'muxix add --sandbox' or use 'muxix sandbox shell' without --exec.",
                 handle
             );
         }
@@ -1001,7 +1001,7 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
         let mut owned_envs: Vec<(String, String)> = Vec::new();
 
         if let Some((proxy_port, ref proxy_token, _)) = proxy {
-            let proxy_url = format!("http://workmux:{}@{}:{}", proxy_token, rpc_host, proxy_port);
+            let proxy_url = format!("http://muxix:{}@{}:{}", proxy_token, rpc_host, proxy_port);
             let no_proxy = format!("localhost,127.0.0.1,{}", rpc_host);
 
             owned_envs.push(("HTTPS_PROXY".into(), proxy_url.clone()));
@@ -1062,7 +1062,7 @@ fn run_shell_lima(exec: bool, command: Vec<String>, config: &Config) -> Result<(
     if exec {
         bail!(
             "The --exec flag is only supported with the container backend.\n\
-             Lima VMs are persistent, so 'workmux sandbox shell' always connects to the existing VM."
+             Lima VMs are persistent, so 'muxix sandbox shell' always connects to the existing VM."
         );
     }
 
@@ -1158,7 +1158,7 @@ fn run_checkpoint(agent_id: String) -> Result<()> {
 
 /// Load the project config that governs an agent, resolved from its worktree.
 ///
-/// Agents run inside their own worktree, which carries its own `.workmux.yaml`
+/// Agents run inside their own worktree, which carries its own `.muxix.yaml`
 /// (notably the sandbox backend and checkpoint policy). Resolving config from
 /// the caller's cwd would pick up the wrong project — or none at all.
 fn config_for_agent(state: &crate::state::AgentState) -> Result<Config> {
@@ -1244,7 +1244,7 @@ fn select_vms_interactive<'a>(
 ) -> Result<Vec<&'a crate::sandbox::lima::LimaInstanceInfo>> {
     use std::io::{self, Write};
 
-    println!("Running workmux VMs:");
+    println!("Running muxix VMs:");
     println!();
     for (idx, vm) in vms.iter().enumerate() {
         println!("  {}. {} ({})", idx + 1, vm.name, vm.status);

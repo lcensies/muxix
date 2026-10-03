@@ -1,7 +1,7 @@
-//! `workmux hooks-report` — emit an `agent.session` capability event.
+//! `muxix hooks-report` — emit an `agent.session` capability event.
 //!
-//! Run from the agent's **SessionStart** hook (alongside `workmux signal
-//! session-ready`). It records, at the very start of a session, which workmux
+//! Run from the agent's **SessionStart** hook (alongside `muxix signal
+//! session-ready`). It records, at the very start of a session, which muxix
 //! hooks are actually installed for the agent — so a missing or stale hook setup
 //! (the usual cause of "the pipeline never advances": no `turn-done` /
 //! `session-ready` hooks) is visible in the event log from the first moment,

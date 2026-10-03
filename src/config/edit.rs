@@ -1,7 +1,7 @@
-//! Programmatic edits to workmux config files that keep the rest of the file
+//! Programmatic edits to muxix config files that keep the rest of the file
 //! byte-identical — comments, key order, and formatting included.
 //!
-//! `workmux config agent` and `workmux bootstrap` are the writers. A serde
+//! `muxix config agent` and `muxix bootstrap` are the writers. A serde
 //! round-trip would be three lines and would also delete every comment in a
 //! hand-written config, which is why this splices one block at a time.
 
@@ -28,7 +28,7 @@ pub fn splice_top_level(text: &str, key: &str, new_block: Option<&str>) -> Strin
 /// it without knowing where it lands.
 ///
 /// ponytail: line scan, not a YAML CST. It handles block-style mappings, which
-/// is what workmux configs are. If a config in flow style ever needs editing,
+/// is what muxix configs are. If a config in flow style ever needs editing,
 /// swap in a comment-preserving YAML crate rather than growing this.
 pub fn splice_path(text: &str, path: &[&str], new_block: Option<&str>) -> String {
     assert!(!path.is_empty(), "splice_path needs at least one key");

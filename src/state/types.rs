@@ -182,14 +182,14 @@ pub struct AgentState {
     ///
     /// Distinct from `status`: `status` is a hook-driven turn-boundary signal
     /// that flips on every Stop hook, while `completion` is an explicit
-    /// `workmux signal done|error` call meaning "the task is finished", not
-    /// "a turn ended". Cleared on launch and on `workmux send` (a new
+    /// `muxix signal done|error` call meaning "the task is finished", not
+    /// "a turn ended". Cleared on launch and on `muxix send` (a new
     /// instruction starts a new completion cycle).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion: Option<Completion>,
 }
 
-/// Outcome of an agent-authored completion signal (`workmux signal done|error`).
+/// Outcome of an agent-authored completion signal (`muxix signal done|error`).
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Completion {
     pub kind: CompletionKind,
@@ -197,7 +197,7 @@ pub struct Completion {
     pub ts: u64,
 }
 
-/// Which outcome an agent claimed via `workmux signal done|error`.
+/// Which outcome an agent claimed via `muxix signal done|error`.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CompletionKind {

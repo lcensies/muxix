@@ -144,7 +144,7 @@ while :; do
     esac
     if [ "$updated" -gt 0 ] && [ $(( $(now_ms) - updated )) -gt "$STALL_MS" ]; then
       marker="$(cancel_request_path "$RUN_ID")"
-      printf '{"requestedAt":%s,"reason":"workmux: stalled past %s minutes"}\n' \
+      printf '{"requestedAt":%s,"reason":"muxix: stalled past %s minutes"}\n' \
         "$(now_ms)" "$STALL_MINUTES" > "$marker"
       echo "taskflow-run: $RUN_ID stalled (no update for >${STALL_MINUTES}m), cancel requested at $marker" >&2
       exit 2

@@ -36,23 +36,23 @@ pub mod paths {
     /// Node-keyed breakpoint signal: explicit human approval.
     /// Written by TUI ([a]/[r]), GUI (RPC), or slash commands.
     pub fn node_breakpoint_signal(task_id: &str, node_id: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("workmux-bp-{}-{}.json", task_id, node_id))
+        std::env::temp_dir().join(format!("muxix-bp-{}-{}.json", task_id, node_id))
     }
 
-    /// Pane-keyed approval signal: written by agent or `workmux signal` from the pane.
+    /// Pane-keyed approval signal: written by agent or `muxix signal` from the pane.
     /// Lets the agent release a gate node without knowing its node id.
     pub fn pane_proceed_signal(pane: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("workmux-proceed-{}.json", sanitize(pane)))
+        std::env::temp_dir().join(format!("muxix-proceed-{}.json", sanitize(pane)))
     }
 
     /// Agent's Stop hook marker: written when a turn ends.
     pub fn turn_done_marker(pane: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("workmux-turn-{}.done", sanitize(pane)))
+        std::env::temp_dir().join(format!("muxix-turn-{}.done", sanitize(pane)))
     }
 
     /// Hook signal: agent has explicitly marked this node as done.
-    /// Written by agent tool calls (e.g., `workmux signal done --stage implementation`).
+    /// Written by agent tool calls (e.g., `muxix signal done --stage implementation`).
     pub fn hook_signal(task_id: &str, node_id: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("workmux-signal-{}-{}.json", task_id, node_id))
+        std::env::temp_dir().join(format!("muxix-signal-{}-{}.json", task_id, node_id))
     }
 }

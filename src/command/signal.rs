@@ -1,4 +1,4 @@
-//! `workmux signal <kind>` — out-of-band agent signalling.
+//! `muxix signal <kind>` — out-of-band agent signalling.
 //!
 //! Three modes:
 //! 1. PANE-KEYED TURN SIGNALS: keyed by $TMUX_PANE, for agent lifecycle hooks
@@ -80,7 +80,7 @@ fn run_pane_signal(kind: &str, pane: Option<&str>, feedback: Option<&str>) -> Re
         }
         _ => unreachable!(),
     }
-    // Records the write from the *agent hook* process. Same `workmux.log` as the
+    // Records the write from the *agent hook* process. Same `muxix.log` as the
     // runner's observe events, so write→observe latency is directly measurable.
     crate::wm_evt!("signal.write", kind = kind, pane = %pane, side = "hook");
     Ok(())

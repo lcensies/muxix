@@ -348,7 +348,7 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
     };
 
     // Determine base branch for conflict check and diff stats
-    // Priority: workmux-base config > configured main_branch > auto-detected default > "main"
+    // Priority: muxix-base config > configured main_branch > auto-detected default > "main"
     let base_branch = get_branch_base_in(&branch, Some(worktree_path))
         .ok()
         .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))

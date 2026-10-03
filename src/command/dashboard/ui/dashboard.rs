@@ -61,7 +61,7 @@ fn render_tab_header(f: &mut Frame, app: &App, area: Rect) {
         let tip_line = Line::from(vec![
             Span::styled("New: ", tip_new),
             Span::styled("Check out ", tip_text),
-            Span::styled("workmux sidebar ", tip_accent),
+            Span::styled("muxix sidebar ", tip_accent),
         ]);
         let tip_width = 32u16;
         let cols = Layout::horizontal([Constraint::Fill(1), Constraint::Length(tip_width)])

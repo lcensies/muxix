@@ -9,8 +9,8 @@ windows. Shows all active agents across all sessions and projects with live
 status updates.
 
 ```bash
-workmux sidebar            # Toggle sidebar on/off (all sessions)
-workmux sidebar --session  # Toggle current session only, or opt out of global mode
+muxix sidebar            # Toggle sidebar on/off (all sessions)
+muxix sidebar --session  # Toggle current session only, or opt out of global mode
 ```
 
 ## What it shows
@@ -41,26 +41,26 @@ sidebar:
 
 | Command                    | Action                               |
 | -------------------------- | ------------------------------------ |
-| `workmux sidebar next`     | Switch to the next agent (wraps)     |
-| `workmux sidebar prev`     | Switch to the previous agent (wraps) |
-| `workmux sidebar jump <N>` | Jump to the Nth agent (1-indexed)    |
+| `muxix sidebar next`     | Switch to the next agent (wraps)     |
+| `muxix sidebar prev`     | Switch to the previous agent (wraps) |
+| `muxix sidebar jump <N>` | Jump to the Nth agent (1-indexed)    |
 
 ### Example tmux keybindings
 
 ```bash
 # Alt+j / Alt+k to cycle agents (no prefix needed)
-bind -n M-j run-shell "workmux sidebar next"
-bind -n M-k run-shell "workmux sidebar prev"
+bind -n M-j run-shell "muxix sidebar next"
+bind -n M-k run-shell "muxix sidebar prev"
 
 # Alt+1..9 to jump directly
-bind -n M-1 run-shell "workmux sidebar jump 1"
-bind -n M-2 run-shell "workmux sidebar jump 2"
-bind -n M-3 run-shell "workmux sidebar jump 3"
+bind -n M-1 run-shell "muxix sidebar jump 1"
+bind -n M-2 run-shell "muxix sidebar jump 2"
+bind -n M-3 run-shell "muxix sidebar jump 3"
 # ...
 
 # Or with prefix key (avoids terminal conflicts)
-bind C-j run-shell "workmux sidebar next"
-bind C-k run-shell "workmux sidebar prev"
+bind C-j run-shell "muxix sidebar next"
+bind C-k run-shell "muxix sidebar prev"
 ```
 
 ## Configuration
@@ -105,7 +105,7 @@ pane on the configured edge of every existing window. A tmux hook
 (`after-new-window`) ensures newly created windows also get a sidebar
 automatically.
 
-Running `workmux sidebar` again disables the sidebar globally, killing all
+Running `muxix sidebar` again disables the sidebar globally, killing all
 sidebar panes, the daemon, and removing hooks.
 
 ### Session-scoped mode
@@ -114,14 +114,14 @@ By default, the sidebar appears in all tmux sessions. Use `--session` to scope
 it to the current session only, leaving other sessions untouched:
 
 ```bash
-workmux sidebar --session  # Enable in current session only
-workmux sidebar --session  # Run again to disable
+muxix sidebar --session  # Enable in current session only
+muxix sidebar --session  # Run again to disable
 ```
 
 You can enable session-scoped sidebars in multiple sessions independently. Each
 session can be toggled on/off without affecting others.
 
-If the global sidebar is already active, `workmux sidebar --session` hides the
+If the global sidebar is already active, `muxix sidebar --session` hides the
 sidebar in the current tmux session only. Run it again to show the sidebar in
 that session again while other sessions remain globally managed.
 
@@ -134,5 +134,5 @@ Starting global mode still replaces any session-scoped sidebars.
 ## Example tmux binding
 
 ```bash
-bind C-t run-shell "workmux sidebar"
+bind C-t run-shell "muxix sidebar"
 ```

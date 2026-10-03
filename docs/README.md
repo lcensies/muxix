@@ -1,1 +1,1 @@
-See [workmux.raine.dev](https://workmux.raine.dev/)
+See [muxix.dev](https://muxix.dev/)

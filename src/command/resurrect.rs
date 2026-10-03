@@ -32,9 +32,9 @@ impl Restored {
 }
 
 /// How a worktree's agent should be relaunched.
-/// Shared with `workmux start --continue`, which reuses this resume ladder.
+/// Shared with `muxix start --continue`, which reuses this resume ladder.
 pub enum ResumePlan {
-    /// Resume this specific session id (journalled by workmux, verified present).
+    /// Resume this specific session id (journalled by muxix, verified present).
     Session(String),
     /// Resume whatever the agent considers its latest conversation here.
     Latest,
@@ -45,9 +45,9 @@ pub enum ResumePlan {
 /// Decide how (or whether) this worktree's conversation can be resumed.
 ///
 /// The project journal is consulted first so a worktree resumes the session
-/// workmux actually started in it rather than whatever happens to be newest.
+/// muxix actually started in it rather than whatever happens to be newest.
 /// Either way the answer is confirmed against the agent's own session store,
-/// which is the only authority: the journal is a record of what workmux did,
+/// which is the only authority: the journal is a record of what muxix did,
 /// and a user deleting a session behind its back must not turn into a launch
 /// that exits immediately and takes the restored window down with it.
 pub fn plan_resume(worktree_path: &Path, handle: &str, agent_name: &str) -> ResumePlan {
@@ -92,7 +92,7 @@ pub fn plan_resume(worktree_path: &Path, handle: &str, agent_name: &str) -> Resu
             }
             // Resume by id, not by the agent's own "latest" flag: `claude
             // --continue` only considers interactive conversations, so a
-            // session workmux can see is not necessarily one it will pick.
+            // session muxix can see is not necessarily one it will pick.
             ResumePlan::Session(session.id)
         }
         _ => ResumePlan::None,
@@ -100,7 +100,7 @@ pub fn plan_resume(worktree_path: &Path, handle: &str, agent_name: &str) -> Resu
 }
 
 /// The resume ladder as a `ResumeMode`, for callers that only relaunch the
-/// agent (no stored-prompt fallback): `workmux open -c` and the dashboard.
+/// agent (no stored-prompt fallback): `muxix open -c` and the dashboard.
 pub fn resume_mode_for(
     worktree_path: &Path,
     handle: &str,
@@ -118,12 +118,12 @@ pub fn resume_mode_for(
 
 /// Locate the task prompt stored for a worktree.
 ///
-/// `workmux add -p/-P` writes `.workmux/PROMPT-<branch>.md` into the worktree,
+/// `muxix add -p/-P` writes `.muxix/PROMPT-<branch>.md` into the worktree,
 /// which is the common case. Orchestrate-spawned worktrees instead carry their
-/// task text in the project's `.workmux/task-workflows/<handle>.yaml`; that is
+/// task text in the project's `.muxix/task-workflows/<handle>.yaml`; that is
 /// checked second and best-effort, since the orchestrate path is fragile.
 pub fn find_task_prompt(worktree_path: &Path, handle: &str) -> Option<PathBuf> {
-    let dir = worktree_path.join(".workmux");
+    let dir = worktree_path.join(".muxix");
 
     if let Ok(entries) = fs::read_dir(&dir) {
         let mut prompts: Vec<PathBuf> = entries
@@ -175,13 +175,13 @@ pub fn write_resurrect_prompt(
         body.push_str(&format!(
             "You were spawned by the agent in worktree `{parent}`. Report \
              progress and completion back to it with \
-             `workmux send {parent} \"...\"`.\n\n",
+             `muxix send {parent} \"...\"`.\n\n",
         ));
     }
     body.push_str("Your original task follows.\n\n---\n\n");
     body.push_str(&original);
 
-    let out = worktree_path.join(".workmux/RESURRECT-PROMPT.md");
+    let out = worktree_path.join(".muxix/RESURRECT-PROMPT.md");
     if let Some(dir) = out.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -414,28 +414,28 @@ mod tests {
 
     #[test]
     fn finds_manual_add_prompt() {
-        let wt = worktree_with(&[(".workmux/PROMPT-feature-auth.md", "do the thing")]);
+        let wt = worktree_with(&[(".muxix/PROMPT-feature-auth.md", "do the thing")]);
         let found = find_task_prompt(wt.path(), "feature-auth").unwrap();
         assert_eq!(fs::read_to_string(found).unwrap(), "do the thing");
     }
 
     #[test]
     fn falls_back_to_orchestrate_task_workflow() {
-        let wt = worktree_with(&[(".workmux/task-workflows/my-task.yaml", "prompt: hi")]);
+        let wt = worktree_with(&[(".muxix/task-workflows/my-task.yaml", "prompt: hi")]);
         let found = find_task_prompt(wt.path(), "my-task").unwrap();
         assert!(found.ends_with("my-task.yaml"));
     }
 
     #[test]
     fn no_prompt_means_none() {
-        let wt = worktree_with(&[(".workmux/state.json", "{}")]);
+        let wt = worktree_with(&[(".muxix/state.json", "{}")]);
         assert!(find_task_prompt(wt.path(), "nothing").is_none());
     }
 
     #[test]
     fn re_prompt_preserves_original_and_explains_restart() {
-        let wt = worktree_with(&[(".workmux/PROMPT-x.md", "ORIGINAL TASK TEXT")]);
-        let original = wt.path().join(".workmux/PROMPT-x.md");
+        let wt = worktree_with(&[(".muxix/PROMPT-x.md", "ORIGINAL TASK TEXT")]);
+        let original = wt.path().join(".muxix/PROMPT-x.md");
 
         let out = write_resurrect_prompt(wt.path(), "x", &original).unwrap();
         let body = fs::read_to_string(&out).unwrap();

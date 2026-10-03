@@ -15,14 +15,14 @@ export default defineConfig({
     }
   },
 
-  title: "workmux",
+  title: "muxix",
   description:
     "A CLI tool for parallel development with AI coding agents using git worktrees and tmux",
   lang: "en-US",
   lastUpdated: true,
   cleanUrls: true,
   sitemap: {
-    hostname: "https://workmux.raine.dev",
+    hostname: "https://muxix.dev",
   },
 
   head: [
@@ -35,7 +35,7 @@ export default defineConfig({
       "meta",
       {
         property: "og:image",
-        content: "https://workmux.raine.dev/social-preview.png",
+        content: "https://muxix.dev/social-preview.png",
       },
     ],
     ["meta", { property: "og:image:width", content: "1280" }],
@@ -45,7 +45,7 @@ export default defineConfig({
       "meta",
       {
         name: "twitter:image",
-        content: "https://workmux.raine.dev/social-preview.png",
+        content: "https://muxix.dev/social-preview.png",
       },
     ],
   ],
@@ -64,14 +64,14 @@ export default defineConfig({
 
   themeConfig: {
     logo: { light: "/icon.svg", dark: "/icon-dark.svg" },
-    siteTitle: "workmux",
+    siteTitle: "muxix",
 
     search: {
       provider: "algolia",
       options: {
         appId: "LE5BQE6V5G",
         apiKey: "5155e711e5233eab82a26f248b60b61b",
-        indexName: "Workmux website",
+        indexName: "Muxix website",
       },
     },
 
@@ -84,7 +84,7 @@ export default defineConfig({
       {
         text: "Getting Started",
         items: [
-          { text: "What is workmux?", link: "/guide/" },
+          { text: "What is muxix?", link: "/guide/" },
           { text: "Installation", link: "/guide/installation" },
           { text: "Quick start", link: "/guide/quick-start" },
           { text: "Configuration", link: "/guide/configuration" },
@@ -178,14 +178,14 @@ export default defineConfig({
       },
     ],
 
-    socialLinks: [{ icon: "github", link: "https://github.com/raine/workmux" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/lcensies/muxix" }],
 
     footer: {
       message: "Released under the MIT License.",
     },
 
     editLink: {
-      pattern: "https://github.com/raine/workmux/edit/main/docs/:path",
+      pattern: "https://github.com/lcensies/muxix/edit/main/docs/:path",
       text: "Edit this page on GitHub",
     },
   },

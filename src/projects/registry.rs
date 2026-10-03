@@ -1,11 +1,11 @@
-//! Persistent registry of tracked project directories (`workmux project add/rm/list`).
+//! Persistent registry of tracked project directories (`muxix project add/rm/list`).
 //!
-//! Stored as a plain YAML list at `~/.config/workmux/projects.yaml` so it is
+//! Stored as a plain YAML list at `~/.config/muxix/projects.yaml` so it is
 //! trivially hand-editable:
 //!
 //! ```yaml
-//! - name: workmux
-//!   root: /home/user/repos/workmux
+//! - name: muxix
+//!   root: /home/user/repos/muxix
 //! ```
 
 use std::fs;

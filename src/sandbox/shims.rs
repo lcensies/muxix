@@ -1,7 +1,7 @@
 //! Host-exec shim creation for sandbox guests (Lima VMs and containers).
 //!
 //! Creates a directory of symlinks that intercept configured command names
-//! and route them to `workmux host-exec`.
+//! and route them to `muxix host-exec`.
 
 use anyhow::{Context, Result};
 use std::fs;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 pub const BUILTIN_HOST_COMMANDS: &[&str] = &["afplay", "wl-paste", "xclip"];
 
 /// Clipboard shim scripts: these translate Linux clipboard tool CLIs
-/// into `workmux clipboard-read` calls.
+/// into `muxix clipboard-read` calls.
 const CLIPBOARD_SHIMS: &[(&str, &str)] = &[
     (
         "wl-paste",
@@ -34,7 +34,7 @@ if [ "$list_types" -eq 1 ]; then
   exit 0
 fi
 [ -n "$mime" ] || exit 1
-exec workmux clipboard-read "$mime"
+exec muxix clipboard-read "$mime"
 "#,
     ),
     (
@@ -47,13 +47,13 @@ while [ $# -gt 0 ]; do
     -o) output=1; shift ;;
     -selection) shift; shift ;;
     -t) [ $# -ge 2 ] || exit 1; mime="$2"; shift 2 ;;
-    -i) echo "workmux: xclip write not supported in sandbox" >&2; exit 1 ;;
+    -i) echo "muxix: xclip write not supported in sandbox" >&2; exit 1 ;;
     *) shift ;;
   esac
 done
-[ "$output" -eq 1 ] || { echo "workmux: xclip write not supported in sandbox" >&2; exit 1; }
+[ "$output" -eq 1 ] || { echo "muxix: xclip write not supported in sandbox" >&2; exit 1; }
 [ -n "$mime" ] || exit 1
-exec workmux clipboard-read "$mime"
+exec muxix clipboard-read "$mime"
 "#,
     ),
 ];
@@ -116,7 +116,7 @@ pub fn effective_host_commands(user_commands: &[String]) -> Vec<String> {
 /// Create a shim directory with a dispatcher script and command symlinks.
 ///
 /// The directory is created under the VM's state dir (which is mounted
-/// into the guest at ~/.workmux-state/). Returns the guest-visible path
+/// into the guest at ~/.muxix-state/). Returns the guest-visible path
 /// to prepend to PATH.
 ///
 /// Layout:
@@ -132,7 +132,7 @@ pub fn create_shim_directory(state_dir: &Path, commands: &[String]) -> Result<Pa
     let dispatcher = shim_bin.join("_shim");
     fs::write(
         &dispatcher,
-        "#!/bin/sh\nexec workmux host-exec \"$(basename \"$0\")\" \"$@\"\n",
+        "#!/bin/sh\nexec muxix host-exec \"$(basename \"$0\")\" \"$@\"\n",
     )
     .context("Failed to write shim dispatcher")?;
 
@@ -192,7 +192,7 @@ mod tests {
         let dispatcher = shim_bin.join("_shim");
         assert!(dispatcher.exists());
         let content = std::fs::read_to_string(&dispatcher).unwrap();
-        assert!(content.contains("workmux host-exec"));
+        assert!(content.contains("muxix host-exec"));
 
         // Symlinks exist
         for cmd in &commands {
@@ -331,8 +331,8 @@ mod tests {
             );
             let content = std::fs::read_to_string(&path).unwrap();
             assert!(
-                content.contains("workmux clipboard-read"),
-                "{} shim should call workmux clipboard-read",
+                content.contains("muxix clipboard-read"),
+                "{} shim should call muxix clipboard-read",
                 cmd
             );
         }
@@ -357,7 +357,7 @@ mod tests {
         assert!(script.contains("-t|--type"));
         assert!(script.contains("--list-types"));
         assert!(script.contains("image/png"));
-        assert!(script.contains("workmux clipboard-read"));
+        assert!(script.contains("muxix clipboard-read"));
     }
 
     #[test]
@@ -366,6 +366,6 @@ mod tests {
         assert!(script.starts_with("#!/bin/sh"));
         assert!(script.contains("-o) output=1"));
         assert!(script.contains("xclip write not supported"));
-        assert!(script.contains("workmux clipboard-read"));
+        assert!(script.contains("muxix clipboard-read"));
     }
 }

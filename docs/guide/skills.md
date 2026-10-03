@@ -1,5 +1,5 @@
 ---
-description: Use skills to streamline workmux workflows
+description: Use skills to streamline muxix workflows
 ---
 
 # Skills
@@ -10,15 +10,14 @@ description: Use skills to streamline workmux workflows
 This documentation uses Claude Code's skill support as example, but other agents implement similar features. For example, [OpenCode skills](https://opencode.ai/docs/skills/). Adapt to your favorite agent as needed.
 :::
 
-## Using with workmux
+## Using with muxix
 
-Skills unlock the full potential of workmux. While you can run workmux commands directly, skills let agents handle the complete workflow - committing with context-aware messages, resolving conflicts intelligently, and delegating tasks to parallel worktrees.
+Skills unlock the full potential of muxix. While you can run muxix commands directly, skills let agents handle the complete workflow - committing with context-aware messages, resolving conflicts intelligently, and delegating tasks to parallel worktrees.
 
-- [**`/workmux`**](#-workmux) - Teach the agent how to use workmux
+- [**`/muxix`**](#-muxix) - Teach the agent how to use muxix
 - [**`/merge`**](#-merge) - Commit, rebase, and merge the current branch
 - [**`/rebase`**](#-rebase) - Rebase with flexible target and smart conflict resolution
 - [**`/worktree`**](#-worktree) - Delegate tasks to parallel worktree agents
-- [**`/coordinator`**](#-coordinator) - Orchestrate multiple agents with full lifecycle control
 - [**`/open-pr`**](#-open-pr) - Write a PR description using conversation context
 
 You can trigger `/merge` from the [dashboard](/guide/dashboard/configuration) using the `m` keybinding:
@@ -30,25 +29,25 @@ dashboard:
 
 ## Installation
 
-Run `workmux setup` to install all skills automatically:
+Run `muxix setup` to install all skills automatically:
 
 ```bash
-workmux setup --skills
+muxix setup --skills
 ```
 
 This detects your installed agents and copies skills to the right location. The setup wizard also offers skill installation on first run.
 
-You can also copy skills manually from [`skills/`](https://github.com/raine/workmux/tree/main/skills) to your skills directory:
+You can also copy skills manually from [`skills/`](https://github.com/lcensies/muxix/tree/main/skills) to your skills directory:
 
-**Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`). If `CLAUDE_CONFIG_DIR` is set, `workmux setup --skills` installs to `$CLAUDE_CONFIG_DIR/skills/` instead.
+**Claude Code**: `~/.claude/skills/` (or project `.claude/skills/`). If `CLAUDE_CONFIG_DIR` is set, `muxix setup --skills` installs to `$CLAUDE_CONFIG_DIR/skills/` instead.
 
-## `/workmux`
+## `/muxix`
 
-Teaches the agent how to use the workmux CLI. Invoke `/workmux` to give the agent knowledge of workmux commands, configuration, and concepts. The agent can then use workmux to manage worktrees, check status, and interact with other agents.
+Teaches the agent how to use the muxix CLI. Invoke `/muxix` to give the agent knowledge of muxix commands, configuration, and concepts. The agent can then use muxix to manage worktrees, check status, and interact with other agents.
 
-[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/workmux/SKILL.md)
+[**View skill ->**](https://github.com/lcensies/muxix/tree/main/skills/muxix/SKILL.md)
 
-This is a reference skill, not an action skill. It loads workmux documentation into the agent's context so it can use workmux commands as needed. For specific workflows, the agent is directed to the dedicated skills below.
+This is a reference skill, not an action skill. It loads muxix documentation into the agent's context so it can use muxix commands as needed. For specific workflows, the agent is directed to the dedicated skills below.
 
 ## `/merge`
 
@@ -56,11 +55,11 @@ Handles the complete merge workflow:
 
 1. Commit staged changes using a specific commit style
 2. Rebase onto the base branch with smart conflict resolution
-3. Run `workmux merge` to merge, clean up, and send a notification when complete
+3. Run `muxix merge` to merge, clean up, and send a notification when complete
 
-[**View skill →**](https://github.com/raine/workmux/tree/main/skills/merge/SKILL.md)
+[**View skill →**](https://github.com/lcensies/muxix/tree/main/skills/merge/SKILL.md)
 
-Instead of just running `workmux merge`, this skill:
+Instead of just running `muxix merge`, this skill:
 
 - Commits staged changes first - the agent has full context on the work done and can write a meaningful commit message
 - Reviews base branch changes before resolving conflicts - the agent understands both sides and can merge intelligently
@@ -70,7 +69,7 @@ Instead of just running `workmux merge`, this skill:
 
 Rebases with flexible target selection and smart conflict resolution.
 
-[**View skill →**](https://github.com/raine/workmux/tree/main/skills/rebase/SKILL.md)
+[**View skill →**](https://github.com/lcensies/muxix/tree/main/skills/rebase/SKILL.md)
 
 Usage: `/rebase`, `/rebase origin`, `/rebase origin/develop`, `/rebase feature-branch`
 
@@ -80,7 +79,7 @@ See [Resolve merge conflicts with Claude Code](https://raine.dev/blog/resolve-co
 
 Delegates tasks to parallel worktree agents. A main agent on the main branch can act as a coordinator: planning work and delegating tasks to worktree agents.
 
-[**View skill →**](https://github.com/raine/workmux/tree/main/skills/worktree/SKILL.md)
+[**View skill →**](https://github.com/lcensies/muxix/tree/main/skills/worktree/SKILL.md)
 
 See the [blog post on delegating tasks](https://raine.dev/blog/git-worktrees-parallel-agents/) for a detailed walkthrough.
 
@@ -94,65 +93,13 @@ Usage:
 
 ### Customization
 
-You can customize the skill to add additional instructions for worktree agents. For example, to have agents review their changes with a subagent before finishing, or run `workmux merge` after completing their task.
-
-## `/coordinator`
-
-Orchestrates the full lifecycle of multiple worktree agents: spawning, monitoring, communicating, and merging. Unlike `/worktree` which dispatches tasks and returns, `/coordinator` turns the agent into a persistent orchestrator that manages agents through completion.
-
-[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/harness-coordinator/SKILL.md)
-
-The coordinator agent does not implement tasks itself. It writes prompt files, spawns worktree agents, monitors their status, sends follow-up instructions, and triggers merges.
-
-### Key commands used
-
-| Command                    | Purpose                                         |
-| -------------------------- | ----------------------------------------------- |
-| `workmux add -b -P <file>` | Spawn an agent in the background                |
-| `workmux status`           | Check agent statuses                            |
-| `workmux wait`             | Block until agents reach a target status        |
-| `workmux capture`          | Read terminal output from an agent              |
-| `workmux send`             | Send instructions or skill commands to an agent |
-| `workmux run`              | Run shell commands in an agent's worktree       |
-
-### Cross-project agent communication
-
-Agent commands (`send`, `capture`, `status`, `wait`, `run`) can target agents in other projects, not just the current git repository. If a worktree name is not found locally, workmux searches all active agents globally.
-
-```bash
-# From any project, send to an agent in another project
-workmux send other-project-worktree "run the tests"
-
-# Use project:handle syntax to disambiguate when names collide
-workmux send myproject:docs-update "also add the API reference"
-
-# Check status of agents across projects
-workmux status myproject:feature-auth
-```
-
-Lifecycle commands (`add`, `open`, `merge`, `remove`, `close`) remain scoped to the current repository.
-
-### Fan-out / fan-in pattern
-
-The typical coordinator workflow:
-
-1. Write prompt files with full context for each task
-2. Spawn all agents in the background
-3. Confirm agents started with `workmux wait --status working`
-4. Wait for completion with `workmux wait`
-5. Review results with `workmux capture`
-6. Merge one at a time by sending `/merge` to each agent sequentially
-
-### When to use `/coordinator` vs `/worktree`
-
-- **`/worktree`**: fire and forget. Spawn agents and return control to you. Good for delegating tasks you will review later yourself.
-- **`/coordinator`**: full automation. The agent manages the entire lifecycle, including waiting, reviewing output, sending follow-ups, and merging. Good for multi-step plans where tasks depend on each other.
+You can customize the skill to add additional instructions for worktree agents. For example, to have agents review their changes with a subagent before finishing, or run `muxix merge` after completing their task.
 
 ## `/open-pr`
 
 Writes a PR description using the conversation context and opens the PR creation page in browser. This is the recommended way to finish work in repos that use pull requests.
 
-[**View skill →**](https://github.com/raine/workmux/tree/main/skills/open-pr/SKILL.md)
+[**View skill →**](https://github.com/lcensies/muxix/tree/main/skills/open-pr/SKILL.md)
 
 The skill is opinionated: it opens the PR creation page in your browser rather than creating the PR directly. This lets you review and edit the description before submitting.
 

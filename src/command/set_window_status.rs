@@ -18,7 +18,7 @@ pub enum SetWindowStatusCommand {
 }
 
 pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
-    if std::env::var_os("WORKMUX_DISABLE_SET_WINDOW_STATUS").is_some() {
+    if std::env::var_os("MUXIX_DISABLE_SET_WINDOW_STATUS").is_some() {
         return Ok(());
     }
 

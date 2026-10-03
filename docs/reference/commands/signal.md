@@ -7,7 +7,7 @@ description: Emit an out-of-band agent signal, including agent-authored task com
 Emits an out-of-band signal from an agent's hooks, tools, or slash commands. Hidden command (not shown in `--help`); called by agent lifecycle hooks and by agents themselves, not typically run by hand.
 
 ```bash
-workmux signal <kind> [flags]
+muxix signal <kind> [flags]
 ```
 
 ## Arguments
@@ -29,30 +29,30 @@ workmux signal <kind> [flags]
 **`done` and `error`** are dual-mode:
 
 - **With `--node`**: node-keyed, writes the pipeline hook-signal file used for inter-stage messaging in the task-graph pipeline. Unchanged behavior.
-- **Without `--node`**: pane-keyed, writes an agent-authored *completion record* onto the pane's `AgentState` (resolved from `$TMUX_PANE` or `--pane`). This is the signal [`workmux wait --status completed|failed`](./wait) and [`workmux status`](./status) read.
+- **Without `--node`**: pane-keyed, writes an agent-authored *completion record* onto the pane's `AgentState` (resolved from `$TMUX_PANE` or `--pane`). This is the signal [`muxix wait --status completed|failed`](./wait) and [`muxix status`](./status) read.
 
 The pane-keyed form requires a resolvable pane: if neither `$TMUX_PANE` nor `--pane` nor `--node` is available, the command errors instead of guessing.
 
-`workmux add` and `workmux send` clear any existing completion record on a pane before launching or delivering a new prompt, so a resurrected agent or a follow-up instruction cannot inherit a stale `completed`/`failed` from an earlier task.
+`muxix add` and `muxix send` clear any existing completion record on a pane before launching or delivering a new prompt, so a resurrected agent or a follow-up instruction cannot inherit a stale `completed`/`failed` from an earlier task.
 
 ## Examples
 
 ```bash
 # Agent signals it finished its task (pane-keyed, no --node)
-workmux signal done
+muxix signal done
 
 # Agent signals it finished but wants to leave a note for the coordinator
-workmux signal done --feedback "tests pass; left a TODO for the retry logic"
+muxix signal done --feedback "tests pass; left a TODO for the retry logic"
 
 # Agent signals it hit an unrecoverable error
-workmux signal error --feedback "migration script requires prod DB access I don't have"
+muxix signal error --feedback "migration script requires prod DB access I don't have"
 
 # Node-keyed done, for pipeline stage transitions (unchanged, task-graph only)
-workmux signal done --node build-stage --feedback "build artifacts uploaded"
+muxix signal done --node build-stage --feedback "build artifacts uploaded"
 ```
 
 ## Related
 
-- [`workmux wait`](./wait) — block until a pane's completion record (or turn status) reaches a target.
-- [`workmux status`](./status) — show completion state alongside turn status.
+- [`muxix wait`](./wait) — block until a pane's completion record (or turn status) reaches a target.
+- [`muxix status`](./status) — show completion state alongside turn status.
 - [Status tracking](/guide/status-tracking)

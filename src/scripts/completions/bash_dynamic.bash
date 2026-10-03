@@ -1,22 +1,22 @@
 # Dynamic worktree handle completion (directory names)
 # Used for open/remove/merge/path/close - repo-scoped lifecycle commands
-_workmux_handles() {
-    workmux _complete-handles 2>/dev/null
+_muxix_handles() {
+    muxix _complete-handles 2>/dev/null
 }
 
 # Dynamic agent target completion (local handles + cross-project agents)
 # Used for send/capture/status/wait/run - agent communication commands
-_workmux_agent_targets() {
-    workmux _complete-agent-targets 2>/dev/null
+_muxix_agent_targets() {
+    muxix _complete-agent-targets 2>/dev/null
 }
 
 # Dynamic git branch completion for add command
-_workmux_git_branches() {
-    workmux _complete-git-branches 2>/dev/null
+_muxix_git_branches() {
+    muxix _complete-git-branches 2>/dev/null
 }
 
 # Wrapper that adds dynamic completion
-_workmux_dynamic() {
+_muxix_dynamic() {
     local cur prev words cword
 
     # Use _init_completion if available, otherwise fall back to manual parsing
@@ -37,26 +37,26 @@ _workmux_dynamic() {
             merge)
                 # Handle --into flag (takes worktree handle)
                 if [[ "$prev" == "--into" ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_muxix_handles)" -- "$cur"))
                     return
                 fi
                 # Positional arg: handles
                 if [[ "$cur" != -* ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_muxix_handles)" -- "$cur"))
                     return
                 fi
                 ;;
             open|remove|rm|rename|path|close)
                 # Positional arg: local handles only
                 if [[ "$cur" != -* ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_handles)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_muxix_handles)" -- "$cur"))
                     return
                 fi
                 ;;
             send|capture|status|wait|run)
                 # Positional arg: agent targets (local + cross-project)
                 if [[ "$cur" != -* ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_agent_targets)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_muxix_agent_targets)" -- "$cur"))
                     return
                 fi
                 ;;
@@ -64,7 +64,7 @@ _workmux_dynamic() {
                 # Handle flags that take specific argument types
                 case "$prev" in
                     --base|-b)
-                        COMPREPLY=($(compgen -W "$(_workmux_git_branches)" -- "$cur"))
+                        COMPREPLY=($(compgen -W "$(_muxix_git_branches)" -- "$cur"))
                         return
                         ;;
                     --prompt-file|-P)
@@ -75,7 +75,7 @@ _workmux_dynamic() {
                 esac
                 # Positional arg: branches
                 if [[ "$cur" != -* ]]; then
-                    COMPREPLY=($(compgen -W "$(_workmux_git_branches)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_muxix_git_branches)" -- "$cur"))
                     return
                 fi
                 ;;
@@ -83,7 +83,7 @@ _workmux_dynamic() {
     fi
 
     # Fall back to generated completions
-    _workmux "$@"
+    _muxix "$@"
 }
 
-complete -F _workmux_dynamic -o bashdefault -o default workmux
+complete -F _muxix_dynamic -o bashdefault -o default muxix

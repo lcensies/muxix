@@ -1,5 +1,5 @@
 ---
-description: How workmux sandboxing compares to Claude Code's built-in sandbox
+description: How muxix sandboxing compares to Claude Code's built-in sandbox
 ---
 
 # Alternatives
@@ -14,11 +14,11 @@ Claude Code has a native sandbox that uses OS-level primitives (Seatbelt on macO
 
 **Claude Code** uses _process-level restriction_. It wraps the `bash` tool process with OS sandbox rules while the agent itself runs directly on your host.
 
-**workmux sandbox** uses Docker/Podman containers or Lima VMs for _environment isolation_. The entire agent runs inside a separate container or VM. Host files that are not explicitly mounted do not exist inside the sandbox.
+**muxix sandbox** uses Docker/Podman containers or Lima VMs for _environment isolation_. The entire agent runs inside a separate container or VM. Host files that are not explicitly mounted do not exist inside the sandbox.
 
 ### Comparison
 
-|                          | workmux sandbox                                                                   | Claude Code sandbox                                                                                                                                                                                                                                      |
+|                          | muxix sandbox                                                                   | Claude Code sandbox                                                                                                                                                                                                                                      |
 | ------------------------ | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Isolation**            | Full environment (container/VM). The entire agent runs in a separate OS instance. | Process restriction (Seatbelt/bwrap). Only the Bash tool is sandboxed by the OS; Read, Edit, Write, and other tools run in the unsandboxed parent process.                                                                                               |
 | **Sensitive files**      | Not present in the guest. `~/.ssh`, `~/.aws`, `~/.gnupg` simply do not exist.     | Readable by default. Only `.env*` files are denied. Protection for `~/.ssh` and similar paths relies on model-level refusal, not OS enforcement.                                                                                                         |

@@ -4,7 +4,7 @@ use super::types::{OrgPolicy, PolicyViolation, ViolationSeverity};
 ///
 /// This validates only; it no longer mutates the config. A policy's `defaults`
 /// and `locked` values are applied as ordinary config layers during resolution
-/// (see `provision::layers`), which is what lets `workmux config resolve
+/// (see `provision::layers`), which is what lets `muxix config resolve
 /// --explain` attribute a value to the policy instead of it appearing from
 /// nowhere after the merge.
 ///

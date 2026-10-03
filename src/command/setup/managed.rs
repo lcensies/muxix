@@ -1,12 +1,12 @@
-//! Provenance for the harness features `workmux setup` installs.
+//! Provenance for the harness features `muxix setup` installs.
 //!
 //! Every other section decides "is this installed?" by probing the agent's own
 //! config, which cannot tell *who* installed a thing. That is fine for
 //! converging toward the config, but it makes the reverse direction —
 //! removing what the config no longer declares — unsafe: a skill directory the
-//! user wrote by hand is indistinguishable from one workmux copied there.
+//! user wrote by hand is indistinguishable from one muxix copied there.
 //!
-//! This manifest is that missing half. It records what workmux installed, for
+//! This manifest is that missing half. It records what muxix installed, for
 //! which project, and how to remove it; a feature absent from the manifest is
 //! never touched, so the worst a bug here can do is fail to clean up.
 
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use super::report::{ItemResult, Outcome, Section};
 use crate::agent::setup::Agent;
 
-/// One harness feature workmux installed.
+/// One harness feature muxix installed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedEntry {
     pub section: Section,
@@ -59,7 +59,7 @@ pub fn manifest_path() -> anyhow::Result<PathBuf> {
 impl Manifest {
     /// Load the manifest, or an empty one when it is missing or unreadable.
     ///
-    /// An unparsable manifest degrades to "workmux has installed nothing":
+    /// An unparsable manifest degrades to "muxix has installed nothing":
     /// pruning stops until the next run rebuilds it, which is the safe
     /// direction to fail in.
     pub fn load() -> Manifest {

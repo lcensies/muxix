@@ -1,2 +1,2 @@
-Please see [Contributing](https://github.com/raine/workmux#contributing) before
+Please see [Contributing](https://github.com/lcensies/muxix#contributing) before
 submitting pull requests.

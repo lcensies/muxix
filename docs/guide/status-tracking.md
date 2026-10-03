@@ -4,7 +4,7 @@ description: Display agent status in your tmux window list for at-a-glance visib
 
 # Status tracking
 
-Workmux can display the status of the agent in your tmux window list, giving you at-a-glance visibility into what the agent in each window is doing.
+Muxix can display the status of the agent in your tmux window list, giving you at-a-glance visibility into what the agent in each window is doing.
 
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
   <img src="/status.webp" alt="tmux status showing agent icons" style="border-radius: 4px;">
@@ -38,49 +38,49 @@ Workmux can display the status of the agent in your tmux window list, giving you
 
 ## Automated setup
 
-Run `workmux setup` to automatically detect your agent CLIs and install status tracking hooks:
+Run `muxix setup` to automatically detect your agent CLIs and install status tracking hooks:
 
 ```bash
-workmux setup
+muxix setup
 ```
 
-This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Workmux will also prompt you on first run if it detects an agent without status tracking configured.
+This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Muxix will also prompt you on first run if it detects an agent without status tracking configured.
 
-Workmux automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
+Muxix automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
 ## Claude Code setup
 
-If you prefer manual setup, install the workmux status plugin:
+If you prefer manual setup, install the muxix status plugin:
 
 ```bash
-claude plugin marketplace add raine/workmux
-claude plugin install workmux-status
+claude plugin marketplace add lcensies/muxix
+claude plugin install muxix-status
 ```
 
-Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See [.claude-plugin/plugin.json](https://github.com/raine/workmux/blob/main/.claude-plugin/plugin.json) for the hook configuration.
+Alternatively, you can manually add the hooks to `~/.claude/settings.json`. See [.claude-plugin/plugin.json](https://github.com/lcensies/muxix/blob/main/.claude-plugin/plugin.json) for the hook configuration.
 
 ## Pi setup
 
-If you prefer manual setup, copy the workmux status extension to your global pi extensions directory:
+If you prefer manual setup, copy the muxix status extension to your global pi extensions directory:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-curl -o ~/.pi/agent/extensions/workmux-status.ts \
-  https://raw.githubusercontent.com/raine/workmux/main/.pi/extensions/workmux-status.ts
+curl -o ~/.pi/agent/extensions/muxix-status.ts \
+  https://raw.githubusercontent.com/lcensies/muxix/main/.pi/extensions/muxix-status.ts
 ```
 
 Restart pi for the extension to take effect.
 
 ## OpenCode setup
 
-If you prefer manual setup, download the workmux status plugin to your global OpenCode plugin directory:
+If you prefer manual setup, download the muxix status plugin to your global OpenCode plugin directory:
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
 curl -o ~/.config/opencode/package.json \
-  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/package.json
-curl -o ~/.config/opencode/plugins/workmux-status.ts \
-  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/plugins/workmux-status.ts
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/package.json
+curl -o ~/.config/opencode/plugins/muxix-status.ts \
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/plugins/muxix-status.ts
 ```
 
 Restart OpenCode for the plugin to take effect.
@@ -99,7 +99,7 @@ Then download the hooks configuration:
 
 ```bash
 curl -o ~/.codex/hooks.json \
-  https://raw.githubusercontent.com/raine/workmux/main/.codex/hooks/workmux-status.json
+  https://raw.githubusercontent.com/lcensies/muxix/main/.codex/hooks/muxix-status.json
 ```
 
 If you already have a `~/.codex/hooks.json`, merge the hook entries from the downloaded file into your existing configuration.
@@ -111,7 +111,7 @@ Note: Codex hooks do not support detecting permission prompts, so only working/d
 If you prefer manual setup, download the hooks configuration and merge it into your Gemini settings:
 
 ```bash
-curl -s https://raw.githubusercontent.com/raine/workmux/main/resources/gemini/settings.json \
+curl -s https://raw.githubusercontent.com/lcensies/muxix/main/resources/gemini/settings.json \
   | jq -s '.[0] * .[1]' ~/.gemini/settings.json - > /tmp/gemini-settings.json \
   && mv /tmp/gemini-settings.json ~/.gemini/settings.json
 ```
@@ -121,7 +121,7 @@ If you don't have an existing `~/.gemini/settings.json`, you can download the ho
 ```bash
 mkdir -p ~/.gemini
 curl -o ~/.gemini/settings.json \
-  https://raw.githubusercontent.com/raine/workmux/main/resources/gemini/settings.json
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/gemini/settings.json
 ```
 
 ## Copilot CLI setup
@@ -129,9 +129,9 @@ curl -o ~/.gemini/settings.json \
 If you prefer manual setup, copy the hooks configuration to your repository:
 
 ```bash
-mkdir -p .github/hooks/workmux-status
-curl -o .github/hooks/workmux-status/hooks.json \
-  https://raw.githubusercontent.com/raine/workmux/main/.github/hooks/workmux-status/hooks.json
+mkdir -p .github/hooks/muxix-status
+curl -o .github/hooks/muxix-status/hooks.json \
+  https://raw.githubusercontent.com/lcensies/muxix/main/.github/hooks/muxix-status/hooks.json
 ```
 
 Note: Copilot CLI hooks are per-repository, unlike Claude Code and OpenCode which install globally. The Copilot CLI hooks API does not support detecting permission prompts, so only working/done states are tracked (no waiting state).
@@ -141,7 +141,7 @@ Note: Copilot CLI hooks are per-repository, unlike Claude Code and OpenCode whic
 You can customize the icons in your config:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 status_icons:
   working: "🔄"
   waiting: "⏸️"
@@ -158,38 +158,38 @@ status_icons:
 If you prefer to manage the tmux format yourself, disable auto-modification and add the status variable to your `~/.tmux.conf`:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 status_format: false
 ```
 
 ```bash
 # ~/.tmux.conf
-set -g window-status-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
-set -g window-status-current-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
+set -g window-status-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
+set -g window-status-current-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
 ```
 
 ## Interrupted agent detection
 
-When an agent is in "working" status but its pane output hasn't changed for 10 seconds, workmux automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
+When an agent is in "working" status but its pane output hasn't changed for 10 seconds, muxix automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
 
 The detection runs in the sidebar daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
 
 ## Jump to completed or waiting agents
 
-Use `workmux last-done` to quickly switch to the agent that most recently finished its task or is waiting for user input. Repeated invocations cycle through all completed and waiting agents in reverse chronological order (most recent first).
+Use `muxix last-done` to quickly switch to the agent that most recently finished its task or is waiting for user input. Repeated invocations cycle through all completed and waiting agents in reverse chronological order (most recent first).
 
 Add a tmux keybinding for quick access:
 
 ```bash
 # ~/.tmux.conf
-bind l run-shell "workmux last-done"
+bind l run-shell "muxix last-done"
 ```
 
 Then press `prefix + l` to jump to the last completed or waiting agent, press again to cycle to the next oldest, and so on. This is useful when you have multiple agents running and want to quickly attend to agents that need your attention.
 
 ## Toggle between agents
 
-Use `workmux last-agent` to toggle between your current agent and the last one you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it remembers which agent you came from and switches back to it. Pressing it again returns you to where you were.
+Use `muxix last-agent` to toggle between your current agent and the last one you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it remembers which agent you came from and switches back to it. Pressing it again returns you to where you were.
 
 This is available both as a CLI command and as the `Tab` key in the [dashboard](/guide/dashboard/).
 
@@ -197,17 +197,17 @@ Add a tmux keybinding for quick access:
 
 ```bash
 # ~/.tmux.conf
-bind Tab run-shell "workmux last-agent"
+bind Tab run-shell "muxix last-agent"
 ```
 
 Then press `prefix + Tab` to toggle between your two most recent agents.
 
 ## Disabling status hooks for nested agents
 
-If you launch another agent from inside an agent, that nested agent may run its own configured workmux status hooks and report activity from the same pane. Set `WORKMUX_DISABLE_SET_WINDOW_STATUS=1` on the nested command to make `workmux set-window-status` exit successfully without updating tmux or agent state:
+If you launch another agent from inside an agent, that nested agent may run its own configured muxix status hooks and report activity from the same pane. Set `MUXIX_DISABLE_SET_WINDOW_STATUS=1` on the nested command to make `muxix set-window-status` exit successfully without updating tmux or agent state:
 
 ```bash
-WORKMUX_DISABLE_SET_WINDOW_STATUS=1 codex
+MUXIX_DISABLE_SET_WINDOW_STATUS=1 codex
 ```
 
-Use this when you want only the parent agent pane to drive the workmux status indicator.
+Use this when you want only the parent agent pane to drive the muxix status indicator.

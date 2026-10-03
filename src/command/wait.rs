@@ -13,7 +13,7 @@ use crate::workflow;
 /// Resolve a worktree name to its path, trying local git first then global agents.
 ///
 /// Local resolution is preferred because it works even before an agent starts
-/// (the worktree directory exists from `workmux add`). Global resolution requires
+/// (the worktree directory exists from `muxix add`). Global resolution requires
 /// a running agent.
 fn resolve_worktree_path(
     name: &str,

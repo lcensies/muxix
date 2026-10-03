@@ -7,7 +7,7 @@ description: Restore worktree windows after a tmux or computer crash
 Restores worktree windows after a tmux or computer crash. Uses persisted agent state files to detect which worktrees had active agents before the crash, then reopens them with `--continue` to resume agent conversations.
 
 ```bash
-workmux resurrect [--dry-run]
+muxix resurrect [--dry-run]
 ```
 
 ## Options
@@ -16,7 +16,7 @@ workmux resurrect [--dry-run]
 
 ## How it works
 
-1. Reads agent state files from `~/.local/state/workmux/agents/`
+1. Reads agent state files from `~/.local/state/muxix/agents/`
 2. Filters to the current multiplexer backend and instance
 3. Matches each state file's working directory to a git worktree in the current repo
 4. Skips worktrees that are already open, no longer exist, or are the main worktree
@@ -27,10 +27,10 @@ workmux resurrect [--dry-run]
 
 ```bash
 # Preview what would be restored
-workmux resurrect --dry-run
+muxix resurrect --dry-run
 
 # Restore all worktrees that had agents running
-workmux resurrect
+muxix resurrect
 ```
 
 ## Example output

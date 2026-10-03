@@ -1,8 +1,8 @@
 # Dynamic worktree handle completion (directory names)
 # Used for open/remove/merge/path/close - repo-scoped lifecycle commands
-_workmux_handles() {
+_muxix_handles() {
     local -a handles
-    handles=("${(@f)$(workmux _complete-handles 2>/dev/null)}")
+    handles=("${(@f)$(muxix _complete-handles 2>/dev/null)}")
     # "${(@f)...}" on empty output produces a single empty string; filter it out
     handles=(${handles:#})
     (( ${#handles} )) && compadd -a handles
@@ -10,33 +10,33 @@ _workmux_handles() {
 
 # Dynamic agent target completion (local handles + cross-project agents)
 # Used for send/capture/status/wait/run - agent communication commands
-_workmux_agent_targets() {
+_muxix_agent_targets() {
     local -a targets
-    targets=("${(@f)$(workmux _complete-agent-targets 2>/dev/null)}")
+    targets=("${(@f)$(muxix _complete-agent-targets 2>/dev/null)}")
     targets=(${targets:#})
     (( ${#targets} )) && compadd -a targets
 }
 
 # Dynamic git branch completion for add command
-_workmux_git_branches() {
+_muxix_git_branches() {
     local -a branches
-    branches=("${(@f)$(workmux _complete-git-branches 2>/dev/null)}")
+    branches=("${(@f)$(muxix _complete-git-branches 2>/dev/null)}")
     branches=(${branches:#})
     (( ${#branches} )) && compadd -a branches
 }
 
 # Main completion function.
 #
-# This replaces the clap-generated _workmux, wrapping _workmux_base with
+# This replaces the clap-generated _muxix, wrapping _muxix_base with
 # dynamic completions for positional arguments (handles, branches).
-# Flag/option completion is delegated to _workmux_base which uses _arguments.
+# Flag/option completion is delegated to _muxix_base which uses _arguments.
 #
 # Works with both autoloading (fpath) and eval:
-# - Autoloaded: the file body defines all functions, then redefines _workmux
+# - Autoloaded: the file body defines all functions, then redefines _muxix
 #   as this wrapper and calls it. Subsequent calls go directly to the wrapper.
-# - Eval'd: all functions are defined at global scope, _workmux is registered
+# - Eval'd: all functions are defined at global scope, _muxix is registered
 #   via compdef.
-_workmux() {
+_muxix() {
     # Ensure standard zsh array indexing (1-based) regardless of user settings
     emulate -L zsh
     setopt extended_glob  # Required for _files glob qualifiers like *(-/)
@@ -46,7 +46,7 @@ _workmux() {
     local cmd="${words[2]}"
 
     # List of flags that take arguments (values), by command.
-    # When completing a flag value, we defer to _workmux_base so it can offer
+    # When completing a flag value, we defer to _muxix_base so it can offer
     # file paths, custom hints, etc. via _arguments.
     # Boolean flags are excluded so we can offer positional completions after them.
     local -a arg_flags
@@ -82,9 +82,9 @@ _workmux() {
     esac
 
     # If completing a flag (starts with -) or a flag's argument value,
-    # use _workmux_base which has the full _arguments definitions.
+    # use _muxix_base which has the full _arguments definitions.
     if [[ "${words[CURRENT]}" == -* ]] || [[ -n "${arg_flags[(r)${words[CURRENT-1]}]}" ]]; then
-        _workmux_base "$@"
+        _muxix_base "$@"
         return
     fi
 
@@ -92,29 +92,29 @@ _workmux() {
     # (no file fallback from _default). Flag completion is handled above.
     case "$cmd" in
         open|remove|rm|rename|path|merge|close)
-            _workmux_handles
+            _muxix_handles
             ;;
         send|capture|status|wait|run)
-            _workmux_agent_targets
+            _muxix_agent_targets
             ;;
         add)
-            _workmux_git_branches
+            _muxix_git_branches
             ;;
         *)
             # For all other commands (config, sandbox, etc.), use base completions
-            _workmux_base "$@"
+            _muxix_base "$@"
             ;;
     esac
 }
 
 # Autoload / eval detection:
 # - When autoloaded via fpath, funcstack[1] is the outer autoloaded function
-#   that just defined _workmux (replacing itself). Call _workmux to handle
+#   that just defined _muxix (replacing itself). Call _muxix to handle
 #   the current completion request.
-# - When eval'd (e.g. eval "$(workmux completions zsh)"), we are at the top
-#   level so funcstack[1] is not _workmux. Register the function with compdef.
-if [ "$funcstack[1]" = "_workmux" ]; then
-    _workmux "$@"
+# - When eval'd (e.g. eval "$(muxix completions zsh)"), we are at the top
+#   level so funcstack[1] is not _muxix. Register the function with compdef.
+if [ "$funcstack[1]" = "_muxix" ]; then
+    _muxix "$@"
 else
-    compdef _workmux workmux
+    compdef _muxix muxix
 fi

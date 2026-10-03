@@ -1,4 +1,4 @@
-//! Dashboard TUI for monitoring and managing workmux agents.
+//! Dashboard TUI for monitoring and managing muxix agents.
 //!
 //! This module provides an interactive terminal UI that displays:
 //! - All running agent panes across tmux sessions

@@ -15,7 +15,7 @@ mod tests;
 
 pub use report::{ItemResult, Outcome, Section, SetupReport};
 
-/// How a `workmux setup` invocation should behave.
+/// How a `muxix setup` invocation should behave.
 #[derive(Debug, Clone, Default)]
 pub struct SetupOptions {
     /// Apply every section without prompting.
@@ -195,7 +195,7 @@ fn print_report(report: &SetupReport) {
 pub fn run(opts: &SetupOptions) -> Result<()> {
     if !io::stdin().is_terminal() {
         anyhow::bail!(
-            "workmux setup requires an interactive terminal; pass --non-interactive to apply \
+            "muxix setup requires an interactive terminal; pass --non-interactive to apply \
              without prompting"
         );
     }

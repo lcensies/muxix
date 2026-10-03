@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status working"
+            "command": "muxix set-window-status working"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status waiting"
+            "command": "muxix set-window-status waiting"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status working"
+            "command": "muxix set-window-status working"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status done"
+            "command": "muxix set-window-status done"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "workmux set-window-status done"
+            "command": "muxix set-window-status done"
           }
         ]
       }

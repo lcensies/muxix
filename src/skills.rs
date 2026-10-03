@@ -1,6 +1,6 @@
 //! Bundled skill installation.
 //!
-//! Embeds all workmux SKILL.md files at compile time and writes them
+//! Embeds all muxix SKILL.md files at compile time and writes them
 //! to the appropriate platform-specific skills directories.
 
 use anyhow::{Context, Result};
@@ -35,8 +35,8 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
         content: include_str!("../skills/open-pr/SKILL.md"),
     },
     BundledSkill {
-        name: "workmux",
-        content: include_str!("../skills/workmux/SKILL.md"),
+        name: "muxix",
+        content: include_str!("../skills/muxix/SKILL.md"),
     },
     BundledSkill {
         name: "agent-packages",
@@ -266,10 +266,10 @@ mod tests {
         // intentionally isolated; cargo test runs may interleave, but no
         // other test in this crate mutates this var.
         unsafe {
-            std::env::set_var("CLAUDE_CONFIG_DIR", "/tmp/workmux-test-claude-cfg");
+            std::env::set_var("CLAUDE_CONFIG_DIR", "/tmp/muxix-test-claude-cfg");
         }
         let dir = skills_dir(Agent::Claude).unwrap();
-        assert_eq!(dir, PathBuf::from("/tmp/workmux-test-claude-cfg/skills"));
+        assert_eq!(dir, PathBuf::from("/tmp/muxix-test-claude-cfg/skills"));
         unsafe {
             match prev {
                 Some(v) => std::env::set_var("CLAUDE_CONFIG_DIR", v),
@@ -309,14 +309,14 @@ mod tests {
         assert!(names.contains(&"rebase"));
         assert!(names.contains(&"worktree"));
         assert!(names.contains(&"open-pr"));
-        assert!(names.contains(&"workmux"));
+        assert!(names.contains(&"muxix"));
     }
 }
 
 /// Install the bundled skills for `agent`, reporting one result per skill.
 ///
 /// Unlike [`install_skills`], this never prompts: it is the path used by
-/// non-interactive `workmux setup` and by `--check`. A locally-modified skill is
+/// non-interactive `muxix setup` and by `--check`. A locally-modified skill is
 /// overwritten rather than queried, because in declarative mode the bundled
 /// content is the source of truth — the interactive path still asks.
 ///

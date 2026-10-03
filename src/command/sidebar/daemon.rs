@@ -65,7 +65,7 @@ fn ade_agents(cache: &mut Option<(Instant, Vec<AgentPane>)>) -> Vec<AgentPane> {
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
     let safe_id = instance_id.replace(['/', '\\'], "-");
-    std::env::temp_dir().join(format!("workmux-sidebar-{}.sock", safe_id))
+    std::env::temp_dir().join(format!("muxix-sidebar-{}.sock", safe_id))
 }
 
 /// Result of a batched tmux query.
@@ -79,7 +79,7 @@ struct TmuxState {
 
 /// Query all sidebar-relevant tmux state in a single command.
 fn query_tmux_state() -> TmuxState {
-    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@workmux_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
+    let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@muxix_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
         .run_and_capture_stdout()
@@ -247,7 +247,7 @@ impl SocketServer {
 fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
     // Check tmux global first (set by toggle_layout_mode during this session)
     if let Ok(output) = Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sidebar_layout"])
+        .args(&["show-option", "-gqv", "@muxix_sidebar_layout"])
         .run_and_capture_stdout()
     {
         match output.trim() {
@@ -281,7 +281,7 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
 /// Read pane IDs manually marked as sleeping from the tmux global option.
 fn read_sleeping_panes() -> HashSet<String> {
     Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@workmux_sleeping_panes"])
+        .args(&["show-option", "-gqv", "@muxix_sleeping_panes"])
         .run_and_capture_stdout()
         .ok()
         .map(|s| s.split_whitespace().map(String::from).collect())
@@ -1056,10 +1056,10 @@ fn spawn_git_worker(
 }
 
 /// Spawn a thread that watches the global config file and per-project
-/// `.workmux.yaml` files and bumps `config_version` whenever a reload succeeds.
+/// `.muxix.yaml` files and bumps `config_version` whenever a reload succeeds.
 ///
 /// Returns a channel for the daemon main loop to send the current set of
-/// project config directories (parents of `.workmux.yaml`) to watch.
+/// project config directories (parents of `.muxix.yaml`) to watch.
 fn spawn_config_watcher(
     term: Arc<AtomicBool>,
     config: Arc<Mutex<Config>>,
@@ -1120,7 +1120,7 @@ fn spawn_config_watcher(
             }
         }
 
-        let interesting_basenames = ["config.yaml", "config.yml", ".workmux.yaml", ".workmux.yml"];
+        let interesting_basenames = ["config.yaml", "config.yml", ".muxix.yaml", ".muxix.yml"];
 
         while !term.load(Ordering::Relaxed) {
             // 1. Reconcile per-project watches from incoming path sets.
@@ -1554,7 +1554,7 @@ pub fn run() -> Result<()> {
     let instance_id = mux.instance_id();
     let config = Arc::new(Mutex::new(Config::load(None)?));
     // Captured at startup and intentionally not live-reloaded. tmux's
-    // @workmux_pane_status holds the icon string itself; build_snapshot
+    // @muxix_pane_status holds the icon string itself; build_snapshot
     // compares pane statuses to these exact strings to suppress stale
     // done/waiting markers, so swapping the icons mid-run would mis-suppress.
     let status_icons = config.lock().unwrap().status_icons.clone();
@@ -1580,7 +1580,7 @@ pub fn run() -> Result<()> {
     let _ = std::fs::remove_file(&sock_path); // Clean stale
     let server = SocketServer::bind(&sock_path)?;
 
-    // Config watcher: bumps config_version on global / project .workmux.yaml changes.
+    // Config watcher: bumps config_version on global / project .muxix.yaml changes.
     let config_paths_tx = spawn_config_watcher(
         term.clone(),
         config.clone(),
@@ -1599,7 +1599,7 @@ pub fn run() -> Result<()> {
         .args(&[
             "set-option",
             "-g",
-            "@workmux_sidebar_daemon_pid",
+            "@muxix_sidebar_daemon_pid",
             &std::process::id().to_string(),
         ])
         .run()?;
@@ -1630,7 +1630,7 @@ pub fn run() -> Result<()> {
 
     // Cache of agent_path -> project_config_dir so we don't run the walk-up
     // filesystem search on every tick. Misses (no config found) are NOT
-    // cached, so a newly-created `.workmux.yaml` in or above an agent's path
+    // cached, so a newly-created `.muxix.yaml` in or above an agent's path
     // is picked up on the next tick.
     let mut project_config_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
@@ -1815,11 +1815,11 @@ pub fn run() -> Result<()> {
             if agent_list != last_agent_list {
                 if !agent_list.is_empty() {
                     let _ = Cmd::new("tmux")
-                        .args(&["set-option", "-g", "@workmux_sidebar_agents", &agent_list])
+                        .args(&["set-option", "-g", "@muxix_sidebar_agents", &agent_list])
                         .run();
                 } else {
                     let _ = Cmd::new("tmux")
-                        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+                        .args(&["set-option", "-gu", "@muxix_sidebar_agents"])
                         .run();
                 }
                 last_agent_list = agent_list;
@@ -1867,16 +1867,16 @@ pub fn run() -> Result<()> {
         store.delete_runtime(&backend_name, &instance_id);
     }
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_daemon_pid"])
+        .args(&["set-option", "-gu", "@muxix_sidebar_daemon_pid"])
         .run();
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_agents"])
+        .args(&["set-option", "-gu", "@muxix_sidebar_agents"])
         .run();
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sleeping_panes"])
+        .args(&["set-option", "-gu", "@muxix_sleeping_panes"])
         .run();
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@workmux_sidebar_scope"])
+        .args(&["set-option", "-gu", "@muxix_sidebar_scope"])
         .run();
     Ok(())
 }

@@ -3,7 +3,7 @@
 //! This began as a differential test against the typed `Config::merge` the
 //! resolver replaced: each corpus entry ran through both paths and the
 //! serialized `Config` results had to match. That comparison passed over the
-//! whole corpus, including this repository's own `.workmux.yaml`, and the
+//! whole corpus, including this repository's own `.muxix.yaml`, and the
 //! results were then frozen into `merge_goldens.txt`.
 //!
 //! The typed merge is gone, so the goldens are now the oracle. Keeping a copy

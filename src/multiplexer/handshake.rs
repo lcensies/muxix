@@ -205,7 +205,7 @@ impl UnixPipeHandshake {
             .as_nanos();
         let pid = std::process::id();
 
-        let pipe_path = std::env::temp_dir().join(format!("workmux_pipe_{}_{}", pid, nanos));
+        let pipe_path = std::env::temp_dir().join(format!("muxix_pipe_{}_{}", pid, nanos));
 
         // Create FIFO with 0o600 permissions (owner read/write only)
         let mode = Mode::S_IRUSR | Mode::S_IWUSR;

@@ -9,7 +9,7 @@ use crate::workflow;
 pub fn run(name: &str, text: Option<&str>, file: Option<&str>) -> Result<()> {
     let cfg = config::Config::load(None).unwrap_or_default();
 
-    // A namespaced reference (`<runtime>:<id>`, as printed by `workmux agents`)
+    // A namespaced reference (`<runtime>:<id>`, as printed by `muxix agents`)
     // addresses an agent another runtime owns. Route it there: the project's
     // configured runtime decides who *creates* agents, not who we may talk to.
     let reference = crate::agent::runtime::AgentRef::from_wire(name);

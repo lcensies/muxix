@@ -4,20 +4,20 @@ description: Detect installed coding agents and install status hooks, skills, pl
 
 # setup
 
-Detects the coding agents you have installed and applies workmux's per-agent
+Detects the coding agents you have installed and applies muxix's per-agent
 configuration to each of them: status-tracking hooks, skills, and the
 [`bootstrap`](../../guide/bootstrap.md) manifest (plugins, prompt components,
 features), plus [MCP](../../guide/configuration.md) server sync.
 
 ```bash
-workmux setup
+muxix setup
 ```
 
 With no flags `setup` is **interactive** — it requires a terminal, builds the
 same drift report `--check` would print, and asks for one confirmation before
 applying every selected section. It is safe to re-run; installation is
 idempotent and re-running merges in anything newly added (for example new
-hooks after a workmux update). If nothing has drifted, it says so and exits
+hooks after a muxix update). If nothing has drifted, it says so and exits
 without prompting. Use `--only` (or the `--hooks`/`--skills` aliases) to scope
 an interactive run to specific sections instead of confirming all of them.
 
@@ -30,7 +30,7 @@ an interactive run to specific sections instead of confirming all of them.
 | `--json`                   | Emit one JSON object on stdout; progress goes to stderr             |
 | `--only <sections>`        | Restrict to these sections, comma-separated                         |
 | `--profile <names>`        | Resolve config with these [profiles](../../guide/profiles.md) selected |
-| `--no-prune`               | Keep harness features workmux installed that the config no longer declares |
+| `--no-prune`               | Keep harness features muxix installed that the config no longer declares |
 | `--hooks`                  | Alias for `--only hooks`                                            |
 | `--skills`                 | Alias for `--only skills`                                           |
 
@@ -43,8 +43,8 @@ With no `--only`, all of them run, in that order.
 devcontainer `postCreate`, or CI:
 
 ```bash
-workmux setup --non-interactive
-workmux setup --non-interactive --only hooks,mcp --profile corp
+muxix setup --non-interactive
+muxix setup --non-interactive --only hooks,mcp --profile corp
 ```
 
 A failing item never aborts the run — every remaining section is still applied,
@@ -56,8 +56,8 @@ and the failure surfaces in the exit code.
 reports is exactly what a real run would do:
 
 ```bash
-workmux setup --check                # exit 0 in sync, 2 if drifted
-workmux setup --check --only skills
+muxix setup --check                # exit 0 in sync, 2 if drifted
+muxix setup --check --only skills
 ```
 
 Two sections cannot be inspected without acting, and say so rather than
@@ -82,7 +82,7 @@ with a reason — not a failure.
 rather not read exit codes:
 
 ```bash
-workmux setup --check --json | jq '.items[] | select(.outcome != "up-to-date")'
+muxix setup --check --json | jq '.items[] | select(.outcome != "up-to-date")'
 ```
 
 `--hooks` and `--skills` restrict which sections run, same as `--only hooks`
@@ -91,10 +91,10 @@ and `--only skills`. MCP server sync is its own `mcp` section, so a scoped
 
 ## Removing what the config dropped
 
-Deleting a skill, subagent, plugin, or hook from `.workmux.yaml` and re-running
+Deleting a skill, subagent, plugin, or hook from `.muxix.yaml` and re-running
 `setup` takes it off the machine; the item reports `removed`, and `--check`
-counts it as drift. Only features workmux itself installed (tracked in
-`$XDG_STATE_HOME/workmux/managed.json`) are ever removed, pruning is scoped to
+counts it as drift. Only features muxix itself installed (tracked in
+`$XDG_STATE_HOME/muxix/managed.json`) are ever removed, pruning is scoped to
 the project that declared them, and `--only` limits it to the sections that
 ran. `--no-prune` converges without removing anything. See
 [bootstrap → Removing a feature](../../guide/bootstrap.md#removing-a-feature).
@@ -125,12 +125,12 @@ If no agents are detected, `setup` exits with a hint to install an agent CLI.
 Installs the hooks that report agent status into your tmux window list. See
 [Status tracking](../../guide/status-tracking.md) for what each agent supports
 and any agent-specific requirements (e.g. Codex needs `hooks = true` in
-`~/.codex/config.toml`). Workmux also adjusts your tmux `window-status-format`
+`~/.codex/config.toml`). Muxix also adjusts your tmux `window-status-format`
 once per session to render the status icons.
 
 ### 3. Skills (`--skills`)
 
-Installs the **bundled** workmux skills into every detected agent that has a
+Installs the **bundled** muxix skills into every detected agent that has a
 skills directory. Skill installation failures do not abort the rest of setup.
 Project-declared skills (`bootstrap.default_skills`) are installed in the
 bootstrap phase below, not here.
@@ -156,7 +156,7 @@ described above, applied in this order:
 - **Subagents** from `default_subagents` / `additional_subagents` are installed
   into each agent's native subagents directory, with `model:` resolved against
   the [`providers:`](../../guide/models.md) registry.
-- **Prompt components** from `.workmux/prompt-components/` are merged into each
+- **Prompt components** from `.muxix/prompt-components/` are merged into each
   agent's system prompt.
 - **Features** resolve per agent to either a plugin or a `default` prompt
   component; see [Features](../../guide/bootstrap.md#features).
@@ -187,13 +187,13 @@ See [Dependencies](../../guide/bootstrap.md#dependencies).
 
 ```bash
 # Full setup: hooks + skills + bootstrap + MCP sync
-workmux setup
+muxix setup
 
 # Only (re)install status-tracking hooks
-workmux setup --hooks
+muxix setup --hooks
 
 # Only (re)install skills
-workmux setup --skills
+muxix setup --skills
 ```
 
 ## See also
@@ -202,4 +202,4 @@ workmux setup --skills
 - [provision](./provision.md) — org policy sync (separate command; `setup` never syncs)
 - [Models](../../guide/models.md) — unified provider/model registry
 - [Status tracking](../../guide/status-tracking.md) — hooks and agent support
-- [init](./init.md) — generate a starter `.workmux.yaml`
+- [init](./init.md) — generate a starter `.muxix.yaml`

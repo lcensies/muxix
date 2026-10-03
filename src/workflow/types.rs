@@ -22,7 +22,7 @@ pub struct CreateArgs<'a> {
     /// True if the handle was explicitly set via --name (skip auto-suffix on collision)
     pub is_explicit_name: bool,
     /// Write prompt file without injecting into agent commands.
-    /// When true, the prompt file is written to .workmux/ but not passed to
+    /// When true, the prompt file is written to .muxix/ but not passed to
     /// setup_environment, so validation and agent injection are skipped.
     pub prompt_file_only: bool,
     /// Fork a conversation from another worktree into this one

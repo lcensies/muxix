@@ -1,7 +1,7 @@
-//! `workmux mcp …` — manage the project's MCP (Model Context Protocol) servers.
+//! `muxix mcp …` — manage the project's MCP (Model Context Protocol) servers.
 //!
-//! `sync` renders the `mcp:` section of `.workmux.yaml` into a project
-//! `.mcp.json` (which `workmux add` then propagates into each worktree).
+//! `sync` renders the `mcp:` section of `.muxix.yaml` into a project
+//! `.mcp.json` (which `muxix add` then propagates into each worktree).
 //! `status` shows the configured servers and harness integration state.
 
 use anyhow::{Context, Result};
@@ -30,7 +30,7 @@ pub fn run(command: McpCommand) -> Result<()> {
             let written = mcp::sync_agent_mcp_configs(&repo_root, &config)?;
             if written.is_empty() {
                 println!(
-                    "No MCP servers configured. Add an `mcp:` section to .workmux.yaml, e.g.:\n\n  \
+                    "No MCP servers configured. Add an `mcp:` section to .muxix.yaml, e.g.:\n\n  \
                      mcp:\n    socraticode:\n      command: npx\n      args: [\"-y\", \"socraticode\"]"
                 );
             } else {
@@ -39,7 +39,7 @@ pub fn run(command: McpCommand) -> Result<()> {
                     println!("Wrote {}", path.display());
                 }
                 println!(
-                    "  Add `{}` to your `.gitignore` if you want them managed by workmux only.",
+                    "  Add `{}` to your `.gitignore` if you want them managed by muxix only.",
                     mcp::MCP_JSON_FILENAME
                 );
             }
@@ -55,7 +55,7 @@ pub fn run(command: McpCommand) -> Result<()> {
 fn print_status(status: &mcp::HarnessStatus) {
     println!("{}", style("MCP servers").bold().cyan());
     if status.servers.is_empty() {
-        println!("  (none configured — add an `mcp:` section to .workmux.yaml)");
+        println!("  (none configured — add an `mcp:` section to .muxix.yaml)");
     } else {
         for s in &status.servers {
             let state = if s.enabled {
@@ -82,7 +82,7 @@ fn print_status(status: &mcp::HarnessStatus) {
         synced,
     );
     if !status.mcp_json_exists {
-        println!("  Run `workmux mcp sync` to generate it.");
+        println!("  Run `muxix mcp sync` to generate it.");
     }
 
     if !status.integrations.is_empty() {
@@ -92,7 +92,7 @@ fn print_status(status: &mcp::HarnessStatus) {
         }
     }
 
-    // Per-agent MCP support: which agents workmux writes config + pre-approval
+    // Per-agent MCP support: which agents muxix writes config + pre-approval
     // for, and which still need an adapter (so the gap is visible when you pick a
     // new agent like pi).
     println!("\n{}", style("Agent MCP support").bold().cyan());

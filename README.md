@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="meta/logo-dark.svg">
-    <img src="meta/logo.svg" alt="workmux icon" width="300">
+    <img src="meta/logo.svg" alt="muxix icon" width="300">
   </picture>
 </p>
 
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://workmux.raine.dev/"><strong>📖 Documentation</strong></a> ·
+  <a href="https://muxix.dev/"><strong>📖 Documentation</strong></a> ·
   <a href="#installation">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#commands">Commands</a> ·
@@ -25,30 +25,59 @@ isolated development environments. Perfect for running multiple AI agents in
 parallel without conflict.
 
 **Philosophy**: Build on tools you already use. tmux/zellij/kitty/etc. for
-windowing, git for worktrees, your agent for coding - workmux ties them together.
+windowing, git for worktrees, your agent for coding - muxix ties them together.
+
+muxix also treats the *agent itself* as something to provision: one declarative
+config installs skills, plugins, MCP servers and system-prompt components across
+Claude Code, Codex, Gemini, OpenCode, Copilot and pi, so every worktree gets an
+identically equipped agent.
 
 <sup><sub>\* Also supports
-<a href="https://workmux.raine.dev/guide/kitty">kitty</a>,
-<a href="https://workmux.raine.dev/guide/wezterm">WezTerm</a>, and
-<a href="https://workmux.raine.dev/guide/zellij">Zellij</a> as alternative
+<a href="https://muxix.dev/guide/kitty">kitty</a>,
+<a href="https://muxix.dev/guide/wezterm">WezTerm</a>, and
+<a href="https://muxix.dev/guide/zellij">Zellij</a> as alternative
 backends.</sub></sup>
 
-📖 **New to workmux?** Read the
-[introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a
-quick overview.
+> [!NOTE]
+> **muxix is a fork of [workmux](https://github.com/raine/workmux) by
+> [@raine](https://github.com/raine), heavily modified.** The worktree and tmux
+> core is upstream's work and upstream's credit; everything below marked *fork*
+> is not in workmux, and the two are no longer config-compatible in both
+> directions.
+>
+> **Added in this fork:** a declarative agent harness (`setup`/`bootstrap`:
+> skills, plugins, MCP servers, prompt components, per-agent profiles), six
+> supported agent CLIs with status hooks, a task-graph store (`task`) for
+> external harnesses to drive, sandboxed worktrees (container / Lima /
+> microVM), org policy provisioning, a project registry, event tracing, and a
+> third dashboard tab.
+>
+> **Removed from upstream's direction:** nothing of upstream's — but muxix
+> deliberately does *not* schedule work. There is no pipeline runner and no
+> orchestration loop; deciding what runs next belongs to your agent harness,
+> and muxix is the plumbing it calls.
+>
+> The rename is a clean break: muxix reads `.muxix.yaml` (not `.workmux.yaml`),
+> `MUXIX_*` environment variables, and `~/.config/muxix/`. Coming from workmux,
+> rename the project file and the config directory. Binary and plugin names
+> differ too, so both tools can be installed side by side.
 
-![workmux screenshot](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/screenshot_20260329_165534.webp)
+📖 **New to the worktree-per-agent idea?** Upstream's
+[introduction blog post](https://raine.dev/blog/introduction-to-workmux/) is
+still the best overview of the core model.
+
+![muxix screenshot](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/screenshot_20260329_165534.webp)
 
 > [!TIP]
 > [consult-llm](https://github.com/raine/consult-llm) pairs naturally with
-> workmux: let your agents consult another AI model to plan architecture,
+> muxix: let your agents consult another AI model to plan architecture,
 > review changes, debate approaches, or get unstuck on tricky bugs without
 > leaving the worktree.
 >
 > See [How to orchestrate large coding tasks without context bloat](https://raine.dev/blog/phased-implement-workflow/)
-> for a workflow that combines workmux and consult-llm.
+> for a workflow that combines muxix and consult-llm.
 
-## Why workmux?
+## Why muxix?
 
 **Parallel workflows.** Work on multiple features the same time, each with its
 own AI agent. No stashing, no branch switching, no conflicts.
@@ -58,10 +87,10 @@ state, editor session, dev server, and AI agent. Context switching is switching
 tabs.
 
 **Automated setup.** New worktrees start broken (no `.env`, no `node_modules`,
-no dev server). workmux can copy config files, symlink dependencies, and run
+no dev server). muxix can copy config files, symlink dependencies, and run
 install commands on creation.
 
-**One-command cleanup.** `workmux merge` handles the full lifecycle: merge the
+**One-command cleanup.** `muxix merge` handles the full lifecycle: merge the
 branch, delete the worktree, close the tmux window, remove the local branch.
 
 **Terminal workflow.** Build on your terminal setup instead of yet another
@@ -75,9 +104,9 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 - Create git worktrees with matching tmux windows in a single command (`add`)
 - Merge branches and clean up everything (worktree, tmux window, branches) in
   one command (`merge`)
-- [Dashboard](#workmux-dashboard) for monitoring agents, reviewing changes, and
+- [Dashboard](#muxix-dashboard) for monitoring agents, reviewing changes, and
   sending commands
-- [Sidebar](https://workmux.raine.dev/guide/sidebar/) for a persistent,
+- [Sidebar](https://muxix.dev/guide/sidebar/) for a persistent,
   at-a-glance view of all agents across tmux windows
 - [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
   `/worktree` skill
@@ -94,11 +123,11 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
 ## Hype
 
-> "I've been using (and loving) workmux which brings together tmux, git
+> "I've been using (and loving) muxix which brings together tmux, git
 > worktrees, and CLI agents into an opinionated workflow."  
 > — @Coolin96 [🔗](https://news.ycombinator.com/item?id=46029809)
 
-> "Thank you so much for your work with workmux! It's a tool I've been wanting
+> "Thank you so much for your work with muxix! It's a tool I've been wanting
 > to exist for a long time."  
 > — @rstacruz [🔗](https://github.com/raine/workmux/issues/2)
 
@@ -106,7 +135,7 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 > git, without getting in the way or obscuring the underlying tooling."  
 > — @cisaacstern [🔗](https://github.com/raine/workmux/issues/33)
 
-> "I have to mention workmux at every opportunity because it's the perfect glue
+> "I have to mention muxix at every opportunity because it's the perfect glue
 > between worktrees, agents and tmux windows."  
 > — @dedbrizz [🔗](https://www.threads.com/@dedbrizz/post/DVt1DtLkr_l)
 
@@ -115,34 +144,43 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 ### Bash YOLO
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
 ```
 
-### Homebrew (macOS/Linux)
+### From source (works today)
 
 ```bash
-brew install raine/workmux/workmux
+cargo install --git https://github.com/lcensies/muxix
 ```
 
 <details>
-<summary>Other methods (Cargo, mise, Nix)</summary>
+<summary>Other methods (Homebrew, crates.io, mise, Nix)</summary>
+
+> The Homebrew tap and the crates.io release publish with the first tagged
+> version; until then, use the git install above.
+
+**Homebrew** (macOS/Linux):
+
+```bash
+brew install lcensies/muxix/muxix
+```
 
 **Cargo** (requires [rustup](https://rustup.rs/)):
 
 ```bash
-cargo install workmux
+cargo install muxix
 ```
 
 **mise:**
 
 ```bash
-mise use -g cargo:raine/workmux
+mise use -g cargo:lcensies/muxix
 ```
 
-**Nix** ([flake and home-manager setup](https://workmux.raine.dev/guide/nix)):
+**Nix** ([flake and home-manager setup](https://muxix.dev/guide/nix)):
 
 ```bash
-nix profile install github:raine/workmux
+nix profile install github:lcensies/muxix
 ```
 
 </details>
@@ -150,34 +188,34 @@ nix profile install github:raine/workmux
 ---
 
 For manual installation, see
-[pre-built binaries](https://github.com/raine/workmux/releases/latest).
+[pre-built binaries](https://github.com/lcensies/muxix/releases/latest).
 
 ## Quick start
 
 <!-- prettier-ignore -->
 > [!NOTE]
-> workmux requires a terminal multiplexer. Make sure you have
+> muxix requires a terminal multiplexer. Make sure you have
 > [tmux](https://github.com/tmux/tmux) (or
-> [WezTerm](https://raine.github.io/workmux/guide/wezterm) /
-> [Kitty](https://raine.github.io/workmux/guide/kitty) /
-> [Zellij](https://raine.github.io/workmux/guide/zellij)) installed and running
+> [WezTerm](https://muxix.dev/guide/wezterm) /
+> [Kitty](https://muxix.dev/guide/kitty) /
+> [Zellij](https://muxix.dev/guide/zellij)) installed and running
 > before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/)
 > if you need a starting point.
 
 1. **Initialize configuration (optional)**:
 
    ```bash
-   workmux init
+   muxix init
    ```
 
-   This creates a `.workmux.yaml` file to customize your workflow (pane layouts,
-   setup commands, file operations, etc.). workmux works out of the box with
+   This creates a `.muxix.yaml` file to customize your workflow (pane layouts,
+   setup commands, file operations, etc.). muxix works out of the box with
    sensible defaults, so this step is optional.
 
 2. **Create a new worktree and tmux window**:
 
    ```bash
-   workmux add new-feature
+   muxix add new-feature
    ```
 
    This will:
@@ -194,24 +232,24 @@ For manual installation, see
 
 4. **Finish and clean up**
 
-   **Local merge:** Run `workmux merge` to merge into the base branch and clean
+   **Local merge:** Run `muxix merge` to merge into the base branch and clean
    up in one step.
 
-   **PR workflow:** Push and open a PR. After it's merged, run `workmux remove`
+   **PR workflow:** Push and open a PR. After it's merged, run `muxix remove`
    to clean up.
 
 ## Configuration
 
-workmux uses a two-level configuration system:
+muxix uses a two-level configuration system:
 
-- **Global** (`~/.config/workmux/config.yaml`): Personal defaults for all
+- **Global** (`~/.config/muxix/config.yaml`): Personal defaults for all
   projects
-- **Project** (`.workmux.yaml`): Project-specific overrides
+- **Project** (`.muxix.yaml`): Project-specific overrides
 
-Project settings override global settings. When you run workmux from a
-subdirectory, it walks upward to find the nearest `.workmux.yaml`, allowing
+Project settings override global settings. When you run muxix from a
+subdirectory, it walks upward to find the nearest `.muxix.yaml`, allowing
 nested configs for monorepos. See the
-[Monorepos guide](https://workmux.raine.dev/guide/monorepos#nested-configuration)
+[Monorepos guide](https://muxix.dev/guide/monorepos#nested-configuration)
 for details. For `post_create` and file operation lists (`files.copy`,
 `files.symlink`), you can use `"<global>"` to include global values alongside
 project-specific ones. Other settings like `panes` are replaced entirely when
@@ -219,11 +257,11 @@ defined in the project config.
 
 ### Global configuration example
 
-`~/.config/workmux/config.yaml`:
+`~/.config/muxix/config.yaml`:
 
 ```yaml
 nerdfont: true # Enable nerdfont icons (prompted on first run)
-merge_strategy: rebase # Make workmux merge do rebase by default
+merge_strategy: rebase # Make muxix merge do rebase by default
 merge_keep: true # Keep worktree, window, and branch after merge by default
 agent: claude
 
@@ -235,7 +273,7 @@ panes:
 
 ### Project configuration example
 
-`.workmux.yaml`:
+`.muxix.yaml`:
 
 ```yaml
 post_create:
@@ -274,10 +312,10 @@ customize.
 | `window_prefix`  | Prefix for tmux window/session names                                                                  | `wm-`                       |
 | `mode`           | Tmux mode (`window` or `session`)                                                                     | `window`                    |
 | `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
-| `agents`         | Named agent commands ([docs](https://workmux.raine.dev/guide/agents#named-agents), global-only)       | `{}`                        |
+| `agents`         | Named agent commands ([docs](https://muxix.dev/guide/agents#named-agents), global-only)       | `{}`                        |
 | `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                                  | `merge`                     |
-| `merge_keep`     | Keep resources after `workmux merge` by default                                                       | `false`                     |
-| `theme`          | Dashboard color scheme ([custom colors](https://workmux.raine.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
+| `merge_keep`     | Keep resources after `muxix merge` by default                                                       | `false`                     |
+| `theme`          | Dashboard color scheme ([custom colors](https://muxix.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
 
 #### Naming options
 
@@ -359,7 +397,7 @@ layouts:
 ```
 
 ```bash
-workmux add my-feature -l design
+muxix add my-feature -l design
 ```
 
 When `-l` is used, the layout's `panes` replace the top-level `panes` for that
@@ -383,7 +421,7 @@ files:
 Both `copy` and `symlink` accept glob patterns.
 
 To re-apply file operations to an existing worktree (e.g., after updating the
-config), run `workmux sync-files` from inside the worktree. Use `--all` to sync
+config), run `muxix sync-files` from inside the worktree. Use `--all` to sync
 all worktrees at once.
 
 #### Lifecycle hooks
@@ -391,11 +429,11 @@ all worktrees at once.
 Run commands at specific points in the worktree lifecycle, such as installing
 dependencies or running database migrations. All hooks run with the **worktree
 directory** as the working directory (or the nested config directory for
-[nested configs](https://workmux.raine.dev/guide/monorepos#nested-configuration))
+[nested configs](https://muxix.dev/guide/monorepos#nested-configuration))
 and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`,
 `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
 
-`WM_CONFIG_DIR` points to the directory containing the `.workmux.yaml` that was
+`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was
 used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
 
 | Hook          | When it runs                                      | Additional env vars                  |
@@ -434,7 +472,7 @@ Set `status_format: false` to disable automatic tmux format modification
 
 - Worktrees are created in `<project>__worktrees` as a sibling directory to your
   project by default
-- If no `panes` configuration is defined, workmux provides opinionated defaults:
+- If no `panes` configuration is defined, muxix provides opinionated defaults:
   - For projects with a `CLAUDE.md` file: Opens the configured agent (see
     `agent` option) in the first pane, defaulting to `claude` if none is set.
   - For all other projects: Opens your default shell.
@@ -478,16 +516,16 @@ panes:
 
 ### Directory structure
 
-Here's how workmux organizes your worktrees by default:
+Here's how muxix organizes your worktrees by default:
 
 ```
 ~/projects/
 ├── my-project/               <-- Main project directory
 │   ├── src/
 │   ├── package.json
-│   └── .workmux.yaml
+│   └── .muxix.yaml
 │
-└── my-project__worktrees/    <-- Worktrees created by workmux
+└── my-project__worktrees/    <-- Worktrees created by muxix
     ├── feature-A/            <-- Isolated workspace for 'feature-A' branch
     │   ├── src/
     │   └── package.json
@@ -506,40 +544,40 @@ configuration option (see [Configuration options](#configuration-options)).
 The value supports `~` for the home directory and a `{project}` placeholder
 that resolves to the main worktree's directory name. This lets a single
 global config namespace every repo's worktrees under one root, e.g.
-`worktree_dir: ~/.workmux/{project}`.
+`worktree_dir: ~/.muxix/{project}`.
 
 ### Shell alias (recommended)
 
-For faster typing, alias `workmux` to `wm`:
+For faster typing, alias `muxix` to `wm`:
 
 ```bash
-alias wm='workmux'
+alias wm='muxix'
 ```
 
 ## Commands
 
-- [`add`](#workmux-add-branch-name) - Create a new worktree and tmux window
-- [`merge`](#workmux-merge-branch-name) - Merge a branch and clean up everything
-- [`remove`](#workmux-remove-name-alias-rm) - Remove worktrees without merging
-- [`list`](#workmux-list) - List all worktrees with status
-- [`open`](#workmux-open-name) - Open a tmux window for an existing worktree
-- [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
+- [`add`](#muxix-add-branch-name) - Create a new worktree and tmux window
+- [`merge`](#muxix-merge-branch-name) - Merge a branch and clean up everything
+- [`remove`](#muxix-remove-name-alias-rm) - Remove worktrees without merging
+- [`list`](#muxix-list) - List all worktrees with status
+- [`open`](#muxix-open-name) - Open a tmux window for an existing worktree
+- [`close`](#muxix-close-name) - Close a worktree's tmux window (keeps
   worktree)
-- [`resurrect`](#workmux-resurrect) - Restore worktree windows after a crash
-- [`project`](#workmux-project) - Track project directories for `workmux start`
-- [`start`](#workmux-start) - Launch all tracked projects (session per project,
+- [`resurrect`](#muxix-resurrect) - Restore worktree windows after a crash
+- [`project`](#muxix-project) - Track project directories for `muxix start`
+- [`start`](#muxix-start) - Launch all tracked projects (session per project,
   window per worktree)
-- [`path`](#workmux-path-name) - Get the filesystem path of a worktree
-- [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
-- [`sidebar`](#workmux-sidebar) - Toggle a compact agent status sidebar in tmux
-- [`config edit`](#workmux-config-edit) - Edit the global configuration file
-- [`init`](#workmux-init) - Generate configuration file
-- [`sandbox`](#workmux-sandbox) - Manage sandbox backends (container/Lima)
-- [`claude prune`](#workmux-claude-prune) - Clean up stale Claude Code entries
-- [`completions`](#workmux-completions-shell) - Generate shell completions
-- [`docs`](#workmux-docs) - Show detailed documentation
+- [`path`](#muxix-path-name) - Get the filesystem path of a worktree
+- [`dashboard`](#muxix-dashboard) - Show TUI dashboard of all active agents
+- [`sidebar`](#muxix-sidebar) - Toggle a compact agent status sidebar in tmux
+- [`config edit`](#muxix-config-edit) - Edit the global configuration file
+- [`init`](#muxix-init) - Generate configuration file
+- [`sandbox`](#muxix-sandbox) - Manage sandbox backends (container/Lima)
+- [`claude prune`](#muxix-claude-prune) - Clean up stale Claude Code entries
+- [`completions`](#muxix-completions-shell) - Generate shell completions
+- [`docs`](#muxix-docs) - Show detailed documentation
 
-### `workmux add <branch-name>`
+### `muxix add <branch-name>`
 
 Creates a new git worktree with a matching tmux window and switches you to it
 immediately. If the branch doesn't exist, it will be created automatically.
@@ -560,7 +598,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   worktree.
   - Requires the `gh` command-line tool to be installed and authenticated.
   - The local branch name defaults to the PR's head branch name, but can be
-    overridden (e.g., `workmux add custom-name --pr 123`).
+    overridden (e.g., `muxix add custom-name --pr 123`).
   - If that local branch already exists and has no worktree, it is reused.
 - `-A, --auto-name`: Generate branch name from prompt using LLM. See
   [Automatic branch name generation](#automatic-branch-name-generation).
@@ -587,7 +625,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   interactively.
 - `--prompt-file-only`: Write the prompt file to the worktree without injecting
   it into agent commands. No agent pane is required. Useful when your editor has
-  an embedded agent that reads `.workmux/PROMPT-*.md` directly.
+  an embedded agent that reads `.muxix/PROMPT-*.md` directly.
 - `-l, --layout <name>`: Use a named pane layout from config instead of the
   default panes. Cannot be combined with `--agent`.
 - `-a, --agent <name>`: The agent(s) to use for the worktree(s). Can be
@@ -595,7 +633,7 @@ immediately. If the branch doesn't exist, it will be created automatically.
   `agent` from your config file.
 - `-W, --wait`: Block until the created tmux window is closed. Useful for
   scripting when you want to wait for an agent to complete its work. The agent
-  can signal completion by running `workmux remove --keep-branch`.
+  can signal completion by running `muxix remove --keep-branch`.
 - `-o, --open-if-exists`: If a worktree for the branch already exists, open it
   instead of failing. Similar to `tmux new-session -A`. Useful when you don't
   know or care whether the worktree already exists.
@@ -640,117 +678,117 @@ These options allow you to skip expensive setup steps when they're not needed
 
 ```bash
 # Create a new branch and worktree
-workmux add user-auth
+muxix add user-auth
 
 # Use an existing branch
-workmux add existing-work
+muxix add existing-work
 
 # Create a new branch from a specific base
-workmux add hotfix --base production
+muxix add hotfix --base production
 
 # Create a worktree from a remote branch (creates local branch "user-auth-pr")
-workmux add origin/user-auth-pr
+muxix add origin/user-auth-pr
 
 # Remote branches with slashes work too (creates local branch "feature/foo")
-workmux add origin/feature/foo
+muxix add origin/feature/foo
 
 # Create a worktree in the background without switching to it
-workmux add feature/parallel-task --background
+muxix add feature/parallel-task --background
 
 # Use a custom name for the worktree directory and tmux window
-workmux add feature/long-descriptive-branch-name --name short
+muxix add feature/long-descriptive-branch-name --name short
 
 # Open existing worktree if it exists, create if it doesn't (idempotent)
-workmux add my-feature -o
+muxix add my-feature -o
 ```
 
 ##### Checking out pull requests and fork branches
 
 ```bash
 # Checkout PR #123. The local branch will be named after the PR's branch.
-workmux add --pr 123
+muxix add --pr 123
 
 # Checkout PR #456 with a custom local branch name
-workmux add fix/api-bug --pr 456
+muxix add fix/api-bug --pr 456
 
 # Checkout a fork branch using GitHub's owner:branch format (copy from GitHub UI)
 # Creates local branch "someuser-feature-branch" tracking the fork
-workmux add someuser:feature-branch
+muxix add someuser:feature-branch
 ```
 
 ##### Moving changes to a new worktree
 
 ```bash
 # Move uncommitted changes to a new worktree (including untracked files)
-workmux add feature/new-thing --with-changes -u
+muxix add feature/new-thing --with-changes -u
 
 # Move only staged/modified files (not untracked files)
-workmux add fix/bug --with-changes
+muxix add fix/bug --with-changes
 
 # Interactively select which changes to move
-workmux add feature/partial --with-changes --patch
+muxix add feature/partial --with-changes --patch
 ```
 
 ##### AI agent prompts
 
 ```bash
 # Create a worktree with an inline prompt for AI agents
-workmux add feature/ai --prompt "Implement user authentication with OAuth"
+muxix add feature/ai --prompt "Implement user authentication with OAuth"
 
 # Override the default agent for a specific worktree
-workmux add feature/testing -a gemini
+muxix add feature/testing -a gemini
 
 # Create a worktree with a prompt from a file
-workmux add feature/refactor --prompt-file task-description.md
+muxix add feature/refactor --prompt-file task-description.md
 
 # Open your editor to write a prompt interactively
-workmux add feature/new-api --prompt-editor
+muxix add feature/new-api --prompt-editor
 
 # Write prompt file only (for editors with embedded agents like neovim)
-workmux add feature/task -P task.md --prompt-file-only
+muxix add feature/task -P task.md --prompt-file-only
 ```
 
 ##### Skipping setup steps
 
 ```bash
 # Skip expensive setup for documentation-only changes
-workmux add docs-update --no-hooks --no-file-ops --no-pane-cmds
+muxix add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
-workmux add quick-fix --no-file-ops
+muxix add quick-fix --no-file-ops
 ```
 
 ##### Scripting with --wait
 
 ```bash
 # Block until the agent completes and closes the window
-workmux add feature/api --wait -p "Implement the REST API, then run: workmux remove --keep-branch"
+muxix add feature/api --wait -p "Implement the REST API, then run: muxix remove --keep-branch"
 
 # Use in a script to run sequential agent tasks
 for task in task1.md task2.md task3.md; do
-  workmux add "task-$(basename $task .md)" --wait -P "$task"
+  muxix add "task-$(basename $task .md)" --wait -P "$task"
 done
 ```
 
 #### AI agent integration
 
 When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`,
-workmux automatically injects the prompt into panes running the configured agent
+muxix automatically injects the prompt into panes running the configured agent
 command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`,
 `pi`, or whatever you've set via the `agent` config or `--agent` flag) without
-requiring any `.workmux.yaml` changes:
+requiring any `.muxix.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started
   with the given prompt.
-- You can keep your `.workmux.yaml` pane configuration simple (e.g.,
-  `panes: [{ command: "<agent>" }]`) and let workmux handle prompt injection at
+- You can keep your `.muxix.yaml` pane configuration simple (e.g.,
+  `panes: [{ command: "<agent>" }]`) and let muxix handle prompt injection at
   runtime.
 
 This means you can launch AI agents with task-specific prompts without modifying
 your project configuration for each task.
 
 If your editor has an embedded agent (e.g., neovim with an agent plugin), use
-`--prompt-file-only` to write the prompt to `.workmux/PROMPT-<branch>.md`
+`--prompt-file-only` to write the prompt to `.muxix/PROMPT-<branch>.md`
 without requiring an agent pane. Your editor can then detect and consume the
 file on startup. This can also be set permanently in config with
 `prompt_file_only: true`.
@@ -769,22 +807,22 @@ LLM. The tool used depends on your configuration:
 
 ```bash
 # Opens editor for prompt, generates branch name
-workmux add -A
+muxix add -A
 
 # With inline prompt
-workmux add -A -p "Add OAuth authentication"
+muxix add -A -p "Add OAuth authentication"
 
 # With prompt file
-workmux add -A -P task-spec.md
+muxix add -A -P task-spec.md
 ```
 
 ##### Requirements
 
-When `agent` is configured (e.g., `agent: claude`), workmux automatically uses
+When `agent` is configured (e.g., `agent: claude`), muxix automatically uses
 that agent's CLI for branch naming. No additional setup is required beyond
 having the agent installed.
 
-If no agent is configured and no `auto_name.command` is set, workmux uses the
+If no agent is configured and no `auto_name.command` is set, muxix uses the
 `llm` CLI tool:
 
 ```bash
@@ -819,7 +857,7 @@ To override back to `llm` when an agent is configured, set
 
 ##### Configuration
 
-Optionally configure auto-name behavior in `.workmux.yaml`:
+Optionally configure auto-name behavior in `.muxix.yaml`:
 
 ```yaml
 auto_name:
@@ -870,7 +908,7 @@ Recommended models for fast, cheap branch name generation (with `llm`):
 
 #### Parallel workflows & multi-worktree generation
 
-workmux can generate multiple worktrees from a single `add` command, which is
+muxix can generate multiple worktrees from a single `add` command, which is
 ideal for running parallel experiments or delegating tasks to multiple AI
 agents. This is controlled by four mutually exclusive modes:
 
@@ -903,10 +941,10 @@ escaped.
   - Default:
     `{{ base_name }}{% if agent %}-{{ agent | slugify }}{% endif %}{% for key, value in foreach_vars %}-{{ value | slugify }}{% endfor %}{% if num %}-{{ num }}{% endif %}`
 - `--max-concurrent <number>`: Limits how many worktrees run simultaneously.
-  When set, workmux creates up to `<number>` worktrees, then waits for any
+  When set, muxix creates up to `<number>` worktrees, then waits for any
   window to close before starting the next. Requires agents to close windows
   when done (e.g., via prompt instruction to run
-  `workmux remove --keep-branch`).
+  `muxix remove --keep-branch`).
 
 ##### Prompt templating
 
@@ -940,7 +978,7 @@ data persistence.
 ```
 
 ```bash
-workmux add mobile-app --prompt-file mobile-task.md
+muxix add mobile-app --prompt-file mobile-task.md
 # Generates worktrees: mobile-app-ios-swift, mobile-app-android-kotlin
 ```
 
@@ -956,7 +994,7 @@ Implement the dashboard refactor using your preferred approach.
 ```
 
 ```bash
-workmux add refactor --prompt-file agent-task.md
+muxix add refactor --prompt-file agent-task.md
 # Generates worktrees: refactor-claude, refactor-gemini
 ```
 
@@ -971,24 +1009,24 @@ workmux add refactor --prompt-file agent-task.md
 
 ##### Stdin input
 
-You can pipe input lines to `workmux add` to create multiple worktrees. Each
+You can pipe input lines to `muxix add` to create multiple worktrees. Each
 line becomes available as the `{{ input }}` template variable in your prompt.
 This is useful for batch-processing tasks from external sources.
 
 **Plain text:** Each line becomes `{{ input }}`
 
 ```bash
-echo -e "api\nauth\ndatabase" | workmux add refactor -P task.md
+echo -e "api\nauth\ndatabase" | muxix add refactor -P task.md
 # {{ input }} = "api", "auth", "database"
 ```
 
 **JSON lines:** Each key becomes a template variable
 
 ```bash
-gh repo list --json url,name --jq -c '.[]' | workmux add analyze \
+gh repo list --json url,name --jq -c '.[]' | muxix add analyze \
   --branch-template '{{ base_name }}-{{ name }}' \
   -P prompt.md
-# Line: {"url":"https://github.com/raine/workmux","name":"workmux"}
+# Line: {"url":"https://github.com/lcensies/muxix","name":"muxix"}
 # Variables: {{ url }}, {{ name }}, {{ input }} (raw JSON line)
 ```
 
@@ -1008,19 +1046,19 @@ while keeping the full URL available in your prompt.
 
 ```bash
 # Create one worktree for claude and one for gemini with a focused prompt
-workmux add my-feature -a claude -a gemini -p "Implement the new search API integration"
+muxix add my-feature -a claude -a gemini -p "Implement the new search API integration"
 # Generates worktrees: my-feature-claude, my-feature-gemini
 
 # Create 2 instances of the default agent
-workmux add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
+muxix add my-feature -n 2 -p "Implement task #{{ num }} in TASKS.md"
 # Generates worktrees: my-feature-1, my-feature-2
 
 # Create worktrees from a variable matrix
-workmux add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platform }}"
+muxix add my-feature --foreach "platform:iOS,Android" -p "Build for {{ platform }}"
 # Generates worktrees: my-feature-ios, my-feature-android
 
 # Create agent-specific worktrees via --foreach
-workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
+muxix add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboard refactor"
 # Generates worktrees: my-feature-claude, my-feature-gemini
 
 # Use frontmatter in a prompt file for cleaner syntax
@@ -1031,12 +1069,12 @@ workmux add my-feature --foreach "agent:claude,gemini" -p "Implement the dashboa
 #   task: [smoke-tests, integration-tests]
 # ---
 # Run {{ task }} against the {{ env }} environment
-workmux add testing --prompt-file task.md
+muxix add testing --prompt-file task.md
 # Generates worktrees: testing-staging-smoke-tests, testing-production-integration-tests
 
 # Pipe input from stdin to create worktrees
 # review.md contains: Review the {{ input }} module for security issues.
-echo -e "auth\npayments\napi" | workmux add review -A -P review.md
+echo -e "auth\npayments\napi" | muxix add review -A -P review.md
 # Generates worktrees with LLM-generated branch names for each module
 ```
 
@@ -1051,10 +1089,10 @@ worker pool that processes items from an external command.
 # generate-tests.md contains:
 # Read the file at {{ input }} and generate a test suite covering
 # the exported functions. Focus on happy path and edge cases.
-# When done, run: workmux remove --keep-branch
+# When done, run: muxix remove --keep-branch
 
 find src/utils -name "*.ts" ! -name "*.test.ts" | \
-  workmux add add-tests \
+  muxix add add-tests \
     --branch-template '{{ base_name }}-{{ index }}' \
     --prompt-file generate-tests.md \
     --max-concurrent 3 \
@@ -1069,7 +1107,7 @@ find src/utils -name "*.ts" ! -name "*.test.ts" | \
 
 ---
 
-### `workmux merge [branch-name]`
+### `muxix merge [branch-name]`
 
 Merges a branch into a target branch (main by default) and automatically cleans
 up all associated resources (worktree, tmux window, and local branch).
@@ -1078,7 +1116,7 @@ up all associated resources (worktree, tmux window, and local branch).
 > [!TIP]
 > **`merge` vs `remove`**: Use `merge` when you want to merge directly
 > without a pull request. If your workflow uses pull requests, use
-> [`remove`](#workmux-remove-name-alias-rm) to clean up after your PR is merged
+> [`remove`](#muxix-remove-name-alias-rm) to clean up after your PR is merged
 > on the remote.
 
 - `[branch-name]`: Optional name of the branch to merge. If omitted,
@@ -1100,7 +1138,7 @@ up all associated resources (worktree, tmux window, and local branch).
 
 #### Merge strategies
 
-By default, `workmux merge` performs a standard merge commit (configurable via
+By default, `muxix merge` performs a standard merge commit (configurable via
 `merge_strategy`). You can override the configured behavior with these mutually
 exclusive flags:
 
@@ -1114,7 +1152,7 @@ If you don't want to have merge commits in your main branch, use the `rebase`
 merge strategy, which does `--rebase` by default.
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 merge_strategy: rebase
 ```
 
@@ -1125,7 +1163,7 @@ set:
 merge_keep: true
 ```
 
-Use `workmux merge --cleanup` to clean up for a single merge when this default is
+Use `muxix merge --cleanup` to clean up for a single merge when this default is
 enabled.
 
 #### What happens
@@ -1147,7 +1185,7 @@ enabled.
 
 #### Typical workflow
 
-When you're done working in a worktree, simply run `workmux merge` from within
+When you're done working in a worktree, simply run `muxix merge` from within
 that worktree's tmux window. The command will automatically detect which branch
 you're on, merge it into main, and close the current window as part of cleanup.
 
@@ -1155,30 +1193,30 @@ you're on, merge it into main, and close the current window as part of cleanup.
 
 ```bash
 # Merge branch into main (default: merge commit)
-workmux merge user-auth
+muxix merge user-auth
 
 # Merge the current worktree you're in
 # (run this from within the worktree's tmux window)
-workmux merge
+muxix merge
 
 # Rebase onto main before merging for a linear history
-workmux merge user-auth --rebase
+muxix merge user-auth --rebase
 
 # Squash all commits into a single commit
-workmux merge user-auth --squash
+muxix merge user-auth --squash
 
 # Merge but keep the worktree/window/branch to verify before cleanup
-workmux merge user-auth --keep
+muxix merge user-auth --keep
 # ... verify the merge in main ...
-workmux remove user-auth  # clean up later when ready
+muxix remove user-auth  # clean up later when ready
 
 # Merge into a different branch (stacked PRs)
-workmux merge feature/subtask --into feature/parent
+muxix merge feature/subtask --into feature/parent
 ```
 
 ---
 
-### `workmux remove [name]...` (alias: `rm`)
+### `muxix remove [name]...` (alias: `rm`)
 
 Removes worktrees, tmux windows, and branches without merging (unless you keep
 the branches). Useful for abandoning work or cleaning up experimental branches.
@@ -1203,42 +1241,42 @@ Supports removing multiple worktrees in a single command.
 
 ```bash
 # Remove the current worktree (run from within the worktree)
-workmux remove
+muxix remove
 
 # Remove a specific worktree with confirmation if unmerged
-workmux remove experiment
+muxix remove experiment
 
 # Remove multiple worktrees at once
-workmux rm feature-a feature-b feature-c
+muxix rm feature-a feature-b feature-c
 
 # Remove multiple worktrees with force (no confirmation)
-workmux rm -f old-work stale-branch
+muxix rm -f old-work stale-branch
 
 # Use the alias
-workmux rm old-work
+muxix rm old-work
 
 # Remove worktree/window but keep the branch
-workmux remove --keep-branch experiment
+muxix remove --keep-branch experiment
 
 # Force remove without prompts
-workmux rm -f experiment
+muxix rm -f experiment
 
 # Remove worktrees whose remote branches were deleted (e.g., after PR merge)
-workmux rm --gone
+muxix rm --gone
 
 # Force remove all gone worktrees (no confirmation)
-workmux rm --gone -f
+muxix rm --gone -f
 
 # Remove all worktrees at once
-workmux rm --all
+muxix rm --all
 ```
 
 ---
 
-### `workmux rename [old-name] <new-name>`
+### `muxix rename [old-name] <new-name>`
 
 Renames a worktree's directory, its tmux window or session, and the per-worktree
-workmux metadata. Optionally also renames the underlying git branch.
+muxix metadata. Optionally also renames the underlying git branch.
 
 - `[old-name]`: Optional current worktree name. Defaults to the current worktree
   when run from inside one.
@@ -1253,13 +1291,13 @@ workmux metadata. Optionally also renames the underlying git branch.
 
 ```bash
 # Rename a worktree from inside it
-workmux rename feature-new
+muxix rename feature-new
 
 # Rename a specific worktree by name
-workmux rename feature-old feature-new
+muxix rename feature-old feature-new
 
 # Also rename the branch to match
-workmux rename feature-old feature-new --branch
+muxix rename feature-old feature-new --branch
 ```
 
 Rename is non-destructive: uncommitted changes and untracked files are
@@ -1269,7 +1307,7 @@ are made.
 
 ---
 
-### `workmux list` (alias: `ls`)
+### `muxix list` (alias: `ls`)
 
 Lists all git worktrees with their agent status, multiplexer window status, and
 merge status. Supports filtering by worktree handle or branch name.
@@ -1293,17 +1331,17 @@ merge status. Supports filtering by worktree handle or branch name.
 
 ```bash
 # List all worktrees
-workmux list
+muxix list
 
 # List with PR status
-workmux list --pr
+muxix list --pr
 
 # Output as JSON for scripting
-workmux list --json
+muxix list --json
 
 # Filter to specific worktrees
-workmux list my-feature
-workmux list feature-auth feature-api
+muxix list my-feature
+muxix list feature-auth feature-api
 ```
 
 #### Example output
@@ -1320,7 +1358,7 @@ api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 
 - AGE shows how old the worktree is (e.g., `2h`, `3d`, `1w`, `2mo`)
 - AGENT shows the current agent status (see
-  [status tracking](https://workmux.dev/guide/status-tracking/)):
+  [status tracking](https://muxix.dev/guide/status-tracking/)):
   - `🤖` = working, `💬` = waiting for input, `✅` = finished
   - Multiple agents per worktree show a count (e.g., `2🤖 1✅`)
 - `✓` in MUX column = multiplexer window exists for this worktree
@@ -1329,35 +1367,35 @@ api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 
 ---
 
-### `workmux config edit`
+### `muxix config edit`
 
-Opens the global configuration file (`~/.config/workmux/config.yaml`) in your
+Opens the global configuration file (`~/.config/muxix/config.yaml`) in your
 preferred editor. Uses `$VISUAL`, `$EDITOR`, or falls back to `vi`. Creates the
 file with commented-out defaults if it doesn't exist yet.
 
 ---
 
-### `workmux config path`
+### `muxix config path`
 
 Prints the path to the global configuration file. Useful for scripting.
 
 ---
 
-### `workmux config reference`
+### `muxix config reference`
 
 Prints the default configuration file with all options documented. Useful for
 discovering available options or piping to an AI agent for context.
 
 ---
 
-### `workmux init`
+### `muxix init`
 
-Generates `.workmux.yaml` with example configuration and `"<global>"`
+Generates `.muxix.yaml` with example configuration and `"<global>"`
 placeholder usage.
 
 ---
 
-### `workmux open [name...]`
+### `muxix open [name...]`
 
 Opens or switches to a tmux window for a pre-existing git worktree. If the
 window already exists, switches to it. If not, creates a new window with the
@@ -1404,36 +1442,36 @@ worktrees at once.
 
 ```bash
 # Open or switch to a window for an existing worktree
-workmux open user-auth
+muxix open user-auth
 
 # Force open a second window for the same worktree (creates user-auth-2)
-workmux open user-auth --new
+muxix open user-auth --new
 
 # Open a new window for the current worktree (run from within the worktree)
-workmux open --new
+muxix open --new
 
 # Open in session mode (converts from window mode if needed)
-workmux open user-auth --session
+muxix open user-auth --session
 
 # Resume the agent's last conversation
-workmux open user-auth --continue
+muxix open user-auth --continue
 
 # Resume and send a follow-up prompt
-workmux open user-auth --continue -p "Continue implementing the login flow"
+muxix open user-auth --continue -p "Continue implementing the login flow"
 
 # Open and re-run dependency installation
-workmux open user-auth --run-hooks
+muxix open user-auth --run-hooks
 
 # Open and restore configuration files
-workmux open user-auth --force-files
+muxix open user-auth --force-files
 
 # Open multiple worktrees at once
-workmux open user-auth api-refactor bugfix-login
+muxix open user-auth api-refactor bugfix-login
 ```
 
 ---
 
-### `workmux close [name]`
+### `muxix close [name]`
 
 Closes the tmux window for a worktree without removing the worktree or branch.
 This is useful when you want to temporarily close a window to reduce clutter or
@@ -1446,20 +1484,20 @@ free resources, but plan to return to the work later.
 
 ```bash
 # Close the window for a specific worktree
-workmux close user-auth
+muxix close user-auth
 
 # Close the current worktree's window (run from within the worktree)
-workmux close
+muxix close
 ```
 
-To reopen the window later, use [`workmux open`](#workmux-open-name).
+To reopen the window later, use [`muxix open`](#muxix-open-name).
 
 **Tip**: You can also use tmux's native kill-window command (default:
 `prefix + &`) to close a worktree's window with the same effect.
 
 ---
 
-### `workmux resurrect`
+### `muxix resurrect`
 
 Restores worktree windows after a tmux or computer crash. Uses persisted agent
 state files to detect which worktrees had active agents before the crash, then
@@ -1473,15 +1511,15 @@ reopens them with `--continue` to resume agent conversations.
 
 ```bash
 # See what would be restored after a crash
-workmux resurrect --dry-run
+muxix resurrect --dry-run
 
 # Restore all worktrees that had agents running
-workmux resurrect
+muxix resurrect
 ```
 
 #### How it works
 
-1. Reads agent state files from `~/.local/state/workmux/agents/`
+1. Reads agent state files from `~/.local/state/muxix/agents/`
 2. Matches each state file's working directory to a git worktree in the current
    repo
 3. Skips worktrees that are already open or no longer exist
@@ -1489,51 +1527,51 @@ workmux resurrect
 
 ---
 
-### `workmux project`
+### `muxix project`
 
-Manages the list of tracked project directories used by `workmux start`. The
-registry is a plain YAML list at `~/.config/workmux/projects.yaml`.
+Manages the list of tracked project directories used by `muxix start`. The
+registry is a plain YAML list at `~/.config/muxix/projects.yaml`.
 
 ```bash
-workmux project add ~/repos/my-app   # track a project
-workmux project list                 # list tracked projects
-workmux project rm my-app            # untrack by name or path
-workmux project open my-app          # start that project's session and focus it
+muxix project add ~/repos/my-app   # track a project
+muxix project list                 # list tracked projects
+muxix project rm my-app            # untrack by name or path
+muxix project open my-app          # start that project's session and focus it
 ```
 
-`project open <name|path>` does what `workmux start` does for a single
+`project open <name|path>` does what `muxix start` does for a single
 project (session + base layout + worktree windows, idempotent), then focuses
 the session — switching the client inside tmux, attaching from a plain shell.
 It accepts the same `-c`/`--continue` agent resume flag.
 
-As a shortcut, `workmux add <dir>` tracks the directory as a project when the
+As a shortcut, `muxix add <dir>` tracks the directory as a project when the
 argument is an existing directory containing `.git`.
 
 ---
 
-### `workmux start`
+### `muxix start`
 
 Launches every tracked project: one tmux session per project (base layout from
-`.workmux.yaml` `windows:`, `~/.config/tmuxrs/<name>.yml`, or
-`~/.config/tmuxinator/<name>.yml`), plus one window per workmux worktree.
+`.muxix.yaml` `windows:`, `~/.config/tmuxrs/<name>.yml`, or
+`~/.config/tmuxinator/<name>.yml`), plus one window per muxix worktree.
 Idempotent — existing sessions and windows are left untouched.
 
 #### Options
 
 - `-c`, `--continue`: Relaunch the last coding agent in each project/worktree,
   resuming its previous conversation where possible (same resume ladder as
-  `workmux resurrect`).
+  `muxix resurrect`).
 
 ```bash
-workmux start        # open all tracked projects
-workmux start -c     # ...and resume the last agent everywhere
+muxix start        # open all tracked projects
+muxix start -c     # ...and resume the last agent everywhere
 ```
 
-See the [Projects guide](https://workmux.raine.dev/guide/projects) for details.
+See the [Projects guide](https://muxix.dev/guide/projects) for details.
 
 ---
 
-### `workmux sync-files`
+### `muxix sync-files`
 
 Re-applies file operations (copy and symlink from `files` config) to existing
 worktrees. Useful when you add new entries to the `files` config or a symlink
@@ -1547,15 +1585,15 @@ was accidentally deleted.
 
 ```bash
 # Sync files to the current worktree
-workmux sync-files
+muxix sync-files
 
 # Sync files to all worktrees
-workmux sync-files --all
+muxix sync-files --all
 ```
 
 ---
 
-### `workmux path <name>`
+### `muxix path <name>`
 
 Prints the filesystem path of an existing worktree. Useful for scripting or
 quickly navigating to a worktree directory.
@@ -1566,19 +1604,19 @@ quickly navigating to a worktree directory.
 
 ```bash
 # Get the path of a worktree
-workmux path user-auth
+muxix path user-auth
 # Output: /Users/you/project__worktrees/user-auth
 
 # Use in scripts or with cd
-cd "$(workmux path user-auth)"
+cd "$(muxix path user-auth)"
 
 # Copy a file to a worktree
-cp config.json "$(workmux path feature-branch)/"
+cp config.json "$(muxix path feature-branch)/"
 ```
 
 ---
 
-### `workmux dashboard`
+### `muxix dashboard`
 
 Opens a TUI dashboard showing all active AI agents across all tmux sessions.
 Useful for monitoring multiple parallel agents and quickly jumping between them.
@@ -1600,7 +1638,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 > This feature requires [agent status tracking](#agent-status-tracking) to be
 > configured. Without it, no agents will appear in the dashboard.
 
-![workmux dashboard](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/dashboard.webp)
+![muxix dashboard](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/dashboard.webp)
 
 #### Keybindings
 
@@ -1729,17 +1767,17 @@ case".
 Add to your `~/.tmux.conf` for quick access:
 
 ```bash
-bind C-s display-popup -h 30 -w 100 -E "workmux dashboard"
+bind C-s display-popup -h 30 -w 100 -E "muxix dashboard"
 
 # Open directly on Worktrees tab
-bind C-w display-popup -h 30 -w 100 -E "workmux dashboard --tab worktrees"
+bind C-w display-popup -h 30 -w 100 -E "muxix dashboard --tab worktrees"
 ```
 
 Then press `prefix + Ctrl-s` to open the dashboard as a tmux popup.
 
 ---
 
-### `workmux sidebar`
+### `muxix sidebar`
 
 Toggles a live agent status sidebar on the left side of all tmux windows. Shows
 all active agents across all sessions and projects with live status updates,
@@ -1747,8 +1785,8 @@ providing an always-visible overview without taking over the full screen like
 the dashboard.
 
 ```bash
-workmux sidebar            # Toggle sidebar on/off (all sessions)
-workmux sidebar --session  # Toggle current session only, or opt out of global mode
+muxix sidebar            # Toggle sidebar on/off (all sessions)
+muxix sidebar --session  # Toggle current session only, or opt out of global mode
 ```
 
 The sidebar displays:
@@ -1765,11 +1803,11 @@ The sidebar displays:
 | `v`     | Toggle layout mode |
 | `q`     | Quit sidebar       |
 
-When the global sidebar is active, `workmux sidebar --session` hides it in the
+When the global sidebar is active, `muxix sidebar --session` hides it in the
 current tmux session only. Run the same command again to show it in that session
 again while keeping the global sidebar active elsewhere.
 
-Configure width and layout in `.workmux.yaml`:
+Configure width and layout in `.muxix.yaml`:
 
 ```yaml
 sidebar:
@@ -1780,7 +1818,7 @@ sidebar:
 #### Example tmux binding
 
 ```bash
-bind C-t run-shell "workmux sidebar"
+bind C-t run-shell "muxix sidebar"
 ```
 
 Then press `prefix + Ctrl-t` to toggle the sidebar.
@@ -1791,10 +1829,10 @@ Then press `prefix + Ctrl-t` to toggle the sidebar.
 
 ---
 
-### `workmux sandbox`
+### `muxix sandbox`
 
 Commands for managing sandbox functionality. See the
-[sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
+[sandbox guide](https://muxix.dev/guide/sandbox/) for full
 documentation.
 
 | Command               | Description                                            |
@@ -1805,11 +1843,11 @@ documentation.
 | `sandbox agent`       | Run the configured agent in a sandbox with RPC support |
 | `sandbox stop`        | Stop running Lima VMs                                  |
 | `sandbox prune`       | Delete unused Lima VMs to reclaim disk space           |
-| `sandbox install-dev` | Cross-compile and install workmux into sandboxes (dev) |
+| `sandbox install-dev` | Cross-compile and install muxix into sandboxes (dev) |
 
 ---
 
-### `workmux claude prune`
+### `muxix claude prune`
 
 Removes stale entries from Claude config (`~/.claude.json`) that point to
 deleted worktree directories. When you run Claude Code in worktrees, it stores
@@ -1833,7 +1871,7 @@ deleted, it can accumulate entries for paths that no longer exist.
 
 ```bash
 # Clean up stale Claude Code entries
-workmux claude prune
+muxix claude prune
 ```
 
 #### Example output
@@ -1847,7 +1885,7 @@ workmux claude prune
 
 ---
 
-### `workmux completions <shell>`
+### `muxix completions <shell>`
 
 Generates shell completion script for the specified shell. Completions provide
 tab-completion for commands and dynamic branch name suggestions.
@@ -1858,7 +1896,7 @@ tab-completion for commands and dynamic branch name suggestions.
 
 ```bash
 # Generate completions for zsh
-workmux completions zsh
+muxix completions zsh
 ```
 
 See the [Shell Completions](#shell-completions) section for installation
@@ -1866,7 +1904,7 @@ instructions.
 
 ---
 
-### `workmux docs`
+### `muxix docs`
 
 Displays this README with terminal formatting. Useful for quick reference
 without leaving the terminal.
@@ -1876,22 +1914,22 @@ When piped (e.g., to an LLM), outputs raw markdown for clean context.
 
 #### Using with AI agents
 
-You can ask an agent to read the docs and configure workmux for you:
+You can ask an agent to read the docs and configure muxix for you:
 
 ```
-> run `workmux docs` and configure workmux so that on the left pane
+> run `muxix docs` and configure muxix so that on the left pane
   there is claude as agent, and on the right side neovim and empty
   shell on top of each other
 
-⏺ Bash(workmux docs)
+⏺ Bash(muxix docs)
   ⎿  <p align="center">
        <picture>
      … +923 lines
 
-⏺ Write(.workmux.yaml)
-  ⎿  Wrote 9 lines to .workmux.yaml
+⏺ Write(.muxix.yaml)
+  ⎿  Wrote 9 lines to .muxix.yaml
 
-⏺ Created .workmux.yaml with the layout:
+⏺ Created .muxix.yaml with the layout:
   - Left: claude agent (focused)
   - Right top: neovim
   - Right bottom: empty shell
@@ -1899,10 +1937,10 @@ You can ask an agent to read the docs and configure workmux for you:
 
 ## Agent status tracking
 
-Workmux can display the status of the agent in your tmux window list, giving you
+Muxix can display the status of the agent in your tmux window list, giving you
 at-a-glance visibility into what the agent in each window doing.
 
-![tmux status showing agent icons](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/status.webp)
+![tmux status showing agent icons](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/status.webp)
 
 #### Key
 
@@ -1931,21 +1969,21 @@ at-a-glance visibility into what the agent in each window doing.
 
 ### Setup
 
-Run `workmux setup` to automatically detect your agent CLIs, install status
+Run `muxix setup` to automatically detect your agent CLIs, install status
 tracking hooks, and install skills:
 
 ```bash
-workmux setup
+muxix setup
 ```
 
-You can also run specific parts: `workmux setup --hooks` or
-`workmux setup --skills`. For Claude Code, `CLAUDE_CONFIG_DIR` is respected for
+You can also run specific parts: `muxix setup --hooks` or
+`muxix setup --skills`. For Claude Code, `CLAUDE_CONFIG_DIR` is respected for
 both hook and skill installation.
 
-Workmux will also prompt you on first run if it detects an agent without status
+Muxix will also prompt you on first run if it detects an agent without status
 tracking or skills configured.
 
-Workmux automatically modifies your tmux `window-status-format` to display the
+Muxix automatically modifies your tmux `window-status-format` to display the
 status icons. This happens once per session and only affects the current tmux
 session (not your global config).
 
@@ -1953,11 +1991,11 @@ session (not your global config).
 
 If you prefer manual setup:
 
-**Claude Code**: install the workmux status plugin:
+**Claude Code**: install the muxix status plugin:
 
 ```
-claude plugin marketplace add raine/workmux
-claude plugin install workmux-status
+claude plugin marketplace add lcensies/muxix
+claude plugin install muxix-status
 ```
 
 Or manually add the hooks to `~/.claude/settings.json`. See
@@ -1967,22 +2005,22 @@ configuration.
 **Copilot CLI**: copy the hooks to your repository:
 
 ```bash
-mkdir -p .github/hooks/workmux-status
-curl -o .github/hooks/workmux-status/hooks.json \
-  https://raw.githubusercontent.com/raine/workmux/main/.github/hooks/workmux-status/hooks.json
+mkdir -p .github/hooks/muxix-status
+curl -o .github/hooks/muxix-status/hooks.json \
+  https://raw.githubusercontent.com/lcensies/muxix/main/.github/hooks/muxix-status/hooks.json
 ```
 
 Note: Copilot hooks are per-repository. The waiting state is not supported due
 to limitations in the Copilot CLI hooks implementation.
 
-**OpenCode**: download the workmux status plugin:
+**OpenCode**: download the muxix status plugin:
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
 curl -o ~/.config/opencode/package.json \
-  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/package.json
-curl -o ~/.config/opencode/plugins/workmux-status.ts \
-  https://raw.githubusercontent.com/raine/workmux/main/resources/opencode/plugins/workmux-status.ts
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/package.json
+curl -o ~/.config/opencode/plugins/muxix-status.ts \
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/plugins/muxix-status.ts
 ```
 
 Restart OpenCode for the plugin to take effect.
@@ -1992,7 +2030,7 @@ Restart OpenCode for the plugin to take effect.
 You can customize the icons in your config:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 status_icons:
   working: '🔄'
   waiting: '⏸️'
@@ -2003,19 +2041,19 @@ If you prefer to manage the tmux format yourself, disable auto-modification and
 add the status variable to your `~/.tmux.conf`:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 status_format: false
 ```
 
 ```bash
 # ~/.tmux.conf
-set -g window-status-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
-set -g window-status-current-format '#I:#W#{?@workmux_status, #{@workmux_status},}#{?window_flags,#{window_flags}, }'
+set -g window-status-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
+set -g window-status-current-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
 ```
 
 ### Jump to completed or waiting agents
 
-Use `workmux last-done` to quickly switch to the agent that most recently
+Use `muxix last-done` to quickly switch to the agent that most recently
 finished its task or is waiting for user input. Repeated invocations cycle
 through all completed and waiting agents in reverse chronological order.
 
@@ -2023,7 +2061,7 @@ Add a tmux keybinding for quick access:
 
 ```bash
 # ~/.tmux.conf
-bind-key L run-shell "workmux last-done"
+bind-key L run-shell "muxix last-done"
 ```
 
 Then press `prefix + L` to jump to the last completed or waiting agent, press
@@ -2031,7 +2069,7 @@ again to cycle to the next oldest, and so on.
 
 ### Toggle between agents
 
-Use `workmux last-agent` to toggle between your current agent and the last one
+Use `muxix last-agent` to toggle between your current agent and the last one
 you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it
 remembers which agent you came from and switches back to it. Pressing it again
 returns you to where you were.
@@ -2042,14 +2080,14 @@ Add a tmux keybinding for quick access:
 
 ```bash
 # ~/.tmux.conf
-bind Tab run-shell "workmux last-agent"
+bind Tab run-shell "muxix last-agent"
 ```
 
 Then press `prefix + Tab` to toggle between your two most recent agents.
 
 ## Sandbox
 
-workmux can run agents inside containers (Docker/Podman/Apple Container) or Lima
+muxix can run agents inside containers (Docker/Podman/Apple Container) or Lima
 VMs, isolating them from your host. Agents are restricted to the project
 worktree; sensitive files like SSH keys, AWS credentials, and other secrets are
 not accessible. This lets you run agents with `--dangerously-skip-permissions`
@@ -2074,7 +2112,7 @@ built-in Nix/Devbox toolchain support.
 ### Quick start
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 sandbox:
   enabled: true
   # backend: lima  # uncomment for Lima VMs (default: container)
@@ -2097,12 +2135,12 @@ Both backends support:
 - **Network restrictions** (container only): Block outbound connections except
   to approved domains
 
-See the [sandbox guide](https://workmux.raine.dev/guide/sandbox/) for full
+See the [sandbox guide](https://muxix.dev/guide/sandbox/) for full
 setup, configuration, and security details.
 
 ## Session mode
 
-By default, workmux creates tmux **windows** within your current session. With
+By default, muxix creates tmux **windows** within your current session. With
 session mode, each worktree gets its own **tmux session** instead. This allows
 each worktree to have multiple windows.
 
@@ -2111,14 +2149,14 @@ each worktree to have multiple windows.
 Add to your config:
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 mode: session
 ```
 
 Or use the `--session` flag:
 
 ```bash
-workmux add feature-branch --session
+muxix add feature-branch --session
 ```
 
 ### How it works
@@ -2126,7 +2164,7 @@ workmux add feature-branch --session
 - **Persistence**: The mode is stored per-worktree. If you create a worktree
   with `--session`, subsequent `open`/`close`/`remove` commands automatically
   use session mode for that worktree.
-- **Navigation**: After `merge` or `remove`, workmux switches you back to the
+- **Navigation**: After `merge` or `remove`, muxix switches you back to the
   previous session.
 
 ### Multiple windows per session
@@ -2174,27 +2212,27 @@ Here's a complete workflow:
 
 ```bash
 # Start a new feature
-workmux add user-auth
+muxix add user-auth
 
 # Work on your feature...
 # (tmux automatically sets up your configured panes and environment)
 
 # When ready, merge and clean up
-workmux merge user-auth
+muxix merge user-auth
 
 # Start another feature
-workmux add api-endpoint
+muxix add api-endpoint
 
 # List all active worktrees
-workmux list
+muxix list
 ```
 
 ## Before and after
 
-workmux turns a multi-step manual workflow into simple commands, making parallel
+muxix turns a multi-step manual workflow into simple commands, making parallel
 development workflows practical.
 
-### Without workmux
+### Without muxix
 
 ```bash
 # 1. Manually create the worktree and environment
@@ -2220,16 +2258,16 @@ git worktree remove ../worktrees/user-auth
 git branch -d user-auth
 ```
 
-### With workmux
+### With muxix
 
 ```bash
 # Create the environment
-workmux add user-auth
+muxix add user-auth
 
 # ... work on the feature ...
 
 # Merge and clean up
-workmux merge
+muxix merge
 ```
 
 ### The parallel AI workflow
@@ -2238,15 +2276,15 @@ Run multiple AI agents simultaneously, each in its own worktree.
 
 ```bash
 # Spin up two agents working on different tasks
-workmux add refactor-user-model -p "Refactor the User model to use composition"
-workmux add add-search-endpoint -p "Add a /search endpoint with pagination"
+muxix add refactor-user-model -p "Refactor the User model to use composition"
+muxix add add-search-endpoint -p "Add a /search endpoint with pagination"
 
 # Each agent works in isolation. Check progress via tmux windows or the dashboard
-workmux dashboard
+muxix dashboard
 
 # Merge completed work back to main
-workmux merge refactor-user-model
-workmux merge add-search-endpoint
+muxix merge refactor-user-model
+muxix merge add-search-endpoint
 ```
 
 <!-- prettier-ignore -->
@@ -2274,15 +2312,15 @@ setup:
   on different tasks.
 
 In a standard Git setup, switching branches disrupts your flow by requiring a
-clean working tree. Worktrees remove this friction. `workmux` automates the
+clean working tree. Worktrees remove this friction. `muxix` automates the
 entire process and pairs each worktree with a dedicated tmux window, creating
 fully isolated development environments. See
-[Before and after](#before-and-after) for how workmux streamlines this workflow.
+[Before and after](#before-and-after) for how muxix streamlines this workflow.
 
 ## Git worktree caveats
 
 While powerful, git worktrees have nuances that are important to understand.
-workmux is designed to automate solutions to these, but awareness of the
+muxix is designed to automate solutions to these, but awareness of the
 underlying mechanics helps.
 
 - [Gitignored files require configuration](#gitignored-files-require-configuration)
@@ -2301,11 +2339,11 @@ configuration) will not exist in the new worktree by default. Your application
 will be broken in the new worktree until you manually create or link these
 necessary files.
 
-This is a primary feature of workmux. Use the `files` section in your
-`.workmux.yaml` to automatically copy or symlink these files on creation:
+This is a primary feature of muxix. Use the `files` section in your
+`.muxix.yaml` to automatically copy or symlink these files on creation:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 files:
   copy:
     - .env # Copy environment variables
@@ -2349,8 +2387,8 @@ between worktrees. However, this breaks as soon as branches diverge in their
 dependencies, so it's generally safer to run a fresh install in each worktree.
 
 Note: In large monorepos, cleaning up `node_modules` during worktree removal can
-take significant time. workmux has a
-[special cleanup mechanism](https://github.com/raine/workmux/blob/main/src/scripts/cleanup_node_modules.sh)
+take significant time. muxix has a
+[special cleanup mechanism](https://github.com/lcensies/muxix/blob/main/src/scripts/cleanup_node_modules.sh)
 that moves `node_modules` to a temporary location and deletes it in the
 background, making the `remove` command return almost instantly.
 
@@ -2428,10 +2466,10 @@ EOF
 echo "Created .env.local with ports: API=$api_port, VITE=$vite_port"
 ```
 
-Configure workmux to copy `.env` and generate `.env.local`:
+Configure muxix to copy `.env` and generate `.env.local`:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 files:
   copy:
     - .env # Copy secrets (DATABASE_URL, API keys, etc.)
@@ -2456,7 +2494,7 @@ Each worktree now gets unique ports derived from its name, allowing multiple
 instances to run simultaneously without conflicts. The `.env` file stays
 untouched, and `.env.local` is gitignored.
 
-See the [Monorepos guide](https://workmux.raine.dev/guide/monorepos) for
+See the [Monorepos guide](https://muxix.dev/guide/monorepos) for
 alternative approaches using direnv.
 
 ### Symlinks and `.gitignore` trailing slashes
@@ -2488,14 +2526,14 @@ that are safe to share with your team, add them to the project's main
 
 ### Nerdfont icons
 
-On first run, workmux prompts you to check if a git branch icon displays
+On first run, muxix prompts you to check if a git branch icon displays
 correctly. If you have a [Nerd Font](https://www.nerdfonts.com/) installed,
 answer yes to enable nerdfont icons throughout the interface, including the tmux
 window prefix.
 
-![nerdfont window prefix](https://raw.githubusercontent.com/raine/workmux/refs/heads/main/meta/nerdfont-prefix.webp)
+![nerdfont window prefix](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/nerdfont-prefix.webp)
 
-To change the setting later, edit `~/.config/workmux/config.yaml`:
+To change the setting later, edit `~/.config/muxix/config.yaml`:
 
 ```yaml
 nerdfont: true # or false for unicode fallbacks
@@ -2504,10 +2542,10 @@ nerdfont: true # or false for unicode fallbacks
 ### Using direnv
 
 If your project uses [direnv](https://direnv.net/) for environment management,
-you can configure workmux to automatically set it up in new worktrees:
+you can configure muxix to automatically set it up in new worktrees:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 post_create:
   - direnv allow
 
@@ -2531,8 +2569,8 @@ files:
     - .claude/settings.local.json
 ```
 
-Add this to your global config (`~/.config/workmux/config.yaml`) or project's
-`.workmux.yaml`. Since this file contains user-specific permissions, also add it
+Add this to your global config (`~/.config/muxix/config.yaml`) or project's
+`.muxix.yaml`. Since this file contains user-specific permissions, also add it
 to `.gitignore`:
 
 ```
@@ -2542,22 +2580,22 @@ to `.gitignore`:
 **Skip permission prompts (yolo mode)**
 
 To skip prompts entirely, define a
-[named agent](https://workmux.raine.dev/guide/agents#named-agents) that shadows
+[named agent](https://muxix.dev/guide/agents#named-agents) that shadows
 `claude`:
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 agents:
   claude: 'claude --dangerously-skip-permissions'
 ```
 
-This makes all workmux-created worktrees use the flag automatically, without
-affecting `claude` outside of workmux. You can also use a separate name and
+This makes all muxix-created worktrees use the flag automatically, without
+affecting `claude` outside of muxix. You can also use a separate name and
 reference it per-project with `agent: cc-yolo`.
 
 ### Delegating tasks with `/worktree`
 
-The `/worktree` [skill](https://workmux.raine.dev/guide/skills) lets you
+The `/worktree` [skill](https://muxix.dev/guide/skills) lets you
 delegate tasks to parallel worktree agents directly from your conversation. A
 main agent on the main branch can act as a coordinator: planning work and
 spinning up worktree agents for each task.
@@ -2574,7 +2612,7 @@ detailed walkthrough of the workflow.
 > /worktree Add dark mode, Implement caching  # multiple tasks
 ```
 
-See the [Skills guide](https://workmux.raine.dev/guide/skills) for more skills
+See the [Skills guide](https://muxix.dev/guide/skills) for more skills
 including `/merge`, `/rebase`, `/coordinator`, and `/open-pr`.
 
 ## Shell completions
@@ -2585,19 +2623,19 @@ your shell's configuration file.
 For **bash**, add to your `.bashrc`:
 
 ```bash
-eval "$(workmux completions bash)"
+eval "$(muxix completions bash)"
 ```
 
 For **zsh**, add to your `.zshrc`:
 
 ```bash
-eval "$(workmux completions zsh)"
+eval "$(muxix completions zsh)"
 ```
 
 For **fish**, add to your `config.fish`:
 
 ```bash
-workmux completions fish | source
+muxix completions fish | source
 ```
 
 ## Requirements
@@ -2608,34 +2646,34 @@ workmux completions fish | source
 
 ### Alternative backends
 
-While tmux is the primary and recommended backend, workmux also supports
+While tmux is the primary and recommended backend, muxix also supports
 alternative terminal multiplexers:
 
-- **[WezTerm](https://workmux.raine.dev/guide/wezterm)** (experimental) - For
+- **[WezTerm](https://muxix.dev/guide/wezterm)** (experimental) - For
   users who prefer WezTerm's features. Thanks to
   [@JeremyBYU](https://github.com/JeremyBYU) for contributing this backend.
-- **[kitty](https://workmux.raine.dev/guide/kitty)** (experimental) - For users
+- **[kitty](https://muxix.dev/guide/kitty)** (experimental) - For users
   who prefer kitty terminal. Requires `allow_remote_control` and `listen_on`
   configuration.
-- **[Zellij](https://workmux.raine.dev/guide/zellij)** (experimental) - For
+- **[Zellij](https://muxix.dev/guide/zellij)** (experimental) - For
   users who prefer Zellij. Detected automatically via `$ZELLIJ`.
 
-workmux auto-detects the backend from environment variables (`$TMUX`,
+muxix auto-detects the backend from environment variables (`$TMUX`,
 `$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`). Session-specific variables
 are checked first, so running tmux inside kitty correctly selects the tmux
-backend. Set `$WORKMUX_BACKEND` to override detection.
+backend. Set `$MUXIX_BACKEND` to override detection.
 
 ## Inspiration and related tools
 
-workmux is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
+muxix is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
 worktree management tool. While wtp streamlines worktree creation and setup,
-workmux takes this further by tightly coupling worktrees with tmux window
+muxix takes this further by tightly coupling worktrees with tmux window
 management.
 
 For managing multiple AI agents in parallel, tools like
 [claude-squad](https://github.com/smtg-ai/claude-squad) and
 [vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
-interfaces, like a TUI or kanban board. In contrast, workmux adheres to its
+interfaces, like a TUI or kanban board. In contrast, muxix adheres to its
 philosophy that **tmux is the interface**, providing a native tmux experience
 for managing parallel workflows without requiring a separate interface to learn.
 

@@ -1,6 +1,6 @@
-//! `workmux bootstrap` — declare what an agent harness should contain.
+//! `muxix bootstrap` — declare what an agent harness should contain.
 //!
-//! Every entry lives in the `bootstrap:` block of a config file; `workmux setup`
+//! Every entry lives in the `bootstrap:` block of a config file; `muxix setup`
 //! installs it and records it in the managed manifest, and removing the
 //! declaration is what uninstalls it. Installing through an agent's own
 //! installer instead leaves the item undeclared and unmanaged, which is the
@@ -48,7 +48,7 @@ pub enum BootstrapCommand {
         #[arg(long, value_name = "NAME")]
         agent: Option<String>,
     },
-    /// Apply the declared config with a full non-interactive `workmux setup`
+    /// Apply the declared config with a full non-interactive `muxix setup`
     Sync,
 }
 
@@ -80,10 +80,10 @@ pub struct Target {
     /// Write to the global config
     #[arg(long, conflicts_with = "project")]
     pub global: bool,
-    /// Write to the project `.workmux.yaml`
+    /// Write to the project `.muxix.yaml`
     #[arg(long)]
     pub project: bool,
-    /// Declare only; do not run `workmux setup`
+    /// Declare only; do not run `muxix setup`
     #[arg(long = "no-sync")]
     pub no_sync: bool,
 }
@@ -143,7 +143,7 @@ fn target_file(t: &Target) -> Result<PathBuf> {
         let project = crate::config::find_project_config(&cwd).ok().flatten();
         match (project, t.project) {
             (Some(loc), _) => loc.config_path,
-            (None, true) => bail!("No project .workmux.yaml found — run inside a project or use --global"),
+            (None, true) => bail!("No project .muxix.yaml found — run inside a project or use --global"),
             (None, false) => global_path()?,
         }
     };
@@ -152,7 +152,7 @@ fn target_file(t: &Target) -> Result<PathBuf> {
     if std::fs::metadata(&file).is_ok_and(|m| m.permissions().readonly()) {
         bail!(
             "{} is read-only (managed by Nix/Home Manager?) — declare the entry in its source \
-             (e.g. `programs.workmux` in your nix config) and rebuild, or use --project",
+             (e.g. `programs.muxix` in your nix config) and rebuild, or use --project",
             file.display()
         );
     }
@@ -299,7 +299,7 @@ fn run_action(kind: Kind, action: Action) -> Result<()> {
     );
 
     if target.no_sync {
-        println!("not applied — run `workmux bootstrap sync` (or `workmux setup`) to apply");
+        println!("not applied — run `muxix bootstrap sync` (or `muxix setup`) to apply");
         return Ok(());
     }
     sync(vec![kind.section()])
@@ -318,11 +318,11 @@ fn sync(only: Vec<Section>) -> Result<()> {
     match crate::command::setup::run_automated(&opts) {
         Ok(0) => Ok(()),
         Ok(code) => {
-            eprintln!("workmux setup exited with {code}; the declaration stands");
+            eprintln!("muxix setup exited with {code}; the declaration stands");
             Ok(())
         }
         Err(e) => {
-            eprintln!("workmux setup failed: {e:#}; the declaration stands");
+            eprintln!("muxix setup failed: {e:#}; the declaration stands");
             Ok(())
         }
     }

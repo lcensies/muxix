@@ -29,7 +29,7 @@ pub fn materialize_clipboard_png(worktree: &Path) -> Result<Option<PathBuf>> {
         );
     }
 
-    let tmp_dir = worktree.join(".workmux/tmp");
+    let tmp_dir = worktree.join(".muxix/tmp");
     std::fs::create_dir_all(&tmp_dir)
         .with_context(|| format!("failed to create {}", tmp_dir.display()))?;
 
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn test_materialize_creates_gitignore() {
         let tmp = tempfile::tempdir().unwrap();
-        let tmp_dir = tmp.path().join(".workmux/tmp");
+        let tmp_dir = tmp.path().join(".muxix/tmp");
         std::fs::create_dir_all(&tmp_dir).unwrap();
         let gitignore = tmp_dir.join(".gitignore");
         assert!(!gitignore.exists());

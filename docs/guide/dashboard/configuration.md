@@ -4,12 +4,12 @@ description: Customize dashboard commands and layout
 
 # Configuration
 
-The dashboard can be customized in your `.workmux.yaml`:
+The dashboard can be customized in your `.muxix.yaml`:
 
 ```yaml
 dashboard:
   commit: "Commit staged changes with a descriptive message"
-  merge: "!workmux merge"
+  merge: "!muxix merge"
   preview_size: 60
 ```
 
@@ -20,7 +20,7 @@ The `commit` and `merge` values are text sent to the agent's pane. Use the `!` p
 | Option         | Default value                                      | Description                               |
 | -------------- | -------------------------------------------------- | ----------------------------------------- |
 | `commit`       | `Commit staged changes with a descriptive message` | Natural language prompt                   |
-| `merge`        | `!workmux merge`                                   | Shell command via agent                   |
+| `merge`        | `!muxix merge`                                   | Shell command via agent                   |
 | `preview_size` | `60`                                               | Preview pane height as percentage (10-90) |
 
 ## Preview size
@@ -40,12 +40,12 @@ dashboard:
 
 # Custom shell commands
 dashboard:
-  merge: "!workmux merge --rebase --notification"
+  merge: "!muxix merge --rebase --notification"
 
 # Natural language prompts
 dashboard:
   commit: "Create a commit with a conventional commit message"
-  merge: "Rebase onto main and run workmux merge"
+  merge: "Rebase onto main and run muxix merge"
 ```
 
 ## Using skills

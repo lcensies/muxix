@@ -1,4 +1,4 @@
-//! Per-section execution for `workmux setup`.
+//! Per-section execution for `muxix setup`.
 //!
 //! Every section runs through one shape: given the resolved config and a
 //! `dry_run` flag, produce [`ItemResult`]s describing what happened or would
@@ -922,7 +922,7 @@ pub fn run_all(
 }
 
 /// [`run_all`], with pruning of no-longer-declared features switchable off
-/// (`workmux setup --no-prune`).
+/// (`muxix setup --no-prune`).
 pub fn run_all_with_prune(
     selected: &[Section],
     checks: &[setup::AgentCheck],
@@ -1005,7 +1005,7 @@ pub fn run_all_with_prune(
     report
 }
 
-/// Remove harness features workmux installed that the config no longer
+/// Remove harness features muxix installed that the config no longer
 /// declares, then persist what this run left on the machine.
 ///
 /// Runs last, after every section has reported: the report *is* the desired

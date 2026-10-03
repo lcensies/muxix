@@ -4,7 +4,7 @@
 //! behavior as pi, but with its own command (`omp`) and config directory at
 //! `~/.omp/agent/`. Override with the `OMP_CODING_AGENT_DIR` env var.
 //!
-//! Installs the same workmux extension as pi by writing `workmux-status.ts`
+//! Installs the same muxix extension as pi by writing `muxix-status.ts`
 //! to the extensions directory.
 
 use anyhow::{Context, Result};
@@ -16,7 +16,7 @@ use super::pi::PiInjectionMethod;
 use super::StatusCheck;
 
 /// The extension source, shared with pi (omp is pi-compatible).
-const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/workmux-status.ts");
+const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
 
 fn omp_agent_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("OMP_CODING_AGENT_DIR") {
@@ -26,7 +26,7 @@ fn omp_agent_dir() -> Option<PathBuf> {
 }
 
 fn extension_path() -> Option<PathBuf> {
-    omp_agent_dir().map(|d| d.join("extensions/workmux-status.ts"))
+    omp_agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
 }
 
 /// omp's own settings file (pi-shaped), honoring `OMP_CODING_AGENT_DIR`.
@@ -56,7 +56,7 @@ impl Bootstrapper {
 
     /// Path where the `BeforeAgentStart` method writes the inject content.
     fn pre_inject_path(&self) -> PathBuf {
-        self.agent_dir.join("workmux-pre-inject.md")
+        self.agent_dir.join("muxix-pre-inject.md")
     }
 }
 
@@ -93,9 +93,9 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux extension is installed for omp, and current.
+/// Check if muxix extension is installed for omp, and current.
 ///
-/// Content compare, not existence: an upgraded workmux must overwrite an older
+/// Content compare, not existence: an upgraded muxix must overwrite an older
 /// copy of the extension (see `pi::check`).
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = extension_path() else {
@@ -106,7 +106,7 @@ pub fn check() -> Result<StatusCheck> {
         Err(_) => Ok(StatusCheck::NotInstalled),
         Ok(body) if body == EXTENSION_SOURCE => Ok(StatusCheck::Installed),
         Ok(_) => Ok(StatusCheck::Stale {
-            missing: vec!["workmux-status.ts differs from this workmux build".into()],
+            missing: vec!["muxix-status.ts differs from this muxix build".into()],
         }),
     }
 }
@@ -153,7 +153,7 @@ pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
 /// Install an omp extension from a URL using `omp install`.
 ///
 /// `omp install` registers the extension in `settings.json` so it loads on
-/// every omp startup, including bare launches not managed by workmux.
+/// every omp startup, including bare launches not managed by muxix.
 pub fn install_plugin_from_url(url: &str) -> Result<String> {
     let plugin_name = url
         .trim_end_matches('/')
@@ -187,7 +187,7 @@ pub fn remove_plugin(spec: &str) -> Result<String> {
     Ok(format!("Removed omp extension: {}", spec))
 }
 
-/// Install workmux extension for omp.
+/// Install muxix extension for omp.
 /// Returns a description of what was done.
 pub fn install() -> Result<String> {
     let path =

@@ -1,10 +1,10 @@
-# Development shell for workmux.
+# Development shell for muxix.
 #
 # Usage:
 #   nix-shell          # enter a dev shell with the Rust toolchain + protobuf
 #   cargo build        # build locally (proto files come from the wng-proto submodule)
 #
-# This is intended for *development* only. It does not package workmux; it just
+# This is intended for *development* only. It does not package muxix; it just
 # provides the toolchain needed to build it from a checked-out working tree.
 #
 # Make sure the proto submodule is checked out first:

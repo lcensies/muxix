@@ -9,7 +9,7 @@ top edge of every tmux window. Unlike the dashboard, which is a full-screen TUI
 you open on demand, the sidebar stays on screen while you work.
 
 <div style="display: flex; justify-content: center; margin: 1.5rem 0;">
-  <img src="/sidebar.webp" alt="workmux sidebar" style="border-radius: 4px;">
+  <img src="/sidebar.webp" alt="muxix sidebar" style="border-radius: 4px;">
 </div>
 
 ## Setup
@@ -22,22 +22,22 @@ configured and tmux as the backend.
 Toggle the sidebar with:
 
 ```bash
-workmux sidebar            # All sessions (default)
-workmux sidebar --session  # Current session only, or opt out of global mode
+muxix sidebar            # All sessions (default)
+muxix sidebar --session  # Current session only, or opt out of global mode
 ```
 
 By default, the sidebar appears in all existing and newly created tmux windows
 across all sessions. Use `--session` to scope it to the current session only,
 leaving other sessions untouched. Running the command again disables it.
 
-When the global sidebar is active, `workmux sidebar --session` hides it in the
+When the global sidebar is active, `muxix sidebar --session` hides it in the
 current tmux session only. Run it again to show the sidebar in that session
 again without affecting other sessions.
 
 Optionally, add a tmux binding for quick access:
 
 ```bash
-bind C-t run-shell "workmux sidebar"
+bind C-t run-shell "muxix sidebar"
 ```
 
 ## What it shows
@@ -59,8 +59,8 @@ The exact layout, styling, and per-agent icons are fully customizable; see
 
 ## Configuration
 
-Configure the sidebar in your global `~/.config/workmux/config.yaml` or project
-`.workmux.yaml`:
+Configure the sidebar in your global `~/.config/muxix/config.yaml` or project
+`.muxix.yaml`:
 
 ```yaml
 sidebar:
@@ -143,21 +143,21 @@ in the same order shown in the sidebar:
 
 | Command                    | Action                               |
 | -------------------------- | ------------------------------------ |
-| `workmux sidebar next`     | Switch to the next agent (wraps)     |
-| `workmux sidebar prev`     | Switch to the previous agent (wraps) |
-| `workmux sidebar jump <N>` | Jump to the Nth agent (1-indexed)    |
+| `muxix sidebar next`     | Switch to the next agent (wraps)     |
+| `muxix sidebar prev`     | Switch to the previous agent (wraps) |
+| `muxix sidebar jump <N>` | Jump to the Nth agent (1-indexed)    |
 
 ### Example tmux keybindings
 
 ```bash
 # Alt+j / Alt+k to cycle agents (no prefix needed)
-bind -n M-j run-shell "workmux sidebar next"
-bind -n M-k run-shell "workmux sidebar prev"
+bind -n M-j run-shell "muxix sidebar next"
+bind -n M-k run-shell "muxix sidebar prev"
 
 # Alt+1..9 to jump directly
-bind -n M-1 run-shell "workmux sidebar jump 1"
-bind -n M-2 run-shell "workmux sidebar jump 2"
-bind -n M-3 run-shell "workmux sidebar jump 3"
+bind -n M-1 run-shell "muxix sidebar jump 1"
+bind -n M-2 run-shell "muxix sidebar jump 2"
+bind -n M-3 run-shell "muxix sidebar jump 3"
 # ...
 ```
 
@@ -166,7 +166,7 @@ bind -n M-3 run-shell "workmux sidebar jump 3"
 The sidebar is a bit of a hack on top of tmux's pane system, but it works quite
 well. It uses a daemon + client architecture with event-driven rendering:
 
-1. **Toggle on** (`workmux sidebar`): creates a tmux pane on the left or top
+1. **Toggle on** (`muxix sidebar`): creates a tmux pane on the left or top
    edge of every window, starts a background daemon, and installs tmux hooks.
 
 2. **Daemon**: a single headless process that polls tmux state every 2 seconds
@@ -175,7 +175,7 @@ well. It uses a daemon + client architecture with event-driven rendering:
    snapshots to all connected sidebar clients over a Unix socket.
 
 3. **Clients**: every tmux window gets its own sidebar pane running a separate
-   `workmux _sidebar-run` process. Each process connects to the shared daemon
+   `muxix _sidebar-run` process. Each process connects to the shared daemon
    socket, receives snapshots via a background reader thread, and renders
    independently. The main thread blocks on a channel, only waking when new
    data arrives or a spinner tick is needed. Rendering is skipped entirely for

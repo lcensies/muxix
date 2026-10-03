@@ -27,7 +27,7 @@ fn sanitize(pane: &str) -> String {
 
 /// Marker written by the agent's Stop hook when a response turn completes.
 pub fn turn_done_path(pane: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("workmux-turn-{}.done", sanitize(pane)))
+    std::env::temp_dir().join(format!("muxix-turn-{}.done", sanitize(pane)))
 }
 
 /// Marker written by the agent's **SessionStart** hook when a (re)launched agent
@@ -35,21 +35,21 @@ pub fn turn_done_path(pane: &str) -> PathBuf {
 /// respawn and waits for the fresh one as the readiness gate — a deterministic
 /// "the new post-respawn agent is up" signal that no content scrape can give.
 pub fn session_ready_path(pane: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("workmux-session-ready-{}", sanitize(pane)))
+    std::env::temp_dir().join(format!("muxix-session-ready-{}", sanitize(pane)))
 }
 
 /// Marker written while the agent is blocked on a question to the user.
 pub fn needs_input_path(pane: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("workmux-needs-input-{}", sanitize(pane)))
+    std::env::temp_dir().join(format!("muxix-needs-input-{}", sanitize(pane)))
 }
 
-/// Pane-keyed approval signal, written by `workmux signal proceed|reject` (from the
+/// Pane-keyed approval signal, written by `muxix signal proceed|reject` (from the
 /// agent pane, e.g. the `/implement` slash command). Lets the human (or the agent
 /// itself) release the current gate node without knowing its node id — the runner
 /// already knows the pane it drives. Carries the same `{approved, feedback}` JSON
 /// shape as the node-keyed breakpoint signal, so `wait_for_approval` parses both.
 pub fn proceed_path(pane: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("workmux-proceed-{}.json", sanitize(pane)))
+    std::env::temp_dir().join(format!("muxix-proceed-{}.json", sanitize(pane)))
 }
 
 /// Resolve the current pane id from the environment (set by tmux for any process

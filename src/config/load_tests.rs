@@ -9,7 +9,7 @@ use super::Config;
 use std::fs;
 use std::path::PathBuf;
 
-/// `HOME`, `XDG_CONFIG_HOME`, and `WORKMUX_PROFILE` are process-global, so
+/// `HOME`, `XDG_CONFIG_HOME`, and `MUXIX_PROFILE` are process-global, so
 /// every test that redirects them runs behind this lock.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -23,17 +23,17 @@ struct Sandbox {
 
 impl Sandbox {
     /// Redirect the global config into a scratch dir so tests never read the
-    /// developer's real `~/.config/workmux/config.yaml`.
+    /// developer's real `~/.config/muxix/config.yaml`.
     fn new(name: &str) -> Self {
         let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!(
-            "workmux-cfg-load-{}-{}-{:?}",
+            "muxix-cfg-load-{}-{}-{:?}",
             std::process::id(),
             name,
             std::thread::current().id()
         ));
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("xdg/workmux")).unwrap();
+        fs::create_dir_all(root.join("xdg/muxix")).unwrap();
         fs::create_dir_all(root.join("project")).unwrap();
 
         let prev_xdg = std::env::var("XDG_CONFIG_HOME").ok();
@@ -41,7 +41,7 @@ impl Sandbox {
         let prev_profile = std::env::var(super::profiles::PROFILE_ENV).ok();
         unsafe {
             std::env::set_var("XDG_CONFIG_HOME", root.join("xdg"));
-            // `global_config_path` falls back to `$HOME/.config/workmux` when
+            // `global_config_path` falls back to `$HOME/.config/muxix` when
             // XDG points elsewhere, which would otherwise pull the developer's
             // real global config into every sandbox.
             std::env::set_var("HOME", &root);
@@ -69,12 +69,12 @@ impl Sandbox {
     }
 
     fn global(&self, body: &str) -> &Self {
-        fs::write(self.root.join("xdg/workmux/config.yaml"), body).unwrap();
+        fs::write(self.root.join("xdg/muxix/config.yaml"), body).unwrap();
         self
     }
 
     fn project(&self, body: &str) -> &Self {
-        fs::write(self.root.join("project/.workmux.yaml"), body).unwrap();
+        fs::write(self.root.join("project/.muxix.yaml"), body).unwrap();
         self
     }
 
@@ -135,8 +135,8 @@ fn project_beats_global() {
 fn global_only_config_is_used_when_no_project_config_exists() {
     let sb = Sandbox::new("global-only");
     sb.global("agent: claude\nnerdfont: true\n");
-    // No .workmux.yaml written.
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    // No .muxix.yaml written.
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.nerdfont, Some(true));
@@ -171,7 +171,7 @@ fn include_key_does_not_survive_into_the_merged_config() {
 #[test]
 fn global_config_can_include() {
     let sb = Sandbox::new("include-global");
-    sb.file("xdg/workmux/shared.yaml", "merge_strategy: rebase\n")
+    sb.file("xdg/muxix/shared.yaml", "merge_strategy: rebase\n")
         .global("include: [./shared.yaml]\nagent: claude\n")
         .project("agent: codex\n");
 
@@ -202,7 +202,7 @@ fn missing_include_fails_the_load() {
 #[test]
 fn include_cycle_fails_the_load() {
     let sb = Sandbox::new("include-cycle");
-    sb.file("project/a.yaml", "include: [./.workmux.yaml]\n")
+    sb.file("project/a.yaml", "include: [./.muxix.yaml]\n")
         .project("include: [./a.yaml]\n");
 
     let err = sb.load(None).unwrap_err().to_string();
@@ -229,7 +229,7 @@ fn project_include_cannot_set_global_only_keys() {
 fn global_include_may_set_global_only_keys() {
     let sb = Sandbox::new("include-trust-global");
     sb.file(
-        "xdg/workmux/agents.yaml",
+        "xdg/muxix/agents.yaml",
         "agents:\n  mine:\n    command: claude\n",
     )
     .global("include: [./agents.yaml]\n");
@@ -529,7 +529,7 @@ fn placeholder_expansion_works_across_real_layers() {
 #[test]
 fn previously_dropped_keys_now_load() {
     let sb = Sandbox::new("dropped-keys");
-    sb.project("orchestrate:\n  harness:\n    default_workflow: .workmux/workflows/x.yaml\n");
+    sb.project("orchestrate:\n  harness:\n    default_workflow: .muxix/workflows/x.yaml\n");
 
     let cfg = sb.load(None).unwrap();
 }
@@ -672,7 +672,7 @@ fn a_policy_default_fills_a_key_nobody_set() {
 }
 
 /// `--explain` must name the policy, otherwise a locked value appears from
-/// nowhere and the user concludes workmux ignored their config.
+/// nowhere and the user concludes muxix ignored their config.
 #[test]
 fn provenance_attributes_policy_layers() {
     use crate::config::resolve::{Layer, LayerKind, resolve};
@@ -787,7 +787,7 @@ fn unknown_hook_event_fails_the_load() {
 fn rule_beats_the_global_default() {
     let sb = Sandbox::new("rule-beats-global");
     sb.global("agent: claude\nagent_rules:\n  - match: project\n    agent: opencode\n");
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("opencode"));
@@ -814,7 +814,7 @@ fn first_matching_rule_wins() {
     sb.global(
         "agent_rules:\n  - match: project\n    agent: pi\n  - match: project\n    agent: opencode\n",
     );
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("pi"));
@@ -824,7 +824,7 @@ fn first_matching_rule_wins() {
 fn unmatched_rules_fall_through_to_the_global_agent() {
     let sb = Sandbox::new("rule-no-match");
     sb.global("agent: claude\nagent_rules:\n  - match: /nowhere/at/all\n    agent: pi\n");
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("claude"));
@@ -835,7 +835,7 @@ fn unmatched_rules_fall_through_to_the_global_agent() {
 fn an_invalid_pattern_does_not_stop_later_rules() {
     let sb = Sandbox::new("rule-invalid-regex");
     sb.global("agent_rules:\n  - match: '('\n    agent: broken\n  - match: project\n    agent: pi\n");
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("pi"));
@@ -847,7 +847,7 @@ fn rules_resolve_through_the_agents_map() {
     sb.global(
         "agents:\n  yolo:\n    command: claude --dangerously-skip-permissions\n    type: claude\nagent_rules:\n  - match: project\n    agent: yolo\n",
     );
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(
@@ -873,7 +873,7 @@ fn tilde_patterns_expand_with_or_without_an_anchor() {
     let sb = Sandbox::new("rule-tilde");
     // The sandbox sets HOME to its own root, and the project dir lives under it.
     sb.global("agent_rules:\n  - match: '^~/project(/|$)'\n    agent: pi\n");
-    let _ = fs::remove_file(sb.root.join("project/.workmux.yaml"));
+    let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("pi"));

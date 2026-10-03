@@ -2,7 +2,7 @@
 target/
 **/target/
 .git/
-.workmux/
+.muxix/
 presentation/dist/
 node_modules/
 *.log

@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  BIN_NAME: workmux
+  BIN_NAME: muxix
 
 jobs:
   build:
@@ -19,20 +19,20 @@ jobs:
           # macOS builds (use cargo directly)
           - os: macos-15
             target: aarch64-apple-darwin
-            artifact: workmux-darwin-arm64
+            artifact: muxix-darwin-arm64
             use_cross: false
           - os: macos-15
             target: x86_64-apple-darwin
-            artifact: workmux-darwin-amd64
+            artifact: muxix-darwin-amd64
             use_cross: false
           # Linux builds (use cross with musl for static linking)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            artifact: workmux-linux-amd64
+            artifact: muxix-linux-amd64
             use_cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            artifact: workmux-linux-arm64
+            artifact: muxix-linux-arm64
             use_cross: true
     runs-on: ${{ matrix.os }}
     steps:
@@ -92,7 +92,7 @@ jobs:
           merge-multiple: true
       - uses: actions/checkout@v4
         with:
-          repository: raine/homebrew-workmux
+          repository: lcensies/homebrew-muxix
           token: ${{ secrets.RELEASE_TOKEN }}
           path: tap
       - name: Generate formula and push to tap
@@ -100,53 +100,53 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           VERSION="${VERSION#v}"
-          SHA_MAC_ARM=$(awk '{print $1}' workmux-darwin-arm64.sha256)
-          SHA_MAC_INTEL=$(awk '{print $1}' workmux-darwin-amd64.sha256)
-          SHA_LINUX_INTEL=$(awk '{print $1}' workmux-linux-amd64.sha256)
-          SHA_LINUX_ARM=$(awk '{print $1}' workmux-linux-arm64.sha256)
+          SHA_MAC_ARM=$(awk '{print $1}' muxix-darwin-arm64.sha256)
+          SHA_MAC_INTEL=$(awk '{print $1}' muxix-darwin-amd64.sha256)
+          SHA_LINUX_INTEL=$(awk '{print $1}' muxix-linux-amd64.sha256)
+          SHA_LINUX_ARM=$(awk '{print $1}' muxix-linux-arm64.sha256)
 
-          cat > tap/Formula/workmux.rb << EOF
-          class Workmux < Formula
+          cat > tap/Formula/muxix.rb << EOF
+          class Muxix < Formula
             desc "Opinionated workflow tool that orchestrates git worktrees and tmux"
-            homepage "https://github.com/raine/workmux"
+            homepage "https://github.com/lcensies/muxix"
             version "${VERSION}"
             license "MIT"
 
             on_macos do
               if Hardware::CPU.arm?
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-darwin-arm64.tar.gz"
+                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-darwin-arm64.tar.gz"
                 sha256 "${SHA_MAC_ARM}"
               else
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-darwin-amd64.tar.gz"
+                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-darwin-amd64.tar.gz"
                 sha256 "${SHA_MAC_INTEL}"
               end
             end
 
             on_linux do
               if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-linux-arm64.tar.gz"
+                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-linux-arm64.tar.gz"
                 sha256 "${SHA_LINUX_ARM}"
               else
-                url "https://github.com/raine/workmux/releases/download/v${VERSION}/workmux-linux-amd64.tar.gz"
+                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-linux-amd64.tar.gz"
                 sha256 "${SHA_LINUX_INTEL}"
               end
             end
 
             def install
-              bin.install "workmux"
+              bin.install "muxix"
             end
 
             test do
-              assert_match version.to_s, shell_output("\#{bin}/workmux --version")
+              assert_match version.to_s, shell_output("\#{bin}/muxix --version")
             end
           end
           EOF
-          sed -i 's/^          //' tap/Formula/workmux.rb
+          sed -i 's/^          //' tap/Formula/muxix.rb
 
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/workmux.rb
-          git commit -m "workmux ${VERSION}"
+          git add Formula/muxix.rb
+          git commit -m "muxix ${VERSION}"
           git pull --rebase
           git push

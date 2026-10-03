@@ -1,9 +1,9 @@
 //! Agent development environments: managers that run their own daemon and own
 //! the agent process, with their own desktop, web, and phone clients.
 //!
-//! Workmux drives them through their CLI. That keeps zero protocol code here
+//! Muxix drives them through their CLI. That keeps zero protocol code here
 //! and survives the manager's schema churn, at the cost of polled status
-//! instead of pushed events — the same trade workmux already makes with tmux
+//! instead of pushed events — the same trade muxix already makes with tmux
 //! and git. A streaming implementation can replace this behind the same
 //! [`AgentRuntime`] trait without touching callers.
 //!
@@ -141,7 +141,7 @@ impl AgentRuntime for AdeRuntime {
 
     fn features(&self) -> RuntimeFeatures {
         RuntimeFeatures {
-            // The manager owns the process; there is no pane workmux can focus,
+            // The manager owns the process; there is no pane muxix can focus,
             // capture, or freeze.
             panes: false,
             owns_worktree: self.cfg.owns_worktree,
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn ade_agents_have_no_pane_features() {
         let f = runtime().features();
-        assert!(!f.panes, "an ADE agent has no pane workmux can drive");
+        assert!(!f.panes, "an ADE agent has no pane muxix can drive");
         assert!(!f.freeze);
         assert!(f.send);
     }
@@ -350,7 +350,7 @@ mod tests {
     #[test]
     fn missing_cli_reads_as_unavailable() {
         let mut cfg = AdeConfig::default();
-        cfg.command = "workmux-no-such-binary".to_string();
+        cfg.command = "muxix-no-such-binary".to_string();
         let r = AdeRuntime::new("ghost".to_string(), cfg);
         match r.health() {
             RuntimeHealth::Unavailable(reason) => assert!(reason.contains("not runnable"), "{reason}"),

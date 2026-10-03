@@ -69,7 +69,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
     })
 }
 
-/// Check if workmux hooks are installed in Gemini settings.json.
+/// Check if muxix hooks are installed in Gemini settings.json.
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = settings_path() else {
         return Ok(StatusCheck::NotInstalled);
@@ -83,15 +83,15 @@ pub fn check() -> Result<StatusCheck> {
     let config: Value =
         serde_json::from_str(&content).context("~/.gemini/settings.json is not valid JSON")?;
 
-    if has_workmux_hooks(&config) {
+    if has_muxix_hooks(&config) {
         Ok(StatusCheck::Installed)
     } else {
         Ok(StatusCheck::NotInstalled)
     }
 }
 
-/// Check if the hooks object contains any workmux set-window-status commands.
-fn has_workmux_hooks(config: &Value) -> bool {
+/// Check if the hooks object contains any muxix set-window-status commands.
+fn has_muxix_hooks(config: &Value) -> bool {
     let Some(hooks) = config.get("hooks").and_then(|v| v.as_object()) else {
         return false;
     };
@@ -106,7 +106,7 @@ fn has_workmux_hooks(config: &Value) -> bool {
             };
             for hook in hook_list {
                 if let Some(cmd) = hook.get("command").and_then(|v| v.as_str())
-                    && cmd.contains("workmux set-window-status")
+                    && cmd.contains("muxix set-window-status")
                 {
                     return true;
                 }
@@ -137,7 +137,7 @@ pub fn set_theme(theme: &str) -> Result<bool> {
     super::set_json_string(&path, &["ui", "theme"], theme)
 }
 
-/// Install workmux hooks into `~/.gemini/settings.json`.
+/// Install muxix hooks into `~/.gemini/settings.json`.
 ///
 /// Merges hook groups into existing hooks without clobbering or creating
 /// duplicates. Returns a description of what was done.
@@ -220,33 +220,33 @@ mod tests {
     }
 
     #[test]
-    fn test_hooks_json_contains_workmux_command() {
-        assert!(HOOKS_JSON.contains("workmux set-window-status"));
+    fn test_hooks_json_contains_muxix_command() {
+        assert!(HOOKS_JSON.contains("muxix set-window-status"));
     }
 
     #[test]
-    fn test_has_workmux_hooks_empty() {
+    fn test_has_muxix_hooks_empty() {
         let config = json!({});
-        assert!(!has_workmux_hooks(&config));
+        assert!(!has_muxix_hooks(&config));
     }
 
     #[test]
-    fn test_has_workmux_hooks_present() {
+    fn test_has_muxix_hooks_present() {
         let config = json!({
             "hooks": {
                 "AfterAgent": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
         });
-        assert!(has_workmux_hooks(&config));
+        assert!(has_muxix_hooks(&config));
     }
 
     #[test]
-    fn test_has_workmux_hooks_other_hooks_only() {
+    fn test_has_muxix_hooks_other_hooks_only() {
         let config = json!({
             "hooks": {
                 "AfterAgent": [{
@@ -257,7 +257,7 @@ mod tests {
                 }]
             }
         });
-        assert!(!has_workmux_hooks(&config));
+        assert!(!has_muxix_hooks(&config));
     }
 
     #[test]
@@ -294,7 +294,7 @@ mod tests {
                 "AfterAgent": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
@@ -362,7 +362,7 @@ mod tests {
             }
         }
 
-        // AfterAgent should have 2 groups (original + workmux)
+        // AfterAgent should have 2 groups (original + muxix)
         let after_agent = config
             .get("hooks")
             .unwrap()

@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// A sanitised snapshot of a workmux config suitable for team sharing.
+/// A sanitised snapshot of a muxix config suitable for team sharing.
 /// Never includes secrets (API keys, tokens, env values).
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ProfileSnapshot {
     pub schema_version: u32,
-    pub workmux_version: String,
+    pub muxix_version: String,
     pub platform: String,
     /// Agent kind stem (e.g. "claude", "gemini") — command path stripped.
     pub agent_kind: Option<String>,
@@ -67,7 +67,7 @@ pub fn generate_snapshot(config: &crate::config::Config) -> ProfileSnapshot {
 
     ProfileSnapshot {
         schema_version: 1,
-        workmux_version: env!("CARGO_PKG_VERSION").to_string(),
+        muxix_version: env!("CARGO_PKG_VERSION").to_string(),
         platform: std::env::consts::OS.to_string(),
         agent_kind,
         mcp_names,

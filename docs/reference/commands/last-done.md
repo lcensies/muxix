@@ -9,7 +9,7 @@ Switches to the agent that most recently completed its task or is waiting for us
 This is a hidden command (not shown in `--help`), typically invoked via a tmux keybinding.
 
 ```bash
-workmux last-done
+muxix last-done
 ```
 
 ## How it works
@@ -25,7 +25,7 @@ workmux last-done
 Add to `~/.tmux.conf` for quick access:
 
 ```bash
-bind l run-shell "workmux last-done"
+bind l run-shell "muxix last-done"
 ```
 
 Then press `prefix + l` to jump to the last completed or waiting agent. Press again to cycle to the next oldest.
@@ -34,10 +34,10 @@ Then press `prefix + l` to jump to the last completed or waiting agent. Press ag
 
 ```bash
 # Jump to the most recently completed/waiting agent
-workmux last-done
+muxix last-done
 
 # Press again to cycle to the next oldest
-workmux last-done
+muxix last-done
 ```
 
 ## Related

@@ -87,7 +87,7 @@ pub fn create_worktree_in(
 ///
 /// Git updates the worktree admin dir's `gitdir` file and the worktree's
 /// `.git` pointer. Note: the admin dir itself (`.git/worktrees/<basename>/`)
-/// keeps its original basename; workmux does not rely on that path shape.
+/// keeps its original basename; muxix does not rely on that path shape.
 pub fn move_worktree_in(old_path: &Path, new_path: &Path, workdir: Option<&Path>) -> Result<()> {
     let old = old_path
         .to_str()
@@ -105,8 +105,8 @@ pub fn move_worktree_in(old_path: &Path, new_path: &Path, workdir: Option<&Path>
     Ok(())
 }
 
-/// Migrate all `workmux.worktree.<old_handle>.*` config entries to
-/// `workmux.worktree.<new_handle>.*`, then remove the old section.
+/// Migrate all `muxix.worktree.<old_handle>.*` config entries to
+/// `muxix.worktree.<new_handle>.*`, then remove the old section.
 pub fn migrate_worktree_meta_in(
     old_handle: &str,
     new_handle: &str,
@@ -122,7 +122,7 @@ pub fn migrate_worktree_meta_in(
             None => cmd,
         }
     };
-    let old_section = format!("workmux.worktree.{}", old_handle);
+    let old_section = format!("muxix.worktree.{}", old_handle);
     let regex_pattern = format!(r"^{}\.", regex::escape(&old_section));
     let output = git()
         .args(&["config", "--local", "--get-regexp", &regex_pattern])
@@ -138,7 +138,7 @@ pub fn migrate_worktree_meta_in(
         let Some(suffix) = key.strip_prefix(&format!("{}.", old_section)) else {
             continue;
         };
-        let new_key = format!("workmux.worktree.{}.{}", new_handle, suffix);
+        let new_key = format!("muxix.worktree.{}.{}", new_handle, suffix);
         git()
             .args(&["config", "--local", &new_key, value])
             .run()
@@ -315,7 +315,7 @@ pub fn set_worktree_meta_in(
     value: &str,
     workdir: Option<&Path>,
 ) -> Result<()> {
-    let config_key = format!("workmux.worktree.{}.{}", handle, key);
+    let config_key = format!("muxix.worktree.{}.{}", handle, key);
     let cmd = Cmd::new("git").args(&["config", "--local", &config_key, value]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
@@ -335,7 +335,7 @@ pub fn get_worktree_meta(handle: &str, key: &str) -> Option<String> {
 
 /// Retrieve per-worktree metadata from git config in a specific workdir.
 pub fn get_worktree_meta_in(handle: &str, key: &str, workdir: Option<&Path>) -> Option<String> {
-    let config_key = format!("workmux.worktree.{}.{}", handle, key);
+    let config_key = format!("muxix.worktree.{}.{}", handle, key);
     let cmd = Cmd::new("git").args(&["config", "--local", "--get", &config_key]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
@@ -399,7 +399,7 @@ pub fn get_all_worktree_meta_key_in(
     workdir: Option<&Path>,
     key_name: &str,
 ) -> std::collections::HashMap<String, String> {
-    let pattern = format!(r"^workmux\.worktree\..*\.{}$", regex::escape(key_name));
+    let pattern = format!(r"^muxix\.worktree\..*\.{}$", regex::escape(key_name));
     let cmd = Cmd::new("git").args(&["config", "--local", "--get-regexp", &pattern]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
@@ -414,7 +414,7 @@ pub fn get_all_worktree_meta_key_in(
         if parts.len() == 2 {
             let key = parts[0];
             let value = parts[1].trim();
-            if let Some(rest) = key.strip_prefix("workmux.worktree.")
+            if let Some(rest) = key.strip_prefix("muxix.worktree.")
                 && let Some(handle) = rest.strip_suffix(&suffix)
             {
                 values.insert(handle.to_string(), value.to_string());
@@ -432,7 +432,7 @@ pub fn get_all_worktree_modes_in(
         "config",
         "--local",
         "--get-regexp",
-        r"^workmux\.worktree\..*\.mode$",
+        r"^muxix\.worktree\..*\.mode$",
     ]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),
@@ -442,13 +442,13 @@ pub fn get_all_worktree_modes_in(
 
     let mut modes = std::collections::HashMap::new();
     for line in output.lines() {
-        // Format: "workmux.worktree.<handle>.mode <value>"
+        // Format: "muxix.worktree.<handle>.mode <value>"
         let parts: Vec<&str> = line.splitn(2, ' ').collect();
         if parts.len() == 2 {
             let key = parts[0];
             let value = parts[1].trim();
-            // Extract handle from "workmux.worktree.<handle>.mode"
-            if let Some(rest) = key.strip_prefix("workmux.worktree.")
+            // Extract handle from "muxix.worktree.<handle>.mode"
+            if let Some(rest) = key.strip_prefix("muxix.worktree.")
                 && let Some(handle) = rest.strip_suffix(".mode")
             {
                 let mode = if value == "session" {
@@ -466,7 +466,7 @@ pub fn get_all_worktree_modes_in(
 /// Remove all metadata for a worktree handle.
 pub fn remove_worktree_meta_in(handle: &str, workdir: Option<&Path>) -> Result<()> {
     // Use --remove-section to remove all keys under the handle's section
-    let section = format!("workmux.worktree.{}", handle);
+    let section = format!("muxix.worktree.{}", handle);
     let cmd = Cmd::new("git").args(&["config", "--local", "--remove-section", &section]);
     let cmd = match workdir {
         Some(path) => cmd.workdir(path),

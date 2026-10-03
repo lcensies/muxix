@@ -1,15 +1,14 @@
 {
-  "name": "workmux",
+  "name": "muxix",
   "owner": {
-    "name": "raine",
-    "email": "raine.virta@gmail.com"
+    "name": "muxix contributors"
   },
   "metadata": {
-    "description": "Plugins for workmux - git worktrees and tmux workflow tool"
+    "description": "Plugins for muxix - git worktrees and multiplexer windows for coding agents"
   },
   "plugins": [
     {
-      "name": "workmux-status",
+      "name": "muxix-status",
       "source": "./",
       "description": "Display Claude agent status (working/waiting) in tmux window names"
     }

@@ -4,7 +4,7 @@
 //! and translated per agent. Each agent module owns its own translation by
 //! exporting a [`HookTarget`] — the config file it keeps shell hooks in and the
 //! native key for each event. Claude, Codex, and Gemini all store hooks in the
-//! same inner JSON shape (the one workmux's own status hooks already use), and
+//! same inner JSON shape (the one muxix's own status hooks already use), and
 //! OpenCode/pi consume that shape too through Claude-hooks-compat plugins
 //! (auto-injected into their plugin lists, see [`plugin_to_inject`]) — so one
 //! writer serves every agent that has a target. Agents without one (omp
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn writer_preserves_pi_settings_siblings() {
         let tmp = std::env::temp_dir().join(format!(
-            "workmux-pi-settings-{}-{:?}",
+            "muxix-pi-settings-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn sha256_matches_known_vector() {
         let tmp = std::env::temp_dir().join(format!(
-            "workmux-sha-{}-{:?}",
+            "muxix-sha-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn script_path_finds_the_existing_token() {
         let tmp = std::env::temp_dir().join(format!(
-            "workmux-sp-{}-{:?}.sh",
+            "muxix-sp-{}-{:?}.sh",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn writer_end_to_end() {
         let tmp = std::env::temp_dir().join(format!(
-            "workmux-hooks-e2e-{}-{:?}",
+            "muxix-hooks-e2e-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

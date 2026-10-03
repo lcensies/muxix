@@ -11,8 +11,8 @@ allowed-tools: Read, Bash, Glob, Grep
 
 Check the arguments for flags:
 
-- `--keep`, `-k` → pass `--keep` to `workmux merge` (keeps the worktree and tmux window after merging)
-- `--no-verify`, `-n` → pass `--no-verify` to `workmux merge`
+- `--keep`, `-k` → pass `--keep` to `muxix merge` (keeps the worktree and tmux window after merging)
+- `--no-verify`, `-n` → pass `--no-verify` to `muxix merge`
 
 Strip all flags from arguments.
 
@@ -22,7 +22,7 @@ This command finishes work on the current branch by:
 
 1. Committing any staged changes
 2. Rebasing onto the base branch
-3. Running `workmux merge` to merge and clean up
+3. Running `muxix merge` to merge and clean up
 
 ## Step 1: Commit
 
@@ -33,7 +33,7 @@ If there are staged changes, commit them. Use lowercase, imperative mood, no con
 Get the base branch from git config:
 
 ```
-git config --local --get "branch.$(git branch --show-current).workmux-base"
+git config --local --get "branch.$(git branch --show-current).muxix-base"
 ```
 
 If no base branch is configured, default to "main".
@@ -60,7 +60,7 @@ If conflicts occur:
 
 ## Step 3: Merge
 
-Run: `workmux merge --rebase --notification [--keep] [--no-verify]`
+Run: `muxix merge --rebase --notification [--keep] [--no-verify]`
 
 Include `--keep` only if the `--keep` flag was passed in arguments.
 Include `--no-verify` only if the `--no-verify` flag was passed in arguments.

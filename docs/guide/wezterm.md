@@ -19,7 +19,7 @@ The WezTerm backend is new and experimental. Expect rough edges and potential is
 | Scope                | tmux session         | WezTerm workspace |
 
 - **Tab ordering**: New tabs appear at the end of the tab bar (no "insert after" support like tmux)
-- **Workspace isolation**: workmux operates within the current WezTerm workspace (analogous to tmux sessions). Tabs in other workspaces are not affected.
+- **Workspace isolation**: muxix operates within the current WezTerm workspace (analogous to tmux sessions). Tabs in other workspaces are not affected.
 - **Exit detection**: Uses title heuristics to detect when agents exit
 
 ## Requirements
@@ -31,7 +31,7 @@ The WezTerm backend is new and experimental. Expect rough edges and potential is
 
 ## Required WezTerm configuration
 
-workmux relies on WezTerm's environment variables (`WEZTERM_PANE`, `WEZTERM_UNIX_SOCKET`) being consistent across all panes. This requires connecting to the mux server on startup.
+muxix relies on WezTerm's environment variables (`WEZTERM_PANE`, `WEZTERM_UNIX_SOCKET`) being consistent across all panes. This requires connecting to the mux server on startup.
 
 Add this to your `wezterm.lua`:
 
@@ -54,11 +54,11 @@ Additionally, if you have custom keybindings for creating tabs, ensure they use 
 -- CORRECT: Uses the current pane's domain (mux server)
 { key = 't', mods = 'SUPER', action = act.SpawnTab('CurrentPaneDomain') },
 
--- WRONG: This spawns in the GUI domain, breaking workmux
+-- WRONG: This spawns in the GUI domain, breaking muxix
 -- { key = 't', mods = 'SUPER', action = act.SpawnTab({ DomainName = 'local' }) },
 ```
 
-Without this configuration, panes created via keybindings may connect to a different socket than panes created by workmux, causing state inconsistencies.
+Without this configuration, panes created via keybindings may connect to a different socket than panes created by muxix, causing state inconsistencies.
 
 ## Cross-workspace navigation
 
@@ -68,7 +68,7 @@ The dashboard can show agents from all workspaces with `--all` (or pressing `a`)
 local wezterm = require("wezterm")
 
 wezterm.on("user-var-changed", function(window, pane, name, value)
-    if name == "workmux-switch-pane" then
+    if name == "muxix-switch-pane" then
         local data = wezterm.json_parse(value)
         -- Switch to the target workspace
         window:perform_action(

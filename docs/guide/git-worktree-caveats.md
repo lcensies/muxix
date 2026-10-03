@@ -1,19 +1,19 @@
 ---
-description: Common git worktree pitfalls and how workmux handles them
+description: Common git worktree pitfalls and how muxix handles them
 ---
 
 # Git worktree caveats
 
-While powerful, git worktrees have nuances that are important to understand. workmux is designed to automate solutions to these, but awareness of the underlying mechanics helps.
+While powerful, git worktrees have nuances that are important to understand. muxix is designed to automate solutions to these, but awareness of the underlying mechanics helps.
 
 ## Gitignored files require configuration
 
 When `git worktree add` creates a new working directory, it's a clean checkout. Files listed in your `.gitignore` (e.g., `.env` files, `node_modules`, IDE configuration) will not exist in the new worktree by default. Your application will be broken in the new worktree until you manually create or link these necessary files.
 
-This is a primary feature of workmux. Use the `files` section in your `.workmux.yaml` to automatically copy or symlink these files on creation:
+This is a primary feature of muxix. Use the `files` section in your `.muxix.yaml` to automatically copy or symlink these files on creation:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 files:
   copy:
     - .env # Copy environment variables
@@ -47,7 +47,7 @@ Modern package managers like `pnpm` use a global store with symlinks to `node_mo
 If your worktrees always have identical dependencies (e.g., working on multiple features from the same base), you could potentially symlink `node_modules` between worktrees. However, this breaks as soon as branches diverge in their dependencies, so it's generally safer to run a fresh install in each worktree.
 
 ::: info
-In large monorepos, cleaning up `node_modules` during worktree removal can take significant time. workmux has a [special cleanup mechanism](https://github.com/raine/workmux/blob/main/src/scripts/cleanup_node_modules.sh) that moves `node_modules` to a temporary location and deletes it in the background, making the `remove` command return almost instantly.
+In large monorepos, cleaning up `node_modules` during worktree removal can take significant time. muxix has a [special cleanup mechanism](https://github.com/lcensies/muxix/blob/main/src/scripts/cleanup_node_modules.sh) that moves `node_modules` to a temporary location and deletes it in the background, making the `remove` command return almost instantly.
 :::
 
 ## Rust projects

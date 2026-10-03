@@ -63,12 +63,12 @@ impl Bootstrapper {
 
 impl super::AgentBootstrapper for Bootstrapper {
     fn instructions_path(&self) -> PathBuf {
-        self.claude_dir.join("workmux-bootstrap.md")
+        self.claude_dir.join("muxix-bootstrap.md")
     }
 
     fn apply_prompt(&self, prompt: &str) -> anyhow::Result<()> {
         fs::write(self.instructions_path(), format!("{}\n", prompt.trim()))
-            .context("Failed to write ~/.claude/workmux-bootstrap.md")?;
+            .context("Failed to write ~/.claude/muxix-bootstrap.md")?;
 
         let claude_md = self.claude_dir.join("CLAUDE.md");
         let existing = if claude_md.exists() {
@@ -77,7 +77,7 @@ impl super::AgentBootstrapper for Bootstrapper {
             String::new()
         };
 
-        const REF_LINE: &str = "@workmux-bootstrap.md";
+        const REF_LINE: &str = "@muxix-bootstrap.md";
         if !existing.lines().any(|l| l.trim() == REF_LINE) {
             let updated = if existing.is_empty() {
                 format!("{}\n", REF_LINE)
@@ -101,12 +101,12 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-/// Check if workmux hooks are installed in Claude Code settings.
+/// Check if muxix hooks are installed in Claude Code settings.
 ///
 /// Checks two paths:
-/// 1. Plugin: `enabledPlugins` has a key starting with `workmux-status@`
+/// 1. Plugin: `enabledPlugins` has a key starting with `muxix-status@`
 ///    (regardless of enabled/disabled -- user knows about it)
-/// 2. Manual hooks: `hooks` object contains a command with `workmux set-window-status`
+/// 2. Manual hooks: `hooks` object contains a command with `muxix set-window-status`
 pub fn check() -> Result<StatusCheck> {
     let Some(path) = settings_path() else {
         return Ok(StatusCheck::NotInstalled);
@@ -124,31 +124,31 @@ pub fn check() -> Result<StatusCheck> {
     Ok(check_settings(&settings))
 }
 
-/// Check a parsed settings.json value for workmux status tracking configuration.
+/// Check a parsed settings.json value for muxix status tracking configuration.
 ///
-/// Three outcomes, so a *partial* install (e.g. workmux gained new hooks like the
+/// Three outcomes, so a *partial* install (e.g. muxix gained new hooks like the
 /// pipeline `signal …` set but the user never re-ran setup) is caught instead of
 /// silently reading as "installed":
-/// - plugin enabled, or every required workmux command present → `Installed`
-/// - some workmux commands present but not all → `Stale { missing }`
+/// - plugin enabled, or every required muxix command present → `Installed`
+/// - some muxix commands present but not all → `Stale { missing }`
 /// - none → `NotInstalled`
 fn check_settings(settings: &Value) -> StatusCheck {
-    // Plugin path: if the workmux plugin is present at all (enabled or not — the
+    // Plugin path: if the muxix plugin is present at all (enabled or not — the
     // user knows about it), Claude manages its hooks from plugin.json, so we don't
     // treat it as stale/missing.
     if let Some(plugins) = settings.get("enabledPlugins").and_then(|v| v.as_object())
-        && plugins.keys().any(|k| k.starts_with("workmux-status@"))
+        && plugins.keys().any(|k| k.starts_with("muxix-status@"))
     {
         return StatusCheck::Installed;
     }
 
-    // Manual-hooks path: compare the installed workmux commands against the full
+    // Manual-hooks path: compare the installed muxix commands against the full
     // required set extracted from the embedded plugin.json.
-    let installed = installed_workmux_commands(settings);
+    let installed = installed_muxix_commands(settings);
     if installed.is_empty() {
         return StatusCheck::NotInstalled;
     }
-    let missing: Vec<String> = required_workmux_commands()
+    let missing: Vec<String> = required_muxix_commands()
         .into_iter()
         .filter(|cmd| !installed.contains(cmd))
         .collect();
@@ -159,16 +159,16 @@ fn check_settings(settings: &Value) -> StatusCheck {
     }
 }
 
-/// `true` if the settings contain any workmux hook command at all (regardless of
+/// `true` if the settings contain any muxix hook command at all (regardless of
 /// completeness). Kept for tests / callers that only need presence.
 #[cfg(test)]
-fn has_workmux_hooks(settings: &Value) -> bool {
-    !installed_workmux_commands(settings).is_empty()
+fn has_muxix_hooks(settings: &Value) -> bool {
+    !installed_muxix_commands(settings).is_empty()
 }
 
-/// `true` if every command in a hook group is a `workmux …` command (i.e. the
-/// group is workmux-authored, not a user's own hook sharing the same event).
-fn is_workmux_group(group: &Value) -> bool {
+/// `true` if every command in a hook group is a `muxix …` command (i.e. the
+/// group is muxix-authored, not a user's own hook sharing the same event).
+fn is_muxix_group(group: &Value) -> bool {
     let Some(hooks) = group.get("hooks").and_then(|v| v.as_array()) else {
         return false;
     };
@@ -176,34 +176,34 @@ fn is_workmux_group(group: &Value) -> bool {
         && hooks.iter().all(|h| {
             h.get("command")
                 .and_then(|v| v.as_str())
-                .is_some_and(|c| c.trim_start().starts_with("workmux "))
+                .is_some_and(|c| c.trim_start().starts_with("muxix "))
         })
 }
 
-/// The full set of `workmux …` hook commands the current build expects, derived
+/// The full set of `muxix …` hook commands the current build expects, derived
 /// from the embedded plugin.json so it stays in sync as hooks are added.
-fn required_workmux_commands() -> std::collections::HashSet<String> {
+fn required_muxix_commands() -> std::collections::HashSet<String> {
     let plugin: Value =
         serde_json::from_str(PLUGIN_JSON).expect("embedded plugin.json is valid JSON");
     let mut set = std::collections::HashSet::new();
     if let Some(hooks) = plugin.get("hooks").and_then(|v| v.as_object()) {
-        collect_workmux_commands(hooks, &mut set);
+        collect_muxix_commands(hooks, &mut set);
     }
     set
 }
 
-/// The `workmux …` hook commands actually present in a settings.json value.
-fn installed_workmux_commands(settings: &Value) -> std::collections::HashSet<String> {
+/// The `muxix …` hook commands actually present in a settings.json value.
+fn installed_muxix_commands(settings: &Value) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
     if let Some(hooks) = settings.get("hooks").and_then(|v| v.as_object()) {
-        collect_workmux_commands(hooks, &mut set);
+        collect_muxix_commands(hooks, &mut set);
     }
     set
 }
 
 /// Walk a `hooks` object (`{event: [{hooks: [{command}]}]}`) collecting every
-/// command that starts with `workmux `.
-fn collect_workmux_commands(
+/// command that starts with `muxix `.
+fn collect_muxix_commands(
     hooks: &serde_json::Map<String, Value>,
     out: &mut std::collections::HashSet<String>,
 ) {
@@ -218,7 +218,7 @@ fn collect_workmux_commands(
             for hook in hook_list {
                 if let Some(cmd) = hook.get("command").and_then(|v| v.as_str()) {
                     let cmd = cmd.trim();
-                    if cmd.starts_with("workmux ") {
+                    if cmd.starts_with("muxix ") {
                         out.insert(cmd.to_string());
                     }
                 }
@@ -237,7 +237,7 @@ fn load_hooks_from_plugin() -> Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("plugin.json missing hooks key"))
 }
 
-/// Install workmux hooks into `~/.claude/settings.json`.
+/// Install muxix hooks into `~/.claude/settings.json`.
 ///
 /// Merges hook groups into existing hooks without clobbering or creating
 /// duplicates. Returns a description of what was done.
@@ -275,7 +275,7 @@ pub fn install() -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("settings.json hooks is not an object"))?;
 
     // Merge each hook event. To stay idempotent and self-healing on upgrades,
-    // first drop any *workmux-authored* groups already present (a stale partial
+    // first drop any *muxix-authored* groups already present (a stale partial
     // set from an older build), preserving the user's own groups, then insert the
     // current plugin groups. This guarantees exactly the required set with no
     // duplicate / leftover stale groups.
@@ -289,7 +289,7 @@ pub fn install() -> Result<String> {
             let arr = existing_groups
                 .as_array_mut()
                 .ok_or_else(|| anyhow::anyhow!("hooks.{event} is not an array"))?;
-            arr.retain(|group| !is_workmux_group(group));
+            arr.retain(|group| !is_muxix_group(group));
             for group in new_groups {
                 arr.push(group.clone());
             }
@@ -362,7 +362,7 @@ pub fn plugin_installed(spec: &str) -> bool {
 /// Install a Claude Code plugin using the `claude plugin` CLI.
 ///
 /// Installs at `--scope user` so the plugin loads in every session, including
-/// bare launches not managed by workmux — matching how pi/omp plugins register
+/// bare launches not managed by muxix — matching how pi/omp plugins register
 /// globally in their own settings.
 pub fn install_plugin(spec: &str) -> Result<String> {
     let (source, plugin) = parse_plugin_spec(spec);
@@ -389,10 +389,10 @@ pub fn install_plugin(spec: &str) -> Result<String> {
     Ok(format!("Installed Claude Code plugin: {}", plugin))
 }
 
-/// Uninstall a Claude Code plugin previously installed by workmux.
+/// Uninstall a Claude Code plugin previously installed by muxix.
 ///
 /// The marketplace registration is deliberately left in place: it is shared by
-/// every plugin from that source, and workmux does not track who else needs it.
+/// every plugin from that source, and muxix does not track who else needs it.
 pub fn uninstall_plugin(spec: &str) -> Result<String> {
     let (_, plugin) = parse_plugin_spec(spec);
 
@@ -542,28 +542,28 @@ mod tests {
     }
 
     #[test]
-    fn test_has_workmux_hooks_empty() {
+    fn test_has_muxix_hooks_empty() {
         let settings = json!({});
-        assert!(!has_workmux_hooks(&settings));
+        assert!(!has_muxix_hooks(&settings));
     }
 
     #[test]
-    fn test_has_workmux_hooks_present() {
+    fn test_has_muxix_hooks_present() {
         let settings = json!({
             "hooks": {
                 "Stop": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
         });
-        assert!(has_workmux_hooks(&settings));
+        assert!(has_muxix_hooks(&settings));
     }
 
     #[test]
-    fn test_has_workmux_hooks_other_hooks_only() {
+    fn test_has_muxix_hooks_other_hooks_only() {
         let settings = json!({
             "hooks": {
                 "Stop": [{
@@ -574,7 +574,7 @@ mod tests {
                 }]
             }
         });
-        assert!(!has_workmux_hooks(&settings));
+        assert!(!has_muxix_hooks(&settings));
     }
 
     #[test]
@@ -606,9 +606,9 @@ mod tests {
     fn test_claude_dir_respects_env() {
         let path = claude_dir_from_config(
             PathBuf::from("/home/test"),
-            Some(std::ffi::OsString::from("/tmp/workmux-test-claude-cfg")),
+            Some(std::ffi::OsString::from("/tmp/muxix-test-claude-cfg")),
         );
-        assert_eq!(path, PathBuf::from("/tmp/workmux-test-claude-cfg"));
+        assert_eq!(path, PathBuf::from("/tmp/muxix-test-claude-cfg"));
     }
 
     #[test]
@@ -647,8 +647,8 @@ mod tests {
             "hooks": {
                 "Stop": [{
                     "hooks": [
-                        {"type": "command", "command": "workmux set-window-status done"},
-                        {"type": "command", "command": "workmux signal turn-done"}
+                        {"type": "command", "command": "muxix set-window-status done"},
+                        {"type": "command", "command": "muxix signal turn-done"}
                     ]
                 }]
             }
@@ -697,7 +697,7 @@ mod tests {
     fn test_check_settings_plugin_enabled() {
         let settings = json!({
             "enabledPlugins": {
-                "workmux-status@workmux": true
+                "muxix-status@muxix": true
             }
         });
         assert!(matches!(check_settings(&settings), StatusCheck::Installed));
@@ -707,7 +707,7 @@ mod tests {
     fn test_check_settings_plugin_disabled() {
         let settings = json!({
             "enabledPlugins": {
-                "workmux-status@workmux": false
+                "muxix-status@muxix": false
             }
         });
         assert!(matches!(check_settings(&settings), StatusCheck::Installed));
@@ -717,7 +717,7 @@ mod tests {
     fn test_check_settings_plugin_different_version() {
         let settings = json!({
             "enabledPlugins": {
-                "workmux-status@1.2.3": true
+                "muxix-status@1.2.3": true
             }
         });
         assert!(matches!(check_settings(&settings), StatusCheck::Installed));
@@ -745,14 +745,14 @@ mod tests {
                 "Stop": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
         });
         match check_settings(&settings) {
             StatusCheck::Stale { missing } => {
-                assert!(missing.iter().any(|m| m == "workmux signal turn-done"));
+                assert!(missing.iter().any(|m| m == "muxix signal turn-done"));
             }
             other => panic!("expected Stale, got {other:?}"),
         }
@@ -770,13 +770,13 @@ mod tests {
     fn test_check_settings_both_plugin_and_hooks() {
         let settings = json!({
             "enabledPlugins": {
-                "workmux-status@workmux": true
+                "muxix-status@muxix": true
             },
             "hooks": {
                 "Stop": [{
                     "hooks": [{
                         "type": "command",
-                        "command": "workmux set-window-status done"
+                        "command": "muxix set-window-status done"
                     }]
                 }]
             }
@@ -816,7 +816,7 @@ mod tests {
             }
         }
 
-        // Stop should have 2 groups (original afplay + workmux)
+        // Stop should have 2 groups (original afplay + muxix)
         let stop = settings
             .get("hooks")
             .unwrap()

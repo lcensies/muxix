@@ -23,7 +23,7 @@ mod merge_differential;
 
 /// Default script for cleaning up node_modules directories before worktree deletion.
 /// This script moves node_modules to a temporary location and deletes them in the background,
-/// making the workmux remove command return almost instantly.
+/// making the muxix remove command return almost instantly.
 const NODE_MODULES_CLEANUP_SCRIPT: &str = include_str!("scripts/cleanup_node_modules.sh");
 
 /// Configuration for file operations during worktree creation
@@ -39,9 +39,9 @@ pub struct FileConfig {
 }
 
 /// Configuration for a single MCP (Model Context Protocol) server, declared in
-/// the `mcp:` section of `.workmux.yaml`.
+/// the `mcp:` section of `.muxix.yaml`.
 ///
-/// workmux renders these into a project `.mcp.json` (Claude Code's native
+/// muxix renders these into a project `.mcp.json` (Claude Code's native
 /// format) which is propagated into each worktree, making the server available
 /// to any agent that reads a project-level `.mcp.json`. The schema is
 /// agent-agnostic so the same declaration can drive other agents' formats later.
@@ -70,7 +70,7 @@ pub struct McpServerConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agents: Option<Vec<String>>,
 
-    /// What the server needs: npm packages workmux installs, executables it
+    /// What the server needs: npm packages muxix installs, executables it
     /// asserts on PATH. Lets `command` name the binary instead of `npx -y`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<crate::deps::Requires>,
@@ -146,7 +146,7 @@ pub struct DashboardConfig {
     pub commit: Option<String>,
 
     /// Text to send to agent for merge action (m key).
-    /// Default: "!workmux merge"
+    /// Default: "!muxix merge"
     pub merge: Option<String>,
 
     /// Size of the preview pane as a percentage of terminal height (1-90).
@@ -166,7 +166,7 @@ impl DashboardConfig {
     }
 
     pub fn merge(&self) -> &str {
-        self.merge.as_deref().unwrap_or("!workmux merge")
+        self.merge.as_deref().unwrap_or("!muxix merge")
     }
 
     /// Get the preview size percentage (clamped to 1-90, matching the
@@ -585,7 +585,7 @@ pub struct WindowConfig {
 }
 
 /// A declared agent config profile. The name is the map key; the source tree
-/// lives at `~/.config/workmux/agent-profiles/<name>/` and holds the deltas
+/// lives at `~/.config/muxix/agent-profiles/<name>/` and holds the deltas
 /// layered over the agent's base config dir.
 #[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq)]
 pub struct AgentProfile {
@@ -653,7 +653,7 @@ impl AgentProfileAgent {
     }
 }
 
-/// Configuration for the workmux tool, read from .workmux.yaml
+/// Configuration for the muxix tool, read from .muxix.yaml
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Config {
     /// Other config files merged in beneath this one, in declaration order.
@@ -665,7 +665,7 @@ pub struct Config {
     pub include: Vec<include::IncludeEntry>,
 
     /// Named partial configs, overlaid on the resolved base when selected by
-    /// `--profile`, `WORKMUX_PROFILE`, or `default_profile`.
+    /// `--profile`, `MUXIX_PROFILE`, or `default_profile`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub profiles: BTreeMap<String, serde_yaml::Value>,
 
@@ -676,13 +676,13 @@ pub struct Config {
 
     /// Named agent config profiles: lightweight, host-override overlays of an
     /// agent's skills/extensions/config, layered on top of the real config dir.
-    /// Materialized by `workmux setup`; selected by `workmux exec --profile`.
-    /// A different axis from `profiles:` (which layers *workmux* config).
+    /// Materialized by `muxix setup`; selected by `muxix exec --profile`.
+    /// A different axis from `profiles:` (which layers *muxix* config).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub agent_profiles: BTreeMap<String, AgentProfile>,
 
-    /// Agent profile `workmux exec` falls back to when `--profile` is omitted.
-    /// Note: only `exec` honors this; a bare agent launched outside workmux
+    /// Agent profile `muxix exec` falls back to when `--profile` is omitted.
+    /// Note: only `exec` honors this; a bare agent launched outside muxix
     /// still uses the untouched base config dir.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_agent_profile: Option<String>,
@@ -692,7 +692,7 @@ pub struct Config {
     pub main_branch: Option<String>,
 
     /// Default base branch/commit to branch from when creating new worktrees.
-    /// Used as fallback when --base is not passed to `workmux add`.
+    /// Used as fallback when --base is not passed to `muxix add`.
     #[serde(default)]
     pub base_branch: Option<String>,
 
@@ -718,7 +718,7 @@ pub struct Config {
     pub windows: Option<Vec<WindowConfig>>,
 
     /// Commands to run after creating the worktree
-    /// How `workmux start` multiplexes tracked projects.
+    /// How `muxix start` multiplexes tracked projects.
     #[serde(default)]
     pub project_mux: Option<ProjectMux>,
 
@@ -737,11 +737,11 @@ pub struct Config {
     #[serde(default)]
     pub agent: Option<String>,
 
-    /// Spawn worktrees with the same agent workmux is running inside.
+    /// Spawn worktrees with the same agent muxix is running inside.
     ///
     /// When enabled, an agent detected from the environment (see
     /// `agent::identity::detect_parent_agent`) takes precedence over `agent`,
-    /// so running `workmux add` from inside Claude Code spawns Claude Code
+    /// so running `muxix add` from inside Claude Code spawns Claude Code
     /// rather than the configured default. An explicit `--agent` flag still
     /// wins. Defaults to false — without it, `agent` is used as before.
     #[serde(default)]
@@ -752,15 +752,15 @@ pub struct Config {
     /// Matched against the project's *main worktree* root, so every worktree
     /// of a project resolves the same agent. Ranks below an `agent:` set by a
     /// project config or profile and above the global `agent:`. Global-only:
-    /// a rule names a command workmux will execute.
+    /// a rule names a command muxix will execute.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_rules: Vec<AgentRule>,
 
-    /// Default merge strategy for `workmux merge`
+    /// Default merge strategy for `muxix merge`
     #[serde(default)]
     pub merge_strategy: Option<MergeStrategy>,
 
-    /// Keep worktree, window, and branch by default after `workmux merge`
+    /// Keep worktree, window, and branch by default after `muxix merge`
     #[serde(default)]
     pub merge_keep: Option<bool>,
 
@@ -776,7 +776,7 @@ pub struct Config {
     #[serde(default)]
     pub files: FileConfig,
 
-    /// Whether to auto-apply workmux status to tmux window format.
+    /// Whether to auto-apply muxix status to tmux window format.
     /// Default: true
     #[serde(default)]
     pub status_format: Option<bool>,
@@ -829,7 +829,7 @@ pub struct Config {
     #[serde(skip)]
     pub agent_type: Option<String>,
 
-    /// What decided `agent`. Set during loading so `workmux config agent which`
+    /// What decided `agent`. Set during loading so `muxix config agent which`
     /// reports the real decision instead of re-deriving it.
     #[serde(skip)]
     pub agent_source: Option<AgentSource>,
@@ -843,7 +843,7 @@ pub struct Config {
     pub submodules: SubmoduleConfig,
 
     /// MCP (Model Context Protocol) servers to expose to agents in this project.
-    /// Rendered into a project `.mcp.json` (Claude format) by `workmux mcp sync`
+    /// Rendered into a project `.mcp.json` (Claude format) by `muxix mcp sync`
     /// and propagated into each worktree. Reusable for any MCP server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<BTreeMap<String, McpServerConfig>>,
@@ -871,18 +871,18 @@ pub struct Config {
 
     /// Named agent capability profiles (inline definitions). Resolved by
     /// `agent_ref:` in harness YAML nodes. Local overrides beat file-based defs.
-    /// Alternatively declare them in `.workmux/agents/<name>.yaml` files.
+    /// Alternatively declare them in `.muxix/agents/<name>.yaml` files.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub agent_defs: BTreeMap<String, crate::agent::definition::AgentDefinition>,
 
     /// Named prompt templates (inline). Resolved by `prompt_ref:` in agent
-    /// definitions or directly in harness nodes. Files in `.workmux/prompts/`
+    /// definitions or directly in harness nodes. Files in `.muxix/prompts/`
     /// are also scanned (inline wins on conflict).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prompt_defs: BTreeMap<String, crate::prompt::PromptTemplate>,
 
     /// Registry sources for resolving agent definitions and prompts by name.
-    /// `.workmux/agents/` and `.workmux/prompts/` are always searched first.
+    /// `.muxix/agents/` and `.muxix/prompts/` are always searched first.
     /// Additional sources (git repos, URLs) are searched in declaration order.
     /// Phase 1: only `local:` sources are supported; git/url are stubs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -893,7 +893,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_runtime: Option<String>,
 
-    /// Agent-development environments workmux can drive, by name.
+    /// Agent-development environments muxix can drive, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ade: BTreeMap<String, AdeConfig>,
 
@@ -993,7 +993,7 @@ pub enum ConflictPolicy {
 /// Configuration for submodule worktree management.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SubmoduleConfig {
-    /// When true, workmux creates/removes/merges matching worktrees for each
+    /// When true, muxix creates/removes/merges matching worktrees for each
     /// git submodule alongside the parent worktree. Default: false.
     #[serde(default)]
     pub worktrees: bool,
@@ -1070,7 +1070,7 @@ pub fn match_agent_rule<'a>(rules: &'a [AgentRule], path: &Path) -> Option<(usiz
     rules.iter().enumerate().find(|(_, rule)| match rule.compile() {
         Ok(re) => re.is_match(&path),
         Err(e) => {
-            eprintln!("workmux: invalid agent_rules pattern {:?}: {e}", rule.pattern);
+            eprintln!("muxix: invalid agent_rules pattern {:?}: {e}", rule.pattern);
             false
         }
     })
@@ -1478,7 +1478,7 @@ pub struct CheckpointConfig {
     pub interval_secs: Option<u64>,
 
     /// Directory to store checkpoint snapshots.
-    /// Default: `~/.local/state/workmux/checkpoints/`
+    /// Default: `~/.local/state/muxix/checkpoints/`
     #[serde(default)]
     pub dir: Option<String>,
 
@@ -1558,7 +1558,7 @@ impl SandboxRuntime {
     /// agent sandboxes because its CRIU checkpoint/restore is what enables
     /// seamless agent resume. Note this requires Podman to run *rootful*
     /// (rootless Podman refuses to checkpoint: "checkpointing a container
-    /// requires root") — run workmux as root or point it at a rootful Podman
+    /// requires root") — run muxix as root or point it at a rootful Podman
     /// service. Falls back to Podman if nothing is found (fails later with a
     /// clear "command not found" error).
     pub fn detect() -> Self {
@@ -2009,14 +2009,14 @@ pub struct ContainerConfig {
     /// the sandbox without restructuring the project.
     ///
     /// Masking applies to both the current worktree and, where applicable, the
-    /// main-worktree mount (which workmux adds for symlink resolution), so a
+    /// main-worktree mount (which muxix adds for symlink resolution), so a
     /// symlinked secret cannot be read via the alias path.
     ///
     /// Only existing regular files are masked; missing paths are skipped with
     /// a warning. Directories are not supported.
     ///
     /// Security: this field is global-only. It is ignored when set in a
-    /// project's `.workmux.yaml`, and workmux fails fast rather than running
+    /// project's `.muxix.yaml`, and muxix fails fast rather than running
     /// with excluded_files on a runtime that lacks file-level bind mounts
     /// (Apple Container).
     #[serde(default)]
@@ -2189,7 +2189,7 @@ fn validate_domain(domain: &str) -> anyhow::Result<()> {
 
 /// Configuration for structured pipeline event tracing (target `wm::event`).
 ///
-/// `WORKMUX_EVENTS` / `RUST_LOG` set the level; this section lets `.workmux.yaml`
+/// `MUXIX_EVENTS` / `RUST_LOG` set the level; this section lets `.muxix.yaml`
 /// set that level too and, beyond it, silence specific event kinds or whole
 /// groups. See `docs/reference/events.md`.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -2199,7 +2199,7 @@ pub struct EventsConfig {
     pub enabled: Option<bool>,
 
     /// Trace level for `wm::event`: `off` | `info` | `debug` | `trace`.
-    /// Applied only when `WORKMUX_EVENTS` is unset (env wins).
+    /// Applied only when `MUXIX_EVENTS` is unset (env wins).
     #[serde(default)]
     pub level: Option<String>,
 
@@ -2258,7 +2258,7 @@ pub struct SandboxConfig {
     /// Environment variables to set in the sandbox with explicit values.
     /// Unlike env_passthrough (which reads from host), these are set directly.
     /// Global-only: project config cannot set this to prevent a sandboxed agent
-    /// from injecting env vars into its next session via .workmux.yaml.
+    /// from injecting env vars into its next session via .muxix.yaml.
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
 
@@ -2421,15 +2421,15 @@ pub struct ConfigLocation {
     pub config_path: PathBuf,
     /// Absolute path to the directory containing the config
     pub config_dir: PathBuf,
-    /// Relative path from repo root to config dir (e.g., "backend" for backend/.workmux.yaml)
+    /// Relative path from repo root to config dir (e.g., "backend" for backend/.muxix.yaml)
     /// Empty if config is at repo root
     pub rel_dir: PathBuf,
 }
 
-/// Find the nearest .workmux.yaml by walking up from start_dir to repo root.
+/// Find the nearest .muxix.yaml by walking up from start_dir to repo root.
 /// Returns ConfigLocation with the relative path computed at discovery time.
 pub fn find_project_config(start_dir: &Path) -> anyhow::Result<Option<ConfigLocation>> {
-    let config_names = [".workmux.yaml", ".workmux.yml"];
+    let config_names = [".muxix.yaml", ".muxix.yml"];
 
     let repo_root = match git::get_repo_root_for(start_dir) {
         Ok(root) => root,
@@ -2497,16 +2497,16 @@ pub fn find_project_config(start_dir: &Path) -> anyhow::Result<Option<ConfigLoca
     Ok(None)
 }
 
-/// Locate the `.workmux/` state/workflow directory for a project.
+/// Locate the `.muxix/` state/workflow directory for a project.
 ///
-/// Uses `find_project_config` to find the `.workmux.yaml` config file and returns
-/// its sibling `.workmux/` directory. Falls back to `project_dir/.workmux` when no
-/// config file is found (e.g. in a bare checkout or a repo that hasn't run `workmux init`).
-pub fn find_workmux_dir(project_dir: &Path) -> std::path::PathBuf {
+/// Uses `find_project_config` to find the `.muxix.yaml` config file and returns
+/// its sibling `.muxix/` directory. Falls back to `project_dir/.muxix` when no
+/// config file is found (e.g. in a bare checkout or a repo that hasn't run `muxix init`).
+pub fn find_muxix_dir(project_dir: &Path) -> std::path::PathBuf {
     if let Ok(Some(loc)) = find_project_config(project_dir) {
-        loc.config_dir.join(".workmux")
+        loc.config_dir.join(".muxix")
     } else {
-        project_dir.join(".workmux")
+        project_dir.join(".muxix")
     }
 }
 
@@ -2619,9 +2619,9 @@ pub fn validate_layouts_config(layouts: &HashMap<String, LayoutConfig>) -> anyho
 
 /// Get the path to the global config file.
 ///
-/// Resolves via `$XDG_CONFIG_HOME/workmux/` (default `~/.config/workmux/`).
+/// Resolves via `$XDG_CONFIG_HOME/muxix/` (default `~/.config/muxix/`).
 /// If a custom `XDG_CONFIG_HOME` is set and no config exists there yet,
-/// falls back to the legacy `~/.config/workmux/` location for reading.
+/// falls back to the legacy `~/.config/muxix/` location for reading.
 /// Prefers existing .yml file to avoid shadowing, otherwise defaults to .yaml.
 pub fn global_config_path() -> Option<PathBuf> {
     let xdg_dir = crate::xdg::config_dir().ok()?;
@@ -2636,9 +2636,9 @@ pub fn global_config_path() -> Option<PathBuf> {
         return Some(yaml);
     }
 
-    // Legacy fallback: if XDG_CONFIG_HOME points elsewhere, check ~/.config/workmux/
+    // Legacy fallback: if XDG_CONFIG_HOME points elsewhere, check ~/.config/muxix/
     if let Some(home) = home::home_dir() {
-        let legacy_dir = home.join(".config/workmux");
+        let legacy_dir = home.join(".config/muxix");
         if legacy_dir != xdg_dir {
             let legacy_yml = legacy_dir.join("config.yml");
             let legacy_yaml = legacy_dir.join("config.yaml");
@@ -2655,7 +2655,7 @@ pub fn global_config_path() -> Option<PathBuf> {
     Some(yaml)
 }
 
-/// How `workmux start` multiplexes tracked projects.
+/// How `muxix start` multiplexes tracked projects.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectMux {
@@ -2664,7 +2664,7 @@ pub enum ProjectMux {
     Session,
 }
 
-/// Which way project records flow between workmux and an ADE.
+/// Which way project records flow between muxix and an ADE.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SyncDirection {
@@ -2672,9 +2672,9 @@ pub enum SyncDirection {
     /// so it is opt-in.
     #[default]
     Off,
-    /// Adopt the ADE's projects into workmux.
+    /// Adopt the ADE's projects into muxix.
     Pull,
-    /// Publish workmux's projects to the ADE.
+    /// Publish muxix's projects to the ADE.
     Push,
     Bidirectional,
 }
@@ -2690,7 +2690,7 @@ pub enum SyncConflictPolicy {
     /// here silently renames or drops a project.
     #[default]
     Manual,
-    Workmux,
+    Muxix,
     Ade,
     Newest,
 }
@@ -2726,7 +2726,7 @@ pub struct AdeProjectsConfig {
     /// JSON field holding a project's display name.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name_field: String,
-    /// JSON field holding a project's root path -- the identity workmux syncs on.
+    /// JSON field holding a project's root path -- the identity muxix syncs on.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub root_field: String,
     #[serde(default)]
@@ -2778,11 +2778,11 @@ pub struct AdeStatusMap {
     pub failed: Vec<String>,
 }
 
-/// An agent-development-environment workmux drives through its CLI.
+/// An agent-development-environment muxix drives through its CLI.
 ///
 /// Driving the CLI rather than a wire protocol keeps zero protocol code here
 /// and survives the ADE's schema churn, at the cost of polled status instead of
-/// pushed events -- the same trade workmux already makes with tmux and git.
+/// pushed events -- the same trade muxix already makes with tmux and git.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct AdeConfig {
     /// Executable to invoke.
@@ -2796,7 +2796,7 @@ pub struct AdeConfig {
     pub list_args: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop_args: Vec<String>,
-    /// Adopt an already-running agent into workmux.
+    /// Adopt an already-running agent into muxix.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub import_args: Vec<String>,
     /// JSON field holding an agent's id.
@@ -2908,7 +2908,7 @@ const DIRECTIVE_KEYS: &[&str] = &["include", "profiles", "default_profile"];
 ///
 /// Fresh applies silently; stale applies with a warning; expired contributes
 /// nothing. Reading the cache is local-only — no command outside
-/// `workmux provision` ever makes a network request for policy.
+/// `muxix provision` ever makes a network request for policy.
 fn cached_policy(
     provision: Option<&crate::provision::ProvisionConfig>,
 ) -> Option<crate::provision::types::OrgPolicy> {
@@ -2922,13 +2922,13 @@ fn cached_policy(
         Ok(CacheStatus::Fresh(policy)) => Some(policy),
         Ok(CacheStatus::Stale(policy)) => {
             tracing::warn!(
-                "org policy {} is stale -- run 'workmux provision sync' to refresh",
+                "org policy {} is stale -- run 'muxix provision sync' to refresh",
                 policy.policy_version
             );
             Some(policy)
         }
         Ok(CacheStatus::Expired) => {
-            tracing::warn!("org policy cache expired -- run 'workmux provision sync' to refresh");
+            tracing::warn!("org policy cache expired -- run 'muxix provision sync' to refresh");
             None
         }
         Ok(CacheStatus::Missing) => None,
@@ -2975,7 +2975,7 @@ fn known_config_keys() -> std::collections::BTreeSet<String> {
 /// Top-level keys in `value` that the config schema does not recognize.
 ///
 /// serde ignores unknown fields by default, which means a misspelled key is
-/// silently dropped rather than reported. `workmux config validate` uses this
+/// silently dropped rather than reported. `muxix config validate` uses this
 /// to surface them. Only the top level is checked: `deny_unknown_fields` on
 /// every nested struct would be a much larger change, and top-level typos are
 /// the common case.
@@ -2996,7 +2996,7 @@ pub fn unknown_top_level_keys(value: &serde_yaml::Value) -> Vec<String> {
     unknown
 }
 
-/// One layer's identity, for `workmux config resolve --explain` output.
+/// One layer's identity, for `muxix config resolve --explain` output.
 #[derive(Debug, Clone)]
 pub struct LayerInfo {
     /// Stable id used as the provenance value, e.g. `global`, `profile:corp`.
@@ -3072,7 +3072,7 @@ impl Config {
     /// then apply defaults.
     ///
     /// `cli_profile` is the `--profile` flag; see [`profiles::select`] for how
-    /// it ranks against `WORKMUX_PROFILE` and `default_profile`.
+    /// it ranks against `MUXIX_PROFILE` and `default_profile`.
     pub fn load_with_options(
         start_dir: &std::path::Path,
         cli_agent: Option<&str>,
@@ -3087,7 +3087,7 @@ impl Config {
             // Warn loudly, once per process; the Err still propagates.
             static WARNED: std::sync::Once = std::sync::Once::new();
             WARNED.call_once(|| {
-                eprintln!("workmux: config error: {e:#} — commands may fall back to defaults");
+                eprintln!("muxix: config error: {e:#} — commands may fall back to defaults");
             });
         }
         result
@@ -3140,7 +3140,7 @@ impl Config {
     /// Resolve the effective config as a YAML value, without deserializing it
     /// into [`Config`] or applying defaults.
     ///
-    /// This is what `workmux config resolve` prints. It returns the merged
+    /// This is what `muxix config resolve` prints. It returns the merged
     /// value plus the per-key provenance map when `track` is set, so callers
     /// can attribute each key to the layer that set it. Defaults are
     /// deliberately not applied: this shows what the config *files* say, which
@@ -3166,7 +3166,7 @@ impl Config {
     /// Resolve a single config file in isolation, ignoring the ambient global
     /// and project configs.
     ///
-    /// This is what `workmux config validate --file` uses, and what the Nix
+    /// This is what `muxix config validate --file` uses, and what the Nix
     /// module's build-time check needs: a rendered file must be judged on its
     /// own, not against whatever happens to be installed on the machine
     /// running the build.
@@ -3299,7 +3299,7 @@ impl Config {
             // cannot launder a global-only key in through an included file.
             let (dir, origin) = match location.as_ref() {
                 Some(loc) => (loc.config_dir.clone(), loc.config_path.clone()),
-                None => (start_dir.to_path_buf(), start_dir.join(".workmux.yaml")),
+                None => (start_dir.to_path_buf(), start_dir.join(".muxix.yaml")),
             };
             layers.extend(include::expand(&value, &dir, &origin, false, "project:")?);
 
@@ -3400,7 +3400,7 @@ impl Config {
 
         // Opt-in agent inheritance: when `inherit_agent` is set, an agent
         // detected from the surrounding environment outranks the *global*
-        // default, so `workmux add` run from inside Claude Code spawns Claude
+        // default, so `muxix add` run from inside Claude Code spawns Claude
         // Code rather than whatever the global config happens to name. An
         // explicit `--agent` flag and an agent named by any higher layer (a
         // project config or a selected profile) still win, and detection only
@@ -3603,27 +3603,27 @@ impl Config {
         self.mode.unwrap_or(MuxMode::Window)
     }
 
-    /// Create an example .workmux.yaml configuration file
+    /// Create an example .muxix.yaml configuration file
     pub fn init() -> anyhow::Result<()> {
         use std::path::PathBuf;
 
-        let config_path = PathBuf::from(".workmux.yaml");
+        let config_path = PathBuf::from(".muxix.yaml");
 
         if config_path.exists() {
             return Err(anyhow::anyhow!(
-                ".workmux.yaml already exists. Remove it first if you want to regenerate it."
+                ".muxix.yaml already exists. Remove it first if you want to regenerate it."
             ));
         }
 
         fs::write(&config_path, EXAMPLE_PROJECT_CONFIG)?;
 
-        println!("✓ Created .workmux.yaml");
+        println!("✓ Created .muxix.yaml");
         println!("\nThis file provides project-specific overrides.");
         println!(
             "For global settings, edit {}",
             global_config_path()
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "~/.config/workmux/config.yaml".to_string())
+                .unwrap_or_else(|| "~/.config/muxix/config.yaml".to_string())
         );
 
         Ok(())
@@ -3631,9 +3631,9 @@ impl Config {
 }
 
 /// Example project configuration with all options documented.
-/// Used by `workmux init` and `workmux config show`.
-pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
-# For global settings, edit ~/.config/workmux/config.yaml
+/// Used by `muxix init` and `muxix config show`.
+pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
+# For global settings, edit ~/.config/muxix/config.yaml
 # All options below are commented out - uncomment to override defaults.
 
 #-------------------------------------------------------------------------------
@@ -3664,12 +3664,12 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Default: The currently checked out branch.
 # base_branch: main
 
-# Default merge strategy for `workmux merge`.
+# Default merge strategy for `muxix merge`.
 # Options: merge (default), rebase, squash
 # CLI flags (--rebase, --squash) always override this.
 # merge_strategy: rebase
 
-# Keep the worktree, window, and branch after `workmux merge` by default.
+# Keep the worktree, window, and branch after `muxix merge` by default.
 # Keep and cleanup CLI flags always override this.
 # merge_keep: true
 
@@ -3680,7 +3680,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Directory where worktrees are created.
 # Can be relative to repo root or absolute. Supports `~` for home directory
 # and `{project}` for the main worktree's directory name, so a global config
-# can namespace each repo, e.g. `~/.workmux/{project}`.
+# can namespace each repo, e.g. `~/.muxix/{project}`.
 # Default: Sibling directory '<project>__worktrees'.
 # worktree_dir: .worktrees
 
@@ -3750,16 +3750,16 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 
 # Per-project agent selection by path regex (global config only).
 # Matched against the project's main worktree root, first match wins. Ranks
-# below an `agent:` in a project .workmux.yaml and above the global `agent:`.
-# Edit with `workmux config agent set|unset`; inspect with
-# `workmux config agent list|which`.
+# below an `agent:` in a project .muxix.yaml and above the global `agent:`.
+# Edit with `muxix config agent set|unset`; inspect with
+# `muxix config agent list|which`.
 # agent_rules:
 #   - match: "^~/repos/work/"
 #     agent: opencode
-#   - match: "^~/repos/workmux(/|$)"
+#   - match: "^~/repos/muxix(/|$)"
 #     agent: pi
 
-# LLM-based branch name generation (`workmux add -A`).
+# LLM-based branch name generation (`muxix add -A`).
 # auto_name:
 #   model: "gpt-4o-mini"
 #   system_prompt: "Generate a kebab-case git branch name."
@@ -3829,7 +3829,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Preview size (10-90): larger = more preview, less table. Use +/- keys to adjust.
 # dashboard:
 #   commit: "Commit staged changes with a descriptive message"
-#   merge: "!workmux merge"
+#   merge: "!muxix merge"
 #   preview_size: 60
 
 #-------------------------------------------------------------------------------
@@ -3882,7 +3882,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   #   # Mask files out of the worktree bind mounts (paths relative to the
 #   #   # worktree root). Each listed file is shadowed by /dev/null so the
 #   #   # sandboxed agent cannot read it. Missing files are skipped.
-#   #   # GLOBAL-ONLY: ignored when set in a project .workmux.yaml.
+#   #   # GLOBAL-ONLY: ignored when set in a project .muxix.yaml.
 #   #   # excluded_files:
 #   #   #   - .env
 #   #   #   - .env.local
@@ -3902,13 +3902,13 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   #     guest_path: /mnt/data
 #   #     writable: true
 
-# Pipeline event tracing (`wm::event`, logged to ~/.local/state/workmux.log).
+# Pipeline event tracing (`wm::event`, logged to ~/.local/state/muxix.log).
 # Controls the structured event timeline the runner/orchestrator emit. The
-# `WORKMUX_EVENTS` env var still overrides `level` when set.
+# `MUXIX_EVENTS` env var still overrides `level` when set.
 # events:
 #   # Master switch. false silences every wm::event. Default: true.
 #   enabled: true
-#   # Trace level: off | info | debug | trace. Ignored if WORKMUX_EVENTS is set.
+#   # Trace level: off | info | debug | trace. Ignored if MUXIX_EVENTS is set.
 #   level: info
 #   # Silence specific kinds or whole groups (group-aware: `pane.probe` matches
 #   # pane.probe.ok, pane.probe.retry, ...).
@@ -3923,7 +3923,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Agent bootstrap
 #-------------------------------------------------------------------------------
 
-# Uniform per-agent setup, applied by `workmux setup`: skills, plugins, and
+# Uniform per-agent setup, applied by `muxix setup`: skills, plugins, and
 # system-prompt components. Keeps "what the project needs" in one place
 # instead of in each agent's own config.
 # bootstrap:
@@ -3933,9 +3933,9 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   # SKILL.md, relative to the project root or absolute. Codex, Copilot, and
 #   # Gemini have no skills directory and are skipped.
 #   default_skills:
-#     - ./skills/workmux
+#     - ./skills/muxix
 #     # Table form: what the skill needs. `npm` packages are installed by
-#     # workmux into `npm_prefix` (pinned when `@version` is given, pruned when
+#     # muxix into `npm_prefix` (pinned when `@version` is given, pruned when
 #     # no entity declares them any more); `bin` names are only asserted on
 #     # PATH -- provide them via the system. Same block works on `mcp.<name>`.
 #     - path: ./skills/openspec-taskflow
@@ -3946,11 +3946,11 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   # npm global prefix for `requires.npm` installs (bins in <prefix>/bin).
 #   npm_prefix: ~/.local
 #   # true: every package under the prefix that no entity declares is pruned,
-#   # not only the ones workmux installed. Hand installs get reverted.
+#   # not only the ones muxix installed. Hand installs get reverted.
 #   deps_strict: false
 #
 #   # Prompt components merged into each agent's system prompt. A bare name
-#   # loads .workmux/prompt-components/<name>.md; anything containing `/` is a
+#   # loads .muxix/prompt-components/<name>.md; anything containing `/` is a
 #   # path to a .md file (absolute, ~, or relative to the project root).
 #   default_prompt_components:
 #     - house-style
@@ -4494,20 +4494,20 @@ agents:
             .output()
             .unwrap();
 
-        // Create nested structure: root/backend/.workmux.yaml
+        // Create nested structure: root/backend/.muxix.yaml
         let backend = root.join("backend");
         fs::create_dir_all(&backend).unwrap();
-        fs::write(backend.join(".workmux.yaml"), "agent: claude").unwrap();
+        fs::write(backend.join(".muxix.yaml"), "agent: claude").unwrap();
 
         // Create deeper directory: root/backend/src
         let src = backend.join("src");
         fs::create_dir_all(&src).unwrap();
 
-        // Find from src should find backend/.workmux.yaml
+        // Find from src should find backend/.muxix.yaml
         let result = find_project_config(&src).unwrap();
         assert!(result.is_some());
         let loc = result.unwrap();
-        assert!(loc.config_path.ends_with("backend/.workmux.yaml"));
+        assert!(loc.config_path.ends_with("backend/.muxix.yaml"));
         assert_eq!(loc.rel_dir, std::path::PathBuf::from("backend"));
     }
 
@@ -4524,18 +4524,18 @@ agents:
             .unwrap();
 
         // Create root config
-        fs::write(root.join(".workmux.yaml"), "agent: root").unwrap();
+        fs::write(root.join(".muxix.yaml"), "agent: root").unwrap();
 
         // Create nested config
         let backend = root.join("backend");
         fs::create_dir_all(&backend).unwrap();
-        fs::write(backend.join(".workmux.yaml"), "agent: backend").unwrap();
+        fs::write(backend.join(".muxix.yaml"), "agent: backend").unwrap();
 
         // Find from backend should find backend config, not root
         let result = find_project_config(&backend).unwrap();
         assert!(result.is_some());
         let loc = result.unwrap();
-        assert!(loc.config_path.ends_with("backend/.workmux.yaml"));
+        assert!(loc.config_path.ends_with("backend/.muxix.yaml"));
     }
 
     #[test]
@@ -5028,7 +5028,7 @@ agents:
 
     #[test]
     fn test_excluded_files_merge_project_is_ignored() {
-        // Security: excluded_files is global-only. A project config (.workmux.yaml)
+        // Security: excluded_files is global-only. A project config (.muxix.yaml)
         // MUST NOT be able to weaken or replace the global list; otherwise a
         // malicious repo could delete user-level secret protections.
         let global = Config {

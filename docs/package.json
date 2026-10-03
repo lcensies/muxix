@@ -1,5 +1,5 @@
 {
-  "name": "workmux-docs",
+  "name": "muxix-docs",
   "type": "module",
   "scripts": {
     "dev": "vitepress dev",

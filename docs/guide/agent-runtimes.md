@@ -2,15 +2,15 @@
 
 A *runtime* answers one question: **who owns the agent process**.
 
-Workmux has always owned it — a git worktree, a multiplexer window, an agent
+Muxix has always owned it — a git worktree, a multiplexer window, an agent
 CLI, and status from hooks. That is now one runtime among others, called
 `local`, and it is still the default. The alternative is to hand the agent to an
 **agent development environment** (ADE): a manager that runs its own daemon and
-its own desktop, web, and phone clients. Work started from workmux is then
-reachable from your phone, without workmux growing a mobile stack.
+its own desktop, web, and phone clients. Work started from muxix is then
+reachable from your phone, without muxix growing a mobile stack.
 
 ```
-workmux CLI/TUI
+muxix CLI/TUI
       │
       ▼
 neutral agent-runtime API
@@ -25,7 +25,7 @@ neutral agent-runtime API
 
 ## Not to be confused with
 
-Workmux already has two things with adjacent names. A runtime is neither:
+Muxix already has two things with adjacent names. A runtime is neither:
 
 | | What it is |
 | --- | --- |
@@ -42,19 +42,19 @@ and the permissions an `AgentDefinition` grants a model.
 ## Listing what you have
 
 ```bash
-workmux runtimes          # name, health, features
-workmux agents            # every agent, whoever owns it
-workmux agents --json
+muxix runtimes          # name, health, features
+muxix agents            # every agent, whoever owns it
+muxix agents --json
 ```
 
-`workmux agents` is the runtime-shaped view — agents in your tmux panes next to
-agents an ADE is running — while `workmux status` stays the worktree-shaped one.
+`muxix agents` is the runtime-shaped view — agents in your tmux panes next to
+agents an ADE is running — while `muxix status` stays the worktree-shaped one.
 Each row is prefixed with the runtime that owns it, and that prefix is the
 reference other commands take:
 
 ```bash
-workmux send paseo:agt_7c2 "run the tests again"
-workmux agents stop paseo:agt_7c2
+muxix send paseo:agt_7c2 "run the tests again"
+muxix agents stop paseo:agt_7c2
 ```
 
 A bare handle or pane id still means a local agent, so nothing you type today
@@ -66,7 +66,7 @@ still succeeds — an unreachable manager is information, not a failure.
 ## Choosing one
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 agent_runtime: paseo      # default: local
 ```
 
@@ -76,13 +76,13 @@ is task override → project config → `local`.
 Or per invocation:
 
 ```bash
-workmux add fix-parser --runtime paseo -p "the parser drops trailing commas"
+muxix add fix-parser --runtime paseo -p "the parser drops trailing commas"
 ```
 
-This setting decides who **creates** new agents. It does not decide who workmux
+This setting decides who **creates** new agents. It does not decide who muxix
 is allowed to talk to — see below.
 
-An unknown or unhealthy runtime is an **error**. Workmux will not quietly run
+An unknown or unhealthy runtime is an **error**. Muxix will not quietly run
 the work locally: you chose a remote-reachable manager for its remote reach, and
 losing that silently is exactly the failure you would notice too late.
 
@@ -93,7 +93,7 @@ the runtime named in an agent's reference is the one holding it.
 
 Everything else is shared:
 
-- **Workmux lists agents from every healthy runtime**, not just the configured
+- **Muxix lists agents from every healthy runtime**, not just the configured
   one. Agents you started from your phone sit next to the ones in your tmux
   session.
 - **Operations route by the agent, not by configuration.** `send` and `stop` go
@@ -112,7 +112,7 @@ A pane-less agent still appears in those views, but anything pane-shaped —
 preview, capture, switch-to-pane, freeze — is skipped for it rather than
 attempted against a reference the multiplexer cannot resolve.
 
-So "everything from Paseo, but managed in workmux" and the reverse are both the
+So "everything from Paseo, but managed in muxix" and the reverse are both the
 intended shape, not a workaround.
 
 ## Features
@@ -140,7 +140,7 @@ An ADE is configuration, not code. Every argument list is a template, so
 supporting another manager means another block of the same shape.
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 ade:
   paseo:
     command: paseo
@@ -166,16 +166,16 @@ covered by the built-in preset.
 Paseo ships as a built-in preset; the block above only tweaks it. A state the
 map does not cover becomes `unknown` rather than a guess.
 
-Workmux drives ADEs through their CLI rather than their wire protocol. That
+Muxix drives ADEs through their CLI rather than their wire protocol. That
 keeps zero protocol code here and survives their schema churn, at the cost of
-polled status instead of pushed events — the same trade workmux already makes
+polled status instead of pushed events — the same trade muxix already makes
 with tmux and git. A streaming implementation can replace it behind the same
 trait without touching callers.
 
 ## Project sync
 
-ADEs usually track projects too, so workmux can keep its registry in agreement
-with theirs. Workmux is not privileged here: it implements the same
+ADEs usually track projects too, so muxix can keep its registry in agreement
+with theirs. Muxix is not privileged here: it implements the same
 `ProjectRegistrySource` interface an ADE does, because it has project
 management, a daemon, and agent management — which is what makes something an
 ADE in the first place.
@@ -189,14 +189,14 @@ ade:
       remove_args: [project, delete, "{name}"]
       sync:
         direction: bidirectional   # off (default) | pull | push | bidirectional
-        conflict: manual           # manual (default) | workmux | ade | newest
+        conflict: manual           # manual (default) | muxix | ade | newest
         removals: false            # default
         names: false               # default
 ```
 
 ```bash
-workmux project sync --dry-run     # show adds, removes, conflicts
-workmux project sync --ade paseo
+muxix project sync --dry-run     # show adds, removes, conflicts
+muxix project sync --ade paseo
 ```
 
 Sync also runs on the system daemon's tick, rate-limited, and skipped entirely

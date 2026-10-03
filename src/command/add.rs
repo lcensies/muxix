@@ -897,7 +897,7 @@ impl<'a> CreationPlan<'a> {
     }
 }
 
-/// Route `workmux add` through SpawnAgent RPC when running inside a sandbox.
+/// Route `muxix add` through SpawnAgent RPC when running inside a sandbox.
 ///
 /// Only a subset of `add` flags are supported over RPC. Unsupported flags
 /// are explicitly rejected with a clear error rather than silently ignored.
@@ -939,7 +939,7 @@ fn run_add_via_rpc(
     }
     if multi.count.is_some() {
         bail!(
-            "--count is not supported from inside a sandbox. Call workmux add multiple times instead."
+            "--count is not supported from inside a sandbox. Call muxix add multiple times instead."
         );
     }
     if multi.foreach.is_some() {
@@ -978,7 +978,7 @@ fn run_add_via_rpc(
     };
 
     let mut client = RpcClient::from_env().context(
-        "Failed to connect to host RPC server. Is this running inside a workmux sandbox?",
+        "Failed to connect to host RPC server. Is this running inside a muxix sandbox?",
     )?;
 
     let resp = client.call(&RpcRequest::SpawnAgent {

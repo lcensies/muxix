@@ -1,7 +1,7 @@
-//! Cross-project tracking and launching (`workmux project ...`, `workmux start`).
+//! Cross-project tracking and launching (`muxix project ...`, `muxix start`).
 //!
 //! Named `projects` (plural) to stay clear of `project_state`, the per-project
-//! journal in `.workmux/state`.
+//! journal in `.muxix/state`.
 
 pub mod registry;
 pub mod start;
@@ -36,7 +36,7 @@ pub fn cli_rm(target: &str) -> Result<()> {
 pub fn cli_list() -> Result<()> {
     let reg = Registry::load()?;
     if reg.projects.is_empty() {
-        println!("No tracked projects. Add one with 'workmux project add <dir>'.");
+        println!("No tracked projects. Add one with 'muxix project add <dir>'.");
         return Ok(());
     }
     for p in &reg.projects {

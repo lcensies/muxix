@@ -28,7 +28,7 @@ import pytest
 
 from .conftest import (
     TmuxEnvironment,
-    WorkmuxCommandResult,
+    MuxixCommandResult,
     assert_session_exists,
     assert_session_not_exists,
     get_scripts_dir,
@@ -36,27 +36,27 @@ from .conftest import (
     get_worktree_path,
     poll_until,
     poll_until_file_has_content,
-    run_workmux_command,
-    write_workmux_config,
+    run_muxix_command,
+    write_muxix_config,
 )
-from .test_workmux_add.conftest import add_branch_and_get_worktree
+from .test_muxix_add.conftest import add_branch_and_get_worktree
 
 # Session navigation is tmux-specific (other backends don't support sessions)
 pytestmark = pytest.mark.tmux_only
 
 
-def run_workmux_in_session(
+def run_muxix_in_session(
     env: TmuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     session_name: str,
     command: str,
     working_dir: Path | None = None,
     rust_log: str | None = None,
-) -> WorkmuxCommandResult:
-    """Run a workmux command from inside a specific tmux session.
+) -> MuxixCommandResult:
+    """Run a muxix command from inside a specific tmux session.
 
-    Unlike run_workmux_command which runs from the test session, this sends
+    Unlike run_muxix_command which runs from the test session, this sends
     the command to a pane inside the target session. This allows testing
     behavior that depends on being inside the session (e.g.,
     is_inside_matching_target detection in cleanup.rs).
@@ -66,12 +66,12 @@ def run_workmux_in_session(
     returned after the command completes.
 
     When rust_log is set, XDG_STATE_HOME is redirected to a temp directory
-    so the log file can be read back. workmux writes tracing output to a
+    so the log file can be read back. muxix writes tracing output to a
     log file (not stderr), so the log content is appended to stderr in the
     returned result.
 
     Note: After the command completes, the session may be killed by deferred
-    scripts (e.g., after workmux remove). The exit code and output are
+    scripts (e.g., after muxix remove). The exit code and output are
     captured before deferred scripts run (they have a 300ms sleep), so they
     are still available.
     """
@@ -88,7 +88,7 @@ def run_workmux_in_session(
             f.unlink()
 
     # Clear any previous log file so we only see output from this run
-    log_file = state_dir / "workmux" / "workmux.log"
+    log_file = state_dir / "muxix" / "muxix.log"
     if log_file.exists():
         log_file.unlink()
 
@@ -104,10 +104,10 @@ export PATH={shlex.quote(env.env["PATH"])}
 export TMPDIR={shlex.quote(env.env.get("TMPDIR", "/tmp"))}
 export HOME={shlex.quote(env.env.get("HOME", ""))}
 export XDG_STATE_HOME={shlex.quote(str(state_dir))}
-export WORKMUX_TEST=1
+export MUXIX_TEST=1
 {rust_log_line}
 cd {shlex.quote(str(workdir))}
-{shlex.quote(str(workmux_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
+{shlex.quote(str(muxix_exe_path))} {command} > {shlex.quote(str(stdout_file))} 2> {shlex.quote(str(stderr_file))}
 """
     script_file.write_text(script_content)
     script_file.chmod(0o755)
@@ -130,13 +130,13 @@ cd {shlex.quote(str(workdir))}
 
     stderr_content = stderr_file.read_text() if stderr_file.exists() else ""
 
-    # Append workmux log file content to stderr when RUST_LOG was set.
-    # workmux writes tracing output to $XDG_STATE_HOME/workmux/workmux.log
+    # Append muxix log file content to stderr when RUST_LOG was set.
+    # muxix writes tracing output to $XDG_STATE_HOME/muxix/muxix.log
     # (not stderr), so we read it back and include it in the result.
     if rust_log and log_file.exists():
         stderr_content += log_file.read_text()
 
-    return WorkmuxCommandResult(
+    return MuxixCommandResult(
         exit_code=int(exit_code_file.read_text().strip()),
         stdout=stdout_file.read_text() if stdout_file.exists() else "",
         stderr=stderr_content,
@@ -146,7 +146,7 @@ cd {shlex.quote(str(workdir))}
 class TestRemoveFromInsideSession:
     """Tests for removing session-mode worktrees from inside the session.
 
-    When running `workmux remove` from inside a session-mode worktree,
+    When running `muxix remove` from inside a session-mode worktree,
     the deferred script should switch to the last session before killing
     the source session, so the user returns to where they were previously
     instead of tmux picking an arbitrary session.
@@ -158,7 +158,7 @@ class TestRemoveFromInsideSession:
     """
 
     def test_remove_generates_switch_to_last_session(
-        self, mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+        self, mux_server: TmuxEnvironment, muxix_exe_path: Path, repo_path: Path
     ):
         """Verify remove from inside session generates switch-client -l.
 
@@ -170,11 +170,11 @@ class TestRemoveFromInsideSession:
         branch_name = "feature-session-nav-switch"
         session_name = get_session_name(branch_name)
 
-        write_workmux_config(repo_path)
+        write_muxix_config(repo_path)
 
         worktree_path = add_branch_and_get_worktree(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             repo_path,
             branch_name,
             extra_args="--session --background",
@@ -183,14 +183,14 @@ class TestRemoveFromInsideSession:
 
         # Run remove from INSIDE the session with debug logging to capture
         # the deferred script content
-        result = run_workmux_in_session(
+        result = run_muxix_in_session(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             repo_path,
             session_name,
             "remove -f",
             working_dir=worktree_path,
-            rust_log="workmux=debug",
+            rust_log="muxix=debug",
         )
 
         assert result.exit_code == 0, f"Remove failed: {result.stderr}"
@@ -225,9 +225,9 @@ class TestRemoveFromInsideSession:
 
 
 class TestCreateAndSwitch:
-    """Tests for `workmux add --session` without --background.
+    """Tests for `muxix add --session` without --background.
 
-    When creating a session-mode worktree without --background, workmux
+    When creating a session-mode worktree without --background, muxix
     should attempt to switch the client to the new session. In a headless
     test environment, switch-client will fail (no PTY-attached client),
     but we can verify the session is created regardless.
@@ -238,7 +238,7 @@ class TestCreateAndSwitch:
     """
 
     def test_add_session_creates_session_despite_switch_failure(
-        self, mux_server: TmuxEnvironment, workmux_exe_path: Path, repo_path: Path
+        self, mux_server: TmuxEnvironment, muxix_exe_path: Path, repo_path: Path
     ):
         """Verify --session without --background creates the session.
 
@@ -251,12 +251,12 @@ class TestCreateAndSwitch:
         session_name = get_session_name(branch_name)
         worktree_path = get_worktree_path(repo_path, branch_name)
 
-        write_workmux_config(repo_path)
+        write_muxix_config(repo_path)
 
         # Run without --background; may fail due to switch-client
-        result = run_workmux_command(
+        result = run_muxix_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             repo_path,
             f"add {branch_name} --session",
             expect_fail=True,

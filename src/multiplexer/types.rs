@@ -51,7 +51,7 @@ pub enum AgentStatus {
     Done,
 }
 
-/// Information about a specific pane running a workmux agent
+/// Information about a specific pane running a muxix agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPane {
     /// Session name (tmux session or WezTerm workspace)

@@ -1,6 +1,6 @@
-# wng — Extended Features over Workmux
+# wng — Extended Features over Muxix
 
-This document covers features **added in wng that do not exist in upstream workmux**.
+This document covers features **added in wng that do not exist in upstream muxix**.
 Upstream provides: worktree lifecycle (add/open/close/merge/remove), sidebar, dashboard (Agents + Worktrees tabs), sandbox (Lima/container), status tracking, multiplexer support (tmux/wezterm/kitty/zellij).
 
 ---
@@ -11,8 +11,8 @@ Upstream has two dashboard tabs: **Agents** and **Worktrees**. wng adds **Tasks*
 a view over the project's task graph (`tasks/index.json`).
 
 ```bash
-workmux dashboard              # opens on Agents tab
-workmux dashboard -t tasks     # open directly on Tasks
+muxix dashboard              # opens on Agents tab
+muxix dashboard -t tasks     # open directly on Tasks
 ```
 
 ### Tasks Tab
@@ -31,37 +31,37 @@ Key bindings (Tasks tab):
 
 Three interfaces for `tasks/index.json` — CLI, TUI, and JSON HTTP API.
 
-### CLI (`workmux task`)
+### CLI (`muxix task`)
 
 ```bash
 # List all tasks
-workmux task list
+muxix task list
 
 # Filter by status
-workmux task list --status todo
+muxix task list --status todo
 
 # Show only frontier (ready to start)
-workmux task list --frontier
+muxix task list --frontier
 
 # JSON output
-workmux task list --json
+muxix task list --json
 
 # Get a single task
-workmux task get auth-module
+muxix task get auth-module
 
 # Create a task
-workmux task create \
+muxix task create \
   --id auth-module \
   --title "Implement auth" \
   --description "JWT-based auth with refresh tokens" \
   --depends-on ""  # comma-separated IDs
 
 # Update fields
-workmux task update auth-module --status in_progress
-workmux task update auth-module --title "Auth module (revised)"
+muxix task update auth-module --status in_progress
+muxix task update auth-module --title "Auth module (revised)"
 
 # Delete
-workmux task delete auth-module
+muxix task delete auth-module
 ```
 
 Relative `--graph` paths resolve to the **main worktree root**, so agents running inside a feature worktree automatically share the project's single graph.
@@ -71,12 +71,12 @@ Relative `--graph` paths resolve to the **main worktree root**, so agents runnin
 Out-of-band agent signaling — an external harness reads these instead of parsing agent output.
 
 ```bash
-workmux signal <kind> [--pane <pane-id>] [--node <node-id>] [--feedback "..."]
+muxix signal <kind> [--pane <pane-id>] [--node <node-id>] [--feedback "..."]
 ```
 
 ### Pane-keyed signals (agent lifecycle hooks)
 
-Keyed by `$TMUX_PANE` (or `--pane`). Written to `.workmux/signals/<pane-id>/<kind>`.
+Keyed by `$TMUX_PANE` (or `--pane`). Written to `.muxix/signals/<pane-id>/<kind>`.
 
 | Kind | Trigger | Effect |
 |---|---|---|
@@ -92,8 +92,8 @@ Usage in Claude Code hooks:
 # ~/.claude/settings.json hooks:
 {
   "hooks": {
-    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "workmux signal turn-done"}]}],
-    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "workmux signal needs-input"}]}]
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "muxix signal turn-done"}]}],
+    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "muxix signal needs-input"}]}]
   }
 }
 ```
@@ -109,10 +109,10 @@ Keyed by `--node <node-id>`. For agents to signal stage completion to whatever h
 
 ```bash
 # At end of agent prompt:
-workmux signal done --node implement
+muxix signal done --node implement
 
 # On failure:
-workmux signal error --node implement --feedback "Tests failed: 3 assertions"
+muxix signal error --node implement --feedback "Tests failed: 3 assertions"
 ```
 
 ---
@@ -145,7 +145,7 @@ what differs; all pipeline/orchestrator/harness behaviors adapt automatically.
 ### Agent bootstrap (`src/bootstrap.rs`)
 
 Uniform theme/plugin/skill/subagent/prompt installation across all supported
-agents from `.workmux.yaml`:
+agents from `.muxix.yaml`:
 
 ```yaml
 bootstrap:
@@ -161,7 +161,7 @@ bootstrap:
       model: haiku                      # resolved against `providers:`
       prompt: |
         You are a planning specialist...
-  default_prompt_components:            # .workmux/prompt-components/<name>.md
+  default_prompt_components:            # .muxix/prompt-components/<name>.md
     - fff
   template_vars:                        # rendered into each SKILL.md
     review_cmd:
@@ -179,17 +179,17 @@ bootstrap:
         explore: haiku
 ```
 
-`workmux setup` reads this and applies it to each detected agent. Full reference:
+`muxix setup` reads this and applies it to each detected agent. Full reference:
 [docs/guide/bootstrap.md](./guide/bootstrap.md).
 
 ---
 
 ## MCP Server Management
 
-Declarative MCP (Model Context Protocol) server config in `.workmux.yaml`, rendered into each worktree's `.mcp.json`.
+Declarative MCP (Model Context Protocol) server config in `.muxix.yaml`, rendered into each worktree's `.mcp.json`.
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 mcp:
   socraticode:
     command: npx
@@ -206,17 +206,17 @@ mcp:
 
 ```bash
 # Render .mcp.json from config, propagate to worktrees
-workmux mcp sync
+muxix mcp sync
 
 # Show configured servers and integration status
-workmux mcp status
+muxix mcp status
 ```
 
-The render is a **merge**: `x-workmux-managed` array tracks which keys workmux owns. Removing/disabling a server in config removes it from the file; hand-added entries are preserved.
+The render is a **merge**: `x-muxix-managed` array tracks which keys muxix owns. Removing/disabling a server in config removes it from the file; hand-added entries are preserved.
 
 `agents:` limits a server to the listed agents (short id like `pi` or lowercased display name like `claude code`); absent means all. Caveat: Claude, pi, and omp all read the shared project `.mcp.json`, so a server scoped to any one of them is still visible to the others through that file.
 
-`.mcp.json` is propagated into each worktree as a relative symlink during `workmux add`.
+`.mcp.json` is propagated into each worktree as a relative symlink during `muxix add`.
 
 ---
 
@@ -228,23 +228,23 @@ Alternative sandbox backend via the `msb` CLI (libkrun-based). Each agent runs i
 - Compatible with `pipeline` context inheritance via `Transfer::Snapshot`
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 sandbox:
   backend: microsandbox
   microsandbox:
-    image: workmux-claude:latest
+    image: muxix-claude:latest
     memory_mb: 4096
   checkpoint:
     strategy: microsandbox
-    dir: .workmux/checkpoints
+    dir: .muxix/checkpoints
 ```
 
 ```bash
 # Install msb CLI
-workmux sandbox setup microsandbox
+muxix sandbox setup microsandbox
 
 # Run agent in microsandbox
-workmux add my-feature --sandbox
+muxix add my-feature --sandbox
 ```
 
 Install detection: checks `PATH`, then `~/.local/bin/msb`, `~/.microsandbox/bin/msb`, `/usr/local/bin/msb`.
@@ -261,7 +261,7 @@ Checkpoint a running sandbox agent and restore it later (pipeline context inheri
 sandbox:
   checkpoint:
     strategy: microsandbox  # or: container (CRIU), lima (unsupported)
-    dir: .workmux/checkpoints
+    dir: .muxix/checkpoints
 ```
 
 | Backend | Mechanism | Notes |
@@ -276,20 +276,20 @@ Checkpoint IDs and timestamps are recorded in agent state (`StateStore`). Pipeli
 
 ## Project State Store
 
-Per-project key-value store for runtime state that survives across workmux restarts. Used internally by the setup phase and Project tab.
+Per-project key-value store for runtime state that survives across muxix restarts. Used internally by the setup phase and Project tab.
 
 ```bash
 # Read a capability flag
-workmux project-state get mcp.synced
+muxix project-state get mcp.synced
 
 # Set a capability
-workmux project-state set test_env ready
+muxix project-state set test_env ready
 
 # List all entries
-workmux project-state list
+muxix project-state list
 ```
 
-Stored at `.workmux/capabilities.json`. Format: `{ "key": { "value": "...", "updated_at": 1234567890 } }`.
+Stored at `.muxix/capabilities.json`. Format: `{ "key": { "value": "...", "updated_at": 1234567890 } }`.
 
 The `CapabilityStatus` enum: `Unknown` / `Pending` / `Ready` / `Failed`.
 
@@ -297,15 +297,15 @@ The `CapabilityStatus` enum: `Unknown` / `Pending` / `Ready` / `Failed`.
 
 ## Event Tracing
 
-Structured JSON event log written to `~/.local/state/workmux.log`. Records every
+Structured JSON event log written to `~/.local/state/muxix.log`. Records every
 agent pane interaction, signal, and turn for post-hoc debugging.
 
 ```bash
 # Tail live events
-tail -f ~/.local/state/workmux.log | jq 'select(.fields.ev != null)'
+tail -f ~/.local/state/muxix.log | jq 'select(.fields.ev != null)'
 
 # Follow one pane
-cat ~/.local/state/workmux.log | jq 'select(.fields.pane == "%12")'
+cat ~/.local/state/muxix.log | jq 'select(.fields.pane == "%12")'
 ```
 
 ### Event format
@@ -318,7 +318,7 @@ cat ~/.local/state/workmux.log | jq 'select(.fields.pane == "%12")'
 ### Configuration
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 events:
   enabled: true
   level: debug          # off | info | debug | trace
@@ -330,9 +330,9 @@ events:
 
 Or via env:
 ```bash
-WORKMUX_LOG_FORMAT=text workmux open feature   # human-readable
-WORKMUX_EVENTS=debug workmux open feature      # high-frequency events
-WORKMUX_EVENTS=off workmux open feature        # silence events
+MUXIX_LOG_FORMAT=text muxix open feature   # human-readable
+MUXIX_EVENTS=debug muxix open feature      # high-frequency events
+MUXIX_EVENTS=off muxix open feature        # silence events
 ```
 
 ---
@@ -341,17 +341,17 @@ WORKMUX_EVENTS=off workmux open feature        # silence events
 
 | Command | Description |
 |---|---|
-| `workmux signal <kind>` | Emit pane or node signal |
-| `workmux task <sub>` | CLI CRUD for task graph |
-| `workmux notify` | Signal task completion to orchestrator |
-| `workmux mcp sync` | Render `.mcp.json` from config |
-| `workmux mcp status` | Show MCP server status |
-| `workmux project-state` | Read/write project state store |
-| `workmux focus <target>` | Switch to agent by ID or name fragment |
-| `workmux clean` | Mark stuck tasks done (no active implementation) |
-| `workmux hooks-report` | Emit hooks capability report to event log |
-| `workmux provision [status\|sync]` | Sync org policy from a provision server |
-| `workmux profile <show\|export\|diff>` | Inspect the sanitised config snapshot |
+| `muxix signal <kind>` | Emit pane or node signal |
+| `muxix task <sub>` | CLI CRUD for task graph |
+| `muxix notify` | Signal task completion to orchestrator |
+| `muxix mcp sync` | Render `.mcp.json` from config |
+| `muxix mcp status` | Show MCP server status |
+| `muxix project-state` | Read/write project state store |
+| `muxix focus <target>` | Switch to agent by ID or name fragment |
+| `muxix clean` | Mark stuck tasks done (no active implementation) |
+| `muxix hooks-report` | Emit hooks capability report to event log |
+| `muxix provision [status\|sync]` | Sync org policy from a provision server |
+| `muxix profile <show\|export\|diff>` | Inspect the sanitised config snapshot |
 
 ---
 
@@ -368,7 +368,7 @@ nodes:
   - id: plan
     prompt: |
       Analyse the task and write a detailed implementation plan.
-      Wrap it between ===WORKMUX-PLAN-BEGIN=== and ===WORKMUX-PLAN-END===.
+      Wrap it between ===MUXIX-PLAN-BEGIN=== and ===MUXIX-PLAN-END===.
     record_plan: true    # also persists to task graph's implementation_plan field
 
   - id: implement
@@ -383,10 +383,10 @@ nodes:
 
 `{{outputs.<id>}}` is substituted at prompt-dispatch time. Missing node IDs log a warning and expand to empty string (prompt still dispatches).
 
-**Output persistence** (`outputs_file`): captured outputs are atomically written to `.workmux/runs/<task-id>/outputs.json` after each node completes. On harness restart the file is loaded first, so `{{outputs.plan}}` still resolves even if the `plan` node ran in a previous process.
+**Output persistence** (`outputs_file`): captured outputs are atomically written to `.muxix/runs/<task-id>/outputs.json` after each node completes. On harness restart the file is loaded first, so `{{outputs.plan}}` still resolves even if the `plan` node ran in a previous process.
 
 ```json
-// .workmux/runs/auth-module/outputs.json
+// .muxix/runs/auth-module/outputs.json
 {
   "plan": "1. Add JWT signing in auth/jwt.ts\n2. ...",
   "test": "All 14 tests passed."
@@ -409,14 +409,14 @@ Current workaround — explicit file reference in prompt:
 # task B's harness prompt
 prompt: |
   Task A produced the following interface contract:
-  {{bash: cat .workmux/runs/task-a/outputs.json | jq -r '.plan'}}
+  {{bash: cat .muxix/runs/task-a/outputs.json | jq -r '.plan'}}
 
   Implement the consumer side.
 ```
 
 ### `record_plan` and `implementation_plan` field
 
-Nodes with `record_plan: true` trigger special extraction: the runner looks for `===WORKMUX-PLAN-BEGIN===` / `===WORKMUX-PLAN-END===` delimiters in the output; falling back to the full output. The extracted text is:
+Nodes with `record_plan: true` trigger special extraction: the runner looks for `===MUXIX-PLAN-BEGIN===` / `===MUXIX-PLAN-END===` delimiters in the output; falling back to the full output. The extracted text is:
 1. Stored in `node_outputs["plan"]` (available as `{{outputs.plan}}`)
 2. Written to `outputs.json`
 3. Persisted onto the task graph entry as `implementation_plan`
@@ -441,7 +441,7 @@ This makes the plan visible in the Tasks tab, the dashboard, and `GET /tasks/:id
 Per-worktree agentgateway + RTK proxy chain. Each worktree gets a dedicated port (deterministic from handle hash, base + hash % 1000).
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 proxy_chain:
   enabled: false    # not yet implemented; opt-in gated
   hops:
@@ -461,33 +461,33 @@ Status: scaffolded (`src/proxy/`), gated off by default. Follow-up task: `finish
 
 ## Org Provisioning & Policy
 
-`workmux provision` syncs the machine with an org provision server: it pushes a
+`muxix provision` syncs the machine with an org provision server: it pushes a
 sanitised profile snapshot, fetches an org policy, caches it, audits the merged
 config against it, and wires local agents to the org's governed gateway.
 
 ```bash
-workmux provision              # = provision status (offline, reads the cache)
-workmux provision sync         # push profile -> fetch policy -> cache -> audit
-workmux provision sync --strict   # non-zero exit on any violation (CI gate)
-workmux provision --dry-run    # audit only, write nothing
+muxix provision              # = provision status (offline, reads the cache)
+muxix provision sync         # push profile -> fetch policy -> cache -> audit
+muxix provision sync --strict   # non-zero exit on any violation (CI gate)
+muxix provision --dry-run    # audit only, write nothing
 ```
 
-Config is **global-only** (`~/.config/workmux/config.yaml`); env vars win over it
+Config is **global-only** (`~/.config/muxix/config.yaml`); env vars win over it
 so a container needs no config file:
 
 ```yaml
 provision:
-  server_url: https://policy.corp.example.com  # env: WORKMUX_PROVISION_URL
-  token_path: ~/.config/workmux/provision-token  # env: WORKMUX_PROVISION_TOKEN; file must be mode 600
+  server_url: https://policy.corp.example.com  # env: MUXIX_PROVISION_URL
+  token_path: ~/.config/muxix/provision-token  # env: MUXIX_PROVISION_TOKEN; file must be mode 600
   grace_period_secs: 259200                 # use an expired policy for 72h more
 ```
 
 `sync_on_setup`, `policy_ttl_secs`, and `insecure_skip_tls` parse but are inert
-today — `workmux setup` never syncs, and the TTL comes from the server response.
+today — `muxix setup` never syncs, and the TTL comes from the server response.
 
 ### Policy enforcement is at config load, not at sync
 
-`Config::load` reads `~/.config/workmux/policy.yaml` on **every** command, merges
+`Config::load` reads `~/.config/muxix/policy.yaml` on **every** command, merges
 the locked fields over user config, and reports violations. A policy therefore
 governs `add`, `dashboard`, `pipeline`, etc. without re-syncing.
 
@@ -517,25 +517,25 @@ so agent traffic routes through it — no hand-set `ANTHROPIC_BASE_URL`:
 
 Secrets never land on disk: the token is referenced by env var name
 (`{env:VAR}` for OpenCode, `apiKeyHelper` for Claude), defaulting to
-`WORKMUX_PROVISION_TOKEN`. Both files are merged, not rewritten.
+`MUXIX_PROVISION_TOKEN`. Both files are merged, not rewritten.
 
-### Profile snapshot (`workmux profile`)
+### Profile snapshot (`muxix profile`)
 
 Secret-free by construction — names and flags only, no commands, keys, or env
 values.
 
 ```bash
-workmux profile show                 # YAML to stdout
-workmux profile export -o me.yaml
-workmux profile diff                 # reports the policy's team_profile_url (diff TBD)
+muxix profile show                 # YAML to stdout
+muxix profile export -o me.yaml
+muxix profile diff                 # reports the policy's team_profile_url (diff TBD)
 ```
 
-Fields: `workmux_version`, `platform`, `agent_kind` (CLI stem only), `mcp_names`,
+Fields: `muxix_version`, `platform`, `agent_kind` (CLI stem only), `mcp_names`,
 `provider_names`, `features` (`sandbox_enabled` / `proxy_chain_enabled` /
 `bootstrap_enabled`), and a djb2 `hostname_hash`.
 
-Artifacts: `~/.config/workmux/policy.yaml` (cache),
-`~/.local/state/workmux/provision-audit.jsonl` (one JSON line per sync).
+Artifacts: `~/.config/muxix/policy.yaml` (cache),
+`~/.local/state/muxix/provision-audit.jsonl` (one JSON line per sync).
 
 Full reference: [docs/reference/commands/provision.md](./reference/commands/provision.md).
 

@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    println!("cargo:rustc-env=WORKMUX_BUILD_TIME={build_time}");
+    println!("cargo:rustc-env=MUXIX_BUILD_TIME={build_time}");
     // Invalidate when HEAD changes so a new commit gets a fresh timestamp.
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("cargo:rustc-env=WORKMUX_COMMIT_SHA={commit_sha}");
+    println!("cargo:rustc-env=MUXIX_COMMIT_SHA={commit_sha}");
 
     Ok(())
 }

@@ -744,7 +744,7 @@ where
 /// How long a lock may sit before a contender takes it regardless of what the
 /// recorded pid says. Overridable so tests do not have to sleep.
 fn lock_stale_secs() -> u64 {
-    std::env::var("WORKMUX_GRAPH_LOCK_STALE_SECS")
+    std::env::var("MUXIX_GRAPH_LOCK_STALE_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(30)

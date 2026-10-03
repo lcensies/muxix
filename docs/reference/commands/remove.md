@@ -7,7 +7,7 @@ description: Remove worktrees, tmux windows, and branches without merging
 Removes worktrees, tmux windows, and branches without merging (unless you keep the branches). Useful for abandoning work or cleaning up experimental branches. Supports removing multiple worktrees in a single command. Alias: `rm`
 
 ```bash
-workmux remove [name]... [flags]
+muxix remove [name]... [flags]
 ```
 
 ## Arguments
@@ -27,32 +27,32 @@ workmux remove [name]... [flags]
 
 ```bash
 # Remove the current worktree (run from within the worktree)
-workmux remove
+muxix remove
 
 # Remove a specific worktree with confirmation if unmerged
-workmux remove experiment
+muxix remove experiment
 
 # Remove multiple worktrees at once
-workmux rm feature-a feature-b feature-c
+muxix rm feature-a feature-b feature-c
 
 # Remove multiple worktrees with force (no confirmation)
-workmux rm -f old-work stale-branch
+muxix rm -f old-work stale-branch
 
 # Use the alias
-workmux rm old-work
+muxix rm old-work
 
 # Remove worktree/window but keep the branch
-workmux remove --keep-branch experiment
+muxix remove --keep-branch experiment
 
 # Force remove without prompts
-workmux rm -f experiment
+muxix rm -f experiment
 
 # Remove worktrees whose remote branches were deleted (e.g., after PR merge)
-workmux rm --gone
+muxix rm --gone
 
 # Force remove all gone worktrees (no confirmation)
-workmux rm --gone -f
+muxix rm --gone -f
 
 # Remove all worktrees at once
-workmux rm --all
+muxix rm --all
 ```

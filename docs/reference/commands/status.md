@@ -7,7 +7,7 @@ description: Query agent status and completion state for worktrees
 Shows current agent status for one or more worktrees: turn-boundary status (`working` / `waiting` / `done`), elapsed time, and, once an agent has signalled it, its completion state.
 
 ```bash
-workmux status [name...] [flags]
+muxix status [name...] [flags]
 ```
 
 ## Arguments
@@ -23,7 +23,7 @@ workmux status [name...] [flags]
 
 ## Completion in the STATUS column
 
-Once an agent has run [`workmux signal done`](./signal) or `workmux signal error`, the STATUS column appends the completion: `done · completed` or `working · failed`. The turn status and the completion are independent — an agent can show `working · completed` if it kept running (e.g. tool-call cleanup) after signalling done.
+Once an agent has run [`muxix signal done`](./signal) or `muxix signal error`, the STATUS column appends the completion: `done · completed` or `working · failed`. The turn status and the completion are independent — an agent can show `working · completed` if it kept running (e.g. tool-call cleanup) after signalling done.
 
 ## `--json` output
 
@@ -45,25 +45,25 @@ Each entry is a `StatusEntry` with `worktree`, `branch`, `status`, `elapsed_secs
 }
 ```
 
-`completion` is omitted entirely when the agent has not signalled `done`/`error` yet (or after a clear on relaunch/send — see [`workmux signal`](./signal)).
+`completion` is omitted entirely when the agent has not signalled `done`/`error` yet (or after a clear on relaunch/send — see [`muxix signal`](./signal)).
 
 ## Examples
 
 ```bash
 # Show all active agents in the current repo
-workmux status
+muxix status
 
 # Show status for specific worktrees
-workmux status user-auth api-refactor
+muxix status user-auth api-refactor
 
 # Include git info
-workmux status user-auth --git
+muxix status user-auth --git
 
 # Machine-readable output, e.g. for a coordinator script
-workmux status user-auth --json
+muxix status user-auth --json
 ```
 
 ## Related
 
-- [`workmux signal`](./signal) — how the completion record shown here gets written.
-- [`workmux wait`](./wait) — block until status/completion reaches a target instead of polling.
+- [`muxix signal`](./signal) — how the completion record shown here gets written.
+- [`muxix wait`](./wait) — block until status/completion reaches a target instead of polling.

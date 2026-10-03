@@ -1,13 +1,13 @@
 [package]
-name = "workmux"
+name = "muxix"
 version = "0.1.211"
 edition = "2024"
-authors = ["workmux contributors"]
+authors = ["muxix contributors"]
 description = "An opinionated workflow tool that orchestrates git worktrees and tmux"
 license = "MIT"
-documentation = "https://github.com/raine/workmux#readme"
-homepage = "https://github.com/raine/workmux"
-repository = "https://github.com/raine/workmux"
+documentation = "https://github.com/lcensies/muxix#readme"
+homepage = "https://github.com/lcensies/muxix"
+repository = "https://github.com/lcensies/muxix"
 include = [
     "/src/**/*",
     "/skills/**/*",
@@ -109,7 +109,7 @@ codegen-units = 1  # Maximize optimization
 
 # Fast optimized profile for local/dev installs. Skips the slow whole-program
 # fat-LTO + single-codegen-unit pass that `release` uses for GitHub artifacts:
-# thin LTO + parallel codegen means the final `workmux(bin)` link step is no
+# thin LTO + parallel codegen means the final `muxix(bin)` link step is no
 # longer single-threaded, cutting build time dramatically for ~same runtime
 # perf. `release` is unchanged and still used by CI/Docker release builds.
 [profile.release-fast]

@@ -1,7 +1,7 @@
 """
 Integration tests for sandbox checkpoint / resume / focus features.
 
-These tests run workmux CLI as a direct subprocess with:
+These tests run muxix CLI as a direct subprocess with:
 - XDG_STATE_HOME pointing at a temp dir (so we control the agent state store)
 - A fake `msb` CLI script that records what commands were called
 
@@ -25,11 +25,11 @@ import yaml
 # ---------------------------------------------------------------------------
 
 
-def workmux_exe() -> Path:
-    """Locate the workmux binary built for this branch."""
-    candidate = Path(__file__).parent.parent / "target" / "debug" / "workmux"
+def muxix_exe() -> Path:
+    """Locate the muxix binary built for this branch."""
+    candidate = Path(__file__).parent.parent / "target" / "debug" / "muxix"
     if not candidate.exists():
-        pytest.skip(f"workmux binary not found at {candidate} — run `cargo build` first")
+        pytest.skip(f"muxix binary not found at {candidate} — run `cargo build` first")
     return candidate
 
 
@@ -42,7 +42,7 @@ def run_wm(
     expect_fail: bool = False,
     timeout: int = 10,
 ) -> subprocess.CompletedProcess:
-    """Run workmux with an isolated state store."""
+    """Run muxix with an isolated state store."""
     env = os.environ.copy()
     env["XDG_STATE_HOME"] = str(xdg_state)
     env["HOME"] = str(xdg_state / "home")
@@ -52,7 +52,7 @@ def run_wm(
         env.update(extra_env)
 
     result = subprocess.run(
-        [str(workmux_exe())] + args,
+        [str(muxix_exe())] + args,
         env=env,
         capture_output=True,
         text=True,
@@ -64,7 +64,7 @@ def run_wm(
         )
     else:
         assert result.returncode == 0, (
-            f"workmux {' '.join(args)} failed (exit {result.returncode})\n"
+            f"muxix {' '.join(args)} failed (exit {result.returncode})\n"
             f"Stdout:\n{result.stdout}\nStderr:\n{result.stderr}"
         )
     return result
@@ -83,7 +83,7 @@ def seed_agent_state(
     workdir: str = "/tmp/project",
 ) -> Path:
     """Write a fake agent state file into the isolated state store."""
-    agents_dir = xdg_state / "workmux" / "agents"
+    agents_dir = xdg_state / "muxix" / "agents"
     agents_dir.mkdir(parents=True, exist_ok=True)
 
     # Encode filename the same way PaneKey::to_filename() does
@@ -133,9 +133,9 @@ def seed_project(
     checkpoint: dict | None = None,
     runtime: str | None = None,
 ) -> Path:
-    """Create a project directory with a .workmux.yaml selecting the sandbox backend.
+    """Create a project directory with a .muxix.yaml selecting the sandbox backend.
 
-    The agent's workdir must point here so that `workmux sandbox checkpoint/resume`
+    The agent's workdir must point here so that `muxix sandbox checkpoint/resume`
     resolves the sandbox backend from the agent's own project config.
 
     `runtime` (e.g. "podman" / "docker") forces `sandbox.container.runtime` for
@@ -148,8 +148,8 @@ def seed_project(
         sandbox["checkpoint"] = checkpoint
     if runtime is not None:
         sandbox["container"] = {"runtime": runtime}
-    (project / ".workmux.yaml").write_text(yaml.safe_dump({"sandbox": sandbox}))
-    # workmux resolves project config only inside a git repo, so the agent's
+    (project / ".muxix.yaml").write_text(yaml.safe_dump({"sandbox": sandbox}))
+    # muxix resolves project config only inside a git repo, so the agent's
     # worktree must be one. Initialise a throwaway repo.
     subprocess.run(
         ["git", "init", "-q"],
@@ -215,7 +215,7 @@ def make_fake_runtime(bin_dir: Path, name: str, *, log_file: Path, exit_code: in
 
 
 # ---------------------------------------------------------------------------
-# Tests: workmux sandbox checkpoint
+# Tests: muxix sandbox checkpoint
 # ---------------------------------------------------------------------------
 
 
@@ -242,7 +242,7 @@ def test_checkpoint_errors_without_sandbox_id(tmp_path):
 def test_checkpoint_errors_when_agent_not_found(tmp_path):
     """checkpoint command fails gracefully for an unknown agent ID."""
     xdg = tmp_path / "state"
-    (xdg / "workmux" / "agents").mkdir(parents=True, exist_ok=True)
+    (xdg / "muxix" / "agents").mkdir(parents=True, exist_ok=True)
 
     result = run_wm(
         ["sandbox", "checkpoint", "00000000-dead-beef-0000-000000000000"],
@@ -314,7 +314,7 @@ def test_checkpoint_writes_path_to_state(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Tests: workmux sandbox resume
+# Tests: muxix sandbox resume
 # ---------------------------------------------------------------------------
 
 
@@ -392,14 +392,14 @@ def test_resume_calls_msb_restore(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Tests: workmux focus
+# Tests: muxix focus
 # ---------------------------------------------------------------------------
 
 
 def test_focus_errors_for_unknown_target(tmp_path):
     """focus fails with a clear error for an unrecognised agent ID or name."""
     xdg = tmp_path / "state"
-    (xdg / "workmux" / "agents").mkdir(parents=True, exist_ok=True)
+    (xdg / "muxix" / "agents").mkdir(parents=True, exist_ok=True)
 
     result = run_wm(
         ["focus", "00000000-dead-beef-0000-000000000000"],
@@ -439,7 +439,7 @@ def test_focus_errors_for_ambiguous_window_name(tmp_path):
     seed_agent_state(xdg, agent_id=AGENT_ID_2, pane_id="%11", workdir="/tmp/project-b")
 
     # Patch both to share a common window_name prefix.
-    agents_dir = xdg / "workmux" / "agents"
+    agents_dir = xdg / "muxix" / "agents"
     window_names = ["wm-feature-auth", "wm-feature-auth-v2"]
     for i, f in enumerate(sorted(agents_dir.iterdir())):
         data = json.loads(f.read_text())
@@ -489,7 +489,7 @@ def test_checkpoint_retention_prunes_old_snapshots(tmp_path):
     )
     script.chmod(0o755)
 
-    # Write a .workmux.yaml with microsandbox backend and checkpoint.keep: 1
+    # Write a .muxix.yaml with microsandbox backend and checkpoint.keep: 1
     project = seed_project(
         tmp_path,
         checkpoint={"enabled": True, "strategy": "manual", "keep": 1},
@@ -510,7 +510,7 @@ def test_checkpoint_retention_prunes_old_snapshots(tmp_path):
     )
 
     # Read the checkpoint_path from state after first run
-    agents_dir = xdg / "workmux" / "agents"
+    agents_dir = xdg / "muxix" / "agents"
     state_files = list(agents_dir.iterdir())
     assert state_files, "State file must exist"
     first_state = json.loads(state_files[0].read_text())

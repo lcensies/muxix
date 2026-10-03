@@ -1,13 +1,13 @@
 //! Value-level config layer resolution.
 //!
-//! Workmux composes its effective config from several layers — includes, the
+//! Muxix composes its effective config from several layers — includes, the
 //! global file, the project file, a provisioning policy, selected profiles, and
 //! CLI overrides. This module merges them as `serde_yaml::Value` trees and
 //! hands the single merged value to serde once, rather than merging typed
 //! `Config` structs field by field.
 //!
 //! Merging at the value level is what makes three things possible that a typed
-//! merge cannot do: per-key provenance (`workmux config resolve --explain`),
+//! merge cannot do: per-key provenance (`muxix config resolve --explain`),
 //! distinguishing "absent" from "explicitly null", and folding an arbitrary
 //! number of layers without reinterpreting each rule for each new layer.
 //!
@@ -45,7 +45,7 @@
 //!
 //! # Global-only keys
 //!
-//! Several keys are security-sensitive: a repository's `.workmux.yaml` must not
+//! Several keys are security-sensitive: a repository's `.muxix.yaml` must not
 //! be able to set them, because a malicious repo (or an agent that can write to
 //! one) would otherwise gain host command execution, secret passthrough, or a
 //! weakened sandbox. These are listed in [`GLOBAL_ONLY_PATHS`] and stripped from
@@ -72,7 +72,7 @@ pub enum LayerKind {
     Include,
     /// The global config file.
     Global,
-    /// The project `.workmux.yaml`.
+    /// The project `.muxix.yaml`.
     Project,
     /// Defaults supplied by a cached provisioning policy.
     PolicyDefaults,
@@ -179,12 +179,12 @@ pub enum Rule {
 }
 
 /// Keys a non-global layer may not set. Each is security-sensitive: allowing a
-/// repository's `.workmux.yaml` to set it would grant the repo host execution,
+/// repository's `.muxix.yaml` to set it would grant the repo host execution,
 /// secret exposure, or a weakened sandbox.
 pub const GLOBAL_ONLY_PATHS: &[&str] = &[
     // Executes an arbitrary command to name worktrees.
     "auto_name.command",
-    // Agent definitions are commands workmux will run.
+    // Agent definitions are commands muxix will run.
     "agents",
     // Same: a rule selects a command to execute, keyed by path.
     "agent_rules",
@@ -570,7 +570,7 @@ pub fn strip_global_only(layer: &mut Layer) -> Vec<LayerWarning> {
                 path: (*path).to_string(),
                 message: format!(
                     "{path} is ignored outside the global config -- move it to \
-                     your global config (~/.config/workmux/config.yaml)"
+                     your global config (~/.config/muxix/config.yaml)"
                 ),
             });
         }
@@ -904,7 +904,7 @@ mod tests {
     fn untrusted_layer_loses_global_only_keys() {
         let mut layer = Layer::new(
             "project",
-            ".workmux.yaml",
+            ".muxix.yaml",
             LayerKind::Project,
             yaml("agent: claude\nagents:\n  x:\n    command: sh\nsandbox:\n  env:\n    A: 1\n  image: keep"),
         );
@@ -932,7 +932,7 @@ mod tests {
     fn stripping_a_leaf_leaves_siblings() {
         let mut layer = Layer::new(
             "project",
-            ".workmux.yaml",
+            ".muxix.yaml",
             LayerKind::Project,
             yaml("sandbox:\n  container:\n    devices: [/dev/kvm]\n    cpus: 2"),
         );

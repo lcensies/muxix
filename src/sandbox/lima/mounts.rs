@@ -166,7 +166,7 @@ fn calc_worktrees_dir(project_root: &Path) -> Result<PathBuf> {
 }
 
 /// Get the host-side state directory for a Lima VM.
-/// Uses XDG state dir: $XDG_STATE_HOME/workmux/lima/<vm_name>/
+/// Uses XDG state dir: $XDG_STATE_HOME/muxix/lima/<vm_name>/
 fn lima_state_dir(vm_name: &str) -> Result<PathBuf> {
     let state_dir = crate::xdg::state_dir()?.join("lima").join(vm_name);
     std::fs::create_dir_all(&state_dir)?;
@@ -305,10 +305,10 @@ pub fn generate_mounts(
         });
     }
 
-    // Mount per-VM state directory for workmux state
+    // Mount per-VM state directory for muxix state
     if let Ok(state_dir) = lima_state_dir(vm_name) {
         let guest_path = lima_guest_home()
-            .map(|h| h.join(".workmux-state"))
+            .map(|h| h.join(".muxix-state"))
             .unwrap_or_else(|| state_dir.clone());
         mounts.push(Mount {
             host_path: state_dir,
@@ -381,7 +381,7 @@ mod tests {
     fn test_lima_state_dir_path_format() {
         let path = lima_state_dir_path("wm-myproject-abc12345").unwrap();
         // Should end with the expected suffix regardless of XDG_STATE_HOME
-        assert!(path.ends_with("workmux/lima/wm-myproject-abc12345"));
+        assert!(path.ends_with("muxix/lima/wm-myproject-abc12345"));
     }
 
     #[test]

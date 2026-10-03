@@ -4,21 +4,21 @@ description: Recommended patterns for starting worktrees and delegating tasks to
 
 # Workflows
 
-Common patterns for working with workmux and AI agents.
+Common patterns for working with muxix and AI agents.
 
 ## Starting work
 
 ### From the terminal
 
-When starting a new task from scratch, use `workmux add -A` (`--auto-name`):
+When starting a new task from scratch, use `muxix add -A` (`--auto-name`):
 
 ```bash
-workmux add -A
+muxix add -A
 ```
 
-This opens your `$EDITOR` where you describe the task. After saving, workmux generates a branch name from your prompt and creates the worktree with the prompt passed to the agent.
+This opens your `$EDITOR` where you describe the task. After saving, muxix generates a branch name from your prompt and creates the worktree with the prompt passed to the agent.
 
-It's essentially a streamlined version of `workmux add <branch-name>`, then waiting for the agent to start, then typing the prompt. But you write the prompt first and skip thinking of a branch name.
+It's essentially a streamlined version of `muxix add <branch-name>`, then waiting for the agent to start, then typing the prompt. But you write the prompt first and skip thinking of a branch name.
 
 ::: tip
 The `-A` flag requires the [`llm`](https://llm.datasette.io/) CLI tool to be installed and configured. See [Automatic branch name generation](/reference/commands/add#automatic-branch-name-generation) for setup.
@@ -30,10 +30,10 @@ You can also pass the prompt inline or from a file:
 
 ```bash
 # Inline prompt
-workmux add -A -p "Add pagination to the /users endpoint"
+muxix add -A -p "Add pagination to the /users endpoint"
 
 # From a file
-workmux add -A -P task-spec.md
+muxix add -A -P task-spec.md
 ```
 
 ### From an ongoing agent session
@@ -44,7 +44,7 @@ When you're already working with an agent and want to spin off a task into a sep
 > /worktree Implement the caching layer we discussed
 ```
 
-The main agent writes a prompt file with all the relevant context and runs `workmux add` to create the worktree. This is useful when:
+The main agent writes a prompt file with all the relevant context and runs `muxix add` to create the worktree. This is useful when:
 
 - The agent already understands the task from your conversation
 - You want to parallelize work while continuing in the main window
@@ -65,7 +65,7 @@ See [Skills](/guide/skills#-worktree) for the skill setup.
 When you want a new worktree agent to pick up where the current conversation left off, use `--fork` (currently Claude Code only):
 
 ```bash
-workmux add -A --fork
+muxix add -A --fork
 ```
 
 This copies the most recent conversation from the current worktree into the new one and launches the agent with `--resume`, so it has full context of what was discussed. Useful when:
@@ -77,32 +77,28 @@ This copies the most recent conversation from the current worktree into the new 
 To fork a specific session (not the most recent), use `--fork=<session-id>` with the session UUID or a prefix:
 
 ```bash
-workmux add my-branch --fork=abc123
+muxix add my-branch --fork=abc123
 ```
 
 Currently supports Claude Code conversations. The forked conversation files are copied (not moved), so the original remains unchanged.
 
-### Coordinating multiple agents
+### Driving many agents from a harness
 
-For multi-step plans where you want the agent to manage the full lifecycle (spawning, monitoring, and merging), use the [`/coordinator` skill](/guide/skills#-coordinator).
+muxix performs single actions and reports state; deciding what runs next is your
+harness's job. The pieces it gives a harness are:
 
+```bash
+muxix task list --ready --json    # what is runnable
+muxix add -b -P prompt.md         # start one agent in the background
+muxix status --json               # who is working, waiting, or done
+muxix wait --status done          # block until agents settle
+muxix capture / muxix send        # read output, send follow-ups
+muxix merge                       # land a finished branch
 ```
-> /coordinator Break down the auth refactor into parallel tasks:
-  1. Extract session logic into its own module
-  2. Add OAuth provider support
-  3. Write integration tests for the new auth flow
-```
 
-The coordinator agent writes prompt files for each task, spawns worktree agents in the background, waits for them to finish, reviews their output, and merges results sequentially. You stay hands-off while it runs.
-
-This is useful when:
-
-- You have a plan with multiple independent tasks
-- Tasks should be merged in a specific order
-- You want the agent to send follow-up instructions based on results
-- You want full automation without checking in on each agent manually
-
-See [Skills](/guide/skills#-coordinator) for more details on the coordinator pattern.
+A harness loop is then: read the frontier, `add` a worktree per task, poll
+`status`, and `merge` what passes. See [`muxix task`](/reference/commands/task)
+for the graph itself.
 
 ## Finishing work
 
@@ -116,7 +112,7 @@ When you want to merge directly without a pull request, use `/merge` to commit, 
 > /merge
 ```
 
-This slash command handles the full workflow: committing staged changes, rebasing onto main, resolving conflicts if needed, and running `workmux merge` to clean up.
+This slash command handles the full workflow: committing staged changes, rebasing onto main, resolving conflicts if needed, and running `muxix merge` to clean up.
 
 If you need to sync with main before you're ready to merge (e.g., to pick up changes from other merged branches), use `/rebase`:
 
@@ -136,7 +132,7 @@ After committing your changes, push and create a PR. If you're working with an a
 > /open-pr
 ```
 
-See [`skills/open-pr`](https://github.com/raine/workmux/tree/main/skills/open-pr/SKILL.md) for an example skill you can adapt.
+See [`skills/open-pr`](https://github.com/lcensies/muxix/tree/main/skills/open-pr/SKILL.md) for an example skill you can adapt.
 
 Or manually:
 
@@ -145,14 +141,14 @@ git push -u origin feature-123
 gh pr create
 ```
 
-Once your PR is merged on GitHub, use `workmux remove` to clean up:
+Once your PR is merged on GitHub, use `muxix remove` to clean up:
 
 ```bash
 # Remove a specific worktree
-workmux remove feature-123
+muxix remove feature-123
 
 # Or clean up all worktrees whose remote branches were deleted
-workmux rm --gone
+muxix rm --gone
 ```
 
 The `--gone` flag is particularly useful - it automatically finds worktrees whose upstream branches no longer exist (because the PR was merged and the branch was deleted on GitHub) and removes them.

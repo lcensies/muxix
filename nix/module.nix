@@ -1,16 +1,16 @@
-# Shared workmux module, instantiated by both the Home Manager and NixOS
+# Shared muxix module, instantiated by both the Home Manager and NixOS
 # wrappers in flake.nix.
 #
 # Design note: the typed options below cover the stable, frequently-used surface
-# only. The workmux config schema is ~6.7k lines of Rust; mirroring all of it
+# only. The muxix config schema is ~6.7k lines of Rust; mirroring all of it
 # here by hand would be a second copy maintained by nobody, stale within a
-# release, and its staleness would present as "nix rejects a config workmux
+# release, and its staleness would present as "nix rejects a config muxix
 # accepts". Instead:
 #
 #   * common keys get real types, so typos and wrong types are eval errors;
 #   * everything else goes through `settings`, a freeform attrset;
 #   * the whole rendered file is checked at build time by the real binary
-#     (`workmux config validate --strict`), which cannot drift from the schema.
+#     (`muxix config validate --strict`), which cannot drift from the schema.
 #
 # See the change design (D6) for the rejected alternatives.
 
@@ -35,12 +35,12 @@
 }:
 
 let
-  cfg = config.programs.workmux;
+  cfg = config.programs.muxix;
   format = pkgs.formats.yaml { };
 
   # Options with a dedicated type, in the order they appear in the config file.
   # `null` means "not set" and is dropped before rendering, so an unset option
-  # never appears in the YAML as an explicit null (which workmux reads as
+  # never appears in the YAML as an explicit null (which muxix reads as
   # "delete this key").
   typedSettings = lib.filterAttrs (_: v: v != null) {
     inherit (cfg)
@@ -81,20 +81,20 @@ let
 
   merged = lib.recursiveUpdate cfg.settings (renamed // structured);
 
-  rendered = format.generate "workmux-config.yaml" merged;
+  rendered = format.generate "muxix-config.yaml" merged;
 
   # Build-time validation: the real binary parses the rendered file, so an
   # unrecognized key fails the build rather than surfacing at activation or at
-  # the user's next `workmux` invocation.
+  # the user's next `muxix` invocation.
   validated =
     if cfg.validateConfig then
-      pkgs.runCommand "workmux-config-validated.yaml"
+      pkgs.runCommand "muxix-config-validated.yaml"
         {
           nativeBuildInputs = [ cfg.package ];
         }
         ''
           export HOME=$TMPDIR
-          workmux config validate --file ${rendered} --strict
+          muxix config validate --file ${rendered} --strict
           cp ${rendered} $out
         ''
     else
@@ -109,18 +109,18 @@ let
     (lib.concatStringsSep "," cfg.applySections)
   ];
   setupCommand = lib.concatStringsSep " " (
-    [ "${cfg.package}/bin/workmux" "setup" "--non-interactive" ] ++ profileArgs ++ sectionArgs
+    [ "${cfg.package}/bin/muxix" "setup" "--non-interactive" ] ++ profileArgs ++ sectionArgs
   );
 in
 {
-  options.programs.workmux = {
-    enable = lib.mkEnableOption "workmux, the git-worktree and tmux harness";
+  options.programs.muxix = {
+    enable = lib.mkEnableOption "muxix, the git-worktree and tmux harness";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = defaultPackage;
-      defaultText = lib.literalExpression "workmux.packages.\${system}.default";
-      description = "The workmux package to install and to validate the config with.";
+      defaultText = lib.literalExpression "muxix.packages.\${system}.default";
+      description = "The muxix package to install and to validate the config with.";
     };
 
     # --- typed scalars ------------------------------------------------------
@@ -153,7 +153,7 @@ in
     mergeStrategy = lib.mkOption {
       type = lib.types.nullOr (lib.types.enum [ "rebase" "squash" "merge" ]);
       default = null;
-      description = "How `workmux merge` integrates a branch.";
+      description = "How `muxix merge` integrates a branch.";
     };
 
     # --- composition --------------------------------------------------------
@@ -161,11 +161,11 @@ in
     include = lib.mkOption {
       type = lib.types.listOf (lib.types.either lib.types.str (lib.types.attrsOf lib.types.anything));
       default = [ ];
-      example = [ "~/.config/workmux/corp.yaml" ];
+      example = [ "~/.config/muxix/corp.yaml" ];
       description = ''
         Config files merged beneath this one, in declaration order.
 
-        Rendered into the YAML rather than inlined, so workmux resolves them at
+        Rendered into the YAML rather than inlined, so muxix resolves them at
         load time. That keeps an include pointing at a file the user edits
         working without a nix rebuild.
       '';
@@ -182,7 +182,7 @@ in
       '';
       description = ''
         Named partial configs, selected at runtime with `--profile`,
-        `WORKMUX_PROFILE`, or `defaultProfile`.
+        `MUXIX_PROFILE`, or `defaultProfile`.
 
         Rendered into the config's `profiles:` block, so selection stays a
         runtime decision rather than requiring a rebuild per profile.
@@ -205,7 +205,7 @@ in
       default = { };
       example = lib.literalExpression ''
         {
-          default_skills = [ "./skills/workmux" ];
+          default_skills = [ "./skills/muxix" ];
           default_prompt_components = [ "fff" ];
           theme.default = "catppuccin";
         }
@@ -240,7 +240,7 @@ in
       description = ''
         Any config key without a dedicated option above, rendered verbatim.
 
-        Not a typo escape hatch: the rendered file is validated by the workmux
+        Not a typo escape hatch: the rendered file is validated by the muxix
         binary at build time, so an unrecognized key still fails the build
         (unless `validateConfig` is off).
       '';
@@ -252,8 +252,8 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Run `workmux config validate --strict` on the rendered file at build
-        time. Turn off when cross-building to a system whose workmux binary
+        Run `muxix config validate --strict` on the rendered file at build
+        time. Turn off when cross-building to a system whose muxix binary
         cannot execute on the builder.
       '';
     };
@@ -262,10 +262,10 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Run `workmux setup --non-interactive` during activation, applying the
+        Run `muxix setup --non-interactive` during activation, applying the
         declared harness to whichever agent CLIs are installed.
 
-        Off by default: it writes into agent config directories workmux does not
+        Off by default: it writes into agent config directories muxix does not
         own, which is a side effect an activation should opt into rather than
         inherit. Item-level failures are logged and never fail activation.
       '';
@@ -285,7 +285,7 @@ in
     lib.mkMerge [
       {
         warnings = lib.optional (conflicts != { }) ''
-          programs.workmux: these keys are set both as typed options and under
+          programs.muxix: these keys are set both as typed options and under
           `settings`; the typed option wins: ${lib.concatStringsSep ", " (lib.attrNames conflicts)}
         '';
       }

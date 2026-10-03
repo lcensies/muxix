@@ -7,13 +7,13 @@ description: Merge a branch and clean up the worktree, window, and local branch
 Merges a branch into a target branch (main by default) and automatically cleans up all associated resources (worktree, tmux window, and local branch).
 
 ```bash
-workmux merge [branch-name] [flags]
+muxix merge [branch-name] [flags]
 ```
 
 ::: tip When to use `merge` vs `remove`
-`workmux merge` performs the git merge locally. Use it when you want to merge directly without a pull request.
+`muxix merge` performs the git merge locally. Use it when you want to merge directly without a pull request.
 
-If your workflow uses pull requests, the merge happens on the remote after review. In that case, use [`workmux remove`](remove.md) to clean up the worktree after your PR is merged.
+If your workflow uses pull requests, the merge happens on the remote after review. In that case, use [`muxix remove`](remove.md) to clean up the worktree after your PR is merged.
 :::
 
 ## Arguments
@@ -34,7 +34,7 @@ If your workflow uses pull requests, the merge happens on the remote after revie
 
 ## Merge strategies
 
-By default, `workmux merge` performs a standard merge commit (configurable via `merge_strategy`). You can override the configured behavior with these mutually exclusive flags:
+By default, `muxix merge` performs a standard merge commit (configurable via `merge_strategy`). You can override the configured behavior with these mutually exclusive flags:
 
 - `--rebase`: Rebase the feature branch onto the target before merging (creates a linear history via fast-forward merge). If conflicts occur, you'll need to resolve them manually in the worktree and run `git rebase --continue`.
 - `--squash`: Squash all commits from the feature branch into a single commit on the target. You'll be prompted to provide a commit message in your editor.
@@ -42,7 +42,7 @@ By default, `workmux merge` performs a standard merge commit (configurable via `
 If you don't want to have merge commits in your main branch, use the `rebase` merge strategy, which does `--rebase` by default.
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 merge_strategy: rebase
 ```
 
@@ -52,7 +52,7 @@ To keep the worktree, window, and branch after every merge unless overridden, se
 merge_keep: true
 ```
 
-Use `workmux merge --cleanup` to clean up for a single merge when this default is enabled.
+Use `muxix merge --cleanup` to clean up for a single merge when this default is enabled.
 
 ## What happens
 
@@ -67,29 +67,29 @@ Use `workmux merge --cleanup` to clean up for a single merge when this default i
 
 ## Typical workflow
 
-When you're done working in a worktree, simply run `workmux merge` from within that worktree's tmux window. The command will automatically detect which branch you're on, merge it into main, and close the current window as part of cleanup.
+When you're done working in a worktree, simply run `muxix merge` from within that worktree's tmux window. The command will automatically detect which branch you're on, merge it into main, and close the current window as part of cleanup.
 
 ## Examples
 
 ```bash
 # Merge branch into main (default: merge commit)
-workmux merge user-auth
+muxix merge user-auth
 
 # Merge the current worktree you're in
 # (run this from within the worktree's tmux window)
-workmux merge
+muxix merge
 
 # Rebase onto main before merging for a linear history
-workmux merge user-auth --rebase
+muxix merge user-auth --rebase
 
 # Squash all commits into a single commit
-workmux merge user-auth --squash
+muxix merge user-auth --squash
 
 # Merge but keep the worktree/window/branch to verify before cleanup
-workmux merge user-auth --keep
+muxix merge user-auth --keep
 # ... verify the merge in main ...
-workmux remove user-auth  # clean up later when ready
+muxix remove user-auth  # clean up later when ready
 
 # Merge into a different branch (stacked PRs)
-workmux merge feature/subtask --into feature/parent
+muxix merge feature/subtask --into feature/parent
 ```

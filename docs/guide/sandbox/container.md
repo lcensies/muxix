@@ -26,17 +26,17 @@ On macOS 26+ with Apple Silicon, you can also use [Apple Container](https://gith
 Add to your global or project config:
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 sandbox:
   enabled: true
 ```
 
-The pre-built image (`ghcr.io/raine/workmux-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed, but possible if required (see [custom images](#custom-images)).
+The pre-built image (`ghcr.io/lcensies/muxix-sandbox:{agent}`) is pulled automatically on first run based on your configured agent. No manual build step is needed, but possible if required (see [custom images](#custom-images)).
 
 To pull the latest image explicitly:
 
 ```bash
-workmux sandbox pull
+muxix sandbox pull
 ```
 
 ## Configuration
@@ -45,12 +45,12 @@ workmux sandbox pull
 | ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`                 | `false`                                 | Enable container sandboxing                                                                                                                                                                                       |
 | `container.runtime`       | auto-detect                             | Container runtime: `docker`, `podman`, or `apple-container`. Auto-detected from PATH when not set. On macOS, prefers Apple Container (`container`) over Docker/Podman.                                            |
-| `container.memory`        | `16G` (Apple Container) / none (others) | Memory limit for the container. Apple Container VMs default to 1 GB which is too low, so workmux sets `16G` by default. This is a ceiling, not an upfront allocation. Works with any runtime when explicitly set. |
+| `container.memory`        | `16G` (Apple Container) / none (others) | Memory limit for the container. Apple Container VMs default to 1 GB which is too low, so muxix sets `16G` by default. This is a ceiling, not an upfront allocation. Works with any runtime when explicitly set. |
 | `container.cpus`          | none                                    | CPU count for the container. Only passed when explicitly set. Apple Container defaults to 4 CPUs which is sufficient for most workloads.                                                                          |
 | `container.devices`       | `[]`                                    | Host device nodes exposed to the sandbox (e.g. `/dev/kvm`, `/dev/ttyUSB0`). Passed to the runtime as `--device`. Docker and Podman only; Apple Container rejects. **Global config only.**                         |
 | `container.group_add`     | `[]`                                    | Supplementary groups added to the sandboxed process (e.g. `dialout`, `video`, or numeric GIDs). Passed to the runtime as `--group-add`. Docker and Podman only; Apple Container rejects. **Global config only.**  |
 | `target`                  | `agent`                                 | Which panes to sandbox: `agent` or `all`                                                                                                                                                                          |
-| `image`                   | `ghcr.io/raine/workmux-sandbox:{agent}` | Container image name (auto-resolved from configured agent).                                                                                                                                                       |
+| `image`                   | `ghcr.io/lcensies/muxix-sandbox:{agent}` | Container image name (auto-resolved from configured agent).                                                                                                                                                       |
 | `rpc_host`                | auto                                    | Override hostname for guest-to-host RPC. Defaults to `host.docker.internal` (Docker), `host.containers.internal` (Podman), or `192.168.64.1` (Apple Container). **Global config only.**                           |
 | `env_passthrough`         | `[]`                                    | Environment variables to pass through. **Global config only.**                                                                                                                                                    |
 | `env`                     | `{}`                                    | Environment variables to set with explicit values (unlike `env_passthrough` which reads from host). **Global config only.**                                                                                       |
@@ -116,14 +116,14 @@ sandbox:
 Notes on hardware access:
 
 - Both `devices` and `group_add` are **global config only**. A project's
-  `.workmux.yaml` cannot opt into them; this prevents a repository from
+  `.muxix.yaml` cannot opt into them; this prevents a repository from
   silently widening the sandbox.
 - Apple Container does not support `--device` or `--group-add`. Set
   `container.runtime: docker` (or `podman`) if you need hardware access.
 - Group names (e.g. `dialout`) must resolve inside the container image.
   When the host and image disagree on GIDs (common across distros), use
   numeric GIDs.
-- In network-deny mode, workmux drops privileges inside the container via
+- In network-deny mode, muxix drops privileges inside the container via
   `setpriv` (replacing `gosu`), which preserves the configured supplementary
   groups. This means hardware access works in both `allow` and `deny`
   network modes.
@@ -142,11 +142,11 @@ sandbox:
       - .env.local
 ```
 
-Listed paths are relative to the worktree root. Each one is shadowed by a read-only `/dev/null` bind mount, so agents running inside the container cannot read the host file without having to restructure the project. Files reachable via workmux's main-worktree mount (including symlinks from the current worktree into it) are masked at both paths. Absolute paths and entries containing `..` components are rejected; files that don't exist on disk are skipped with a warning.
+Listed paths are relative to the worktree root. Each one is shadowed by a read-only `/dev/null` bind mount, so agents running inside the container cannot read the host file without having to restructure the project. Files reachable via muxix's main-worktree mount (including symlinks from the current worktree into it) are masked at both paths. Absolute paths and entries containing `..` components are rejected; files that don't exist on disk are skipped with a warning.
 
-**Security: global-only.** `excluded_files` is ignored when set in a project's `.workmux.yaml`; it must be configured in your global config (`~/.config/workmux/config.yaml`). This prevents a malicious repo from deleting protections via its own config.
+**Security: global-only.** `excluded_files` is ignored when set in a project's `.muxix.yaml`; it must be configured in your global config (`~/.config/muxix/config.yaml`). This prevents a malicious repo from deleting protections via its own config.
 
-**Note:** `excluded_files` relies on file-level bind mounts, which Apple Container does not support (it only accepts directory mounts). When the runtime is Apple Container and `excluded_files` is set, workmux fails fast rather than silently leaving secrets readable. Use Docker or Podman if you need this feature.
+**Note:** `excluded_files` relies on file-level bind mounts, which Apple Container does not support (it only accepts directory mounts). When the runtime is Apple Container and `excluded_files` is set, muxix fails fast rather than silently leaving secrets readable. Use Docker or Podman if you need this feature.
 
 **Sandbox all panes (not just agent):**
 
@@ -158,11 +158,11 @@ sandbox:
 
 ## How it works
 
-When you run `workmux add feature-x`, the agent command is wrapped:
+When you run `muxix add feature-x`, the agent command is wrapped:
 
 ```bash
 # Without sandbox:
-claude -- "$(cat .workmux/PROMPT-feature-x.md)"
+claude -- "$(cat .muxix/PROMPT-feature-x.md)"
 
 # With sandbox (Docker example):
 docker run --rm -it \
@@ -174,8 +174,8 @@ docker run --rm -it \
   --mount type=bind,source=~/.claude-sandbox.json,target=/tmp/.claude.json \
   --mount type=bind,source=~/.claude,target=/tmp/.claude \
   --workdir /path/to/worktree \
-  workmux-sandbox:claude \
-  sh -c 'claude -- "$(cat .workmux/PROMPT-feature-x.md)"'
+  muxix-sandbox:claude \
+  sh -c 'claude -- "$(cat .muxix/PROMPT-feature-x.md)"'
 ```
 
 The exact flags vary by runtime (e.g., Podman adds `--userns=keep-id`, Apple Container uses directory mounts instead of file mounts).
@@ -205,10 +205,10 @@ Start an interactive shell inside a container for debugging:
 
 ```bash
 # Start a new container with the same mounts
-workmux sandbox shell
+muxix sandbox shell
 
 # Exec into the currently running container for this worktree
-workmux sandbox shell --exec
+muxix sandbox shell --exec
 ```
 
 The `--exec` flag attaches to an existing running container instead of starting a new one. This is useful for inspecting the state of a running agent's environment.
@@ -219,7 +219,7 @@ Network restrictions block outbound connections from sandboxed containers, only 
 
 ### Configuration
 
-Add to global config (`~/.config/workmux/config.yaml`):
+Add to global config (`~/.config/muxix/config.yaml`):
 
 ```yaml
 sandbox:
@@ -232,7 +232,7 @@ sandbox:
       - "platform.claude.com"
 ```
 
-`network` is a global-only setting. If set in a project's `.workmux.yaml`, it is ignored and a warning is logged. This ensures that project config cannot weaken network restrictions set by the user.
+`network` is a global-only setting. If set in a project's `.muxix.yaml`, it is ignored and a warning is logged. This ensures that project config cannot weaken network restrictions set by the user.
 
 Domain entries support exact matches (`github.com`) and wildcard prefixes (`*.github.com`). Wildcards match subdomains only, not the base domain itself (e.g., `*.github.com` matches `api.github.com` but not `github.com`).
 
@@ -272,7 +272,7 @@ Only HTTPS (port 443) to allowed domains gets through. The proxy also rejects co
 To add tools or customize the sandbox environment, export the Dockerfile and modify it:
 
 ```bash
-workmux sandbox init-dockerfile        # creates Dockerfile.sandbox
+muxix sandbox init-dockerfile        # creates Dockerfile.sandbox
 vim Dockerfile.sandbox                 # customize
 docker build -t my-sandbox -f Dockerfile.sandbox .
 ```
@@ -280,7 +280,7 @@ docker build -t my-sandbox -f Dockerfile.sandbox .
 To build the default image locally instead of pulling from the registry:
 
 ```bash
-workmux sandbox build
+muxix sandbox build
 ```
 
 Then set the image in your config:
@@ -293,4 +293,4 @@ sandbox:
 
 ## Security: hooks in sandbox
 
-Pre-merge and pre-remove hooks are always skipped for RPC-triggered merges (`--no-verify --no-hooks` is forced by the host). This prevents a compromised guest from injecting malicious hooks via `.workmux.yaml` and triggering them on the host. Similarly, `SpawnAgent` RPC forces `--no-hooks` to skip post-create hooks.
+Pre-merge and pre-remove hooks are always skipped for RPC-triggered merges (`--no-verify --no-hooks` is forced by the host). This prevents a compromised guest from injecting malicious hooks via `.muxix.yaml` and triggering them on the host. Similarly, `SpawnAgent` RPC forces `--no-hooks` to skip post-create hooks.

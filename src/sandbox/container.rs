@@ -9,7 +9,7 @@ use crate::config::{SandboxConfig, SandboxRuntime};
 use crate::state::StateStore;
 
 /// Default image registry prefix.
-pub const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/raine/workmux-sandbox";
+pub const DEFAULT_IMAGE_REGISTRY: &str = "ghcr.io/lcensies/muxix-sandbox";
 
 /// Embedded Dockerfiles for each agent.
 pub const DOCKERFILE_BASE: &str = include_str!("../../docker/Dockerfile.base");
@@ -95,7 +95,7 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
     })?;
 
     // Stage 1: Build base image (use localhost/ prefix for Podman compatibility)
-    let base_tag = "localhost/workmux-sandbox-base";
+    let base_tag = "localhost/muxix-sandbox-base";
     println!("Building base image...");
 
     let tmp_dir = tempfile::tempdir().context("Failed to create temp dir")?;
@@ -141,8 +141,8 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
         anyhow::bail!("Failed to build image '{}'", image);
     }
 
-    // Embedded Dockerfile.base installs upstream workmux; swap in the fork's.
-    overlay_local_workmux(config, &image);
+    // Embedded Dockerfile.base installs upstream muxix; swap in the fork's.
+    overlay_local_muxix(config, &image);
 
     Ok(())
 }
@@ -160,31 +160,31 @@ pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
         anyhow::bail!("Failed to pull image '{}'", image);
     }
 
-    overlay_local_workmux(config, image);
+    overlay_local_muxix(config, image);
     Ok(())
 }
 
-/// Builder image produced by `just build-docker`; carries a guest-glibc workmux.
-const BUILDER_IMAGE: &str = "localhost/workmux:build";
+/// Builder image produced by `just build-docker`; carries a guest-glibc muxix.
+const BUILDER_IMAGE: &str = "localhost/muxix:build";
 
-/// Replace /usr/local/bin/workmux in `image` with `binary` via a thin overlay
+/// Replace /usr/local/bin/muxix in `image` with `binary` via a thin overlay
 /// build, retagging the image in place.
-pub fn overlay_workmux_binary(runtime_bin: &str, binary: &Path, image: &str) -> Result<()> {
+pub fn overlay_muxix_binary(runtime_bin: &str, binary: &Path, image: &str) -> Result<()> {
     let temp_dir = tempfile::Builder::new()
-        .prefix("workmux-overlay-")
+        .prefix("muxix-overlay-")
         .tempdir()
         .context("Failed to create temp directory")?;
-    std::fs::copy(binary, temp_dir.path().join("workmux")).context("Failed to copy binary")?;
+    std::fs::copy(binary, temp_dir.path().join("muxix")).context("Failed to copy binary")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(
-            temp_dir.path().join("workmux"),
+            temp_dir.path().join("muxix"),
             std::fs::Permissions::from_mode(0o755),
         )
         .context("Failed to set binary permissions")?;
     }
-    let dockerfile = format!("FROM {}\nCOPY workmux /usr/local/bin/workmux\n", image);
+    let dockerfile = format!("FROM {}\nCOPY muxix /usr/local/bin/muxix\n", image);
     std::fs::write(temp_dir.path().join("Dockerfile"), dockerfile)
         .context("Failed to write Dockerfile")?;
 
@@ -203,13 +203,13 @@ pub fn overlay_workmux_binary(runtime_bin: &str, binary: &Path, image: &str) -> 
     Ok(())
 }
 
-/// Patch this fork's workmux into `image` so in-guest hooks (`workmux signal`,
-/// `workmux hooks-report`) match the host binary — upstream images ship upstream
-/// workmux, which lacks the fork's subcommands. The binary is extracted from the
-/// `localhost/workmux:build` builder image (glibc-compatible with the guest;
+/// Patch this fork's muxix into `image` so in-guest hooks (`muxix signal`,
+/// `muxix hooks-report`) match the host binary — upstream images ship upstream
+/// muxix, which lacks the fork's subcommands. The binary is extracted from the
+/// `localhost/muxix:build` builder image (glibc-compatible with the guest;
 /// the host binary usually isn't). Warns and leaves the image untouched when
 /// the builder image is missing; never fails the surrounding pull/build.
-pub fn overlay_local_workmux(config: &SandboxConfig, image: &str) {
+pub fn overlay_local_muxix(config: &SandboxConfig, image: &str) {
     let runtime_bin = config.runtime().binary_name();
 
     let builder_exists = Command::new(runtime_bin)
@@ -221,9 +221,9 @@ pub fn overlay_local_workmux(config: &SandboxConfig, image: &str) {
         .unwrap_or(false);
     if !builder_exists {
         eprintln!(
-            "warning: builder image '{}' not found; '{}' keeps upstream workmux \
-             (fork hooks like `workmux signal` will fail in the sandbox). \
-             Run `just build-docker` in the workmux repo, then re-run this command.",
+            "warning: builder image '{}' not found; '{}' keeps upstream muxix \
+             (fork hooks like `muxix signal` will fail in the sandbox). \
+             Run `just build-docker` in the muxix repo, then re-run this command.",
             BUILDER_IMAGE, image
         );
         return;
@@ -237,28 +237,28 @@ pub fn overlay_local_workmux(config: &SandboxConfig, image: &str) {
                 "--entrypoint",
                 "cat",
                 BUILDER_IMAGE,
-                "/usr/local/bin/workmux",
+                "/usr/local/bin/muxix",
             ])
             .output()
-            .context("Failed to extract workmux from builder image")?;
+            .context("Failed to extract muxix from builder image")?;
         if !output.status.success() || output.stdout.is_empty() {
             anyhow::bail!(
-                "extracting workmux from '{}' failed: {}",
+                "extracting muxix from '{}' failed: {}",
                 BUILDER_IMAGE,
                 String::from_utf8_lossy(&output.stderr)
             );
         }
         let temp_dir = tempfile::Builder::new()
-            .prefix("workmux-guest-bin-")
+            .prefix("muxix-guest-bin-")
             .tempdir()?;
-        let bin_path = temp_dir.path().join("workmux");
+        let bin_path = temp_dir.path().join("muxix");
         std::fs::write(&bin_path, &output.stdout)?;
-        overlay_workmux_binary(runtime_bin, &bin_path, image)
+        overlay_muxix_binary(runtime_bin, &bin_path, image)
     })();
 
     match result {
-        Ok(()) => println!("Patched fork workmux into '{}'.", image),
-        Err(e) => eprintln!("warning: failed to patch fork workmux into '{}': {}", image, e),
+        Ok(()) => println!("Patched fork muxix into '{}'.", image),
+        Err(e) => eprintln!("warning: failed to patch fork muxix into '{}': {}", image, e),
     }
 }
 
@@ -525,7 +525,7 @@ pub fn build_docker_run_args(
                 continue;
             }
             // Mask the path under the current worktree AND, if applicable,
-            // under the main worktree (which workmux also bind-mounts for
+            // under the main worktree (which muxix also bind-mounts for
             // symlink resolution). Without the second mount, a symlinked
             // secret would still be readable via the main-worktree alias.
             let mut candidates = vec![worktree_root.join(rel_path)];
@@ -569,7 +569,7 @@ pub fn build_docker_run_args(
     if let Some(shim_dir) = shim_host_dir {
         args.push("--mount".to_string());
         args.push(format!(
-            "type=bind,source={},target=/tmp/.workmux-shims/bin,readonly",
+            "type=bind,source={},target=/tmp/.muxix-shims/bin,readonly",
             shim_dir.display()
         ));
     }
@@ -727,7 +727,7 @@ pub fn build_docker_run_args(
     // Prepend shim directory when host-exec is configured.
     let sbin = if network_deny { ":/usr/sbin:/sbin" } else { "" };
     let path = if shim_host_dir.is_some() {
-        format!("/tmp/.workmux-shims/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin{sbin}")
+        format!("/tmp/.muxix-shims/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin{sbin}")
     } else {
         format!("/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin{sbin}")
     };
@@ -787,7 +787,7 @@ use crate::shell::shell_escape;
 
 /// Wrap a command to run inside a Docker/Podman container via the sandbox supervisor.
 ///
-/// Generates a `workmux sandbox run` command that starts an RPC server, then
+/// Generates a `muxix sandbox run` command that starts an RPC server, then
 /// runs the command inside a container with RPC connection details as env vars.
 pub fn wrap_for_container(
     command: &str,
@@ -800,7 +800,7 @@ pub fn wrap_for_container(
     let command = command.strip_prefix(' ').unwrap_or(command);
 
     let mut parts = format!(
-        "workmux sandbox run '{}'",
+        "muxix sandbox run '{}'",
         shell_escape(&pane_cwd.to_string_lossy()),
     );
 
@@ -1036,7 +1036,7 @@ mod tests {
     #[test]
     fn test_excluded_files_masks_main_worktree_alias() {
         // When the current worktree has a `.git` gitlink pointing into a main
-        // repo's worktrees/<name>/ directory, workmux bind-mounts both the
+        // repo's worktrees/<name>/ directory, muxix bind-mounts both the
         // current worktree and the main worktree. A secret reachable via the
         // main-worktree mount (e.g. a symlink from current worktree -> main)
         // must be masked on both paths.
@@ -1092,7 +1092,7 @@ mod tests {
     #[test]
     fn test_excluded_files_masks_main_worktree_alias_with_relative_gitdir() {
         // `git worktree add --relative-paths` (git 2.48+) writes a `.git` file
-        // with a RELATIVE `gitdir:` pointer. Workmux must resolve it against
+        // with a RELATIVE `gitdir:` pointer. Muxix must resolve it against
         // the worktree root; otherwise the main-worktree mount and the alias
         // masking would be emitted with relative `--mount` paths.
         let tmp = tempfile::tempdir().unwrap();
@@ -1405,7 +1405,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(result.starts_with(" workmux sandbox run"));
+        assert!(result.starts_with(" muxix sandbox run"));
         assert!(result.contains("'/tmp/project'"));
         assert!(result.contains("-- 'claude'"));
         // Should NOT contain --worktree-root when paths are equal
@@ -1476,10 +1476,10 @@ mod tests {
 
         let args_str = args.join(" ");
         // Shim dir should be bind-mounted
-        assert!(args_str.contains(".workmux-shims/bin"));
+        assert!(args_str.contains(".muxix-shims/bin"));
         // PATH should include shim dir first
         let path_arg = args.iter().find(|a| a.starts_with("PATH=")).unwrap();
-        assert!(path_arg.starts_with("PATH=/tmp/.workmux-shims/bin:"));
+        assert!(path_arg.starts_with("PATH=/tmp/.muxix-shims/bin:"));
     }
 
     #[test]
@@ -1502,11 +1502,11 @@ mod tests {
         let config = SandboxConfig::default();
         assert_eq!(
             config.resolved_image("claude"),
-            "ghcr.io/raine/workmux-sandbox:claude"
+            "ghcr.io/lcensies/muxix-sandbox:claude"
         );
         assert_eq!(
             config.resolved_image("codex"),
-            "ghcr.io/raine/workmux-sandbox:codex"
+            "ghcr.io/lcensies/muxix-sandbox:codex"
         );
     }
 

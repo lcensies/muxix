@@ -39,7 +39,7 @@ pub fn run_diff() -> Result<()> {
     match team_url {
         Some(url) => {
             println!("team profile URL: {}", url);
-            println!("(diff requires 'workmux provision sync' to download team profile)");
+            println!("(diff requires 'muxix provision sync' to download team profile)");
         }
         None => {
             println!("no team_profile_url in cached org policy — nothing to diff");
@@ -49,5 +49,5 @@ pub fn run_diff() -> Result<()> {
 }
 
 fn load_config() -> Result<crate::config::Config> {
-    crate::config::Config::load(None).context("loading workmux config")
+    crate::config::Config::load(None).context("loading muxix config")
 }

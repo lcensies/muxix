@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 /// default; similarly, node-level `input_variables` fill the template holes.
 ///
 /// ```yaml
-/// # .workmux.yaml
+/// # .muxix.yaml
 /// agent_defs:
 ///   planner:
 ///     description: "Read-only planning agent"
@@ -38,7 +38,7 @@ use std::collections::BTreeMap;
 ///
 ///   implementer:
 ///     description: "Full-access implementation agent"
-///     prompt_ref: default-implementer   # from .workmux/prompts/ or prompt_defs
+///     prompt_ref: default-implementer   # from .muxix/prompts/ or prompt_defs
 ///     bootstrap:
 ///       prompt_components: [caveman-full]
 ///       mcp:
@@ -73,7 +73,7 @@ pub struct AgentDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_template: Option<String>,
 
-    /// Reference to a named prompt in the prompt registry (`.workmux/prompts/`
+    /// Reference to a named prompt in the prompt registry (`.muxix/prompts/`
     /// or `prompt_defs:` in config). Alternative to inline `prompt_template`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_ref: Option<String>,
@@ -144,7 +144,7 @@ pub struct AgentDefinitionBootstrap {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<Source>,
 
-    /// Extra prompt components (from `.workmux/prompt-components/`) to inject.
+    /// Extra prompt components (from `.muxix/prompt-components/`) to inject.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prompt_components: Vec<String>,
 

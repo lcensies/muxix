@@ -1,6 +1,6 @@
 //! Configure local coding agents to route through the governed gateway.
 //!
-//! `workmux provision sync` calls [`apply_gateway`] with the org policy's
+//! `muxix provision sync` calls [`apply_gateway`] with the org policy's
 //! [`GatewayEndpoint`]. We write native provider config for each supported
 //! agent so all of their LLM traffic goes through the organization's gateway --
 //! the developer never wires `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` by hand.
@@ -20,12 +20,12 @@ use crate::provision::types::GatewayEndpoint;
 /// Provider id we own in opencode.json when the server names none.
 ///
 /// Vendor-neutral by design: the organization's own identity comes from the
-/// gateway response, so workmux carries no one provider's branding.
+/// gateway response, so muxix carries no one provider's branding.
 const DEFAULT_PROVIDER_ID: &str = "provision-gateway";
 /// Display name used when the server names none.
 const DEFAULT_PROVIDER_NAME: &str = "Provision Gateway";
 /// Default env var holding the user's gateway token when the policy omits one.
-const DEFAULT_KEY_ENV: &str = "WORKMUX_PROVISION_TOKEN";
+const DEFAULT_KEY_ENV: &str = "MUXIX_PROVISION_TOKEN";
 
 /// Resolve the gateway root URL: the policy value, else the URL we provisioned
 /// against (`fallback_url`). Trailing slashes are trimmed.

@@ -1,17 +1,17 @@
 ---
-description: Get started with workmux in minutes
+description: Get started with muxix in minutes
 ---
 
 # Quick start
 
 ::: info Prerequisites
-workmux requires a terminal multiplexer. Make sure you have [tmux](https://github.com/tmux/tmux) (or [WezTerm](/guide/wezterm) / [Kitty](/guide/kitty) / [Zellij](/guide/zellij)) installed and running before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/) if you need a starting point.
+muxix requires a terminal multiplexer. Make sure you have [tmux](https://github.com/tmux/tmux) (or [WezTerm](/guide/wezterm) / [Kitty](/guide/kitty) / [Zellij](/guide/zellij)) installed and running before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/) if you need a starting point.
 :::
 
 ## 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/raine/workmux/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
 ```
 
 See [Installation](/guide/installation) for other methods (Homebrew, Cargo, Nix).
@@ -19,15 +19,15 @@ See [Installation](/guide/installation) for other methods (Homebrew, Cargo, Nix)
 ## 2. Initialize configuration (optional)
 
 ```bash
-workmux init
+muxix init
 ```
 
-This creates a `.workmux.yaml` file to customize your workflow (pane layouts, setup commands, file operations, etc.). workmux works out of the box with sensible defaults, so this step is optional.
+This creates a `.muxix.yaml` file to customize your workflow (pane layouts, setup commands, file operations, etc.). muxix works out of the box with sensible defaults, so this step is optional.
 
 ## 3. Create a new worktree and tmux window
 
 ```bash
-workmux add new-feature
+muxix add new-feature
 ```
 
 This will:
@@ -40,7 +40,7 @@ This will:
 - Automatically switch your tmux client to the new window
 
 ::: tip
-**Highly recommended workflow**: If you're already in an agent session, use the [`/worktree` skill](/guide/skills#-worktree) instead of writing `workmux add` commands yourself:
+**Highly recommended workflow**: If you're already in an agent session, use the [`/worktree` skill](/guide/skills#-worktree) instead of writing `muxix add` commands yourself:
 
 ```text
 > /worktree Add pagination to the users endpoint
@@ -56,24 +56,24 @@ Work on your feature, fix a bug, or let an AI agent handle it.
 
 ## 5. Finish and clean up
 
-**Local merge:** Run `workmux merge` to merge into the base branch and clean up in one step.
+**Local merge:** Run `muxix merge` to merge into the base branch and clean up in one step.
 
-**PR workflow:** Use [`/open-pr`](/guide/skills#open-pr) to push and open a PR. After it's merged, run `workmux remove` to clean up.
+**PR workflow:** Use [`/open-pr`](/guide/skills#open-pr) to push and open a PR. After it's merged, run `muxix remove` to clean up.
 
 See [Workflows](/guide/workflows) for more patterns including delegating tasks from agent sessions.
 
 ## Directory structure
 
-Here's how workmux organizes your worktrees by default:
+Here's how muxix organizes your worktrees by default:
 
 ```
 ~/projects/
 ├── my-project/               <-- Main project directory
 │   ├── src/
 │   ├── package.json
-│   └── .workmux.yaml
+│   └── .muxix.yaml
 │
-└── my-project__worktrees/    <-- Worktrees created by workmux
+└── my-project__worktrees/    <-- Worktrees created by muxix
     ├── feature-A/            <-- Isolated workspace for 'feature-A' branch
     │   ├── src/
     │   └── package.json
@@ -93,19 +93,19 @@ Here's a complete workflow:
 
 ```bash
 # Start a new feature
-workmux add user-auth
+muxix add user-auth
 
 # Work on your feature...
-# (workmux automatically sets up your configured panes and environment)
+# (muxix automatically sets up your configured panes and environment)
 
 # When ready, merge and clean up
-workmux merge user-auth
+muxix merge user-auth
 
 # Start another feature
-workmux add api-endpoint
+muxix add api-endpoint
 
 # List all active worktrees
-workmux list
+muxix list
 ```
 
 ## The parallel AI workflow
@@ -114,15 +114,15 @@ Run multiple AI agents simultaneously, each in its own worktree. No conflicts, n
 
 ```bash
 # Spin up two agents working on different tasks
-workmux add refactor-user-model -p "Refactor the User model to use composition"
-workmux add add-search-endpoint -p "Add a /search endpoint with pagination"
+muxix add refactor-user-model -p "Refactor the User model to use composition"
+muxix add add-search-endpoint -p "Add a /search endpoint with pagination"
 
 # Each agent works in isolation. Check progress via tmux windows or the dashboard
-workmux dashboard
+muxix dashboard
 
 # Merge completed work back to main
-workmux merge refactor-user-model
-workmux merge add-search-endpoint
+muxix merge refactor-user-model
+muxix merge add-search-endpoint
 ```
 
 ::: tip

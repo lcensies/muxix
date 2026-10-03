@@ -13,34 +13,34 @@ Commands for managing sandbox functionality across container (Docker/Podman/Appl
 Build the sandbox container image locally (two-stage: base + agent).
 
 ```bash
-workmux sandbox build
+muxix sandbox build
 ```
 
-Builds the image locally for the configured agent. This is an alternative to using the pre-built image from `ghcr.io/raine/workmux-sandbox`. Most users should use `workmux sandbox pull` instead.
+Builds the image locally for the configured agent. This is an alternative to using the pre-built image from `ghcr.io/lcensies/muxix-sandbox`. Most users should use `muxix sandbox pull` instead.
 
 ### sandbox pull
 
 Pull the latest sandbox image from the container registry.
 
 ```bash
-workmux sandbox pull
+muxix sandbox pull
 ```
 
-Pulls the pre-built image for the configured agent from `ghcr.io/raine/workmux-sandbox:{agent}`. This is the recommended way to get and update the sandbox image.
+Pulls the pre-built image for the configured agent from `ghcr.io/lcensies/muxix-sandbox:{agent}`. This is the recommended way to get and update the sandbox image.
 
 ### sandbox init-dockerfile
 
 Export a customizable Dockerfile for building your own sandbox image.
 
 ```bash
-workmux sandbox init-dockerfile [--force]
+muxix sandbox init-dockerfile [--force]
 ```
 
 **Options:**
 
 - `--force` - Overwrite existing Dockerfile
 
-Creates a `Dockerfile.sandbox` in the current directory with the base system setup (Debian, git, workmux) and agent-specific installation (e.g., Claude Code) combined into a single file.
+Creates a `Dockerfile.sandbox` in the current directory with the base system setup (Debian, git, muxix) and agent-specific installation (e.g., Claude Code) combined into a single file.
 
 ## Lima commands
 
@@ -50,16 +50,16 @@ Stop Lima VMs to free resources.
 
 ```bash
 # Interactive mode - show list and select VM
-workmux sandbox stop
+muxix sandbox stop
 
 # Stop specific VM
-workmux sandbox stop <vm-name>
+muxix sandbox stop <vm-name>
 
-# Stop all workmux VMs
-workmux sandbox stop --all
+# Stop all muxix VMs
+muxix sandbox stop --all
 
 # Skip confirmation prompt
-workmux sandbox stop --all --yes
+muxix sandbox stop --all --yes
 ```
 
 **Arguments:**
@@ -68,10 +68,10 @@ workmux sandbox stop --all --yes
 
 **Options:**
 
-- `--all` - Stop all workmux VMs (those starting with `wm-` prefix)
+- `--all` - Stop all muxix VMs (those starting with `wm-` prefix)
 - `-y, --yes` - Skip confirmation prompt
 
-This command helps you stop running Lima VMs created by workmux to free up system resources. When run without arguments, it shows an interactive list of running workmux VMs for you to choose from. The command will ask for confirmation before stopping any VMs unless `--yes` is provided.
+This command helps you stop running Lima VMs created by muxix to free up system resources. When run without arguments, it shows an interactive list of running muxix VMs for you to choose from. The command will ask for confirmation before stopping any VMs unless `--yes` is provided.
 
 **Notes:**
 
@@ -86,46 +86,46 @@ Delete unused Lima VMs to reclaim disk space.
 
 ```bash
 # Interactive - show VMs and confirm deletion
-workmux sandbox prune
+muxix sandbox prune
 
-# Skip confirmation and delete all workmux VMs
-workmux sandbox prune --force
+# Skip confirmation and delete all muxix VMs
+muxix sandbox prune --force
 ```
 
 **Options:**
 
-- `-f, --force` - Skip confirmation and delete all workmux VMs
+- `-f, --force` - Skip confirmation and delete all muxix VMs
 
-Lists all workmux Lima VMs (those starting with `wm-` prefix) with their size, age, and last accessed time, then prompts for confirmation before deleting them. Requires `limactl` to be installed.
+Lists all muxix Lima VMs (those starting with `wm-` prefix) with their size, age, and last accessed time, then prompts for confirmation before deleting them. Requires `limactl` to be installed.
 
 ## General commands
 
 ### sandbox agent
 
-Run the configured agent inside a sandbox with full RPC support. Unlike `shell`, this starts an RPC server so the agent can call workmux commands (e.g., `workmux add` to spawn sub-agents).
+Run the configured agent inside a sandbox with full RPC support. Unlike `shell`, this starts an RPC server so the agent can call muxix commands (e.g., `muxix add` to spawn sub-agents).
 
 ```bash
 # Run the configured agent (from config or defaults to claude)
-workmux sandbox agent
+muxix sandbox agent
 
 # Run a specific command instead
-workmux sandbox agent -- claude -p "coordinate these tasks"
+muxix sandbox agent -- claude -p "coordinate these tasks"
 ```
 
 **Options:**
 
 - `<command...>` - Command to run instead of the configured agent
 
-This command runs a sandboxed agent in the current directory. It delegates to the same supervisor process used by `workmux sandbox run`, which handles RPC server setup, sandbox dispatch (Lima or container), environment variables, and cleanup.
+This command runs a sandboxed agent in the current directory. It delegates to the same supervisor process used by `muxix sandbox run`, which handles RPC server setup, sandbox dispatch (Lima or container), environment variables, and cleanup.
 
-The key difference from `sandbox shell` is that this starts an RPC server, enabling the guest to call `workmux add` from inside the sandbox. Guest-side `workmux add` detects the sandbox environment and routes through SpawnAgent RPC to the host, where sub-agents are created normally (and sandboxed if the project config says so).
+The key difference from `sandbox shell` is that this starts an RPC server, enabling the guest to call `muxix add` from inside the sandbox. Guest-side `muxix add` detects the sandbox environment and routes through SpawnAgent RPC to the host, where sub-agents are created normally (and sandboxed if the project config says so).
 
 **Requirements:**
 
 - Must be run from inside a git repository (sandbox needs git directories for mounts)
 - Sandbox must be configured (image pulled or built)
 
-**Use case:** Running a coordinator agent inside a sandbox so it can spawn sub-agents via `workmux add` while still being isolated from the host.
+**Use case:** Running a coordinator agent inside a sandbox so it can spawn sub-agents via `muxix add` while still being isolated from the host.
 
 ### sandbox shell
 
@@ -133,13 +133,13 @@ Start an interactive shell in a sandbox. Uses the same mounts and environment as
 
 ```bash
 # Start a new shell (container backend starts a new container, Lima connects to existing VM)
-workmux sandbox shell
+muxix sandbox shell
 
 # Run a specific command instead of bash
-workmux sandbox shell -- <command...>
+muxix sandbox shell -- <command...>
 
 # Exec into an existing container (container backend only)
-workmux sandbox shell --exec
+muxix sandbox shell --exec
 ```
 
 **Options:**
@@ -154,17 +154,17 @@ workmux sandbox shell --exec
 
 ### sandbox install-dev
 
-Cross-compile and install workmux into container images and running Lima VMs for local development.
+Cross-compile and install muxix into container images and running Lima VMs for local development.
 
 ```bash
 # Cross-compile and install into containers and running VMs
-workmux sandbox install-dev
+muxix sandbox install-dev
 
 # Use release profile (slower build, faster binary)
-workmux sandbox install-dev --release
+muxix sandbox install-dev --release
 
 # Skip compilation, copy existing binary
-workmux sandbox install-dev --skip-build
+muxix sandbox install-dev --skip-build
 ```
 
 **Options:**
@@ -172,23 +172,23 @@ workmux sandbox install-dev --skip-build
 - `--skip-build` - Skip cross-compilation and copy the previously built binary
 - `--release` - Use release profile (default is debug for faster iteration)
 
-This is a developer-only command for getting local workmux builds into sandbox environments. The host macOS binary cannot run inside Linux containers or VMs, so this command cross-compiles for the correct Linux architecture.
+This is a developer-only command for getting local muxix builds into sandbox environments. The host macOS binary cannot run inside Linux containers or VMs, so this command cross-compiles for the correct Linux architecture.
 
-For container sandboxes, it builds a thin overlay image (`FROM <image>` + `COPY workmux`) on top of the configured sandbox image, replacing it in-place. For Lima VMs, it copies the binary into each running VM.
+For container sandboxes, it builds a thin overlay image (`FROM <image>` + `COPY muxix`) on top of the configured sandbox image, replacing it in-place. For Lima VMs, it copies the binary into each running VM.
 
 **Prerequisites:**
 
 - Rust cross-compilation target: `rustup target add aarch64-unknown-linux-gnu`
 - Cross-linker: `brew install messense/macos-cross-toolchains/aarch64-unknown-linux-gnu`
 
-The binary is installed to `~/.local/bin/workmux` inside the VM, which is already on PATH.
+The binary is installed to `~/.local/bin/muxix` inside the VM, which is already on PATH.
 
 ### sandbox run
 
 Run a command inside a sandbox (internal, used by pane setup).
 
 ```bash
-workmux sandbox run <worktree> -- <command...>
+muxix sandbox run <worktree> -- <command...>
 ```
 
 This is an internal command generated by `wrap_for_lima()` during pane setup. It runs the host-side supervisor process that:
@@ -199,35 +199,35 @@ This is an internal command generated by `wrap_for_lima()` during pane setup. It
 4. Passes `WM_SANDBOX_GUEST=1`, `WM_RPC_HOST`, `WM_RPC_PORT`, and `WM_RPC_TOKEN` env vars to the guest
 5. Exits with the agent command's exit code
 
-The RPC server handles requests from the guest workmux binary:
+The RPC server handles requests from the guest muxix binary:
 
 - `SetStatus`: updates the tmux pane status icon
 - `SetTitle`: renames the tmux window
 - `Heartbeat`: health check
-- `SpawnAgent`: runs `workmux add` on the host to create a new worktree
+- `SpawnAgent`: runs `muxix add` on the host to create a new worktree
 
-**Guest-side `workmux add`:** When `workmux add` runs inside a sandbox, it automatically detects the sandbox environment and routes through SpawnAgent RPC instead of trying to create worktrees locally (which would fail due to missing tmux). This enables coordinator agents running in sandboxes to spawn sub-agents. Only a subset of `add` flags are supported over RPC; unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are explicitly rejected with clear error messages.
+**Guest-side `muxix add`:** When `muxix add` runs inside a sandbox, it automatically detects the sandbox environment and routes through SpawnAgent RPC instead of trying to create worktrees locally (which would fail due to missing tmux). This enables coordinator agents running in sandboxes to spawn sub-agents. Only a subset of `add` flags are supported over RPC; unsupported flags (`--base`, `--pr`, `--with-changes`, `--count`, `--foreach`, `--name`, `--agent`, `--wait`) are explicitly rejected with clear error messages.
 
 ## Quick Setup
 
 ```bash
-# 1. Enable in config (~/.config/workmux/config.yaml or .workmux.yaml)
+# 1. Enable in config (~/.config/muxix/config.yaml or .muxix.yaml)
 #    sandbox:
 #      enabled: true
 
 # The pre-built image is pulled automatically on first run.
 # To pull it explicitly:
-workmux sandbox pull
+muxix sandbox pull
 ```
 
 ## Example
 
 ```bash
 # Pull the latest sandbox image
-workmux sandbox pull
+muxix sandbox pull
 # Output:
-# Pulling image 'ghcr.io/raine/workmux-sandbox:claude'...
-# Image 'ghcr.io/raine/workmux-sandbox:claude' is up to date.
+# Pulling image 'ghcr.io/lcensies/muxix-sandbox:claude'...
+# Image 'ghcr.io/lcensies/muxix-sandbox:claude' is up to date.
 ```
 
 ## See also

@@ -1,4 +1,4 @@
-"""Tests for `workmux add --fork` conversation forking."""
+"""Tests for `muxix add --fork` conversation forking."""
 
 import time
 from pathlib import Path
@@ -7,8 +7,8 @@ from pathlib import Path
 from .conftest import (
     MuxEnvironment,
     get_worktree_path,
-    run_workmux_command,
-    write_workmux_config,
+    run_muxix_command,
+    write_muxix_config,
 )
 
 
@@ -41,16 +41,16 @@ def create_fake_claude_session(
 
 def run_fork_command(
     env: MuxEnvironment,
-    workmux_exe_path: Path,
+    muxix_exe_path: Path,
     repo_path: Path,
     command: str,
     claude_dir: Path,
     expect_fail: bool = False,
 ):
-    """Run a workmux add command with CLAUDE_CONFIG_DIR set."""
-    return run_workmux_command(
+    """Run a muxix add command with CLAUDE_CONFIG_DIR set."""
+    return run_muxix_command(
         env,
-        workmux_exe_path,
+        muxix_exe_path,
         repo_path,
         f"add {command}",
         expect_fail=expect_fail,
@@ -59,21 +59,21 @@ def run_fork_command(
 
 
 class TestForkBasic:
-    """Tests for --fork flag with workmux add."""
+    """Tests for --fork flag with muxix add."""
 
     def test_fork_no_conversations_errors(
-        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path, tmp_path
+        self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path, tmp_path
     ):
         """--fork with no conversations in current worktree should fail."""
         env = mux_server
-        write_workmux_config(mux_repo_path)
+        write_muxix_config(mux_repo_path)
 
         claude_dir = tmp_path / "claude-empty"
         claude_dir.mkdir()
 
         result = run_fork_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             mux_repo_path,
             "fork-test --fork",
             claude_dir,
@@ -82,11 +82,11 @@ class TestForkBasic:
         assert "No conversations found" in result.stderr
 
     def test_fork_copies_conversation(
-        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path, tmp_path
+        self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path, tmp_path
     ):
         """--fork should copy conversation files into the new worktree's project dir."""
         env = mux_server
-        write_workmux_config(mux_repo_path)
+        write_muxix_config(mux_repo_path)
 
         claude_dir = tmp_path / "claude"
         session_id = "session-fork-test"
@@ -97,7 +97,7 @@ class TestForkBasic:
 
         run_fork_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             mux_repo_path,
             "fork-branch --fork",
             claude_dir,
@@ -116,11 +116,11 @@ class TestForkBasic:
         assert (target_project_dir / session_id / "data.json").exists()
 
     def test_fork_specific_session(
-        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path, tmp_path
+        self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path, tmp_path
     ):
         """--fork=<session-id> should fork a specific conversation."""
         env = mux_server
-        write_workmux_config(mux_repo_path)
+        write_muxix_config(mux_repo_path)
 
         claude_dir = tmp_path / "claude"
 
@@ -133,7 +133,7 @@ class TestForkBasic:
 
         run_fork_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             mux_repo_path,
             "fork-specific --fork=specific-session",
             claude_dir,
@@ -150,11 +150,11 @@ class TestForkBasic:
         assert not (target_project_dir / "old-session.jsonl").exists()
 
     def test_fork_unknown_session_errors(
-        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path, tmp_path
+        self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path, tmp_path
     ):
         """--fork=<nonexistent> should fail with clear error."""
         env = mux_server
-        write_workmux_config(mux_repo_path)
+        write_muxix_config(mux_repo_path)
 
         claude_dir = tmp_path / "claude"
         create_fake_claude_session(
@@ -163,7 +163,7 @@ class TestForkBasic:
 
         result = run_fork_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             mux_repo_path,
             "fork-missing --fork=nonexistent",
             claude_dir,
@@ -172,11 +172,11 @@ class TestForkBasic:
         assert "No conversation matching 'nonexistent'" in result.stderr
 
     def test_fork_prefix_match(
-        self, mux_server: MuxEnvironment, workmux_exe_path, mux_repo_path, tmp_path
+        self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path, tmp_path
     ):
         """--fork=<prefix> should match session by prefix."""
         env = mux_server
-        write_workmux_config(mux_repo_path)
+        write_muxix_config(mux_repo_path)
 
         claude_dir = tmp_path / "claude"
         create_fake_claude_session(
@@ -185,7 +185,7 @@ class TestForkBasic:
 
         run_fork_command(
             env,
-            workmux_exe_path,
+            muxix_exe_path,
             mux_repo_path,
             "fork-prefix --fork=abc123",
             claude_dir,

@@ -79,7 +79,7 @@ fn status_label(status: Option<AgentStatus>) -> String {
 }
 
 /// Table STATUS cell: `<status>` normally, `<status> · completed|failed` once
-/// the agent has signalled a completion claim (`workmux signal done|error`).
+/// the agent has signalled a completion claim (`muxix signal done|error`).
 fn status_cell(status_label: &str, completion: &Option<Completion>) -> String {
     match completion {
         Some(c) => format!("{} · {}", status_label, completion_label(c.kind)),

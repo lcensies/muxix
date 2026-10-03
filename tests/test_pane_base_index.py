@@ -15,21 +15,21 @@ from .conftest import (
     MuxEnvironment,
     TmuxEnvironment,
     get_window_name,
-    run_workmux_add,
-    write_workmux_config,
+    run_muxix_add,
+    write_muxix_config,
 )
 
 
 # WezTerm: pane-base-index is a tmux-specific configuration option.
 @pytest.mark.tmux_only
 def test_pane_base_index_1_works_with_pane_ids(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, repo_path: Path
 ):
     """
-    Verifies that workmux works correctly with pane-base-index 1 using pane IDs.
+    Verifies that muxix works correctly with pane-base-index 1 using pane IDs.
 
     This test configures tmux with pane-base-index 1 (making panes 1-indexed instead
-    of 0-indexed) and verifies that workmux successfully creates panes using pane IDs.
+    of 0-indexed) and verifies that muxix successfully creates panes using pane IDs.
     """
     # Cast to TmuxEnvironment since this is a tmux-only test
     env = cast(TmuxEnvironment, mux_server)
@@ -42,8 +42,8 @@ def test_pane_base_index_1_works_with_pane_ids(
     # Also test with base-index 1 which the user uses (for windows, not panes)
     env.tmux(["set-option", "-g", "base-index", "1"])
 
-    # Configure workmux with panes and a command to trigger respawn-pane
-    write_workmux_config(
+    # Configure muxix with panes and a command to trigger respawn-pane
+    write_muxix_config(
         repo_path,
         panes=[
             {"command": "echo 'hello'", "focus": True},
@@ -52,7 +52,7 @@ def test_pane_base_index_1_works_with_pane_ids(
     )
 
     # This should now succeed with the pane ID fix
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
 
     # Verify the window was created
     list_windows = env.tmux(
@@ -70,10 +70,10 @@ def test_pane_base_index_1_works_with_pane_ids(
 # WezTerm: pane-base-index is a tmux-specific configuration option.
 @pytest.mark.tmux_only
 def test_pane_base_index_1_with_multiple_panes(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, repo_path: Path
 ):
     """
-    Verifies that workmux works correctly with pane-base-index 1 with multiple panes.
+    Verifies that muxix works correctly with pane-base-index 1 with multiple panes.
 
     This comprehensive test validates the pane ID-based targeting with complex layouts.
     """
@@ -86,8 +86,8 @@ def test_pane_base_index_1_with_multiple_panes(
     env.tmux(["set-option", "-g", "pane-base-index", "1"])
     env.tmux(["set-option", "-g", "base-index", "1"])
 
-    # Configure workmux with multiple panes
-    write_workmux_config(
+    # Configure muxix with multiple panes
+    write_muxix_config(
         repo_path,
         panes=[
             {"focus": True},
@@ -97,7 +97,7 @@ def test_pane_base_index_1_with_multiple_panes(
     )
 
     # This should succeed after the fix
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
 
     # Verify the window was created
     list_windows = env.tmux(
@@ -115,10 +115,10 @@ def test_pane_base_index_1_with_multiple_panes(
 # WezTerm: pane-base-index is a tmux-specific configuration option.
 @pytest.mark.tmux_only
 def test_default_pane_base_index_0_works(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, repo_path: Path
 ):
     """
-    Verifies that workmux works correctly with default pane-base-index 0.
+    Verifies that muxix works correctly with default pane-base-index 0.
 
     This is a control test to ensure the existing behavior works.
     """
@@ -130,8 +130,8 @@ def test_default_pane_base_index_0_works(
     # Explicitly set pane-base-index to 0 (the default)
     env.tmux(["set-option", "-g", "pane-base-index", "0"])
 
-    # Configure workmux with multiple panes
-    write_workmux_config(
+    # Configure muxix with multiple panes
+    write_muxix_config(
         repo_path,
         panes=[
             {"focus": True},
@@ -141,7 +141,7 @@ def test_default_pane_base_index_0_works(
     )
 
     # This should work fine
-    run_workmux_add(env, workmux_exe_path, repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
 
     # Verify the window was created
     list_windows = env.tmux(

@@ -1,12 +1,12 @@
 ---
-description: Composing workmux configuration with includes, profiles, and layers
+description: Composing muxix configuration with includes, profiles, and layers
 ---
 
 # Profiles and includes
 
 One config file rarely fits every situation. A corporate laptop and a personal
 one want different agents; a Python project and a Rust one want different
-skills. Workmux composes configuration from layers rather than asking you to
+skills. Muxix composes configuration from layers rather than asking you to
 maintain a file per case.
 
 ## The layer order
@@ -14,9 +14,9 @@ maintain a file per case.
 The effective config is built by merging layers, each overriding the one before:
 
 1. includes of the global config (depth-first, in declaration order)
-2. the global config's own keys — `~/.config/workmux/config.yaml`
+2. the global config's own keys — `~/.config/muxix/config.yaml`
 3. includes of the project config
-4. the project config's own keys — `.workmux.yaml`
+4. the project config's own keys — `.muxix.yaml`
 5. **org policy defaults**, when a provisioning policy is cached
 6. selected **profiles**, left to right
 7. CLI flags
@@ -30,15 +30,15 @@ See [provision](/reference/commands/provision).
 To see the result, and where each key came from:
 
 ```bash
-workmux config resolve
-workmux config resolve --explain
-workmux config resolve --format json --profile corp
+muxix config resolve
+muxix config resolve --explain
+muxix config resolve --format json --profile corp
 ```
 
 `--explain` annotates every key with the layer that set it:
 
 ```yaml
-merge_strategy: rebase  # from ~/.config/workmux/base.yaml
+merge_strategy: rebase  # from ~/.config/muxix/base.yaml
 agent: codex  # from profile `corp` (--profile)
 ```
 
@@ -48,11 +48,11 @@ agent: codex  # from profile `corp` (--profile)
 including file always wins.
 
 ```yaml
-# ~/.config/workmux/config.yaml
+# ~/.config/muxix/config.yaml
 include:
   - ./base.yaml
-  - ~/.config/workmux/corp.yaml
-  - https://config.corp.example.com/workmux.yaml
+  - ~/.config/muxix/corp.yaml
+  - https://config.corp.example.com/muxix.yaml
   - { path: ./optional.yaml, optional: true }
 
 agent: claude   # wins over anything the includes set
@@ -64,12 +64,12 @@ their own includes rank below them.
 - A cycle is an error naming the full path, not a hang.
 - Nesting is capped at 16 levels.
 - A missing include is an error unless marked `optional: true`.
-- Remote includes must be `https://`. They are cached under the workmux cache
+- Remote includes must be `https://`. They are cached under the muxix cache
   directory; if a fetch fails and a cached copy exists, the copy is used and a
   warning is printed.
 
 A config that declares no `include:` does no extra filesystem or network work —
-config loading runs on every workmux invocation, so this stays off the hot path.
+config loading runs on every muxix invocation, so this stays off the hot path.
 
 ## Profiles
 
@@ -95,22 +95,22 @@ Selection, in decreasing precedence:
 
 | Source | Example |
 | --- | --- |
-| `--profile` | `workmux --profile corp add feat` |
-| `WORKMUX_PROFILE` | `WORKMUX_PROFILE=corp workmux add feat` |
+| `--profile` | `muxix --profile corp add feat` |
+| `MUXIX_PROFILE` | `MUXIX_PROFILE=corp muxix add feat` |
 | `default_profile:` | applied when neither of the above is set |
 
 A higher-precedence source **replaces** the list from lower ones rather than
 adding to it. Several profiles apply left to right:
 
 ```bash
-workmux --profile corp,python add feat   # python wins on conflicts
+muxix --profile corp,python add feat   # python wins on conflicts
 ```
 
 An explicit empty value turns profiles off for one command, including a
 configured `default_profile`:
 
 ```bash
-workmux --profile "" config resolve
+muxix --profile "" config resolve
 ```
 
 Profiles may be declared anywhere in the layer stack — an include or the global
@@ -158,7 +158,7 @@ entry rather than merging field by field.
 ## Keys a project config cannot set
 
 Some keys are security-sensitive: a repository you clone must not be able to set
-them by shipping a `.workmux.yaml`. They are ignored in project configs, with a
+them by shipping a `.muxix.yaml`. They are ignored in project configs, with a
 warning, and only take effect from the global config:
 
 `agents`, `provision`, `auto_name.command`, `sandbox.env`,
@@ -191,9 +191,9 @@ others.
 ## Validating
 
 ```bash
-workmux config validate                       # the effective config
-workmux config validate --file rendered.yaml  # one file, on its own
-workmux config validate --strict              # unrecognized keys are errors
+muxix config validate                       # the effective config
+muxix config validate --file rendered.yaml  # one file, on its own
+muxix config validate --strict              # unrecognized keys are errors
 ```
 
 `--file` judges a file by itself, ignoring the ambient global and project
@@ -205,17 +205,17 @@ is a trap that surfaces on someone else's machine.
 
 Distinct from the *config* profiles above: `agent_profiles:` declares named
 overlays of an **agent's own config directory** (e.g. `~/.pi/agent/`), selected
-at launch with `workmux exec --profile <name> <agent>`. The base dir is also
+at launch with `muxix exec --profile <name> <agent>`. The base dir is also
 the default profile; a named profile layers on top of it and never mutates it.
 
 Two mechanisms compose, per profile:
 
 1. **File overlay** (user-authored): anything under
-   `~/.config/workmux/agent-profiles/<name>/` shadows the same path in base,
+   `~/.config/muxix/agent-profiles/<name>/` shadows the same path in base,
    file by file. Setup only reads this tree.
-2. **Declarative deltas** (workmux.yaml-authored): per-agent adds/excludes that
-   `workmux setup` materializes into generated files in the derived overlay at
-   `~/.local/state/workmux/agent-profiles/<name>/<agent>/`.
+2. **Declarative deltas** (muxix.yaml-authored): per-agent adds/excludes that
+   `muxix setup` materializes into generated files in the derived overlay at
+   `~/.local/state/muxix/agent-profiles/<name>/<agent>/`.
 
 ```yaml
 agent_profiles:
@@ -239,7 +239,7 @@ agent_profiles:
 
 Semantics worth knowing:
 
-- **Generated settings derive from current base** on every `workmux setup`:
+- **Generated settings derive from current base** on every `muxix setup`:
   base `packages` minus excludes, plus additions, then the `settings` patch.
   Installing a plugin into base later flows into every profile automatically.
 - **Added path specs are absolutized** (`~/` → home, relative → base agent

@@ -1,16 +1,16 @@
-# workmux — agent instructions
+# muxix — agent instructions
 
 Rust CLI that drives git worktrees and multiplexer windows (tmux, WezTerm, kitty,
 Zellij) for parallel agent work.
 
 ## Scope boundary
 
-workmux owns **deterministic plumbing**: worktree lifecycle, window/pane layout,
+muxix owns **deterministic plumbing**: worktree lifecycle, window/pane layout,
 status tracking, signals, file sync, merge, sandboxes, agent setup.
 
 It does **not** schedule work. There is no pipeline runner, no task loop, no
 decomposition engine — an external harness decides what runs next and calls
-workmux. The task graph (`workmux task` over `tasks/index.json`) is a store with
+muxix. The task graph (`muxix task` over `tasks/index.json`) is a store with
 no scheduler attached; keep it that way. New "run this DAG for me" features
 belong in the harness, not here.
 
@@ -34,8 +34,8 @@ commit the result rather than fighting CI.
 | `src/workflow/` | worktree lifecycle shared by add/open/merge/remove |
 | `src/multiplexer/` | tmux / WezTerm / kitty / Zellij backends behind one trait |
 | `src/tasks/` | task graph store (atomic, locked writes) |
-| `src/signals/` | agent↔workmux signals, hooks, and `wm::event` tracing |
-| `src/agent/` | agent profiles, registry, per-agent setup (`workmux setup`) |
+| `src/signals/` | agent↔muxix signals, hooks, and `wm::event` tracing |
+| `src/agent/` | agent profiles, registry, per-agent setup (`muxix setup`) |
 | `src/command/sidebar/`, `src/command/dashboard/` | the two TUIs |
 | `resources/` | files compiled into the binary with `include_str!` |
 | `docs/` | VitePress site; `docs/reference/commands/` is the CLI reference |
@@ -48,5 +48,5 @@ commit the result rather than fighting CI.
 - A new CLI flag or command needs its `docs/reference/commands/*.md` page updated
   in the same change.
 - `src/config.rs` holds both the config types and the annotated template
-  `workmux init` writes — change them together.
+  `muxix init` writes — change them together.
 - Events use the `wm_evt!` macro so they land in the log file, never in a pane.

@@ -153,7 +153,7 @@ pub struct App {
     worktree_preview_path: Option<PathBuf>,
     /// Temporary status message shown in the footer (auto-clears after timeout)
     pub status_message: Option<(String, std::time::Instant)>,
-    /// Whether to show the "New: workmux sidebar" tip in the tab header
+    /// Whether to show the "New: muxix sidebar" tip in the tab header
     pub show_sidebar_tip: bool,
     /// Pane IDs of agents detected as interrupted by the sidebar daemon.
     pub interrupted_pane_ids: std::collections::HashSet<String>,
@@ -283,7 +283,7 @@ impl App {
                 super::ui::grouped::DEFAULT_AGENTS_SPEC,
                 std::env::current_dir()
                     .ok()
-                    .map(|d| d.join(".workmux").join("ui").join("agents.yaml")),
+                    .map(|d| d.join(".muxix").join("ui").join("agents.yaml")),
             ),
             sweep_progress: None,
             tasks: TaskState::new(std::path::PathBuf::from("tasks/index.json")),

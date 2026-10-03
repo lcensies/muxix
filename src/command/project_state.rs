@@ -1,4 +1,4 @@
-//! `workmux project-state …` — read/write CLI over the per-project runtime
+//! `muxix project-state …` — read/write CLI over the per-project runtime
 //! state store, intended for preflight checks and harness bash gates.
 //!
 //! Mutating subcommands (`acquire`/`heartbeat`/`done`/`release`) take an

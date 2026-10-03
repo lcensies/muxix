@@ -46,7 +46,7 @@ pub fn open(
     let (worktree_path, branch_name) = git::find_worktree_in(name, Some(&context.execution_dir))
         .map_err(|_| {
             anyhow!(
-                "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
+                "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
                 name
             )
         })?;

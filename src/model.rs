@@ -4,7 +4,7 @@
 //! serves a model) to the models it offers. A single logical model such as
 //! `sonnet` can therefore appear under several providers with different
 //! provider-specific ids and limits — e.g. Anthropic direct and AWS Bedrock.
-//! The rest of workmux resolves context/compaction limits by provider id or
+//! The rest of muxix resolves context/compaction limits by provider id or
 //! logical name instead of hard-coding them per agent.
 //!
 //! ```yaml
@@ -41,9 +41,9 @@ pub type ProviderRegistry = BTreeMap<String, ProviderConfig>;
 ///
 /// The optional connection fields (`base_url`, `api_key_env`, `npm`, `api`,
 /// `options`) describe how to *reach* the provider; when any of the first
-/// three is set, `workmux setup` materializes the provider into each
+/// three is set, `muxix setup` materializes the provider into each
 /// supported agent's native config (see [`has_connection`]). Secrets are
-/// referenced by environment variable NAME only — workmux never reads or
+/// referenced by environment variable NAME only — muxix never reads or
 /// writes their values.
 ///
 /// [`has_connection`]: ProviderConfig::has_connection

@@ -1,7 +1,7 @@
 //! Background image freshness check system.
 //!
 //! Checks if a newer sandbox image is available by comparing local vs remote digests.
-//! Only triggers for official ghcr.io/raine/workmux-sandbox images.
+//! Only triggers for official ghcr.io/lcensies/muxix-sandbox images.
 //! Runs in background thread and never blocks startup.
 
 use anyhow::{Context, Result};
@@ -35,8 +35,8 @@ struct FreshnessCache {
 /// Turn an image reference into a safe filename component.
 ///
 /// Replaces `/` and `:` with `-`, e.g.
-/// `ghcr.io/raine/workmux-sandbox:claude` becomes
-/// `ghcr.io-raine-workmux-sandbox-claude`.
+/// `ghcr.io/lcensies/muxix-sandbox:claude` becomes
+/// `ghcr.io-raine-muxix-sandbox-claude`.
 fn image_to_filename(image: &str) -> String {
     image.replace(['/', ':'], "-")
 }
@@ -44,7 +44,7 @@ fn image_to_filename(image: &str) -> String {
 /// Get the state directory, optionally rooted at `base` (for testing).
 fn state_dir_in(base: Option<&std::path::Path>) -> Result<PathBuf> {
     let state_dir = if let Some(base) = base {
-        base.join("workmux")
+        base.join("muxix")
     } else {
         crate::xdg::state_dir()?
     };
@@ -164,7 +164,7 @@ fn get_apple_index_digest(image: &str) -> Result<String> {
 
 /// Get the repo digests for a local image.
 ///
-/// Returns digests like `["ghcr.io/raine/workmux-sandbox:claude@sha256:abc..."]`.
+/// Returns digests like `["ghcr.io/lcensies/muxix-sandbox:claude@sha256:abc..."]`.
 /// These record the manifest digest the image was originally pulled with.
 fn get_local_repo_digests(runtime: &str, image: &str) -> Result<Vec<String>> {
     let output = Command::new(runtime)
@@ -356,10 +356,10 @@ pub fn check_freshness(image: &str, runtime: SandboxRuntime) -> Result<bool> {
     Ok(is_fresh)
 }
 
-/// Check if an image is from the official workmux registry.
+/// Check if an image is from the official muxix registry.
 ///
-/// Matches `ghcr.io/raine/workmux-sandbox:tag` but not
-/// `ghcr.io/raine/workmux-sandbox-dev:tag`.
+/// Matches `ghcr.io/lcensies/muxix-sandbox:tag` but not
+/// `ghcr.io/lcensies/muxix-sandbox-dev:tag`.
 pub fn is_official_image(image: &str) -> bool {
     image
         .strip_prefix(DEFAULT_IMAGE_REGISTRY)
@@ -456,11 +456,11 @@ mod tests {
     fn test_cache_file_path() {
         let tmp = tempfile::tempdir().unwrap();
         let path =
-            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:claude").unwrap();
-        assert!(path.to_string_lossy().contains("workmux"));
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
+        assert!(path.to_string_lossy().contains("muxix"));
         assert!(
             path.to_string_lossy()
-                .ends_with("image-freshness-ghcr.io-raine-workmux-sandbox-claude.json")
+                .ends_with("image-freshness-ghcr.io-lcensies-muxix-sandbox-claude.json")
         );
         // Verify the directory was actually created
         assert!(path.parent().unwrap().is_dir());
@@ -470,9 +470,9 @@ mod tests {
     fn test_cache_file_path_per_image() {
         let tmp = tempfile::tempdir().unwrap();
         let path_claude =
-            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:claude").unwrap();
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
         let path_codex =
-            cache_file_path_in(Some(tmp.path()), "ghcr.io/raine/workmux-sandbox:codex").unwrap();
+            cache_file_path_in(Some(tmp.path()), "ghcr.io/lcensies/muxix-sandbox:codex").unwrap();
         assert_ne!(path_claude, path_codex);
     }
 
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn test_freshness_cache_serialization() {
         let cache = FreshnessCache {
-            image: "ghcr.io/raine/workmux-sandbox:claude".to_string(),
+            image: "ghcr.io/lcensies/muxix-sandbox:claude".to_string(),
             checked_at: 1707350400,
             is_fresh: true,
             local_image_id: Some("sha256:abc123".to_string()),
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn test_freshness_cache_without_local_image_id() {
         // Old cache format without local_image_id should deserialize with None
-        let json = r#"{"image":"ghcr.io/raine/workmux-sandbox:claude","checked_at":1707350400,"is_fresh":false}"#;
+        let json = r#"{"image":"ghcr.io/lcensies/muxix-sandbox:claude","checked_at":1707350400,"is_fresh":false}"#;
         let parsed: FreshnessCache = serde_json::from_str(json).unwrap();
         assert!(!parsed.is_fresh);
         assert_eq!(parsed.local_image_id, None);
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn test_parse_apple_container_index_digest() {
-        let json = r#"[{"index":{"mediaType":"application/vnd.oci.image.index.v1+json","size":1609,"digest":"sha256:abc123"},"variants":[],"name":"ghcr.io/raine/workmux-sandbox:claude"}]"#;
+        let json = r#"[{"index":{"mediaType":"application/vnd.oci.image.index.v1+json","size":1609,"digest":"sha256:abc123"},"variants":[],"name":"ghcr.io/lcensies/muxix-sandbox:claude"}]"#;
         let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
         let digest = parsed
             .as_array()
@@ -561,7 +561,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_apple_container_local_digest() {
-        let digest = get_apple_index_digest("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        let digest = get_apple_index_digest("ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
         assert!(
             digest.starts_with("sha256:"),
             "expected sha256 digest, got: {}",
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_apple_container_remote_digest() {
-        let digest = get_remote_digest_apple("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        let digest = get_remote_digest_apple("ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
         assert!(
             digest.starts_with("sha256:"),
             "expected sha256 digest, got: {}",
@@ -585,7 +585,7 @@ mod tests {
     fn test_apple_container_freshness_check() {
         // A just-pulled image should be fresh
         let is_fresh = check_freshness(
-            "ghcr.io/raine/workmux-sandbox:claude",
+            "ghcr.io/lcensies/muxix-sandbox:claude",
             SandboxRuntime::AppleContainer,
         )
         .unwrap();
@@ -597,23 +597,23 @@ mod tests {
     fn test_apple_container_digests_match() {
         // Local index.digest and remote Docker-Content-Digest should be identical
         // for a freshly pulled image
-        let local = get_apple_index_digest("ghcr.io/raine/workmux-sandbox:claude").unwrap();
-        let remote = get_remote_digest_apple("ghcr.io/raine/workmux-sandbox:claude").unwrap();
+        let local = get_apple_index_digest("ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
+        let remote = get_remote_digest_apple("ghcr.io/lcensies/muxix-sandbox:claude").unwrap();
         assert_eq!(local, remote, "local and remote digests should match");
     }
 
     #[test]
     fn test_is_official_image() {
-        assert!(is_official_image("ghcr.io/raine/workmux-sandbox:claude"));
-        assert!(is_official_image("ghcr.io/raine/workmux-sandbox:base"));
+        assert!(is_official_image("ghcr.io/lcensies/muxix-sandbox:claude"));
+        assert!(is_official_image("ghcr.io/lcensies/muxix-sandbox:base"));
         assert!(is_official_image(
-            "ghcr.io/raine/workmux-sandbox@sha256:abc"
+            "ghcr.io/lcensies/muxix-sandbox@sha256:abc"
         ));
-        assert!(is_official_image("ghcr.io/raine/workmux-sandbox"));
+        assert!(is_official_image("ghcr.io/lcensies/muxix-sandbox"));
         assert!(!is_official_image(
-            "ghcr.io/raine/workmux-sandbox-dev:claude"
+            "ghcr.io/lcensies/muxix-sandbox-dev:claude"
         ));
-        assert!(!is_official_image("ghcr.io/raine/workmux-sandboxx:claude"));
+        assert!(!is_official_image("ghcr.io/lcensies/muxix-sandboxx:claude"));
         assert!(!is_official_image("docker.io/library/ubuntu:latest"));
     }
 }

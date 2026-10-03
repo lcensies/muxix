@@ -2,7 +2,7 @@
 Tests for agent state management.
 
 Verifies that:
-1. workmux set-window-status creates agent state files
+1. muxix set-window-status creates agent state files
 2. State files contain correct fields (pane_key, pane_pid, command, workdir, status)
 3. State files contain pane identification info needed for reconciliation
 4. Status updates overwrite existing state files (no duplicates)
@@ -22,15 +22,15 @@ from .conftest import (
     get_window_name,
     make_env_script,
     poll_until,
-    run_workmux_add,
+    run_muxix_add,
     wait_for_window_ready,
-    write_workmux_config,
+    write_muxix_config,
 )
 
 
 def get_state_dir(env: MuxEnvironment) -> Path:
-    """Get the workmux state directory for this test environment."""
-    return Path(env.env["XDG_STATE_HOME"]) / "workmux"
+    """Get the muxix state directory for this test environment."""
+    return Path(env.env["XDG_STATE_HOME"]) / "muxix"
 
 
 def get_agents_dir(env: MuxEnvironment) -> Path:
@@ -53,7 +53,7 @@ def read_agent_state(path: Path) -> dict:
 
 def build_status_cmd(
     env: MuxEnvironment,
-    workmux_exe: Path,
+    muxix_exe: Path,
     status: str,
     env_vars: dict[str, str] | None = None,
 ) -> str:
@@ -65,7 +65,7 @@ def build_status_cmd(
 
     Returns a path to a script file (to avoid tmux send-keys line length limits).
     """
-    command = f"{workmux_exe} set-window-status {status}"
+    command = f"{muxix_exe} set-window-status {status}"
     script_env = {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]}
     if env_vars:
         script_env.update(env_vars)
@@ -74,12 +74,12 @@ def build_status_cmd(
 
 def build_status_cmd_with_marker(
     env: MuxEnvironment,
-    workmux_exe: Path,
+    muxix_exe: Path,
     status: str,
     marker_path: Path,
     env_vars: dict[str, str] | None = None,
 ) -> str:
-    command = f"{workmux_exe} set-window-status {status}; touch {shlex.quote(str(marker_path))}"
+    command = f"{muxix_exe} set-window-status {status}; touch {shlex.quote(str(marker_path))}"
     script_env = {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]}
     if env_vars:
         script_env.update(env_vars)
@@ -92,30 +92,30 @@ def build_status_cmd_with_marker(
 
 
 def test_set_window_status_creates_state_file(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, mux_repo_path: Path
 ):
-    """Verifies that workmux set-window-status creates an agent state file."""
+    """Verifies that muxix set-window-status creates an agent state file."""
     env = mux_server
     branch_name = "feature-state-test"
     window_name = get_window_name(branch_name)
 
     # Configure with a pane that starts a shell (no blocking command)
     # so we can send keys to it
-    write_workmux_config(
+    write_muxix_config(
         mux_repo_path,
         panes=[
             {"focus": True},  # Just a shell, no command
         ],
     )
 
-    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, mux_repo_path, branch_name)
 
     # Wait for window/shell to be ready
     wait_for_window_ready(env, window_name)
 
     # Send set-window-status command to the pane using tab title
     # This simulates what Claude hooks do when agent starts working
-    status_cmd = build_status_cmd(env, workmux_exe_path, "working")
+    status_cmd = build_status_cmd(env, muxix_exe_path, "working")
     env.send_keys(window_name, status_cmd)
 
     # Wait for state file to be created
@@ -130,29 +130,29 @@ def test_set_window_status_creates_state_file(
 
 
 def test_set_window_status_disabled_by_env(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, mux_repo_path: Path
 ):
     env = mux_server
     branch_name = "feature-disabled-status-test"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(
+    write_muxix_config(
         mux_repo_path,
         panes=[
             {"focus": True},
         ],
     )
 
-    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, mux_repo_path, branch_name)
     wait_for_window_ready(env, window_name)
 
     marker_path = env.tmp_path / "disabled-status-finished"
     status_cmd = build_status_cmd_with_marker(
         env,
-        workmux_exe_path,
+        muxix_exe_path,
         "working",
         marker_path,
-        {"WORKMUX_DISABLE_SET_WINDOW_STATUS": "1"},
+        {"MUXIX_DISABLE_SET_WINDOW_STATUS": "1"},
     )
     env.send_keys(window_name, status_cmd)
 
@@ -161,25 +161,25 @@ def test_set_window_status_disabled_by_env(
 
 
 def test_state_file_has_correct_fields(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies that agent state files contain the expected fields."""
     env = mux_server
     branch_name = "feature-fields-test"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(
+    write_muxix_config(
         mux_repo_path,
         panes=[
             {"focus": True},  # Just a shell
         ],
     )
 
-    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, mux_repo_path, branch_name)
     wait_for_window_ready(env, window_name)
 
     # Trigger state file creation using tab title
-    status_cmd = build_status_cmd(env, workmux_exe_path, "working")
+    status_cmd = build_status_cmd(env, muxix_exe_path, "working")
     env.send_keys(window_name, status_cmd)
 
     def state_file_exists():
@@ -210,12 +210,12 @@ def test_state_file_has_correct_fields(
     assert state["status"] == "working", (
         f"Expected status 'working', got '{state['status']}'"
     )
-    # Command could be "workmux" (if captured during set-window-status) or the shell
+    # Command could be "muxix" (if captured during set-window-status) or the shell
     assert state["command"], "command should not be empty"
 
 
 def test_state_file_contains_pane_info(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies that state file contains valid pane identification info.
 
@@ -226,21 +226,21 @@ def test_state_file_contains_pane_info(
     branch_name = "feature-pane-info-test"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(
+    write_muxix_config(
         mux_repo_path,
         panes=[
             {"focus": True},  # Just a shell
         ],
     )
 
-    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, mux_repo_path, branch_name)
     wait_for_window_ready(env, window_name)
 
     # Create state file
     marker_path = env.tmp_path / "pane-info-status-finished"
     status_cmd = build_status_cmd_with_marker(
         env,
-        workmux_exe_path,
+        muxix_exe_path,
         "working",
         marker_path,
     )
@@ -272,7 +272,7 @@ def test_state_file_contains_pane_info(
 
 
 def test_status_update_overwrites_state(
-    mux_server: MuxEnvironment, workmux_exe_path: Path, mux_repo_path: Path
+    mux_server: MuxEnvironment, muxix_exe_path: Path, mux_repo_path: Path
 ):
     """Verifies that calling set-window-status again updates the existing state.
 
@@ -282,18 +282,18 @@ def test_status_update_overwrites_state(
     branch_name = "feature-status-update-test"
     window_name = get_window_name(branch_name)
 
-    write_workmux_config(
+    write_muxix_config(
         mux_repo_path,
         panes=[
             {"focus": True},  # Just a shell
         ],
     )
 
-    run_workmux_add(env, workmux_exe_path, mux_repo_path, branch_name)
+    run_muxix_add(env, muxix_exe_path, mux_repo_path, branch_name)
     wait_for_window_ready(env, window_name)
 
     # Create initial state with "working" status
-    status_cmd = build_status_cmd(env, workmux_exe_path, "working")
+    status_cmd = build_status_cmd(env, muxix_exe_path, "working")
     env.send_keys(window_name, status_cmd)
 
     def state_file_exists():
@@ -308,7 +308,7 @@ def test_status_update_overwrites_state(
     assert state["status"] == "working", f"Expected 'working', got '{state['status']}'"
 
     # Update to "done" status
-    status_cmd = build_status_cmd(env, workmux_exe_path, "done")
+    status_cmd = build_status_cmd(env, muxix_exe_path, "done")
     env.send_keys(window_name, status_cmd)
 
     # Poll for status to be updated (more reliable than fixed sleep under load)

@@ -13,7 +13,7 @@ pub use instance::{LimaInstance, LimaInstanceInfo, ensure_vm_running, parse_lima
 pub use mounts::{determine_project_root, generate_mounts};
 pub use wrap::wrap_for_lima;
 
-/// Prefix for all workmux-managed Lima VM names.
+/// Prefix for all muxix-managed Lima VM names.
 pub const VM_PREFIX: &str = "wm-";
 
 use crate::config::{Config, IsolationLevel};
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_name_basic() {
-        assert_eq!(sanitize_name("workmux", 20), "workmux");
+        assert_eq!(sanitize_name("muxix", 20), "muxix");
     }
 
     #[test]

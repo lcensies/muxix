@@ -4,26 +4,26 @@ description: Per-project configs and port isolation for monorepos with multiple 
 
 # Monorepos
 
-Tips for using workmux with monorepos containing multiple services.
+Tips for using muxix with monorepos containing multiple services.
 
 ## Nested configuration
 
-Place a `.workmux.yaml` in any subdirectory to configure that project independently. When you run workmux from a subdirectory, it walks upward to find the nearest config:
+Place a `.muxix.yaml` in any subdirectory to configure that project independently. When you run muxix from a subdirectory, it walks upward to find the nearest config:
 
 ```
 monorepo/
-├── .workmux.yaml          # Root config (used from monorepo/)
+├── .muxix.yaml          # Root config (used from monorepo/)
 ├── backend/
-│   ├── .workmux.yaml      # Backend config (used from backend/)
+│   ├── .muxix.yaml      # Backend config (used from backend/)
 │   └── src/
 └── frontend/
-    ├── .workmux.yaml      # Frontend config (used from frontend/)
+    ├── .muxix.yaml      # Frontend config (used from frontend/)
     └── src/
 ```
 
 ```bash
 cd monorepo/backend
-workmux add api-feature    # Uses backend/.workmux.yaml
+muxix add api-feature    # Uses backend/.muxix.yaml
 ```
 
 When using a nested config:
@@ -35,7 +35,7 @@ When using a nested config:
 ### Example nested config
 
 ```yaml
-# backend/.workmux.yaml
+# backend/.muxix.yaml
 agent: claude
 
 files:
@@ -51,7 +51,7 @@ post_create:
 Hooks receive `WM_CONFIG_DIR` pointing to the config directory in the new worktree:
 
 ```yaml
-# backend/.workmux.yaml
+# backend/.muxix.yaml
 post_create:
   - echo "Config dir: $WM_CONFIG_DIR" # /path/to/worktree/backend
   - echo "Worktree root: $WM_WORKTREE_PATH" # /path/to/worktree
@@ -59,7 +59,7 @@ post_create:
 
 ### No inheritance
 
-Nested configs completely replace the root config - they are not merged. If you need shared settings across projects, use the global config (`~/.config/workmux/config.yaml`) with the `<global>` placeholder.
+Nested configs completely replace the root config - they are not merged. If you need shared settings across projects, use the global config (`~/.config/muxix/config.yaml`) with the `<global>` placeholder.
 
 ## Port isolation
 
@@ -105,10 +105,10 @@ EOF
 echo "Created .env.local with ports: API=$api_port, VITE=$vite_port"
 ```
 
-Configure workmux to copy `.env` and generate `.env.local`:
+Configure muxix to copy `.env` and generate `.env.local`:
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 files:
   copy:
     - .env # Copy secrets (DATABASE_URL, API keys, etc.)
@@ -143,7 +143,7 @@ dotenv_if_exists .env.local
 Use the same `worktree-env` script to generate `.env.local`. When you enter the directory, direnv automatically loads `.env` and `.env.local`, with the latter taking precedence.
 
 ```yaml
-# .workmux.yaml
+# .muxix.yaml
 files:
   copy:
     - .envrc
@@ -158,7 +158,7 @@ post_create:
 The worktree handle is hashed to get a deterministic starting port, so `feature-auth` always starts at the same offset. If that port is taken, `lsof` finds the next available one.
 
 ```
-$ workmux add feature-auth
+$ muxix add feature-auth
 Running setup commands...
 Created .env.local with ports: API=3471, VITE=3470
 ✓ Setup complete

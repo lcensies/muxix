@@ -1,4 +1,4 @@
-//! The `workmux sandbox run` supervisor process.
+//! The `muxix sandbox run` supervisor process.
 //!
 //! Runs inside a tmux pane. Starts a TCP RPC server and executes the agent
 //! command inside a sandbox (Lima VM or Docker/Podman container).
@@ -65,7 +65,7 @@ impl Drop for ContainerGuard {
 /// appropriate handler (Lima VM or Docker/Podman container).
 pub fn run(worktree: PathBuf, worktree_root: Option<PathBuf>, command: Vec<String>) -> Result<i32> {
     if command.is_empty() {
-        bail!("No command specified. Usage: workmux sandbox run <worktree> -- <command...>");
+        bail!("No command specified. Usage: muxix sandbox run <worktree> -- <command...>");
     }
 
     let config = Config::load(None)?;
@@ -82,7 +82,7 @@ pub fn run(worktree: PathBuf, worktree_root: Option<PathBuf>, command: Vec<Strin
         SandboxBackend::MicroSandbox => {
             bail!(
                 "sandbox run is not used with the microsandbox backend; \
-                   use `workmux sandbox shell` or `workmux sandbox agent` instead"
+                   use `muxix sandbox shell` or `muxix sandbox agent` instead"
             )
         }
     }
@@ -207,7 +207,7 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
         .arg(&vm_name);
 
     let mut env_exports = vec![
-        r#"PATH="$HOME/.workmux-state/shims/bin:$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
+        r#"PATH="$HOME/.muxix-state/shims/bin:$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
         "WM_SANDBOX_GUEST=1".to_string(),
         "WM_RPC_HOST=host.lima.internal".to_string(),
         format!("WM_RPC_PORT={}", rpc_port),
@@ -311,7 +311,7 @@ fn run_container(
     }
 
     // Create shims directory for host-exec (on host, will be bind-mounted into container).
-    // Use $XDG_CACHE_HOME/workmux/shims/ instead of system temp (/var/folders/... on macOS)
+    // Use $XDG_CACHE_HOME/muxix/shims/ instead of system temp (/var/folders/... on macOS)
     // so the path is inside ~ and accessible to VM-based runtimes like Colima.
     let _shim_dir = {
         let shims_base = crate::xdg::cache_dir()?.join("shims");
@@ -383,7 +383,7 @@ fn run_container(
     ];
 
     if let Some((proxy_port, ref proxy_token, _)) = proxy {
-        let proxy_url = format!("http://workmux:{}@{}:{}", proxy_token, rpc_host, proxy_port);
+        let proxy_url = format!("http://muxix:{}@{}:{}", proxy_token, rpc_host, proxy_port);
         let no_proxy = format!("localhost,127.0.0.1,{}", rpc_host);
 
         owned_envs.push(("HTTPS_PROXY".into(), proxy_url.clone()));
@@ -477,10 +477,10 @@ mod tests {
     #[test]
     fn redact_proxy_env_vars() {
         let cases = [
-            "HTTPS_PROXY=http://workmux:secret@host:1234",
-            "HTTP_PROXY=http://workmux:secret@host:1234",
-            "https_proxy=http://workmux:secret@host:1234",
-            "http_proxy=http://workmux:secret@host:1234",
+            "HTTPS_PROXY=http://muxix:secret@host:1234",
+            "HTTP_PROXY=http://muxix:secret@host:1234",
+            "https_proxy=http://muxix:secret@host:1234",
+            "http_proxy=http://muxix:secret@host:1234",
         ];
         for arg in &cases {
             let redacted = redact_env_arg(arg, &[]);

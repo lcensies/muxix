@@ -53,7 +53,7 @@ pub fn toolchain_wrapper_script(toolchain: &DetectedToolchain) -> Option<String>
             concat!(
                 "_WM_CWD=\"$PWD\"; ",
                 "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                "_WM_CACHE=\"${XDG_CACHE_HOME:-$HOME/.cache}/workmux/devbox/$_WM_HASH\"; ",
+                "_WM_CACHE=\"${XDG_CACHE_HOME:-$HOME/.cache}/muxix/devbox/$_WM_HASH\"; ",
                 "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
                 "mkdir -p \"$_WM_CACHE\" && ",
                 "cp devbox.json \"$_WM_CACHE/\" && ",
@@ -80,7 +80,7 @@ pub fn toolchain_wrapper_script(toolchain: &DetectedToolchain) -> Option<String>
 ///
 /// For Devbox, generates a shell wrapper that:
 /// 1. Hashes devbox.json + devbox.lock to compute a content-addressable cache key
-/// 2. Creates a shared cache directory inside the VM (~/.cache/workmux/devbox/<hash>/)
+/// 2. Creates a shared cache directory inside the VM (~/.cache/muxix/devbox/<hash>/)
 /// 3. Copies config files there if not already present
 /// 4. Runs `devbox run -c <cache-dir>` so all worktrees with the same config share
 ///    one .devbox/ environment, avoiding expensive re-initialization per worktree
@@ -102,7 +102,7 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
                 concat!(
                     "_WM_CWD=\"$PWD\"; ",
                     "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                    "_WM_CACHE=\"${{XDG_CACHE_HOME:-$HOME/.cache}}/workmux/devbox/$_WM_HASH\"; ",
+                    "_WM_CACHE=\"${{XDG_CACHE_HOME:-$HOME/.cache}}/muxix/devbox/$_WM_HASH\"; ",
                     "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
                     "mkdir -p \"$_WM_CACHE\" && ",
                     "cp devbox.json \"$_WM_CACHE/\" && ",

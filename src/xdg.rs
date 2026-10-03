@@ -1,6 +1,6 @@
 //! Centralized XDG Base Directory resolution.
 //!
-//! All workmux-owned paths should go through this module rather than
+//! All muxix-owned paths should go through this module rather than
 //! resolving `home::home_dir()` directly.
 
 use anyhow::{Context, Result};
@@ -25,32 +25,31 @@ fn base_dir(env_var: &str, default_suffix: &str) -> Result<PathBuf> {
     Ok(home.join(default_suffix))
 }
 
-/// `$XDG_CONFIG_HOME/workmux` (default: `~/.config/workmux`)
+/// `$XDG_CONFIG_HOME/muxix` (default: `~/.config/muxix`)
 pub fn config_dir() -> Result<PathBuf> {
-    Ok(base_dir("XDG_CONFIG_HOME", ".config")?.join("workmux"))
+    Ok(base_dir("XDG_CONFIG_HOME", ".config")?.join("muxix"))
 }
 
-/// `$XDG_CACHE_HOME/workmux` (default: `~/.cache/workmux`)
+/// `$XDG_CACHE_HOME/muxix` (default: `~/.cache/muxix`)
 pub fn cache_dir() -> Result<PathBuf> {
-    Ok(base_dir("XDG_CACHE_HOME", ".cache")?.join("workmux"))
+    Ok(base_dir("XDG_CACHE_HOME", ".cache")?.join("muxix"))
 }
 
-/// `$XDG_STATE_HOME/workmux` (default: `~/.local/state/workmux`)
+/// `$XDG_STATE_HOME/muxix` (default: `~/.local/state/muxix`)
 pub fn state_dir() -> Result<PathBuf> {
-    Ok(base_dir("XDG_STATE_HOME", ".local/state")?.join("workmux"))
+    Ok(base_dir("XDG_STATE_HOME", ".local/state")?.join("muxix"))
 }
 
-/// `$XDG_RUNTIME_DIR/workmux`, falling back to the state dir.
+/// `$XDG_RUNTIME_DIR/muxix`, falling back to the state dir.
 ///
-/// Holds the system daemon's live coordination files (instance record, control
-/// requests, project status). `XDG_RUNTIME_DIR` is the correct home for these —
-/// it is user-private and cleared on logout — but it is not guaranteed to
-/// exist, so the state dir is the fallback rather than a hard error.
+/// `XDG_RUNTIME_DIR` is user-private and cleared on logout, which is what
+/// short-lived coordination files want — but it is not guaranteed to exist, so
+/// the state dir is the fallback rather than a hard error.
 pub fn runtime_dir() -> Result<PathBuf> {
     if let Some(val) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
         let path = PathBuf::from(val);
         if path.is_absolute() {
-            return Ok(path.join("workmux"));
+            return Ok(path.join("muxix"));
         }
     }
     state_dir()

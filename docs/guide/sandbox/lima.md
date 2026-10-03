@@ -4,7 +4,7 @@ description: Run agents in isolated Lima virtual machines
 
 # Lima VM backend
 
-workmux can use [Lima](https://lima-vm.io/) VMs for sandboxing, where each project runs in its own virtual machine with a separate kernel.
+muxix can use [Lima](https://lima-vm.io/) VMs for sandboxing, where each project runs in its own virtual machine with a separate kernel.
 
 ## Setup
 
@@ -17,7 +17,7 @@ brew install lima
 ### 2. Enable in config
 
 ```yaml
-# ~/.config/workmux/config.yaml or .workmux.yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
 sandbox:
   enabled: true
   backend: lima
@@ -65,12 +65,12 @@ VM resource and provisioning settings (`isolation`, `projects_dir`, `cpus`, `mem
 
 ## How it works
 
-When using the Lima backend, each sandboxed pane runs a supervisor process (`workmux sandbox run`) that:
+When using the Lima backend, each sandboxed pane runs a supervisor process (`muxix sandbox run`) that:
 
 1. Ensures the Lima VM is running (creates it on first use)
 2. Starts a TCP RPC server on a random port
 3. Runs the agent command inside the VM via `limactl shell`
-4. Handles RPC requests from the guest workmux binary
+4. Handles RPC requests from the guest muxix binary
 
 The guest VM connects back to the host via `host.lima.internal` (Lima's built-in hostname) to send RPC requests like status updates and agent spawning.
 
@@ -83,13 +83,13 @@ VMs are named deterministically based on the isolation level:
 
 ### Auto-start behavior
 
-VMs are created on first use and started automatically when needed. If a VM already exists but is stopped, workmux restarts it. You don't need to manage VM lifecycle manually during normal use.
+VMs are created on first use and started automatically when needed. If a VM already exists but is stopped, muxix restarts it. You don't need to manage VM lifecycle manually during normal use.
 
 ## Provisioning
 
 ### Default provisioning
 
-When a VM is first created, workmux runs two built-in provisioning steps:
+When a VM is first created, muxix runs two built-in provisioning steps:
 
 **System provision** (as root):
 
@@ -98,7 +98,7 @@ When a VM is first created, workmux runs two built-in provisioning steps:
 **User provision:**
 
 - Installs the configured agent CLI (based on the `agent` setting)
-- Installs [workmux](https://github.com/raine/workmux)
+- Installs [muxix](https://github.com/lcensies/muxix)
 - Installs [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) (only when the project has `devbox.json` or `flake.nix`, or `toolchain` is explicitly set to `devbox` or `flake`)
 
 The agent CLI installed depends on your `agent` configuration:
@@ -111,7 +111,7 @@ The agent CLI installed depends on your `agent` configuration:
 | `opencode`         | OpenCode binary via `opencode.ai/install`  |
 | `pi`               | Pi CLI via npm                             |
 
-Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to provision with a different agent.
+Changing the `agent` setting after VM creation has no effect on existing VMs. Recreate the VM with `muxix sandbox prune` to provision with a different agent.
 
 ### Authentication
 
@@ -121,8 +121,8 @@ Agent credentials are shared between the host and VM. See [Credentials](./featur
 
 - Claude stores auth in macOS Keychain, which is not accessible from the Linux VM. You need to authenticate Claude separately inside the VM.
 - Gemini, Codex, and OpenCode use file-based credentials that work automatically if you've authenticated on the host.
-- workmux seeds a minimal `~/.claude.json` inside the VM with onboarding marked as complete. This is stored per-VM in `~/.local/state/workmux/lima/<vm-name>/` and prevents the onboarding flow from triggering on each VM creation.
-- The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `workmux sandbox prune` to get the correct mount.
+- muxix seeds a minimal `~/.claude.json` inside the VM with onboarding marked as complete. This is stored per-VM in `~/.local/state/muxix/lima/<vm-name>/` and prevents the onboarding flow from triggering on each VM creation.
+- The credential mount is determined by the `agent` setting at VM creation time. If you switch agents, recreate the VM with `muxix sandbox prune` to get the correct mount.
 
 ### Custom provisioning
 
@@ -147,7 +147,7 @@ sandbox:
 
 **Important:**
 
-- Provisioning only runs when the VM is first created. Changing the `agent` setting or provision script has no effect on existing VMs. Recreate the VM with `workmux sandbox prune` to apply changes.
+- Provisioning only runs when the VM is first created. Changing the `agent` setting or provision script has no effect on existing VMs. Recreate the VM with `muxix sandbox prune` to apply changes.
 - With `lima.isolation: shared`, only the first project to create the VM gets its agent installed and provision script run. Use `lima.isolation: project` (default) if different projects use different agents or need different provisioning.
 - The built-in system step runs `apt-get update` before the custom script, so package lists are already available.
 
@@ -158,7 +158,7 @@ You can use a pre-built qcow2 image to skip provisioning entirely, reducing VM c
 ```yaml
 sandbox:
   backend: lima
-  image: file:///Users/me/.lima/images/workmux-golden.qcow2
+  image: file:///Users/me/.lima/images/muxix-golden.qcow2
   lima:
     skip_default_provision: true
 ```
@@ -168,7 +168,7 @@ When `image` is set, it replaces the default Debian 12 genericcloud image. The v
 When `skip_default_provision` is true, the built-in provisioning steps are skipped:
 
 - System provision (apt-get install of curl, ca-certificates, git)
-- User provision (agent CLI, workmux, Nix/Devbox)
+- User provision (agent CLI, muxix, Nix/Devbox)
 
 Custom `provision` scripts still run even when `skip_default_provision` is true, so you can layer additional setup on top of a pre-built image.
 
@@ -196,7 +196,7 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    mkdir -p ~/.lima/images
    qemu-img convert -O qcow2 \
      ~/.lima/wm-yourproject-abc12345/diffdisk \
-     ~/.lima/images/workmux-golden.qcow2
+     ~/.lima/images/muxix-golden.qcow2
    ```
 
 4. Update your config to use the pre-built image:
@@ -204,7 +204,7 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    ```yaml
    sandbox:
      backend: lima
-     image: file:///Users/me/.lima/images/workmux-golden.qcow2
+     image: file:///Users/me/.lima/images/muxix-golden.qcow2
      lima:
        skip_default_provision: true
    ```
@@ -215,7 +215,7 @@ New VMs will now boot from the snapshot with everything pre-installed.
 
 The Lima backend has built-in support for [Nix](https://nixos.org/) and [Devbox](https://www.jetify.com/devbox) to provide declarative, cached toolchain management inside VMs. For the container backend, use a [custom Dockerfile](./container#custom-images) to install project-specific tools, or use [`host_commands`](./features#host-command-proxying) to proxy commands from the container to the host's toolchain environment.
 
-By default (`toolchain: auto`), workmux checks for `devbox.json` or `flake.nix` in the project root and wraps agent commands in the appropriate environment:
+By default (`toolchain: auto`), muxix checks for `devbox.json` or `flake.nix` in the project root and wraps agent commands in the appropriate environment:
 
 - **Devbox**: Commands run via `devbox run -- <command>`
 - **Nix flakes**: Commands run via `nix develop --command bash -c '<command>'`
@@ -232,7 +232,7 @@ Add a `devbox.json` to your project root:
 }
 ```
 
-When workmux creates a sandbox, the agent automatically has access to `rustc`, `cargo`, `just`, and `rg` without any provisioning scripts.
+When muxix creates a sandbox, the agent automatically has access to `rustc`, `cargo`, `just`, and `rg` without any provisioning scripts.
 
 ### Example: Node.js project with Devbox
 
@@ -269,7 +269,7 @@ sandbox:
 
 Nix and Devbox are installed during VM provisioning only when needed (when `devbox.json` or `flake.nix` exists in the project, or `toolchain` is explicitly set). Tools declared in these files are downloaded as pre-built binaries from the Nix binary cache, so no compilation is needed.
 
-The `/nix/store` persists inside the VM across sessions, so subsequent activations are instant. If the VM is pruned with `workmux sandbox prune`, packages will be re-downloaded on next use.
+The `/nix/store` persists inside the VM across sessions, so subsequent activations are instant. If the VM is pruned with `muxix sandbox prune`, packages will be re-downloaded on next use.
 
 ### Toolchain vs provisioning
 
@@ -281,15 +281,15 @@ Use **provisioning** for one-time VM setup like system packages, shell configura
 
 ### Cleaning up unused VMs
 
-Use the `prune` command to delete unused Lima VMs created by workmux:
+Use the `prune` command to delete unused Lima VMs created by muxix:
 
 ```bash
-workmux sandbox prune
+muxix sandbox prune
 ```
 
 This command:
 
-- Lists all Lima VMs with the `wm-` prefix (workmux VMs)
+- Lists all Lima VMs with the `wm-` prefix (muxix VMs)
 - Shows details for each VM: name, status, size, age, and last accessed time
 - Displays total disk space used
 - Prompts for confirmation before deletion
@@ -297,13 +297,13 @@ This command:
 **Force deletion without confirmation:**
 
 ```bash
-workmux sandbox prune --force
+muxix sandbox prune --force
 ```
 
 **Example output:**
 
 ```
-Found 2 workmux Lima VM(s):
+Found 2 muxix Lima VM(s):
 
 1. wm-myproject-bbeb2cbf (Running)
    Age: 2 hours ago
@@ -324,16 +324,16 @@ When using the Lima backend, you can stop running VMs to free up system resource
 
 ```bash
 # Interactive mode - shows list of running VMs
-workmux sandbox stop
+muxix sandbox stop
 
 # Stop a specific VM
-workmux sandbox stop wm-myproject-abc12345
+muxix sandbox stop wm-myproject-abc12345
 
-# Stop all workmux VMs
-workmux sandbox stop --all
+# Stop all muxix VMs
+muxix sandbox stop --all
 
 # Skip confirmation (useful for scripts)
-workmux sandbox stop --all --yes
+muxix sandbox stop --all --yes
 ```
 
 This is useful when you want to:

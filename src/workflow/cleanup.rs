@@ -253,7 +253,7 @@ pub fn cleanup(
                 let worktree_path_str = abs_worktree_path.to_string_lossy();
                 let project_root_str = abs_project_root.to_string_lossy();
                 let hook_env = [
-                    ("WORKMUX_HANDLE", handle),
+                    ("MUXIX_HANDLE", handle),
                     ("WM_HANDLE", handle),
                     ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
                     ("WM_PROJECT_ROOT", project_root_str.as_ref()),
@@ -279,7 +279,7 @@ pub fn cleanup(
         // 1. Rename the worktree directory to a trash location.
         // This immediately frees the original path for reuse, even if a shell process
         // still has it as CWD (the shell's CWD moves with the rename).
-        // This fixes a race condition where running `workmux remove` from inside the
+        // This fixes a race condition where running `muxix remove` from inside the
         // target tmux window could leave the directory behind.
         if worktree_path.exists() {
             let parent = worktree_path.parent().unwrap_or_else(|| Path::new("."));
@@ -287,13 +287,13 @@ pub fn cleanup(
                 .file_name()
                 .ok_or_else(|| anyhow::anyhow!("Invalid worktree path: no directory name"))?;
 
-            // Generate unique trash name: .workmux_trash_<name>_<timestamp>
+            // Generate unique trash name: .muxix_trash_<name>_<timestamp>
             let timestamp = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
             let trash_name = format!(
-                ".workmux_trash_{}_{}",
+                ".muxix_trash_{}_{}",
                 dir_name.to_string_lossy(),
                 timestamp
             );
@@ -319,9 +319,9 @@ pub fn cleanup(
         }
 
         // Clean up prompt files (handles both legacy fixed names and timestamped names)
-        // Matches: workmux-prompt-{name}.md and workmux-prompt-{name}-{timestamp}.md
+        // Matches: muxix-prompt-{name}.md and muxix-prompt-{name}-{timestamp}.md
         let temp_dir = std::env::temp_dir();
-        let prefix = format!("workmux-prompt-{}", branch_name);
+        let prefix = format!("muxix-prompt-{}", branch_name);
         if let Ok(entries) = std::fs::read_dir(&temp_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -464,7 +464,7 @@ pub fn cleanup(
             let worktree_path_str = abs_worktree_path.to_string_lossy();
             let project_root_str = abs_project_root.to_string_lossy();
             let hook_env = [
-                ("WORKMUX_HANDLE", handle),
+                ("MUXIX_HANDLE", handle),
                 ("WM_HANDLE", handle),
                 ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
                 ("WM_PROJECT_ROOT", project_root_str.as_ref()),
@@ -477,7 +477,7 @@ pub fn cleanup(
 
         // Clean up prompt files immediately (harmless, doesn't affect CWD)
         let temp_dir = std::env::temp_dir();
-        let prefix = format!("workmux-prompt-{}", branch_name);
+        let prefix = format!("muxix-prompt-{}", branch_name);
         if let Ok(entries) = std::fs::read_dir(&temp_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -506,7 +506,7 @@ pub fn cleanup(
                 .unwrap_or_default()
                 .as_secs();
             let trash_name = format!(
-                ".workmux_trash_{}_{}",
+                ".muxix_trash_{}_{}",
                 dir_name.to_string_lossy(),
                 timestamp
             );
@@ -616,7 +616,7 @@ pub fn cleanup(
 
     // Drop the project journal entry too, so the store does not accumulate
     // records for worktrees that no longer exist. Runs even when git cleanup is
-    // deferred: the journal is workmux's own bookkeeping, not git state.
+    // deferred: the journal is muxix's own bookkeeping, not git state.
     if let Err(e) = crate::project_state::ProjectStateStore::open_project()
         .and_then(|store| store.forget_worktree(handle))
     {
@@ -633,7 +633,7 @@ pub fn cleanup(
 /// 2. Removes any worktree lock (so prune can clean up the metadata)
 /// 3. Prunes git worktree metadata
 /// 4. Deletes the local branch (unless `keep_branch` is set)
-/// 5. Removes workmux worktree metadata from git config
+/// 5. Removes muxix worktree metadata from git config
 /// 6. Deletes the trash directory
 ///
 /// The returned string starts with "; " so it can be appended to other commands.
@@ -666,7 +666,7 @@ fn build_deferred_cleanup_script(dc: &DeferredCleanup) -> String {
     // 5. Remove worktree metadata from git config
     let handle = shell_quote(&dc.handle);
     cmds.push(format!(
-        "git -C {} config --local --remove-section workmux.worktree.{} >/dev/null 2>&1",
+        "git -C {} config --local --remove-section muxix.worktree.{} >/dev/null 2>&1",
         git_dir, handle
     ));
     // 6. Delete trash
@@ -905,7 +905,7 @@ mod tests {
     fn deferred_cleanup_script_includes_all_steps() {
         let dc = make_deferred_cleanup(
             "/repo/worktrees/feature",
-            "/repo/worktrees/.workmux_trash_feature_123",
+            "/repo/worktrees/.muxix_trash_feature_123",
             "feature",
             "feature",
             "/repo/.git",
@@ -916,13 +916,13 @@ mod tests {
         let script = build_deferred_cleanup_script(&dc);
 
         assert!(script.contains(
-            "mv /repo/worktrees/feature /repo/worktrees/.workmux_trash_feature_123 >/dev/null 2>&1"
+            "mv /repo/worktrees/feature /repo/worktrees/.muxix_trash_feature_123 >/dev/null 2>&1"
         ));
         assert!(script.contains("git -C /repo/.git worktree prune >/dev/null 2>&1"));
         assert!(script.contains("git -C /repo/.git branch -d feature >/dev/null 2>&1"));
-        assert!(script.contains("git -C /repo/.git config --local --remove-section workmux.worktree.feature >/dev/null 2>&1"));
+        assert!(script.contains("git -C /repo/.git config --local --remove-section muxix.worktree.feature >/dev/null 2>&1"));
         assert!(
-            script.contains("rm -rf /repo/worktrees/.workmux_trash_feature_123 >/dev/null 2>&1")
+            script.contains("rm -rf /repo/worktrees/.muxix_trash_feature_123 >/dev/null 2>&1")
         );
     }
 

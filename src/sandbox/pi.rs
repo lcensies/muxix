@@ -1,6 +1,6 @@
 //! Pi agent sandbox helpers.
 //!
-//! Pi stores managed fd/rg binaries under `~/.pi/agent/bin/`. Workmux mounts
+//! Pi stores managed fd/rg binaries under `~/.pi/agent/bin/`. Muxix mounts
 //! the rest of `~/.pi/agent` read-write so auth, sessions, skills, and
 //! settings flow through to sandboxed pi. The `bin/` subpath must NOT flow
 //! through, because pi auto-downloads platform-specific binaries there and

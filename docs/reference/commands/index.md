@@ -1,5 +1,5 @@
 ---
-description: Complete reference for all workmux commands
+description: Complete reference for all muxix commands
 ---
 
 # CLI reference
@@ -28,9 +28,9 @@ description: Complete reference for all workmux commands
 | [`init`](./init)               | Generate configuration file                     |
 | [`setup`](./setup)             | Install agent hooks, skills, plugins, and MCP   |
 | [`provision`](./provision)     | Sync org policy and route agents via a gateway  |
-| [`profile`](./provision#workmux-profile) | Show, export, or diff the config profile |
+| [`profile`](./provision#muxix-profile) | Show, export, or diff the config profile |
 | [`claude prune`](./claude)     | Clean up stale Claude Code entries              |
 | [`completions`](./completions) | Generate shell completions                      |
 | [`docs`](./docs)               | Show detailed documentation                     |
-| [`update`](./update)           | Update workmux to the latest version            |
+| [`update`](./update)           | Update muxix to the latest version            |
 | [`last-done`](./last-done)     | Switch to the most recently completed agent     |
