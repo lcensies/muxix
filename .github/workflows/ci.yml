@@ -41,10 +41,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `src` scopes the run; a path in `args` is appended to the workspace
+      # root, so ruff would lint the whole repo instead of just tests/.
       - uses: astral-sh/ruff-action@v3
         with:
-          args: check tests
+          args: check
+          src: tests
 
       - uses: astral-sh/ruff-action@v3
         with:
-          args: format --check tests
+          args: format --check
+          src: tests

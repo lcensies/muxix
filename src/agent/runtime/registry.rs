@@ -251,8 +251,19 @@ mod tests {
         }
     }
 
+    /// A healthy stand-in for the built-in local runtime, whose real health
+    /// check needs a running tmux server that CI and sandboxed builds lack.
+    fn fake_local() -> Arc<Fake> {
+        Arc::new(Fake {
+            name: LOCAL.to_string(),
+            health: RuntimeHealth::Ok,
+            agents: Vec::new(),
+        })
+    }
+
     fn registry_with(name: &str, health: RuntimeHealth) -> RuntimeRegistry {
         let mut reg = RuntimeRegistry::new();
+        reg.register(fake_local());
         reg.register(Arc::new(Fake {
             name: name.to_string(),
             health,
@@ -320,6 +331,7 @@ mod tests {
         // started in an ADE must show up even when this project creates its own
         // agents locally.
         let mut reg = RuntimeRegistry::new();
+        reg.register(fake_local());
         reg.register(Arc::new(Fake {
             name: "remote".to_string(),
             health: RuntimeHealth::Ok,
