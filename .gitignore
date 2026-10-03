@@ -51,3 +51,7 @@ opencode.json
 
 # muxix-managed MCP config, generated from the `mcp:` section of .muxix.yaml
 .mcp.json
+
+# local agent/session state (purged from history 2026-10-03)
+.workmux.yaml
+.omc/
