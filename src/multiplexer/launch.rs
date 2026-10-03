@@ -64,7 +64,9 @@ pub fn build_agent_argv(
     let mut injected: Vec<String> = Vec::new();
     for flag in extra_flags {
         let tokens = split_flag(flag);
-        if tokens.is_empty() || contains_tokens(&argv, &tokens) || contains_tokens(&injected, &tokens)
+        if tokens.is_empty()
+            || contains_tokens(&argv, &tokens)
+            || contains_tokens(&injected, &tokens)
         {
             continue;
         }
@@ -138,7 +140,11 @@ mod tests {
     #[test]
     fn flags_are_injected_after_the_executable() {
         assert_eq!(
-            argv("claude --verbose", Some("p"), &["--dangerously-skip-permissions"]),
+            argv(
+                "claude --verbose",
+                Some("p"),
+                &["--dangerously-skip-permissions"]
+            ),
             vec![
                 "claude",
                 "--dangerously-skip-permissions",
@@ -208,10 +214,7 @@ mod tests {
     #[test]
     fn quoted_config_arguments_survive_as_one_argument() {
         let out = argv(r#"codex --config model_reasoning_effort="low""#, None, &[]);
-        assert_eq!(
-            out,
-            vec!["codex", "--config", "model_reasoning_effort=low"]
-        );
+        assert_eq!(out, vec!["codex", "--config", "model_reasoning_effort=low"]);
     }
 
     #[test]

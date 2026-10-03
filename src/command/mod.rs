@@ -22,7 +22,9 @@ pub mod mcp;
 pub mod merge;
 pub mod open;
 pub mod path;
+pub mod profile;
 pub mod project_state;
+pub mod provision;
 pub mod remove;
 pub mod rename;
 pub mod resurrect;
@@ -38,8 +40,6 @@ pub mod signal;
 pub mod status;
 pub mod sync_files;
 pub mod task_cli;
-pub mod profile;
-pub mod provision;
 pub mod update;
 pub mod wait;
 

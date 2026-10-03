@@ -142,7 +142,10 @@ fn find_target_hit(
 fn print_reached(name: &str, target: WaitTarget, completion: Option<&Completion>, elapsed: &str) {
     match target {
         WaitTarget::Completed | WaitTarget::Failed => {
-            match completion.and_then(|c| c.feedback.as_deref()).filter(|fb| !fb.is_empty()) {
+            match completion
+                .and_then(|c| c.feedback.as_deref())
+                .filter(|fb| !fb.is_empty())
+            {
                 Some(feedback) => {
                     eprintln!("{}: {} ({}) — {}", name, target.label(), elapsed, feedback)
                 }
@@ -223,8 +226,7 @@ pub fn run(
                     .map(|a| (a.status, completions.get(&a.pane_id).cloned()))
                     .collect();
 
-                if let Some((t, completion)) =
-                    find_target_hit(&targets, &observations, true, true)
+                if let Some((t, completion)) = find_target_hit(&targets, &observations, true, true)
                 {
                     let elapsed = util::format_elapsed_duration(start.elapsed());
                     print_reached(name, t, completion.as_ref(), &elapsed);
@@ -310,7 +312,14 @@ mod tests {
     #[test]
     fn parse_targets_invalid_lists_all_six() {
         let err = parse_targets("bogus").unwrap_err().to_string();
-        for name in ["working", "waiting", "done", "completed", "failed", "merged"] {
+        for name in [
+            "working",
+            "waiting",
+            "done",
+            "completed",
+            "failed",
+            "merged",
+        ] {
             assert!(err.contains(name), "error should mention '{name}': {err}");
         }
     }
@@ -403,12 +412,7 @@ mod tests {
     #[test]
     fn find_target_hit_none_when_nothing_matches() {
         let targets = targets(&[WaitTarget::Working]);
-        let hit = find_target_hit(
-            &targets,
-            &[(Some(AgentStatus::Done), None)],
-            true,
-            true,
-        );
+        let hit = find_target_hit(&targets, &[(Some(AgentStatus::Done), None)], true, true);
         assert!(hit.is_none());
     }
 }

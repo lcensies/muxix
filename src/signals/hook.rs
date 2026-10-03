@@ -1,4 +1,7 @@
 //! Automatic state transition via Stop hook + stop reason routing.
+//! Hook-driven signalling is consumed through the signal files, not from the
+//! binary's own call graph.
+#![allow(dead_code)]
 
 use super::{CompletionCondition, HookSignalConfig, Signal, SignalResult, StopReasonRoute, paths};
 use anyhow::{Result, anyhow};
@@ -89,34 +92,34 @@ impl HookSignal {
 impl Signal for HookSignal {
     fn check(&self) -> Result<Option<SignalResult>> {
         // Check for explicit agent signal (via tool call).
-        if let Some(signal) = self.check_explicit_signal()? {
-            if self.is_complete(&signal, 0)? {
-                let route = self.route_stop_reason(&signal.stop_reason);
-                match route {
-                    StopReasonRoute::Next => {
-                        return Ok(Some(SignalResult::approved(Some(signal.stop_reason))));
-                    }
-                    StopReasonRoute::Retry => {
-                        return Ok(Some(SignalResult::rejected(
-                            signal.feedback.unwrap_or_else(|| {
-                                format!(
-                                    "Agent signaled stop reason '{}', retrying",
-                                    signal.stop_reason
-                                )
-                            }),
-                            Some(signal.stop_reason),
-                        )));
-                    }
-                    StopReasonRoute::Fail => {
-                        return Err(anyhow!(
-                            "Stop reason '{}' routed to Fail",
-                            signal.stop_reason
-                        ));
-                    }
-                    StopReasonRoute::Pause => {
-                        // Don't return yet; keep waiting for explicit done signal
-                        return Ok(None);
-                    }
+        if let Some(signal) = self.check_explicit_signal()?
+            && self.is_complete(&signal, 0)?
+        {
+            let route = self.route_stop_reason(&signal.stop_reason);
+            match route {
+                StopReasonRoute::Next => {
+                    return Ok(Some(SignalResult::approved(Some(signal.stop_reason))));
+                }
+                StopReasonRoute::Retry => {
+                    return Ok(Some(SignalResult::rejected(
+                        signal.feedback.unwrap_or_else(|| {
+                            format!(
+                                "Agent signaled stop reason '{}', retrying",
+                                signal.stop_reason
+                            )
+                        }),
+                        Some(signal.stop_reason),
+                    )));
+                }
+                StopReasonRoute::Fail => {
+                    return Err(anyhow!(
+                        "Stop reason '{}' routed to Fail",
+                        signal.stop_reason
+                    ));
+                }
+                StopReasonRoute::Pause => {
+                    // Don't return yet; keep waiting for explicit done signal
+                    return Ok(None);
                 }
             }
         }

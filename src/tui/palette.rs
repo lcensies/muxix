@@ -68,7 +68,7 @@ impl<A> PaletteState<A> {
                 fuzzy_score(&query, &cmd.label.to_lowercase()).map(|score| (i, score))
             })
             .collect();
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_by_key(|&(_, score)| std::cmp::Reverse(score));
         scored.into_iter().map(|(i, _)| i).collect()
     }
 

@@ -436,9 +436,7 @@ class TestExistingBranch:
             extra_args="--session --background",
         )
 
-        run_muxix_command(
-            env, muxix_exe_path, mux_repo_path, f"close {branch_name}"
-        )
+        run_muxix_command(env, muxix_exe_path, mux_repo_path, f"close {branch_name}")
         assert_session_not_exists(env, session_name)
 
         config_path = mux_repo_path / ".muxix.yaml"

@@ -34,12 +34,26 @@ fn render_node(
         return;
     }
     match node {
-        Node::Row {
-            children, gap, ..
-        } => render_container(frame, area, children, *gap, Direction::Horizontal, theme, ctx, scope),
-        Node::Col {
-            children, gap, ..
-        } => render_container(frame, area, children, *gap, Direction::Vertical, theme, ctx, scope),
+        Node::Row { children, gap, .. } => render_container(
+            frame,
+            area,
+            children,
+            *gap,
+            Direction::Horizontal,
+            theme,
+            ctx,
+            scope,
+        ),
+        Node::Col { children, gap, .. } => render_container(
+            frame,
+            area,
+            children,
+            *gap,
+            Direction::Vertical,
+            theme,
+            ctx,
+            scope,
+        ),
         Node::Text { content, style, .. } => {
             let line = render_line(content, style.as_ref(), theme, scope, ctx);
             frame.render_widget(Paragraph::new(line), area);
@@ -64,7 +78,16 @@ fn render_node(
             header,
             empty,
             ..
-        } => render_list(frame, area, source, item, header.as_deref(), empty.as_deref(), theme, ctx),
+        } => render_list(
+            frame,
+            area,
+            source,
+            item,
+            header.as_deref(),
+            empty.as_deref(),
+            theme,
+            ctx,
+        ),
     }
 }
 

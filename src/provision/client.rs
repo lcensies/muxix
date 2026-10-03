@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::Deserialize;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -102,6 +102,7 @@ pub struct PushProfileResponse {
 
 /// POST /api/provision/profile — push snapshot to server.
 /// Returns whether the server says we need to re-fetch the policy.
+#[allow(dead_code)]
 pub fn push_profile(
     server_url: &str,
     token: &str,
@@ -139,6 +140,7 @@ pub struct FetchPolicyResponse {
 }
 
 /// GET /api/provision/policy — fetch the org policy for this tenant.
+#[allow(dead_code)]
 pub fn fetch_policy(server_url: &str, token: &str) -> Result<FetchPolicyResponse> {
     let url = format!("{}/api/provision/policy", server_url.trim_end_matches('/'));
     let resp = ureq::get(&url)
@@ -203,10 +205,7 @@ mod tests {
     }
 
     fn clear_all() -> Vec<(&'static str, Option<&'static str>)> {
-        vec![
-            (URL_ENV, None),
-            (TOKEN_ENV, None),
-        ]
+        vec![(URL_ENV, None), (TOKEN_ENV, None)]
     }
 
     #[test]
@@ -219,8 +218,6 @@ mod tests {
             Some("https://p.example.com")
         );
     }
-
-
 
     #[test]
     fn config_url_used_when_no_env_is_set() {
@@ -251,8 +248,6 @@ mod tests {
             "tok-new"
         );
     }
-
-
 
     /// The point of the inline `token:` field: name your own env var rather
     /// than adopt muxix's.

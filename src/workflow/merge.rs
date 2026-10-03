@@ -91,6 +91,7 @@ pub fn merge(
 /// clean, ready to be handed to an agent for a fresh resolution attempt. Used by
 /// the orchestrator's deterministic merge step.
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn merge_with_outcome(
     name: &str,
     into_branch: Option<&str>,
@@ -154,12 +155,13 @@ fn merge_inner(
     let repo = context.main_worktree_root.as_path();
 
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_to_merge) = git::find_worktree_in(name, Some(repo)).map_err(|_| {
-        anyhow!(
-            "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
-            name
-        )
-    })?;
+    let (worktree_path, branch_to_merge) =
+        git::find_worktree_in(name, Some(repo)).map_err(|_| {
+            anyhow!(
+                "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
+                name
+            )
+        })?;
 
     // The handle is the basename of the worktree directory (used for tmux operations)
     let handle = worktree_path
@@ -230,34 +232,34 @@ fn merge_inner(
     // workflows where 'main' is checked out in a linked worktree (issue #29).
     let (target_worktree_path, target_window_name) =
         match git::get_worktree_path_in(target_branch, Some(repo)) {
-        Ok(path) => {
-            // Target is checked out in a worktree (could be main root or a linked worktree)
-            if path == context.main_worktree_root {
-                // It's in the main root. Use the main branch name as the window handle.
-                (path, context.main_branch.clone())
-            } else {
-                // It's in a linked worktree. Use the directory name as the handle.
-                let handle = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| anyhow!("Invalid worktree path for target branch"))?
-                    .to_string();
-                (path, handle)
+            Ok(path) => {
+                // Target is checked out in a worktree (could be main root or a linked worktree)
+                if path == context.main_worktree_root {
+                    // It's in the main root. Use the main branch name as the window handle.
+                    (path, context.main_branch.clone())
+                } else {
+                    // It's in a linked worktree. Use the directory name as the handle.
+                    let handle = path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .ok_or_else(|| anyhow!("Invalid worktree path for target branch"))?
+                        .to_string();
+                    (path, handle)
+                }
             }
-        }
-        Err(_) => {
-            // Target branch is NOT checked out anywhere.
-            // We fallback to using the main worktree root to perform the merge.
-            debug!(
-                target = target_branch,
-                "merge:target branch has no worktree, using main worktree"
-            );
-            (
-                context.main_worktree_root.clone(),
-                context.main_branch.clone(),
-            )
-        }
-    };
+            Err(_) => {
+                // Target branch is NOT checked out anywhere.
+                // We fallback to using the main worktree root to perform the merge.
+                debug!(
+                    target = target_branch,
+                    "merge:target branch has no worktree, using main worktree"
+                );
+                (
+                    context.main_worktree_root.clone(),
+                    context.main_branch.clone(),
+                )
+            }
+        };
 
     // Handle changes in the source worktree
     // Only check for unstaged/untracked when worktree will be deleted (!keep)
@@ -410,10 +412,7 @@ fn merge_inner(
     if rebase {
         // Rebase the feature branch on top of target inside its own worktree.
         // This is where conflicts will be detected.
-        println!(
-            "Rebasing '{}' onto '{}'...",
-            &branch_to_merge, target_branch
-        );
+        println!("Rebasing '{}' onto '{}'...", branch_to_merge, target_branch);
         info!(
             branch = %branch_to_merge,
             base = target_branch,

@@ -94,6 +94,7 @@ pub trait AgentProfile: Send + Sync {
     ///
     /// The runner injects `[model_flag, model_value]` into the subprocess args
     /// when a node or its `agent_ref` definition specifies a `model`.
+    #[allow(dead_code)]
     fn model_flag(&self) -> Option<&'static str> {
         None
     }
@@ -103,6 +104,7 @@ pub trait AgentProfile: Send + Sync {
     /// Used by the pipeline runner as a fallback when `permission_modes` is not
     /// configured in agent.yaml. Returns `None` if this agent doesn't know the
     /// mode (runner will then use default args unchanged).
+    #[allow(dead_code)]
     fn permission_mode_flags(&self, _mode: &str) -> Option<Vec<String>> {
         None
     }
@@ -479,10 +481,7 @@ pub(crate) fn executable_index(argv: &[String]) -> usize {
     };
 
     if is_env_assignment(first) {
-        return argv
-            .iter()
-            .position(|t| !is_env_assignment(t))
-            .unwrap_or(0);
+        return argv.iter().position(|t| !is_env_assignment(t)).unwrap_or(0);
     }
 
     let first_stem = Path::new(first)

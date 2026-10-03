@@ -278,6 +278,7 @@ const CASES: &[Case] = &[
     },
 ];
 
+#[allow(dead_code)]
 fn parse(yaml: &str) -> Config {
     serde_yaml::from_str(yaml).expect("corpus entry must parse as Config")
 }
@@ -425,11 +426,15 @@ fn repo_config_resolves() {
     }
 
     // The global layer's MCP server survives alongside a project's own.
-    let project_with_mcp = format!("{REPO_PROJECT_CONFIG}\nmcp:\n  project-server:\n    command: ps\n");
+    let project_with_mcp =
+        format!("{REPO_PROJECT_CONFIG}\nmcp:\n  project-server:\n    command: ps\n");
     let merged = merge_resolver(SYNTHETIC_GLOBAL, &project_with_mcp);
     let mcp = merged.mcp.expect("mcp servers merged");
     assert!(mcp.contains_key("global-server"), "global server retained");
-    assert!(mcp.contains_key("project-server"), "project server retained");
+    assert!(
+        mcp.contains_key("project-server"),
+        "project server retained"
+    );
 }
 
 /// Pins the behavior the resolver deliberately changed relative to the typed

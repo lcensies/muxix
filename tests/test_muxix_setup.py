@@ -4,7 +4,6 @@ import json
 import shlex
 from pathlib import Path
 
-
 from .conftest import (
     MuxEnvironment,
     get_scripts_dir,

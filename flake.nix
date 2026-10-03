@@ -27,6 +27,8 @@
           nativeBuildInputs = [
             pkgs.cargo
             pkgs.rustc
+            pkgs.rustfmt
+            pkgs.clippy
             pkgs.protobuf
             pkgs.git
           ];

@@ -3,7 +3,6 @@
 import time
 from pathlib import Path
 
-
 from .conftest import (
     MuxEnvironment,
     get_worktree_path,

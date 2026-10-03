@@ -91,11 +91,11 @@ impl AgentDefinition {
         let mut elevated = false;
         let mut items: Vec<String> = Vec::new();
 
-        if let Some(ref mode) = self.permission_mode {
-            if mode != "plan" {
-                elevated = true;
-                items.push(format!("permission_mode: {mode}"));
-            }
+        if let Some(ref mode) = self.permission_mode
+            && mode != "plan"
+        {
+            elevated = true;
+            items.push(format!("permission_mode: {mode}"));
         }
 
         if let Some(ref bootstrap) = self.bootstrap {
@@ -118,6 +118,7 @@ impl AgentDefinition {
 
     /// Resolve the effective prompt template content given a prompt registry.
     /// Returns the inline `prompt_template` if set, otherwise looks up `prompt_ref`.
+    #[allow(dead_code)]
     pub fn resolve_template<'a>(
         &'a self,
         prompt_defs: &'a BTreeMap<String, crate::prompt::PromptTemplate>,
@@ -165,6 +166,7 @@ pub struct TrustSummary {
 }
 
 impl TrustSummary {
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

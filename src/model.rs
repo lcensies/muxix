@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 
 /// Default fraction of the context window at which compaction should trigger
 /// when neither the model nor its provider specify a `compaction_limit`.
+#[allow(dead_code)]
 pub const DEFAULT_COMPACTION_RATIO: f64 = 0.85;
 
 /// Top-level registry: provider key (source) -> its configuration.
@@ -140,18 +141,21 @@ pub struct ProviderModel {
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvedModel<'a> {
     pub provider: &'a str,
+    #[allow(dead_code)]
     pub provider_config: &'a ProviderConfig,
     pub model: &'a ProviderModel,
 }
 
 impl ResolvedModel<'_> {
     /// Effective context window: the model's `limit`, else the provider default.
+    #[allow(dead_code)]
     pub fn context_limit(&self) -> Option<u64> {
         self.model.limit.or(self.provider_config.limit)
     }
 
     /// Compaction threshold in tokens: explicit model value, else explicit
     /// provider value, else `context_limit * ratio`, else `None`.
+    #[allow(dead_code)]
     pub fn effective_compaction_limit(&self, ratio: f64) -> Option<u64> {
         if let Some(explicit) = self.model.compaction_limit {
             return Some(explicit);
@@ -186,6 +190,7 @@ pub fn resolve_all<'a>(registry: &'a ProviderRegistry, key: &str) -> Vec<Resolve
 
 /// Resolve a single model binding, preferring an exact provider-id match over a
 /// logical-name match (id is the more specific key).
+#[allow(dead_code)]
 pub fn resolve<'a>(registry: &'a ProviderRegistry, key: &str) -> Option<ResolvedModel<'a>> {
     let k = key.trim().to_lowercase();
     let matches = resolve_all(registry, key);

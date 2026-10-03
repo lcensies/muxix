@@ -793,8 +793,7 @@ impl Multiplexer for TmuxBackend {
 
     fn set_status(&self, pane_id: &str, icon: &str, auto_clear_on_focus: bool) -> Result<()> {
         // Window-level option for tmux status bar display (shared across panes in a window).
-        if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@muxix_status", icon])
-        {
+        if let Err(e) = self.tmux_cmd(&["set-option", "-w", "-t", pane_id, "@muxix_status", icon]) {
             eprintln!("muxix: failed to set window status: {}", e);
         }
 

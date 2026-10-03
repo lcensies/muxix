@@ -24,10 +24,10 @@
 //!   - `help`: Help overlay
 
 mod actions;
-mod bindings;
 pub mod agent;
 mod ansi;
 mod app;
+mod bindings;
 mod diff;
 mod diff_ops;
 mod keymap;
@@ -699,7 +699,6 @@ fn handle_terminal_event(
         }
         return;
     }
-
 
     // Get current context and map key to action
     let ctx = get_context(app);

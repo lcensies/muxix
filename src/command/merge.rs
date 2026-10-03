@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::config::MergeStrategy;
 use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::WorkflowContext;
@@ -115,10 +113,6 @@ pub fn run(
 
     Ok(())
 }
-
-
-
-
 
 /// Run merge via RPC when inside a sandbox guest.
 #[allow(clippy::too_many_arguments)]

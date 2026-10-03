@@ -77,76 +77,15 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.RELEASE_TOKEN }}
+          # Built-in token; the job already has `contents: write`.
+          token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: true
+          # Keep these asset names stable: scripts/install.sh and
+          # [package.metadata.binstall] in Cargo.toml download them by name.
           files: |
             *.tar.gz
             *.sha256
-
-  update-tap:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-      - uses: actions/checkout@v4
-        with:
-          repository: lcensies/homebrew-muxix
-          token: ${{ secrets.RELEASE_TOKEN }}
-          path: tap
-      - name: Generate formula and push to tap
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
-          VERSION="${VERSION#v}"
-          SHA_MAC_ARM=$(awk '{print $1}' muxix-darwin-arm64.sha256)
-          SHA_MAC_INTEL=$(awk '{print $1}' muxix-darwin-amd64.sha256)
-          SHA_LINUX_INTEL=$(awk '{print $1}' muxix-linux-amd64.sha256)
-          SHA_LINUX_ARM=$(awk '{print $1}' muxix-linux-arm64.sha256)
-
-          cat > tap/Formula/muxix.rb << EOF
-          class Muxix < Formula
-            desc "Opinionated workflow tool that orchestrates git worktrees and tmux"
-            homepage "https://github.com/lcensies/muxix"
-            version "${VERSION}"
-            license "MIT"
-
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-darwin-arm64.tar.gz"
-                sha256 "${SHA_MAC_ARM}"
-              else
-                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-darwin-amd64.tar.gz"
-                sha256 "${SHA_MAC_INTEL}"
-              end
-            end
-
-            on_linux do
-              if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-linux-arm64.tar.gz"
-                sha256 "${SHA_LINUX_ARM}"
-              else
-                url "https://github.com/lcensies/muxix/releases/download/v${VERSION}/muxix-linux-amd64.tar.gz"
-                sha256 "${SHA_LINUX_INTEL}"
-              end
-            end
-
-            def install
-              bin.install "muxix"
-            end
-
-            test do
-              assert_match version.to_s, shell_output("\#{bin}/muxix --version")
-            end
-          end
-          EOF
-          sed -i 's/^          //' tap/Formula/muxix.rb
-
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/muxix.rb
-          git commit -m "muxix ${VERSION}"
-          git pull --rebase
-          git push
+          # `releases/latest` must resolve for scripts/install.sh.
+          draft: false
+          prerelease: false
+          make_latest: true

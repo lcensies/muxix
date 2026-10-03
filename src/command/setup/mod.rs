@@ -155,7 +155,10 @@ fn print_report(report: &SetupReport) {
     let mut last_section = None;
     for item in &report.items {
         if last_section != Some(item.section) {
-            out(format!("\n  {}", style(item.section.as_str()).bold().cyan()));
+            out(format!(
+                "\n  {}",
+                style(item.section.as_str()).bold().cyan()
+            ));
             last_section = Some(item.section);
         }
         let mark = match item.outcome {

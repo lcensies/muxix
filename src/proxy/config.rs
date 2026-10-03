@@ -1,4 +1,6 @@
 //! Proxy chain configuration for agentgateway + RTK.
+//! The proxy chain is configured from disk; the spawner is not wired up yet.
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

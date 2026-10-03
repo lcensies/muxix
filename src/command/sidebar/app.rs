@@ -430,9 +430,7 @@ impl SidebarApp {
         self.project_headers = projects
             .iter()
             .enumerate()
-            .map(|(i, p)| {
-                (multi_project && (i == 0 || projects[i - 1] != *p)).then(|| p.clone())
-            })
+            .map(|(i, p)| (multi_project && (i == 0 || projects[i - 1] != *p)).then(|| p.clone()))
             .collect();
 
         // Compute host agent index from the new snapshot first so that a
@@ -768,9 +766,7 @@ impl SidebarApp {
 
     /// Whether the agent at `idx` starts a new project group.
     pub fn has_project_header(&self, idx: usize) -> bool {
-        self.project_headers
-            .get(idx)
-            .is_some_and(|h| h.is_some())
+        self.project_headers.get(idx).is_some_and(|h| h.is_some())
     }
 
     /// Height in rows of a tile-mode item at the given index.
@@ -1228,6 +1224,29 @@ fn try_reparse_templates(
     first_error
 }
 
+/// Detect this sidebar's host window using TMUX_PANE (stable, one-time).
+/// Returns (session, window_id).
+fn detect_host_window() -> (Option<String>, Option<String>) {
+    let pane_id = std::env::var("TMUX_PANE").ok().unwrap_or_default();
+    let mut args = vec!["display-message", "-p"];
+    if !pane_id.is_empty() {
+        args.extend_from_slice(&["-t", &pane_id]);
+    }
+    args.push("#{session_name}\t#{window_id}");
+    let output = Cmd::new("tmux")
+        .args(&args)
+        .run_and_capture_stdout()
+        .ok()
+        .unwrap_or_default();
+    let trimmed = output.trim();
+    let mut parts = trimmed
+        .split('\t')
+        .map(|s| (!s.is_empty()).then(|| s.to_string()));
+    let session = parts.next().flatten();
+    let window_id = parts.next().flatten();
+    (session, window_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1413,8 +1432,8 @@ mod tests {
             &mut tiles,
             &mut top,
             bad_compact,
-            &[original_str.clone()],
-            &[original_str.clone()],
+            std::slice::from_ref(&original_str),
+            std::slice::from_ref(&original_str),
         );
 
         assert_eq!(
@@ -1530,27 +1549,4 @@ mod tests {
             })
         );
     }
-}
-
-/// Detect this sidebar's host window using TMUX_PANE (stable, one-time).
-/// Returns (session, window_id).
-fn detect_host_window() -> (Option<String>, Option<String>) {
-    let pane_id = std::env::var("TMUX_PANE").ok().unwrap_or_default();
-    let mut args = vec!["display-message", "-p"];
-    if !pane_id.is_empty() {
-        args.extend_from_slice(&["-t", &pane_id]);
-    }
-    args.push("#{session_name}\t#{window_id}");
-    let output = Cmd::new("tmux")
-        .args(&args)
-        .run_and_capture_stdout()
-        .ok()
-        .unwrap_or_default();
-    let trimmed = output.trim();
-    let mut parts = trimmed
-        .split('\t')
-        .map(|s| (!s.is_empty()).then(|| s.to_string()));
-    let session = parts.next().flatten();
-    let window_id = parts.next().flatten();
-    (session, window_id)
 }

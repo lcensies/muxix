@@ -185,10 +185,7 @@ mod tests {
     #[test]
     fn expands_several_placeholders() {
         with_vars(
-            &[
-                ("MUXIX_TEST_A", Some("1")),
-                ("MUXIX_TEST_B", Some("2")),
-            ],
+            &[("MUXIX_TEST_A", Some("1")), ("MUXIX_TEST_B", Some("2"))],
             || {
                 assert_eq!(
                     expand("${env:MUXIX_TEST_A}/${env:MUXIX_TEST_B}", "k").unwrap(),

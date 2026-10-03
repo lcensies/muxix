@@ -11,7 +11,9 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use tracing::info;
 
-use crate::command::resurrect::{ResumePlan, find_task_prompt, plan_resume, write_resurrect_prompt};
+use crate::command::resurrect::{
+    ResumePlan, find_task_prompt, plan_resume, write_resurrect_prompt,
+};
 use crate::config::{Config, MuxMode};
 use crate::multiplexer::types::{CreateSessionParams, CreateWindowInSessionParams, ResumeMode};
 use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
@@ -126,7 +128,11 @@ fn start_project(entry: &ProjectEntry, continue_session: bool) -> Result<()> {
                 mux.send_keys(&pane, cmd)?;
             }
         }
-        println!("✓ {}: started session ({} window(s))", entry.name, windows.len());
+        println!(
+            "✓ {}: started session ({} window(s))",
+            entry.name,
+            windows.len()
+        );
 
         // Resume the last agent in the project-root window. Only on a freshly
         // created session (typing into a live one is destructive) and only if
@@ -187,7 +193,10 @@ fn open_worktree_windows(
                 info!(handle, "start: window already open, skipped");
             }
             Ok(_) => println!("  ↳ {}: opened worktree window '{}'", entry.name, handle),
-            Err(e) => eprintln!("  ✗ {}: could not open worktree '{}': {:#}", entry.name, handle, e),
+            Err(e) => eprintln!(
+                "  ✗ {}: could not open worktree '{}': {:#}",
+                entry.name, handle, e
+            ),
         }
     }
     Ok(())
@@ -318,7 +327,11 @@ fn load_tmuxinator_layout(dir: &str, name: &str) -> Option<Vec<BaseWindow>> {
             })
         })
         .collect();
-    if windows.is_empty() { None } else { Some(windows) }
+    if windows.is_empty() {
+        None
+    } else {
+        Some(windows)
+    }
 }
 
 #[cfg(test)]

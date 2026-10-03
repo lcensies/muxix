@@ -306,7 +306,6 @@ impl App {
         Ok(app)
     }
 
-
     pub fn refresh(&mut self) {
         // Load agents from StateStore with reconciliation against live pane state
         self.all_agents = StateStore::new()
@@ -404,4 +403,3 @@ impl App {
         self.apply_filters();
     }
 }
-

@@ -127,6 +127,7 @@ impl AgentPane {
     }
 
     /// The runtime that owns this agent.
+    #[allow(dead_code)]
     pub fn runtime_name(&self) -> &str {
         self.runtime
             .as_deref()

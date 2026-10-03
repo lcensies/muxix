@@ -1,14 +1,16 @@
 //! Spawner for per-worktree agentgateway + RTK proxy chain.
+//! Spawning is not implemented yet, so nothing calls into this module.
+#![allow(dead_code)]
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, info};
 
-use super::config::{ProxyChainConfig, ProxyHop, ResolvedProxyChain};
+use super::config::{ProxyChainConfig, ResolvedProxyChain};
 
 /// Spawns and manages per-worktree agentgateway + RTK proxy chain.
 pub struct ProxySpawner {
@@ -90,7 +92,7 @@ impl ProxySpawner {
     }
 
     /// Generate agentgateway config file with routes.
-    fn generate_agentgateway_config(&self, muxix_dir: &PathBuf) -> Result<PathBuf> {
+    fn generate_agentgateway_config(&self, muxix_dir: &Path) -> Result<PathBuf> {
         let config = self.build_agentgateway_config()?;
         let config_path = muxix_dir.join("agentgateway.yaml");
 
@@ -149,7 +151,7 @@ backends:
     }
 
     /// Spawn agentgateway subprocess.
-    fn spawn_agentgateway(&self, config_path: &PathBuf) -> Result<Child> {
+    fn spawn_agentgateway(&self, config_path: &Path) -> Result<Child> {
         // NOT YET IMPLEMENTED. The real implementation would spawn
         // `agentgateway --config <path>` and return the child handle. Until
         // then we must NOT pretend success (the old code spawned `/bin/true`,
@@ -219,8 +221,8 @@ mod tests {
         let port1 = ProxySpawner::allocate_port("feature-x", 7777);
         let port2 = ProxySpawner::allocate_port("feature-y", 7777);
         assert_ne!(port1, port2, "Different handles should get different ports");
-        assert!(port1 >= 7777 && port1 < 8777, "Port should be in range");
-        assert!(port2 >= 7777 && port2 < 8777, "Port should be in range");
+        assert!((7777..8777).contains(&port1), "Port should be in range");
+        assert!((7777..8777).contains(&port2), "Port should be in range");
     }
 
     #[test]
@@ -271,8 +273,10 @@ mod tests {
         // Even when enabled, spawning is not implemented yet: it must return an
         // error and must NOT write a resolved config claiming `healthy: true`.
         let dir = tempfile::tempdir().unwrap();
-        let mut config = ProxyChainConfig::default();
-        config.enabled = true;
+        let config = ProxyChainConfig {
+            enabled: true,
+            ..Default::default()
+        };
         let spawner = ProxySpawner::new(
             dir.path().to_path_buf(),
             "test-handle".to_string(),

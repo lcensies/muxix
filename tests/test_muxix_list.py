@@ -2,7 +2,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Dict, List
 
 from .conftest import (
     MuxEnvironment,
@@ -29,7 +28,7 @@ def run_muxix_list(
     return result.stdout
 
 
-def parse_list_output(output: str) -> List[Dict[str, str]]:
+def parse_list_output(output: str) -> list[dict[str, str]]:
     """
     Parses the tabular output of `muxix list` into a list of dictionaries.
     This parser is robust to variable column widths.
@@ -359,9 +358,7 @@ def test_list_filter_no_match(
     write_muxix_config(mux_repo_path)
     run_muxix_add(env, muxix_exe_path, mux_repo_path, "feature-exists")
 
-    output = run_muxix_list(
-        env, muxix_exe_path, mux_repo_path, "nonexistent-branch"
-    )
+    output = run_muxix_list(env, muxix_exe_path, mux_repo_path, "nonexistent-branch")
 
     assert "No worktrees found" in output
 
@@ -440,9 +437,7 @@ def test_list_json_with_uncommitted_changes(
     # Create an uncommitted file in the worktree
     (worktree_path / "dirty-file.txt").write_text("uncommitted change")
 
-    output = run_muxix_list(
-        env, muxix_exe_path, mux_repo_path, f"--json {branch_name}"
-    )
+    output = run_muxix_list(env, muxix_exe_path, mux_repo_path, f"--json {branch_name}")
     data = json.loads(output)
     assert len(data) == 1
     assert data[0]["has_uncommitted_changes"] is True
@@ -457,9 +452,7 @@ def test_list_json_with_filter(
     run_muxix_add(env, muxix_exe_path, mux_repo_path, "feature-json-a")
     run_muxix_add(env, muxix_exe_path, mux_repo_path, "feature-json-b")
 
-    output = run_muxix_list(
-        env, muxix_exe_path, mux_repo_path, "--json feature-json-a"
-    )
+    output = run_muxix_list(env, muxix_exe_path, mux_repo_path, "--json feature-json-a")
     data = json.loads(output)
     assert len(data) == 1
     assert data[0]["branch"] == "feature-json-a"

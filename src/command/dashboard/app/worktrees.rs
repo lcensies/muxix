@@ -79,18 +79,9 @@ impl App {
         }
     }
 
-
-
-
-
-
-
-
-
     pub fn switch_to_tasks(&mut self) {
         self.active_tab = DashboardTab::Tasks;
     }
-
 
     /// Spawn background thread to fetch worktree list
     pub(super) fn spawn_worktree_fetch(&self) {
@@ -143,7 +134,7 @@ impl App {
             WorktreeSortMode::Natural => {} // Keep original order from git
             WorktreeSortMode::Age => {
                 self.worktrees
-                    .sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                    .sort_by_key(|w| std::cmp::Reverse(w.created_at));
             }
         }
     }
@@ -573,6 +564,7 @@ impl App {
     }
 
     /// Append a character to the project picker filter.
+    #[allow(dead_code)]
     pub fn project_picker_filter_append(&mut self, c: char) {
         if let Some(ref mut picker) = self.pending_project_picker {
             picker.filter.push(c);
@@ -581,6 +573,7 @@ impl App {
     }
 
     /// Delete the last character from the project picker filter.
+    #[allow(dead_code)]
     pub fn project_picker_filter_delete(&mut self) {
         if let Some(ref mut picker) = self.pending_project_picker {
             picker.filter.pop();
@@ -705,6 +698,7 @@ impl App {
     }
 
     /// Append a character to the base branch picker filter.
+    #[allow(dead_code)]
     pub fn base_picker_filter_append(&mut self, c: char) {
         if let Some(ref mut picker) = self.pending_base_picker {
             picker.filter.push(c);
@@ -713,6 +707,7 @@ impl App {
     }
 
     /// Delete the last character from the base branch picker filter.
+    #[allow(dead_code)]
     pub fn base_picker_filter_delete(&mut self) {
         if let Some(ref mut picker) = self.pending_base_picker {
             picker.filter.pop();
@@ -1353,8 +1348,6 @@ impl App {
             }
         }
     }
-
-
 
     /// Update the preview for the selected worktree (git log)
     fn update_worktree_preview(&mut self) {

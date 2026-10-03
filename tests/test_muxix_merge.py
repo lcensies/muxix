@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from .conftest import (
@@ -464,9 +463,7 @@ def test_merge_into_different_branch(
     ).stdout.strip()
 
     # Merge child into parent (not main)
-    run_muxix_merge(
-        env, muxix_exe_path, repo_path, child_branch, into=parent_branch
-    )
+    run_muxix_merge(env, muxix_exe_path, repo_path, child_branch, into=parent_branch)
 
     # Verify child worktree was cleaned up
     assert not child_worktree_path.exists(), "Child worktree should be removed"
@@ -774,4 +771,3 @@ def test_merge_succeeds_with_bare_repo_and_linked_worktrees(
     assert branch_name not in branch_list_result.stdout, (
         "Local branch should be deleted"
     )
-

@@ -1,4 +1,7 @@
 //! Signal configuration and result types.
+//! These types describe the on-disk signal schema; parts of it are written and
+//! read by agents/hooks rather than by the binary's own code paths.
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

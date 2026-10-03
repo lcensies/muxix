@@ -3,10 +3,9 @@
 import shlex
 from pathlib import Path
 
-
 from ..conftest import (
-    MuxEnvironment,
     FakeAgentInstaller,
+    MuxEnvironment,
     ShellCommands,
     assert_prompt_file_contents,
     assert_window_exists,
@@ -693,7 +692,11 @@ class TestMultiAgent:
             assert worktree.is_dir()
             files: list[Path] = []
 
-            def _has_output() -> bool:
+            # Bind the loop variables explicitly: the closure is only used
+            # within this iteration, and this keeps that fact obvious.
+            def _has_output(
+                worktree: Path = worktree, files: list[Path] = files
+            ) -> bool:
                 files.clear()
                 files.extend(worktree.glob("gemini_task_*.txt"))
                 return len(files) == 1

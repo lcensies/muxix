@@ -12,8 +12,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use super::pi::PiInjectionMethod;
 use super::StatusCheck;
+use super::pi::PiInjectionMethod;
 
 /// The extension source, shared with pi (omp is pi-compatible).
 const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
@@ -54,6 +54,7 @@ pub struct Bootstrapper {
 }
 
 impl Bootstrapper {
+    #[allow(dead_code)]
     pub fn new() -> Option<Self> {
         agent_dir().map(|d| Self {
             agent_dir: d,
@@ -136,6 +137,7 @@ pub fn check() -> Result<StatusCheck> {
 /// failure, or if a path-shaped spec doesn't canonicalize (not yet
 /// installed), this returns `false` so setup still attempts the install
 /// rather than skipping a genuinely missing plugin.
+#[allow(dead_code)]
 pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
     let Some(dir) = agent_dir() else {
         return false;

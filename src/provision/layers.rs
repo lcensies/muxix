@@ -55,7 +55,12 @@ pub fn locks_layer(policy: &OrgPolicy) -> Option<Layer> {
     if let Some(v) = policy.locked.proxy_chain.as_ref().and_then(json_to_yaml) {
         map.insert(Value::String("proxy_chain".into()), v);
     }
-    if let Some(v) = policy.locked.sandbox_network.as_ref().and_then(json_to_yaml) {
+    if let Some(v) = policy
+        .locked
+        .sandbox_network
+        .as_ref()
+        .and_then(json_to_yaml)
+    {
         // `sandbox.network` is nested; build the path so it deep-merges rather
         // than replacing the whole sandbox block.
         let mut sandbox = serde_yaml::Mapping::new();

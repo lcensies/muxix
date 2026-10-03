@@ -310,9 +310,7 @@ class TestSymlinkOverwrite:
 
         # On main, configure muxix to symlink the directory
         env.run_command(["git", "checkout", "main"], cwd=mux_repo_path)
-        write_muxix_config(
-            mux_repo_path, files={"symlink": ["node_modules"]}, env=env
-        )
+        write_muxix_config(mux_repo_path, files={"symlink": ["node_modules"]}, env=env)
 
         # Create a worktree from the branch with the conflicting file
         worktree_path = add_branch_and_get_worktree(

@@ -188,8 +188,14 @@ mod tests {
 
     #[test]
     fn parse_named() {
-        assert_eq!(KeyChord::parse("Tab").unwrap(), KeyChord::code(KeyCode::Tab));
-        assert_eq!(KeyChord::parse("Esc").unwrap(), KeyChord::code(KeyCode::Esc));
+        assert_eq!(
+            KeyChord::parse("Tab").unwrap(),
+            KeyChord::code(KeyCode::Tab)
+        );
+        assert_eq!(
+            KeyChord::parse("Esc").unwrap(),
+            KeyChord::code(KeyCode::Esc)
+        );
         assert_eq!(
             KeyChord::parse("Enter").unwrap(),
             KeyChord::code(KeyCode::Enter)

@@ -8,12 +8,9 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
 
 def test_signal_temp_file_paths():
     """Test that signal temp file paths are generated correctly."""
-    import tempfile
 
     # Signal files should be written to temp directory with predictable names
     task_id = "test-task"
@@ -26,7 +23,9 @@ def test_signal_temp_file_paths():
     assert node_id in bp_path.name
 
     # Pane signal path format: muxix-proceed-{sanitized_pane}.json
-    proceed_path = Path(tempfile.gettempdir()) / f"muxix-proceed-{pane.lstrip('%')}.json"
+    proceed_path = (
+        Path(tempfile.gettempdir()) / f"muxix-proceed-{pane.lstrip('%')}.json"
+    )
     assert "muxix-proceed" in proceed_path.name
 
 
@@ -43,5 +42,3 @@ def test_signal_json_format():
     assert signal_approved["approved"] is True
     assert signal_rejected["approved"] is False
     assert signal_rejected["feedback"] == "tests failed"
-
-

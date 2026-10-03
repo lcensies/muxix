@@ -16,10 +16,9 @@ use super::app::{App, ViewMode};
 /// Dim all cells in the buffer to create a backdrop effect behind modals.
 fn dim_buffer(f: &mut Frame) {
     let area = f.area();
-    let buf = f.buffer_mut();
-    for y in area.y..area.y + area.height {
-        for x in area.x..area.x + area.width {
-        }
+    let _buf = f.buffer_mut();
+    for _y in area.y..area.y + area.height {
+        for _x in area.x..area.x + area.width {}
     }
 }
 

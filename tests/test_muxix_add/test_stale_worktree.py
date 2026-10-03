@@ -4,8 +4,8 @@ from pathlib import Path
 
 from ..conftest import (
     MuxEnvironment,
-    get_worktree_path,
     get_window_name,
+    get_worktree_path,
     run_muxix_command,
     write_muxix_config,
 )

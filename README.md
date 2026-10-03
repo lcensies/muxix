@@ -11,10 +11,12 @@
 </p>
 
 <p align="center">
-  <a href="https://muxix.dev/"><strong>📖 Documentation</strong></a> ·
+  <a href="https://github.com/lcensies/muxix/blob/main/docs/index.md"><strong>📖 Documentation</strong></a> ·
   <a href="#installation">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#commands">Commands</a> ·
+  <a href="#managing-worktrees">Worktrees</a> ·
+  <a href="#declarative-agent-harness">Agent harness</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -35,9 +37,9 @@ so every worktree gets an identically equipped agent — and whatever an agent
 cannot take is reported with the reason instead of silently skipped.
 
 <sup><sub>\* Also supports
-<a href="https://muxix.dev/guide/kitty">kitty</a>,
-<a href="https://muxix.dev/guide/wezterm">WezTerm</a>, and
-<a href="https://muxix.dev/guide/zellij">Zellij</a> as alternative
+<a href="https://github.com/lcensies/muxix/blob/main/docs/guide/kitty.md">kitty</a>,
+<a href="https://github.com/lcensies/muxix/blob/main/docs/guide/wezterm.md">WezTerm</a>, and
+<a href="https://github.com/lcensies/muxix/blob/main/docs/guide/zellij.md">Zellij</a> as alternative
 backends.</sub></sup>
 
 > [!NOTE]
@@ -57,7 +59,6 @@ backends.</sub></sup>
 
 ![muxix screenshot](meta/screenshot_20260329_165534.webp)
 
-
 ## Features
 
 - Create git worktrees with matching tmux windows in a single command (`add`)
@@ -65,7 +66,7 @@ backends.</sub></sup>
   one command (`merge`)
 - [Dashboard](#muxix-dashboard) for monitoring agents, reviewing changes, and
   sending commands
-- [Sidebar](https://muxix.dev/guide/sidebar/) for a persistent,
+- [Sidebar](https://github.com/lcensies/muxix/blob/main/docs/guide/sidebar/index.md) for a persistent,
   at-a-glance view of all agents across tmux windows
 - [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
   `/worktree` skill
@@ -73,7 +74,7 @@ backends.</sub></sup>
 - [Provision the agents themselves](#declarative-agent-harness) from one config:
   skills, subagents, plugins, MCP servers, hooks, settings and prompt components
   across seven agent CLIs (`setup`)
-- [Config profiles](https://muxix.dev/guide/profiles): named overlays on an
+- [Config profiles](https://github.com/lcensies/muxix/blob/main/docs/guide/profiles.md): named overlays on an
   agent's own config dir — run the same agent against a different provider,
   model or MCP set (`exec --profile`, `profile show/export/diff`)
 - Background daemon behind the sidebar: tracks agent status across windows and
@@ -96,11 +97,19 @@ backends.</sub></sup>
 
 ## Installation
 
-### Install script
+### Download a binary
+
+Prebuilt archives for Linux and macOS (`amd64` / `arm64`) are attached to every
+release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
+# pick the asset for your platform from the latest release
+tar -xzf muxix-linux-amd64.tar.gz
+install -m 755 muxix ~/.local/bin/
 ```
+
+[All release assets](https://github.com/lcensies/muxix/releases/latest) ship with
+a `.sha256` checksum file next to them.
 
 ### From source
 
@@ -109,30 +118,25 @@ cargo install --git https://github.com/lcensies/muxix
 ```
 
 <details>
-<summary>Other methods (Homebrew, crates.io, mise, Nix)</summary>
+<summary>Other methods (cargo-binstall, mise, Nix)</summary>
 
-> The Homebrew tap and the crates.io release publish with the first tagged
-> version; until then, use the git install above.
+> muxix is not published to crates.io and has no Homebrew tap. GitHub Releases
+> are the only distribution channel; everything below installs from this repo
+> or from a release asset.
 
-**Homebrew** (macOS/Linux):
-
-```bash
-brew install lcensies/muxix/muxix
-```
-
-**Cargo** (requires [rustup](https://rustup.rs/)):
+**cargo-binstall** (prebuilt binary from GitHub Releases):
 
 ```bash
-cargo install muxix
+cargo binstall --git https://github.com/lcensies/muxix muxix
 ```
 
 **mise:**
 
 ```bash
-mise use -g cargo:lcensies/muxix
+mise use -g cargo:https://github.com/lcensies/muxix
 ```
 
-**Nix** ([flake and home-manager setup](https://muxix.dev/guide/nix)):
+**Nix** ([flake and home-manager setup](https://github.com/lcensies/muxix/blob/main/docs/guide/nix.md)):
 
 ```bash
 nix profile install github:lcensies/muxix
@@ -151,9 +155,9 @@ For manual installation, see
 > [!NOTE]
 > muxix requires a terminal multiplexer. Make sure you have
 > [tmux](https://github.com/tmux/tmux) (or
-> [WezTerm](https://muxix.dev/guide/wezterm) /
-> [Kitty](https://muxix.dev/guide/kitty) /
-> [Zellij](https://muxix.dev/guide/zellij)) installed and running
+> [WezTerm](https://github.com/lcensies/muxix/blob/main/docs/guide/wezterm.md) /
+> [Kitty](https://github.com/lcensies/muxix/blob/main/docs/guide/kitty.md) /
+> [Zellij](https://github.com/lcensies/muxix/blob/main/docs/guide/zellij.md)) installed and running
 > before you start. See [My tmux setup](https://raine.dev/blog/my-tmux-setup/)
 > if you need a starting point.
 
@@ -193,344 +197,31 @@ For manual installation, see
    **PR workflow:** Push and open a PR. After it's merged, run `muxix remove`
    to clean up.
 
-## Configuration
-
-muxix uses a two-level configuration system:
-
-- **Global** (`~/.config/muxix/config.yaml`): Personal defaults for all
-  projects
-- **Project** (`.muxix.yaml`): Project-specific overrides
-
-Project settings override global settings. When you run muxix from a
-subdirectory, it walks upward to find the nearest `.muxix.yaml`, allowing
-nested configs for monorepos. See the
-[Monorepos guide](https://muxix.dev/guide/monorepos#nested-configuration)
-for details. For `post_create` and file operation lists (`files.copy`,
-`files.symlink`), you can use `"<global>"` to include global values alongside
-project-specific ones. Other settings like `panes` are replaced entirely when
-defined in the project config.
-
-### Global configuration example
-
-`~/.config/muxix/config.yaml`:
-
-```yaml
-nerdfont: true # Enable nerdfont icons (prompted on first run)
-merge_strategy: rebase # Make muxix merge do rebase by default
-merge_keep: true # Keep worktree, window, and branch after merge by default
-agent: claude
-
-panes:
-  - command: <agent> # Start the configured agent (e.g., claude)
-    focus: true
-  - split: horizontal # Second pane with default shell
-```
-
-### Project configuration example
-
-`.muxix.yaml`:
-
-```yaml
-post_create:
-  - '<global>'
-  - mise use
-
-files:
-  symlink:
-    - '<global>' # Include global symlinks (node_modules)
-    - .pnpm-store # Add project-specific symlink
-
-panes:
-  - command: pnpm install
-    focus: true
-  - command: <agent>
-    split: horizontal
-  - command: pnpm run dev
-    split: vertical
-```
-
-For a full annotated example, see
-[`docs/reference/example-config.yaml`](docs/reference/example-config.yaml).
-
-### Configuration options
-
-Most options have sensible defaults. You only need to configure what you want to
-customize.
-
-#### Basic options
-
-| Option           | Description                                                                                           | Default                     |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------- |
-| `main_branch`    | Branch to merge into                                                                                  | Auto-detected               |
-| `base_branch`    | Default base branch for new worktrees                                                                 | Current branch              |
-| `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                         | `<project>__worktrees/`     |
-| `window_prefix`  | Prefix for tmux window/session names                                                                  | `wm-`                       |
-| `mode`           | Tmux mode (`window` or `session`)                                                                     | `window`                    |
-| `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
-| `agents`         | Named agent commands ([docs](https://muxix.dev/guide/agents#named-agents), global-only)       | `{}`                        |
-| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                                  | `merge`                     |
-| `merge_keep`     | Keep resources after `muxix merge` by default                                                       | `false`                     |
-| `theme`          | Dashboard color scheme ([custom colors](https://muxix.dev/guide/configuration#custom-colors)) | `default` (auto dark/light) |
-
-#### Naming options
-
-| Option            | Description                                 | Default |
-| ----------------- | ------------------------------------------- | ------- |
-| `worktree_naming` | How to derive names from branches           | `full`  |
-| `worktree_prefix` | Prefix for worktree directories and windows | none    |
-
-`worktree_naming` strategies:
-
-- `full`: Use the full branch name (slashes become dashes)
-- `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
-  `feature`)
-
-#### Panes
-
-Define your tmux pane layout with the `panes` array. For multiple windows in
-session mode, use [`windows`](#multiple-windows-per-session) instead (they are
-mutually exclusive).
-
-```yaml
-panes:
-  - command: <agent>
-    focus: true
-  - command: npm run dev
-    split: horizontal
-    size: 15
-```
-
-Each pane supports:
-
-| Option       | Description                                                    | Default |
-| ------------ | -------------------------------------------------------------- | ------- |
-| `command`    | Command to run (see [agent placeholders](#agent-placeholders)) | Shell   |
-| `focus`      | Whether this pane receives focus                               | `false` |
-| `zoom`       | Zoom pane to fullscreen (implies `focus: true`)                | `false` |
-| `split`      | Split direction (`horizontal` or `vertical`)                   | —       |
-| `size`       | Absolute size in lines/cells                                   | 50%     |
-| `percentage` | Size as percentage (1-100)                                     | 50%     |
-
-##### Agent placeholders
-
-- `<agent>`: resolves to the configured agent (from `agent` config or `--agent`
-  flag)
-
-Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`,
-`pi`) are auto-detected when used as literal commands and receive prompt
-injection automatically, without needing the `<agent>` placeholder or a matching
-`agent` config:
-
-```yaml
-panes:
-  - command: 'claude --dangerously-skip-permissions'
-    focus: true
-  - command: 'codex --yolo'
-    split: vertical
-```
-
-Each agent receives the prompt (via `-p`/`-P`/`-e`) using the correct format for
-that agent. Auto-detection matches the executable name regardless of flags or
-path.
-
-#### Named layouts
-
-Define reusable pane arrangements in the `layouts` map and select one at
-add-time with `-l/--layout`:
-
-```yaml
-layouts:
-  design:
-    panes:
-      - command: <agent>
-        focus: true
-      - command: <agent:codex>
-        split: vertical
-  review:
-    panes:
-      - command: <agent>
-```
-
-```bash
-muxix add my-feature -l design
-```
-
-When `-l` is used, the layout's `panes` replace the top-level `panes` for that
-worktree. All other config (hooks, files, agent, etc.) comes from the top-level
-as usual. The `-l` flag cannot be combined with `--agent`.
-
-#### File operations
-
-New worktrees are clean checkouts with no gitignored files (`.env`,
-`node_modules`, etc.). Use `files` to automatically copy or symlink what each
-worktree needs:
-
-```yaml
-files:
-  copy:
-    - .env
-  symlink:
-    - .next/cache # Share build cache across worktrees
-```
-
-Both `copy` and `symlink` accept glob patterns.
-
-To re-apply file operations to an existing worktree (e.g., after updating the
-config), run `muxix sync-files` from inside the worktree. Use `--all` to sync
-all worktrees at once.
-
-#### Lifecycle hooks
-
-Run commands at specific points in the worktree lifecycle, such as installing
-dependencies or running database migrations. All hooks run with the **worktree
-directory** as the working directory (or the nested config directory for
-[nested configs](https://muxix.dev/guide/monorepos#nested-configuration))
-and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`,
-`WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
-
-`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was
-used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
-
-| Hook          | When it runs                                      | Additional env vars                  |
-| ------------- | ------------------------------------------------- | ------------------------------------ |
-| `post_create` | After worktree creation, before tmux window opens | —                                    |
-| `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
-| `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
-
-Example:
-
-```yaml
-post_create:
-  - direnv allow
-
-pre_merge:
-  - just check
-```
-
-#### Agent status icons
-
-Customize the icons shown in tmux window names:
-
-```yaml
-status_icons:
-  working: '🤖' # Agent is processing
-  waiting: '💬' # Agent needs input (auto-clears on focus)
-  done: '✅' # Agent finished (auto-clears on focus)
-```
-
-Agents in "working" status that produce no pane output for 10 seconds are
-automatically detected as interrupted.
-
-Set `status_format: false` to disable automatic tmux format modification
-
-#### Default behavior
-
-- Worktrees are created in `<project>__worktrees` as a sibling directory to your
-  project by default
-- If no `panes` configuration is defined, muxix provides opinionated defaults:
-  - For projects with a `CLAUDE.md` file: Opens the configured agent (see
-    `agent` option) in the first pane, defaulting to `claude` if none is set.
-  - For all other projects: Opens your default shell.
-  - Both configurations include a second pane split horizontally
-- `post_create` commands are optional and only run if you configure them
-
-### Automatic setup with panes
-
-Use the `panes` configuration to automate environment setup. Unlike
-`post_create` hooks which must finish before the tmux window opens, pane
-commands execute immediately _within_ the new window.
-
-This can be used for:
-
-- **Installing dependencies**: Run `npm install` or `cargo build` in a focused
-  pane to monitor progress.
-- **Starting services**: Launch dev servers, database containers, or file
-  watchers automatically.
-- **Running agents**: Initialize AI agents with specific context.
-
-Since these run in standard tmux panes, you can interact with them (check logs,
-restart servers) just like a normal terminal session.
-
-Running dependency installation (like `pnpm install`) in a pane command rather
-than `post_create` has a key advantage: you get immediate access to the tmux
-window while installation runs in the background. With `post_create`, you'd have
-to wait for the install to complete before the window even opens. This also
-means AI agents can start working immediately in their pane while dependencies
-install in parallel.
-
-```yaml
-panes:
-  # Pane 1: Install dependencies, then start dev server
-  - command: pnpm install && pnpm run dev
-
-  # Pane 2: AI agent
-  - command: <agent>
-    split: horizontal
-    focus: true
-```
-
-### Directory structure
-
-Here's how muxix organizes your worktrees by default:
-
-```
-~/projects/
-├── my-project/               <-- Main project directory
-│   ├── src/
-│   ├── package.json
-│   └── .muxix.yaml
-│
-└── my-project__worktrees/    <-- Worktrees created by muxix
-    ├── feature-A/            <-- Isolated workspace for 'feature-A' branch
-    │   ├── src/
-    │   └── package.json
-    │
-    └── bugfix-B/             <-- Isolated workspace for 'bugfix-B' branch
-        ├── src/
-        └── package.json
-```
-
-Each worktree is a separate working directory for a different branch, all
-sharing the same git repository. This allows you to work on multiple branches
-simultaneously without conflicts.
-
-You can customize the worktree directory location using the `worktree_dir`
-configuration option (see [Configuration options](#configuration-options)).
-The value supports `~` for the home directory and a `{project}` placeholder
-that resolves to the main worktree's directory name. This lets a single
-global config namespace every repo's worktrees under one root, e.g.
-`worktree_dir: ~/.muxix/{project}`.
-
-### Shell alias (recommended)
-
-For faster typing, alias `muxix` to `wm`:
-
-```bash
-alias wm='muxix'
-```
-
 ## Commands
 
-- [`add`](#muxix-add-branch-name) - Create a new worktree and tmux window
-- [`merge`](#muxix-merge-branch-name) - Merge a branch and clean up everything
-- [`remove`](#muxix-remove-name-alias-rm) - Remove worktrees without merging
-- [`list`](#muxix-list-alias-ls) - List all worktrees with status
-- [`open`](#muxix-open-name) - Open a tmux window for an existing worktree
-- [`close`](#muxix-close-name) - Close a worktree's tmux window (keeps
-  worktree)
-- [`resurrect`](#muxix-resurrect) - Restore worktree windows after a crash
-- [`project`](#muxix-project) - Track project directories for `muxix start`
-- [`start`](#muxix-start) - Launch all tracked projects (session per project,
-  window per worktree)
-- [`path`](#muxix-path-name) - Get the filesystem path of a worktree
-- [`dashboard`](#muxix-dashboard) - Show TUI dashboard of all active agents
-- [`sidebar`](#muxix-sidebar) - Toggle a compact agent status sidebar in tmux
-- [`config edit`](#muxix-config-edit) - Edit the global configuration file
-- [`init`](#muxix-init) - Generate configuration file
-- [`sandbox`](#muxix-sandbox) - Manage sandbox backends (container/Lima)
-- [`claude prune`](#muxix-claude-prune) - Clean up stale Claude Code entries
-- [`completions`](#muxix-completions-shell) - Generate shell completions
-- [`docs`](#muxix-docs) - Show detailed documentation
+Grouped by what you're doing; each entry links to its section.
+
+- **Worktrees** — [`add`](#muxix-add-branch-name), [`open`](#muxix-open-name),
+  [`close`](#muxix-close-name), [`merge`](#muxix-merge-branch-name),
+  [`remove`](#muxix-remove-name-alias-rm), [`rename`](#muxix-rename-old-name-new-name),
+  [`list`](#muxix-list-alias-ls), [`path`](#muxix-path-name),
+  [`sync-files`](#muxix-sync-files), [`resurrect`](#muxix-resurrect)
+- **Monitoring** — [`dashboard`](#muxix-dashboard), [`sidebar`](#muxix-sidebar),
+  [status in window names](#agent-status-tracking)
+- **Agent harness** — [`setup`](#declarative-agent-harness),
+  [`exec --profile` / `profile`](#declarative-agent-harness),
+  [`claude prune`](#muxix-claude-prune)
+- **Configuration** — [`init`](#muxix-init), [`config edit`](#muxix-config-edit),
+  [`config path`](#muxix-config-path), [`config reference`](#muxix-config-reference)
+- **Projects** — [`project`](#muxix-project), [`start`](#muxix-start)
+- **Sandbox** — [`sandbox`](#muxix-sandbox)
+- **Utilities** — [`completions`](#muxix-completions-shell), [`docs`](#muxix-docs)
+- **Fork-only** — `task`, `signal`, `mcp sync|status`, `provision`, `profile`,
+  `focus`, `project-state`: see [docs/wng-features.md](docs/wng-features.md).
+
+## Managing worktrees
+
+Day-to-day lifecycle: create, open, merge, remove. Each worktree gets its own window and (optionally) agent.
 
 ### `muxix add <branch-name>`
 
@@ -1062,6 +753,108 @@ find src/utils -name "*.ts" ! -name "*.test.ts" | \
 
 ---
 
+### `muxix open [name...]`
+
+Opens or switches to a tmux window for a pre-existing git worktree. If the
+window already exists, switches to it. If not, creates a new window with the
+configured pane layout and environment. Accepts multiple names to open several
+worktrees at once.
+
+- `[name...]`: One or more worktree names (the directory name, which is also the
+  tmux window name without the prefix). Optional with `--new` when run from
+  inside a worktree.
+
+#### Options
+
+- `-n, --new`: Force opening in a new window even if one already exists. Creates
+  a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having
+  multiple terminal views into the same worktree.
+- `-s, --session`: Open in session mode, overriding the stored mode. Persists
+  the mode change for subsequent opens. Cannot be combined with `--new`. Only
+  supported with tmux.
+- `--config <path>`: Use an alternate config file for this invocation. Still
+  merges with global config.
+- `--run-hooks`: Re-runs the `post_create` commands (these block window
+  creation).
+- `--force-files`: Re-applies file copy/symlink operations. Useful for restoring
+  a deleted `.env` file.
+- `-p, --prompt <text>`: Provide an inline prompt for AI agent panes.
+- `-P, --prompt-file <path>`: Provide a path to a file containing the prompt.
+- `-c, --continue`: Resume the agent's most recent conversation in this
+  worktree. Injects the appropriate flag for the configured agent (e.g.,
+  `--continue` for Claude, `--resume` for Gemini).
+- `-e, --prompt-editor`: Open your editor to write the prompt interactively.
+- `--prompt-file-only`: Write the prompt file without injecting it into agent
+  commands.
+
+#### What happens
+
+1. Verifies that a worktree with `<name>` exists.
+2. If a tmux window exists and `--new` is not set, switches to it.
+3. Otherwise, creates a new tmux window (with suffix if duplicating).
+4. (If specified) Runs file operations and `post_create` hooks.
+5. Sets up your configured tmux pane layout.
+6. Automatically switches your tmux client to the new window.
+
+#### Examples
+
+```bash
+# Open or switch to a window for an existing worktree
+muxix open user-auth
+
+# Force open a second window for the same worktree (creates user-auth-2)
+muxix open user-auth --new
+
+# Open a new window for the current worktree (run from within the worktree)
+muxix open --new
+
+# Open in session mode (converts from window mode if needed)
+muxix open user-auth --session
+
+# Resume the agent's last conversation
+muxix open user-auth --continue
+
+# Resume and send a follow-up prompt
+muxix open user-auth --continue -p "Continue implementing the login flow"
+
+# Open and re-run dependency installation
+muxix open user-auth --run-hooks
+
+# Open and restore configuration files
+muxix open user-auth --force-files
+
+# Open multiple worktrees at once
+muxix open user-auth api-refactor bugfix-login
+```
+
+---
+
+### `muxix close [name]`
+
+Closes the tmux window for a worktree without removing the worktree or branch.
+This is useful when you want to temporarily close a window to reduce clutter or
+free resources, but plan to return to the work later.
+
+- `[name]`: Optional worktree name (the directory name). Defaults to current
+  directory if omitted.
+
+#### Examples
+
+```bash
+# Close the window for a specific worktree
+muxix close user-auth
+
+# Close the current worktree's window (run from within the worktree)
+muxix close
+```
+
+To reopen the window later, use [`muxix open`](#muxix-open-name).
+
+**Tip**: You can also use tmux's native kill-window command (default:
+`prefix + &`) to close a worktree's window with the same effect.
+
+---
+
 ### `muxix merge [branch-name]`
 
 Merges a branch into a target branch (main by default) and automatically cleans
@@ -1312,7 +1105,7 @@ api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 
 - AGE shows how old the worktree is (e.g., `2h`, `3d`, `1w`, `2mo`)
 - AGENT shows the current agent status (see
-  [status tracking](https://muxix.dev/guide/status-tracking/)):
+  [status tracking](https://github.com/lcensies/muxix/blob/main/docs/guide/status-tracking.md)):
   - `🤖` = working, `💬` = waiting for input, `✅` = finished
   - Multiple agents per worktree show a count (e.g., `2🤖 1✅`)
 - `✓` in MUX column = multiplexer window exists for this worktree
@@ -1321,133 +1114,48 @@ api-work    1w   -      ✓    -         ~/project__worktrees/api-work
 
 ---
 
-### `muxix config edit`
+### `muxix path <name>`
 
-Opens the global configuration file (`~/.config/muxix/config.yaml`) in your
-preferred editor. Uses `$VISUAL`, `$EDITOR`, or falls back to `vi`. Creates the
-file with commented-out defaults if it doesn't exist yet.
+Prints the filesystem path of an existing worktree. Useful for scripting or
+quickly navigating to a worktree directory.
 
----
+- `<name>`: Worktree name (the directory name).
 
-### `muxix config path`
+#### Examples
 
-Prints the path to the global configuration file. Useful for scripting.
+```bash
+# Get the path of a worktree
+muxix path user-auth
+# Output: /Users/you/project__worktrees/user-auth
 
----
+# Use in scripts or with cd
+cd "$(muxix path user-auth)"
 
-### `muxix config reference`
-
-Prints the default configuration file with all options documented. Useful for
-discovering available options or piping to an AI agent for context.
-
----
-
-### `muxix init`
-
-Generates `.muxix.yaml` with example configuration and `"<global>"`
-placeholder usage.
+# Copy a file to a worktree
+cp config.json "$(muxix path feature-branch)/"
+```
 
 ---
 
-### `muxix open [name...]`
+### `muxix sync-files`
 
-Opens or switches to a tmux window for a pre-existing git worktree. If the
-window already exists, switches to it. If not, creates a new window with the
-configured pane layout and environment. Accepts multiple names to open several
-worktrees at once.
-
-- `[name...]`: One or more worktree names (the directory name, which is also the
-  tmux window name without the prefix). Optional with `--new` when run from
-  inside a worktree.
+Re-applies file operations (copy and symlink from `files` config) to existing
+worktrees. Useful when you add new entries to the `files` config or a symlink
+was accidentally deleted.
 
 #### Options
 
-- `-n, --new`: Force opening in a new window even if one already exists. Creates
-  a duplicate window with a suffix (e.g., `-2`, `-3`). Useful for having
-  multiple terminal views into the same worktree.
-- `-s, --session`: Open in session mode, overriding the stored mode. Persists
-  the mode change for subsequent opens. Cannot be combined with `--new`. Only
-  supported with tmux.
-- `--config <path>`: Use an alternate config file for this invocation. Still
-  merges with global config.
-- `--run-hooks`: Re-runs the `post_create` commands (these block window
-  creation).
-- `--force-files`: Re-applies file copy/symlink operations. Useful for restoring
-  a deleted `.env` file.
-- `-p, --prompt <text>`: Provide an inline prompt for AI agent panes.
-- `-P, --prompt-file <path>`: Provide a path to a file containing the prompt.
-- `-c, --continue`: Resume the agent's most recent conversation in this
-  worktree. Injects the appropriate flag for the configured agent (e.g.,
-  `--continue` for Claude, `--resume` for Gemini).
-- `-e, --prompt-editor`: Open your editor to write the prompt interactively.
-- `--prompt-file-only`: Write the prompt file without injecting it into agent
-  commands.
-
-#### What happens
-
-1. Verifies that a worktree with `<name>` exists.
-2. If a tmux window exists and `--new` is not set, switches to it.
-3. Otherwise, creates a new tmux window (with suffix if duplicating).
-4. (If specified) Runs file operations and `post_create` hooks.
-5. Sets up your configured tmux pane layout.
-6. Automatically switches your tmux client to the new window.
+- `--all`: Sync all worktrees instead of just the current one.
 
 #### Examples
 
 ```bash
-# Open or switch to a window for an existing worktree
-muxix open user-auth
+# Sync files to the current worktree
+muxix sync-files
 
-# Force open a second window for the same worktree (creates user-auth-2)
-muxix open user-auth --new
-
-# Open a new window for the current worktree (run from within the worktree)
-muxix open --new
-
-# Open in session mode (converts from window mode if needed)
-muxix open user-auth --session
-
-# Resume the agent's last conversation
-muxix open user-auth --continue
-
-# Resume and send a follow-up prompt
-muxix open user-auth --continue -p "Continue implementing the login flow"
-
-# Open and re-run dependency installation
-muxix open user-auth --run-hooks
-
-# Open and restore configuration files
-muxix open user-auth --force-files
-
-# Open multiple worktrees at once
-muxix open user-auth api-refactor bugfix-login
+# Sync files to all worktrees
+muxix sync-files --all
 ```
-
----
-
-### `muxix close [name]`
-
-Closes the tmux window for a worktree without removing the worktree or branch.
-This is useful when you want to temporarily close a window to reduce clutter or
-free resources, but plan to return to the work later.
-
-- `[name]`: Optional worktree name (the directory name). Defaults to current
-  directory if omitted.
-
-#### Examples
-
-```bash
-# Close the window for a specific worktree
-muxix close user-auth
-
-# Close the current worktree's window (run from within the worktree)
-muxix close
-```
-
-To reopen the window later, use [`muxix open`](#muxix-open-name).
-
-**Tip**: You can also use tmux's native kill-window command (default:
-`prefix + &`) to close a worktree's window with the same effect.
 
 ---
 
@@ -1481,94 +1189,179 @@ muxix resurrect
 
 ---
 
-### `muxix project`
+### Delegating tasks with `/worktree`
 
-Manages the list of tracked project directories used by `muxix start`. The
-registry is a plain YAML list at `~/.config/muxix/projects.yaml`.
+The `/worktree` [skill](https://github.com/lcensies/muxix/blob/main/docs/guide/skills.md) lets you
+delegate tasks to parallel worktree agents directly from your conversation. A
+main agent on the main branch can act as a coordinator: planning work and
+spinning up worktree agents for each task.
 
-```bash
-muxix project add ~/repos/my-app   # track a project
-muxix project list                 # list tracked projects
-muxix project rm my-app            # untrack by name or path
-muxix project open my-app          # start that project's session and focus it
+#### Usage
+
+```
+> /worktree Implement user authentication
+> /worktree Fix the race condition in handler.go
+> /worktree Add dark mode, Implement caching  # multiple tasks
 ```
 
-`project open <name|path>` does what `muxix start` does for a single
-project (session + base layout + worktree windows, idempotent), then focuses
-the session — switching the client inside tmux, attaching from a plain shell.
-It accepts the same `-c`/`--continue` agent resume flag.
+See the [Skills guide](https://github.com/lcensies/muxix/blob/main/docs/guide/skills.md) for more skills
+including `/merge`, `/rebase`, `/coordinator`, and `/open-pr`.
 
-As a shortcut, `muxix add <dir>` tracks the directory as a project when the
-argument is an existing directory containing `.git`.
+## Agent status tracking
 
----
+Muxix can display the status of the agent in your tmux window list, giving you
+at-a-glance visibility into what the agent in each window doing.
 
-### `muxix start`
+![tmux status showing agent icons](meta/status.webp)
 
-Launches every tracked project: one tmux session per project (base layout from
-`.muxix.yaml` `windows:`, `~/.config/tmuxrs/<name>.yml`, or
-`~/.config/tmuxinator/<name>.yml`), plus one window per muxix worktree.
-Idempotent — existing sessions and windows are left untouched.
+#### Key
 
-#### Options
+- 🤖 = agent is working
+- 💬 = agent is waiting for user input
+- ✅ = agent finished (auto-clears on window focus)
 
-- `-c`, `--continue`: Relaunch the last coding agent in each project/worktree,
-  resuming its previous conversation where possible (same resume ladder as
-  `muxix resurrect`).
+| Agent        | Status                                                                      |
+| ------------ | --------------------------------------------------------------------------- |
+| Claude Code  | ✅ Supported                                                                |
+| OpenCode     | ✅ Supported                                                                |
+| Codex        | ✅ Supported\*                                                              |
+| Copilot CLI  | ✅ Supported\*                                                              |
+| Pi           | ✅ Supported\*                                                              |
+| Gemini CLI   | ✅ Supported                                                                |
+| omp          | ✅ Supported\*                                                              |
+| Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
+| Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
-```bash
-muxix start        # open all tracked projects
-muxix start -c     # ...and resume the last agent everywhere
-```
+**Notes:**
 
-See the [Projects guide](https://muxix.dev/guide/projects) for details.
+- **Codex**: No 💬 waiting state
+- **Copilot CLI**: No 💬 waiting state
+- **Pi**: No 💬 waiting state
+- **omp**: No 💬 waiting state (pi-compatible extension)
+- **Kiro**: Hooks support is messy: requires a custom agent since the default
+  can't be edited
 
----
+### Setup
 
-### `muxix sync-files`
-
-Re-applies file operations (copy and symlink from `files` config) to existing
-worktrees. Useful when you add new entries to the `files` config or a symlink
-was accidentally deleted.
-
-#### Options
-
-- `--all`: Sync all worktrees instead of just the current one.
-
-#### Examples
+Run `muxix setup` to automatically detect your agent CLIs, install status
+tracking hooks, and install skills:
 
 ```bash
-# Sync files to the current worktree
-muxix sync-files
-
-# Sync files to all worktrees
-muxix sync-files --all
+muxix setup
 ```
 
----
+You can also run specific parts: `muxix setup --hooks` or
+`muxix setup --skills`. For Claude Code, `CLAUDE_CONFIG_DIR` is respected for
+both hook and skill installation.
 
-### `muxix path <name>`
+Muxix will also prompt you on first run if it detects an agent without status
+tracking or skills configured.
 
-Prints the filesystem path of an existing worktree. Useful for scripting or
-quickly navigating to a worktree directory.
+Muxix automatically modifies your tmux `window-status-format` to display the
+status icons. This happens once per session and only affects the current tmux
+session (not your global config).
 
-- `<name>`: Worktree name (the directory name).
+#### Manual setup
 
-#### Examples
+If you prefer manual setup:
+
+**Claude Code**: install the muxix status plugin:
+
+```
+claude plugin marketplace add lcensies/muxix
+claude plugin install muxix-status
+```
+
+Or manually add the hooks to `~/.claude/settings.json`. See
+[.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
+configuration.
+
+**Copilot CLI**: copy the hooks to your repository:
 
 ```bash
-# Get the path of a worktree
-muxix path user-auth
-# Output: /Users/you/project__worktrees/user-auth
-
-# Use in scripts or with cd
-cd "$(muxix path user-auth)"
-
-# Copy a file to a worktree
-cp config.json "$(muxix path feature-branch)/"
+mkdir -p .github/hooks/muxix-status
+curl -o .github/hooks/muxix-status/hooks.json \
+  https://raw.githubusercontent.com/lcensies/muxix/main/.github/hooks/muxix-status/hooks.json
 ```
 
----
+Note: Copilot hooks are per-repository. The waiting state is not supported due
+to limitations in the Copilot CLI hooks implementation.
+
+**OpenCode**: download the muxix status plugin:
+
+```bash
+mkdir -p ~/.config/opencode/plugins
+curl -o ~/.config/opencode/package.json \
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/package.json
+curl -o ~/.config/opencode/plugins/muxix-status.ts \
+  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/plugins/muxix-status.ts
+```
+
+Restart OpenCode for the plugin to take effect.
+
+### Customization
+
+You can customize the icons in your config:
+
+```yaml
+# ~/.config/muxix/config.yaml
+status_icons:
+  working: '🔄'
+  waiting: '⏸️'
+  done: '✔️'
+```
+
+If you prefer to manage the tmux format yourself, disable auto-modification and
+add the status variable to your `~/.tmux.conf`:
+
+```yaml
+# ~/.config/muxix/config.yaml
+status_format: false
+```
+
+```bash
+# ~/.tmux.conf
+set -g window-status-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
+set -g window-status-current-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
+```
+
+### Jump to completed or waiting agents
+
+Use `muxix last-done` to quickly switch to the agent that most recently
+finished its task or is waiting for user input. Repeated invocations cycle
+through all completed and waiting agents in reverse chronological order.
+
+Add a tmux keybinding for quick access:
+
+```bash
+# ~/.tmux.conf
+bind-key L run-shell "muxix last-done"
+```
+
+Then press `prefix + L` to jump to the last completed or waiting agent, press
+again to cycle to the next oldest, and so on.
+
+### Toggle between agents
+
+Use `muxix last-agent` to toggle between your current agent and the last one
+you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it
+remembers which agent you came from and switches back to it. Pressing it again
+returns you to where you were.
+
+This is available both as a CLI command and as the `Tab` key in the dashboard.
+
+Add a tmux keybinding for quick access:
+
+```bash
+# ~/.tmux.conf
+bind Tab run-shell "muxix last-agent"
+```
+
+Then press `prefix + Tab` to toggle between your two most recent agents.
+
+## Dashboard and sidebar
+
+Two TUIs over the same agent state: a full-screen dashboard for review and control, and a persistent sidebar pane.
 
 ### `muxix dashboard`
 
@@ -1781,114 +1574,6 @@ Then press `prefix + Ctrl-t` to toggle the sidebar.
 > created in every existing window, and new windows automatically get one via a
 > tmux hook.
 
----
-
-### `muxix sandbox`
-
-Commands for managing sandbox functionality. See the
-[sandbox guide](https://muxix.dev/guide/sandbox/) for full
-documentation.
-
-| Command               | Description                                            |
-| --------------------- | ------------------------------------------------------ |
-| `sandbox pull`        | Pull the latest container image from the registry      |
-| `sandbox build`       | Build the container image locally                      |
-| `sandbox shell`       | Start an interactive shell inside a sandbox            |
-| `sandbox agent`       | Run the configured agent in a sandbox with RPC support |
-| `sandbox stop`        | Stop running Lima VMs                                  |
-| `sandbox prune`       | Delete unused Lima VMs to reclaim disk space           |
-| `sandbox install-dev` | Cross-compile and install muxix into sandboxes (dev) |
-
----
-
-### `muxix claude prune`
-
-Removes stale entries from Claude config (`~/.claude.json`) that point to
-deleted worktree directories. When you run Claude Code in worktrees, it stores
-per-worktree settings in that file. Over time, as worktrees are merged or
-deleted, it can accumulate entries for paths that no longer exist.
-
-#### What happens
-
-1. Scans `~/.claude.json` for entries pointing to non-existent directories
-2. Creates a backup at `~/.claude.json.bak` before making changes
-3. Removes all stale entries
-4. Reports the number of entries cleaned up
-
-#### Safety
-
-- Only removes entries for absolute paths that don't exist
-- Creates a backup before modifying the file
-- Preserves all valid entries and relative paths
-
-#### Examples
-
-```bash
-# Clean up stale Claude Code entries
-muxix claude prune
-```
-
-#### Example output
-
-```
-  - Removing: /Users/user/project__worktrees/old-feature
-
-✓ Created backup at ~/.claude.json.bak
-✓ Removed 3 stale entries from ~/.claude.json
-```
-
----
-
-### `muxix completions <shell>`
-
-Generates shell completion script for the specified shell. Completions provide
-tab-completion for commands and dynamic branch name suggestions.
-
-- `<shell>`: Shell type: `bash`, `zsh`, or `fish`.
-
-#### Examples
-
-```bash
-# Generate completions for zsh
-muxix completions zsh
-```
-
-See the [Shell Completions](#shell-completions) section for installation
-instructions.
-
----
-
-### `muxix docs`
-
-Displays this README with terminal formatting. Useful for quick reference
-without leaving the terminal.
-
-When run interactively, renders markdown with colors and uses a pager (`less`).
-When piped (e.g., to an LLM), outputs raw markdown for clean context.
-
-#### Using with AI agents
-
-You can ask an agent to read the docs and configure muxix for you:
-
-```
-> run `muxix docs` and configure muxix so that on the left pane
-  there is claude as agent, and on the right side neovim and empty
-  shell on top of each other
-
-⏺ Bash(muxix docs)
-  ⎿  <p align="center">
-       <picture>
-     … +923 lines
-
-⏺ Write(.muxix.yaml)
-  ⎿  Wrote 9 lines to .muxix.yaml
-
-⏺ Created .muxix.yaml with the layout:
-  - Left: claude agent (focused)
-  - Right top: neovim
-  - Right bottom: empty shell
-```
-
 ## Declarative agent harness
 
 One `bootstrap:` block provisions every agent CLI you have installed, and
@@ -1930,217 +1615,481 @@ never silently dropped.
 Each gap has a documented cause (Codex subagents are TOML config layers, its
 settings are TOML, omp's hooks have no compat plugin, Gemini/OpenCode expose no
 config-dir redirect), listed in
-[the bootstrap guide](https://muxix.dev/guide/bootstrap).
+[the bootstrap guide](https://github.com/lcensies/muxix/blob/main/docs/guide/bootstrap.md).
 
 Per-agent **config profiles** layer a named overlay on top of an agent's own
 config dir — `muxix exec --profile corp pi` runs pi with a different provider,
 plugin set and session history, without touching your base config. See
-[profiles](https://muxix.dev/guide/profiles).
+[profiles](https://github.com/lcensies/muxix/blob/main/docs/guide/profiles.md).
 
-## Agent status tracking
+---
 
-Muxix can display the status of the agent in your tmux window list, giving you
-at-a-glance visibility into what the agent in each window doing.
+### `muxix claude prune`
 
-![tmux status showing agent icons](meta/status.webp)
+Removes stale entries from Claude config (`~/.claude.json`) that point to
+deleted worktree directories. When you run Claude Code in worktrees, it stores
+per-worktree settings in that file. Over time, as worktrees are merged or
+deleted, it can accumulate entries for paths that no longer exist.
 
-#### Key
+#### What happens
 
-- 🤖 = agent is working
-- 💬 = agent is waiting for user input
-- ✅ = agent finished (auto-clears on window focus)
+1. Scans `~/.claude.json` for entries pointing to non-existent directories
+2. Creates a backup at `~/.claude.json.bak` before making changes
+3. Removes all stale entries
+4. Reports the number of entries cleaned up
 
-| Agent        | Status                                                                      |
-| ------------ | --------------------------------------------------------------------------- |
-| Claude Code  | ✅ Supported                                                                |
-| OpenCode     | ✅ Supported                                                                |
-| Codex        | ✅ Supported\*                                                              |
-| Copilot CLI  | ✅ Supported\*                                                              |
-| Pi           | ✅ Supported\*                                                              |
-| Gemini CLI   | ✅ Supported                                                                |
-| omp          | ✅ Supported\*                                                              |
-| Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
-| Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
+#### Safety
 
-**Notes:**
+- Only removes entries for absolute paths that don't exist
+- Creates a backup before modifying the file
+- Preserves all valid entries and relative paths
 
-- **Codex**: No 💬 waiting state
-- **Copilot CLI**: No 💬 waiting state
-- **Pi**: No 💬 waiting state
-- **omp**: No 💬 waiting state (pi-compatible extension)
-- **Kiro**: Hooks support is messy: requires a custom agent since the default
-  can't be edited
-
-### Setup
-
-Run `muxix setup` to automatically detect your agent CLIs, install status
-tracking hooks, and install skills:
+#### Examples
 
 ```bash
-muxix setup
+# Clean up stale Claude Code entries
+muxix claude prune
 ```
 
-You can also run specific parts: `muxix setup --hooks` or
-`muxix setup --skills`. For Claude Code, `CLAUDE_CONFIG_DIR` is respected for
-both hook and skill installation.
-
-Muxix will also prompt you on first run if it detects an agent without status
-tracking or skills configured.
-
-Muxix automatically modifies your tmux `window-status-format` to display the
-status icons. This happens once per session and only affects the current tmux
-session (not your global config).
-
-#### Manual setup
-
-If you prefer manual setup:
-
-**Claude Code**: install the muxix status plugin:
+#### Example output
 
 ```
-claude plugin marketplace add lcensies/muxix
-claude plugin install muxix-status
+  - Removing: /Users/user/project__worktrees/old-feature
+
+✓ Created backup at ~/.claude.json.bak
+✓ Removed 3 stale entries from ~/.claude.json
 ```
 
-Or manually add the hooks to `~/.claude/settings.json`. See
-[.claude-plugin/plugin.json](.claude-plugin/plugin.json) for the hook
-configuration.
+---
 
-**Copilot CLI**: copy the hooks to your repository:
+### Claude Code permissions
 
-```bash
-mkdir -p .github/hooks/muxix-status
-curl -o .github/hooks/muxix-status/hooks.json \
-  https://raw.githubusercontent.com/lcensies/muxix/main/.github/hooks/muxix-status/hooks.json
+By default, Claude Code prompts for permission before running commands. There
+are several ways to handle this in worktrees:
+
+**Share permissions across worktrees**
+
+To keep permission prompts but share granted permissions across worktrees:
+
+```yaml
+files:
+  symlink:
+    - .claude/settings.local.json
 ```
 
-Note: Copilot hooks are per-repository. The waiting state is not supported due
-to limitations in the Copilot CLI hooks implementation.
+Add this to your global config (`~/.config/muxix/config.yaml`) or project's
+`.muxix.yaml`. Since this file contains user-specific permissions, also add it
+to `.gitignore`:
 
-**OpenCode**: download the muxix status plugin:
-
-```bash
-mkdir -p ~/.config/opencode/plugins
-curl -o ~/.config/opencode/package.json \
-  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/package.json
-curl -o ~/.config/opencode/plugins/muxix-status.ts \
-  https://raw.githubusercontent.com/lcensies/muxix/main/resources/opencode/plugins/muxix-status.ts
+```
+.claude/settings.local.json
 ```
 
-Restart OpenCode for the plugin to take effect.
+**Skip permission prompts (yolo mode)**
 
-### Customization
-
-You can customize the icons in your config:
+To skip prompts entirely, define a
+[named agent](https://github.com/lcensies/muxix/blob/main/docs/guide/agents.md#named-agents) that shadows
+`claude`:
 
 ```yaml
 # ~/.config/muxix/config.yaml
+agents:
+  claude: 'claude --dangerously-skip-permissions'
+```
+
+This makes all muxix-created worktrees use the flag automatically, without
+affecting `claude` outside of muxix. You can also use a separate name and
+reference it per-project with `agent: cc-yolo`.
+
+## Configuration
+
+muxix uses a two-level configuration system:
+
+- **Global** (`~/.config/muxix/config.yaml`): Personal defaults for all
+  projects
+- **Project** (`.muxix.yaml`): Project-specific overrides
+
+Project settings override global settings. When you run muxix from a
+subdirectory, it walks upward to find the nearest `.muxix.yaml`, allowing
+nested configs for monorepos. See the
+[Monorepos guide](https://github.com/lcensies/muxix/blob/main/docs/guide/monorepos.md#nested-configuration)
+for details. For `post_create` and file operation lists (`files.copy`,
+`files.symlink`), you can use `"<global>"` to include global values alongside
+project-specific ones. Other settings like `panes` are replaced entirely when
+defined in the project config.
+
+### Global configuration example
+
+`~/.config/muxix/config.yaml`:
+
+```yaml
+nerdfont: true # Enable nerdfont icons (prompted on first run)
+merge_strategy: rebase # Make muxix merge do rebase by default
+merge_keep: true # Keep worktree, window, and branch after merge by default
+agent: claude
+
+panes:
+  - command: <agent> # Start the configured agent (e.g., claude)
+    focus: true
+  - split: horizontal # Second pane with default shell
+```
+
+### Project configuration example
+
+`.muxix.yaml`:
+
+```yaml
+post_create:
+  - '<global>'
+  - mise use
+
+files:
+  symlink:
+    - '<global>' # Include global symlinks (node_modules)
+    - .pnpm-store # Add project-specific symlink
+
+panes:
+  - command: pnpm install
+    focus: true
+  - command: <agent>
+    split: horizontal
+  - command: pnpm run dev
+    split: vertical
+```
+
+For a full annotated example, see
+[`docs/reference/example-config.yaml`](docs/reference/example-config.yaml).
+
+### Configuration options
+
+Most options have sensible defaults. You only need to configure what you want to
+customize.
+
+#### Basic options
+
+| Option           | Description                                                                                           | Default                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------- | --------------------------- |
+| `main_branch`    | Branch to merge into                                                                                  | Auto-detected               |
+| `base_branch`    | Default base branch for new worktrees                                                                 | Current branch              |
+| `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                         | `<project>__worktrees/`     |
+| `window_prefix`  | Prefix for tmux window/session names                                                                  | `wm-`                       |
+| `mode`           | Tmux mode (`window` or `session`)                                                                     | `window`                    |
+| `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
+| `agents`         | Named agent commands ([docs](https://github.com/lcensies/muxix/blob/main/docs/guide/agents.md#named-agents), global-only)       | `{}`                        |
+| `merge_strategy` | Default merge strategy (`merge`, `rebase`, `squash`)                                                  | `merge`                     |
+| `merge_keep`     | Keep resources after `muxix merge` by default                                                       | `false`                     |
+| `theme`          | Dashboard color scheme ([custom colors](https://github.com/lcensies/muxix/blob/main/docs/guide/configuration.md#custom-colors)) | `default` (auto dark/light) |
+
+#### Naming options
+
+| Option            | Description                                 | Default |
+| ----------------- | ------------------------------------------- | ------- |
+| `worktree_naming` | How to derive names from branches           | `full`  |
+| `worktree_prefix` | Prefix for worktree directories and windows | none    |
+
+`worktree_naming` strategies:
+
+- `full`: Use the full branch name (slashes become dashes)
+- `basename`: Use only the part after the last `/` (e.g., `prj-123/feature` →
+  `feature`)
+
+#### Panes
+
+Define your tmux pane layout with the `panes` array. For multiple windows in
+session mode, use [`windows`](#multiple-windows-per-session) instead (they are
+mutually exclusive).
+
+```yaml
+panes:
+  - command: <agent>
+    focus: true
+  - command: npm run dev
+    split: horizontal
+    size: 15
+```
+
+Each pane supports:
+
+| Option       | Description                                                    | Default |
+| ------------ | -------------------------------------------------------------- | ------- |
+| `command`    | Command to run (see [agent placeholders](#agent-placeholders)) | Shell   |
+| `focus`      | Whether this pane receives focus                               | `false` |
+| `zoom`       | Zoom pane to fullscreen (implies `focus: true`)                | `false` |
+| `split`      | Split direction (`horizontal` or `vertical`)                   | —       |
+| `size`       | Absolute size in lines/cells                                   | 50%     |
+| `percentage` | Size as percentage (1-100)                                     | 50%     |
+
+##### Agent placeholders
+
+- `<agent>`: resolves to the configured agent (from `agent` config or `--agent`
+  flag)
+
+Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`,
+`pi`) are auto-detected when used as literal commands and receive prompt
+injection automatically, without needing the `<agent>` placeholder or a matching
+`agent` config:
+
+```yaml
+panes:
+  - command: 'claude --dangerously-skip-permissions'
+    focus: true
+  - command: 'codex --yolo'
+    split: vertical
+```
+
+Each agent receives the prompt (via `-p`/`-P`/`-e`) using the correct format for
+that agent. Auto-detection matches the executable name regardless of flags or
+path.
+
+#### Named layouts
+
+Define reusable pane arrangements in the `layouts` map and select one at
+add-time with `-l/--layout`:
+
+```yaml
+layouts:
+  design:
+    panes:
+      - command: <agent>
+        focus: true
+      - command: <agent:codex>
+        split: vertical
+  review:
+    panes:
+      - command: <agent>
+```
+
+```bash
+muxix add my-feature -l design
+```
+
+When `-l` is used, the layout's `panes` replace the top-level `panes` for that
+worktree. All other config (hooks, files, agent, etc.) comes from the top-level
+as usual. The `-l` flag cannot be combined with `--agent`.
+
+#### File operations
+
+New worktrees are clean checkouts with no gitignored files (`.env`,
+`node_modules`, etc.). Use `files` to automatically copy or symlink what each
+worktree needs:
+
+```yaml
+files:
+  copy:
+    - .env
+  symlink:
+    - .next/cache # Share build cache across worktrees
+```
+
+Both `copy` and `symlink` accept glob patterns.
+
+To re-apply file operations to an existing worktree (e.g., after updating the
+config), run `muxix sync-files` from inside the worktree. Use `--all` to sync
+all worktrees at once.
+
+#### Lifecycle hooks
+
+Run commands at specific points in the worktree lifecycle, such as installing
+dependencies or running database migrations. All hooks run with the **worktree
+directory** as the working directory (or the nested config directory for
+[nested configs](https://github.com/lcensies/muxix/blob/main/docs/guide/monorepos.md#nested-configuration))
+and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`,
+`WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
+
+`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was
+used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
+
+| Hook          | When it runs                                      | Additional env vars                  |
+| ------------- | ------------------------------------------------- | ------------------------------------ |
+| `post_create` | After worktree creation, before tmux window opens | —                                    |
+| `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
+| `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
+
+Example:
+
+```yaml
+post_create:
+  - direnv allow
+
+pre_merge:
+  - just check
+```
+
+#### Agent status icons
+
+Customize the icons shown in tmux window names:
+
+```yaml
 status_icons:
-  working: '🔄'
-  waiting: '⏸️'
-  done: '✔️'
+  working: '🤖' # Agent is processing
+  waiting: '💬' # Agent needs input (auto-clears on focus)
+  done: '✅' # Agent finished (auto-clears on focus)
 ```
 
-If you prefer to manage the tmux format yourself, disable auto-modification and
-add the status variable to your `~/.tmux.conf`:
+Agents in "working" status that produce no pane output for 10 seconds are
+automatically detected as interrupted.
+
+Set `status_format: false` to disable automatic tmux format modification
+
+#### Default behavior
+
+- Worktrees are created in `<project>__worktrees` as a sibling directory to your
+  project by default
+- If no `panes` configuration is defined, muxix provides opinionated defaults:
+  - For projects with a `CLAUDE.md` file: Opens the configured agent (see
+    `agent` option) in the first pane, defaulting to `claude` if none is set.
+  - For all other projects: Opens your default shell.
+  - Both configurations include a second pane split horizontally
+- `post_create` commands are optional and only run if you configure them
+
+### Automatic setup with panes
+
+Use the `panes` configuration to automate environment setup. Unlike
+`post_create` hooks which must finish before the tmux window opens, pane
+commands execute immediately _within_ the new window.
+
+This can be used for:
+
+- **Installing dependencies**: Run `npm install` or `cargo build` in a focused
+  pane to monitor progress.
+- **Starting services**: Launch dev servers, database containers, or file
+  watchers automatically.
+- **Running agents**: Initialize AI agents with specific context.
+
+Since these run in standard tmux panes, you can interact with them (check logs,
+restart servers) just like a normal terminal session.
+
+Running dependency installation (like `pnpm install`) in a pane command rather
+than `post_create` has a key advantage: you get immediate access to the tmux
+window while installation runs in the background. With `post_create`, you'd have
+to wait for the install to complete before the window even opens. This also
+means AI agents can start working immediately in their pane while dependencies
+install in parallel.
 
 ```yaml
-# ~/.config/muxix/config.yaml
-status_format: false
+panes:
+  # Pane 1: Install dependencies, then start dev server
+  - command: pnpm install && pnpm run dev
+
+  # Pane 2: AI agent
+  - command: <agent>
+    split: horizontal
+    focus: true
 ```
+
+### Directory structure
+
+Here's how muxix organizes your worktrees by default:
+
+```
+~/projects/
+├── my-project/               <-- Main project directory
+│   ├── src/
+│   ├── package.json
+│   └── .muxix.yaml
+│
+└── my-project__worktrees/    <-- Worktrees created by muxix
+    ├── feature-A/            <-- Isolated workspace for 'feature-A' branch
+    │   ├── src/
+    │   └── package.json
+    │
+    └── bugfix-B/             <-- Isolated workspace for 'bugfix-B' branch
+        ├── src/
+        └── package.json
+```
+
+Each worktree is a separate working directory for a different branch, all
+sharing the same git repository. This allows you to work on multiple branches
+simultaneously without conflicts.
+
+You can customize the worktree directory location using the `worktree_dir`
+configuration option (see [Configuration options](#configuration-options)).
+The value supports `~` for the home directory and a `{project}` placeholder
+that resolves to the main worktree's directory name. This lets a single
+global config namespace every repo's worktrees under one root, e.g.
+`worktree_dir: ~/.muxix/{project}`.
+
+### Shell alias (recommended)
+
+For faster typing, alias `muxix` to `wm`:
 
 ```bash
-# ~/.tmux.conf
-set -g window-status-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
-set -g window-status-current-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{?window_flags,#{window_flags}, }'
+alias wm='muxix'
 ```
 
-### Jump to completed or waiting agents
+---
 
-Use `muxix last-done` to quickly switch to the agent that most recently
-finished its task or is waiting for user input. Repeated invocations cycle
-through all completed and waiting agents in reverse chronological order.
+### `muxix init`
 
-Add a tmux keybinding for quick access:
+Generates `.muxix.yaml` with example configuration and `"<global>"`
+placeholder usage.
+
+---
+
+### `muxix config edit`
+
+Opens the global configuration file (`~/.config/muxix/config.yaml`) in your
+preferred editor. Uses `$VISUAL`, `$EDITOR`, or falls back to `vi`. Creates the
+file with commented-out defaults if it doesn't exist yet.
+
+---
+
+### `muxix config path`
+
+Prints the path to the global configuration file. Useful for scripting.
+
+---
+
+### `muxix config reference`
+
+Prints the default configuration file with all options documented. Useful for
+discovering available options or piping to an AI agent for context.
+
+## Multiple projects
+
+Track several repos and bring them all up (session per project, window per worktree) in one command.
+
+### `muxix project`
+
+Manages the list of tracked project directories used by `muxix start`. The
+registry is a plain YAML list at `~/.config/muxix/projects.yaml`.
 
 ```bash
-# ~/.tmux.conf
-bind-key L run-shell "muxix last-done"
+muxix project add ~/repos/my-app   # track a project
+muxix project list                 # list tracked projects
+muxix project rm my-app            # untrack by name or path
+muxix project open my-app          # start that project's session and focus it
 ```
 
-Then press `prefix + L` to jump to the last completed or waiting agent, press
-again to cycle to the next oldest, and so on.
+`project open <name|path>` does what `muxix start` does for a single
+project (session + base layout + worktree windows, idempotent), then focuses
+the session — switching the client inside tmux, attaching from a plain shell.
+It accepts the same `-c`/`--continue` agent resume flag.
 
-### Toggle between agents
+As a shortcut, `muxix add <dir>` tracks the directory as a project when the
+argument is an existing directory containing `.git`.
 
-Use `muxix last-agent` to toggle between your current agent and the last one
-you visited. This works like vim's `Ctrl+^` or tmux's `last-window` - it
-remembers which agent you came from and switches back to it. Pressing it again
-returns you to where you were.
+---
 
-This is available both as a CLI command and as the `Tab` key in the dashboard.
+### `muxix start`
 
-Add a tmux keybinding for quick access:
+Launches every tracked project: one tmux session per project (base layout from
+`.muxix.yaml` `windows:`, `~/.config/tmuxrs/<name>.yml`, or
+`~/.config/tmuxinator/<name>.yml`), plus one window per muxix worktree.
+Idempotent — existing sessions and windows are left untouched.
+
+#### Options
+
+- `-c`, `--continue`: Relaunch the last coding agent in each project/worktree,
+  resuming its previous conversation where possible (same resume ladder as
+  `muxix resurrect`).
 
 ```bash
-# ~/.tmux.conf
-bind Tab run-shell "muxix last-agent"
+muxix start        # open all tracked projects
+muxix start -c     # ...and resume the last agent everywhere
 ```
 
-Then press `prefix + Tab` to toggle between your two most recent agents.
-
-## Sandbox
-
-muxix can run agents inside containers (Docker/Podman/Apple Container) or Lima
-VMs, isolating them from your host. Agents are restricted to the project
-worktree; sensitive files like SSH keys, AWS credentials, and other secrets are
-not accessible. This lets you run agents with `--dangerously-skip-permissions`
-without worrying about what they might touch on your host.
-
-Sandboxing is transparent: status indicators, the dashboard, spawning new
-agents, and merging all continue to work normally across the sandbox boundary.
-
-### Backends
-
-|                 | Container (Docker/Podman/Apple Container)  | Lima VM                         |
-| --------------- | ------------------------------------------ | ------------------------------- |
-| **Isolation**   | Process/VM-level                           | Machine-level (virtual machine) |
-| **Persistence** | Ephemeral (new container per session)      | Persistent (stateful VMs)       |
-| **Toolchain**   | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support   |
-| **Network**     | Optional restrictions (domain allowlist)   | Unrestricted                    |
-
-Container is a good default: simple to set up and ephemeral, so no state
-accumulates between sessions. Choose Lima if you want persistent VMs with
-built-in Nix/Devbox toolchain support.
-
-### Quick start
-
-```yaml
-# ~/.config/muxix/config.yaml or .muxix.yaml
-sandbox:
-  enabled: true
-  # backend: lima  # uncomment for Lima VMs (default: container)
-```
-
-The pre-built container image is pulled automatically on first run. For Lima,
-the VM is created and provisioned on first use.
-
-### Shared features
-
-Both backends support:
-
-- **Host command proxying**: Run specific commands (build tools, linters) on the
-  host from inside the sandbox via `host_commands` config
-- **Extra mounts**: Mount additional host directories into the sandbox
-  (read-only by default)
-- **Git identity**: Your `user.name` and `user.email` are automatically injected
-  so git commits work without exposing your full `~/.gitconfig`
-- **Credential sharing**: Agent credentials are shared between host and sandbox
-- **Network restrictions** (container only): Block outbound connections except
-  to approved domains
-
-See the [sandbox guide](https://muxix.dev/guide/sandbox/) for full
-setup, configuration, and security details.
+See the [Projects guide](https://github.com/lcensies/muxix/blob/main/docs/guide/projects.md) for details.
 
 ## Session mode
 
@@ -2210,6 +2159,76 @@ which window is selected when the session opens.
   for the same worktree (`-2`, `-3` suffixes), session mode creates one session
   per worktree.
 
+## Sandbox
+
+muxix can run agents inside containers (Docker/Podman/Apple Container) or Lima
+VMs, isolating them from your host. Agents are restricted to the project
+worktree; sensitive files like SSH keys, AWS credentials, and other secrets are
+not accessible. This lets you run agents with `--dangerously-skip-permissions`
+without worrying about what they might touch on your host.
+
+Sandboxing is transparent: status indicators, the dashboard, spawning new
+agents, and merging all continue to work normally across the sandbox boundary.
+
+### Backends
+
+|                 | Container (Docker/Podman/Apple Container)  | Lima VM                         |
+| --------------- | ------------------------------------------ | ------------------------------- |
+| **Isolation**   | Process/VM-level                           | Machine-level (virtual machine) |
+| **Persistence** | Ephemeral (new container per session)      | Persistent (stateful VMs)       |
+| **Toolchain**   | Custom Dockerfile or host command proxying | Built-in Nix & Devbox support   |
+| **Network**     | Optional restrictions (domain allowlist)   | Unrestricted                    |
+
+Container is a good default: simple to set up and ephemeral, so no state
+accumulates between sessions. Choose Lima if you want persistent VMs with
+built-in Nix/Devbox toolchain support.
+
+### Quick start
+
+```yaml
+# ~/.config/muxix/config.yaml or .muxix.yaml
+sandbox:
+  enabled: true
+  # backend: lima  # uncomment for Lima VMs (default: container)
+```
+
+The pre-built container image is pulled automatically on first run. For Lima,
+the VM is created and provisioned on first use.
+
+### Shared features
+
+Both backends support:
+
+- **Host command proxying**: Run specific commands (build tools, linters) on the
+  host from inside the sandbox via `host_commands` config
+- **Extra mounts**: Mount additional host directories into the sandbox
+  (read-only by default)
+- **Git identity**: Your `user.name` and `user.email` are automatically injected
+  so git commits work without exposing your full `~/.gitconfig`
+- **Credential sharing**: Agent credentials are shared between host and sandbox
+- **Network restrictions** (container only): Block outbound connections except
+  to approved domains
+
+See the [sandbox guide](https://github.com/lcensies/muxix/blob/main/docs/guide/sandbox/index.md) for full
+setup, configuration, and security details.
+
+---
+
+### `muxix sandbox`
+
+Commands for managing sandbox functionality. See the
+[sandbox guide](https://github.com/lcensies/muxix/blob/main/docs/guide/sandbox/index.md) for full
+documentation.
+
+| Command               | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `sandbox pull`        | Pull the latest container image from the registry      |
+| `sandbox build`       | Build the container image locally                      |
+| `sandbox shell`       | Start an interactive shell inside a sandbox            |
+| `sandbox agent`       | Run the configured agent in a sandbox with RPC support |
+| `sandbox stop`        | Stop running Lima VMs                                  |
+| `sandbox prune`       | Delete unused Lima VMs to reclaim disk space           |
+| `sandbox install-dev` | Cross-compile and install muxix into sandboxes (dev) |
 
 ## Why git worktrees?
 
@@ -2394,7 +2413,7 @@ Each worktree now gets unique ports derived from its name, allowing multiple
 instances to run simultaneously without conflicts. The `.env` file stays
 untouched, and `.env.local` is gitignored.
 
-See the [Monorepos guide](https://muxix.dev/guide/monorepos) for
+See the [Monorepos guide](https://github.com/lcensies/muxix/blob/main/docs/guide/monorepos.md) for
 alternative approaches using direnv.
 
 ### Symlinks and `.gitignore` trailing slashes
@@ -2454,63 +2473,6 @@ files:
     - .envrc
 ```
 
-### Claude Code permissions
-
-By default, Claude Code prompts for permission before running commands. There
-are several ways to handle this in worktrees:
-
-**Share permissions across worktrees**
-
-To keep permission prompts but share granted permissions across worktrees:
-
-```yaml
-files:
-  symlink:
-    - .claude/settings.local.json
-```
-
-Add this to your global config (`~/.config/muxix/config.yaml`) or project's
-`.muxix.yaml`. Since this file contains user-specific permissions, also add it
-to `.gitignore`:
-
-```
-.claude/settings.local.json
-```
-
-**Skip permission prompts (yolo mode)**
-
-To skip prompts entirely, define a
-[named agent](https://muxix.dev/guide/agents#named-agents) that shadows
-`claude`:
-
-```yaml
-# ~/.config/muxix/config.yaml
-agents:
-  claude: 'claude --dangerously-skip-permissions'
-```
-
-This makes all muxix-created worktrees use the flag automatically, without
-affecting `claude` outside of muxix. You can also use a separate name and
-reference it per-project with `agent: cc-yolo`.
-
-### Delegating tasks with `/worktree`
-
-The `/worktree` [skill](https://muxix.dev/guide/skills) lets you
-delegate tasks to parallel worktree agents directly from your conversation. A
-main agent on the main branch can act as a coordinator: planning work and
-spinning up worktree agents for each task.
-
-#### Usage
-
-```
-> /worktree Implement user authentication
-> /worktree Fix the race condition in handler.go
-> /worktree Add dark mode, Implement caching  # multiple tasks
-```
-
-See the [Skills guide](https://muxix.dev/guide/skills) for more skills
-including `/merge`, `/rebase`, `/coordinator`, and `/open-pr`.
-
 ## Shell completions
 
 To enable tab completions for commands and branch names, add the following to
@@ -2534,6 +2496,58 @@ For **fish**, add to your `config.fish`:
 muxix completions fish | source
 ```
 
+## Utilities
+
+### `muxix completions <shell>`
+
+Generates shell completion script for the specified shell. Completions provide
+tab-completion for commands and dynamic branch name suggestions.
+
+- `<shell>`: Shell type: `bash`, `zsh`, or `fish`.
+
+#### Examples
+
+```bash
+# Generate completions for zsh
+muxix completions zsh
+```
+
+See the [Shell Completions](#shell-completions) section for installation
+instructions.
+
+---
+
+### `muxix docs`
+
+Displays this README with terminal formatting. Useful for quick reference
+without leaving the terminal.
+
+When run interactively, renders markdown with colors and uses a pager (`less`).
+When piped (e.g., to an LLM), outputs raw markdown for clean context.
+
+#### Using with AI agents
+
+You can ask an agent to read the docs and configure muxix for you:
+
+```
+> run `muxix docs` and configure muxix so that on the left pane
+  there is claude as agent, and on the right side neovim and empty
+  shell on top of each other
+
+⏺ Bash(muxix docs)
+  ⎿  <p align="center">
+       <picture>
+     … +923 lines
+
+⏺ Write(.muxix.yaml)
+  ⎿  Wrote 9 lines to .muxix.yaml
+
+⏺ Created .muxix.yaml with the layout:
+  - Left: claude agent (focused)
+  - Right top: neovim
+  - Right bottom: empty shell
+```
+
 ## Requirements
 
 - Rust (for building)
@@ -2544,11 +2558,11 @@ muxix completions fish | source
 
 tmux is the primary backend. Experimental alternatives:
 
-- **[WezTerm](https://muxix.dev/guide/wezterm)** — contributed by
+- **[WezTerm](https://github.com/lcensies/muxix/blob/main/docs/guide/wezterm.md)** — contributed by
   [@JeremyBYU](https://github.com/JeremyBYU).
-- **[kitty](https://muxix.dev/guide/kitty)** — requires `allow_remote_control`
+- **[kitty](https://github.com/lcensies/muxix/blob/main/docs/guide/kitty.md)** — requires `allow_remote_control`
   and `listen_on`.
-- **[Zellij](https://muxix.dev/guide/zellij)** — detected via `$ZELLIJ`.
+- **[Zellij](https://github.com/lcensies/muxix/blob/main/docs/guide/zellij.md)** — detected via `$ZELLIJ`.
 
 muxix auto-detects the backend from environment variables (`$TMUX`,
 `$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`). Session-specific variables

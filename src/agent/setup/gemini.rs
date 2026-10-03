@@ -64,7 +64,6 @@ pub fn detect() -> Option<&'static str> {
     None
 }
 
-
 /// Gemini CLI keeps shell hooks in `~/.gemini/settings.json`, same inner shape
 /// as Claude's. `BeforeAgent`/`AfterAgent` bracket each agent run, which is the
 /// closest it has to the two agent-agnostic events.

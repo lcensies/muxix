@@ -4,12 +4,12 @@ from pathlib import Path
 
 from .conftest import (
     MuxEnvironment,
+    create_commit,
     get_worktree_path,
     run_muxix_add,
     run_muxix_merge,
     run_muxix_remove,
     write_muxix_config,
-    create_commit,
 )
 
 

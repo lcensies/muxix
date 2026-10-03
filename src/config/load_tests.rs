@@ -147,8 +147,11 @@ fn global_only_config_is_used_when_no_project_config_exists() {
 #[test]
 fn include_is_merged_beneath_the_including_file() {
     let sb = Sandbox::new("include-basic");
-    sb.file("project/base.yaml", "agent: codex\nmerge_strategy: rebase\n")
-        .project("include: [./base.yaml]\nagent: claude\n");
+    sb.file(
+        "project/base.yaml",
+        "agent: codex\nmerge_strategy: rebase\n",
+    )
+    .project("include: [./base.yaml]\nagent: claude\n");
 
     let cfg = sb.load(None).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("claude"), "includer wins");
@@ -221,7 +224,10 @@ fn project_include_cannot_set_global_only_keys() {
     .project("include: [./evil.yaml]\n");
 
     let cfg = sb.load(None).unwrap();
-    assert!(cfg.agents.is_empty(), "project include cannot define agents");
+    assert!(
+        cfg.agents.is_empty(),
+        "project include cannot define agents"
+    );
     assert_eq!(cfg.sandbox.host_commands, None);
 }
 
@@ -284,7 +290,10 @@ fn multiple_profiles_apply_left_to_right() {
 
     let cfg = sb.load(Some("a,b")).unwrap();
     assert_eq!(cfg.agent.as_deref(), Some("two"), "later profile wins");
-    assert!(cfg.merge_strategy.is_some(), "earlier profile still applies");
+    assert!(
+        cfg.merge_strategy.is_some(),
+        "earlier profile still applies"
+    );
 }
 
 #[test]
@@ -334,8 +343,11 @@ fn unknown_profile_fails_with_the_available_names() {
 #[test]
 fn a_profile_declared_in_an_include_is_selectable() {
     let sb = Sandbox::new("profile-from-include");
-    sb.file("project/shared.yaml", "profiles:\n  corp:\n    agent: codex\n")
-        .project("include: [./shared.yaml]\nagent: claude\n");
+    sb.file(
+        "project/shared.yaml",
+        "profiles:\n  corp:\n    agent: codex\n",
+    )
+    .project("include: [./shared.yaml]\nagent: claude\n");
 
     assert_eq!(
         sb.load(Some("corp")).unwrap().agent.as_deref(),
@@ -423,12 +435,13 @@ fn resolve_file_applies_a_selected_profile() {
     );
 
     let path = sb.root.join("project/main.yaml");
-    let base: Config = serde_yaml::from_value(Config::resolve_file(&path, None, false).unwrap().value)
-        .unwrap();
+    let base: Config =
+        serde_yaml::from_value(Config::resolve_file(&path, None, false).unwrap().value).unwrap();
     assert_eq!(base.agent.as_deref(), Some("base"));
 
     let profiled: Config =
-        serde_yaml::from_value(Config::resolve_file(&path, Some("p"), false).unwrap().value).unwrap();
+        serde_yaml::from_value(Config::resolve_file(&path, Some("p"), false).unwrap().value)
+            .unwrap();
     assert_eq!(profiled.agent.as_deref(), Some("profiled"));
 }
 
@@ -450,15 +463,17 @@ fn unknown_top_level_keys_are_detected() {
     let value: serde_yaml::Value =
         serde_yaml::from_str("agent: claude\nnot_a_key: 1\nalso_bogus: 2\n").unwrap();
     let unknown = super::unknown_top_level_keys(&value);
-    assert_eq!(unknown, vec!["also_bogus".to_string(), "not_a_key".to_string()]);
+    assert_eq!(
+        unknown,
+        vec!["also_bogus".to_string(), "not_a_key".to_string()]
+    );
 }
 
 #[test]
 fn directive_keys_are_not_reported_as_unknown() {
-    let value: serde_yaml::Value = serde_yaml::from_str(
-        "include: []\nprofiles: {}\ndefault_profile: x\nagent: claude\n",
-    )
-    .unwrap();
+    let value: serde_yaml::Value =
+        serde_yaml::from_str("include: []\nprofiles: {}\ndefault_profile: x\nagent: claude\n")
+            .unwrap();
     assert!(super::unknown_top_level_keys(&value).is_empty());
 }
 
@@ -492,7 +507,6 @@ fn provenance_attributes_keys_to_their_layers() {
         "the profile layer is reported for --explain"
     );
 }
-
 
 #[test]
 fn append_and_delete_work_across_real_layers() {
@@ -531,7 +545,7 @@ fn previously_dropped_keys_now_load() {
     let sb = Sandbox::new("dropped-keys");
     sb.project("orchestrate:\n  harness:\n    default_workflow: .muxix/workflows/x.yaml\n");
 
-    let cfg = sb.load(None).unwrap();
+    let _cfg = sb.load(None).unwrap();
 }
 
 /// Config resolution must not touch the network or the filesystem beyond the
@@ -589,7 +603,10 @@ fn known_key_set_is_not_empty_and_covers_common_keys() {
     assert!(super::unknown_top_level_keys(&value).is_empty());
     // And a genuine typo is still caught.
     let bad: serde_yaml::Value = serde_yaml::from_str("sandbxo: {}\n").unwrap();
-    assert_eq!(super::unknown_top_level_keys(&bad), vec!["sandbxo".to_string()]);
+    assert_eq!(
+        super::unknown_top_level_keys(&bad),
+        vec!["sandbxo".to_string()]
+    );
 }
 
 // --- policy as a config layer -----------------------------------------------
@@ -615,7 +632,12 @@ fn policy_defaults_and_locks_sit_at_opposite_ends() {
 
     let yaml = |s: &str| serde_yaml::from_str(s).unwrap();
     let mut stack = vec![
-        Layer::new("global", "g", LayerKind::Global, yaml("agent: from-global\n")),
+        Layer::new(
+            "global",
+            "g",
+            LayerKind::Global,
+            yaml("agent: from-global\n"),
+        ),
         Layer::new(
             "project",
             "p",
@@ -776,7 +798,10 @@ fn unknown_hook_event_fails_the_load() {
     .project("agent: claude\n");
     let err = sb.load(None).unwrap_err().to_string();
     assert!(err.contains("on-coffee-break"), "{err}");
-    assert!(err.contains("session-ready"), "names the valid events: {err}");
+    assert!(
+        err.contains("session-ready"),
+        "names the valid events: {err}"
+    );
 }
 
 // --- agent rules ------------------------------------------------------------
@@ -834,7 +859,9 @@ fn unmatched_rules_fall_through_to_the_global_agent() {
 #[test]
 fn an_invalid_pattern_does_not_stop_later_rules() {
     let sb = Sandbox::new("rule-invalid-regex");
-    sb.global("agent_rules:\n  - match: '('\n    agent: broken\n  - match: project\n    agent: pi\n");
+    sb.global(
+        "agent_rules:\n  - match: '('\n    agent: broken\n  - match: project\n    agent: pi\n",
+    );
     let _ = fs::remove_file(sb.root.join("project/.muxix.yaml"));
 
     let cfg = sb.load(None).unwrap();

@@ -8,14 +8,13 @@ import tempfile
 import time
 import unicodedata
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional, Union
-
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
-
 
 # =============================================================================
 # Shell Testing Configuration
@@ -162,7 +161,7 @@ class MuxEnvironment(ABC):
 
     def __init__(self, tmp_path: Path):
         self.tmp_path = tmp_path
-        self._scripts_dir: Optional[Path] = None  # Lazily created by get_scripts_dir()
+        self._scripts_dir: Path | None = None  # Lazily created by get_scripts_dir()
 
         # Create isolated home directory
         self.home_path = self.tmp_path / "test_home"
@@ -206,21 +205,16 @@ class MuxEnvironment(ABC):
     @abstractmethod
     def backend_name(self) -> str:
         """Return the backend name ('tmux' or 'wezterm')."""
-        pass
 
     @abstractmethod
     def start_server(self) -> None:
         """Start the multiplexer server with an initial session."""
-        pass
 
     @abstractmethod
     def stop_server(self) -> None:
         """Stop the multiplexer server and clean up resources."""
-        pass
 
-    def run_command(
-        self, cmd: list[str], check: bool = True, cwd: Optional[Path] = None
-    ):
+    def run_command(self, cmd: list[str], check: bool = True, cwd: Path | None = None):
         """Run a generic command within the isolated environment."""
         working_dir = cwd if cwd is not None else self.tmp_path
         result = subprocess.run(
@@ -247,17 +241,14 @@ class MuxEnvironment(ABC):
         For tmux: `tmux -S <socket> <args>`
         For WezTerm: `wezterm cli <args>`
         """
-        pass
 
     @abstractmethod
     def list_windows(self) -> list[str]:
         """Return a list of all window/tab names."""
-        pass
 
     @abstractmethod
-    def capture_pane(self, window_name: str) -> Optional[str]:
+    def capture_pane(self, window_name: str) -> str | None:
         """Capture the content of a pane in the specified window."""
-        pass
 
     @abstractmethod
     def send_keys(self, target: str, text: str, enter: bool = True) -> None:
@@ -269,7 +260,6 @@ class MuxEnvironment(ABC):
             text: Text to send
             enter: Whether to send Enter key after text
         """
-        pass
 
     @abstractmethod
     def run_shell_background(self, script: str) -> None:
@@ -278,32 +268,26 @@ class MuxEnvironment(ABC):
 
         Used for commands that may kill their own window (like merge/remove).
         """
-        pass
 
     @abstractmethod
     def set_session_env(self, key: str, value: str) -> None:
         """Set an environment variable in the multiplexer session."""
-        pass
 
     @abstractmethod
     def kill_window(self, window_name: str) -> None:
         """Kill/close a specific window by name."""
-        pass
 
     @abstractmethod
-    def get_current_window(self) -> Optional[str]:
+    def get_current_window(self) -> str | None:
         """Get the name of the currently focused window."""
-        pass
 
     @abstractmethod
     def select_window(self, window_name: str) -> None:
         """Switch focus to a specific window by name."""
-        pass
 
     @abstractmethod
-    def new_window(self, name: Optional[str] = None) -> None:
+    def new_window(self, name: str | None = None) -> None:
         """Create a new window/tab with optional name."""
-        pass
 
     @abstractmethod
     def configure_default_shell(self, shell: str) -> None:
@@ -312,7 +296,6 @@ class MuxEnvironment(ABC):
         For tmux: sets the default-shell option.
         For WezTerm: sets SHELL env var (muxix already starts with -l).
         """
-        pass
 
 
 class TmuxEnvironment(MuxEnvironment):
@@ -326,7 +309,9 @@ class TmuxEnvironment(MuxEnvironment):
         super().__init__(tmp_path)
 
         # Use short socket path to avoid macOS length limits
-        tmp_file = tempfile.NamedTemporaryFile(
+        # Only a unique path is wanted here; the handle is closed and the file
+        # unlinked below so tmux can bind its own socket there.
+        tmp_file = tempfile.NamedTemporaryFile(  # noqa: SIM115
             prefix="tmux_", suffix=".sock", delete=False
         )
         self.socket_path = Path(tmp_file.name)
@@ -369,7 +354,7 @@ class TmuxEnvironment(MuxEnvironment):
         result = self.mux_command(["list-windows", "-F", "#{window_name}"])
         return [w for w in result.stdout.strip().split("\n") if w]
 
-    def capture_pane(self, window_name: str) -> Optional[str]:
+    def capture_pane(self, window_name: str) -> str | None:
         """Capture pane content from a tmux window."""
         result = self.mux_command(
             ["capture-pane", "-p", "-t", window_name], check=False
@@ -399,7 +384,7 @@ class TmuxEnvironment(MuxEnvironment):
         if result.returncode != 0:
             raise RuntimeError(f"Window '{window_name}' not found: {result.stderr}")
 
-    def get_current_window(self) -> Optional[str]:
+    def get_current_window(self) -> str | None:
         """Get the name of the currently active tmux window."""
         result = self.mux_command(
             ["display-message", "-p", "#{window_name}"], check=False
@@ -414,7 +399,7 @@ class TmuxEnvironment(MuxEnvironment):
         if result.returncode != 0:
             raise RuntimeError(f"Window '{window_name}' not found: {result.stderr}")
 
-    def new_window(self, name: Optional[str] = None) -> None:
+    def new_window(self, name: str | None = None) -> None:
         """Create a new tmux window with optional name."""
         args = ["new-window"]
         if name:
@@ -512,7 +497,7 @@ class WezTermEnvironment(MuxEnvironment):
                 result.append(title)
         return result
 
-    def _find_pane_by_tab_title(self, tab_title: str) -> Optional[dict]:
+    def _find_pane_by_tab_title(self, tab_title: str) -> dict | None:
         """Find a pane by its tab title."""
         panes = self._list_panes()
         for p in panes:
@@ -520,7 +505,7 @@ class WezTermEnvironment(MuxEnvironment):
                 return p
         return None
 
-    def capture_pane(self, window_name: str) -> Optional[str]:
+    def capture_pane(self, window_name: str) -> str | None:
         """Capture pane content by tab title."""
         pane = self._find_pane_by_tab_title(window_name)
         if not pane:
@@ -554,12 +539,12 @@ class WezTermEnvironment(MuxEnvironment):
 
     def run_shell_background(self, script: str) -> None:
         """Run script in background via nohup."""
-        bg_script = f"nohup sh -c {repr(script)} >/dev/null 2>&1 &"
+        bg_script = f"nohup sh -c {script!r} >/dev/null 2>&1 &"
         self.send_keys("test:", bg_script, enter=True)
 
     def set_session_env(self, key: str, value: str) -> None:
         """Set environment variable via shell export."""
-        self.send_keys("test:", f"export {key}={repr(value)}", enter=True)
+        self.send_keys("test:", f"export {key}={value!r}", enter=True)
 
     def kill_window(self, window_name: str) -> None:
         """Kill a WezTerm tab by its title. Kills ALL panes in the tab."""
@@ -573,7 +558,7 @@ class WezTermEnvironment(MuxEnvironment):
         for pane in reversed(matching_panes):
             self.mux_command(["kill-pane", "--pane-id", str(pane["pane_id"])])
 
-    def get_current_window(self) -> Optional[str]:
+    def get_current_window(self) -> str | None:
         """Get the tab title of the currently focused pane in our workspace.
 
         Uses wezterm cli list-clients to find the focused pane, then maps
@@ -610,7 +595,7 @@ class WezTermEnvironment(MuxEnvironment):
         pane_id = str(pane["pane_id"])
         self.mux_command(["activate-pane", "--pane-id", pane_id])
 
-    def new_window(self, name: Optional[str] = None) -> None:
+    def new_window(self, name: str | None = None) -> None:
         """Create a new WezTerm tab in the test workspace."""
         # Find window_id from existing pane in our workspace
         panes = self._list_panes()
@@ -675,13 +660,13 @@ def skip_if_backend_unavailable(backend: str):
 
 
 # Type alias for tests that accept either backend
-MuxEnv = Union[TmuxEnvironment, WezTermEnvironment]
+MuxEnv = TmuxEnvironment | WezTermEnvironment
 
 # Default window prefix - must match src/config.rs window_prefix() default
 DEFAULT_WINDOW_PREFIX = "wm-"
 
 # Type alias for backward compatibility - tests can use either
-MuxEnv = Union[TmuxEnvironment, WezTermEnvironment]
+MuxEnv = TmuxEnvironment | WezTermEnvironment
 
 # =============================================================================
 # Shared Assertion Helpers
@@ -823,7 +808,8 @@ def wait_for_file(
             try:
                 files = sorted(p.name for p in worktree_path.iterdir())
                 diagnostics.append(f"Worktree files: {files}")
-            except Exception as exc:  # pragma: no cover - best effort diagnostics
+            # Diagnostics are best effort: any listing failure is reported, not raised.
+            except Exception as exc:  # noqa: BLE001 # pragma: no cover
                 diagnostics.append(f"Error listing worktree files: {exc}")
         else:
             diagnostics.append("Worktree directory not found.")
@@ -868,7 +854,7 @@ def assert_prompt_file_contents(
     env: MuxEnvironment,
     branch_name: str,
     expected_text: str,
-    worktree_path: Optional[Path] = None,
+    worktree_path: Path | None = None,
 ) -> None:
     """Assert that a prompt file exists for the branch and matches the expected text."""
     if worktree_path is None:
@@ -1134,7 +1120,7 @@ def shell_cmd(request) -> ShellCommands:
     return ShellCommands(shell_path)
 
 
-def setup_git_repo(path: Path, env_vars: Optional[dict] = None):
+def setup_git_repo(path: Path, env_vars: dict | None = None):
     """Initializes a git repository in the given path with an initial commit."""
     subprocess.run(
         ["git", "init", "-b", "main"],
@@ -1291,7 +1277,7 @@ def poll_until_file_has_content(file_path: Path, timeout: float = 5.0) -> bool:
             return False
         try:
             return bool(file_path.read_text().strip())
-        except (IOError, OSError):
+        except OSError:
             return False
 
     return poll_until(has_content, timeout=timeout)
@@ -1319,26 +1305,26 @@ def muxix_exe_path() -> Path:
 
 def write_muxix_config(
     repo_path: Path,
-    panes: Optional[List[Dict[str, Any]]] = None,
-    post_create: Optional[List[str]] = None,
-    pre_merge: Optional[List[str]] = None,
-    pre_remove: Optional[List[str]] = None,
-    files: Optional[Dict[str, List[str]]] = None,
-    env: Optional[MuxEnvironment] = None,
-    window_prefix: Optional[str] = None,
-    agent: Optional[str] = None,
-    merge_strategy: Optional[str] = None,
-    merge_keep: Optional[bool] = None,
-    worktree_naming: Optional[str] = None,
-    worktree_prefix: Optional[str] = None,
-    base_branch: Optional[str] = None,
-    prompt_file_only: Optional[bool] = None,
-    layouts: Optional[Dict[str, Any]] = None,
+    panes: list[dict[str, Any]] | None = None,
+    post_create: list[str] | None = None,
+    pre_merge: list[str] | None = None,
+    pre_remove: list[str] | None = None,
+    files: dict[str, list[str]] | None = None,
+    env: MuxEnvironment | None = None,
+    window_prefix: str | None = None,
+    agent: str | None = None,
+    merge_strategy: str | None = None,
+    merge_keep: bool | None = None,
+    worktree_naming: str | None = None,
+    worktree_prefix: str | None = None,
+    base_branch: str | None = None,
+    prompt_file_only: bool | None = None,
+    layouts: dict[str, Any] | None = None,
 ):
     """Creates a .muxix.yaml file from structured data and optionally commits it."""
     # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
     # regardless of user's global config
-    config: Dict[str, Any] = {"nerdfont": False}
+    config: dict[str, Any] = {"nerdfont": False}
     if panes is not None:
         config["panes"] = panes
     if layouts is not None:
@@ -1384,17 +1370,17 @@ def write_muxix_config(
 
 def write_global_muxix_config(
     env: MuxEnvironment,
-    panes: Optional[List[Dict[str, Any]]] = None,
-    post_create: Optional[List[str]] = None,
-    files: Optional[Dict[str, List[str]]] = None,
-    window_prefix: Optional[str] = None,
-    agent: Optional[str] = None,
-    base_branch: Optional[str] = None,
-    merge_keep: Optional[bool] = None,
-    agents: Optional[Dict[str, Any]] = None,
+    panes: list[dict[str, Any]] | None = None,
+    post_create: list[str] | None = None,
+    files: dict[str, list[str]] | None = None,
+    window_prefix: str | None = None,
+    agent: str | None = None,
+    base_branch: str | None = None,
+    merge_keep: bool | None = None,
+    agents: dict[str, Any] | None = None,
 ) -> Path:
     """Creates the global ~/.config/muxix/config.yaml file within the isolated HOME."""
-    config: Dict[str, Any] = {}
+    config: dict[str, Any] = {}
     if panes is not None:
         config["panes"] = panes
     if post_create is not None:
@@ -1503,11 +1489,11 @@ def run_muxix_command(
     muxix_exe_path: Path,
     repo_path: Path,
     command: str,
-    pre_run_mux_cmds: Optional[List[List[str]]] = None,
+    pre_run_mux_cmds: list[list[str]] | None = None,
     expect_fail: bool = False,
-    working_dir: Optional[Path] = None,
-    stdin_input: Optional[str] = None,
-    pre_run_env: Optional[dict] = None,
+    working_dir: Path | None = None,
+    stdin_input: str | None = None,
+    pre_run_env: dict | None = None,
 ) -> MuxixCommandResult:
     """
     Helper to run a muxix command inside the isolated multiplexer session.
@@ -1604,11 +1590,11 @@ def run_muxix_add(
     muxix_exe_path: Path,
     repo_path: Path,
     branch_name: str,
-    pre_run_mux_cmds: Optional[List[List[str]]] = None,
+    pre_run_mux_cmds: list[list[str]] | None = None,
     *,
-    base: Optional[str] = None,
+    base: str | None = None,
     background: bool = False,
-    config: Optional[Path] = None,
+    config: Path | None = None,
 ) -> None:
     """
     Helper to run `muxix add` command inside the isolated multiplexer session.
@@ -1648,21 +1634,21 @@ def run_muxix_open(
     env: MuxEnvironment,
     muxix_exe_path: Path,
     repo_path: Path,
-    branch_name: Union[Optional[str], List[str]] = None,
+    branch_name: str | None | list[str] = None,
     *,
     run_hooks: bool = False,
     force_files: bool = False,
     new_window: bool = False,
     session: bool = False,
-    mode: Optional[str] = None,
-    target_name: Optional[str] = None,
-    parent_session: Optional[str] = None,
-    prompt: Optional[str] = None,
-    prompt_file: Optional[Path] = None,
-    pre_run_mux_cmds: Optional[List[List[str]]] = None,
+    mode: str | None = None,
+    target_name: str | None = None,
+    parent_session: str | None = None,
+    prompt: str | None = None,
+    prompt_file: Path | None = None,
+    pre_run_mux_cmds: list[list[str]] | None = None,
     expect_fail: bool = False,
-    working_dir: Optional[Path] = None,
-    config: Optional[Path] = None,
+    working_dir: Path | None = None,
+    config: Path | None = None,
 ) -> MuxixCommandResult:
     """
     Helper to run `muxix open` command inside the isolated multiplexer session.
@@ -1679,7 +1665,7 @@ def run_muxix_open(
         working_dir: Optional directory to run the command from (defaults to repo_path)
         config: Optional path to an alternate config file (passed as `--config`)
     """
-    flags: List[str] = []
+    flags: list[str] = []
     if run_hooks:
         flags.append("--run-hooks")
     if force_files:
@@ -1735,14 +1721,14 @@ def run_muxix_remove(
     env: MuxEnvironment,
     muxix_exe_path: Path,
     repo_path: Path,
-    branch_name: Optional[str] = None,
+    branch_name: str | None = None,
     force: bool = False,
     keep_branch: bool = False,
     gone: bool = False,
     all: bool = False,
-    user_input: Optional[str] = None,
+    user_input: str | None = None,
     expect_fail: bool = False,
-    from_window: Optional[str] = None,
+    from_window: str | None = None,
 ) -> None:
     """
     Helper to run `muxix remove` command inside the isolated multiplexer session.
@@ -1827,18 +1813,18 @@ def run_muxix_merge(
     env: MuxEnvironment,
     muxix_exe_path: Path,
     repo_path: Path,
-    branch_name: Optional[str] = None,
+    branch_name: str | None = None,
     ignore_uncommitted: bool = False,
     rebase: bool = False,
     squash: bool = False,
     keep: bool = False,
     cleanup: bool = False,
-    into: Optional[str] = None,
+    into: str | None = None,
     no_verify: bool = False,
     no_hooks: bool = False,
     notification: bool = False,
     expect_fail: bool = False,
-    from_window: Optional[str] = None,
+    from_window: str | None = None,
 ) -> None:
     """
     Helper to run `muxix merge` command inside the isolated multiplexer session.
@@ -1938,7 +1924,7 @@ def run_muxix_merge(
 def install_fake_gh_cli(
     env: MuxEnvironment,
     pr_number: int,
-    json_response: Optional[Dict[str, Any]] = None,
+    json_response: dict[str, Any] | None = None,
     stderr: str = "",
     exit_code: int = 0,
 ):

@@ -143,7 +143,9 @@ fn target_file(t: &Target) -> Result<PathBuf> {
         let project = crate::config::find_project_config(&cwd).ok().flatten();
         match (project, t.project) {
             (Some(loc), _) => loc.config_path,
-            (None, true) => bail!("No project .muxix.yaml found — run inside a project or use --global"),
+            (None, true) => {
+                bail!("No project .muxix.yaml found — run inside a project or use --global")
+            }
             (None, false) => global_path()?,
         }
     };
@@ -467,9 +469,13 @@ mod tests {
         let mapped: serde_yaml::Value =
             serde_yaml::from_str("path: ./skills/x\nhooks:\n  turn-done:\n    - command: ls")
                 .unwrap();
-        assert!(entry_matches(&mapped, "./skills/x"), "map form matches on path");
+        assert!(
+            entry_matches(&mapped, "./skills/x"),
+            "map form matches on path"
+        );
 
-        let remote: serde_yaml::Value = serde_yaml::from_str("url: https://x/y\nref: main").unwrap();
+        let remote: serde_yaml::Value =
+            serde_yaml::from_str("url: https://x/y\nref: main").unwrap();
         assert!(entry_matches(&remote, "https://x/y"));
     }
 

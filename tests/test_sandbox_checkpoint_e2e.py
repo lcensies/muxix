@@ -29,7 +29,6 @@ input), which is independent of which agent runs inside.
 
 import json
 import os
-import shlex
 import shutil
 import subprocess
 import time
@@ -60,8 +59,14 @@ CONTAINER_CMD = (
 
 def _have_passwordless_sudo() -> bool:
     try:
-        return subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0
-    except Exception:
+        return (
+            subprocess.run(
+                ["sudo", "-n", "true"], capture_output=True, check=False
+            ).returncode
+            == 0
+        )
+    # Probe only: any failure (missing sudo, no tty, ...) means "no sudo".
+    except Exception:  # noqa: BLE001
         return False
 
 
@@ -78,7 +83,9 @@ def _require_e2e() -> str:
     if not shutil.which("podman"):
         pytest.skip("podman not found on PATH")
     if not _have_passwordless_sudo():
-        pytest.skip("passwordless sudo required (rootless podman cannot CRIU-checkpoint)")
+        pytest.skip(
+            "passwordless sudo required (rootless podman cannot CRIU-checkpoint)"
+        )
     return str(Path(criu).parent)
 
 
@@ -101,7 +108,9 @@ def _sudo_env(criu_dir: str, *args: str, **env: str) -> list[str]:
     return ["sudo", "env", *kv, *args]
 
 
-def _podman(criu_dir: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+def _podman(
+    criu_dir: str, *args: str, check: bool = True
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         _sudo_env(criu_dir, "podman", *args),
         capture_output=True,
@@ -238,21 +247,31 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
             capture_output=True,
             text=True,
             timeout=180,
+            check=False,
         )
 
     try:
         # 1. Launch the real stateful container under the seeded sandbox_id.
         _rm(criu_dir, check=False)
         _podman(
-            criu_dir, "run", "-d",
-            "--name", SANDBOX_ID, IMAGE, "sh", "-c", CONTAINER_CMD,
+            criu_dir,
+            "run",
+            "-d",
+            "--name",
+            SANDBOX_ID,
+            IMAGE,
+            "sh",
+            "-c",
+            CONTAINER_CMD,
         )
         before = _parse(_wait_output(criu_dir, lambda s: "tick=" in s))
         assert "tick" in before, f"container did not produce output: {before}"
 
         # 2. Checkpoint via the actual muxix binary.
         r = muxix("checkpoint")
-        assert r.returncode == 0, f"checkpoint failed:\nstdout={r.stdout}\nstderr={r.stderr}"
+        assert r.returncode == 0, (
+            f"checkpoint failed:\nstdout={r.stdout}\nstderr={r.stderr}"
+        )
         assert "Checkpoint saved" in r.stdout, r.stdout
 
         st = _read_state(state_file)
@@ -260,7 +279,7 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
         assert snap, f"checkpoint_path not written to state: {st}"
         snap_path_holder["snap"] = snap
         assert (
-            subprocess.run(["sudo", "test", "-f", snap]).returncode == 0
+            subprocess.run(["sudo", "test", "-f", snap], check=False).returncode == 0
         ), f"snapshot archive missing on disk: {snap}"
         assert st.get("checkpoint_ts") is not None
 
@@ -273,7 +292,9 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
 
         # 4. Resume via the actual muxix binary (tmux focus warning is OK).
         r = muxix("resume")
-        assert r.returncode == 0, f"resume failed:\nstdout={r.stdout}\nstderr={r.stderr}"
+        assert r.returncode == 0, (
+            f"resume failed:\nstdout={r.stdout}\nstderr={r.stderr}"
+        )
 
         # 5. Container is back; wait for it to be live, feed NEW input, and let
         # the loop pick it up (poll instead of sleeping on a fixed timer).

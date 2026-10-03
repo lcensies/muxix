@@ -31,6 +31,7 @@ pub enum StatusBucket {
 
 impl StatusBucket {
     /// Display order (lower sorts first), matching the priority sort.
+    #[allow(dead_code)]
     pub fn rank(self) -> u8 {
         match self {
             StatusBucket::NeedsInput => 0,
@@ -63,54 +64,6 @@ pub fn bucket_for(is_stale: bool, status: Option<AgentStatus>) -> StatusBucket {
         Some(AgentStatus::Done) => StatusBucket::Review,
         Some(AgentStatus::Working) => StatusBucket::Working,
         None => StatusBucket::Idle,
-    }
-}
-
-#[cfg(test)]
-mod bucket_tests {
-    use super::*;
-
-    #[test]
-    fn stale_overrides_any_status() {
-        for status in [
-            Some(AgentStatus::Waiting),
-            Some(AgentStatus::Working),
-            Some(AgentStatus::Done),
-            None,
-        ] {
-            assert_eq!(bucket_for(true, status), StatusBucket::Stale);
-        }
-    }
-
-    #[test]
-    fn status_maps_to_bucket() {
-        assert_eq!(
-            bucket_for(false, Some(AgentStatus::Waiting)),
-            StatusBucket::NeedsInput
-        );
-        assert_eq!(
-            bucket_for(false, Some(AgentStatus::Done)),
-            StatusBucket::Review
-        );
-        assert_eq!(
-            bucket_for(false, Some(AgentStatus::Working)),
-            StatusBucket::Working
-        );
-        assert_eq!(bucket_for(false, None), StatusBucket::Idle);
-    }
-
-    #[test]
-    fn rank_orders_needs_input_first_stale_last() {
-        let order = [
-            StatusBucket::NeedsInput,
-            StatusBucket::Review,
-            StatusBucket::Working,
-            StatusBucket::Idle,
-            StatusBucket::Stale,
-        ];
-        for pair in order.windows(2) {
-            assert!(pair[0].rank() < pair[1].rank());
-        }
     }
 }
 
@@ -700,6 +653,54 @@ impl App {
                     std::time::Instant::now(),
                 ));
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod bucket_tests {
+    use super::*;
+
+    #[test]
+    fn stale_overrides_any_status() {
+        for status in [
+            Some(AgentStatus::Waiting),
+            Some(AgentStatus::Working),
+            Some(AgentStatus::Done),
+            None,
+        ] {
+            assert_eq!(bucket_for(true, status), StatusBucket::Stale);
+        }
+    }
+
+    #[test]
+    fn status_maps_to_bucket() {
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Waiting)),
+            StatusBucket::NeedsInput
+        );
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Done)),
+            StatusBucket::Review
+        );
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Working)),
+            StatusBucket::Working
+        );
+        assert_eq!(bucket_for(false, None), StatusBucket::Idle);
+    }
+
+    #[test]
+    fn rank_orders_needs_input_first_stale_last() {
+        let order = [
+            StatusBucket::NeedsInput,
+            StatusBucket::Review,
+            StatusBucket::Working,
+            StatusBucket::Idle,
+            StatusBucket::Stale,
+        ];
+        for pair in order.windows(2) {
+            assert!(pair[0].rank() < pair[1].rank());
         }
     }
 }

@@ -32,10 +32,11 @@ pub fn shell_quote(s: &str) -> String {
 /// Harness panes are spawned in worktree directories where `muxix` is often
 /// not on `PATH`; using the same binary that is running the dashboard/orchestrator
 /// avoids "command not found" failures.
+#[allow(dead_code)]
 pub fn muxix_exe() -> String {
     std::env::current_exe()
         .ok()
-        .and_then(|p| std::fs::canonicalize(&p).ok().or_else(|| Some(p)))
+        .and_then(|p| std::fs::canonicalize(&p).ok().or(Some(p)))
         .and_then(|p| p.to_str().map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "muxix".to_string())

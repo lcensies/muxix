@@ -163,7 +163,12 @@ pub struct ItemResult {
 }
 
 impl ItemResult {
-    pub fn new(section: Section, agent: Option<&str>, name: impl Into<String>, outcome: Outcome) -> Self {
+    pub fn new(
+        section: Section,
+        agent: Option<&str>,
+        name: impl Into<String>,
+        outcome: Outcome,
+    ) -> Self {
         Self {
             section,
             agent: agent.map(str::to_owned),
@@ -185,11 +190,21 @@ impl ItemResult {
         self
     }
 
-    pub fn skipped(section: Section, agent: Option<&str>, name: impl Into<String>, why: impl Into<String>) -> Self {
+    pub fn skipped(
+        section: Section,
+        agent: Option<&str>,
+        name: impl Into<String>,
+        why: impl Into<String>,
+    ) -> Self {
         Self::new(section, agent, name, Outcome::Skipped).with_detail(why)
     }
 
-    pub fn failed(section: Section, agent: Option<&str>, name: impl Into<String>, why: impl Into<String>) -> Self {
+    pub fn failed(
+        section: Section,
+        agent: Option<&str>,
+        name: impl Into<String>,
+        why: impl Into<String>,
+    ) -> Self {
         Self::new(section, agent, name, Outcome::Failed).with_detail(why)
     }
 }
@@ -366,7 +381,12 @@ mod tests {
     #[test]
     fn agentless_items_omit_the_agent_field() {
         let mut r = SetupReport::default();
-        r.push(ItemResult::new(Section::Mcp, None, ".mcp.json", Outcome::UpToDate));
+        r.push(ItemResult::new(
+            Section::Mcp,
+            None,
+            ".mcp.json",
+            Outcome::UpToDate,
+        ));
         let json = r.to_json();
         assert!(json["items"][0].get("agent").is_none());
     }

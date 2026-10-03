@@ -527,12 +527,12 @@ mod tests {
         let headers = "HTTP/2 200\r\ncontent-type: application/vnd.oci.image.index.v1+json\r\nDocker-Content-Digest: sha256:abc123\r\n";
         let mut found = None;
         for line in headers.lines() {
-            if let Some((key, value)) = line.split_once(':') {
-                if key.trim().eq_ignore_ascii_case("docker-content-digest") {
-                    let digest = value.trim();
-                    if digest.starts_with("sha256:") {
-                        found = Some(digest.to_string());
-                    }
+            if let Some((key, value)) = line.split_once(':')
+                && key.trim().eq_ignore_ascii_case("docker-content-digest")
+            {
+                let digest = value.trim();
+                if digest.starts_with("sha256:") {
+                    found = Some(digest.to_string());
                 }
             }
         }
@@ -544,12 +544,12 @@ mod tests {
         let headers = "HTTP/2 200\r\ndocker-content-digest: sha256:def456\r\n";
         let mut found = None;
         for line in headers.lines() {
-            if let Some((key, value)) = line.split_once(':') {
-                if key.trim().eq_ignore_ascii_case("docker-content-digest") {
-                    let digest = value.trim();
-                    if digest.starts_with("sha256:") {
-                        found = Some(digest.to_string());
-                    }
+            if let Some((key, value)) = line.split_once(':')
+                && key.trim().eq_ignore_ascii_case("docker-content-digest")
+            {
+                let digest = value.trim();
+                if digest.starts_with("sha256:") {
+                    found = Some(digest.to_string());
                 }
             }
         }

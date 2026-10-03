@@ -5,7 +5,7 @@
 //! test ever reads or writes a real agent config.
 
 use super::report::{Outcome, Section};
-use super::{parse_sections, SetupOptions};
+use super::{SetupOptions, parse_sections};
 use std::path::PathBuf;
 
 /// `CLAUDE_CONFIG_DIR` is process-global; tests that set it serialize here.
@@ -92,8 +92,10 @@ fn agent_profiles_reconcile_build_idempotence_and_prune() {
 
     let mut agent_profiles = BTreeMap::new();
     agent_profiles.insert("corp".to_string(), AgentProfile::default());
-    let mut config = Config::default();
-    config.agent_profiles = agent_profiles;
+    let mut config = Config {
+        agent_profiles,
+        ..Default::default()
+    };
     config.sandbox.agent_config_dir = Some(format!("{}/{{agent}}", base.display()));
 
     let checks = vec![AgentCheck {
@@ -104,13 +106,20 @@ fn agent_profiles_reconcile_build_idempotence_and_prune() {
 
     // Dry run reports the install as drift and writes nothing.
     let dry = super::sections::agent_profiles(&config, &checks, &root, true);
-    assert!(dry.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed));
+    assert!(
+        dry.iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed)
+    );
     let dest = crate::agent::agent_profiles::build_dir("corp", "pi").unwrap();
     assert!(!dest.exists(), "dry run must not write");
 
     // Apply builds the overlay; the override wins, the sibling is inherited.
     let applied = super::sections::agent_profiles(&config, &checks, &root, false);
-    assert!(applied.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed));
+    assert!(
+        applied
+            .iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed)
+    );
     assert_eq!(
         std::fs::read_to_string(dest.join("skills/a/SKILL.md")).unwrap(),
         "corp-a"
@@ -122,13 +131,21 @@ fn agent_profiles_reconcile_build_idempotence_and_prune() {
 
     // Re-running is idempotent.
     let again = super::sections::agent_profiles(&config, &checks, &root, false);
-    assert!(again.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::UpToDate));
+    assert!(
+        again
+            .iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::UpToDate)
+    );
 
     // Dropping the profile from config prunes the derived dir but never the
     // user-authored source.
     config.agent_profiles.clear();
     let pruned = super::sections::agent_profiles(&config, &checks, &root, false);
-    assert!(pruned.iter().any(|r| r.name == "corp" && r.outcome == Outcome::Updated));
+    assert!(
+        pruned
+            .iter()
+            .any(|r| r.name == "corp" && r.outcome == Outcome::Updated)
+    );
     assert!(!dest.exists(), "orphaned overlay removed");
     assert!(src.join("SKILL.md").exists(), "user source never pruned");
 
@@ -189,10 +206,15 @@ fn agent_profiles_apply_declared_deltas() {
     let mut agent_profiles = BTreeMap::new();
     agent_profiles.insert(
         "corp".to_string(),
-        AgentProfile { description: None, agents },
+        AgentProfile {
+            description: None,
+            agents,
+        },
     );
-    let mut config = Config::default();
-    config.agent_profiles = agent_profiles;
+    let mut config = Config {
+        agent_profiles,
+        ..Default::default()
+    };
     config.sandbox.agent_config_dir = Some(format!("{}/{{agent}}", base.display()));
 
     let checks = vec![AgentCheck {
@@ -203,7 +225,9 @@ fn agent_profiles_apply_declared_deltas() {
 
     let applied = super::sections::agent_profiles(&config, &checks, &root, false);
     assert!(
-        applied.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed),
+        applied
+            .iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::Installed),
         "{applied:?}"
     );
     let dest = crate::agent::agent_profiles::build_dir("corp", "pi").unwrap();
@@ -218,7 +242,11 @@ fn agent_profiles_apply_declared_deltas() {
 
     // Idempotent while nothing changes.
     let again = super::sections::agent_profiles(&config, &checks, &root, false);
-    assert!(again.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::UpToDate));
+    assert!(
+        again
+            .iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::UpToDate)
+    );
 
     // Base package change is drift and re-applies the delta.
     std::fs::write(
@@ -227,7 +255,11 @@ fn agent_profiles_apply_declared_deltas() {
     )
     .unwrap();
     let rebuilt = super::sections::agent_profiles(&config, &checks, &root, false);
-    assert!(rebuilt.iter().any(|r| r.name == "corp/pi" && r.outcome == Outcome::Updated));
+    assert!(
+        rebuilt
+            .iter()
+            .any(|r| r.name == "corp/pi" && r.outcome == Outcome::Updated)
+    );
     let v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(dest.join("settings.json")).unwrap())
             .unwrap();
@@ -309,16 +341,22 @@ fn dropping_a_declared_feature_removes_it_on_the_next_run() {
     // A project declaring one skill and one subagent.
     let project = root.join("project");
     std::fs::create_dir_all(project.join("skills/demo")).unwrap();
-    std::fs::write(project.join("skills/demo/SKILL.md"), "---\nname: demo\n---\n").unwrap();
+    std::fs::write(
+        project.join("skills/demo/SKILL.md"),
+        "---\nname: demo\n---\n",
+    )
+    .unwrap();
     std::fs::create_dir_all(project.join("agents")).unwrap();
     std::fs::write(project.join("agents/scout.md"), "---\nname: scout\n---\n").unwrap();
 
-    let mut config = Config::default();
-    config.bootstrap = Some(BootstrapConfig {
-        skills: vec![Source::LocalPath("./skills/demo".into()).into()],
-        subagents: vec![SubagentDef::File("./agents/scout.md".into())],
+    let mut config = Config {
+        bootstrap: Some(BootstrapConfig {
+            skills: vec![Source::LocalPath("./skills/demo".into()).into()],
+            subagents: vec![SubagentDef::File("./agents/scout.md".into())],
+            ..Default::default()
+        }),
         ..Default::default()
-    });
+    };
 
     let checks = vec![AgentCheck {
         agent: Agent::Claude,
@@ -355,17 +393,15 @@ fn dropping_a_declared_feature_removes_it_on_the_next_run() {
     assert_eq!(Manifest::load().entries.len(), 2, "--check must not record");
 
     // --no-prune converges without removing, and keeps the entries.
-    let kept = super::sections::run_all_with_prune(
-        &only,
-        &checks,
-        Some(&config),
-        &project,
-        false,
-        false,
-    );
+    let kept =
+        super::sections::run_all_with_prune(&only, &checks, Some(&config), &project, false, false);
     assert!(!kept.items.iter().any(|i| i.outcome == Outcome::Removed));
     assert!(installed_skill.exists(), "--no-prune must not delete");
-    assert_eq!(Manifest::load().entries.len(), 2, "entries survive for a later run");
+    assert_eq!(
+        Manifest::load().entries.len(),
+        2,
+        "entries survive for a later run"
+    );
 
     // The real run removes both and empties the manifest.
     let second = super::sections::run_all(&only, &checks, Some(&config), &project, false);
@@ -595,7 +631,9 @@ fn setup_resolves_config_with_the_requested_profile() {
     )
     .unwrap();
 
-    let base = Config::load_with_options(&root, None, None, None).unwrap().0;
+    let base = Config::load_with_options(&root, None, None, None)
+        .unwrap()
+        .0;
     assert_eq!(base.agent.as_deref(), Some("base"));
 
     let profiled = Config::load_with_options(&root, None, None, Some("corp"))
@@ -633,7 +671,11 @@ fn provider_sync_end_to_end() {
         r#"{ "theme": "catppuccin", "provider": { "corp": { "options": { "baseURL": "https://corp/v1" } } } }"#,
     )
     .unwrap();
-    std::fs::write(home.join(".codex/config.toml"), "[features]\nhooks = true\n").unwrap();
+    std::fs::write(
+        home.join(".codex/config.toml"),
+        "[features]\nhooks = true\n",
+    )
+    .unwrap();
 
     let prev_oc = std::env::var("OPENCODE_CONFIG").ok();
     let prev_home = std::env::var("HOME").ok();
@@ -675,10 +717,16 @@ fn provider_sync_end_to_end() {
 
     // Real run.
     let items = super::sections::providers_sync(&checks, Some(&reg), false);
-    assert!(items.iter().all(|i| i.outcome == Outcome::Updated), "{items:?}");
+    assert!(
+        items.iter().all(|i| i.outcome == Outcome::Updated),
+        "{items:?}"
+    );
 
     let oc = std::fs::read_to_string(oc_dir.join("opencode.json")).unwrap();
-    assert!(oc.contains(r#""baseURL": "https://corp/v1""#), "corp preserved");
+    assert!(
+        oc.contains(r#""baseURL": "https://corp/v1""#),
+        "corp preserved"
+    );
     assert!(oc.contains("{env:LITELLM_API_KEY}"));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&oc).unwrap()["theme"],
@@ -694,7 +742,10 @@ fn provider_sync_end_to_end() {
 
     // Idempotent.
     let again = super::sections::providers_sync(&checks, Some(&reg), false);
-    assert!(again.iter().all(|i| i.outcome == Outcome::UpToDate), "{again:?}");
+    assert!(
+        again.iter().all(|i| i.outcome == Outcome::UpToDate),
+        "{again:?}"
+    );
 
     unsafe {
         match prev_oc {

@@ -213,6 +213,7 @@ def test_rename_accepts_branch_name_as_target(
         cwd=str(mux_repo_path),
         capture_output=True,
         text=True,
+        check=False,
     )
     assert probe.returncode != 0
 
@@ -264,5 +265,6 @@ def test_rename_migrates_worktree_metadata(
         cwd=str(mux_repo_path),
         capture_output=True,
         text=True,
+        check=False,
     )
     assert probe.returncode != 0, "Old worktree metadata key should be removed"

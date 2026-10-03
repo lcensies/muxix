@@ -14,6 +14,7 @@ pub use types::*;
 use anyhow::Result;
 
 /// Abstract signal that waits for a state transition (approval, rejection, or auto-advance).
+#[allow(dead_code)]
 pub trait Signal: Send + Sync {
     /// Poll for a signal. Returns Some(SignalResult) if signal fired, None if still waiting.
     fn check(&self) -> Result<Option<SignalResult>>;
@@ -29,23 +30,27 @@ pub trait Signal: Send + Sync {
 pub mod paths {
     use std::path::PathBuf;
 
+    #[allow(dead_code)]
     fn sanitize(s: &str) -> String {
         s.trim_start_matches('%').replace(':', "-")
     }
 
     /// Node-keyed breakpoint signal: explicit human approval.
     /// Written by TUI ([a]/[r]), GUI (RPC), or slash commands.
+    #[allow(dead_code)]
     pub fn node_breakpoint_signal(task_id: &str, node_id: &str) -> PathBuf {
         std::env::temp_dir().join(format!("muxix-bp-{}-{}.json", task_id, node_id))
     }
 
     /// Pane-keyed approval signal: written by agent or `muxix signal` from the pane.
     /// Lets the agent release a gate node without knowing its node id.
+    #[allow(dead_code)]
     pub fn pane_proceed_signal(pane: &str) -> PathBuf {
         std::env::temp_dir().join(format!("muxix-proceed-{}.json", sanitize(pane)))
     }
 
     /// Agent's Stop hook marker: written when a turn ends.
+    #[allow(dead_code)]
     pub fn turn_done_marker(pane: &str) -> PathBuf {
         std::env::temp_dir().join(format!("muxix-turn-{}.done", sanitize(pane)))
     }

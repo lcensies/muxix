@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -57,6 +56,7 @@ def run_wm(
         capture_output=True,
         text=True,
         timeout=timeout,
+        check=False,
     )
     if expect_fail:
         assert result.returncode != 0, (
@@ -91,7 +91,7 @@ def seed_agent_state(
     def encode(s: str) -> str:
         out = []
         for c in s:
-            if c in "/:%" :
+            if c in "/:%":
                 out.append(f"%{ord(c):02X}")
             else:
                 out.append(c)
@@ -191,7 +191,9 @@ def make_fake_criu(bin_dir: Path) -> Path:
     return script
 
 
-def make_fake_runtime(bin_dir: Path, name: str, *, log_file: Path, exit_code: int = 0) -> Path:
+def make_fake_runtime(
+    bin_dir: Path, name: str, *, log_file: Path, exit_code: int = 0
+) -> Path:
     """Create a fake container runtime (`podman`/`docker`) that records its argv.
 
     When invoked with `--export <file>` (podman checkpoint), it touches that file
@@ -204,8 +206,8 @@ def make_fake_runtime(bin_dir: Path, name: str, *, log_file: Path, exit_code: in
         # Podman writes the archive at --export <path>; create it so the file
         # exists for later resume / retention checks.
         "prev=''\n"
-        "for arg in \"$@\"; do\n"
-        "  if [ \"$prev\" = '--export' ]; then touch \"$arg\"; fi\n"
+        'for arg in "$@"; do\n'
+        '  if [ "$prev" = \'--export\' ]; then touch "$arg"; fi\n'
         "  prev=$arg\n"
         "done\n"
         f"exit {exit_code}\n"
@@ -407,9 +409,9 @@ def test_focus_errors_for_unknown_target(tmp_path):
         expect_fail=True,
     )
     assert result.returncode != 0
-    assert "no agent" in result.stderr.lower() or "not found" in result.stderr.lower(), (
-        f"Expected 'no agent' error, got: {result.stderr!r}"
-    )
+    assert (
+        "no agent" in result.stderr.lower() or "not found" in result.stderr.lower()
+    ), f"Expected 'no agent' error, got: {result.stderr!r}"
 
 
 def test_focus_by_agent_id_prefix(tmp_path):
@@ -452,9 +454,9 @@ def test_focus_errors_for_ambiguous_window_name(tmp_path):
         expect_fail=True,
     )
     assert result.returncode != 0
-    assert "ambiguous" in result.stderr.lower() or "multiple" in result.stderr.lower(), (
-        f"Expected ambiguous error, got: {result.stderr!r}"
-    )
+    assert (
+        "ambiguous" in result.stderr.lower() or "multiple" in result.stderr.lower()
+    ), f"Expected ambiguous error, got: {result.stderr!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -481,8 +483,8 @@ def test_checkpoint_retention_prunes_old_snapshots(tmp_path):
         f"printf '%s\\n' \"$@\" >> {shlex.quote(str(log))}\n"
         # Create the output file so file-existence checks pass.
         "prev=''\n"
-        "for arg in \"$@\"; do\n"
-        "  if [ \"$prev\" = '--output' ]; then touch \"$arg\"; fi\n"
+        'for arg in "$@"; do\n'
+        '  if [ "$prev" = \'--output\' ]; then touch "$arg"; fi\n'
         "  prev=$arg\n"
         "done\n"
         "exit 0\n"
@@ -528,7 +530,9 @@ def test_checkpoint_retention_prunes_old_snapshots(tmp_path):
     second_state = json.loads(state_files[0].read_text())
     second_snap = Path(second_state.get("checkpoint_path", ""))
 
-    assert second_snap != first_snap, "Second checkpoint should produce a new snapshot path"
+    assert second_snap != first_snap, (
+        "Second checkpoint should produce a new snapshot path"
+    )
     assert second_snap.exists(), "Second snapshot should exist"
     assert not first_snap.exists(), (
         f"First snapshot should have been pruned (keep=1), but still exists: {first_snap}"
@@ -559,7 +563,11 @@ def test_container_checkpoint_requires_criu(tmp_path):
 
     # Restrict PATH to the fake bin (+ git/tar) so a host-installed criu can't
     # accidentally satisfy the availability check.
-    aux = {os.path.dirname(shutil.which(b)) for b in ("git", "tar", "sh") if shutil.which(b)}
+    aux = {
+        os.path.dirname(shutil.which(b))
+        for b in ("git", "tar", "sh")
+        if shutil.which(b)
+    }
     minimal_path = os.pathsep.join([str(fake_bin), *sorted(aux)])
     result = run_wm(
         ["sandbox", "checkpoint", AGENT_ID_1],

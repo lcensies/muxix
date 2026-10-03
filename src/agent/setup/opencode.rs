@@ -219,7 +219,7 @@ pub fn set_theme(theme: &str) -> Result<bool> {
 /// `{env:VAR}` reference, and `base_url` is passed through verbatim
 /// (OpenCode substitutes `{env:...}` itself at config load).
 fn render_provider(id: &str, cfg: &crate::model::ProviderConfig) -> serde_json::Value {
-    use serde_json::{json, Map, Value};
+    use serde_json::{Map, Value, json};
 
     let npm = cfg.npm.clone().unwrap_or_else(|| {
         match cfg.api() {
@@ -386,7 +386,10 @@ mod tests {
         let changed = merge_providers(&mut root, &reg).unwrap();
         assert_eq!(changed, vec!["litellm"]);
         assert_eq!(root["theme"], "catppuccin");
-        assert_eq!(root["provider"]["corp"]["options"]["baseURL"], "https://corp");
+        assert_eq!(
+            root["provider"]["corp"]["options"]["baseURL"],
+            "https://corp"
+        );
         let p = &root["provider"]["litellm"];
         assert_eq!(p["npm"], "@ai-sdk/openai-compatible");
         assert_eq!(p["options"]["baseURL"], "{env:LITELLM_BASE_URL}");
@@ -414,7 +417,10 @@ mod tests {
             },
         );
         assert!(merge_providers(&mut root, &reg).unwrap().is_empty());
-        assert!(root.get("provider").map_or(true, |p| p.as_object().unwrap().is_empty()));
+        assert!(
+            root.get("provider")
+                .is_none_or(|p| p.as_object().unwrap().is_empty())
+        );
     }
 
     #[test]

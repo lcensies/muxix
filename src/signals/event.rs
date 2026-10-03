@@ -212,6 +212,7 @@ macro_rules! wm_evt_dbg {
 /// if the file is gone or its mtime is unreadable. A large value points at the
 /// *writer* (hook fired long ago, runner only just noticed) rather than at the
 /// poll interval.
+#[allow(dead_code)]
 pub fn age_ms(path: &Path) -> Option<u128> {
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     modified.elapsed().ok().map(|d| d.as_millis())
@@ -220,6 +221,7 @@ pub fn age_ms(path: &Path) -> Option<u128> {
 /// Milliseconds elapsed since `start`, as a `u64` (saturating). For the explicit
 /// `elapsed_ms` on transition events where a span's own close timing isn't the
 /// quantity of interest (e.g. signal-observe latency within a turn).
+#[allow(dead_code)]
 pub fn since_ms(start: Instant) -> u64 {
     start.elapsed().as_millis().min(u64::MAX as u128) as u64
 }

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 from ..conftest import (
     MuxEnvironment,
     run_muxix_command,

@@ -145,6 +145,7 @@ pub fn settings_target(agent: Agent) -> Option<(PathBuf, SettingsFormat)> {
 }
 
 /// The agent's settings file path, ignoring its format.
+#[allow(dead_code)]
 pub fn settings_file(agent: Agent) -> Option<PathBuf> {
     settings_target(agent).map(|(path, _)| path)
 }
@@ -403,18 +404,14 @@ pub fn splice_sentinels(existing: &str, prompt: &str) -> String {
 ///
 /// Returns `false` when the key already held this value, so callers can stay
 /// quiet on re-runs.
-pub(super) fn set_json_string(
-    path: &std::path::Path,
-    keys: &[&str],
-    value: &str,
-) -> Result<bool> {
+pub(super) fn set_json_string(path: &std::path::Path, keys: &[&str], value: &str) -> Result<bool> {
     let (last, parents) = keys
         .split_last()
         .ok_or_else(|| anyhow::anyhow!("set_json_string needs at least one key"))?;
 
     let mut root: serde_json::Value = if path.exists() {
-        let content =
-            fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
         serde_json::from_str(&content)
             .with_context(|| format!("{} is not valid JSON", path.display()))?
     } else {
@@ -443,7 +440,8 @@ pub(super) fn set_json_string(
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
     let output = serde_json::to_string_pretty(&root)?;
-    fs::write(path, output + "\n").with_context(|| format!("Failed to write {}", path.display()))?;
+    fs::write(path, output + "\n")
+        .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(true)
 }
 
@@ -569,7 +567,7 @@ pub(crate) fn print_description(prefix: &str) {
     println!("{prefix}  🤖 = working  💬 = waiting for input  ✅ = done");
     println!(
         "{prefix}  {}",
-        style("https://muxix.dev/guide/status-tracking").dim()
+        style("https://github.com/lcensies/muxix/blob/main/docs/guide/status-tracking.md").dim()
     );
 }
 
@@ -687,15 +685,11 @@ pub fn prompt_wizard() -> Result<()> {
                 .iter()
                 .map(|s| s.name)
                 .collect();
-            println!(
-                "{}  muxix includes skills: {}",
-                dim,
-                skill_names.join(", ")
-            );
+            println!("{}  muxix includes skills: {}", dim, skill_names.join(", "));
             println!(
                 "{}  Learn more: {}",
                 dim,
-                style("https://muxix.dev/guide/skills").dim()
+                style("https://github.com/lcensies/muxix/blob/main/docs/guide/skills.md").dim()
             );
             println!("{}", dim);
 
@@ -775,7 +769,12 @@ mod tests {
                 );
             }
             if settings_target(agent).is_none() {
-                assert_eq!(agent, Agent::Codex, "{}: settings gap undocumented", agent.name());
+                assert_eq!(
+                    agent,
+                    Agent::Codex,
+                    "{}: settings gap undocumented",
+                    agent.name()
+                );
             }
 
             // Profiling: profilable unless the agent has no config-dir redirect

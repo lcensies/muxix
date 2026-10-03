@@ -347,7 +347,12 @@ mod tests {
         let (store, _d) = test_store();
 
         store
-            .record_worktree("auth", Some("feat/auth"), Some("coordinator"), Some("claude"))
+            .record_worktree(
+                "auth",
+                Some("feat/auth"),
+                Some("coordinator"),
+                Some("claude"),
+            )
             .unwrap();
         store.record_session("auth", "claude", "sess-1").unwrap();
 
@@ -364,7 +369,10 @@ mod tests {
 
         // Recording the same session twice appends nothing.
         store.record_session("auth", "claude", "sess-1").unwrap();
-        assert_eq!(store.get_worktree("auth").unwrap().unwrap().sessions.len(), 1);
+        assert_eq!(
+            store.get_worktree("auth").unwrap().unwrap().sessions.len(),
+            1
+        );
 
         // A different agent's session coexists rather than replacing.
         store.record_session("auth", "opencode", "sess-2").unwrap();

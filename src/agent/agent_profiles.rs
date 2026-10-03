@@ -369,10 +369,10 @@ fn absolutize_spec(spec: &str, base_agent_dir: &Path) -> String {
     if SPEC_SCHEMES.iter().any(|s| spec.starts_with(s)) || spec.starts_with('/') {
         return spec.to_string();
     }
-    if let Some(rest) = spec.strip_prefix("~/") {
-        if let Some(home) = home::home_dir() {
-            return home.join(rest).to_string_lossy().into_owned();
-        }
+    if let Some(rest) = spec.strip_prefix("~/")
+        && let Some(home) = home::home_dir()
+    {
+        return home.join(rest).to_string_lossy().into_owned();
     }
     normalize(&base_agent_dir.join(spec))
         .to_string_lossy()
@@ -400,10 +400,10 @@ fn normalize(p: &Path) -> PathBuf {
 /// Resolve an `add_skills` source to an absolute path: `~/` → home,
 /// relative → project root.
 fn resolve_skill_source(src: &str, project_root: &Path) -> PathBuf {
-    if let Some(rest) = src.strip_prefix("~/") {
-        if let Some(home) = home::home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = src.strip_prefix("~/")
+        && let Some(home) = home::home_dir()
+    {
+        return home.join(rest);
     }
     let p = Path::new(src);
     if p.is_absolute() {
@@ -448,10 +448,8 @@ fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfi
     use crate::agent::setup::pi::PiInjectionMethod;
 
     // The overlay mirrors the agent dir, so only the file NAME matters here.
-    let settings = crate::agent::setup::settings_target(agent).and_then(|(path, format)| {
-        path.file_name()
-            .map(|name| (PathBuf::from(name), format))
-    });
+    let settings = crate::agent::setup::settings_target(agent)
+        .and_then(|(path, format)| path.file_name().map(|name| (PathBuf::from(name), format)));
 
     let pi_prompt_rel = || {
         let method = bootstrap
@@ -468,7 +466,10 @@ fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfi
         Agent::Pi | Agent::Omp => Some((pi_prompt_rel(), InstructionsStyle::Owned)),
         // Claude reads `@muxix-bootstrap.md` from CLAUDE.md; the referenced file
         // is muxix's alone, and the reference resolves inside the overlay.
-        Agent::Claude => Some((PathBuf::from("muxix-bootstrap.md"), InstructionsStyle::Owned)),
+        Agent::Claude => Some((
+            PathBuf::from("muxix-bootstrap.md"),
+            InstructionsStyle::Owned,
+        )),
         Agent::Codex => Some((PathBuf::from("AGENTS.md"), InstructionsStyle::Sentinel)),
         Agent::Copilot => Some((
             PathBuf::from("copilot-instructions.md"),
@@ -525,17 +526,16 @@ fn generate_settings(
 
     let path = base.join(&rel);
     let body = std::fs::read_to_string(&path).unwrap_or_else(|_| String::new());
-    let mut json: Value = match body.trim() {
-        "" => Value::Object(Default::default()),
-        text => match format {
-            SettingsFormat::Json => {
-                serde_json::from_str(text).with_context(|| format!("parsing {}", path.display()))?
-            }
-            SettingsFormat::Yaml => {
-                serde_yaml::from_str(text).with_context(|| format!("parsing {}", path.display()))?
-            }
-        },
-    };
+    let mut json: Value =
+        match body.trim() {
+            "" => Value::Object(Default::default()),
+            text => match format {
+                SettingsFormat::Json => serde_json::from_str(text)
+                    .with_context(|| format!("parsing {}", path.display()))?,
+                SettingsFormat::Yaml => serde_yaml::from_str(text)
+                    .with_context(|| format!("parsing {}", path.display()))?,
+            },
+        };
 
     let mut excluded: Vec<String> = deltas.exclude_plugins.clone();
     if let Some(bc) = bootstrap {
@@ -601,7 +601,9 @@ fn apply_plugin_deltas(
 
     for ex in &deltas.exclude_plugins {
         if !arr.iter().any(|v| v.as_str() == Some(ex)) {
-            warnings.push(format!("exclude_plugins: `{ex}` matches no base packages entry"));
+            warnings.push(format!(
+                "exclude_plugins: `{ex}` matches no base packages entry"
+            ));
         }
     }
     arr.retain(|v| v.as_str().is_none_or(|s| !excluded.iter().any(|e| e == s)));
@@ -611,10 +613,10 @@ fn apply_plugin_deltas(
     // inside the agent dir (`extensions/x.ts`) keep resolving through the
     // overlay's symlinks and stay as-is.
     for v in arr.iter_mut() {
-        if let Some(s) = v.as_str() {
-            if s.starts_with("../") {
-                *v = Value::String(absolutize_spec(s, base));
-            }
+        if let Some(s) = v.as_str()
+            && s.starts_with("../")
+        {
+            *v = Value::String(absolutize_spec(s, base));
         }
     }
 
@@ -647,7 +649,6 @@ fn generate_prompt(
     project_root: &Path,
     warnings: &mut Vec<String>,
 ) -> Result<Option<(PathBuf, String)>> {
-
     let feature_components: Vec<&str> = deltas
         .exclude_features
         .iter()
@@ -678,8 +679,7 @@ fn generate_prompt(
         }
     }
     comps.retain(|c| {
-        !deltas.exclude_prompt_components.contains(c)
-            && !feature_components.iter().any(|f| f == c)
+        !deltas.exclude_prompt_components.contains(c) && !feature_components.iter().any(|f| f == c)
     });
     comps.extend(deltas.add_prompt_components.iter().cloned());
     comps.sort();
@@ -857,7 +857,10 @@ mod tests {
         // materialize() removes the derived overlay wholesale on every rebuild, so
         // session history kept under build_root() would be destroyed by a setup run.
         let sessions = session_dir("corp", "pi").unwrap();
-        assert!(sessions.ends_with("agent-profile-data/corp/pi/sessions"), "{sessions:?}");
+        assert!(
+            sessions.ends_with("agent-profile-data/corp/pi/sessions"),
+            "{sessions:?}"
+        );
         assert!(
             !sessions.starts_with(build_root().unwrap()),
             "{sessions:?} must not live under the derived overlay root"
@@ -921,8 +924,9 @@ mod tests {
         let dp = delta_plan(Agent::Claude, &base, &source, &d, None, tmp.path()).unwrap();
 
         assert!(
-            dp.warnings.iter().any(|w| w.starts_with("add_plugins:")
-                && w.contains("plugin list does not live")),
+            dp.warnings
+                .iter()
+                .any(|w| w.starts_with("add_plugins:") && w.contains("plugin list does not live")),
             "{:?}",
             dp.warnings
         );
@@ -969,8 +973,15 @@ mod tests {
             ..Default::default()
         };
         let d = deltas(|d| d.add_prompt_components = vec!["caveman".into()]);
-        let dp =
-            delta_plan(Agent::Codex, &base, &source, &d, Some(&bootstrap), tmp.path()).unwrap();
+        let dp = delta_plan(
+            Agent::Codex,
+            &base,
+            &source,
+            &d,
+            Some(&bootstrap),
+            tmp.path(),
+        )
+        .unwrap();
 
         let content = &dp.generated[Path::new("AGENTS.md")];
         assert!(content.contains("my own codex rules"), "{content}");
@@ -989,7 +1000,10 @@ mod tests {
 
         let p = plan(&base, &source, &no_delta());
         // No source → skills/ and settings.json symlinked at the top level.
-        assert_eq!(p.get(Path::new("skills")), Some(&link(&base.join("skills"))));
+        assert_eq!(
+            p.get(Path::new("skills")),
+            Some(&link(&base.join("skills")))
+        );
         assert_eq!(
             p.get(Path::new("settings.json")),
             Some(&link(&base.join("settings.json")))
@@ -1073,7 +1087,10 @@ mod tests {
         // through the overlay with no rebuild and is not drift.
         write(&base.join("skills/c/SKILL.md"), "c");
         let p2 = plan(&base, &source, &no_delta());
-        assert!(in_sync(&dest, &p2), "wholesale symlink transparently follows base");
+        assert!(
+            in_sync(&dest, &p2),
+            "wholesale symlink transparently follows base"
+        );
         assert!(dest.join("skills/c/SKILL.md").exists());
     }
 
@@ -1125,7 +1142,10 @@ mod tests {
     fn absolutize_spec_forms() {
         let base = Path::new("/base/agent");
         assert_eq!(absolutize_spec("npm:foo", base), "npm:foo");
-        assert_eq!(absolutize_spec("git:github.com/x/y", base), "git:github.com/x/y");
+        assert_eq!(
+            absolutize_spec("git:github.com/x/y", base),
+            "git:github.com/x/y"
+        );
         assert_eq!(absolutize_spec("/abs/path", base), "/abs/path");
         assert_eq!(absolutize_spec("../x", base), "/base/x");
         let home = home::home_dir().unwrap();
@@ -1180,7 +1200,10 @@ mod tests {
 
         // Overlay: settings.json generated, siblings still linked.
         let p = plan(&base, &source, &dp);
-        assert!(matches!(p.get(Path::new("settings.json")), Some(PlanEntry::File(_))));
+        assert!(matches!(
+            p.get(Path::new("settings.json")),
+            Some(PlanEntry::File(_))
+        ));
     }
 
     #[test]
@@ -1248,7 +1271,10 @@ mod tests {
             Some(&link(&base.join("extensions/keep.ts")))
         );
         assert!(!p.contains_key(Path::new("extensions/drop.ts")));
-        assert!(!p.contains_key(Path::new("extensions")), "recursed, not wholesale");
+        assert!(
+            !p.contains_key(Path::new("extensions")),
+            "recursed, not wholesale"
+        );
     }
 
     #[test]
@@ -1288,7 +1314,10 @@ mod tests {
         assert!(in_sync(&dest, &p1));
 
         // Base grows a package → generated content changes → drift.
-        write(&base.join("settings.json"), r#"{"packages":["npm:a","npm:b"]}"#);
+        write(
+            &base.join("settings.json"),
+            r#"{"packages":["npm:a","npm:b"]}"#,
+        );
         let dp2 = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         let p2 = plan(&base, &source, &dp2);
         assert!(!in_sync(&dest, &p2), "base package change is drift");

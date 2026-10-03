@@ -18,7 +18,11 @@ pub fn cli_add(dir: &Path) -> Result<()> {
     match reg.add(dir)? {
         AddOutcome::Added(e) => println!("✓ Tracking project '{}' ({})", e.name, e.root.display()),
         AddOutcome::AlreadyTracked(e) => {
-            println!("Project '{}' already tracked ({})", e.name, e.root.display())
+            println!(
+                "Project '{}' already tracked ({})",
+                e.name,
+                e.root.display()
+            )
         }
     }
     Ok(())

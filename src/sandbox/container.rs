@@ -258,7 +258,10 @@ pub fn overlay_local_muxix(config: &SandboxConfig, image: &str) {
 
     match result {
         Ok(()) => println!("Patched fork muxix into '{}'.", image),
-        Err(e) => eprintln!("warning: failed to patch fork muxix into '{}': {}", image, e),
+        Err(e) => eprintln!(
+            "warning: failed to patch fork muxix into '{}': {}",
+            image, e
+        ),
     }
 }
 
@@ -2353,8 +2356,11 @@ mod tests {
             bin_arg
         );
         // Per-worktree-handle, NOT container_name (which contains the PID).
+        // Only the part muxix builds is checked: HOME is ambient, and a sibling
+        // test's temp dir legitimately carries this process's PID in its name.
+        let owned = bin_arg.split("container/").nth(1).unwrap_or(bin_arg);
         assert!(
-            !bin_arg.contains(&format!("-{}", std::process::id())),
+            !owned.contains(&format!("-{}", std::process::id())),
             "bin overlay path must not contain PID: {}",
             bin_arg
         );

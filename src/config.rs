@@ -314,8 +314,6 @@ pub enum SidebarDefaultScope {
     Session,
 }
 
-
-
 impl IdleDuration {
     pub fn as_duration(self) -> std::time::Duration {
         self.0
@@ -331,9 +329,9 @@ pub struct IdleDuration(pub std::time::Duration);
 impl std::fmt::Display for IdleDuration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let secs = self.0.as_secs();
-        if secs % 3600 == 0 {
+        if secs.is_multiple_of(3600) {
             write!(f, "{}h", secs / 3600)
-        } else if secs % 60 == 0 {
+        } else if secs.is_multiple_of(60) {
             write!(f, "{}m", secs / 60)
         } else {
             write!(f, "{secs}s")
@@ -367,17 +365,23 @@ fn parse_idle_duration(s: &str) -> Result<std::time::Duration, String> {
         match ch {
             '0'..='9' => num_buf.push(ch),
             'h' | 'H' => {
-                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                let n: u64 = num_buf
+                    .parse()
+                    .map_err(|_| format!("invalid number in '{s}'"))?;
                 total_secs += n * 3600;
                 num_buf.clear();
             }
             'm' | 'M' => {
-                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                let n: u64 = num_buf
+                    .parse()
+                    .map_err(|_| format!("invalid number in '{s}'"))?;
                 total_secs += n * 60;
                 num_buf.clear();
             }
             's' | 'S' => {
-                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                let n: u64 = num_buf
+                    .parse()
+                    .map_err(|_| format!("invalid number in '{s}'"))?;
                 total_secs += n;
                 num_buf.clear();
             }
@@ -863,7 +867,6 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_chain: Option<crate::proxy::ProxyChainConfig>,
 
-
     /// Pipeline event tracing controls (`wm::event`): level, master switch, and
     /// per-kind/group enable/disable.
     #[serde(default)]
@@ -908,7 +911,7 @@ pub struct Config {
     pub provision: Option<crate::provision::ProvisionConfig>,
 }
 
-
+#[allow(dead_code)]
 fn default_true() -> bool {
     true
 }
@@ -917,6 +920,7 @@ fn default_true() -> bool {
 /// `enabled` reverts the loop to pre-OpenSpec behavior, and disabling
 /// `writeback` keeps the import while never touching the user's tasks.md.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[allow(dead_code)]
 pub struct OpenspecConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -933,10 +937,10 @@ impl Default for OpenspecConfig {
     }
 }
 
-
 /// Ordering strategy for ready tasks.
 #[derive(Debug, Deserialize, Serialize, Default, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum SelectionOrder {
     /// Preserve task-graph file order (current behaviour).
     #[default]
@@ -947,17 +951,14 @@ pub enum SelectionOrder {
     Fifo,
 }
 
-
+#[allow(dead_code)]
 fn default_max_runtime() -> IdleDuration {
     IdleDuration(std::time::Duration::from_secs(6 * 3600))
 }
 
-
-
-
-
 /// Merge policy for completed tasks in the loop.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
+#[allow(dead_code)]
 pub struct LoopMergeConfig {
     /// Whether the loop merges completed tasks automatically. When unset, the
     /// `--auto-merge` CLI flag decides. When false, tasks stop at `done`.
@@ -981,6 +982,7 @@ pub struct LoopMergeConfig {
 /// How the loop reacts to a merge conflict during its deterministic merge step.
 #[derive(Debug, Deserialize, Serialize, Default, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum ConflictPolicy {
     /// Spawn an agent in the worktree to resolve the conflict (default).
     #[default]
@@ -988,7 +990,6 @@ pub enum ConflictPolicy {
     /// Mark the task blocked/failed and surface it for manual handling.
     Manual,
 }
-
 
 /// Configuration for submodule worktree management.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
@@ -1052,10 +1053,9 @@ impl AgentRule {
             None => ("", self.pattern.as_str()),
         };
         let expanded = match (rest.strip_prefix("~/"), home::home_dir()) {
-            (Some(tail), Some(home)) => format!(
-                "{anchor}{}/{tail}",
-                regex::escape(&home.to_string_lossy())
-            ),
+            (Some(tail), Some(home)) => {
+                format!("{anchor}{}/{tail}", regex::escape(&home.to_string_lossy()))
+            }
             _ => self.pattern.clone(),
         };
         regex::Regex::new(&expanded)
@@ -1067,13 +1067,16 @@ impl AgentRule {
 /// the others down.
 pub fn match_agent_rule<'a>(rules: &'a [AgentRule], path: &Path) -> Option<(usize, &'a AgentRule)> {
     let path = path.to_string_lossy();
-    rules.iter().enumerate().find(|(_, rule)| match rule.compile() {
-        Ok(re) => re.is_match(&path),
-        Err(e) => {
-            eprintln!("muxix: invalid agent_rules pattern {:?}: {e}", rule.pattern);
-            false
-        }
-    })
+    rules
+        .iter()
+        .enumerate()
+        .find(|(_, rule)| match rule.compile() {
+            Ok(re) => re.is_match(&path),
+            Err(e) => {
+                eprintln!("muxix: invalid agent_rules pattern {:?}: {e}", rule.pattern);
+                false
+            }
+        })
 }
 
 /// A named agent entry: either a plain command string or a `{ command, type }` object.
@@ -1530,6 +1533,7 @@ impl MicroSandboxConfig {
         self.cpus.unwrap_or(2)
     }
 
+    #[allow(dead_code)]
     pub fn memory(&self) -> &str {
         self.memory.as_deref().unwrap_or("4G")
     }
@@ -1838,7 +1842,6 @@ impl LimaConfig {
     pub fn skip_default_provision(&self) -> bool {
         self.skip_default_provision.unwrap_or(false)
     }
-
 }
 
 /// Host device mapping for container sandboxes.
@@ -2052,7 +2055,6 @@ impl ContainerConfig {
         }
         Ok(())
     }
-
 }
 
 /// Network restriction policy for sandboxed containers.
@@ -3013,6 +3015,7 @@ impl Config {
     /// Resolve a model from the unified [`Config::providers`] registry by
     /// provider id or logical name. Returns `None` when no `providers` are
     /// configured or nothing matches.
+    #[allow(dead_code)]
     pub fn resolve_model(&self, key: &str) -> Option<crate::model::ResolvedModel<'_>> {
         self.providers
             .as_ref()
@@ -4089,9 +4092,6 @@ mod tests {
         is_agent_command, split_first_token, validate_domain, validate_group_add_entry,
         validate_layouts_config,
     };
-
-
-
 
     #[test]
     fn agent_profile_deltas_roundtrip() {

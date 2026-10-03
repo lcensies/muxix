@@ -1,8 +1,6 @@
 //! Data structures for the task graph store.
 
-use crate::signals::SignalConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Subset of `tasks/index.json` task schema needed for orchestration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -284,10 +282,12 @@ impl TaskPatch {
 /// and [`crate::tasks::graph::frontier`] never offers a task carrying it.
 pub const NEEDS_HUMAN: &str = "needs-human";
 /// Steward re-queues per task before a failure is parked instead.
+#[allow(dead_code)]
 pub const MAX_STEWARD_RETRIES: u32 = 2;
 
 pub const STATUS_TODO: &str = "todo";
 pub const STATUS_IN_PROGRESS: &str = "in_progress";
+#[allow(dead_code)]
 pub const STATUS_MERGING: &str = "merging";
 pub const STATUS_DONE: &str = "done";
 pub const STATUS_FAILED: &str = "failed";
@@ -296,5 +296,5 @@ pub const STATUS_FAILED: &str = "failed";
 /// harness process stays alive (agent context warm); the slot is "parked" and
 /// does not count against `max_concurrency`. Distinct from `in_progress` so the
 /// TUI and slot accounting can tell a working task from a waiting parent.
+#[allow(dead_code)]
 pub const STATUS_BLOCKED: &str = "blocked";
-

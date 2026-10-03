@@ -297,17 +297,16 @@ mod tests {
     fn declared_profiles_are_read() {
         let got = declared(&yaml("profiles:\n  corp:\n    agent: codex")).unwrap();
         assert_eq!(got.len(), 1);
-        assert_eq!(
-            got["corp"].get("agent").unwrap().as_str(),
-            Some("codex")
-        );
+        assert_eq!(got["corp"].get("agent").unwrap().as_str(), Some("codex"));
     }
 
     #[test]
     fn nested_profiles_are_rejected() {
-        let err = declared(&yaml("profiles:\n  corp:\n    profiles:\n      inner:\n        agent: x"))
-            .unwrap_err()
-            .to_string();
+        let err = declared(&yaml(
+            "profiles:\n  corp:\n    profiles:\n      inner:\n        agent: x",
+        ))
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("corp"), "{err}");
         assert!(err.contains("nested"), "{err}");
     }
@@ -340,7 +339,11 @@ mod tests {
     fn no_selection_produces_no_layers() {
         let available = declared(&yaml("profiles:\n  corp:\n    agent: codex")).unwrap();
         let sel = Selection::none("none");
-        assert!(layers(&sel, &available, &BTreeMap::new()).unwrap().is_empty());
+        assert!(
+            layers(&sel, &available, &BTreeMap::new())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -357,8 +360,10 @@ mod tests {
 
     #[test]
     fn multiple_profiles_keep_selection_order() {
-        let available =
-            declared(&yaml("profiles:\n  a:\n    agent: one\n  b:\n    agent: two")).unwrap();
+        let available = declared(&yaml(
+            "profiles:\n  a:\n    agent: one\n  b:\n    agent: two",
+        ))
+        .unwrap();
         let sel = Selection {
             names: vec!["b".into(), "a".into()],
             source: "--profile",
@@ -370,8 +375,10 @@ mod tests {
 
     #[test]
     fn unknown_profile_lists_the_available_names() {
-        let available =
-            declared(&yaml("profiles:\n  corp:\n    agent: x\n  home:\n    agent: y")).unwrap();
+        let available = declared(&yaml(
+            "profiles:\n  corp:\n    agent: x\n  home:\n    agent: y",
+        ))
+        .unwrap();
         let sel = Selection {
             names: vec!["nope".into()],
             source: "--profile",

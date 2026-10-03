@@ -12,7 +12,6 @@
 
 use anyhow::{Context as _, Result, bail};
 use std::io::Read as _;
-use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::provision::client::FetchPolicyResponse;
@@ -161,9 +160,9 @@ impl PolicySource for HttpSource {
             .call()
         {
             Ok(r) => Ok(r.into_json::<FetchPolicyResponse>()?),
-            Err(ureq::Error::Status(404, _)) => bail!(
-                "no policy configured at {url} — ask your org admin to set one"
-            ),
+            Err(ureq::Error::Status(404, _)) => {
+                bail!("no policy configured at {url} — ask your org admin to set one")
+            }
             Err(ureq::Error::Status(code, r)) => bail!(
                 "provision server returned {}: {}",
                 code,
@@ -267,7 +266,8 @@ impl PolicySource for ExecSource {
 
         // Poll rather than block: a helper that hangs must not wedge every
         // muxix invocation behind it.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(self.timeout_secs);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(self.timeout_secs);
         let status = loop {
             match child.try_wait()? {
                 Some(status) => break status,
@@ -347,11 +347,10 @@ pub fn parse_policy_document(body: &str) -> Result<FetchPolicyResponse> {
 pub fn source_for(config: &ProvisionConfig) -> Result<Box<dyn PolicySource>> {
     match Backend::from_config(config)? {
         Backend::Http => {
-            let server_url = crate::provision::client::resolve_server_url(Some(config))
-                .context(
-                    "no provision server configured -- set the MUXIX_PROVISION_URL env var, \
+            let server_url = crate::provision::client::resolve_server_url(Some(config)).context(
+                "no provision server configured -- set the MUXIX_PROVISION_URL env var, \
                      or provision.server_url in your global config",
-                )?;
+            )?;
             let token = crate::provision::client::resolve_token(config)?;
             Ok(Box::new(HttpSource::new(server_url, token, config)))
         }
@@ -447,8 +446,10 @@ mod tests {
     // --- schema version ----------------------------------------------------
 
     fn resp_with_version(v: u32) -> FetchPolicyResponse {
-        let mut policy = crate::provision::types::OrgPolicy::default();
-        policy.schema_version = v;
+        let policy = crate::provision::types::OrgPolicy {
+            schema_version: v,
+            ..Default::default()
+        };
         FetchPolicyResponse {
             policy,
             version: "1".into(),
@@ -473,7 +474,10 @@ mod tests {
         let err = check_schema_version(&resp_with_version(SUPPORTED_SCHEMA_VERSION + 1))
             .unwrap_err()
             .to_string();
-        assert!(err.contains(&(SUPPORTED_SCHEMA_VERSION + 1).to_string()), "{err}");
+        assert!(
+            err.contains(&(SUPPORTED_SCHEMA_VERSION + 1).to_string()),
+            "{err}"
+        );
         assert!(err.contains(&SUPPORTED_SCHEMA_VERSION.to_string()), "{err}");
     }
 
@@ -541,7 +545,10 @@ mod tests {
             r#"{"schema_version":1,"policy_version":"from-file"}"#,
         );
         let src = FileSource { path };
-        assert_eq!(src.fetch_policy().unwrap().policy.policy_version, "from-file");
+        assert_eq!(
+            src.fetch_policy().unwrap().policy.policy_version,
+            "from-file"
+        );
     }
 
     #[test]
@@ -580,7 +587,10 @@ mod tests {
             args: vec![r#"{"schema_version":1,"policy_version":"from-exec"}"#.into()],
             timeout_secs: 10,
         };
-        assert_eq!(src.fetch_policy().unwrap().policy.policy_version, "from-exec");
+        assert_eq!(
+            src.fetch_policy().unwrap().policy.policy_version,
+            "from-exec"
+        );
     }
 
     #[test]

@@ -28,7 +28,7 @@ pub fn run_export(output: Option<&Path>) -> Result<()> {
 
 /// Show a diff between the current profile and the cached team profile (stub).
 pub fn run_diff() -> Result<()> {
-    use crate::provision::cache::{load_policy, CacheStatus};
+    use crate::provision::cache::{CacheStatus, load_policy};
 
     let grace = 72 * 3600;
     let team_url = match load_policy(grace)? {

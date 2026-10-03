@@ -420,9 +420,8 @@ pub trait Multiplexer: Send + Sync {
         // that class of failure into an error before anything is spawned.
         let prompt_text: Option<String> = match options.prompt_file_path {
             Some(path) if options.run_commands => {
-                let text = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow!("Failed to read prompt file {}: {}", path.display(), e)
-                })?;
+                let text = std::fs::read_to_string(path)
+                    .map_err(|e| anyhow!("Failed to read prompt file {}: {}", path.display(), e))?;
                 if text.trim().is_empty() {
                     return Err(anyhow!("Prompt file {} is empty", path.display()));
                 }
@@ -473,9 +472,7 @@ pub trait Multiplexer: Send + Sync {
                 let direct_argv = if is_agent_pane
                     && self.supports_direct_exec()
                     && !config.sandbox.is_enabled()
-                    && prompt_text
-                        .as_deref()
-                        .is_none_or(launch::prompt_fits_argv)
+                    && prompt_text.as_deref().is_none_or(launch::prompt_fits_argv)
                 {
                     let raw = pane_config.command.as_deref().unwrap_or_default();
                     let base_command = if raw == "<agent>" {
@@ -483,10 +480,8 @@ pub trait Multiplexer: Send + Sync {
                     } else {
                         raw
                     };
-                    let profile = agent::resolve_profile_with_type(
-                        pane_agent,
-                        config.agent_type.as_deref(),
-                    );
+                    let profile =
+                        agent::resolve_profile_with_type(pane_agent, config.agent_type.as_deref());
 
                     // Direct exec has no shell to report "command not found":
                     // a failed execvp just makes the pane disappear. If we

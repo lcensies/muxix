@@ -542,9 +542,8 @@ pub fn write_prompt_file(
     let prompt_path = if let Some(dir) = working_dir {
         // Write to .muxix/ inside the worktree so it's accessible in container sandbox
         let muxix_dir = dir.join(".muxix");
-        fs::create_dir_all(&muxix_dir).with_context(|| {
-            format!("Failed to create .muxix directory in '{}'", dir.display())
-        })?;
+        fs::create_dir_all(&muxix_dir)
+            .with_context(|| format!("Failed to create .muxix directory in '{}'", dir.display()))?;
 
         // Add .muxix/ to git exclude to avoid polluting git status
         // In worktrees, .git is a file pointing to the real git dir, so we need to resolve it
@@ -604,6 +603,70 @@ fn resolve_git_exclude_path(dir: &Path) -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+/// Validates that a prompt will actually be consumed by an agent pane.
+///
+/// This prevents the case where a user provides `-p "some prompt"` but no pane
+/// is configured to run an agent that would receive it.
+fn validate_prompt_consumption(
+    panes: &[config::PaneConfig],
+    cli_agent: Option<&str>,
+    config: &config::Config,
+    options: &super::types::SetupOptions,
+) -> Result<()> {
+    if !options.run_pane_commands {
+        return Err(anyhow!(
+            "Prompt provided (-p/-P/-e) but pane commands are disabled (--no-pane-cmds). \
+             The prompt would be ignored."
+        ));
+    }
+
+    // Known agent commands always consume prompts (they have their own agent
+    // profile), so the prompt is consumed regardless of whether a global agent
+    // is configured.
+    let has_self_identifying_agent = panes.iter().any(|pane| {
+        pane.command
+            .as_deref()
+            .is_some_and(crate::agent::profile::is_known_agent)
+    });
+
+    if has_self_identifying_agent {
+        return Ok(());
+    }
+
+    let effective_agent = resolve_effective_agent(config, cli_agent);
+
+    let Some(agent_cmd) = effective_agent else {
+        return Err(anyhow!(
+            "Prompt provided but no agent is configured to consume it. \
+             Set 'agent' in config or use -a/--agent flag."
+        ));
+    };
+
+    let consumes_prompt = panes.iter().any(|pane| {
+        pane.command
+            .as_deref()
+            .map(|cmd| pane_runs_agent(cmd, agent_cmd, config.agent_type.as_deref()))
+            .unwrap_or(false)
+    });
+
+    if !consumes_prompt {
+        let commands: Vec<_> = panes
+            .iter()
+            .map(|p| p.command.as_deref().unwrap_or("<shell>"))
+            .collect();
+
+        return Err(anyhow!(
+            "Prompt provided, but no pane is configured to run the agent '{}'.\n\
+             Resolved pane commands: {:?}\n\
+             Ensure your panes config includes '<agent>' or runs the configured agent.",
+            agent_cmd,
+            commands
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -985,68 +1048,4 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert_eq!(content, "test prompt");
     }
-}
-
-/// Validates that a prompt will actually be consumed by an agent pane.
-///
-/// This prevents the case where a user provides `-p "some prompt"` but no pane
-/// is configured to run an agent that would receive it.
-fn validate_prompt_consumption(
-    panes: &[config::PaneConfig],
-    cli_agent: Option<&str>,
-    config: &config::Config,
-    options: &super::types::SetupOptions,
-) -> Result<()> {
-    if !options.run_pane_commands {
-        return Err(anyhow!(
-            "Prompt provided (-p/-P/-e) but pane commands are disabled (--no-pane-cmds). \
-             The prompt would be ignored."
-        ));
-    }
-
-    // Known agent commands always consume prompts (they have their own agent
-    // profile), so the prompt is consumed regardless of whether a global agent
-    // is configured.
-    let has_self_identifying_agent = panes.iter().any(|pane| {
-        pane.command
-            .as_deref()
-            .is_some_and(crate::agent::profile::is_known_agent)
-    });
-
-    if has_self_identifying_agent {
-        return Ok(());
-    }
-
-    let effective_agent = resolve_effective_agent(config, cli_agent);
-
-    let Some(agent_cmd) = effective_agent else {
-        return Err(anyhow!(
-            "Prompt provided but no agent is configured to consume it. \
-             Set 'agent' in config or use -a/--agent flag."
-        ));
-    };
-
-    let consumes_prompt = panes.iter().any(|pane| {
-        pane.command
-            .as_deref()
-            .map(|cmd| pane_runs_agent(cmd, agent_cmd, config.agent_type.as_deref()))
-            .unwrap_or(false)
-    });
-
-    if !consumes_prompt {
-        let commands: Vec<_> = panes
-            .iter()
-            .map(|p| p.command.as_deref().unwrap_or("<shell>"))
-            .collect();
-
-        return Err(anyhow!(
-            "Prompt provided, but no pane is configured to run the agent '{}'.\n\
-             Resolved pane commands: {:?}\n\
-             Ensure your panes config includes '<agent>' or runs the configured agent.",
-            agent_cmd,
-            commands
-        ));
-    }
-
-    Ok(())
 }

@@ -36,9 +36,7 @@ def test_init_creates_config_file_on_success(
     assert "post_create:" in content
 
 
-def test_init_fails_if_config_exists(
-    mux_server: MuxEnvironment, muxix_exe_path: Path
-):
+def test_init_fails_if_config_exists(mux_server: MuxEnvironment, muxix_exe_path: Path):
     """Verifies `muxix init` fails if .muxix.yaml already exists."""
     env = mux_server
     config_file_path = env.tmp_path / ".muxix.yaml"

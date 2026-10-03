@@ -25,12 +25,13 @@ pub fn rename(
     //    migrations consistent regardless of what the user typed.
     let repo = context.main_worktree_root.clone();
     let repo = repo.as_path();
-    let (old_path, branch_name) = git::find_worktree_in(user_target, Some(repo)).with_context(|| {
-        format!(
-            "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
-            user_target
-        )
-    })?;
+    let (old_path, branch_name) =
+        git::find_worktree_in(user_target, Some(repo)).with_context(|| {
+            format!(
+                "Worktree '{}' not found. Use 'muxix list' to see available worktrees.",
+                user_target
+            )
+        })?;
 
     let old_handle = old_path
         .file_name()

@@ -17,7 +17,9 @@ use crate::agent::identity::classify_agent_kind;
 use crate::multiplexer::{AgentStatus, Multiplexer};
 
 pub use store::StateStore;
-pub use types::{AgentState, Completion, CompletionKind, LastDoneCycleState, PaneKey, RuntimeState};
+pub use types::{
+    AgentState, Completion, CompletionKind, LastDoneCycleState, PaneKey, RuntimeState,
+};
 
 /// Persist an agent state update to the StateStore.
 ///
@@ -95,7 +97,9 @@ pub fn persist_agent_update(
     let checkpoint_ts = existing.as_ref().and_then(|e| e.checkpoint_ts);
     // Preserve pipeline node fields written by the runner; never cleared by the status-update path.
     let pipeline_node_id = existing.as_ref().and_then(|e| e.pipeline_node_id.clone());
-    let pipeline_node_title = existing.as_ref().and_then(|e| e.pipeline_node_title.clone());
+    let pipeline_node_title = existing
+        .as_ref()
+        .and_then(|e| e.pipeline_node_title.clone());
     // Same for the agent-authored activity label: only `signal activity` owns it.
     let activity = existing.as_ref().and_then(|e| e.activity.clone());
     // Preserve completion: this path is a hook-driven status/title update, not

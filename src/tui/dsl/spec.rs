@@ -55,9 +55,7 @@ impl SpecSource {
             return false;
         };
 
-        let mtime = std::fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .ok();
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
 
         match mtime {
             // File missing: fall back to embedded if we were on a file copy.

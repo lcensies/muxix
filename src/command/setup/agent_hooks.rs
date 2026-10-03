@@ -312,8 +312,13 @@ fn apply_to_target(
 
         if has_hook(&settings, target.dialect, event_key, &hook.command) {
             out.push(
-                ItemResult::new(Section::AgentHooks, agent_name, item_name, Outcome::UpToDate)
-                    .managed_at(&hook.command),
+                ItemResult::new(
+                    Section::AgentHooks,
+                    agent_name,
+                    item_name,
+                    Outcome::UpToDate,
+                )
+                .managed_at(&hook.command),
             );
             continue;
         }
@@ -323,9 +328,14 @@ fn apply_to_target(
             changed = true;
         }
         out.push(
-            ItemResult::new(Section::AgentHooks, agent_name, item_name, Outcome::Installed)
-                .managed_at(&hook.command)
-                .with_detail(format!("hooks.{event_key} in {}", path.display())),
+            ItemResult::new(
+                Section::AgentHooks,
+                agent_name,
+                item_name,
+                Outcome::Installed,
+            )
+            .managed_at(&hook.command)
+            .with_detail(format!("hooks.{event_key} in {}", path.display())),
         );
     }
 
@@ -356,7 +366,10 @@ fn apply_to_target(
 /// Gemini's settings.json:
 /// `{"hooks": {"<Event>": [{"hooks": [{"type": "command", "command": ...}]}]}}`
 fn has_hook(settings: &Value, dialect: HookDialect, event_key: &str, command: &str) -> bool {
-    let mut entries = settings["hooks"][event_key].as_array().into_iter().flatten();
+    let mut entries = settings["hooks"][event_key]
+        .as_array()
+        .into_iter()
+        .flatten();
     match dialect {
         HookDialect::Grouped => entries
             .filter_map(|group| group["hooks"].as_array())
@@ -489,9 +502,7 @@ mod tests {
         assert!(plugin_to_inject(Agent::Claude, &config).is_none());
 
         // A pinned/prefixed entry already carrying the fragment suppresses it.
-        config
-            .plugins
-            .push("npm:@hsingjui/pi-hooks@1.2.0".into());
+        config.plugins.push("npm:@hsingjui/pi-hooks@1.2.0".into());
         assert!(plugin_to_inject(Agent::Pi, &config).is_none());
     }
 
@@ -539,10 +550,25 @@ mod tests {
     #[test]
     fn add_then_detect_round_trips() {
         let mut settings = json!({});
-        assert!(!has_hook(&settings, HookDialect::Grouped, "Stop", "bash x.sh"));
+        assert!(!has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "Stop",
+            "bash x.sh"
+        ));
         add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash x.sh");
-        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "bash x.sh"));
-        assert!(!has_hook(&settings, HookDialect::Grouped, "Stop", "bash other.sh"));
+        assert!(has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "Stop",
+            "bash x.sh"
+        ));
+        assert!(!has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "Stop",
+            "bash other.sh"
+        ));
     }
 
     #[test]
@@ -585,8 +611,15 @@ mod tests {
         let target = crate::agent::setup::copilot::declared_hook_target()
             .expect("copilot has a hook target");
         assert_eq!(target.dialect, HookDialect::CopilotFlat);
-        assert!(target.file.ends_with("hooks/muxix.json"), "{:?}", target.file);
-        assert_eq!((target.event_key)(HookEvent::SessionReady), Some("sessionStart"));
+        assert!(
+            target.file.ends_with("hooks/muxix.json"),
+            "{:?}",
+            target.file
+        );
+        assert_eq!(
+            (target.event_key)(HookEvent::SessionReady),
+            Some("sessionStart")
+        );
         assert_eq!((target.event_key)(HookEvent::TurnDone), Some("agentStop"));
 
         // omp: no hook config muxix can write (see hook_target).
@@ -601,8 +634,18 @@ mod tests {
         });
         add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash new.sh");
         assert_eq!(settings["model"], "opus");
-        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "existing"));
-        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "bash new.sh"));
+        assert!(has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "Stop",
+            "existing"
+        ));
+        assert!(has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "Stop",
+            "bash new.sh"
+        ));
     }
 
     /// Removal is the inverse of `add_hook`: the named command goes, the
@@ -615,8 +658,18 @@ mod tests {
 
         let mut settings = json!({"model": "opus"});
         add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash ours.sh");
-        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash theirs.sh");
-        add_hook(&mut settings, HookDialect::Grouped, "SessionStart", "bash only.sh");
+        add_hook(
+            &mut settings,
+            HookDialect::Grouped,
+            "Stop",
+            "bash theirs.sh",
+        );
+        add_hook(
+            &mut settings,
+            HookDialect::Grouped,
+            "SessionStart",
+            "bash only.sh",
+        );
         std::fs::write(&file, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
         remove_command_in(&file, HookDialect::Grouped, "bash ours.sh").unwrap();
@@ -733,7 +786,12 @@ mod tests {
         };
 
         // Install.
-        let r = apply_to_target(Agent::Claude, &target, &[hook(Some(good_hash.clone()))], false);
+        let r = apply_to_target(
+            Agent::Claude,
+            &target,
+            &[hook(Some(good_hash.clone()))],
+            false,
+        );
         assert_eq!(r[0].outcome, Outcome::Installed, "{r:?}");
         // Idempotent.
         let r = apply_to_target(Agent::Claude, &target, &[hook(None)], false);

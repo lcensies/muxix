@@ -349,11 +349,15 @@ mod tests {
 
     #[test]
     fn missing_cli_reads_as_unavailable() {
-        let mut cfg = AdeConfig::default();
-        cfg.command = "muxix-no-such-binary".to_string();
+        let cfg = AdeConfig {
+            command: "muxix-no-such-binary".to_string(),
+            ..Default::default()
+        };
         let r = AdeRuntime::new("ghost".to_string(), cfg);
         match r.health() {
-            RuntimeHealth::Unavailable(reason) => assert!(reason.contains("not runnable"), "{reason}"),
+            RuntimeHealth::Unavailable(reason) => {
+                assert!(reason.contains("not runnable"), "{reason}")
+            }
             RuntimeHealth::Ok => panic!("a missing CLI must not report healthy"),
         }
     }
@@ -362,7 +366,12 @@ mod tests {
     fn argument_templates_substitute_placeholders() {
         let r = runtime();
         let args = r.args_for(
-            &["agent".into(), "send".into(), "{id}".into(), "{text}".into()],
+            &[
+                "agent".into(),
+                "send".into(),
+                "{id}".into(),
+                "{text}".into(),
+            ],
             &[("id", "a1"), ("text", "hello")],
         );
         assert_eq!(args, vec!["agent", "send", "a1", "hello"]);

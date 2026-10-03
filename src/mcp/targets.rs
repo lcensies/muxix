@@ -106,14 +106,16 @@ impl McpTarget for GeminiTarget {
         // Keep the `trust: true` that `approve_servers` wrote last run; otherwise
         // merge strips it and every sync rewrites the file ("updated" forever).
         if let (Some(prev), Some(cur)) = (
-            existing.and_then(|v| v.get("mcpServers")).and_then(|v| v.as_object()),
+            existing
+                .and_then(|v| v.get("mcpServers"))
+                .and_then(|v| v.as_object()),
             merged.get_mut("mcpServers").and_then(|v| v.as_object_mut()),
         ) {
             for (name, entry) in cur.iter_mut() {
-                if prev.get(name).and_then(|e| e.get("trust")) == Some(&Value::Bool(true)) {
-                    if let Some(obj) = entry.as_object_mut() {
-                        obj.insert("trust".to_string(), Value::Bool(true));
-                    }
+                if prev.get(name).and_then(|e| e.get("trust")) == Some(&Value::Bool(true))
+                    && let Some(obj) = entry.as_object_mut()
+                {
+                    obj.insert("trust".to_string(), Value::Bool(true));
                 }
             }
         }
@@ -247,8 +249,10 @@ impl McpTarget for CodexTarget {
     ) -> Result<String> {
         let content = existing.unwrap_or_default();
         let region = setup::codex::render_mcp_region(servers);
-        Ok(setup::codex::splice_mcp_region(content, &region)
-            .unwrap_or_else(|| content.to_string()))
+        Ok(
+            setup::codex::splice_mcp_region(content, &region)
+                .unwrap_or_else(|| content.to_string()),
+        )
     }
     fn approve_servers(&self, repo_root: &Path, _server_names: &[&str]) -> Result<()> {
         // Codex reads a project `.codex/config.toml` layer only for a project it
@@ -331,6 +335,7 @@ pub enum McpSupport {
     /// muxix writes this agent's MCP config and pre-approves the servers.
     Supported(Box<dyn McpTarget>),
     /// No muxix MCP adapter yet — carries a short TODO reason for visibility.
+    #[allow(dead_code)]
     Unsupported(&'static str),
 }
 
@@ -599,7 +604,11 @@ mod tests {
         // no agent may report an "unsupported" reason.
         let supported: Vec<Agent> = all_targets().iter().map(|t| t.agent()).collect();
         for agent in Agent::ALL {
-            assert!(supported.contains(&agent), "{} has no MCP target", agent.name());
+            assert!(
+                supported.contains(&agent),
+                "{} has no MCP target",
+                agent.name()
+            );
         }
         for (agent, support) in support_overview() {
             assert!(support.is_ok(), "{} reported unsupported", agent.name());
@@ -745,7 +754,11 @@ mod tests {
             let parsed: Value =
                 serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
             assert!(parsed["mcpServers"]["socraticode"].is_object());
-            assert!(parsed["mcpServers"]["taskflow"].is_null(), "{}", p.display());
+            assert!(
+                parsed["mcpServers"]["taskflow"].is_null(),
+                "{}",
+                p.display()
+            );
         }
     }
 

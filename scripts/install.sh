@@ -332,7 +332,7 @@ verify_installation() {
 	echo "Recommended:"
 	echo "  alias wm='muxix'   # add to your shell profile for faster typing"
 	echo ""
-	echo "Documentation: https://muxix.dev"
+	echo "Documentation: https://github.com/lcensies/muxix/blob/main/docs/index.md"
 	echo ""
 }
 

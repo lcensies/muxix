@@ -99,8 +99,14 @@ pub fn plan(
     if cfg.direction == SyncDirection::Off {
         return plan;
     }
-    let pull = matches!(cfg.direction, SyncDirection::Pull | SyncDirection::Bidirectional);
-    let push = matches!(cfg.direction, SyncDirection::Push | SyncDirection::Bidirectional);
+    let pull = matches!(
+        cfg.direction,
+        SyncDirection::Pull | SyncDirection::Bidirectional
+    );
+    let push = matches!(
+        cfg.direction,
+        SyncDirection::Push | SyncDirection::Bidirectional
+    );
 
     let wm_roots: BTreeSet<PathBuf> = muxix.iter().map(|p| canon(&p.root)).collect();
     let ade_roots: BTreeSet<PathBuf> = ade.iter().map(|p| canon(&p.root)).collect();
@@ -248,7 +254,11 @@ impl<'a> ProjectRegistrySource for AdeProjects<'a> {
         let text = String::from_utf8_lossy(&out.stdout);
         let v: Value = serde_json::from_str(text.trim())
             .with_context(|| format!("unparseable project list from {}", self.command))?;
-        Ok(parse_projects(&v, &self.cfg.root_field, &self.cfg.name_field))
+        Ok(parse_projects(
+            &v,
+            &self.cfg.root_field,
+            &self.cfg.name_field,
+        ))
     }
 
     fn add(&self, p: &SyncProject) -> Result<()> {
@@ -295,12 +305,20 @@ fn apply(plan: &SyncPlan, muxix: &dyn ProjectRegistrySource, ade: &dyn ProjectRe
     ] {
         for p in adds {
             if let Err(e) = target.add(p) {
-                eprintln!("sync: could not add {} to {}: {e}", p.root.display(), target.name());
+                eprintln!(
+                    "sync: could not add {} to {}: {e}",
+                    p.root.display(),
+                    target.name()
+                );
             }
         }
         for p in removes {
             if let Err(e) = target.remove(p) {
-                eprintln!("sync: could not remove {} from {}: {e}", p.name, target.name());
+                eprintln!(
+                    "sync: could not remove {} from {}: {e}",
+                    p.name,
+                    target.name()
+                );
             }
         }
     }
@@ -337,7 +355,13 @@ pub fn sync_one(ade_name: &str, ade: &AdeConfig, dry_run: bool) -> Result<SyncPl
         .unwrap_or_default()
         .iter()
         .map(|p| canon(&p.root))
-        .chain(other.list().unwrap_or_default().iter().map(|p| canon(&p.root)))
+        .chain(
+            other
+                .list()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| canon(&p.root)),
+        )
         .collect();
     LastSynced { roots: after }.save(ade_name)?;
 
@@ -384,8 +408,12 @@ pub fn cli_sync(only: Option<&str>, dry_run: bool) -> Result<()> {
             println!("{name}: {verb}remove {} from {name}", p.root.display());
         }
         for (w, a) in &plan.conflicts {
-            println!("{name}: name conflict for {}: muxix '{}' vs {name} '{}'",
-                w.root.display(), w.name, a.name);
+            println!(
+                "{name}: name conflict for {}: muxix '{}' vs {name} '{}'",
+                w.root.display(),
+                w.name,
+                a.name
+            );
         }
     }
     if only.is_some() && !any {
@@ -395,7 +423,9 @@ pub fn cli_sync(only: Option<&str>, dry_run: bool) -> Result<()> {
 }
 
 /// Configured ADEs: built-in presets with the user's config merged over them.
-pub fn effective_ades(cfg: &crate::config::Config) -> std::collections::BTreeMap<String, AdeConfig> {
+pub fn effective_ades(
+    cfg: &crate::config::Config,
+) -> std::collections::BTreeMap<String, AdeConfig> {
     let presets = AdeConfig::presets();
     let mut map = presets.clone();
     for (name, ade) in &cfg.ade {
@@ -412,6 +442,7 @@ pub fn effective_ades(cfg: &crate::config::Config) -> std::collections::BTreeMap
 
 /// Run sync for every configured ADE, swallowing errors. Called from the daemon
 /// tick: a sync failure must never abort the tick or block dispatch.
+#[allow(dead_code)]
 pub fn sync_all_quiet() {
     let cfg = match crate::config::Config::load(None) {
         Ok(c) => c,
@@ -538,7 +569,12 @@ mod tests {
             names: true,
             ..Default::default()
         };
-        let plan = plan(&[p("/a", "api")], &[p("/a", "backend")], &c, &LastSynced::default());
+        let plan = plan(
+            &[p("/a", "api")],
+            &[p("/a", "backend")],
+            &c,
+            &LastSynced::default(),
+        );
         assert_eq!(plan.conflicts.len(), 1);
     }
 
@@ -548,7 +584,12 @@ mod tests {
         let last = LastSynced {
             roots: BTreeSet::from([PathBuf::from("/a")]),
         };
-        let plan = plan(&[p("/a", "a")], &[], &cfg(SyncDirection::Bidirectional), &last);
+        let plan = plan(
+            &[p("/a", "a")],
+            &[],
+            &cfg(SyncDirection::Bidirectional),
+            &last,
+        );
         assert!(plan.remove_from_muxix.is_empty());
         assert_eq!(plan.add_to_ade, vec![p("/a", "a")]);
     }
@@ -630,7 +671,10 @@ mod merge_tests {
         assert!(!paseo.list_args.is_empty(), "agent commands must survive");
         assert!(!paseo.start_args.is_empty(), "agent commands must survive");
         let projects = paseo.projects.as_ref().unwrap();
-        assert!(!projects.list_args.is_empty(), "project commands must survive");
+        assert!(
+            !projects.list_args.is_empty(),
+            "project commands must survive"
+        );
         assert_eq!(projects.sync.direction, SyncDirection::Bidirectional);
     }
 

@@ -189,12 +189,20 @@ mod tests {
             Some(SidebarAction::Quit)
         );
         assert_eq!(
-            lookup(SIDEBAR_BINDINGS, SIDEBAR, KeyChord_from('G', KeyModifiers::SHIFT)),
+            lookup(
+                SIDEBAR_BINDINGS,
+                SIDEBAR,
+                KeyChord_from('G', KeyModifiers::SHIFT)
+            ),
             Some(SidebarAction::SelectLast)
         );
         // `g` is a vim prefix handled in handle_key, not a binding
         assert_eq!(
-            lookup(SIDEBAR_BINDINGS, SIDEBAR, KeyChord_from('g', KeyModifiers::NONE)),
+            lookup(
+                SIDEBAR_BINDINGS,
+                SIDEBAR,
+                KeyChord_from('g', KeyModifiers::NONE)
+            ),
             None
         );
     }

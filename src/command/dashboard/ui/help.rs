@@ -363,7 +363,6 @@ pub fn render_sweep_progress(f: &mut Frame, app: &App) {
     f.render_widget(paragraph, popup_area);
 }
 
-
 /// Render the sweep cleanup modal.
 pub fn render_sweep(f: &mut Frame, app: &App) {
     let Some(ref sweep) = app.pending_sweep else {

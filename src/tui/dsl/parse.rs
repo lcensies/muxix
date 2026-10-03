@@ -21,7 +21,13 @@ mod tests {
         match node {
             Node::Col { children, .. } => {
                 assert_eq!(children.len(), 2);
-                assert!(matches!(children[0], Node::Text { size: Size::Length(2), .. }));
+                assert!(matches!(
+                    children[0],
+                    Node::Text {
+                        size: Size::Length(2),
+                        ..
+                    }
+                ));
                 assert!(matches!(children[1], Node::Spacer { .. }));
             }
             other => panic!("expected col, got {other:?}"),

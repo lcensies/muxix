@@ -81,6 +81,7 @@ pub enum LayerKind {
     /// Values locked by a provisioning policy. Applied above everything.
     PolicyLocks,
     /// Overrides from CLI flags.
+    #[allow(dead_code)]
     Cli,
 }
 
@@ -116,7 +117,12 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(id: impl Into<String>, source: impl Into<String>, kind: LayerKind, value: Value) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        source: impl Into<String>,
+        kind: LayerKind,
+        value: Value,
+    ) -> Self {
         let trusted = kind.is_global_by_default();
         Self {
             id: id.into(),
@@ -501,7 +507,9 @@ fn strip_skill_hooks(layer: &mut Layer, warnings: &mut Vec<LayerWarning>) {
     }
 
     let mut strip_list = |list: &mut Value, path: &str| {
-        let Value::Sequence(entries) = list else { return };
+        let Value::Sequence(entries) = list else {
+            return;
+        };
         for entry in entries {
             let Value::Mapping(map) = entry else { continue };
             let hooks_key = Value::String("hooks".to_string());
@@ -673,7 +681,10 @@ mod tests {
 
     #[test]
     fn scalar_replaces() {
-        assert_eq!(merge2("agent: claude", "agent: codex"), yaml("agent: codex"));
+        assert_eq!(
+            merge2("agent: claude", "agent: codex"),
+            yaml("agent: codex")
+        );
     }
 
     #[test]
@@ -834,7 +845,10 @@ mod tests {
 
     #[test]
     fn layouts_shallow_extend() {
-        let got = merge2("layouts:\n  g:\n    panes: [1]", "layouts:\n  p:\n    panes: [2]");
+        let got = merge2(
+            "layouts:\n  g:\n    panes: [1]",
+            "layouts:\n  p:\n    panes: [2]",
+        );
         assert_eq!(
             got,
             yaml("layouts:\n  g:\n    panes: [1]\n  p:\n    panes: [2]")
@@ -906,7 +920,9 @@ mod tests {
             "project",
             ".muxix.yaml",
             LayerKind::Project,
-            yaml("agent: claude\nagents:\n  x:\n    command: sh\nsandbox:\n  env:\n    A: 1\n  image: keep"),
+            yaml(
+                "agent: claude\nagents:\n  x:\n    command: sh\nsandbox:\n  env:\n    A: 1\n  image: keep",
+            ),
         );
         let warnings = strip_global_only(&mut layer);
         assert_eq!(layer.value, yaml("agent: claude\nsandbox:\n  image: keep"));
@@ -945,7 +961,12 @@ mod tests {
     #[test]
     fn project_windows_clears_inherited_panes() {
         let layers = vec![
-            Layer::new("global", "g", LayerKind::Global, yaml("panes: [{command: a}]")),
+            Layer::new(
+                "global",
+                "g",
+                LayerKind::Global,
+                yaml("panes: [{command: a}]"),
+            ),
             Layer::new(
                 "project",
                 "p",
@@ -960,7 +981,12 @@ mod tests {
     #[test]
     fn project_panes_clears_inherited_windows() {
         let layers = vec![
-            Layer::new("global", "g", LayerKind::Global, yaml("windows: [{name: w}]")),
+            Layer::new(
+                "global",
+                "g",
+                LayerKind::Global,
+                yaml("windows: [{name: w}]"),
+            ),
             Layer::new(
                 "project",
                 "p",
@@ -975,7 +1001,12 @@ mod tests {
     #[test]
     fn layout_untouched_when_override_sets_neither() {
         let layers = vec![
-            Layer::new("global", "g", LayerKind::Global, yaml("panes: [{command: a}]")),
+            Layer::new(
+                "global",
+                "g",
+                LayerKind::Global,
+                yaml("panes: [{command: a}]"),
+            ),
             Layer::new("project", "p", LayerKind::Project, yaml("agent: claude")),
         ];
         let got = resolve(layers, false).value;
@@ -1031,7 +1062,10 @@ mod tests {
             ),
         ];
         let prov = resolve(layers, true).provenance.unwrap();
-        assert_eq!(prov.get("sandbox.image").map(String::as_str), Some("project"));
+        assert_eq!(
+            prov.get("sandbox.image").map(String::as_str),
+            Some("project")
+        );
         assert_eq!(
             prov.get("sandbox.enabled").map(String::as_str),
             Some("global")
@@ -1069,7 +1103,6 @@ mod tests {
         ];
         assert_eq!(resolve(layers, false).value, yaml("agent: three"));
     }
-
 
     #[test]
     fn empty_layer_list_resolves_to_empty_mapping() {

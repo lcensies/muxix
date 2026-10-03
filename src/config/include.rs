@@ -130,14 +130,7 @@ pub fn expand(
     };
     let mut out = Vec::new();
     let mut chain = vec![Source::File(origin.to_path_buf())];
-    expand_entries(
-        &entries,
-        base_dir,
-        trusted,
-        id_prefix,
-        &mut chain,
-        &mut out,
-    )?;
+    expand_entries(&entries, base_dir, trusted, id_prefix, &mut chain, &mut out)?;
     Ok(out)
 }
 
@@ -352,11 +345,18 @@ mod tests {
     fn relative_include_is_resolved_against_the_including_file() {
         let dir = tmpdir();
         write(&dir, "base.yaml", "agent: codex\nmerge_strategy: rebase\n");
-        let main = write(&dir, "config.yaml", "include: [./base.yaml]\nagent: claude\n");
+        let main = write(
+            &dir,
+            "config.yaml",
+            "include: [./base.yaml]\nagent: claude\n",
+        );
 
         let layers = expand_file(&main, true).unwrap();
         assert_eq!(layers.len(), 1);
-        assert_eq!(layers[0].value.get("agent").unwrap().as_str(), Some("codex"));
+        assert_eq!(
+            layers[0].value.get("agent").unwrap().as_str(),
+            Some("codex")
+        );
     }
 
     #[test]
@@ -491,7 +491,11 @@ mod tests {
     #[test]
     fn plain_http_include_is_rejected() {
         let dir = tmpdir();
-        let main = write(&dir, "config.yaml", "include: ['http://example.com/c.yaml']\n");
+        let main = write(
+            &dir,
+            "config.yaml",
+            "include: ['http://example.com/c.yaml']\n",
+        );
         let err = expand_file(&main, true).unwrap_err().to_string();
         assert!(err.contains("plain HTTP"), "{err}");
     }

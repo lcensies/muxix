@@ -1,4 +1,7 @@
 //! Task graph operations: load, frontier computation, atomic status updates, stats.
+//! Most of these helpers are plumbing an external harness drives through the
+//! `muxix task` CLI, so the binary itself never calls them.
+#![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
@@ -54,7 +57,6 @@ fn deps_done(task: &GraphTask, status_map: &HashMap<&str, &str>) -> bool {
         .iter()
         .all(|dep| status_map.get(dep.as_str()) == Some(&STATUS_DONE))
 }
-
 
 /// Distinct capabilities declared by the setup-phase subgraph, in
 /// first-appearance order. This is the set the preflight iterates over.
@@ -557,9 +559,9 @@ pub fn bind_slot(
         // exactly the divergence this mechanism exists to prevent.
         if let Some(slot) = task.get("slot").filter(|s| !s.is_null()).cloned() {
             let attempt = slot["attempt"].as_u64().map(|a| a as u32);
-            let same = task["branch"] == Value::from(branch)
-                && task["base"] == Value::from(base)
-                && slot["worktree_path"] == Value::from(worktree_path);
+            let same = task["branch"] == branch
+                && task["base"] == base
+                && slot["worktree_path"] == worktree_path;
             outcome = Some(if same {
                 BindOutcome::AlreadyBound {
                     attempt: attempt.unwrap_or_default(),
@@ -620,7 +622,6 @@ pub fn mark_slot_unknown(path: &Path, task_id: &str) -> Result<()> {
         }
     })
 }
-
 
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -930,10 +931,6 @@ mod tests {
             ..task(id, STATUS_TODO, &[])
         }
     }
-
-
-
-
 
     #[test]
     fn set_implementation_plan_persists_and_preserves_other_tasks() {

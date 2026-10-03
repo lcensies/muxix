@@ -852,6 +852,7 @@ def test_open_legacy_worktree_falls_back_to_config_mode(
         capture_output=True,
         text=True,
         env=env.env,
+        check=False,
     )
     assert result.stdout.strip() == "session", (
         f"Expected backfilled mode to be 'session', got: {result.stdout.strip()!r}"

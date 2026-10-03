@@ -1,6 +1,6 @@
 use crate::command::args::PromptArgs;
-use crate::config::{MuxMode, SplitDirection};
-use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
+use crate::config::MuxMode;
+use crate::multiplexer::{create_backend, detect_backend};
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
@@ -185,7 +185,6 @@ pub fn run(
                         resolved_name,
                         result.worktree_path.display()
                     );
-
                 }
 
                 // Opened windows get the sidebar without a manual toggle.
@@ -223,4 +222,3 @@ pub fn run(
         )
     }
 }
-

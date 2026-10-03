@@ -32,12 +32,14 @@ pub struct PromptTemplate {
 ///   1. Inline `prompt_defs:` in `.muxix.yaml`
 ///   2. Files in `.muxix/prompts/<name>.md` (content only; no frontmatter)
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 pub struct PromptRegistry {
     templates: BTreeMap<String, PromptTemplate>,
 }
 
 impl PromptRegistry {
     /// Load a registry from inline defs and the default `.muxix/prompts/` dir.
+    #[allow(dead_code)]
     pub fn load(
         inline_defs: &BTreeMap<String, PromptTemplate>,
         project_root: &Path,
@@ -89,11 +91,13 @@ impl PromptRegistry {
     }
 
     /// Resolve a named prompt template. Returns `None` if not found.
+    #[allow(dead_code)]
     pub fn get(&self, name: &str) -> Option<&PromptTemplate> {
         self.templates.get(name)
     }
 
     /// All known template names, sorted.
+    #[allow(dead_code)]
     pub fn names(&self) -> Vec<&str> {
         self.templates.keys().map(|s| s.as_str()).collect()
     }

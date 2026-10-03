@@ -209,7 +209,12 @@ mod tests {
 
         let shim_bin = create_shim_directory(tmp.path(), &commands).unwrap();
         assert!(shim_bin.join("valid").exists());
-        assert!(!shim_bin.join("/bin/evil").exists());
+        let mut names: Vec<String> = std::fs::read_dir(&shim_bin)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["_shim", "valid"]);
     }
 
     #[test]

@@ -42,8 +42,8 @@ pub fn list(
     } else {
         tasks
             .iter()
-            .filter(|t| status.as_ref().map_or(true, |s| &t.status == s))
-            .filter(|t| label.as_ref().map_or(true, |l| t.labels.contains(l)))
+            .filter(|t| status.as_ref().is_none_or(|s| &t.status == s))
+            .filter(|t| label.as_ref().is_none_or(|l| t.labels.contains(l)))
             .collect()
     };
 
@@ -87,11 +87,11 @@ fn task_attention(t: &GraphTask) -> String {
 }
 
 /// Main worktree root (the project's single `.muxix/`), falling back to cwd.
+#[allow(dead_code)]
 fn repo_root() -> PathBuf {
     crate::git::get_main_worktree_root()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
-
 
 /// `muxix task get` — exact id match, else fuzzy search over id+title.
 pub fn get(graph: &Path, query: &str, json: bool) -> Result<()> {
@@ -401,10 +401,10 @@ fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
             if i == 0 {
                 score += 5; // prefix bonus
             }
-            if let Some(p) = prev_match {
-                if p + 1 == i {
-                    score += 3; // contiguous-run bonus
-                }
+            if let Some(p) = prev_match
+                && p + 1 == i
+            {
+                score += 3; // contiguous-run bonus
             }
             prev_match = Some(i);
             qi += 1;
@@ -435,7 +435,6 @@ fn slug(title: &str) -> String {
     }
     out.trim_matches('-').to_string()
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -558,7 +557,10 @@ mod tests {
 
         let tasks = graph::load(&graph).unwrap();
         let a = tasks.iter().find(|t| t.id == "a").unwrap();
-        assert_eq!(a.blocked_reason.as_deref(), Some("round 2: replay diverged"));
+        assert_eq!(
+            a.blocked_reason.as_deref(),
+            Some("round 2: replay diverged")
+        );
         let child = tasks.iter().find(|t| t.id == "a-1").unwrap();
         assert_eq!(child.parent.as_deref(), Some("a"));
         assert_eq!(child.status, "todo");

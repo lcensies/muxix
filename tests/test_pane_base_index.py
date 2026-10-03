@@ -6,10 +6,10 @@ base-index configuration options that only exist in tmux.
 WezTerm: Does not have pane-base-index or base-index configuration options.
 """
 
-import pytest
 from pathlib import Path
 from typing import cast
 
+import pytest
 
 from .conftest import (
     MuxEnvironment,

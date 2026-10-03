@@ -90,7 +90,10 @@ impl RuntimeRegistry {
     /// an ADE stays drivable from muxix even when this project's configured
     /// runtime is `local`, and vice versa. Selection decides who *creates* new
     /// agents; it does not decide who muxix is allowed to talk to.
-    pub fn runtime_for(&self, agent: &crate::agent::runtime::AgentRef) -> Result<Arc<dyn AgentRuntime>> {
+    pub fn runtime_for(
+        &self,
+        agent: &crate::agent::runtime::AgentRef,
+    ) -> Result<Arc<dyn AgentRuntime>> {
         self.get(&agent.runtime).ok_or_else(|| {
             anyhow::anyhow!(
                 "agent {agent} belongs to unregistered runtime '{}'",
@@ -105,7 +108,12 @@ impl RuntimeRegistry {
     /// what it started locally *and* what an ADE started, side by side. An
     /// unhealthy runtime contributes nothing and is reported, never silently
     /// treated as owning no agents.
-    pub fn list_agents(&self) -> (Vec<crate::agent::runtime::RuntimeAgent>, Vec<(String, String)>) {
+    pub fn list_agents(
+        &self,
+    ) -> (
+        Vec<crate::agent::runtime::RuntimeAgent>,
+        Vec<(String, String)>,
+    ) {
         let mut agents = Vec::new();
         let mut problems = Vec::new();
         for (name, runtime) in &self.runtimes {
@@ -170,7 +178,12 @@ pub fn print_runtimes(json: bool) -> Result<()> {
     for r in list {
         let mark = if r.is_default { " (default)" } else { "" };
         match r.health.reason() {
-            None => println!("{}{}  ok  [{}]", r.name, mark, r.features.names().join(", ")),
+            None => println!(
+                "{}{}  ok  [{}]",
+                r.name,
+                mark,
+                r.features.names().join(", ")
+            ),
             Some(reason) => println!("{}{}  unavailable: {reason}", r.name, mark),
         }
     }
@@ -328,7 +341,11 @@ mod tests {
             agents: vec!["a1".to_string()],
         }));
         let (_, problems) = reg.list_agents();
-        assert!(problems.iter().any(|(n, r)| n == "remote" && r.contains("daemon down")));
+        assert!(
+            problems
+                .iter()
+                .any(|(n, r)| n == "remote" && r.contains("daemon down"))
+        );
     }
 
     #[test]

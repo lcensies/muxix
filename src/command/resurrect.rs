@@ -68,11 +68,7 @@ pub fn plan_resume(worktree_path: &Path, handle: &str, agent_name: &str) -> Resu
         .and_then(|store| store.get_worktree(handle))
         .ok()
         .flatten()
-        .and_then(|record| {
-            record
-                .latest_session_for(agent_name)
-                .map(|s| s.id.clone())
-        });
+        .and_then(|record| record.latest_session_for(agent_name).map(|s| s.id.clone()));
 
     if let Some(id) = journalled
         && matches!(forker.find_conversation(worktree_path, &id), Ok(Some(_)))
@@ -200,7 +196,7 @@ fn target_is_live(mux: &dyn Multiplexer, name: &str, mode: config::MuxMode) -> b
     } else {
         mux.get_all_window_names()
     };
-    live.map(|names| names.contains(&name.to_string()))
+    live.map(|names| names.iter().any(|n| n == name))
         .unwrap_or(false)
 }
 
@@ -273,8 +269,7 @@ pub fn run(dry_run: bool) -> Result<()> {
 
         let mut prompt_file_path = None;
         if !resumable
-            && let Some(task_prompt) =
-                find_task_prompt(&candidate.worktree_path, &candidate.handle)
+            && let Some(task_prompt) = find_task_prompt(&candidate.worktree_path, &candidate.handle)
         {
             match write_resurrect_prompt(&candidate.worktree_path, &candidate.handle, &task_prompt)
             {
@@ -440,13 +435,13 @@ mod tests {
         let out = write_resurrect_prompt(wt.path(), "x", &original).unwrap();
         let body = fs::read_to_string(&out).unwrap();
 
-        assert!(body.contains("ORIGINAL TASK TEXT"), "task text must survive");
+        assert!(
+            body.contains("ORIGINAL TASK TEXT"),
+            "task text must survive"
+        );
         assert!(body.contains("restored"), "must explain the restart");
         // The durable record is never overwritten by a resurrection.
-        assert_eq!(
-            fs::read_to_string(&original).unwrap(),
-            "ORIGINAL TASK TEXT"
-        );
+        assert_eq!(fs::read_to_string(&original).unwrap(), "ORIGINAL TASK TEXT");
         assert_ne!(out, original);
     }
 
@@ -508,7 +503,10 @@ mod tests {
 
         // A newer session belonging to a different agent must not be offered to
         // claude — that unreachable session is what killed the restored windows.
-        assert_eq!(record.latest_session_for("claude").unwrap().id, "claude-old");
+        assert_eq!(
+            record.latest_session_for("claude").unwrap().id,
+            "claude-old"
+        );
         assert!(record.latest_session_for("gemini").is_none());
     }
 }

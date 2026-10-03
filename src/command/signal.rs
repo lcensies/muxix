@@ -33,6 +33,7 @@ use crate::state::{self, Completion, CompletionKind};
 /// - With `--node`: NODE-KEYED, writes the pipeline hook-signal file for inter-stage messaging.
 /// - Without `--node`: PANE-KEYED, writes an agent-authored `Completion` onto
 ///   `AgentState` (uses $TMUX_PANE or --pane) — this is the signal `wait`/`status` read.
+///
 /// `activity` is PANE-KEYED and writes `AgentState.activity`, the free-text label
 /// the sidebar renders via its `{activity}` token (`--clear` or an empty
 /// `--label` clears it).
@@ -240,7 +241,15 @@ mod tests {
             std::env::set_var("TASK_ID", task_id);
         }
 
-        run("done", None, Some(node_id), Some("tests passed"), None, false).unwrap();
+        run(
+            "done",
+            None,
+            Some(node_id),
+            Some("tests passed"),
+            None,
+            false,
+        )
+        .unwrap();
         assert!(path.exists(), "Signal file should be created");
 
         // Verify it contains valid JSON

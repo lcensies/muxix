@@ -34,7 +34,7 @@ pub struct Binding<A: 'static> {
 
 impl<A: 'static> Binding<A> {
     fn applies_in(&self, ctx: &str) -> bool {
-        self.contexts.iter().any(|c| *c == ctx)
+        self.contexts.contains(&ctx)
     }
 }
 
@@ -70,7 +70,10 @@ pub fn palette_entries<'a, A: 'static>(
 
 /// Help rows `(hint, label)` for a context, in table order. Entries with an
 /// empty hint are omitted.
-pub fn help_rows<A: 'static>(bindings: &[Binding<A>], ctx: &str) -> Vec<(&'static str, &'static str)> {
+pub fn help_rows<A: 'static>(
+    bindings: &[Binding<A>],
+    ctx: &str,
+) -> Vec<(&'static str, &'static str)> {
     bindings
         .iter()
         .filter(|b| !b.hint.is_empty() && b.applies_in(ctx))

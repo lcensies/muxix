@@ -87,9 +87,7 @@ impl<'de> Deserialize<'de> for ProvisionEndpoints {
         let map = serde_yaml::Mapping::deserialize(d)?;
         let get = |k: &str| map.get(serde_yaml::Value::String(k.to_string()));
 
-        let as_str = |v: Option<&serde_yaml::Value>| {
-            v.and_then(|v| v.as_str()).map(str::to_owned)
-        };
+        let as_str = |v: Option<&serde_yaml::Value>| v.and_then(|v| v.as_str()).map(str::to_owned);
 
         Ok(ProvisionEndpoints {
             policy: as_str(get("policy")),
@@ -218,6 +216,7 @@ pub enum ViolationSeverity {
     Error,
 }
 
+#[allow(dead_code)]
 pub struct PolicyMergeResult {
     pub config: crate::config::Config,
     pub violations: Vec<PolicyViolation>,

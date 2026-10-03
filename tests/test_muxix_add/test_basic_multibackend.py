@@ -40,9 +40,7 @@ class TestWorktreeCreation:
         branch_name = "test-feature"
 
         write_muxix_config(repo_path)
-        run_muxix_command(
-            mux_server, muxix_exe_path, repo_path, f"add {branch_name}"
-        )
+        run_muxix_command(mux_server, muxix_exe_path, repo_path, f"add {branch_name}")
 
         expected_path = get_worktree_path(repo_path, branch_name)
         assert expected_path.exists(), f"Worktree not created at {expected_path}"
@@ -55,9 +53,7 @@ class TestWorktreeCreation:
         branch_name = "test-feature"
 
         write_muxix_config(repo_path)
-        run_muxix_command(
-            mux_server, muxix_exe_path, repo_path, f"add {branch_name}"
-        )
+        run_muxix_command(mux_server, muxix_exe_path, repo_path, f"add {branch_name}")
 
         expected_window = get_window_name(branch_name)
         assert_window_exists(mux_server, expected_window)

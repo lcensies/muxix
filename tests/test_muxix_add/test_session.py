@@ -40,9 +40,7 @@ class TestSessionCreation:
 
         assert_session_exists(env, session_name)
 
-    def test_add_session_creates_worktree(
-        self, mux_server, muxix_exe_path, repo_path
-    ):
+    def test_add_session_creates_worktree(self, mux_server, muxix_exe_path, repo_path):
         """Verifies that `muxix add --session` creates a git worktree."""
         env = mux_server
         branch_name = "feature-session-worktree"
@@ -240,9 +238,7 @@ class TestSessionRemove:
         assert worktree_path.is_dir()
 
         # Remove the worktree
-        run_muxix_command(
-            env, muxix_exe_path, repo_path, f"remove -f {branch_name}"
-        )
+        run_muxix_command(env, muxix_exe_path, repo_path, f"remove -f {branch_name}")
 
         # Verify session is gone
         assert_session_not_exists(env, session_name)
@@ -557,9 +553,7 @@ class TestMixedMode:
         assert_session_exists(env, get_session_name(session_branch))
 
         # Remove session-mode worktree
-        run_muxix_command(
-            env, muxix_exe_path, repo_path, f"remove -f {session_branch}"
-        )
+        run_muxix_command(env, muxix_exe_path, repo_path, f"remove -f {session_branch}")
 
         # Verify session is gone but window still exists
         assert_session_not_exists(env, get_session_name(session_branch))
@@ -570,9 +564,7 @@ class TestMixedMode:
         )
 
         # Remove window-mode worktree
-        run_muxix_command(
-            env, muxix_exe_path, repo_path, f"remove -f {window_branch}"
-        )
+        run_muxix_command(env, muxix_exe_path, repo_path, f"remove -f {window_branch}")
 
         # Verify window is gone
         result = env.tmux(["list-windows", "-t", "test:", "-F", "#{window_name}"])

@@ -45,6 +45,7 @@ pub fn state_dir() -> Result<PathBuf> {
 /// `XDG_RUNTIME_DIR` is user-private and cleared on logout, which is what
 /// short-lived coordination files want — but it is not guaranteed to exist, so
 /// the state dir is the fallback rather than a hard error.
+#[allow(dead_code)]
 pub fn runtime_dir() -> Result<PathBuf> {
     if let Some(val) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
         let path = PathBuf::from(val);

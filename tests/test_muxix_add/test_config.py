@@ -1,7 +1,7 @@
 """Tests for config file precedence and global/project config merging."""
 
-from pathlib import Path
 import shlex
+from pathlib import Path
 
 import yaml
 
@@ -494,9 +494,7 @@ class TestBaseBranchConfig:
 
         env.run_command(["git", "checkout", "-b", base_branch], cwd=mux_repo_path)
         create_commit(env, mux_repo_path, commit_msg)
-        (mux_repo_path / ".muxix.yaml").write_text(
-            'base_branch: ""\nnerdfont: false\n'
-        )
+        (mux_repo_path / ".muxix.yaml").write_text('base_branch: ""\nnerdfont: false\n')
 
         worktree_path = add_branch_and_get_worktree(
             env, muxix_exe_path, mux_repo_path, new_branch

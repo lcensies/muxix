@@ -130,10 +130,6 @@ fn comment_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
-
-
-
-
 /// Get help rows for a context: (key, description) pairs.
 ///
 /// Registry-driven contexts derive their rows from `super::bindings`; the

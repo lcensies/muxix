@@ -7,7 +7,6 @@
 //! dashboard and sidebar read. Behaviour is meant to be indistinguishable from
 //! before the trait existed.
 
-use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{Result, bail};
@@ -76,7 +75,9 @@ impl AgentRuntime for LocalRuntime {
             bail!("local runtime: agent handle is required");
         }
         let mut cmd = Command::new("muxix");
-        cmd.current_dir(&req.project_root).arg("add").arg(&req.handle);
+        cmd.current_dir(&req.project_root)
+            .arg("add")
+            .arg(&req.handle);
         if let Some(kind) = &req.kind {
             cmd.arg("--agent").arg(kind);
         }
@@ -98,8 +99,7 @@ impl AgentRuntime for LocalRuntime {
         let pane = Self::reconciled()?
             .into_iter()
             .find(|a| {
-                a.window_name.ends_with(want)
-                    || a.path.file_name().is_some_and(|n| n == want)
+                a.window_name.ends_with(want) || a.path.file_name().is_some_and(|n| n == want)
             })
             .map(|a| a.pane_id);
         match pane {
@@ -122,7 +122,10 @@ impl AgentRuntime for LocalRuntime {
         Ok(match found {
             // A pane with no status yet is adopted but pre-hook: starting, not
             // unknown — the distinction matters to callers that wait on it.
-            Some(a) => a.status.map(RuntimeStatus::from).unwrap_or(RuntimeStatus::Starting),
+            Some(a) => a
+                .status
+                .map(RuntimeStatus::from)
+                .unwrap_or(RuntimeStatus::Starting),
             None => RuntimeStatus::Unknown,
         })
     }
@@ -132,8 +135,11 @@ impl AgentRuntime for LocalRuntime {
             .into_iter()
             .map(|a| RuntimeAgent {
                 reference: AgentRef::new(LOCAL, a.pane_id),
-                status: a.status.map(RuntimeStatus::from).unwrap_or(RuntimeStatus::Starting),
-                workdir: Some(PathBuf::from(a.path)),
+                status: a
+                    .status
+                    .map(RuntimeStatus::from)
+                    .unwrap_or(RuntimeStatus::Starting),
+                workdir: Some(a.path),
                 title: a.pane_title,
                 kind: a.agent_kind,
             })
@@ -159,7 +165,10 @@ mod tests {
     fn local_runtime_declares_the_pane_features() {
         let f = LocalRuntime::new().features();
         assert!(f.panes && f.owns_worktree && f.send && f.freeze && f.fork);
-        assert!(!f.events, "local status is polled from state files, not pushed");
+        assert!(
+            !f.events,
+            "local status is polled from state files, not pushed"
+        );
     }
 
     #[test]

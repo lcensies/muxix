@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Show the current policy status (offline — reads cached policy.yaml).
 pub fn run_status() -> Result<()> {
-    use crate::provision::cache::{load_policy, CacheStatus};
+    use crate::provision::cache::{CacheStatus, load_policy};
 
     let grace = 72 * 3600;
     match load_policy(grace)? {
@@ -32,9 +32,7 @@ pub fn run_status() -> Result<()> {
             );
         }
         CacheStatus::Expired => {
-            eprintln!(
-                "error: org policy has expired. Run 'muxix provision sync' to re-sync."
-            );
+            eprintln!("error: org policy has expired. Run 'muxix provision sync' to re-sync.");
         }
         CacheStatus::Missing => {
             println!("org policy: not configured");
@@ -79,7 +77,6 @@ pub fn run_sync(dry_run: bool, strict: bool) -> Result<()> {
         .as_secs();
 
     let mut audit_result = "ok".to_string();
-    let mut violations_count = 0usize;
     let mut lock_overrides = 0usize;
 
     if !dry_run {
@@ -89,7 +86,10 @@ pub fn run_sync(dry_run: bool, strict: bool) -> Result<()> {
             Ok(None) => {}
             Ok(Some(resp)) => {
                 if resp.accepted {
-                    println!("provision sync: profile accepted (id={:?})", resp.profile_id);
+                    println!(
+                        "provision sync: profile accepted (id={:?})",
+                        resp.profile_id
+                    );
                     if !resp.policy_needs_update {
                         // Don't short-circuit: we still fetch the policy below and
                         // re-assert agent config from it every sync (a cheap GET),
@@ -167,7 +167,7 @@ pub fn run_sync(dry_run: bool, strict: bool) -> Result<()> {
 
     // Validate against current config
     let violations = merge::validate_policy(&config, &policy);
-    violations_count = violations.len();
+    let violations_count = violations.len();
     if !violations.is_empty() {
         merge::report_violations(&violations);
         if strict {
@@ -225,13 +225,17 @@ pub fn run_sync(dry_run: bool, strict: bool) -> Result<()> {
 }
 
 /// Dry-run: show what policy would be applied without modifying anything.
+#[allow(dead_code)]
 pub fn run_dry_run() -> Result<()> {
-    use crate::provision::cache::{load_policy, CacheStatus};
+    use crate::provision::cache::{CacheStatus, load_policy};
 
     let grace = 72 * 3600;
     match load_policy(grace)? {
         CacheStatus::Fresh(policy) | CacheStatus::Stale(policy) => {
-            println!("dry-run: org policy v{} would be applied", policy.policy_version);
+            println!(
+                "dry-run: org policy v{} would be applied",
+                policy.policy_version
+            );
             if policy.locked.proxy_chain.is_some() {
                 println!("  locked: proxy_chain");
             }

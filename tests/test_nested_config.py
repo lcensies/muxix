@@ -365,9 +365,7 @@ class TestBackwardsCompatibility:
         run_cmd(["git", "add", "."], cwd=repo_path, env=env)
         run_cmd(["git", "commit", "-m", "add root config"], cwd=repo_path, env=env)
 
-        result = run_muxix_command(
-            env, muxix_exe_path, repo_path, "add test-branch"
-        )
+        result = run_muxix_command(env, muxix_exe_path, repo_path, "add test-branch")
         assert result.exit_code == 0
 
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
@@ -383,7 +381,5 @@ class TestBackwardsCompatibility:
         """No config file uses default behavior."""
         env = mux_server
 
-        result = run_muxix_command(
-            env, muxix_exe_path, repo_path, "add test-branch"
-        )
+        result = run_muxix_command(env, muxix_exe_path, repo_path, "add test-branch")
         assert result.exit_code == 0

@@ -132,16 +132,15 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         .into_iter()
         .find(|(_, branch)| branch == branch_name)
         .map(|(path, _)| path)
+        && !stale_path.exists()
     {
-        if !stale_path.exists() {
-            warn!(
-                branch = branch_name,
-                path = %stale_path.display(),
-                "create: registered worktree directory is missing, pruning stale metadata"
-            );
-            git::prune_worktrees_in(&context.git_common_dir)
-                .context("Failed to prune stale worktree metadata")?;
-        }
+        warn!(
+            branch = branch_name,
+            path = %stale_path.display(),
+            "create: registered worktree directory is missing, pruning stale metadata"
+        );
+        git::prune_worktrees_in(&context.git_common_dir)
+            .context("Failed to prune stale worktree metadata")?;
     }
 
     let worktree_exists = git::worktree_exists_in(branch_name, Some(&context.execution_dir))?;
@@ -1087,7 +1086,7 @@ mod tests {
         init_repo(&repo_b);
 
         std::env::set_current_dir(&non_repo).unwrap();
-        let result = (|| {
+        {
             let config = Config::default();
             let ctx =
                 WorkflowContext::new_in(&repo_b, config.clone(), Arc::new(TestMux), None).unwrap();
@@ -1122,8 +1121,7 @@ mod tests {
                 std::env::current_dir().unwrap(),
                 non_repo.canonicalize().unwrap()
             );
-        })();
+        };
         std::env::set_current_dir(original_cwd).unwrap();
-        result
     }
 }

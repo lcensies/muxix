@@ -55,12 +55,7 @@ pub fn run(agent_cmd: &str, args: &[String], cli_profile: Option<&str>) -> Resul
 }
 
 /// Point the agent's config-dir env var at the profile's derived overlay dir.
-fn apply_profile(
-    cmd: &mut Command,
-    profile: &str,
-    agent_cmd: &str,
-    config: &Config,
-) -> Result<()> {
+fn apply_profile(cmd: &mut Command, profile: &str, agent_cmd: &str, config: &Config) -> Result<()> {
     if !config.agent_profiles.contains_key(profile) {
         let declared: Vec<&str> = config.agent_profiles.keys().map(String::as_str).collect();
         let list = if declared.is_empty() {
@@ -75,9 +70,8 @@ fn apply_profile(
         .ok_or_else(|| anyhow!("unknown agent '{agent_cmd}'; cannot profile it"))?;
     let agent_id = agent.profile_id();
 
-    let env_var = ap::config_dir_env(agent_id).ok_or_else(|| {
-        anyhow!("agent '{agent_id}' does not support config-dir profiling")
-    })?;
+    let env_var = ap::config_dir_env(agent_id)
+        .ok_or_else(|| anyhow!("agent '{agent_id}' does not support config-dir profiling"))?;
 
     let dest = ap::build_dir(profile, agent_id)?;
     if !dest.exists() {

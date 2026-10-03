@@ -16,7 +16,6 @@ import json
 import shlex
 from pathlib import Path
 
-
 from .conftest import (
     MuxEnvironment,
     get_window_name,
@@ -79,7 +78,9 @@ def build_status_cmd_with_marker(
     marker_path: Path,
     env_vars: dict[str, str] | None = None,
 ) -> str:
-    command = f"{muxix_exe} set-window-status {status}; touch {shlex.quote(str(marker_path))}"
+    command = (
+        f"{muxix_exe} set-window-status {status}; touch {shlex.quote(str(marker_path))}"
+    )
     script_env = {"XDG_STATE_HOME": env.env["XDG_STATE_HOME"]}
     if env_vars:
         script_env.update(env_vars)

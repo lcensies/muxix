@@ -27,12 +27,8 @@ pub fn run(command: AgentRegistryCommand) -> Result<()> {
         git::get_main_worktree_root().context("Failed to locate the repository root")?;
     let config = Config::load(None).context("Failed to load configuration")?;
 
-    let registry = AgentRegistry::load(
-        &config.agent_defs,
-        &config.agent_registries,
-        &repo_root,
-    )
-    .context("Failed to load agent registry")?;
+    let registry = AgentRegistry::load(&config.agent_defs, &config.agent_registries, &repo_root)
+        .context("Failed to load agent registry")?;
 
     match command {
         AgentRegistryCommand::List => {
@@ -52,16 +48,9 @@ pub fn run(command: AgentRegistryCommand) -> Result<()> {
             } else {
                 println!("{}", style("Agent definitions").bold().cyan());
                 for (name, def) in &defs {
-                    let desc = def
-                        .description
-                        .as_deref()
-                        .unwrap_or("(no description)");
-                    let perm = def
-                        .permission_mode
-                        .as_deref()
-                        .unwrap_or("(inherited)");
-                    let has_template = def.prompt_template.is_some()
-                        || def.prompt_ref.is_some();
+                    let desc = def.description.as_deref().unwrap_or("(no description)");
+                    let perm = def.permission_mode.as_deref().unwrap_or("(inherited)");
+                    let has_template = def.prompt_template.is_some() || def.prompt_ref.is_some();
                     let trust = def.trust_summary();
                     let trust_badge = if trust.elevated {
                         format!(" {}", style("⚠ elevated").yellow())
@@ -79,14 +68,12 @@ pub fn run(command: AgentRegistryCommand) -> Result<()> {
                 }
             }
         }
-        AgentRegistryCommand::Show { name } => {
-            match registry.get(&name) {
-                None => {
-                    anyhow::bail!("agent definition '{}' not found in registry", name);
-                }
-                Some(def) => print_def(&name, def),
+        AgentRegistryCommand::Show { name } => match registry.get(&name) {
+            None => {
+                anyhow::bail!("agent definition '{}' not found in registry", name);
             }
-        }
+            Some(def) => print_def(&name, def),
+        },
     }
     Ok(())
 }
@@ -107,10 +94,7 @@ fn print_def(name: &str, def: &AgentDefinition) {
         println!("  Permission mode: {mode}");
     }
     if def.prompt_template.is_some() {
-        println!(
-            "  Prompt template: {} (inline)",
-            style("yes").green()
-        );
+        println!("  Prompt template: {} (inline)", style("yes").green());
     } else if let Some(ref r) = def.prompt_ref {
         println!("  Prompt ref:      {r}");
     }
@@ -120,8 +104,7 @@ fn print_def(name: &str, def: &AgentDefinition) {
             println!("  Plugins:         {}", bootstrap.plugins.join(", "));
         }
         if !bootstrap.skills.is_empty() {
-            let names: Vec<String> =
-                bootstrap.skills.iter().map(|s| s.display()).collect();
+            let names: Vec<String> = bootstrap.skills.iter().map(|s| s.display()).collect();
             println!("  Skills:          {}", names.join(", "));
         }
         if !bootstrap.prompt_components.is_empty() {

@@ -114,7 +114,6 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Tab header
     render_tab_header(f, app, tab_area);
 
-
     // Table (agents, worktrees, or tasks based on active tab)
     match app.active_tab {
         DashboardTab::Agents => {

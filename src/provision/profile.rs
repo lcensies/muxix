@@ -41,9 +41,9 @@ pub fn generate_snapshot(config: &crate::config::Config) -> ProfileSnapshot {
         .agent_defs
         .values()
         .filter_map(|def| {
-            def.model.as_deref().and_then(|m| {
-                m.split('/').next().map(|p| p.to_string())
-            })
+            def.model
+                .as_deref()
+                .and_then(|m| m.split('/').next().map(|p| p.to_string()))
         })
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
@@ -56,12 +56,13 @@ pub fn generate_snapshot(config: &crate::config::Config) -> ProfileSnapshot {
     );
     features.insert(
         "proxy_chain_enabled".to_string(),
-        config.proxy_chain.as_ref().map(|p| p.enabled).unwrap_or(false),
+        config
+            .proxy_chain
+            .as_ref()
+            .map(|p| p.enabled)
+            .unwrap_or(false),
     );
-    features.insert(
-        "bootstrap_enabled".to_string(),
-        config.bootstrap.is_some(),
-    );
+    features.insert("bootstrap_enabled".to_string(), config.bootstrap.is_some());
 
     let hostname_hash = hostname_hash();
 

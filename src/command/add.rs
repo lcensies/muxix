@@ -977,9 +977,8 @@ fn run_add_via_rpc(
         branch_name.map(|s| s.to_string())
     };
 
-    let mut client = RpcClient::from_env().context(
-        "Failed to connect to host RPC server. Is this running inside a muxix sandbox?",
-    )?;
+    let mut client = RpcClient::from_env()
+        .context("Failed to connect to host RPC server. Is this running inside a muxix sandbox?")?;
 
     let resp = client.call(&RpcRequest::SpawnAgent {
         prompt: prompt_text.unwrap_or_default(),
@@ -1031,7 +1030,9 @@ pub fn start_on_runtime(
 
     let handle = name
         .or(branch_name)
-        .ok_or_else(|| anyhow::anyhow!("a name is required when creating an agent on '{selected}'"))?
+        .ok_or_else(|| {
+            anyhow::anyhow!("a name is required when creating an agent on '{selected}'")
+        })?
         .to_string();
 
     let reference = runtime.start(&crate::agent::runtime::StartRequest {

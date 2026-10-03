@@ -101,10 +101,8 @@ pub fn hooks(checks: &[setup::AgentCheck], dry_run: bool) -> Vec<ItemResult> {
 
 fn install_hooks(agent: Agent, outcome: Outcome) -> ItemResult {
     match setup::install(agent) {
-        Ok(msg) => {
-            ItemResult::new(Section::Hooks, Some(agent.name()), "status hooks", outcome)
-                .with_detail(msg)
-        }
+        Ok(msg) => ItemResult::new(Section::Hooks, Some(agent.name()), "status hooks", outcome)
+            .with_detail(msg),
         Err(e) => ItemResult::failed(
             Section::Hooks,
             Some(agent.name()),
@@ -134,14 +132,16 @@ pub fn skills(
             ));
             continue;
         }
-        out.extend(crate::skills::install_bundled(agent, dry_run).unwrap_or_else(|e| {
-            vec![ItemResult::failed(
-                Section::Skills,
-                Some(agent.name()),
-                "bundled skills",
-                e.to_string(),
-            )]
-        }));
+        out.extend(
+            crate::skills::install_bundled(agent, dry_run).unwrap_or_else(|e| {
+                vec![ItemResult::failed(
+                    Section::Skills,
+                    Some(agent.name()),
+                    "bundled skills",
+                    e.to_string(),
+                )]
+            }),
+        );
     }
 
     let Some(config) = config else {
@@ -299,108 +299,106 @@ fn plugin_items_for_agent(
 
     let mut out = Vec::new();
     let mut specs = config.plugins_for(check.agent);
-        // An agent whose hook system is a compat plugin gets that plugin
-        // appended when hooks are declared for it and nothing in the list
-        // already matches.
-        let injected = super::agent_hooks::plugin_to_inject(check.agent, config)
-            .map(|req| req.spec.to_string());
-        specs.extend(injected.clone());
-        if specs.is_empty() {
-            return out;
-        }
-        let agent = Some(check.agent.name());
+    // An agent whose hook system is a compat plugin gets that plugin
+    // appended when hooks are declared for it and nothing in the list
+    // already matches.
+    let injected =
+        super::agent_hooks::plugin_to_inject(check.agent, config).map(|req| req.spec.to_string());
+    specs.extend(injected.clone());
+    if specs.is_empty() {
+        return out;
+    }
+    let agent = Some(check.agent.name());
 
-        // Best-effort "already installed" probe: reads the agent's own config
-        // where installs are recorded, so a re-run can skip shelling out to the
-        // agent CLI (the slow part) when the pinned spec is already present.
-        // `None` = cannot inspect cheaply; fall back to the old always-install
-        // behavior for that agent.
-        let installed_check: Option<Box<dyn Fn(&str) -> bool + '_>> = match check.agent {
-            Agent::Pi => Some(Box::new(move |s: &str| pi::plugin_installed(s, project_root))),
-            Agent::OpenCode => Some(Box::new(opencode::plugin_installed)),
-            Agent::Claude => Some(Box::new(claude::plugin_installed)),
-            _ => None,
-        };
+    // Best-effort "already installed" probe: reads the agent's own config
+    // where installs are recorded, so a re-run can skip shelling out to the
+    // agent CLI (the slow part) when the pinned spec is already present.
+    // `None` = cannot inspect cheaply; fall back to the old always-install
+    // behavior for that agent.
+    #[allow(clippy::type_complexity)]
+    let installed_check: Option<Box<dyn Fn(&str) -> bool + '_>> = match check.agent {
+        Agent::Pi => Some(Box::new(move |s: &str| {
+            pi::plugin_installed(s, project_root)
+        })),
+        Agent::OpenCode => Some(Box::new(opencode::plugin_installed)),
+        Agent::Claude => Some(Box::new(claude::plugin_installed)),
+        _ => None,
+    };
 
-        // Each agent installs through its own CLI, so the spec string must
-        // already be in that agent's format (see docs/guide/bootstrap.md).
-        let install: fn(&str) -> Result<String> = match check.agent {
-            Agent::Pi => pi::install_plugin_from_url,
-            Agent::Omp => omp::install_plugin_from_url,
-            Agent::Claude => claude::install_plugin,
-            Agent::OpenCode => opencode::install_plugin,
-            Agent::Codex | Agent::Copilot | Agent::Gemini => {
-                for spec in &specs {
-                    out.push(ItemResult::skipped(
-                        Section::Plugins,
-                        agent,
-                        spec.clone(),
-                        "no plugin installer for this agent; use a prompt component",
-                    ));
-                }
-                return out;
-            }
-        };
-
-        for spec in &specs {
-            let provenance = (injected.as_deref() == Some(spec))
-                .then_some("auto-added: required by declared hooks");
-
-            // Skip the expensive CLI install when the spec is already recorded
-            // in the agent's config. Pinned specs don't change, so "installed"
-            // means "no update to apply" here.
-            if installed_check
-                .as_deref()
-                .is_some_and(|is_installed| is_installed(spec))
-            {
-                out.push(
-                    ItemResult::new(Section::Plugins, agent, spec.clone(), Outcome::UpToDate)
-                        .managed_at(spec.clone())
-                        .with_detail("already installed"),
-                );
-                continue;
-            }
-
-            if dry_run {
-                // Inspectable agents now report real drift (would install);
-                // the rest still admit they cannot be inspected dry.
-                if installed_check.is_some() {
-                    out.push(
-                        ItemResult::new(
-                            Section::Plugins,
-                            agent,
-                            spec.clone(),
-                            Outcome::Installed,
-                        )
-                        .managed_at(spec.clone()),
-                    );
-                } else {
-                    out.push(ItemResult::skipped(
-                        Section::Plugins,
-                        agent,
-                        spec.clone(),
-                        "cannot be inspected without running the agent CLI",
-                    ));
-                }
-                continue;
-            }
-            match install(spec) {
-                Ok(msg) => out.push(
-                    ItemResult::new(Section::Plugins, agent, spec.clone(), Outcome::Installed)
-                        .managed_at(spec.clone())
-                        .with_detail(match provenance {
-                            Some(p) => format!("{p}; {msg}"),
-                            None => msg,
-                        }),
-                ),
-                Err(e) => out.push(ItemResult::failed(
+    // Each agent installs through its own CLI, so the spec string must
+    // already be in that agent's format (see docs/guide/bootstrap.md).
+    let install: fn(&str) -> Result<String> = match check.agent {
+        Agent::Pi => pi::install_plugin_from_url,
+        Agent::Omp => omp::install_plugin_from_url,
+        Agent::Claude => claude::install_plugin,
+        Agent::OpenCode => opencode::install_plugin,
+        Agent::Codex | Agent::Copilot | Agent::Gemini => {
+            for spec in &specs {
+                out.push(ItemResult::skipped(
                     Section::Plugins,
                     agent,
                     spec.clone(),
-                    e.to_string(),
-                )),
+                    "no plugin installer for this agent; use a prompt component",
+                ));
             }
+            return out;
         }
+    };
+
+    for spec in &specs {
+        let provenance =
+            (injected.as_deref() == Some(spec)).then_some("auto-added: required by declared hooks");
+
+        // Skip the expensive CLI install when the spec is already recorded
+        // in the agent's config. Pinned specs don't change, so "installed"
+        // means "no update to apply" here.
+        if installed_check
+            .as_deref()
+            .is_some_and(|is_installed| is_installed(spec))
+        {
+            out.push(
+                ItemResult::new(Section::Plugins, agent, spec.clone(), Outcome::UpToDate)
+                    .managed_at(spec.clone())
+                    .with_detail("already installed"),
+            );
+            continue;
+        }
+
+        if dry_run {
+            // Inspectable agents now report real drift (would install);
+            // the rest still admit they cannot be inspected dry.
+            if installed_check.is_some() {
+                out.push(
+                    ItemResult::new(Section::Plugins, agent, spec.clone(), Outcome::Installed)
+                        .managed_at(spec.clone()),
+                );
+            } else {
+                out.push(ItemResult::skipped(
+                    Section::Plugins,
+                    agent,
+                    spec.clone(),
+                    "cannot be inspected without running the agent CLI",
+                ));
+            }
+            continue;
+        }
+        match install(spec) {
+            Ok(msg) => out.push(
+                ItemResult::new(Section::Plugins, agent, spec.clone(), Outcome::Installed)
+                    .managed_at(spec.clone())
+                    .with_detail(match provenance {
+                        Some(p) => format!("{p}; {msg}"),
+                        None => msg,
+                    }),
+            ),
+            Err(e) => out.push(ItemResult::failed(
+                Section::Plugins,
+                agent,
+                spec.clone(),
+                e.to_string(),
+            )),
+        }
+    }
     out
 }
 
@@ -778,7 +776,11 @@ mod plugins_tests {
 
             assert_eq!(results.len(), 1);
             let item = &results[0];
-            assert_eq!(item.outcome, Outcome::Installed, "expected drift, got {item:?}");
+            assert_eq!(
+                item.outcome,
+                Outcome::Installed,
+                "expected drift, got {item:?}"
+            );
             assert_ne!(item.outcome, Outcome::Skipped);
         });
     }
@@ -924,7 +926,11 @@ mod plugins_tests {
             .iter()
             .find(|r| r.agent.as_deref() == Some(Agent::Pi.name()))
             .expect("pi agent must still report an item");
-        assert_eq!(pi_item.outcome, Outcome::Failed, "expected {pi_item:?} to be Failed");
+        assert_eq!(
+            pi_item.outcome,
+            Outcome::Failed,
+            "expected {pi_item:?} to be Failed"
+        );
 
         let codex_item = results
             .iter()
@@ -940,6 +946,7 @@ mod plugins_tests {
 ///
 /// A failing item never aborts the run: the remaining sections still execute,
 /// and the failure surfaces through [`SetupReport::exit_code`].
+#[allow(dead_code)]
 pub fn run_all(
     selected: &[Section],
     checks: &[setup::AgentCheck],
@@ -971,9 +978,7 @@ pub fn run_all_with_prune(
     for section in selected {
         match section {
             Section::Hooks => report.extend(hooks(checks, dry_run)),
-            Section::Skills => {
-                report.extend(skills(checks, bootstrap_cfg, project_root, dry_run))
-            }
+            Section::Skills => report.extend(skills(checks, bootstrap_cfg, project_root, dry_run)),
             Section::AgentHooks => {
                 if let Some(cfg) = bootstrap_cfg {
                     for check in checks {
@@ -1055,9 +1060,13 @@ fn reconcile_managed(
     let mut stale = manifest.stale_for(project_root, &installed, selected);
     // deps_strict: the prefix is fully declarative, hand installs go too.
     if selected.contains(&Section::Deps)
-        && config.and_then(|c| c.bootstrap.as_ref()).is_some_and(|b| b.deps_strict)
+        && config
+            .and_then(|c| c.bootstrap.as_ref())
+            .is_some_and(|b| b.deps_strict)
         && let Ok(prefix) = crate::deps::npm_prefix(
-            config.and_then(|c| c.bootstrap.as_ref()).and_then(|b| b.npm_prefix.as_deref()),
+            config
+                .and_then(|c| c.bootstrap.as_ref())
+                .and_then(|b| b.npm_prefix.as_deref()),
         )
     {
         let declared: std::collections::BTreeSet<String> = report
@@ -1165,11 +1174,18 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
             let spec = match NpmSpec::parse(raw) {
                 Ok(s) => s,
                 Err(e) => {
-                    out.push(ItemResult::failed(Section::Deps, None, raw.clone(), format!("{e} ({})", by(kind, entity))));
+                    out.push(ItemResult::failed(
+                        Section::Deps,
+                        None,
+                        raw.clone(),
+                        format!("{e} ({})", by(kind, entity)),
+                    ));
                     continue;
                 }
             };
-            let slot = npm.entry(spec.name.clone()).or_insert_with(|| (spec.clone(), Vec::new(), false));
+            let slot = npm
+                .entry(spec.name.clone())
+                .or_insert_with(|| (spec.clone(), Vec::new(), false));
             if slot.0.version != spec.version && slot.0.is_pinned() && spec.is_pinned() {
                 slot.2 = true;
             } else if spec.is_pinned() {
@@ -1185,7 +1201,10 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
     let prefix = if npm.is_empty() {
         None
     } else {
-        let cfg_prefix = config.bootstrap.as_ref().and_then(|b| b.npm_prefix.as_deref());
+        let cfg_prefix = config
+            .bootstrap
+            .as_ref()
+            .and_then(|b| b.npm_prefix.as_deref());
         match deps::npm_prefix(cfg_prefix).and_then(|p| {
             if !dry_run {
                 deps::ensure_prefix(&p)?;
@@ -1198,12 +1217,20 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
                         Section::Deps,
                         None,
                         "npm prefix",
-                        format!("{} is not on PATH; installed bins are unreachable", p.join("bin").display()),
+                        format!(
+                            "{} is not on PATH; installed bins are unreachable",
+                            p.join("bin").display()
+                        ),
                     ));
                 }
                 if deps::which("npm").is_none() {
                     for (name, (_, who, _)) in &npm {
-                        out.push(ItemResult::failed(Section::Deps, None, name.clone(), format!("npm not on PATH ({})", who.join(", "))));
+                        out.push(ItemResult::failed(
+                            Section::Deps,
+                            None,
+                            name.clone(),
+                            format!("npm not on PATH ({})", who.join(", ")),
+                        ));
                     }
                     npm.clear();
                 }
@@ -1211,7 +1238,12 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
             }
             Err(e) => {
                 for (name, (_, who, _)) in &npm {
-                    out.push(ItemResult::failed(Section::Deps, None, name.clone(), format!("{e} ({})", who.join(", "))));
+                    out.push(ItemResult::failed(
+                        Section::Deps,
+                        None,
+                        name.clone(),
+                        format!("{e} ({})", who.join(", ")),
+                    ));
                 }
                 npm.clear();
                 None
@@ -1221,10 +1253,17 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
 
     if let Some(prefix) = prefix.as_deref() {
         for (name, (spec, who, conflict)) in &npm {
-            let target = deps::package_dir(prefix, name).to_string_lossy().into_owned();
+            let target = deps::package_dir(prefix, name)
+                .to_string_lossy()
+                .into_owned();
             let who = who.join(", ");
             if *conflict {
-                out.push(ItemResult::failed(Section::Deps, None, name.clone(), format!("conflicting pins ({who})")));
+                out.push(ItemResult::failed(
+                    Section::Deps,
+                    None,
+                    name.clone(),
+                    format!("conflicting pins ({who})"),
+                ));
                 continue;
             }
             let installed = deps::installed_version(prefix, name);
@@ -1235,13 +1274,22 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
                 (Some(have), Some(want)) if have == want => Outcome::UpToDate,
                 (Some(_), Some(_)) => Outcome::Updated,
             };
-            let item = ItemResult::new(Section::Deps, None, name.clone(), outcome).managed_at(target);
+            let item =
+                ItemResult::new(Section::Deps, None, name.clone(), outcome).managed_at(target);
             let item = match outcome {
-                Outcome::UpToDate => item.with_detail(format!("{}{unpinned} ({who})", installed.as_deref().unwrap_or(""))),
+                Outcome::UpToDate => item.with_detail(format!(
+                    "{}{unpinned} ({who})",
+                    installed.as_deref().unwrap_or("")
+                )),
                 _ if dry_run => item.with_detail(format!("would install {spec}{unpinned} ({who})")),
                 _ => match deps::npm_install(prefix, spec) {
                     Ok(()) => item.with_detail(format!("{spec}{unpinned} ({who})")),
-                    Err(e) => ItemResult::failed(Section::Deps, None, name.clone(), format!("{e} ({who})")),
+                    Err(e) => ItemResult::failed(
+                        Section::Deps,
+                        None,
+                        name.clone(),
+                        format!("{e} ({who})"),
+                    ),
                 },
             };
             out.push(item);
@@ -1286,26 +1334,24 @@ pub fn agent_profiles(
     let declared = &config.agent_profiles;
 
     // Prune derived dirs for profiles that are no longer declared.
-    if let Ok(root) = ap::build_root() {
-        if let Ok(rd) = std::fs::read_dir(&root) {
-            for entry in rd.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if entry.path().is_dir() && !declared.contains_key(&name) {
-                    if dry_run {
-                        out.push(
+    if let Ok(root) = ap::build_root()
+        && let Ok(rd) = std::fs::read_dir(&root)
+    {
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if entry.path().is_dir() && !declared.contains_key(&name) {
+                if dry_run {
+                    out.push(
+                        ItemResult::new(sec, None, name, Outcome::Updated)
+                            .with_detail("orphaned; would remove"),
+                    );
+                } else {
+                    match std::fs::remove_dir_all(entry.path()) {
+                        Ok(()) => out.push(
                             ItemResult::new(sec, None, name, Outcome::Updated)
-                                .with_detail("orphaned; would remove"),
-                        );
-                    } else {
-                        match std::fs::remove_dir_all(entry.path()) {
-                            Ok(()) => out.push(
-                                ItemResult::new(sec, None, name, Outcome::Updated)
-                                    .with_detail("removed orphaned overlay"),
-                            ),
-                            Err(e) => {
-                                out.push(ItemResult::failed(sec, None, name, e.to_string()))
-                            }
-                        }
+                                .with_detail("removed orphaned overlay"),
+                        ),
+                        Err(e) => out.push(ItemResult::failed(sec, None, name, e.to_string())),
                     }
                 }
             }
@@ -1329,7 +1375,12 @@ pub fn agent_profiles(
         let source = match ap::source_dir(profile) {
             Ok(p) => p,
             Err(e) => {
-                out.push(ItemResult::failed(sec, None, profile.clone(), e.to_string()));
+                out.push(ItemResult::failed(
+                    sec,
+                    None,
+                    profile.clone(),
+                    e.to_string(),
+                ));
                 continue;
             }
         };
@@ -1348,7 +1399,12 @@ pub fn agent_profiles(
             let dest = match ap::build_dir(profile, agent_id) {
                 Ok(p) => p,
                 Err(e) => {
-                    out.push(ItemResult::failed(sec, Some(agent.name()), name, e.to_string()));
+                    out.push(ItemResult::failed(
+                        sec,
+                        Some(agent.name()),
+                        name,
+                        e.to_string(),
+                    ));
                     continue;
                 }
             };
@@ -1383,19 +1439,31 @@ pub fn agent_profiles(
 
             let plan = ap::plan(&base, &source, &delta);
             if ap::in_sync(&dest, &plan) {
-                out.push(ItemResult::new(sec, Some(agent.name()), name, Outcome::UpToDate));
+                out.push(ItemResult::new(
+                    sec,
+                    Some(agent.name()),
+                    name,
+                    Outcome::UpToDate,
+                ));
                 continue;
             }
             let fresh = !dest.exists();
-            let outcome = if fresh { Outcome::Installed } else { Outcome::Updated };
+            let outcome = if fresh {
+                Outcome::Installed
+            } else {
+                Outcome::Updated
+            };
             if dry_run {
                 out.push(ItemResult::new(sec, Some(agent.name()), name, outcome));
             } else {
                 match ap::materialize(&dest, &plan) {
                     Ok(_) => out.push(ItemResult::new(sec, Some(agent.name()), name, outcome)),
-                    Err(e) => {
-                        out.push(ItemResult::failed(sec, Some(agent.name()), name, e.to_string()))
-                    }
+                    Err(e) => out.push(ItemResult::failed(
+                        sec,
+                        Some(agent.name()),
+                        name,
+                        e.to_string(),
+                    )),
                 }
             }
         }
@@ -1451,7 +1519,9 @@ mod agent_settings_tests {
     }
 
     fn run(dir: &Path, patch: serde_json::Value, dry_run: bool) -> Vec<ItemResult> {
-        with_pi_dir(dir, || agent_settings(&[pi_check()], &config(patch), dry_run))
+        with_pi_dir(dir, || {
+            agent_settings(&[pi_check()], &config(patch), dry_run)
+        })
     }
 
     fn settings(dir: &Path) -> serde_json::Value {
@@ -1513,7 +1583,10 @@ mod agent_settings_tests {
         let out = run(tmp.path(), serde_json::json!({"defaultTools": []}), false);
 
         assert_eq!(out[0].outcome, Outcome::Installed, "{:?}", out[0]);
-        assert_eq!(settings(tmp.path()), serde_json::json!({"defaultTools": []}));
+        assert_eq!(
+            settings(tmp.path()),
+            serde_json::json!({"defaultTools": []})
+        );
     }
 
     #[test]
@@ -1734,7 +1807,10 @@ mod deps_tests {
     }
 
     fn by_name<'a>(items: &'a [ItemResult], name: &str) -> &'a ItemResult {
-        items.iter().find(|i| i.name == name).unwrap_or_else(|| panic!("no item {name} in {items:?}"))
+        items
+            .iter()
+            .find(|i| i.name == name)
+            .unwrap_or_else(|| panic!("no item {name} in {items:?}"))
     }
 
     #[test]
@@ -1751,8 +1827,20 @@ mod deps_tests {
             // --check: drift, no npm invocation.
             let items = deps(&cfg, true);
             assert_eq!(by_name(&items, "foo").outcome, Outcome::Installed);
-            assert!(by_name(&items, "foo").detail.as_deref().unwrap().contains("skill x, mcp srv"));
-            assert!(by_name(&items, "@s/bar").detail.as_deref().unwrap().contains("unpinned"));
+            assert!(
+                by_name(&items, "foo")
+                    .detail
+                    .as_deref()
+                    .unwrap()
+                    .contains("skill x, mcp srv")
+            );
+            assert!(
+                by_name(&items, "@s/bar")
+                    .detail
+                    .as_deref()
+                    .unwrap()
+                    .contains("unpinned")
+            );
             assert_eq!(by_name(&items, "sh").outcome, Outcome::UpToDate);
             let missing = by_name(&items, "definitely-not-a-binary-xyz");
             assert_eq!(missing.outcome, Outcome::Failed);
@@ -1761,18 +1849,50 @@ mod deps_tests {
 
             // apply: installs both, records targets.
             let items = deps(&cfg, false);
-            assert_eq!(by_name(&items, "foo").outcome, Outcome::Installed, "{:?}", by_name(&items, "foo"));
-            assert!(by_name(&items, "foo").managed.as_deref().unwrap().ends_with("lib/node_modules/foo"));
-            assert_eq!(crate::deps::installed_version(&prefix, "foo").as_deref(), Some("1.0.0"));
-            assert_eq!(deps(&cfg, false).iter().filter(|i| i.outcome == Outcome::UpToDate).count(), 3);
+            assert_eq!(
+                by_name(&items, "foo").outcome,
+                Outcome::Installed,
+                "{:?}",
+                by_name(&items, "foo")
+            );
+            assert!(
+                by_name(&items, "foo")
+                    .managed
+                    .as_deref()
+                    .unwrap()
+                    .ends_with("lib/node_modules/foo")
+            );
+            assert_eq!(
+                crate::deps::installed_version(&prefix, "foo").as_deref(),
+                Some("1.0.0")
+            );
+            assert_eq!(
+                deps(&cfg, false)
+                    .iter()
+                    .filter(|i| i.outcome == Outcome::UpToDate)
+                    .count(),
+                3
+            );
 
             // version bump → updated.
-            let cfg2 = config(&prefix, "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"foo@2.0.0\"]}\n");
-            assert_eq!(by_name(&deps(&cfg2, false), "foo").outcome, Outcome::Updated);
-            assert_eq!(crate::deps::installed_version(&prefix, "foo").as_deref(), Some("2.0.0"));
+            let cfg2 = config(
+                &prefix,
+                "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"foo@2.0.0\"]}\n",
+            );
+            assert_eq!(
+                by_name(&deps(&cfg2, false), "foo").outcome,
+                Outcome::Updated
+            );
+            assert_eq!(
+                crate::deps::installed_version(&prefix, "foo").as_deref(),
+                Some("2.0.0")
+            );
 
             // conflicting pins → one failure, nothing installed.
-            let cfg3 = config(&prefix, "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"baz@1.0.0\"]}\n    - path: ./skills/y\n      requires: {npm: [\"baz@2.0.0\"]}\n");
+            let cfg3 = config(
+                &prefix,
+                "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"baz@1.0.0\"]}\n    - path: ./skills/y\n      requires: {npm: [\"baz@2.0.0\"]}\n",
+            );
             let items = deps(&cfg3, false);
             assert_eq!(by_name(&items, "baz").outcome, Outcome::Failed);
             assert!(crate::deps::installed_version(&prefix, "baz").is_none());
@@ -1783,7 +1903,9 @@ mod deps_tests {
                 agent: None,
                 name: "foo".into(),
                 project: tmp.path().to_path_buf(),
-                target: crate::deps::package_dir(&prefix, "foo").to_string_lossy().into_owned(),
+                target: crate::deps::package_dir(&prefix, "foo")
+                    .to_string_lossy()
+                    .into_owned(),
             };
             let removed = super::super::managed::prune(&[entry], false);
             assert_eq!(removed[0].outcome, Outcome::Removed, "{removed:?}");
@@ -1795,7 +1917,10 @@ mod deps_tests {
             std::fs::write(hand.join("package.json"), "{\"version\":\"0.0.1\"}").unwrap();
             let declared = ["@s/bar".to_string()].into_iter().collect();
             let stale = super::super::managed::undeclared_npm(&prefix, &declared, tmp.path());
-            assert_eq!(stale.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["hand"]);
+            assert_eq!(
+                stale.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+                ["hand"]
+            );
         });
         let calls = std::fs::read_to_string(&log).unwrap();
         assert!(calls.contains("install -g --prefix"), "{calls}");
@@ -1808,10 +1933,15 @@ mod deps_tests {
         let cfg = config(tmp.path(), "  skills: [./skills/x]\n");
         assert!(deps(&cfg, true).is_empty());
 
-        let _g = super::super::tests::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = super::super::tests::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var_os("PATH");
         unsafe { std::env::set_var("PATH", tmp.path()) };
-        let cfg = config(tmp.path(), "  skills:\n    - path: ./skills/x\n      requires: {npm: [foo]}\n");
+        let cfg = config(
+            tmp.path(),
+            "  skills:\n    - path: ./skills/x\n      requires: {npm: [foo]}\n",
+        );
         let items = deps(&cfg, true);
         unsafe {
             match prev {

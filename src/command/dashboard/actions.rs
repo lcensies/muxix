@@ -3,9 +3,9 @@
 use super::app::{
     App, CommandPaletteState, DashboardTab, DeleteTaskPlan, PaletteCommand, TaskForm, ViewMode,
 };
+use super::bindings::BINDINGS;
 use super::diff_ops::DiffOps;
 use super::keymap::Context;
-use super::bindings::BINDINGS;
 
 /// All possible actions in the dashboard.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,10 +117,6 @@ pub enum Action {
     TaskEdit,
     TaskDelete,
     TaskReload,
-
-
-
-
 }
 
 /// Apply an action to the app state.
@@ -618,10 +614,6 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             app.task_reload();
             false
         }
-
-
-
-
     }
 }
 

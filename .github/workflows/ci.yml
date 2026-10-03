@@ -25,7 +25,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Format
-        run: cargo fmt --all -- --check
+        # -p muxix, not --all: vendor/ holds upstream crates we keep verbatim.
+        run: cargo fmt -p muxix -- --check
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings

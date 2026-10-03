@@ -141,6 +141,7 @@ pub fn merge_mcp_json(
 /// Returns `Ok(Some(path))` when a file was written (servers declared), or
 /// `Ok(None)` when there are no MCP servers configured (nothing to do).
 /// Existing unmanaged server entries are preserved.
+#[allow(dead_code)]
 pub fn sync_mcp_json(repo_root: &Path, config: &Config) -> Result<Option<PathBuf>> {
     let servers = match &config.mcp {
         Some(m) if !m.is_empty() => m,
@@ -184,6 +185,7 @@ pub struct IntegrationStatus {
 
 /// Aggregate per-project harness status for the Project view and `mcp status`.
 pub struct HarnessStatus {
+    #[allow(dead_code)]
     pub repo_root: PathBuf,
     pub mcp_json_exists: bool,
     pub mcp_synced: bool,

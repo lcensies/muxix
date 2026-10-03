@@ -516,10 +516,7 @@ fn run_install_dev(skip_build: bool, release: bool) -> Result<()> {
             .collect();
 
         if !running.is_empty() {
-            println!(
-                "Installing muxix into {} running VM(s)...\n",
-                running.len()
-            );
+            println!("Installing muxix into {} running VM(s)...\n", running.len());
             let mut failed: Vec<(String, String)> = Vec::new();
 
             for vm in &running {

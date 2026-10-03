@@ -27,8 +27,8 @@ from pathlib import Path
 import pytest
 
 from .conftest import (
-    TmuxEnvironment,
     MuxixCommandResult,
+    TmuxEnvironment,
     assert_session_exists,
     assert_session_not_exists,
     get_scripts_dir,

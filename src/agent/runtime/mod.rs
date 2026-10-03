@@ -150,6 +150,7 @@ pub struct RuntimeFeatures {
 
 impl RuntimeFeatures {
     /// Nothing supported; implementations turn on what they have.
+    #[allow(dead_code)]
     pub const NONE: RuntimeFeatures = RuntimeFeatures {
         panes: false,
         owns_worktree: false,
@@ -346,6 +347,7 @@ pub trait AgentRuntime: Send + Sync {
     }
 
     /// Current status of one agent.
+    #[allow(dead_code)]
     fn status(&self, agent: &AgentRef) -> Result<RuntimeStatus>;
 
     /// Every agent this runtime currently owns. Authoritative: agents it does
@@ -361,6 +363,7 @@ pub trait AgentRuntime: Send + Sync {
     /// This is what makes ownership exclusive but management shared: a Claude
     /// session running in a local tmux pane can be imported into an ADE and
     /// driven from its phone client, while tmux still holds the process.
+    #[allow(dead_code)]
     fn import(&self, session: &ExternalSession) -> Result<AgentRef> {
         let _ = session;
         Err(unsupported(self.name(), Feature::Import))
@@ -369,6 +372,7 @@ pub trait AgentRuntime: Send + Sync {
 
 /// A session owned by some other runtime, offered for import.
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct ExternalSession {
     /// The provider's own session/thread id (e.g. a Claude Code session id).
     pub session_id: String,
@@ -418,8 +422,14 @@ mod tests {
     #[test]
     fn multiplexer_status_maps_onto_the_neutral_set() {
         use crate::multiplexer::AgentStatus;
-        assert_eq!(RuntimeStatus::from(AgentStatus::Working), RuntimeStatus::Working);
-        assert_eq!(RuntimeStatus::from(AgentStatus::Waiting), RuntimeStatus::Waiting);
+        assert_eq!(
+            RuntimeStatus::from(AgentStatus::Working),
+            RuntimeStatus::Working
+        );
+        assert_eq!(
+            RuntimeStatus::from(AgentStatus::Waiting),
+            RuntimeStatus::Waiting
+        );
         assert_eq!(RuntimeStatus::from(AgentStatus::Done), RuntimeStatus::Done);
     }
 
@@ -461,9 +471,18 @@ mod tests {
         // Forcing Failed into the pane status set would show broken work as
         // finished; unset renders neutrally instead.
         use crate::multiplexer::AgentStatus;
-        assert_eq!(ade_agent(RuntimeStatus::Failed).to_agent_pane().status, None);
-        assert_eq!(ade_agent(RuntimeStatus::Starting).to_agent_pane().status, None);
-        assert_eq!(ade_agent(RuntimeStatus::Unknown).to_agent_pane().status, None);
+        assert_eq!(
+            ade_agent(RuntimeStatus::Failed).to_agent_pane().status,
+            None
+        );
+        assert_eq!(
+            ade_agent(RuntimeStatus::Starting).to_agent_pane().status,
+            None
+        );
+        assert_eq!(
+            ade_agent(RuntimeStatus::Unknown).to_agent_pane().status,
+            None
+        );
         assert_eq!(
             ade_agent(RuntimeStatus::Done).to_agent_pane().status,
             Some(AgentStatus::Done)

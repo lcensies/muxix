@@ -1,7 +1,7 @@
 //! Task graph state and operations for the dashboard Tasks tab.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
@@ -9,17 +9,13 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, TableState};
 use tui_textarea::TextArea;
 
-use crate::multiplexer::Multiplexer;
 use crate::tasks::graph;
-use crate::tasks::types::{
-    GraphTask, STATUS_DONE, STATUS_FAILED, STATUS_IN_PROGRESS, STATUS_TODO,
-};
+use crate::tasks::types::{GraphTask, STATUS_DONE, STATUS_FAILED, STATUS_IN_PROGRESS, STATUS_TODO};
 use crate::workflow;
 
 use super::App;
 
 pub(super) const TASK_RELOAD_INTERVAL: Duration = Duration::from_secs(3);
-
 
 pub fn textarea_value(ta: &TextArea) -> String {
     ta.lines().join("\n")
@@ -326,9 +322,13 @@ pub struct DeleteTaskPlan {
     pub delete_worktree: bool,
 }
 
+// One modal is alive at a time, so the `Form` variant's size costs nothing a
+// `Box` would buy back.
+#[allow(clippy::large_enum_variant)]
 pub enum TaskModal {
     Form(TaskForm),
     DeleteConfirm(DeleteTaskPlan),
+    #[allow(dead_code)]
     Help,
 }
 
@@ -601,14 +601,7 @@ impl App {
             let _ = fs::write(&self.tasks.graph_path, "[]\n");
         }
     }
-
-
-
-
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-}
+mod tests {}

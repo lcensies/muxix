@@ -483,9 +483,7 @@ def test_remove_closes_window_with_basename_naming_config(
     )
 
     # Remove the worktree using the handle (worktree directory name)
-    run_muxix_remove(
-        env, muxix_exe_path, mux_repo_path, expected_handle, force=True
-    )
+    run_muxix_remove(env, muxix_exe_path, mux_repo_path, expected_handle, force=True)
 
     # Verify worktree is gone
     assert not worktree_path.exists(), "Worktree should be removed"

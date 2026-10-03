@@ -90,6 +90,7 @@ impl StateStore {
     ///
     /// Called by the pipeline runner when a node starts (`Some`) or ends (`None`).
     /// No-ops if no state file exists yet for this pane.
+    #[allow(dead_code)]
     pub fn update_pipeline_node(
         &self,
         key: &PaneKey,
@@ -875,7 +876,10 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
-        assert!(leftovers.is_empty(), "no .tmp files should remain: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "no .tmp files should remain: {leftovers:?}"
+        );
     }
 
     #[test]

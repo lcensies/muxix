@@ -102,9 +102,7 @@ def test_add_pr_with_custom_branch_name(mux_server, muxix_exe_path, remote_repo_
     }
     install_fake_gh_cli(env, pr_number=123, json_response=pr_data)
 
-    result = run_muxix_command(
-        env, muxix_exe_path, repo_path, "add my-review --pr 123"
-    )
+    result = run_muxix_command(env, muxix_exe_path, repo_path, "add my-review --pr 123")
 
     assert "PR #123" in result.stdout
 
@@ -270,9 +268,7 @@ def test_add_pr_fails_when_gh_not_installed(
     assert "gh" in result.stderr.lower() or "GitHub CLI" in result.stderr
 
 
-def test_add_pr_conflicts_with_base_flag(
-    mux_server, muxix_exe_path, remote_repo_path
-):
+def test_add_pr_conflicts_with_base_flag(mux_server, muxix_exe_path, remote_repo_path):
     """Test that --pr conflicts with --base flag"""
     env = mux_server
     repo_path = env.tmp_path

@@ -98,7 +98,7 @@ impl ClaudeForker {
             }
         }
 
-        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.timestamp));
         Ok(sessions)
     }
 }
@@ -210,7 +210,7 @@ impl PiStyleForker {
                 });
             }
         }
-        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.timestamp));
         Ok(sessions)
     }
 }
@@ -277,7 +277,9 @@ impl CodexForker {
         use std::io::BufRead;
         let file = fs::File::open(path).ok()?;
         let mut first_line = String::new();
-        std::io::BufReader::new(file).read_line(&mut first_line).ok()?;
+        std::io::BufReader::new(file)
+            .read_line(&mut first_line)
+            .ok()?;
         let v: serde_json::Value = serde_json::from_str(first_line.trim()).ok()?;
         let meta = v.get("payload").unwrap_or(&v);
         let cwd = meta.get("cwd").and_then(|c| c.as_str())?;
@@ -303,9 +305,7 @@ impl CodexForker {
                         let is_rollout = path
                             .file_name()
                             .and_then(|n| n.to_str())
-                            .is_some_and(|n| {
-                                n.starts_with("rollout-") && n.ends_with(".jsonl")
-                            });
+                            .is_some_and(|n| n.starts_with("rollout-") && n.ends_with(".jsonl"));
                         if !is_rollout {
                             continue;
                         }
@@ -327,7 +327,7 @@ impl CodexForker {
                 }
             }
         }
-        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.timestamp));
         Ok(sessions)
     }
 }
@@ -473,7 +473,11 @@ mod tests {
             ),
         )
         .unwrap();
-        fs::write(project_dir.join("2026-02-02T00-00-00-000Z_bbbb2222.jsonl"), "{}").unwrap();
+        fs::write(
+            project_dir.join("2026-02-02T00-00-00-000Z_bbbb2222.jsonl"),
+            "{}",
+        )
+        .unwrap();
 
         let latest = forker
             .find_latest_conversation(Path::new("/test/project"))

@@ -32,7 +32,7 @@ format: format-rust format-python
 
 # Format Rust files
 format-rust:
-    @cargo fmt --all
+    @cargo fmt -p muxix
 
 # Format Python test files
 format-python:

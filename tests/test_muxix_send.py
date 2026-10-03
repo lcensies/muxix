@@ -17,7 +17,6 @@ from .conftest import (
     wait_for_window_ready,
     write_muxix_config,
 )
-
 from .test_agent_state import build_status_cmd, list_agent_state_files
 
 

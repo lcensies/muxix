@@ -21,7 +21,7 @@ pub use agent_resolve::{
 };
 pub use create::{create, create_with_changes};
 pub use list::{list, list_in};
-pub use merge::{MergeOutcome, merge, merge_with_outcome};
+pub use merge::merge;
 pub use open::open;
 pub use remove::{fallback_worktree_path, remove};
 pub use rename::rename;

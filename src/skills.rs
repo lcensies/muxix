@@ -216,6 +216,58 @@ fn confirm_overwrite(name: &str) -> Result<bool> {
     }
 }
 
+/// Install the bundled skills for `agent`, reporting one result per skill.
+///
+/// Unlike [`install_skills`], this never prompts: it is the path used by
+/// non-interactive `muxix setup` and by `--check`. A locally-modified skill is
+/// overwritten rather than queried, because in declarative mode the bundled
+/// content is the source of truth — the interactive path still asks.
+///
+/// With `dry_run` set, outcomes are computed and nothing is written.
+pub fn install_bundled(
+    agent: Agent,
+    dry_run: bool,
+) -> Result<Vec<crate::command::setup::ItemResult>> {
+    use crate::command::setup::{ItemResult, Outcome, Section};
+
+    let Some(base_dir) = skills_dir(agent) else {
+        return Ok(vec![ItemResult::skipped(
+            Section::Skills,
+            Some(agent.name()),
+            "bundled skills",
+            format!("{} does not support skills", agent.name()),
+        )]);
+    };
+
+    let mut out = Vec::new();
+    for skill in BUNDLED_SKILLS {
+        let dir = base_dir.join(skill.name);
+        let path = dir.join("SKILL.md");
+        let existing = fs::read_to_string(&path).ok();
+
+        let outcome = match existing {
+            Some(ref e) if e == skill.content => Outcome::UpToDate,
+            Some(_) => Outcome::Updated,
+            None => Outcome::Installed,
+        };
+
+        if outcome != Outcome::UpToDate && !dry_run {
+            fs::create_dir_all(&dir)
+                .with_context(|| format!("Failed to create {}", dir.display()))?;
+            fs::write(&path, skill.content)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+        }
+
+        out.push(ItemResult::new(
+            Section::Skills,
+            Some(agent.name()),
+            skill.name,
+            outcome,
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,8 +354,11 @@ mod tests {
     fn skills_dir_copilot_follows_copilot_home() {
         let dir = skills_dir(Agent::Copilot).expect("copilot has a skills dir");
         assert!(dir.ends_with("skills"), "{dir:?}");
-        assert!(dir.parent().is_some_and(|p| p.ends_with(".copilot")
-            || std::env::var_os("COPILOT_HOME").is_some()));
+        assert!(
+            dir.parent().is_some_and(
+                |p| p.ends_with(".copilot") || std::env::var_os("COPILOT_HOME").is_some()
+            )
+        );
     }
 
     #[test]
@@ -325,56 +380,4 @@ mod tests {
         assert!(names.contains(&"open-pr"));
         assert!(names.contains(&"muxix"));
     }
-}
-
-/// Install the bundled skills for `agent`, reporting one result per skill.
-///
-/// Unlike [`install_skills`], this never prompts: it is the path used by
-/// non-interactive `muxix setup` and by `--check`. A locally-modified skill is
-/// overwritten rather than queried, because in declarative mode the bundled
-/// content is the source of truth — the interactive path still asks.
-///
-/// With `dry_run` set, outcomes are computed and nothing is written.
-pub fn install_bundled(
-    agent: Agent,
-    dry_run: bool,
-) -> Result<Vec<crate::command::setup::ItemResult>> {
-    use crate::command::setup::{ItemResult, Outcome, Section};
-
-    let Some(base_dir) = skills_dir(agent) else {
-        return Ok(vec![ItemResult::skipped(
-            Section::Skills,
-            Some(agent.name()),
-            "bundled skills",
-            format!("{} does not support skills", agent.name()),
-        )]);
-    };
-
-    let mut out = Vec::new();
-    for skill in BUNDLED_SKILLS {
-        let dir = base_dir.join(skill.name);
-        let path = dir.join("SKILL.md");
-        let existing = fs::read_to_string(&path).ok();
-
-        let outcome = match existing {
-            Some(ref e) if e == skill.content => Outcome::UpToDate,
-            Some(_) => Outcome::Updated,
-            None => Outcome::Installed,
-        };
-
-        if outcome != Outcome::UpToDate && !dry_run {
-            fs::create_dir_all(&dir)
-                .with_context(|| format!("Failed to create {}", dir.display()))?;
-            fs::write(&path, skill.content)
-                .with_context(|| format!("Failed to write {}", path.display()))?;
-        }
-
-        out.push(ItemResult::new(
-            Section::Skills,
-            Some(agent.name()),
-            skill.name,
-            outcome,
-        ));
-    }
-    Ok(out)
 }

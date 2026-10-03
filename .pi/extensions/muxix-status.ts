@@ -2,7 +2,7 @@
  * Muxix status tracking extension for pi.
  *
  * Reports agent status to muxix for tmux window status display.
- * See: https://muxix.dev/guide/status-tracking
+ * See: https://github.com/lcensies/muxix/blob/main/docs/guide/status-tracking.md
  *
  * Also handles prompt injection. The inject file is written by
  * `muxix bootstrap` to `~/.pi/agent/muxix-pre-inject.md`.

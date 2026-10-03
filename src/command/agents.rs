@@ -57,7 +57,11 @@ pub fn run(json: bool) -> Result<()> {
             a.reference.runtime,
             a.status.as_str(),
             a.reference.id,
-            if title.is_empty() { dir } else { title.to_string() }
+            if title.is_empty() {
+                dir
+            } else {
+                title.to_string()
+            }
         );
     }
     // An unreachable runtime is reported, never silently treated as owning no

@@ -3,5 +3,4 @@
 pub mod config;
 pub mod spawner;
 
-pub use config::{ProxyChainConfig, ProxyHop};
-pub use spawner::ProxySpawner;
+pub use config::ProxyChainConfig;

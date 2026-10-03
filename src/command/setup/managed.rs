@@ -87,8 +87,12 @@ impl Manifest {
         let mut doc = self.clone();
         doc.version = VERSION;
         doc.entries.sort_by(|a, b| {
-            (a.section.as_str(), &a.agent, &a.name, &a.project)
-                .cmp(&(b.section.as_str(), &b.agent, &b.name, &b.project))
+            (a.section.as_str(), &a.agent, &a.name, &a.project).cmp(&(
+                b.section.as_str(),
+                &b.agent,
+                &b.name,
+                &b.project,
+            ))
         });
         crate::state::store::write_atomic(path, serde_json::to_string_pretty(&doc)?.as_bytes())
     }
@@ -184,7 +188,9 @@ pub fn prune(stale: &[ManagedEntry], dry_run: bool) -> Vec<ItemResult> {
                 Outcome::Removed,
             );
             if dry_run {
-                return Some(item.with_detail(format!("no longer declared; would remove {}", entry.target)));
+                return Some(
+                    item.with_detail(format!("no longer declared; would remove {}", entry.target)),
+                );
             }
             match remove_one(entry) {
                 Ok(Some(detail)) => Some(item.with_detail(detail)),
@@ -240,7 +246,10 @@ fn remove_one(entry: &ManagedEntry) -> anyhow::Result<Option<String>> {
             if target.exists() {
                 crate::deps::npm_uninstall(&prefix, &name)?;
             }
-            Ok(Some(format!("npm uninstall {name} (prefix {})", prefix.display())))
+            Ok(Some(format!(
+                "npm uninstall {name} (prefix {})",
+                prefix.display()
+            )))
         }
         _ => Ok(None),
     }
@@ -248,7 +257,11 @@ fn remove_one(entry: &ManagedEntry) -> anyhow::Result<Option<String>> {
 
 /// `deps_strict`: every package under the npm prefix that no entity declares,
 /// as synthetic stale entries so [`prune`] handles them like managed ones.
-pub fn undeclared_npm(prefix: &Path, declared: &BTreeSet<String>, project: &Path) -> Vec<ManagedEntry> {
+pub fn undeclared_npm(
+    prefix: &Path,
+    declared: &BTreeSet<String>,
+    project: &Path,
+) -> Vec<ManagedEntry> {
     crate::deps::installed_packages(prefix)
         .into_iter()
         .filter(|name| !declared.contains(name))
@@ -257,7 +270,9 @@ pub fn undeclared_npm(prefix: &Path, declared: &BTreeSet<String>, project: &Path
             agent: None,
             name: name.clone(),
             project: project.to_path_buf(),
-            target: crate::deps::package_dir(prefix, &name).to_string_lossy().into_owned(),
+            target: crate::deps::package_dir(prefix, &name)
+                .to_string_lossy()
+                .into_owned(),
         })
         .collect()
 }
@@ -432,7 +447,10 @@ mod tests {
             project: PathBuf::from("/proj"),
             target: dir.display().to_string(),
         };
-        assert_eq!(prune(&[e.clone()], true)[0].outcome, Outcome::Removed);
+        assert_eq!(
+            prune(std::slice::from_ref(&e), true)[0].outcome,
+            Outcome::Removed
+        );
         assert!(dir.exists(), "dry run must not delete");
 
         assert_eq!(prune(&[e], false)[0].outcome, Outcome::Removed);
@@ -445,7 +463,8 @@ mod tests {
             ItemResult::new(Section::Skills, Some("pi"), "bundled", Outcome::Installed),
             ItemResult::new(Section::Skills, Some("pi"), "declared", Outcome::Installed)
                 .managed_at("/tmp/declared"),
-            ItemResult::failed(Section::Skills, Some("pi"), "broken", "boom").managed_at("/tmp/broken"),
+            ItemResult::failed(Section::Skills, Some("pi"), "broken", "boom")
+                .managed_at("/tmp/broken"),
         ];
         let entries = entries_from_report(&items, Path::new("/proj"));
         assert_eq!(entries.len(), 1);

@@ -5,8 +5,8 @@ import pytest
 from .conftest import (
     DEFAULT_WINDOW_PREFIX,
     MuxEnvironment,
-    TmuxEnvironment,
     MuxixCommandResult,
+    TmuxEnvironment,
     get_scripts_dir,
     get_window_name,
     get_worktree_path,

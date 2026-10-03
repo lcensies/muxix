@@ -91,6 +91,7 @@ pub struct Bootstrapper {
 }
 
 impl Bootstrapper {
+    #[allow(dead_code)]
     pub fn new() -> Option<Self> {
         agent_dir().map(|d| Self {
             agent_dir: d,

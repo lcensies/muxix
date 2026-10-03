@@ -39,13 +39,9 @@ pub enum RegistrySource {
         local: Option<String>,
     },
     /// Remote git repository containing agent definitions.
-    Git {
-        git: GitRegistrySource,
-    },
+    Git { git: GitRegistrySource },
     /// Raw URL to a single agent definition YAML or a directory index.
-    Url {
-        url: String,
-    },
+    Url { url: String },
 }
 
 /// Git-based registry source configuration.
@@ -185,6 +181,7 @@ impl AgentRegistry {
     }
 
     /// All known definition names, sorted.
+    #[allow(dead_code)]
     pub fn names(&self) -> Vec<&str> {
         self.definitions.keys().map(|s| s.as_str()).collect()
     }
@@ -198,6 +195,7 @@ impl AgentRegistry {
     }
 
     /// Whether the registry has any definitions.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.definitions.is_empty()
     }

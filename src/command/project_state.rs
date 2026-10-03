@@ -63,10 +63,10 @@ pub fn run(command: ProjectStateCommand) -> Result<()> {
         ProjectStateCommand::Acquire { name, owner, ttl } => {
             let outcome = store.acquire(&name, &owner, ttl)?;
             println!("{}", outcome.as_str());
-            if let AcquireOutcome::Reclaimed { previous_owner } = &outcome {
-                if let Some(prev) = previous_owner {
-                    tracing::info!(capability = %name, %prev, "reclaimed stale capability");
-                }
+            if let AcquireOutcome::Reclaimed { previous_owner } = &outcome
+                && let Some(prev) = previous_owner
+            {
+                tracing::info!(capability = %name, %prev, "reclaimed stale capability");
             }
         }
         ProjectStateCommand::Heartbeat { name, owner } => {

@@ -32,7 +32,6 @@ pub enum AppEvent {
     SweepComplete(Result<(), String>),
 }
 
-
 use clap::ValueEnum;
 
 /// Which tab is active in the dashboard
@@ -43,8 +42,6 @@ pub enum DashboardTab {
     Worktrees,
     Tasks,
 }
-
-
 
 /// Current view mode of the dashboard
 #[derive(Debug, Default, PartialEq)]

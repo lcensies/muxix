@@ -258,7 +258,11 @@ pub fn detect_parent_agent() -> Option<String> {
 /// Classify the current tmux pane by its foreground command and title.
 fn detect_from_tmux_pane() -> Option<AgentKind> {
     let out = std::process::Command::new("tmux")
-        .args(["display-message", "-p", "#{pane_current_command}\t#{pane_title}"])
+        .args([
+            "display-message",
+            "-p",
+            "#{pane_current_command}\t#{pane_title}",
+        ])
         .output()
         .ok()?;
     if !out.status.success() {

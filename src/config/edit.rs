@@ -16,6 +16,7 @@ use anyhow::{Context, Result};
 /// indented lines, blank lines, and comments. `new_block` is the full
 /// replacement text (including its own `key:` line, no trailing newline);
 /// `None` removes the block. A key that is absent is appended at the end.
+#[allow(dead_code)]
 pub fn splice_top_level(text: &str, key: &str, new_block: Option<&str>) -> String {
     splice_path(text, &[key], new_block)
 }
@@ -86,7 +87,10 @@ fn splice_in_range(
     }
 
     let replacement: Vec<String> = match new_block {
-        Some(block) => indent_block(block, indent).lines().map(str::to_string).collect(),
+        Some(block) => indent_block(block, indent)
+            .lines()
+            .map(str::to_string)
+            .collect(),
         None => Vec::new(),
     };
     lines.splice(key_at..body_end, replacement);
@@ -205,7 +209,11 @@ mod tests {
 
     #[test]
     fn appends_missing_key() {
-        let out = splice_top_level(SAMPLE, "agent_rules", Some("agent_rules:\n- match: /x\n  agent: pi"));
+        let out = splice_top_level(
+            SAMPLE,
+            "agent_rules",
+            Some("agent_rules:\n- match: /x\n  agent: pi"),
+        );
         assert!(out.ends_with("agent_rules:\n- match: /x\n  agent: pi\n"));
         assert!(out.contains("mode: window"));
     }
@@ -226,7 +234,11 @@ mod tests {
 
     #[test]
     fn round_trips_through_yaml() {
-        let out = splice_top_level(SAMPLE, "agent_rules", Some("agent_rules:\n- match: /x\n  agent: pi"));
+        let out = splice_top_level(
+            SAMPLE,
+            "agent_rules",
+            Some("agent_rules:\n- match: /x\n  agent: pi"),
+        );
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
         assert_eq!(value["agent"].as_str(), Some("claude"));
         assert_eq!(value["agent_rules"][0]["agent"].as_str(), Some("pi"));

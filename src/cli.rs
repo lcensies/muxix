@@ -559,7 +559,6 @@ enum Commands {
         branch: bool,
     },
 
-
     /// Remove a worktree, tmux window, and branch without merging
     #[command(visible_alias = "rm")]
     Remove {
@@ -951,8 +950,6 @@ enum Commands {
     #[command(hide = true, name = "_check-update")]
     CheckUpdate,
 
-
-
     /// Read and mutate the task graph from the shell (list/get/create/update/delete).
     ///
     /// muxix stores the graph and serialises writes to it; deciding what to run
@@ -1017,12 +1014,6 @@ enum Commands {
         #[arg(long)]
         pane: Option<String>,
     },
-
-
-
-
-
-
 }
 
 #[derive(Subcommand, Debug)]
@@ -1066,9 +1057,6 @@ pub enum AgentsCommand {
         reference: String,
     },
 }
-
-
-
 
 #[derive(Subcommand, Debug)]
 pub enum SidebarAction {
@@ -1468,9 +1456,7 @@ pub fn run() -> Result<()> {
         },
         Commands::Profile { command } => match command {
             ProfileCommand::Show => command::profile::run_show(),
-            ProfileCommand::Export { output } => {
-                command::profile::run_export(output.as_deref())
-            }
+            ProfileCommand::Export { output } => command::profile::run_export(output.as_deref()),
             ProfileCommand::Diff => command::profile::run_diff(),
         },
         Commands::Docs => command::docs::run(),
@@ -1500,9 +1486,7 @@ pub fn run() -> Result<()> {
                     let use_session = crate::config::Config::load(None)
                         .ok()
                         .and_then(|c| c.sidebar.default_scope)
-                        .is_some_and(|s| {
-                            s == crate::config::SidebarDefaultScope::Session
-                        });
+                        .is_some_and(|s| s == crate::config::SidebarDefaultScope::Session);
                     if use_session {
                         command::sidebar::toggle_session()
                     } else {
@@ -1901,8 +1885,6 @@ pub enum TaskAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-
 
     #[test]
     fn prepare_zsh_base_renames_function_identifiers() {

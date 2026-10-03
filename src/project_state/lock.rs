@@ -85,12 +85,11 @@ impl FileLock {
 
 impl Drop for FileLock {
     fn drop(&mut self) {
-        if self.held {
-            if let Err(e) = fs::remove_file(&self.path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    warn!(path = %self.path.display(), error = %e, "failed to release project state lock");
-                }
-            }
+        if self.held
+            && let Err(e) = fs::remove_file(&self.path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            warn!(path = %self.path.display(), error = %e, "failed to release project state lock");
         }
     }
 }

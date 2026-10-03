@@ -11,7 +11,7 @@
 //! `{env:VAR}` interpolation; Claude's `apiKeyHelper`).
 
 use anyhow::{Context, Result};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::fs;
 use std::path::Path;
 
@@ -92,8 +92,7 @@ fn load_object(path: &Path, seed: Value) -> Value {
 
 fn write_pretty(path: &Path, root: &Value) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let mut s = serde_json::to_string_pretty(root)?;
     s.push('\n');
@@ -122,8 +121,7 @@ fn write_opencode(
     );
     let obj = root.as_object_mut().expect("seed is an object");
 
-    let models_obj: Map<String, Value> =
-        models.iter().map(|m| (m.clone(), json!({}))).collect();
+    let models_obj: Map<String, Value> = models.iter().map(|m| (m.clone(), json!({}))).collect();
 
     let provider_block = json!({
         "npm": "@ai-sdk/openai-compatible",
@@ -144,10 +142,10 @@ fn write_opencode(
     // Make the governed provider the default so agents route through it without
     // an explicit -m flag. Only set when we actually have a model to name and
     // the user hasn't pinned their own default.
-    if !obj.contains_key("model") {
-        if let Some(first) = models.first() {
-            obj.insert("model".into(), json!(format!("{}/{}", provider_id, first)));
-        }
+    if !obj.contains_key("model")
+        && let Some(first) = models.first()
+    {
+        obj.insert("model".into(), json!(format!("{}/{}", provider_id, first)));
     }
 
     write_pretty(&path, &root)?;

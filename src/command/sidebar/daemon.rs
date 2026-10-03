@@ -1395,7 +1395,9 @@ fn proc_descendants(root_pid: u32) -> Vec<u32> {
             continue;
         };
         for tok in contents.split_whitespace() {
-            let Ok(child) = tok.parse::<u32>() else { continue };
+            let Ok(child) = tok.parse::<u32>() else {
+                continue;
+            };
             result.push(child);
             queue.push(child);
         }
@@ -1688,7 +1690,8 @@ pub fn run() -> Result<()> {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker, now_ts);
+            let captured_panes =
+                gather_captures(&agents, mux.as_ref(), &inactivity_tracker, now_ts);
             let heartbeat_due = last_runtime_write.elapsed() >= Duration::from_secs(10);
 
             // ── Compute tick (no I/O) ──
@@ -2806,8 +2809,8 @@ mod tests {
         /// Read a process's state character from /proc/{pid}/status.
         /// Returns 'T' (stopped), 'S' (sleeping), 'R' (running), etc.
         fn proc_state(pid: u32) -> char {
-            let content = std::fs::read_to_string(format!("/proc/{pid}/status"))
-                .unwrap_or_default();
+            let content =
+                std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
             for line in content.lines() {
                 if let Some(rest) = line.strip_prefix("State:") {
                     return rest.trim().chars().next().unwrap_or('?');
@@ -2820,7 +2823,7 @@ mod tests {
         /// process that proc_descendants() will find and FreezeTracker can SIGSTOP.
         fn spawn_shell_with_child() -> std::process::Child {
             std::process::Command::new("bash")
-                .args(&["-c", "sleep 9999 & wait $!"])
+                .args(["-c", "sleep 9999 & wait $!"])
                 .spawn()
                 .expect("failed to spawn bash")
         }
@@ -2876,7 +2879,8 @@ mod tests {
             assert!(!children.is_empty(), "expected child processes to exist");
             for &cpid in &children {
                 assert_eq!(
-                    proc_state(cpid), 'T',
+                    proc_state(cpid),
+                    'T',
                     "child {cpid} should be stopped after freeze"
                 );
             }
@@ -2997,10 +3001,16 @@ mod tests {
 
             tracker.tick(&agents, &no_active, std::time::Duration::ZERO, 9999);
 
-            let entry = tracker.frozen.get("%freeze_5").expect("pane should be in frozen map");
+            let entry = tracker
+                .frozen
+                .get("%freeze_5")
+                .expect("pane should be in frozen map");
             assert_eq!(entry.original_window_name, "test-window");
             assert_eq!(entry.window_id, "@99");
-            assert!(!entry.child_pids.is_empty(), "should have recorded child PIDs");
+            assert!(
+                !entry.child_pids.is_empty(),
+                "should have recorded child PIDs"
+            );
 
             let _ = child.kill();
             tracker.thaw_all();

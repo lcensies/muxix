@@ -314,8 +314,7 @@ mod tests {
     #[test]
     fn test_extract_worktree_name_session_mode() {
         let path = Path::new("/home/user/myproject__worktrees/feature-auth");
-        let (name, is_main) =
-            extract_worktree_name("muxix:feature-auth", "zsh", "muxix:", path);
+        let (name, is_main) = extract_worktree_name("muxix:feature-auth", "zsh", "muxix:", path);
         assert_eq!(name, "feature-auth");
         assert!(!is_main);
     }
@@ -323,12 +322,8 @@ mod tests {
     #[test]
     fn test_extract_worktree_name_window_preferred_over_session() {
         let path = Path::new("/home/user/myproject__worktrees/from-window");
-        let (name, is_main) = extract_worktree_name(
-            "muxix:from-session",
-            "muxix:from-window",
-            "muxix:",
-            path,
-        );
+        let (name, is_main) =
+            extract_worktree_name("muxix:from-session", "muxix:from-window", "muxix:", path);
         assert_eq!(name, "from-window");
         assert!(!is_main);
     }

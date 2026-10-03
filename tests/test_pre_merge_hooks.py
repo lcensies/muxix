@@ -4,11 +4,11 @@ from pathlib import Path
 
 from .conftest import (
     MuxEnvironment,
+    create_commit,
     get_worktree_path,
     run_muxix_add,
     run_muxix_merge,
     write_muxix_config,
-    create_commit,
 )
 
 
@@ -98,9 +98,7 @@ class TestPreMergeHooks:
         worktree_path = get_worktree_path(repo_path, branch_name)
         create_commit(env, worktree_path, "feat: test commit")
 
-        run_muxix_merge(
-            env, muxix_exe_path, repo_path, branch_name, expect_fail=True
-        )
+        run_muxix_merge(env, muxix_exe_path, repo_path, branch_name, expect_fail=True)
 
         assert worktree_path.exists(), "Worktree should NOT be removed when hook fails"
 

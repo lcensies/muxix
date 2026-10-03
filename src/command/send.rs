@@ -17,10 +17,7 @@ pub fn run(name: &str, text: Option<&str>, file: Option<&str>) -> Result<()> {
         let content = read_content(text, file)?;
         let registry = crate::agent::runtime::registry::RuntimeRegistry::for_config(&cfg);
         let runtime = registry.runtime_for(&reference)?;
-        if !runtime
-            .features()
-            .has(crate::agent::runtime::Feature::Send)
-        {
+        if !runtime.features().has(crate::agent::runtime::Feature::Send) {
             return Err(crate::agent::runtime::unsupported(
                 runtime.name(),
                 crate::agent::runtime::Feature::Send,

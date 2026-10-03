@@ -92,12 +92,12 @@ pub fn handle_file_operations(
                 if let Ok(metadata) = dest_path.symlink_metadata() {
                     if metadata.is_dir() {
                         fs::remove_dir_all(&dest_path).with_context(|| {
-                            format!("Failed to remove existing directory at {:?}", &dest_path)
+                            format!("Failed to remove existing directory at {:?}", dest_path)
                         })?;
                     } else {
                         // Handles both files and symlinks
                         fs::remove_file(&dest_path).with_context(|| {
-                            format!("Failed to remove existing file/symlink at {:?}", &dest_path)
+                            format!("Failed to remove existing file/symlink at {:?}", dest_path)
                         })?;
                     }
                 }

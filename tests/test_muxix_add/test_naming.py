@@ -303,9 +303,7 @@ class TestTargetNameOptions:
         assert branch_name in list_result.stdout
         assert "closed" not in list_result.stdout
 
-        run_muxix_command(
-            env, muxix_exe_path, mux_repo_path, f"close {branch_name}"
-        )
+        run_muxix_command(env, muxix_exe_path, mux_repo_path, f"close {branch_name}")
         assert custom_window not in env.list_windows()
 
 

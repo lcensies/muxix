@@ -46,7 +46,11 @@ impl NpmSpec {
             Some((n, v)) if !n.is_empty() && !v.is_empty() => (n, Some(v.to_string())),
             _ => (body, None),
         };
-        let name = if spec.starts_with('@') { format!("@{name}") } else { name.to_string() };
+        let name = if spec.starts_with('@') {
+            format!("@{name}")
+        } else {
+            name.to_string()
+        };
         if name.contains(char::is_whitespace) || name.contains('/') && !name.starts_with('@') {
             bail!("invalid npm spec: {spec}");
         }
@@ -91,7 +95,10 @@ pub fn ensure_prefix(prefix: &Path) -> Result<()> {
         bail!("npm prefix {} is not a directory", prefix.display());
     }
     if std::fs::metadata(prefix)?.permissions().readonly() {
-        bail!("npm prefix {} is not a writable directory", prefix.display());
+        bail!(
+            "npm prefix {} is not a writable directory",
+            prefix.display()
+        );
     }
     Ok(())
 }
@@ -117,7 +124,9 @@ pub fn installed_version(prefix: &Path, name: &str) -> Option<String> {
 /// Every package name installed under the prefix (scoped ones as `@scope/name`).
 pub fn installed_packages(prefix: &Path) -> Vec<String> {
     let root = prefix.join("lib/node_modules");
-    let Ok(entries) = std::fs::read_dir(&root) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -145,7 +154,8 @@ pub fn prefix_bin_on_path(prefix: &Path) -> bool {
 
 fn prefix_bin_in(path: Option<&std::ffi::OsStr>, prefix: &Path) -> bool {
     let bin = prefix.join("bin");
-    path.map(|p| std::env::split_paths(p).any(|d| d == bin)).unwrap_or(false)
+    path.map(|p| std::env::split_paths(p).any(|d| d == bin))
+        .unwrap_or(false)
 }
 
 /// First PATH entry holding an executable `name`.
@@ -165,7 +175,10 @@ fn which_in(path: Option<&std::ffi::OsStr>, name: &str) -> Option<PathBuf> {
 #[cfg(unix)]
 fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    p.is_file() && p.metadata().map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    p.is_file()
+        && p.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
 }
 
 #[cfg(not(unix))]
@@ -202,11 +215,20 @@ mod tests {
     #[test]
     fn spec_parsing() {
         let s = NpmSpec::parse("@fission-ai/openspec@1.6.0").unwrap();
-        assert_eq!((s.name.as_str(), s.version.as_deref()), ("@fission-ai/openspec", Some("1.6.0")));
+        assert_eq!(
+            (s.name.as_str(), s.version.as_deref()),
+            ("@fission-ai/openspec", Some("1.6.0"))
+        );
         let s = NpmSpec::parse("@scope/pkg").unwrap();
-        assert_eq!((s.name.as_str(), s.version.as_deref()), ("@scope/pkg", None));
+        assert_eq!(
+            (s.name.as_str(), s.version.as_deref()),
+            ("@scope/pkg", None)
+        );
         let s = NpmSpec::parse("socraticode@0.4.1").unwrap();
-        assert_eq!((s.name.as_str(), s.version.as_deref()), ("socraticode", Some("0.4.1")));
+        assert_eq!(
+            (s.name.as_str(), s.version.as_deref()),
+            ("socraticode", Some("0.4.1"))
+        );
         let s = NpmSpec::parse("socraticode").unwrap();
         assert!(!s.is_pinned());
         assert_eq!(s.to_string(), "socraticode");
@@ -222,13 +244,26 @@ mod tests {
         for (name, ver) in [("foo", "1.2.3"), ("@s/bar", "0.1.0")] {
             let dir = package_dir(prefix, name);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("package.json"), format!(r#"{{"version":"{ver}"}}"#)).unwrap();
+            std::fs::write(
+                dir.join("package.json"),
+                format!(r#"{{"version":"{ver}"}}"#),
+            )
+            .unwrap();
         }
         assert_eq!(installed_version(prefix, "foo").as_deref(), Some("1.2.3"));
-        assert_eq!(installed_version(prefix, "@s/bar").as_deref(), Some("0.1.0"));
-        assert_eq!(installed_packages(prefix), vec!["@s/bar".to_string(), "foo".to_string()]);
+        assert_eq!(
+            installed_version(prefix, "@s/bar").as_deref(),
+            Some("0.1.0")
+        );
+        assert_eq!(
+            installed_packages(prefix),
+            vec!["@s/bar".to_string(), "foo".to_string()]
+        );
         let target = package_dir(prefix, "@s/bar").to_string_lossy().into_owned();
-        assert_eq!(split_package_dir(&target), Some((prefix.to_path_buf(), "@s/bar".to_string())));
+        assert_eq!(
+            split_package_dir(&target),
+            Some((prefix.to_path_buf(), "@s/bar".to_string()))
+        );
     }
 
     #[test]

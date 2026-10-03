@@ -124,7 +124,6 @@ impl WorkflowContext {
     pub fn ensure_tmux_running(&self) -> Result<()> {
         self.ensure_mux_running()
     }
-
 }
 
 // Destructive workflows (merge, rename, cleanup) used to chdir here to avoid

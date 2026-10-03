@@ -165,7 +165,10 @@ mod tests {
         let item = ListItem::row(
             vec![(
                 "icon".into(),
-                FieldValue::Spans(vec![("● ".into(), Style::default()), ("ok".into(), Style::default())]),
+                FieldValue::Spans(vec![
+                    ("● ".into(), Style::default()),
+                    ("ok".into(), Style::default()),
+                ]),
             )],
             false,
         );

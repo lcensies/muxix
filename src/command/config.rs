@@ -173,7 +173,10 @@ fn run_agent(command: AgentCommand) -> Result<()> {
             } else {
                 println!("rules (first match wins):");
                 for (i, rule) in rules.iter().enumerate() {
-                    let invalid = rule.compile().err().map(|e| format!("  [invalid regex: {e}]"));
+                    let invalid = rule
+                        .compile()
+                        .err()
+                        .map(|e| format!("  [invalid regex: {e}]"));
                     println!(
                         "  {i}  {:<40} -> {}{}",
                         rule.pattern,
@@ -222,8 +225,7 @@ fn run_agent(command: AgentCommand) -> Result<()> {
                 (_, _, Some(d)) => anchored_pattern(&d.canonicalize().unwrap_or(d)),
                 _ => bail!("Pass one of --match, --project, --path, or --default"),
             };
-            regex::Regex::new(&pattern)
-                .with_context(|| format!("Invalid regex: {pattern}"))?;
+            regex::Regex::new(&pattern).with_context(|| format!("Invalid regex: {pattern}"))?;
 
             let mut rules = read_rules(&value)?;
             match rules.iter_mut().find(|r| r.pattern == pattern) {
@@ -277,11 +279,7 @@ fn run_agent(command: AgentCommand) -> Result<()> {
 ///
 /// Nothing is written to stdout unless resolution fully succeeds, so a caller
 /// piping this into a file never captures a half-resolved config.
-fn run_resolve(
-    file: Option<&std::path::Path>,
-    format: ResolveFormat,
-    explain: bool,
-) -> Result<()> {
+fn run_resolve(file: Option<&std::path::Path>, format: ResolveFormat, explain: bool) -> Result<()> {
     let profile = crate::config::profiles::cli_profile();
     let (resolved, layers) = match file {
         // A named file is judged on its own, so a generated config resolves the
@@ -455,7 +453,10 @@ fn check_value(value: &serde_yaml::Value, strict: bool, what: &str) -> Result<()
     // stderr note; validate is where it should be an outright failure.
     for (i, rule) in config.agent_rules.iter().enumerate() {
         if let Err(e) = rule.compile() {
-            bail!("{what}: agent_rules[{i}] pattern {:?} is not a valid regex: {e}", rule.pattern);
+            bail!(
+                "{what}: agent_rules[{i}] pattern {:?} is not a valid regex: {e}",
+                rule.pattern
+            );
         }
     }
 
@@ -525,7 +526,7 @@ fn run_reference() -> Result<()> {
 
 const DEFAULT_GLOBAL_CONFIG: &str = r#"# muxix global configuration
 # Settings here apply to all projects. Project-specific .muxix.yaml overrides these.
-# See: https://muxix.dev/guide/configuration
+# See: https://github.com/lcensies/muxix/blob/main/docs/guide/configuration.md
 
 # nerdfont: true
 # agent: claude

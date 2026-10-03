@@ -1449,7 +1449,7 @@ mod tests {
             return;
         }
 
-        let (stdout, stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
+        let (stdout, _stderr, code) = exec_collect(&mut client, "ls", &[&ssh_dir]);
         let _ = &stdout; // used conditionally per platform
 
         #[cfg(target_os = "macos")]

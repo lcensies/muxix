@@ -186,9 +186,8 @@ impl<'de> serde::Deserialize<'de> for SkillEntry {
             serde_yaml::Value::String(path) => Ok(Source::LocalPath(path).into()),
             serde_yaml::Value::Mapping(map) => {
                 let get = |k: &str| map.get(serde_yaml::Value::String(k.to_string()));
-                let as_str = |v: Option<&serde_yaml::Value>| {
-                    v.and_then(|v| v.as_str()).map(str::to_owned)
-                };
+                let as_str =
+                    |v: Option<&serde_yaml::Value>| v.and_then(|v| v.as_str()).map(str::to_owned);
 
                 let source = match (as_str(get("path")), as_str(get("url"))) {
                     (Some(_), Some(_)) => {
@@ -202,9 +201,7 @@ impl<'de> serde::Deserialize<'de> for SkillEntry {
                         r#ref: as_str(get("ref")),
                     },
                     (None, None) => {
-                        return Err(D::Error::custom(
-                            "skill entry needs `path` or `url`",
-                        ));
+                        return Err(D::Error::custom("skill entry needs `path` or `url`"));
                     }
                 };
 
@@ -220,7 +217,11 @@ impl<'de> serde::Deserialize<'de> for SkillEntry {
                         .map_err(|e| D::Error::custom(format!("skill requires: {e}")))?,
                 };
 
-                Ok(SkillEntry { source, hooks, requires })
+                Ok(SkillEntry {
+                    source,
+                    hooks,
+                    requires,
+                })
             }
             other => Err(D::Error::custom(format!(
                 "skill entry must be a string or a table, got {other:?}"
@@ -525,10 +526,7 @@ impl BootstrapConfig {
         // scripts the skill ships end up side by side there, and the path
         // differs per agent -- which is exactly why it must be a variable.
         if let Some(dir) = install_dir {
-            ctx.insert(
-                "skill_install_dir".into(),
-                dir.display().to_string().into(),
-            );
+            ctx.insert("skill_install_dir".into(), dir.display().to_string().into());
         }
         for (key, var) in &self.template_vars {
             if key == "agent" || key == "agent_name" || key == "skill_install_dir" {
@@ -714,7 +712,11 @@ pub fn merge_prompt_components(
         // machine-global config can point at components outside the project.
         let component_path = if component_name.contains('/') {
             let p = crate::util::expand_tilde(component_name);
-            if p.is_absolute() { p } else { project_root.join(p) }
+            if p.is_absolute() {
+                p
+            } else {
+                project_root.join(p)
+            }
         } else {
             project_root
                 .join(".muxix/prompt-components")
@@ -992,14 +994,12 @@ fn apply_model_to_frontmatter(
             _ => out.push_str(line),
         }
     }
-    if !has_model {
-        if let Some(spec) = override_spec {
-            if !out.ends_with('\n') {
-                out.push('\n');
-            }
-            out.push_str("model: ");
-            out.push_str(&render_model(spec, registry, agent, default_provider));
+    if !has_model && let Some(spec) = override_spec {
+        if !out.ends_with('\n') {
+            out.push('\n');
         }
+        out.push_str("model: ");
+        out.push_str(&render_model(spec, registry, agent, default_provider));
     }
     out.push_str(&rest[end..]);
     out
@@ -1091,7 +1091,9 @@ pub fn subagents_unsupported_reason(agent: Agent) -> Option<&'static str> {
             "Codex custom agents are TOML config layers (~/.codex/agents/*.toml), \
              not markdown subagent documents",
         ),
-        _ => subagents_dir(agent).is_none().then_some("no subagents directory for this agent"),
+        _ => subagents_dir(agent)
+            .is_none()
+            .then_some("no subagents directory for this agent"),
     }
 }
 
@@ -1132,6 +1134,7 @@ pub fn install_subagents_for_agent(
 
 /// Directory-parameterized core of [`install_subagents_for_agent`], split out
 /// so it can be tested without touching real agent config dirs.
+#[allow(clippy::too_many_arguments)]
 fn install_subagents_into(
     base_dir: &Path,
     defs: &[SubagentDef],
@@ -1347,14 +1350,21 @@ mod tests {
                 _ => assert!(dir.is_some(), "{} has no subagents dir", agent.name()),
             }
         }
-        assert!(subagents_dir(Agent::Gemini).unwrap().ends_with(".gemini/agents"));
+        assert!(
+            subagents_dir(Agent::Gemini)
+                .unwrap()
+                .ends_with(".gemini/agents")
+        );
         assert!(subagents_dir(Agent::Copilot).unwrap().ends_with("agents"));
         assert!(subagents_dir(Agent::Omp).unwrap().ends_with("agents"));
     }
 
     #[test]
     fn subagent_filename_uses_copilots_suffix() {
-        assert_eq!(subagent_filename(Agent::Copilot, "reviewer"), "reviewer.agent.md");
+        assert_eq!(
+            subagent_filename(Agent::Copilot, "reviewer"),
+            "reviewer.agent.md"
+        );
         assert_eq!(subagent_filename(Agent::Claude, "reviewer"), "reviewer.md");
         assert_eq!(subagent_filename(Agent::Gemini, "reviewer"), "reviewer.md");
     }
@@ -1367,7 +1377,11 @@ mod tests {
                 Agent::Codex => {
                     assert!(reason.is_some_and(|r| r.contains("TOML")), "{reason:?}")
                 }
-                _ => assert!(reason.is_none(), "{} unexpectedly unsupported", agent.name()),
+                _ => assert!(
+                    reason.is_none(),
+                    "{} unexpectedly unsupported",
+                    agent.name()
+                ),
             }
         }
     }
@@ -1671,7 +1685,10 @@ agents:
         let patch = cfg.settings_for(Agent::Pi).expect("pi patch");
         assert_eq!(patch["defaultTools"], serde_json::json!(["read", "edit"]));
         assert_eq!(patch["taskflow"]["piChild"]["resourceProfile"], "allowlist");
-        assert!(patch["theme"].is_null(), "null survives deserialization as a delete marker");
+        assert!(
+            patch["theme"].is_null(),
+            "null survives deserialization as a delete marker"
+        );
         assert!(cfg.settings_for(Agent::Claude).is_none());
     }
 
@@ -1714,7 +1731,10 @@ agents:
             }
         }
 
-        assert_eq!(dir, Some(home::home_dir().unwrap().join(".pi/agent/agents")));
+        assert_eq!(
+            dir,
+            Some(home::home_dir().unwrap().join(".pi/agent/agents"))
+        );
     }
 
     #[test]
@@ -1748,9 +1768,7 @@ agents:
 
     #[test]
     fn test_install_skills_for_agent_end_to_end() {
-        let _guard = OMP_DIR_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = OMP_DIR_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let project_root = tmp.path().join("project");
         let skill_src = project_root.join("skills/muxix");
@@ -1819,15 +1837,22 @@ agents:
             ..Default::default()
         };
 
-        let raw = "start --agent {{ agent }} ({{ agent_name }}) via {{ orchestrator }}: {{ review_cmd }}";
+        let raw =
+            "start --agent {{ agent }} ({{ agent_name }}) via {{ orchestrator }}: {{ review_cmd }}";
         let claude = render_skill_template(raw, Agent::Claude, &config, None).unwrap();
-        assert_eq!(claude, "start --agent claude (Claude Code) via orca: /code-review");
+        assert_eq!(
+            claude,
+            "start --agent claude (Claude Code) via orca: /code-review"
+        );
         let omp = render_skill_template(raw, Agent::Omp, &config, None).unwrap();
         assert_eq!(omp, "start --agent omp (omp) via orca: /review");
 
         // No delimiters -> engine bypassed, literal braces survive.
         let plain = "json body { \"a\": 1 }";
-        assert_eq!(render_skill_template(plain, Agent::Claude, &config, None).unwrap(), plain);
+        assert_eq!(
+            render_skill_template(plain, Agent::Claude, &config, None).unwrap(),
+            plain
+        );
 
         // Built-ins cannot be shadowed.
         let bad = BootstrapConfig {
@@ -1842,9 +1867,7 @@ agents:
 
     #[test]
     fn test_install_skills_for_agent_reports_remote_as_skipped() {
-        let _guard = OMP_DIR_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = OMP_DIR_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let agent_dir = tmp.path().join("omp-agent");
         // SAFETY: see test_install_skills_for_agent_end_to_end.
@@ -1894,10 +1917,7 @@ agents:
         let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.subagents.len(), 2);
         assert!(matches!(config.subagents[0], SubagentDef::File(_)));
-        assert!(matches!(
-            config.subagents[1],
-            SubagentDef::Inline { .. }
-        ));
+        assert!(matches!(config.subagents[1], SubagentDef::Inline { .. }));
     }
 
     #[test]
@@ -1921,7 +1941,8 @@ agents:
 
     #[test]
     fn test_opencode_tools_frontmatter_converts_string_to_object() {
-        let claude = "---\nname: reviewer\ntools: Read, Grep, Glob, Bash\nmodel: opus\n---\nReview.";
+        let claude =
+            "---\nname: reviewer\ntools: Read, Grep, Glob, Bash\nmodel: opus\n---\nReview.";
         let out = opencode_tools_frontmatter(claude);
         assert_eq!(
             out,
@@ -1958,7 +1979,17 @@ agents:
         ];
 
         let dest = tmp.path().join("agent-home/agents");
-        let first = install_subagents_into(&dest, &defs, &project_root, None, Agent::Claude, None, &BTreeMap::new(), false).unwrap();
+        let first = install_subagents_into(
+            &dest,
+            &defs,
+            &project_root,
+            None,
+            Agent::Claude,
+            None,
+            &BTreeMap::new(),
+            false,
+        )
+        .unwrap();
         assert_eq!(
             first,
             vec![
@@ -1970,12 +2001,24 @@ agents:
             fs::read_to_string(dest.join("reviewer.md")).unwrap(),
             "---\nname: reviewer\n---\nReview code."
         );
-        assert!(fs::read_to_string(dest.join("planner.md"))
-            .unwrap()
-            .contains("You plan."));
+        assert!(
+            fs::read_to_string(dest.join("planner.md"))
+                .unwrap()
+                .contains("You plan.")
+        );
 
         // Re-running is idempotent.
-        let second = install_subagents_into(&dest, &defs, &project_root, None, Agent::Claude, None, &BTreeMap::new(), false).unwrap();
+        let second = install_subagents_into(
+            &dest,
+            &defs,
+            &project_root,
+            None,
+            Agent::Claude,
+            None,
+            &BTreeMap::new(),
+            false,
+        )
+        .unwrap();
         assert_eq!(
             second,
             vec![
@@ -1990,7 +2033,17 @@ agents:
             "---\nname: reviewer\n---\nReview harder.",
         )
         .unwrap();
-        let third = install_subagents_into(&dest, &defs, &project_root, None, Agent::Claude, None, &BTreeMap::new(), false).unwrap();
+        let third = install_subagents_into(
+            &dest,
+            &defs,
+            &project_root,
+            None,
+            Agent::Claude,
+            None,
+            &BTreeMap::new(),
+            false,
+        )
+        .unwrap();
         assert_eq!(third[0], SkillInstall::Updated("reviewer".to_string()));
     }
 
@@ -2040,7 +2093,10 @@ agents:
         // Ambiguous across providers -> pass through, never guess.
         assert_eq!(r("opus", Agent::Claude), "opus");
         // ...unless the spec pins the provider.
-        assert_eq!(r("bedrock/opus", Agent::Claude), "anthropic.claude-opus-4-8");
+        assert_eq!(
+            r("bedrock/opus", Agent::Claude),
+            "anthropic.claude-opus-4-8"
+        );
         assert_eq!(r("anthropic/opus", Agent::Claude), "claude-opus-4-8");
 
         // Unknown names and an absent registry pass through untouched, so a
@@ -2058,8 +2114,14 @@ agents:
         let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
 
         // Short-id keys (`claude`) must resolve, not just display names.
-        assert_eq!(config.default_provider_for(Agent::Claude), Some("anthropic"));
-        assert_eq!(config.default_provider_for(Agent::OpenCode), Some("bedrock"));
+        assert_eq!(
+            config.default_provider_for(Agent::Claude),
+            Some("anthropic")
+        );
+        assert_eq!(
+            config.default_provider_for(Agent::OpenCode),
+            Some("bedrock")
+        );
         assert_eq!(config.default_provider_for(Agent::Pi), None);
 
         // `opus` is ambiguous registry-wide, but each agent's default picks one.
@@ -2165,7 +2227,10 @@ agents:
             apply_model_to_frontmatter("plain", None, Some(&reg), Agent::Claude, None),
             "plain"
         );
-        assert_eq!(apply_model_to_frontmatter(doc, None, None, Agent::Claude, None), doc);
+        assert_eq!(
+            apply_model_to_frontmatter(doc, None, None, Agent::Claude, None),
+            doc
+        );
 
         // A per-agent override replaces the spec and passes an unregistered
         // provider-qualified spec through verbatim.
@@ -2187,7 +2252,10 @@ agents:
             Agent::OpenCode,
             None,
         );
-        assert!(out.contains("name: explore\nmodel: corp/claude-haiku-4-5\n---"), "{out}");
+        assert!(
+            out.contains("name: explore\nmodel: corp/claude-haiku-4-5\n---"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -2209,8 +2277,6 @@ agents:
         assert_eq!(config.subagents_for(Agent::Pi).len(), 1);
     }
 
-    
-
     #[test]
     fn test_feature_config_flatten_roundtrip() {
         let yaml = "default: ponytail\npi: 'git:github.com/DietrichGebert/ponytail'\nomp: pi-ponytail@marketplace\n";
@@ -2220,7 +2286,10 @@ agents:
             feature.plugin_for(Agent::Pi),
             Some("git:github.com/DietrichGebert/ponytail")
         );
-        assert_eq!(feature.plugin_for(Agent::Omp), Some("pi-ponytail@marketplace"));
+        assert_eq!(
+            feature.plugin_for(Agent::Omp),
+            Some("pi-ponytail@marketplace")
+        );
         assert_eq!(feature.plugin_for(Agent::Claude), None);
     }
 }
@@ -2263,9 +2332,11 @@ mod skill_install_dir_tests {
             "skill_install_dir".to_string(),
             TemplateVar::Scalar("evil".to_string()),
         );
-        assert!(config
-            .skill_template_context(Agent::Claude, Some(Path::new("/real")))
-            .is_err());
+        assert!(
+            config
+                .skill_template_context(Agent::Claude, Some(Path::new("/real")))
+                .is_err()
+        );
     }
 
     /// An installed SKILL.md referencing the variable contains the per-agent
@@ -2304,11 +2375,17 @@ mod skill_install_dir_tests {
             }
         }
 
-        assert!(matches!(results[0], SkillInstall::Installed(_)), "{results:?}");
+        assert!(
+            matches!(results[0], SkillInstall::Installed(_)),
+            "{results:?}"
+        );
         let installed = fs::read_to_string(dest_base.join("src-skill/SKILL.md")).unwrap();
         assert_eq!(
             installed,
-            format!("Run {}/scripts/go.sh", dest_base.join("src-skill").display())
+            format!(
+                "Run {}/scripts/go.sh",
+                dest_base.join("src-skill").display()
+            )
         );
         let _ = fs::remove_dir_all(&tmp);
     }

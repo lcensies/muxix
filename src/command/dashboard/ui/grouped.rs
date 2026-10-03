@@ -64,8 +64,7 @@ pub fn render_grouped_agents(f: &mut Frame, app: &mut App, area: Rect) {
     // Reserve a banner line when the override currently fails to parse, so a
     // typo while prototyping is visible rather than silently ignored.
     let body = if let Some(err) = app.agents_spec.error() {
-        let chunks =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).split(area);
+        let chunks = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).split(area);
         let line = Line::from(Span::styled(
             format!(" spec error: {err}"),
             Style::default().fg(app.palette.danger),

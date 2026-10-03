@@ -137,9 +137,7 @@ const PROVIDERS_END: &str = "# muxix:providers end";
 /// substitution in config values, so a `base_url` embedding `{env:...}` cannot
 /// be expressed — those providers are skipped rather than written broken.
 /// Secrets are fine: Codex's `env_key` natively takes the variable *name*.
-fn render_providers_region(
-    registry: &crate::model::ProviderRegistry,
-) -> (String, Vec<String>) {
+fn render_providers_region(registry: &crate::model::ProviderRegistry) -> (String, Vec<String>) {
     let mut region = String::new();
     let mut warnings = Vec::new();
     for (id, cfg) in registry {
@@ -186,12 +184,7 @@ fn splice_providers_region(content: &str, region: &str) -> Option<String> {
 /// Shared by every managed region muxix owns in `config.toml` (providers, MCP
 /// servers): the markers are the only thing that differs, and content outside
 /// them is never touched.
-pub fn splice_region(
-    content: &str,
-    begin: &str,
-    end_marker: &str,
-    region: &str,
-) -> Option<String> {
+pub fn splice_region(content: &str, begin: &str, end_marker: &str, region: &str) -> Option<String> {
     let block = if region.is_empty() {
         String::new()
     } else {
@@ -203,7 +196,11 @@ pub fn splice_region(
             let end = end + end_marker.len();
             // Swallow the trailing newline of the old block so an emptied
             // region doesn't leave a blank line behind.
-            let end = if content[end..].starts_with('\n') { end + 1 } else { end };
+            let end = if content[end..].starts_with('\n') {
+                end + 1
+            } else {
+                end
+            };
             let current = &content[start..end];
             if current == block {
                 return None;
@@ -214,7 +211,11 @@ pub fn splice_region(
             if block.is_empty() {
                 return None;
             }
-            let sep = if content.is_empty() || content.ends_with('\n') { "" } else { "\n" };
+            let sep = if content.is_empty() || content.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
             Some(format!("{content}{sep}{block}"))
         }
     }
@@ -332,7 +333,10 @@ pub fn sync_providers(
     };
 
     if dry_run {
-        messages.push(format!("Would update provider region in {}", path.display()));
+        messages.push(format!(
+            "Would update provider region in {}",
+            path.display()
+        ));
         return Ok(messages);
     }
     if let Some(parent) = path.parent() {
@@ -342,7 +346,6 @@ pub fn sync_providers(
     messages.push(format!("Updated provider region in {}", path.display()));
     Ok(messages)
 }
-
 
 /// Ensure `hooks = true` is set under `[features]` in config.toml.
 /// Returns true if the file was modified.
@@ -399,7 +402,6 @@ fn ensure_hooks_feature_flag() -> Result<bool> {
 
     Ok(true)
 }
-
 
 /// Codex keeps shell hooks in `~/.codex/hooks.json`, same inner shape as
 /// Claude's settings. It has a `Stop` event but nothing that fires once per

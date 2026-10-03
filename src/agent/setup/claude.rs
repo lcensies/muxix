@@ -33,7 +33,6 @@ pub fn settings_file() -> Option<PathBuf> {
     settings_path()
 }
 
-
 /// Where Claude Code keeps declared shell hooks, and its names for the
 /// agent-agnostic events. Consumed by `command::setup::agent_hooks`.
 pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::HookTarget> {
@@ -497,7 +496,9 @@ mod tests {
         )
         .unwrap();
         with_claude_dir(tmp.path(), || {
-            assert!(plugin_installed("DietrichGebert/ponytail#ponytail@ponytail"));
+            assert!(plugin_installed(
+                "DietrichGebert/ponytail#ponytail@ponytail"
+            ));
         });
     }
 
@@ -522,7 +523,11 @@ mod tests {
             assert!(!plugin_installed("ponytail@ponytail"), "no state file");
         });
         fs::create_dir_all(tmp.path().join("plugins")).unwrap();
-        fs::write(tmp.path().join("plugins/installed_plugins.json"), "not json").unwrap();
+        fs::write(
+            tmp.path().join("plugins/installed_plugins.json"),
+            "not json",
+        )
+        .unwrap();
         with_claude_dir(tmp.path(), || {
             assert!(!plugin_installed("ponytail@ponytail"), "unparseable state");
         });

@@ -178,7 +178,8 @@ pub fn cleanup(
     // Determine if this worktree was created as a session or window
     let mode = git::get_worktree_mode_in(handle, Some(repo));
     let target_name = if mode == MuxMode::Session {
-        git::get_worktree_target_session_in(handle, Some(repo)).unwrap_or_else(|| handle.to_string())
+        git::get_worktree_target_session_in(handle, Some(repo))
+            .unwrap_or_else(|| handle.to_string())
     } else {
         git::get_worktree_target_window_in(handle, Some(repo)).unwrap_or_else(|| handle.to_string())
     };
@@ -292,11 +293,7 @@ pub fn cleanup(
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let trash_name = format!(
-                ".muxix_trash_{}_{}",
-                dir_name.to_string_lossy(),
-                timestamp
-            );
+            let trash_name = format!(".muxix_trash_{}_{}", dir_name.to_string_lossy(), timestamp);
             let target_trash_path = parent.join(&trash_name);
 
             debug!(
@@ -505,11 +502,7 @@ pub fn cleanup(
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            let trash_name = format!(
-                ".muxix_trash_{}_{}",
-                dir_name.to_string_lossy(),
-                timestamp
-            );
+            let trash_name = format!(".muxix_trash_{}_{}", dir_name.to_string_lossy(), timestamp);
             let trash_path = parent.join(&trash_name);
 
             // Resolve the admin dir before the worktree is renamed.
@@ -921,9 +914,7 @@ mod tests {
         assert!(script.contains("git -C /repo/.git worktree prune >/dev/null 2>&1"));
         assert!(script.contains("git -C /repo/.git branch -d feature >/dev/null 2>&1"));
         assert!(script.contains("git -C /repo/.git config --local --remove-section muxix.worktree.feature >/dev/null 2>&1"));
-        assert!(
-            script.contains("rm -rf /repo/worktrees/.muxix_trash_feature_123 >/dev/null 2>&1")
-        );
+        assert!(script.contains("rm -rf /repo/worktrees/.muxix_trash_feature_123 >/dev/null 2>&1"));
     }
 
     #[test]

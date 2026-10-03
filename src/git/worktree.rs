@@ -643,7 +643,7 @@ mod tests {
         init_repo(&repo_b);
 
         std::env::set_current_dir(&repo_a).unwrap();
-        let result = (|| {
+        {
             let worktree_path = temp.path().join("repo-b__worktrees").join("feature");
             create_worktree_in(
                 &worktree_path,
@@ -680,8 +680,7 @@ mod tests {
                 std::env::current_dir().unwrap(),
                 repo_a.canonicalize().unwrap()
             );
-        })();
+        };
         std::env::set_current_dir(original_cwd).unwrap();
-        result
     }
 }
