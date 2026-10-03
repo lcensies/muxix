@@ -1,26 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 0 208 208" fill="none">
-  <g transform="translate(38.0 0) scale(1.8125)">
-    <rect x="3.5" y="6" width="57" height="52" rx="11" stroke="#464646" stroke-width="4"/>
-    <path d="M3.5 18h57" stroke="#464646" stroke-width="4"/>
-    <path d="M10 11.5l3.5 2.8L10 17" stroke="#16b9a6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M17.5 17h6" stroke="#16b9a6" stroke-width="2.6" stroke-linecap="round"/>
-    <path d="M19 24c-4 0-4 3-4 5.5s0 5-4 5.5c4 .5 4 3 4 5.5s0 5.5 4 5.5" stroke="#464646" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
-    <g stroke="#16b9a6" stroke-width="2.8" stroke-linecap="round">
-      <path d="M24 28h4M24 35h4M24 42h4"/>
-    </g>
-    <g fill="#16b9a6">
-      <rect x="31" y="24.5" width="21" height="7" rx="2.2"/>
-      <rect x="31" y="31.5" width="15" height="7" rx="2.2"/>
-      <rect x="31" y="38.5" width="21" height="7" rx="2.2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 0 215 206" fill="none">
+  <g transform="translate(43.5 0) scale(1.7500)">
+    <rect x="4" y="7.5" width="56" height="49" rx="11" stroke="#464646" stroke-width="2.6"/>
+    <path d="M4 19h56" stroke="#464646" stroke-width="2.2"/>
+    <path d="M10.5 12.3l3.2 2.6-3.2 2.6" stroke="#16b9a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18.5 17.5h6.5" stroke="#16b9a6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M19.5 26c-3.2 0-3.2 2.6-3.2 4.8s0 4.4-3.3 4.7c3.3.3 3.3 2.5 3.3 4.7s0 4.8 3.2 4.8" stroke="#464646" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <g stroke="#16b9a6" stroke-width="2.2" stroke-linecap="round">
+      <path d="M25 28.5h3.5M25 35.2h3.5M25 41.9h3.5"/>
+      <path d="M33 28.5h18M33 35.2h12M33 41.9h18"/>
     </g>
   </g>
-  <g transform="translate(0 140)">
-  <g stroke="#1e3245" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <g transform="translate(0 0)"><path d="M2 60V36c0-8 5-13 12-13s12 5 12 13v24M26 36c0-8 5-13 12-13s12 5 12 13v24"/></g>
-    <g transform="translate(66 0)"><path d="M0 23v24c0 7 5 12 12 12s12-5 12-12V23v37"/></g>
-    <g transform="translate(106 0)"><path d="M0 23 24 60M24 23 0 60"/></g>
-    <g transform="translate(146 0)"><circle cx="3" cy="10" r="6" stroke="none" fill="#1e3245"/><path d="M3 29v31"/></g>
-    <g transform="translate(168 0)"><path d="M0 23 24 60M24 23 0 60"/></g>
+  <g transform="translate(0 138)">
+  <g stroke="#1e3245" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <g transform="translate(0 0)"><path d="M2 60V36c0-7.5 5-12.5 12-12.5s12 5 12 12.5v24M26 36c0-7.5 5-12.5 12-12.5s12 5 12 12.5v24"/></g>
+    <g transform="translate(68 0)"><path d="M0 23.5v23c0 7 5 12 12 12s12-5 12-12v-23v36.5"/></g>
+    <g transform="translate(110 0)"><path d="M0 23.5 24 60M24 23.5 0 60"/></g>
+    <g transform="translate(152 0)"><circle cx="2.5" cy="11" r="4.4" stroke="none" fill="#1e3245"/><path d="M2.5 28v32"/></g>
+    <g transform="translate(175 0)"><path d="M0 23.5 24 60M24 23.5 0 60"/></g>
   </g>
   </g>
 </svg>
