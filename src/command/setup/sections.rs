@@ -1355,18 +1355,11 @@ pub fn agent_profiles(
 
             let agent_deltas = decl.agents.get(agent_id);
             let delta = match agent_deltas {
-                Some(d) if !d.is_empty() && *agent != Agent::Pi => {
-                    // Never build an overlay that silently drops declared deltas.
-                    out.push(ItemResult::skipped(
-                        sec,
-                        Some(agent.name()),
-                        name,
-                        "bootstrap deltas are only supported for pi; overlay not built",
-                    ));
-                    continue;
-                }
+                // Deltas apply to every profilable agent; keys a given agent
+                // cannot express come back as warnings (reported below), so the
+                // overlay is still built instead of refused wholesale.
                 Some(d) if !d.is_empty() => {
-                    match ap::pi_delta_plan(&base, &source, d, bootstrap_cfg, project_root) {
+                    match ap::delta_plan(*agent, &base, &source, d, bootstrap_cfg, project_root) {
                         Ok(dp) => dp,
                         Err(e) => {
                             out.push(ItemResult::failed(

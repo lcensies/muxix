@@ -236,9 +236,11 @@ fn agent_profiles_apply_declared_deltas() {
         serde_json::json!(["npm:keep", "npm:new", litellm.to_str().unwrap()])
     );
 
-    // Deltas for an agent without a generator refuse to build.
+    // A key an agent cannot express is reported by name, and the rest of the
+    // profile still builds (claude has no patchable plugin list).
     let claude_deltas = AgentProfileAgent {
         exclude_plugins: vec!["x".into()],
+        exclude_paths: vec!["drop.json".into()],
         ..Default::default()
     };
     config
@@ -248,21 +250,29 @@ fn agent_profiles_apply_declared_deltas() {
         .agents
         .insert("claude".to_string(), claude_deltas);
     std::fs::create_dir_all(base.join("claude")).unwrap();
+    std::fs::write(base.join("claude/drop.json"), "{}").unwrap();
+    std::fs::write(base.join("claude/keep.json"), "{}").unwrap();
     let checks2 = vec![AgentCheck {
         agent: Agent::Claude,
         reason: "test",
         status: StatusCheck::Installed,
     }];
-    let refused = super::sections::agent_profiles(&config, &checks2, &root, false);
+    let claude_items = super::sections::agent_profiles(&config, &checks2, &root, false);
     assert!(
-        refused
-            .iter()
-            .any(|r| r.name == "corp/claude" && r.outcome == Outcome::Skipped),
-        "{refused:?}"
+        claude_items.iter().any(|r| r.name == "corp/claude"
+            && r.detail
+                .as_deref()
+                .is_some_and(|d| d.contains("exclude_plugins"))),
+        "{claude_items:?}"
+    );
+    let claude_dest = crate::agent::agent_profiles::build_dir("corp", "claude").unwrap();
+    assert!(
+        claude_dest.join("keep.json").exists(),
+        "the expressible part of the profile still applies"
     );
     assert!(
-        !crate::agent::agent_profiles::build_dir("corp", "claude").unwrap().exists(),
-        "overlay must not be built without its deltas"
+        !claude_dest.join("drop.json").exists(),
+        "exclude_paths still applies for a non-pi agent"
     );
 
     unsafe {

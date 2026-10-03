@@ -34,6 +34,7 @@ use anyhow::{Context, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::agent::setup::{Agent, SettingsFormat};
 use crate::config::AgentProfileAgent;
 
 /// One entry of the desired overlay: either a symlink or a generated file.
@@ -412,28 +413,136 @@ fn resolve_skill_source(src: &str, project_root: &Path) -> PathBuf {
     }
 }
 
-/// Generate the overlay `settings.json` for pi: base packages − excludes
-/// (incl. excluded features' plugin specs) + absolutized additions, then the
-/// RFC 7386 patch.
-fn generate_pi_settings(
+/// How one agent's config dir expresses profile deltas.
+///
+/// Every field is "what this agent can take", so a declared key an agent has
+/// no place for becomes a named warning instead of a silent drop.
+struct DeltaShape {
+    /// Settings file name inside the agent dir, and its format.
+    settings: Option<(PathBuf, SettingsFormat)>,
+    /// Whether that settings file also holds the plugin list (pi/omp
+    /// `packages`). Only then can `add_plugins`/`exclude_plugins` be expressed.
+    plugin_list: bool,
+    /// Instructions file inside the agent dir, and how muxix writes it.
+    instructions: Option<(PathBuf, InstructionsStyle)>,
+    /// Skills root inside the agent dir, when the agent reads skills from
+    /// there at all.
+    skills: Option<PathBuf>,
+}
+
+/// Whether muxix owns an agent's instructions file outright or shares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstructionsStyle {
+    /// muxix owns the whole file (pi/omp `APPEND_SYSTEM.md`, claude's
+    /// `muxix-bootstrap.md`): the rendered prompt IS the file.
+    Owned,
+    /// Shared with the user's own text (codex `AGENTS.md`, copilot
+    /// `copilot-instructions.md`): splice the managed sentinel region into the
+    /// base file's content so hand-written guidance survives the overlay.
+    Sentinel,
+}
+
+/// The delta shape for `agent`. `bootstrap` only matters for pi/omp, whose
+/// instructions filename depends on the configured injection method.
+fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfig>) -> DeltaShape {
+    use crate::agent::setup::pi::PiInjectionMethod;
+
+    // The overlay mirrors the agent dir, so only the file NAME matters here.
+    let settings = crate::agent::setup::settings_target(agent).and_then(|(path, format)| {
+        path.file_name()
+            .map(|name| (PathBuf::from(name), format))
+    });
+
+    let pi_prompt_rel = || {
+        let method = bootstrap
+            .and_then(|c| c.pi.as_ref())
+            .map(|p| p.injection_method.clone())
+            .unwrap_or_default();
+        match method {
+            PiInjectionMethod::AppendSystem => PathBuf::from("APPEND_SYSTEM.md"),
+            PiInjectionMethod::BeforeAgentStart => PathBuf::from("muxix-pre-inject.md"),
+        }
+    };
+
+    let instructions = match agent {
+        Agent::Pi | Agent::Omp => Some((pi_prompt_rel(), InstructionsStyle::Owned)),
+        // Claude reads `@muxix-bootstrap.md` from CLAUDE.md; the referenced file
+        // is muxix's alone, and the reference resolves inside the overlay.
+        Agent::Claude => Some((PathBuf::from("muxix-bootstrap.md"), InstructionsStyle::Owned)),
+        Agent::Codex => Some((PathBuf::from("AGENTS.md"), InstructionsStyle::Sentinel)),
+        Agent::Copilot => Some((
+            PathBuf::from("copilot-instructions.md"),
+            InstructionsStyle::Sentinel,
+        )),
+        // Not profilable (no config-dir redirect), so never reached.
+        Agent::Gemini | Agent::OpenCode => None,
+    };
+
+    let skills = match agent {
+        // Codex reads USER skills from `$HOME/.agents/skills`, outside the
+        // redirected config dir: an overlay cannot isolate them.
+        Agent::Codex => None,
+        _ => Some(PathBuf::from("skills")),
+    };
+
+    DeltaShape {
+        settings,
+        plugin_list: matches!(agent, Agent::Pi | Agent::Omp),
+        instructions,
+        skills,
+    }
+}
+
+/// Generate the overlay settings file: base plugin list − excludes (incl.
+/// excluded features' plugin specs) + absolutized additions, then the RFC 7386
+/// patch. Written back in the agent's own format.
+fn generate_settings(
+    agent: Agent,
+    shape: &DeltaShape,
     base: &Path,
     deltas: &AgentProfileAgent,
     bootstrap: Option<&crate::bootstrap::BootstrapConfig>,
     warnings: &mut Vec<String>,
-) -> Result<String> {
-    use crate::agent::setup::Agent;
+) -> Result<Option<(PathBuf, String)>> {
     use serde_json::Value;
 
-    let body = std::fs::read_to_string(base.join("settings.json")).unwrap_or_else(|_| "{}".into());
-    let mut json: Value =
-        serde_json::from_str(&body).context("parsing base pi settings.json")?;
+    let Some((rel, format)) = shape.settings.clone() else {
+        for key in ["settings", "add_plugins", "exclude_plugins"] {
+            let declared = match key {
+                "settings" => deltas.settings.is_some(),
+                "add_plugins" => !deltas.add_plugins.is_empty(),
+                _ => !deltas.exclude_plugins.is_empty(),
+            };
+            if declared {
+                warnings.push(format!(
+                    "{key}: {} has no settings file muxix can patch; key ignored",
+                    agent.name()
+                ));
+            }
+        }
+        return Ok(None);
+    };
+
+    let path = base.join(&rel);
+    let body = std::fs::read_to_string(&path).unwrap_or_else(|_| String::new());
+    let mut json: Value = match body.trim() {
+        "" => Value::Object(Default::default()),
+        text => match format {
+            SettingsFormat::Json => {
+                serde_json::from_str(text).with_context(|| format!("parsing {}", path.display()))?
+            }
+            SettingsFormat::Yaml => {
+                serde_yaml::from_str(text).with_context(|| format!("parsing {}", path.display()))?
+            }
+        },
+    };
 
     let mut excluded: Vec<String> = deltas.exclude_plugins.clone();
     if let Some(bc) = bootstrap {
         for key in &deltas.exclude_features {
             match bc.features.get(key) {
                 Some(f) => {
-                    if let Some(spec) = f.plugin_for(Agent::Pi) {
+                    if let Some(spec) = f.plugin_for(agent) {
                         excluded.push(spec.to_string());
                     }
                 }
@@ -442,14 +551,53 @@ fn generate_pi_settings(
         }
     }
 
+    if shape.plugin_list {
+        apply_plugin_deltas(base, deltas, &excluded, &mut json, warnings)?;
+    } else {
+        for (key, declared) in [
+            ("add_plugins", !deltas.add_plugins.is_empty()),
+            ("exclude_plugins", !deltas.exclude_plugins.is_empty()),
+        ] {
+            if declared {
+                warnings.push(format!(
+                    "{key}: {}'s plugin list does not live in a patchable settings file; \
+                     key ignored",
+                    agent.name()
+                ));
+            }
+        }
+    }
+
+    if let Some(patch) = &deltas.settings {
+        json_merge_patch(&mut json, patch);
+    }
+
+    let content = match format {
+        SettingsFormat::Json => format!("{}\n", serde_json::to_string_pretty(&json)?),
+        SettingsFormat::Yaml => serde_yaml::to_string(&json)?,
+    };
+    Ok(Some((rel, content)))
+}
+
+/// Apply `add_plugins`/`exclude_plugins` to a settings document that carries
+/// the plugin list itself (pi and omp: a `packages` array).
+fn apply_plugin_deltas(
+    base: &Path,
+    deltas: &AgentProfileAgent,
+    excluded: &[String],
+    json: &mut serde_json::Value,
+    warnings: &mut Vec<String>,
+) -> Result<()> {
+    use serde_json::Value;
+
     let packages = json
         .as_object_mut()
-        .context("base pi settings.json is not an object")?
+        .context("base settings document is not an object")?
         .entry("packages")
         .or_insert_with(|| Value::Array(vec![]));
     let arr = packages
         .as_array_mut()
-        .context("base pi settings.json `packages` is not an array")?;
+        .context("base settings `packages` is not an array")?;
 
     for ex in &deltas.exclude_plugins {
         if !arr.iter().any(|v| v.as_str() == Some(ex)) {
@@ -485,30 +633,26 @@ fn generate_pi_settings(
             arr.push(Value::String(spec));
         }
     }
-
-    if let Some(patch) = &deltas.settings {
-        json_merge_patch(&mut json, patch);
-    }
-
-    Ok(format!("{}\n", serde_json::to_string_pretty(&json)?))
+    Ok(())
 }
 
-/// Render the overlay prompt file for pi from the profile-effective component
+/// Render the overlay instructions file from the profile-effective component
 /// set. `None` when no prompt delta is declared (base file stays linked).
-fn generate_pi_prompt(
+fn generate_prompt(
+    agent: Agent,
+    shape: &DeltaShape,
+    base: &Path,
     deltas: &AgentProfileAgent,
     bootstrap: &crate::bootstrap::BootstrapConfig,
     project_root: &Path,
     warnings: &mut Vec<String>,
 ) -> Result<Option<(PathBuf, String)>> {
-    use crate::agent::setup::pi::PiInjectionMethod;
-    use crate::agent::setup::Agent;
 
     let feature_components: Vec<&str> = deltas
         .exclude_features
         .iter()
         .filter_map(|k| bootstrap.features.get(k))
-        .filter_map(|f| f.prompt_component_for(Agent::Pi))
+        .filter_map(|f| f.prompt_component_for(agent))
         .collect();
     let has_delta = !deltas.add_prompt_components.is_empty()
         || !deltas.exclude_prompt_components.is_empty()
@@ -517,7 +661,15 @@ fn generate_pi_prompt(
         return Ok(None);
     }
 
-    let mut comps = bootstrap.prompt_components_for(Agent::Pi);
+    let Some((rel, style)) = shape.instructions.clone() else {
+        warnings.push(format!(
+            "prompt component deltas declared but {} has no instructions file; keys ignored",
+            agent.name()
+        ));
+        return Ok(None);
+    };
+
+    let mut comps = bootstrap.prompt_components_for(agent);
     for ex in &deltas.exclude_prompt_components {
         if !comps.contains(ex) {
             warnings.push(format!(
@@ -534,35 +686,37 @@ fn generate_pi_prompt(
     comps.dedup();
 
     let (prompt, _) = crate::bootstrap::merge_prompt_components("", &comps, project_root)?;
-    let method = bootstrap
-        .pi
-        .as_ref()
-        .map(|p| p.injection_method.clone())
-        .unwrap_or_default();
-    let rel = match method {
-        PiInjectionMethod::AppendSystem => "APPEND_SYSTEM.md",
-        PiInjectionMethod::BeforeAgentStart => "muxix-pre-inject.md",
+    let content = match style {
+        InstructionsStyle::Owned => format!("{}\n", prompt.trim()),
+        // Shared file: keep the base file's own text and replace only the
+        // managed region, exactly as `setup` does for the un-profiled agent.
+        InstructionsStyle::Sentinel => {
+            let existing = std::fs::read_to_string(base.join(&rel)).unwrap_or_default();
+            crate::agent::setup::splice_sentinels(&existing, &prompt)
+        }
     };
-    Ok(Some((PathBuf::from(rel), format!("{}\n", prompt.trim()))))
+    Ok(Some((rel, content)))
 }
 
-/// Build the pi `DeltaPlan` for one profile: generated settings/prompt, skill
-/// links and exclusions, raw path exclusions, plus all warnings — including a
-/// shadow note for each generated file the profile source tree overrides.
-pub fn pi_delta_plan(
+/// Build the `DeltaPlan` for one profile and agent: generated settings and
+/// instructions, skill links and exclusions, raw path exclusions, plus all
+/// warnings — a shadow note for each generated file the profile source tree
+/// overrides, and a named warning for every declared key this agent has no
+/// place for.
+pub fn delta_plan(
+    agent: Agent,
     base: &Path,
     source: &Path,
     deltas: &AgentProfileAgent,
     bootstrap: Option<&crate::bootstrap::BootstrapConfig>,
     project_root: &Path,
 ) -> Result<DeltaPlan> {
-    use crate::agent::setup::Agent;
-
     let mut dp = DeltaPlan::default();
     if deltas.is_empty() {
         return Ok(dp);
     }
     let mut warnings = Vec::new();
+    let shape = delta_shape(agent, bootstrap);
 
     let needs_settings = !deltas.add_plugins.is_empty()
         || !deltas.exclude_plugins.is_empty()
@@ -570,17 +724,21 @@ pub fn pi_delta_plan(
         || deltas.exclude_features.iter().any(|k| {
             bootstrap
                 .and_then(|bc| bc.features.get(k))
-                .and_then(|f| f.plugin_for(Agent::Pi))
+                .and_then(|f| f.plugin_for(agent))
                 .is_some()
         });
-    if needs_settings {
-        let content = generate_pi_settings(base, deltas, bootstrap, &mut warnings)?;
-        dp.generated.insert(PathBuf::from("settings.json"), content);
+    if needs_settings
+        && let Some((rel, content)) =
+            generate_settings(agent, &shape, base, deltas, bootstrap, &mut warnings)?
+    {
+        dp.generated.insert(rel, content);
     }
 
     match bootstrap {
         Some(bc) => {
-            if let Some((rel, content)) = generate_pi_prompt(deltas, bc, project_root, &mut warnings)? {
+            if let Some((rel, content)) =
+                generate_prompt(agent, &shape, base, deltas, bc, project_root, &mut warnings)?
+            {
                 dp.generated.insert(rel, content);
             }
         }
@@ -595,23 +753,43 @@ pub fn pi_delta_plan(
         None => {}
     }
 
-    for name in &deltas.exclude_skills {
-        let rel = Path::new("skills").join(name);
-        if !base.join(&rel).exists() {
-            warnings.push(format!("exclude_skills: `{name}` is not installed in base"));
+    match &shape.skills {
+        Some(skills_rel) => {
+            for name in &deltas.exclude_skills {
+                let rel = skills_rel.join(name);
+                if !base.join(&rel).exists() {
+                    warnings.push(format!("exclude_skills: `{name}` is not installed in base"));
+                }
+                dp.excludes.insert(rel);
+            }
+            for src in &deltas.add_skills {
+                let abs = resolve_skill_source(src, project_root);
+                if !abs.exists() {
+                    warnings.push(format!("add_skills: `{}` does not exist", abs.display()));
+                }
+                let Some(name) = abs.file_name() else {
+                    warnings.push(format!("add_skills: `{src}` has no basename"));
+                    continue;
+                };
+                dp.extra_links.insert(skills_rel.join(name), abs.clone());
+            }
         }
-        dp.excludes.insert(rel);
-    }
-    for src in &deltas.add_skills {
-        let abs = resolve_skill_source(src, project_root);
-        if !abs.exists() {
-            warnings.push(format!("add_skills: `{}` does not exist", abs.display()));
+        // Codex: user skills live in `$HOME/.agents/skills`, outside the dir the
+        // profile redirects, so a skill delta here would change nothing.
+        None => {
+            for (key, declared) in [
+                ("add_skills", !deltas.add_skills.is_empty()),
+                ("exclude_skills", !deltas.exclude_skills.is_empty()),
+            ] {
+                if declared {
+                    warnings.push(format!(
+                        "{key}: {} reads skills from outside its config dir, so a profile \
+                         cannot isolate them; key ignored",
+                        agent.name()
+                    ));
+                }
+            }
         }
-        let Some(name) = abs.file_name() else {
-            warnings.push(format!("add_skills: `{src}` has no basename"));
-            continue;
-        };
-        dp.extra_links.insert(Path::new("skills").join(name), abs.clone());
     }
 
     for p in &deltas.exclude_paths {
@@ -697,6 +875,107 @@ mod tests {
         // No single config-dir redirect upstream.
         assert_eq!(config_dir_env("opencode"), None);
         assert_eq!(config_dir_env("gemini"), None);
+    }
+
+    #[test]
+    fn omp_plugin_and_settings_deltas_land_in_config_yml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        write(
+            &base.join("config.yml"),
+            "packages:\n  - npm:drop\n  - npm:keep\nmodelRoles:\n  default: zai/glm-5.1\n",
+        );
+
+        let d = deltas(|d| {
+            d.exclude_plugins = vec!["npm:drop".into()];
+            d.settings = Some(serde_json::json!({"defaultThinkingLevel": "high"}));
+        });
+        let dp = delta_plan(Agent::Omp, &base, &source, &d, None, tmp.path()).unwrap();
+        assert!(dp.warnings.is_empty(), "warnings: {:?}", dp.warnings);
+
+        // The generated file is omp's own YAML store, not pi's settings.json.
+        let content = &dp.generated[Path::new("config.yml")];
+        assert!(!dp.generated.contains_key(Path::new("settings.json")));
+        let v: serde_json::Value = serde_yaml::from_str(content).unwrap();
+        assert_eq!(v["packages"], serde_json::json!(["npm:keep"]));
+        assert_eq!(v["defaultThinkingLevel"], "high");
+        assert_eq!(v["modelRoles"]["default"], "zai/glm-5.1");
+    }
+
+    #[test]
+    fn claude_plugin_deltas_warn_but_other_keys_apply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        write(&base.join("settings.json"), r#"{"theme":"dark"}"#);
+        write(&base.join("skills/drop/SKILL.md"), "drop");
+
+        let d = deltas(|d| {
+            d.add_plugins = vec!["some-marketplace-plugin".into()];
+            d.exclude_skills = vec!["drop".into()];
+            d.settings = Some(serde_json::json!({"theme": "light"}));
+        });
+        let dp = delta_plan(Agent::Claude, &base, &source, &d, None, tmp.path()).unwrap();
+
+        assert!(
+            dp.warnings.iter().any(|w| w.starts_with("add_plugins:")
+                && w.contains("plugin list does not live")),
+            "{:?}",
+            dp.warnings
+        );
+        // Settings patch and skill exclusion still apply.
+        let v: serde_json::Value =
+            serde_json::from_str(&dp.generated[Path::new("settings.json")]).unwrap();
+        assert_eq!(v["theme"], "light");
+        assert!(dp.excludes.contains(Path::new("skills/drop")));
+    }
+
+    #[test]
+    fn codex_skill_deltas_warn_because_skills_live_outside_the_config_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+
+        let d = deltas(|d| d.exclude_skills = vec!["anything".into()]);
+        let dp = delta_plan(Agent::Codex, &base, &source, &d, None, tmp.path()).unwrap();
+        assert!(
+            dp.warnings
+                .iter()
+                .any(|w| w.starts_with("exclude_skills:") && w.contains("outside its config dir")),
+            "{:?}",
+            dp.warnings
+        );
+        assert!(dp.excludes.is_empty());
+    }
+
+    #[test]
+    fn sentinel_agents_keep_the_base_files_own_text() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        write(&base.join("AGENTS.md"), "# my own codex rules\n");
+        write(
+            &tmp.path().join(".muxix/prompt-components/caveman.md"),
+            "be terse",
+        );
+
+        let bootstrap = crate::bootstrap::BootstrapConfig {
+            prompt_components: vec!["caveman".into()],
+            ..Default::default()
+        };
+        let d = deltas(|d| d.add_prompt_components = vec!["caveman".into()]);
+        let dp =
+            delta_plan(Agent::Codex, &base, &source, &d, Some(&bootstrap), tmp.path()).unwrap();
+
+        let content = &dp.generated[Path::new("AGENTS.md")];
+        assert!(content.contains("my own codex rules"), "{content}");
+        assert!(content.contains("be terse"), "{content}");
+        assert!(content.contains("muxix-bootstrap-begin"), "{content}");
     }
 
     #[test]
@@ -874,7 +1153,7 @@ mod tests {
             d.exclude_plugins = vec!["npm:pi-cliproxyapi".into()];
             d.settings = Some(serde_json::json!({"defaultProvider": "litellm", "taskflow": null}));
         });
-        let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         assert!(dp.warnings.is_empty(), "warnings: {:?}", dp.warnings);
 
         let content = &dp.generated[Path::new("settings.json")];
@@ -913,7 +1192,7 @@ mod tests {
         write(&base.join("settings.json"), r#"{"packages":["npm:real"]}"#);
 
         let d = deltas(|d| d.exclude_plugins = vec!["npm:typo".into()]);
-        let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         assert!(dp.warnings.iter().any(|w| w.contains("npm:typo")));
     }
 
@@ -933,7 +1212,7 @@ mod tests {
             d.exclude_skills = vec!["drop".into()];
             d.add_skills = vec![extra.to_string_lossy().into_owned()];
         });
-        let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         let p = plan(&base, &source, &dp);
 
         assert_eq!(
@@ -962,7 +1241,7 @@ mod tests {
         write(&base.join("extensions/drop.ts"), "d");
 
         let d = deltas(|d| d.exclude_paths = vec!["extensions/drop.ts".into()]);
-        let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         let p = plan(&base, &source, &dp);
         assert_eq!(
             p.get(Path::new("extensions/keep.ts")),
@@ -981,7 +1260,7 @@ mod tests {
         write(&source.join("settings.json"), r#"{"hand":"authored"}"#);
 
         let d = deltas(|d| d.settings = Some(serde_json::json!({"x": 1})));
-        let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         assert!(dp.warnings.iter().any(|w| w.contains("shadows")));
 
         let p = plan(&base, &source, &dp);
@@ -1003,14 +1282,14 @@ mod tests {
         write(&base.join("settings.json"), r#"{"packages":["npm:a"]}"#);
 
         let d = deltas(|d| d.exclude_plugins = vec!["npm:a".into()]);
-        let dp1 = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp1 = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         let p1 = plan(&base, &source, &dp1);
         materialize(&dest, &p1).unwrap();
         assert!(in_sync(&dest, &p1));
 
         // Base grows a package → generated content changes → drift.
         write(&base.join("settings.json"), r#"{"packages":["npm:a","npm:b"]}"#);
-        let dp2 = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
+        let dp2 = delta_plan(Agent::Pi, &base, &source, &d, None, tmp.path()).unwrap();
         let p2 = plan(&base, &source, &dp2);
         assert!(!in_sync(&dest, &p2), "base package change is drift");
         materialize(&dest, &p2).unwrap();

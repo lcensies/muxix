@@ -370,12 +370,20 @@ pub(super) fn inline_sentinels(path: &std::path::Path, prompt: &str) -> Result<(
     } else {
         String::new()
     };
+    fs::write(path, splice_sentinels(&existing, prompt))?;
+    Ok(())
+}
 
+/// Replace (or append) the muxix-managed sentinel region in `existing`.
+///
+/// Pure so the agent-profile overlay can generate the same body for a file it
+/// shares with the user without writing to the base file.
+pub fn splice_sentinels(existing: &str, prompt: &str) -> String {
     const BEGIN: &str = SENTINEL_BEGIN;
     const END: &str = SENTINEL_END;
 
     let new_block = format!("{}\n{}\n{}", BEGIN, prompt.trim(), END);
-    let updated = if let (Some(start), Some(end)) = (existing.find(BEGIN), existing.find(END)) {
+    if let (Some(start), Some(end)) = (existing.find(BEGIN), existing.find(END)) {
         let end_pos = end + END.len();
         format!(
             "{}{}{}",
@@ -387,10 +395,7 @@ pub(super) fn inline_sentinels(path: &std::path::Path, prompt: &str) -> Result<(
         format!("{}\n", new_block)
     } else {
         format!("{}\n\n{}\n", existing.trim_end(), new_block)
-    };
-
-    fs::write(path, updated)?;
-    Ok(())
+    }
 }
 
 /// Set a (possibly nested) string key in a JSON settings file, creating the
