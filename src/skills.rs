@@ -10,7 +10,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use crate::agent_setup::Agent;
+use crate::agent::setup::Agent;
 
 pub struct BundledSkill {
     pub name: &'static str,
@@ -31,16 +31,16 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
         content: include_str!("../skills/worktree/SKILL.md"),
     },
     BundledSkill {
-        name: "coordinator",
-        content: include_str!("../skills/coordinator/SKILL.md"),
-    },
-    BundledSkill {
         name: "open-pr",
         content: include_str!("../skills/open-pr/SKILL.md"),
     },
     BundledSkill {
         name: "workmux",
         content: include_str!("../skills/workmux/SKILL.md"),
+    },
+    BundledSkill {
+        name: "agent-packages",
+        content: include_str!("../skills/agent-packages/SKILL.md"),
     },
 ];
 
@@ -63,6 +63,14 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
                 home.join(".pi/agent")
             };
             Some(pi_dir.join("skills"))
+        }
+        Agent::Omp => {
+            let omp_dir = if let Ok(dir) = std::env::var("OMP_CODING_AGENT_DIR") {
+                PathBuf::from(dir)
+            } else {
+                home.join(".omp/agent")
+            };
+            Some(omp_dir.join("skills"))
         }
         Agent::Codex | Agent::Copilot | Agent::Gemini => None,
     }
@@ -300,8 +308,59 @@ mod tests {
         assert!(names.contains(&"merge"));
         assert!(names.contains(&"rebase"));
         assert!(names.contains(&"worktree"));
-        assert!(names.contains(&"coordinator"));
         assert!(names.contains(&"open-pr"));
         assert!(names.contains(&"workmux"));
     }
+}
+
+/// Install the bundled skills for `agent`, reporting one result per skill.
+///
+/// Unlike [`install_skills`], this never prompts: it is the path used by
+/// non-interactive `workmux setup` and by `--check`. A locally-modified skill is
+/// overwritten rather than queried, because in declarative mode the bundled
+/// content is the source of truth — the interactive path still asks.
+///
+/// With `dry_run` set, outcomes are computed and nothing is written.
+pub fn install_bundled(
+    agent: Agent,
+    dry_run: bool,
+) -> Result<Vec<crate::command::setup::ItemResult>> {
+    use crate::command::setup::{ItemResult, Outcome, Section};
+
+    let Some(base_dir) = skills_dir(agent) else {
+        return Ok(vec![ItemResult::skipped(
+            Section::Skills,
+            Some(agent.name()),
+            "bundled skills",
+            format!("{} does not support skills", agent.name()),
+        )]);
+    };
+
+    let mut out = Vec::new();
+    for skill in BUNDLED_SKILLS {
+        let dir = base_dir.join(skill.name);
+        let path = dir.join("SKILL.md");
+        let existing = fs::read_to_string(&path).ok();
+
+        let outcome = match existing {
+            Some(ref e) if e == skill.content => Outcome::UpToDate,
+            Some(_) => Outcome::Updated,
+            None => Outcome::Installed,
+        };
+
+        if outcome != Outcome::UpToDate && !dry_run {
+            fs::create_dir_all(&dir)
+                .with_context(|| format!("Failed to create {}", dir.display()))?;
+            fs::write(&path, skill.content)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+        }
+
+        out.push(ItemResult::new(
+            Section::Skills,
+            Some(agent.name()),
+            skill.name,
+            outcome,
+        ));
+    }
+    Ok(out)
 }

@@ -1,4 +1,6 @@
-//! Sidebar daemon: single process that polls tmux and pushes snapshots to clients.
+//! Sidebar daemon: single process that watches tmux and pushes snapshots to
+//! clients. Event-driven: agent status hooks and tmux lifecycle hooks SIGUSR1
+//! us; a slow timer backstops stall detection and lost hook events.
 
 use anyhow::Result;
 use ignore::gitignore::Gitignore;
@@ -18,11 +20,47 @@ use crate::cmd::Cmd;
 use crate::config::{Config, SidebarPosition};
 use crate::git::GitStatus;
 use crate::github::PrSummary;
-use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
+use crate::multiplexer::{AgentPane, AgentStatus, Multiplexer, create_backend, detect_backend};
 use crate::state::StateStore;
 
 use super::app::SidebarLayoutMode;
 use super::snapshot::{PrPathEntry, build_snapshot};
+
+/// How often the sidebar polls ADE runtimes. Each poll spawns a subprocess per
+/// configured ADE, so it is deliberately far slower than the refresh tick; the
+/// previous result is reused in between.
+const ADE_POLL_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Drift insurance: full refresh cadence when no agent is working. Real
+/// updates arrive event-driven (agent status hooks and tmux lifecycle hooks
+/// SIGUSR1 us); this sweep only catches events lost while the daemon was
+/// down and hookless foreign agents.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Refresh cadence while at least one agent is Working. Stall detection
+/// needs sampling — an agent going silent produces no event.
+const WORKING_TICK_INTERVAL: Duration = Duration::from_secs(5);
+
+/// How long a working agent's pane content must be unchanged (with no RPC
+/// heartbeat) before it is marked interrupted. Also gates pane captures:
+/// agents with a heartbeat fresher than this cannot be marked interrupted,
+/// so their capture is skipped entirely.
+const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Agents owned by non-local runtimes, cached between polls.
+///
+/// A failing or unavailable runtime yields nothing and leaves the previous list
+/// in place, so one bad call does not make agents flicker out of the sidebar.
+fn ade_agents(cache: &mut Option<(Instant, Vec<AgentPane>)>) -> Vec<AgentPane> {
+    if let Some((at, cached)) = cache
+        && at.elapsed() < ADE_POLL_INTERVAL
+    {
+        return cached.clone();
+    }
+    let (panes, _problems) = crate::agent::runtime::registry::foreign_agent_panes();
+    *cache = Some((Instant::now(), panes.clone()));
+    panes
+}
 
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
@@ -163,7 +201,16 @@ impl SocketServer {
     }
 
     fn broadcast(&self, snapshot: &super::snapshot::SidebarSnapshot) {
-        let data = serde_json::to_vec(snapshot).unwrap_or_default();
+        let data = match serde_json::to_vec(snapshot) {
+            Ok(d) => d,
+            Err(e) => {
+                // Don't broadcast (or cache) a zero-length frame: a new client
+                // would receive an empty snapshot instead of stale-but-valid
+                // data, and existing clients would get a bogus 0-byte payload.
+                tracing::warn!(error = %e, "sidebar broadcast: failed to serialize snapshot; skipping");
+                return;
+            }
+        };
         let len = (data.len() as u32).to_be_bytes();
 
         // Cache the length-prefixed payload for new client connections
@@ -178,7 +225,7 @@ impl SocketServer {
         let before = clients.len();
         clients
             .retain_mut(|stream| stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok());
-        let dropped = before - clients.len();
+        let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
             tracing::info!(
                 dropped,
@@ -1336,6 +1383,171 @@ impl InactivityTracker {
     }
 }
 
+/// Walk the process tree rooted at `root_pid` via `/proc/<pid>/task/<tid>/children`,
+/// returning all descendant PIDs (not including `root_pid` itself).
+#[cfg(target_os = "linux")]
+fn proc_descendants(root_pid: u32) -> Vec<u32> {
+    let mut result = Vec::new();
+    let mut queue = vec![root_pid];
+    while let Some(pid) = queue.pop() {
+        let children_path = format!("/proc/{pid}/task/{pid}/children");
+        let Ok(contents) = std::fs::read_to_string(&children_path) else {
+            continue;
+        };
+        for tok in contents.split_whitespace() {
+            let Ok(child) = tok.parse::<u32>() else { continue };
+            result.push(child);
+            queue.push(child);
+        }
+    }
+    result
+}
+
+#[cfg(not(target_os = "linux"))]
+fn proc_descendants(_root_pid: u32) -> Vec<u32> {
+    Vec::new()
+}
+
+fn sigstop_pids(pids: &[u32]) {
+    for &pid in pids {
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGSTOP) };
+    }
+}
+
+fn sigcont_pids(pids: &[u32]) {
+    for &pid in pids {
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGCONT) };
+    }
+}
+
+const FREEZE_PREFIX: &str = "❄ ";
+
+fn rename_window_by_id(window_id: &str, name: &str) {
+    let _ = Cmd::new("tmux")
+        .args(&["rename-window", "-t", window_id, name])
+        .run();
+}
+
+struct FrozenEntry {
+    child_pids: Vec<u32>,
+    /// Stable tmux window ID (e.g. "@42") — used for rename, survives window renames.
+    window_id: String,
+    /// Original window name before the freeze prefix was applied.
+    original_window_name: String,
+}
+
+/// Tracks agent panes that have been SIGSTOPed and their frozen metadata.
+/// On each daemon tick it freezes newly-idle Done agents and thaws any that
+/// have regained pane focus.
+struct FreezeTracker {
+    /// pane_id → frozen state
+    frozen: HashMap<String, FrozenEntry>,
+}
+
+impl FreezeTracker {
+    fn new() -> Self {
+        Self {
+            frozen: HashMap::new(),
+        }
+    }
+
+    /// Thaw all frozen agents — called on daemon shutdown.
+    fn thaw_all(&mut self) {
+        for (pane_id, entry) in self.frozen.drain() {
+            tracing::info!(pane_id, "thawing agent (daemon shutdown)");
+            sigcont_pids(&entry.child_pids);
+            rename_window_by_id(&entry.window_id, &entry.original_window_name);
+        }
+    }
+
+    /// Called once per daemon tick.
+    ///
+    /// - Thaws agents whose pane is now active.
+    /// - Thaws agents that resumed working (status changed away from Done).
+    /// - Freezes Done agents that have been unfocused longer than `after_idle`.
+    fn tick(
+        &mut self,
+        agents: &[crate::multiplexer::AgentPane],
+        active_pane_ids: &HashSet<String>,
+        after_idle: std::time::Duration,
+        now_ts: u64,
+    ) {
+        use crate::multiplexer::AgentStatus;
+
+        // Build a quick lookup of live pane ids
+        let live_ids: HashSet<&str> = agents.iter().map(|a| a.pane_id.as_str()).collect();
+
+        // Thaw: pane is focused, status is no longer Done, or pane disappeared
+        let to_thaw: Vec<String> = self
+            .frozen
+            .keys()
+            .filter(|id| {
+                active_pane_ids.contains(*id)
+                    || !live_ids.contains(id.as_str())
+                    || agents
+                        .iter()
+                        .find(|a| &a.pane_id == *id)
+                        .is_some_and(|a| a.status != Some(AgentStatus::Done))
+            })
+            .cloned()
+            .collect();
+        for pane_id in to_thaw {
+            if let Some(entry) = self.frozen.remove(&pane_id) {
+                tracing::info!(pane_id, "thawing agent");
+                sigcont_pids(&entry.child_pids);
+                rename_window_by_id(&entry.window_id, &entry.original_window_name);
+            }
+        }
+
+        // Freeze: Done, unfocused, idle longer than threshold, not already frozen
+        let after_idle_secs = after_idle.as_secs();
+        for agent in agents {
+            if self.frozen.contains_key(&agent.pane_id) {
+                continue;
+            }
+            if active_pane_ids.contains(&agent.pane_id) {
+                continue;
+            }
+            if agent.status != Some(AgentStatus::Done) {
+                continue;
+            }
+            if agent.pane_pid == 0 || agent.window_id.is_empty() {
+                continue;
+            }
+            let idle_secs = agent
+                .status_ts
+                .map(|ts| now_ts.saturating_sub(ts))
+                .unwrap_or(0);
+            if idle_secs < after_idle_secs {
+                continue;
+            }
+            let children = proc_descendants(agent.pane_pid);
+            if children.is_empty() {
+                continue;
+            }
+            tracing::info!(
+                pane_id = %agent.pane_id,
+                pane_pid = agent.pane_pid,
+                idle_secs,
+                children = children.len(),
+                window_id = %agent.window_id,
+                "freezing idle agent"
+            );
+            sigstop_pids(&children);
+            let frozen_name = format!("{}{}", FREEZE_PREFIX, agent.window_name);
+            rename_window_by_id(&agent.window_id, &frozen_name);
+            self.frozen.insert(
+                agent.pane_id.clone(),
+                FrozenEntry {
+                    child_pids: children,
+                    window_id: agent.window_id.clone(),
+                    original_window_name: agent.window_name.clone(),
+                },
+            );
+        }
+    }
+}
+
 /// Run the sidebar daemon (headless, no TUI).
 pub fn run() -> Result<()> {
     let mux = create_backend(detect_backend());
@@ -1392,18 +1604,29 @@ pub fn run() -> Result<()> {
         ])
         .run()?;
 
-    let mut inactivity_tracker = InactivityTracker::new(Duration::from_secs(10));
+    let mut inactivity_tracker = InactivityTracker::new(INACTIVITY_TIMEOUT);
     let mut last_interrupted: HashSet<String> = HashSet::new();
+    let mut freeze_tracker = FreezeTracker::new();
+    let auto_freeze_duration = config
+        .lock()
+        .unwrap()
+        .daemon
+        .auto_freeze
+        .as_ref()
+        .map(|c| c.after_idle.as_duration());
     let mut last_runtime_write = Instant::now();
     let backend_name = mux.name().to_string();
 
-    let mut last_refresh = Instant::now();
+    let mut last_refresh = Instant::now() - SWEEP_INTERVAL; // force an immediate first tick
     let mut last_client_seen = Instant::now();
     let mut dirty_pending = false;
     let mut last_agent_list = String::new();
     let mut last_health_log = Instant::now();
-    let refresh_interval = Duration::from_secs(2);
-    let debounce_interval = Duration::from_millis(50);
+    // Refresh is event-driven: agent status hooks and tmux lifecycle hooks
+    // SIGUSR1 us. The timer only backstops stall detection (5s while agents
+    // are working, since silence produces no events) and lost hooks (30s).
+    let mut any_working = true;
+    let debounce_interval = Duration::from_secs(1);
 
     // Cache of agent_path -> project_config_dir so we don't run the walk-up
     // filesystem search on every tick. Misses (no config found) are NOT
@@ -1411,6 +1634,8 @@ pub fn run() -> Result<()> {
     // is picked up on the next tick.
     let mut project_config_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
+    // ADE listings shell out, so they run far less often than the tick.
+    let mut last_ade_poll: Option<(Instant, Vec<AgentPane>)> = None;
 
     while !term.load(Ordering::Relaxed) {
         // Coalesce dirty signals: SIGUSR1 sets the flag, we service it once
@@ -1419,6 +1644,14 @@ pub fn run() -> Result<()> {
             dirty_pending = true;
         }
 
+        // Working agents need periodic sampling (stall detection watches for
+        // *absence* of output, which no hook can signal); otherwise the timer
+        // is just drift insurance against lost hook events.
+        let refresh_interval = if any_working {
+            WORKING_TICK_INTERVAL
+        } else {
+            SWEEP_INTERVAL
+        };
         let time_since_refresh = last_refresh.elapsed();
         let debounce_cleared = dirty_pending && time_since_refresh >= debounce_interval;
         let timer_expired = time_since_refresh >= refresh_interval;
@@ -1429,10 +1662,16 @@ pub fn run() -> Result<()> {
 
             // ── Gather inputs ──
             let tmux_state = query_tmux_state();
+            let active_pane_ids = tmux_state.active_pane_ids.clone();
             let agents = StateStore::new()
                 .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
                 .ok();
-            let Some(agents) = agents else { continue };
+            let Some(mut agents) = agents else { continue };
+            // Agents an ADE owns have no pane, so reconciliation never sees
+            // them. Poll the runtimes for those and fold them in, so the sidebar
+            // shows the work you started from your phone next to the work in
+            // your panes.
+            agents.extend(ade_agents(&mut last_ade_poll));
 
             let (position, layout_mode) = {
                 let cfg = config.lock().unwrap();
@@ -1444,12 +1683,12 @@ pub fn run() -> Result<()> {
             let sleeping_pane_ids = read_sleeping_panes();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
             let pr_statuses = pr_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
-            let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker);
             let now = Instant::now();
             let now_ts = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
+            let captured_panes = gather_captures(&agents, mux.as_ref(), &inactivity_tracker, now_ts);
             let heartbeat_due = last_runtime_write.elapsed() >= Duration::from_secs(10);
 
             // ── Compute tick (no I/O) ──
@@ -1480,9 +1719,25 @@ pub fn run() -> Result<()> {
             }
             last_interrupted = output.next_interrupted;
 
+            // ── Auto-freeze idle agents ──
+            if let Some(after_idle) = auto_freeze_duration {
+                freeze_tracker.tick(
+                    &output.snapshot.agents,
+                    &active_pane_ids,
+                    after_idle,
+                    now_ts,
+                );
+            }
+
             // ── Stamp config version + broadcast ──
             output.snapshot.config_version = config_version.load(Ordering::Relaxed);
             server.broadcast(&output.snapshot);
+
+            any_working = output
+                .snapshot
+                .agents
+                .iter()
+                .any(|a| a.status == Some(AgentStatus::Working));
 
             // Update git worker with current agent paths and stale status
             let stale_threshold = 60 * 60; // 1 hour, matches sidebar UI
@@ -1602,6 +1857,9 @@ pub fn run() -> Result<()> {
     if term.load(Ordering::Relaxed) {
         tracing::info!("sidebar daemon exiting: SIGTERM received");
     }
+
+    // Thaw any frozen agents so they don't stay SIGSTOPed after daemon exit.
+    freeze_tracker.thaw_all();
 
     // Cleanup
     let _ = std::fs::remove_file(&sock_path);
@@ -1765,15 +2023,32 @@ fn apply_tick_effects(
 
 /// Capture pane content for working agents that need checking.
 /// Skips agents already confirmed as interrupted (no I/O needed until they resume).
+/// Whether a pane's output should be sampled for the interruption heuristic.
+///
+/// An ADE agent's `pane_id` is a namespaced reference, not a pane: asking the
+/// multiplexer to capture it would hand tmux something it cannot resolve, once
+/// per tick, for as long as the agent lives. The heuristic is pane-output-based
+/// and does not apply to an agent another manager runs.
+fn is_capturable(a: &AgentPane) -> bool {
+    a.has_pane() && a.status == Some(AgentStatus::Working)
+}
+
 fn gather_captures(
     agents: &[crate::multiplexer::AgentPane],
     mux: &dyn Multiplexer,
     tracker: &InactivityTracker,
+    now_ts: u64,
 ) -> HashMap<String, String> {
     agents
         .iter()
-        .filter(|a| a.status == Some(crate::multiplexer::AgentStatus::Working))
+        .filter(|a| is_capturable(a))
         .filter(|a| !tracker.is_confirmed(&a.pane_id, a.updated_ts.unwrap_or(0)))
+        // A fresh RPC heartbeat (agent status hooks fire on every tool call)
+        // proves the agent is alive, so the capture-and-hash stall check is
+        // unnecessary. Hookless agents never heartbeat and are always captured.
+        .filter(|a| {
+            now_ts.saturating_sub(a.updated_ts.unwrap_or(0)) >= INACTIVITY_TIMEOUT.as_secs()
+        })
         .filter_map(|a| {
             mux.capture_pane(&a.pane_id, 5)
                 .map(|content| (a.pane_id.clone(), content))
@@ -1802,6 +2077,9 @@ mod tests {
             window_cmd: None,
             agent_command: None,
             agent_kind: None,
+            pipeline_node_title: None,
+            pane_pid: 0,
+            runtime: None,
         }
     }
 
@@ -2024,6 +2302,27 @@ mod tests {
     }
 
     #[test]
+    fn pane_less_agents_are_never_captured() {
+        // An ADE agent's `pane_id` is a namespaced reference, not a pane. Asking
+        // the multiplexer to capture it would send tmux something it cannot
+        // resolve, once per tick, for as long as the agent lives.
+        let mut ade = working_agent("paseo:agt_1", 10);
+        ade.runtime = Some("paseo".to_string());
+        assert!(!ade.has_pane());
+        assert_eq!(ade.runtime_name(), "paseo");
+
+        let local = working_agent("%1", 10);
+        assert!(local.has_pane());
+        assert_eq!(local.runtime_name(), "local");
+
+        assert!(
+            !is_capturable(&ade),
+            "pane-less agents must not reach the multiplexer"
+        );
+        assert!(is_capturable(&local));
+    }
+
+    #[test]
     fn capture_failure_skips_pane() {
         let mut tracker = InactivityTracker::new(Duration::from_secs(10));
         let agents = vec![working_agent("%1", 1)];
@@ -2168,6 +2467,7 @@ mod tests {
 
         fn seed_agent(store: &StateStore, pane_id: &str, status_ts: u64, updated_ts: u64) {
             let state = crate::state::AgentState {
+                agent_id: uuid::Uuid::new_v4().to_string(),
                 pane_key: pane_key(pane_id),
                 workdir: PathBuf::from("/tmp"),
                 status: Some(AgentStatus::Working),
@@ -2180,6 +2480,13 @@ mod tests {
                 session_name: None,
                 boot_id: None,
                 agent_kind: None,
+                sandbox_id: None,
+                checkpoint_path: None,
+                checkpoint_ts: None,
+                pipeline_node_id: None,
+                pipeline_node_title: None,
+                runtime: None,
+                completion: None,
             };
             store.upsert_agent(&state).unwrap();
         }
@@ -2486,6 +2793,215 @@ mod tests {
                 .unwrap();
             assert_eq!(agent.status_ts, Some(1012));
             assert!(!output.snapshot.interrupted_pane_ids.contains("%1"));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    mod freeze_tracker_tests {
+        use super::*;
+        use std::collections::HashSet;
+
+        /// Read a process's state character from /proc/{pid}/status.
+        /// Returns 'T' (stopped), 'S' (sleeping), 'R' (running), etc.
+        fn proc_state(pid: u32) -> char {
+            let content = std::fs::read_to_string(format!("/proc/{pid}/status"))
+                .unwrap_or_default();
+            for line in content.lines() {
+                if let Some(rest) = line.strip_prefix("State:") {
+                    return rest.trim().chars().next().unwrap_or('?');
+                }
+            }
+            '?'
+        }
+
+        /// Spawn `bash -c 'sleep 9999 & wait $!'` so bash has a real child
+        /// process that proc_descendants() will find and FreezeTracker can SIGSTOP.
+        fn spawn_shell_with_child() -> std::process::Child {
+            std::process::Command::new("bash")
+                .args(&["-c", "sleep 9999 & wait $!"])
+                .spawn()
+                .expect("failed to spawn bash")
+        }
+
+        /// Wait until the given PID has at least one child in /proc (bash needs
+        /// a moment to fork sleep after startup).
+        fn wait_for_children(pid: u32) {
+            for _ in 0..100 {
+                if !proc_descendants(pid).is_empty() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            panic!("timed out waiting for child processes of pid {pid}");
+        }
+
+        fn done_pane(pane_id: &str, shell_pid: u32) -> AgentPane {
+            AgentPane {
+                session: String::new(),
+                window_name: "test-window".to_string(),
+                pane_id: pane_id.to_string(),
+                window_id: "@99".to_string(),
+                path: std::path::PathBuf::new(),
+                pane_title: None,
+                status: Some(AgentStatus::Done),
+                status_ts: Some(0),
+                updated_ts: None,
+                window_cmd: None,
+                agent_command: None,
+                agent_kind: None,
+                pipeline_node_title: None,
+                pane_pid: shell_pid,
+                runtime: None,
+            }
+        }
+
+        #[test]
+        fn freeze_stops_idle_done_agent() {
+            let mut child = spawn_shell_with_child();
+            let shell_pid = child.id();
+            wait_for_children(shell_pid);
+
+            let mut tracker = FreezeTracker::new();
+            let agents = vec![done_pane("%freeze_1", shell_pid)];
+            let no_active: HashSet<String> = HashSet::new();
+
+            // after_idle=0, now_ts=9999 → idle_secs=9999 ≥ 0 → freeze immediately
+            tracker.tick(&agents, &no_active, std::time::Duration::ZERO, 9999);
+
+            // All child processes of the shell should be stopped (state 'T')
+            let children = proc_descendants(shell_pid);
+            assert!(!children.is_empty(), "expected child processes to exist");
+            for &cpid in &children {
+                assert_eq!(
+                    proc_state(cpid), 'T',
+                    "child {cpid} should be stopped after freeze"
+                );
+            }
+
+            let _ = child.kill();
+            tracker.thaw_all(); // SIGCONT before wait so kill can be delivered
+            let _ = child.wait();
+        }
+
+        #[test]
+        fn thaw_on_pane_focus() {
+            let mut child = spawn_shell_with_child();
+            let shell_pid = child.id();
+            wait_for_children(shell_pid);
+            let children = proc_descendants(shell_pid);
+
+            let mut tracker = FreezeTracker::new();
+            let agents = vec![done_pane("%freeze_2", shell_pid)];
+            let no_active: HashSet<String> = HashSet::new();
+
+            // Freeze
+            tracker.tick(&agents, &no_active, std::time::Duration::ZERO, 9999);
+            for &cpid in &children {
+                assert_eq!(proc_state(cpid), 'T', "should be stopped after freeze");
+            }
+
+            // Thaw by making the pane active (simulates pane-focus-in)
+            let mut active: HashSet<String> = HashSet::new();
+            active.insert("%freeze_2".to_string());
+            tracker.tick(&agents, &active, std::time::Duration::ZERO, 9999);
+
+            for &cpid in &children {
+                let state = proc_state(cpid);
+                assert!(
+                    matches!(state, 'S' | 'R' | 'D'),
+                    "child {cpid} should be running after thaw-on-focus, got '{state}'"
+                );
+            }
+
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+
+        #[test]
+        fn thaw_on_status_change_to_working() {
+            let mut child = spawn_shell_with_child();
+            let shell_pid = child.id();
+            wait_for_children(shell_pid);
+            let children = proc_descendants(shell_pid);
+
+            let mut tracker = FreezeTracker::new();
+            let agents_done = vec![done_pane("%freeze_3", shell_pid)];
+            let no_active: HashSet<String> = HashSet::new();
+
+            tracker.tick(&agents_done, &no_active, std::time::Duration::ZERO, 9999);
+            for &cpid in &children {
+                assert_eq!(proc_state(cpid), 'T', "should be stopped");
+            }
+
+            // Status changes to Working
+            let agents_working = vec![AgentPane {
+                status: Some(AgentStatus::Working),
+                ..agents_done[0].clone()
+            }];
+            tracker.tick(&agents_working, &no_active, std::time::Duration::ZERO, 9999);
+
+            for &cpid in &children {
+                let state = proc_state(cpid);
+                assert!(
+                    matches!(state, 'S' | 'R' | 'D'),
+                    "child {cpid} should be running after status→Working, got '{state}'"
+                );
+            }
+
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+
+        #[test]
+        fn thaw_all_unfreezes_on_shutdown() {
+            let mut child = spawn_shell_with_child();
+            let shell_pid = child.id();
+            wait_for_children(shell_pid);
+            let children = proc_descendants(shell_pid);
+
+            let mut tracker = FreezeTracker::new();
+            let agents = vec![done_pane("%freeze_4", shell_pid)];
+            let no_active: HashSet<String> = HashSet::new();
+
+            tracker.tick(&agents, &no_active, std::time::Duration::ZERO, 9999);
+            for &cpid in &children {
+                assert_eq!(proc_state(cpid), 'T', "should be stopped");
+            }
+
+            tracker.thaw_all();
+
+            for &cpid in &children {
+                let state = proc_state(cpid);
+                assert!(
+                    matches!(state, 'S' | 'R' | 'D'),
+                    "child {cpid} still stopped after thaw_all, got '{state}'"
+                );
+            }
+
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+
+        #[test]
+        fn frozen_entry_stores_window_metadata() {
+            let mut child = spawn_shell_with_child();
+            let shell_pid = child.id();
+            wait_for_children(shell_pid);
+
+            let mut tracker = FreezeTracker::new();
+            let agents = vec![done_pane("%freeze_5", shell_pid)];
+            let no_active: HashSet<String> = HashSet::new();
+
+            tracker.tick(&agents, &no_active, std::time::Duration::ZERO, 9999);
+
+            let entry = tracker.frozen.get("%freeze_5").expect("pane should be in frozen map");
+            assert_eq!(entry.original_window_name, "test-window");
+            assert_eq!(entry.window_id, "@99");
+            assert!(!entry.child_pids.is_empty(), "should have recorded child PIDs");
+
+            let _ = child.kill();
+            tracker.thaw_all();
+            let _ = child.wait();
         }
     }
 }

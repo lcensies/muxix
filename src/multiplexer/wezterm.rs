@@ -13,11 +13,11 @@ use std::time::Duration;
 use crate::cmd::Cmd;
 use crate::config::SplitDirection;
 
-use super::agent;
 use super::handshake::UnixPipeHandshake;
 use super::types::*;
 use super::util;
 use super::{Multiplexer, PaneHandshake};
+use crate::agent::profile as agent;
 
 /// WezTerm pane information from `wezterm cli list --format json`
 #[derive(Debug, Deserialize)]
@@ -337,7 +337,10 @@ impl Multiplexer for WezTermBackend {
 
     fn run_deferred_script(&self, script: &str) -> Result<()> {
         // Run the script in the background using nohup
-        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        let bg_script = format!(
+            "nohup sh -c '{}' >/dev/null 2>&1 &",
+            super::util::escape_for_single_quotes(script)
+        );
         Cmd::new("sh").args(&["-c", &bg_script]).run()?;
         Ok(())
     }
@@ -789,7 +792,11 @@ impl Multiplexer for WezTermBackend {
     }
 
     fn get_live_pane_info(&self, pane_id: &str) -> Result<Option<LivePaneInfo>> {
-        let pane_id_num: u64 = pane_id.parse().ok().unwrap_or(0);
+        // An unparseable pane id must yield "not found", not pane 0 (which
+        // commonly exists and would return an unrelated pane's info).
+        let Ok(pane_id_num) = pane_id.parse::<u64>() else {
+            return Ok(None);
+        };
 
         let panes = self.list_panes()?;
         let pane = panes.into_iter().find(|p| p.pane_id == pane_id_num);

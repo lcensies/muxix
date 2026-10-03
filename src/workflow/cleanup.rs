@@ -157,18 +157,36 @@ pub fn cleanup(
     keep_branch: bool,
     no_hooks: bool,
 ) -> Result<CleanupResult> {
+    // Every git lookup here runs against the main worktree explicitly: the
+    // process CWD may be inside the worktree being deleted, and one process
+    // serves several projects, so changing it globally is not an option.
+    let repo = context.main_worktree_root.clone();
+    let repo = repo.as_path();
+
+    // Refuse to delete a path git does not call our worktree. A recorded path can
+    // outlive the tree it named — the tree is removed, the directory is recreated by
+    // something else — and acting on the record alone would delete that something
+    // else. Missing is fine: the rest of cleanup (branch, mux, metadata) still runs.
+    if git::binding_state(worktree_path, Some(repo))? == git::BindingState::Foreign {
+        anyhow::bail!(
+            "refusing to clean {}: it exists but git does not list it as a worktree of {}",
+            worktree_path.display(),
+            repo.display()
+        );
+    }
+
     // Determine if this worktree was created as a session or window
-    let mode = get_worktree_mode(handle);
+    let mode = git::get_worktree_mode_in(handle, Some(repo));
     let target_name = if mode == MuxMode::Session {
-        git::get_worktree_target_session(handle).unwrap_or_else(|| handle.to_string())
+        git::get_worktree_target_session_in(handle, Some(repo)).unwrap_or_else(|| handle.to_string())
     } else {
-        git::get_worktree_target_window(handle).unwrap_or_else(|| handle.to_string())
+        git::get_worktree_target_window_in(handle, Some(repo)).unwrap_or_else(|| handle.to_string())
     };
     let is_session_mode = mode == MuxMode::Session;
     let parent_session = if is_session_mode {
         None
     } else {
-        git::get_worktree_window_session(handle)
+        git::get_worktree_window_session_in(handle, Some(repo))
     };
     let kind = crate::multiplexer::handle::mode_label(mode);
 
@@ -181,11 +199,6 @@ pub fn cleanup(
         mode = kind,
         "cleanup:start"
     );
-    // Change the CWD to main worktree before any destructive operations.
-    // This prevents "Unable to read current working directory" errors when the command
-    // is run from within the worktree being deleted.
-    context.chdir_to_main_worktree()?;
-
     let mux_running = context.mux.is_running().unwrap_or(false);
 
     // Check if we're running inside ANY matching target (original or duplicate)
@@ -596,9 +609,18 @@ pub fn cleanup(
     // Only remove immediately when not deferring -- deferred cleanup includes this
     // in the shell script so metadata survives if the deferred script fails.
     if result.deferred_cleanup.is_none()
-        && let Err(e) = git::remove_worktree_meta(handle)
+        && let Err(e) = git::remove_worktree_meta_in(handle, Some(repo))
     {
         warn!(handle = handle, error = %e, "cleanup:failed to remove worktree metadata");
+    }
+
+    // Drop the project journal entry too, so the store does not accumulate
+    // records for worktrees that no longer exist. Runs even when git cleanup is
+    // deferred: the journal is workmux's own bookkeeping, not git state.
+    if let Err(e) = crate::project_state::ProjectStateStore::open_project()
+        .and_then(|store| store.forget_worktree(handle))
+    {
+        warn!(handle = handle, error = %e, "cleanup:failed to drop project journal entry");
     }
 
     Ok(result)

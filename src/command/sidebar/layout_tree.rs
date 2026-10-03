@@ -378,22 +378,6 @@ pub(super) fn reflow_after_sidebar_add(
     position: SidebarPosition,
     sidebar_size: u16,
 ) {
-    reflow_after_sidebar_add_to_window_extent(
-        window_id,
-        sidebar_pane_id,
-        position,
-        sidebar_size,
-        None,
-    );
-}
-
-pub(super) fn reflow_after_sidebar_add_to_window_extent(
-    window_id: &str,
-    sidebar_pane_id: &str,
-    position: SidebarPosition,
-    sidebar_size: u16,
-    window_extent: Option<u16>,
-) {
     let layout_str = match Cmd::new("tmux")
         .args(&["display-message", "-t", window_id, "-p", "#{window_layout}"])
         .run_and_capture_stdout()
@@ -458,13 +442,6 @@ pub(super) fn reflow_after_sidebar_add_to_window_extent(
         root_children = children.len(),
         "reflow: found sidebar"
     );
-
-    if let Some(extent) = window_extent {
-        match axis {
-            Axis::Horizontal => rect.w = extent,
-            Axis::Vertical => rect.h = extent,
-        }
-    }
 
     let root_pos = rect_pos(rect, axis);
     match axis {

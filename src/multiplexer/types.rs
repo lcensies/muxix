@@ -86,10 +86,47 @@ pub struct AgentPane {
     #[serde(default)]
     pub agent_command: Option<String>,
     /// Cached agent identity (canonical profile name) classified at status-hook time.
-    /// See `crate::agent_identity::classify_agent_kind`. The sidebar consults this
+    /// See `crate::agent::identity::classify_agent_kind`. The sidebar consults this
     /// before falling back to stem-based profile resolution.
     #[serde(default)]
     pub agent_kind: Option<String>,
+
+    /// Title of the pipeline node currently executing in this pane, if any.
+    /// None for foreign (non-pipeline) agents.
+    #[serde(default)]
+    pub pipeline_node_title: Option<String>,
+
+    /// PID of the pane's shell process. Used by the daemon to walk the process
+    /// tree for auto-freeze (SIGSTOP/SIGCONT). Zero when not yet populated.
+    #[serde(default)]
+    pub pane_pid: u32,
+
+    /// Agent runtime that owns this agent. `None` means the local runtime, so
+    /// every existing record and every local agent reads exactly as before.
+    ///
+    /// When set, `pane_id` is a namespaced reference rather than a real pane:
+    /// there is no pane to focus, capture, or freeze, and callers must check
+    /// [`AgentPane::has_pane`] before any multiplexer operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+}
+
+impl AgentPane {
+    /// True when this agent occupies a real multiplexer pane.
+    ///
+    /// The sidebar's focus, capture, freeze, and kill paths all address panes
+    /// by id; running them against an ADE agent would send tmux a reference it
+    /// cannot resolve.
+    pub fn has_pane(&self) -> bool {
+        self.runtime.is_none()
+    }
+
+    /// The runtime that owns this agent.
+    pub fn runtime_name(&self) -> &str {
+        self.runtime
+            .as_deref()
+            .unwrap_or(crate::agent::runtime::LOCAL)
+    }
 }
 
 /// Parameters for creating a new window/tab

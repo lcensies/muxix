@@ -129,9 +129,15 @@ struct ProxyContext {
 fn domain_matches(domain: &str, pattern: &str) -> bool {
     let domain = domain.to_ascii_lowercase();
     let pattern = pattern.to_ascii_lowercase();
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        // suffix is ".example.com"
-        domain.ends_with(&suffix)
+    if pattern == "*" {
+        // Explicit match-all.
+        true
+    } else if let Some(rest) = pattern.strip_prefix("*.") {
+        // A `*.example.com` wildcard matches subdomains only, i.e. labels
+        // ending in `.example.com`. It must NOT match `evilexample.com`, which
+        // the old bare-`*` suffix check (`strip_prefix('*')`) incorrectly
+        // allowed. Only the `*.` form is treated as a wildcard.
+        domain.ends_with(&format!(".{rest}"))
     } else {
         domain == pattern
     }
@@ -520,6 +526,24 @@ mod tests {
         assert!(!domain_matches("evil.com", "example.com"));
         assert!(!domain_matches("notexample.com", "example.com"));
         assert!(!domain_matches("evil.com", "*.example.com"));
+    }
+
+    #[test]
+    fn domain_bare_star_prefix_is_not_a_subdomain_wildcard() {
+        // Regression: a bare-`*` prefix (no dot) must NOT widen egress.
+        // `*example.com` previously matched `evilexample.com` via a naive
+        // suffix check; only the `*.` form is a wildcard now.
+        assert!(!domain_matches("evilexample.com", "*example.com"));
+        assert!(!domain_matches("notexample.com", "*example.com"));
+        // It also should not match the intended host (treated as a literal,
+        // which contains an illegal `*`, so it never matches anything).
+        assert!(!domain_matches("example.com", "*example.com"));
+    }
+
+    #[test]
+    fn domain_lone_star_matches_everything() {
+        assert!(domain_matches("anything.com", "*"));
+        assert!(domain_matches("a.b.c.example.org", "*"));
     }
 
     #[test]

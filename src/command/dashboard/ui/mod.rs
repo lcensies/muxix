@@ -3,12 +3,13 @@
 mod dashboard;
 mod diff;
 mod format;
+pub mod grouped;
 mod help;
+pub mod tasks;
 pub mod theme;
 pub mod worktree;
 
 use ratatui::Frame;
-use ratatui::style::{Modifier, Style};
 
 use super::app::{App, ViewMode};
 
@@ -18,9 +19,6 @@ fn dim_buffer(f: &mut Frame) {
     let buf = f.buffer_mut();
     for y in area.y..area.y + area.height {
         for x in area.x..area.x + area.width {
-            if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_style(Style::default().add_modifier(Modifier::DIM));
-            }
         }
     }
 }

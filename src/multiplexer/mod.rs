@@ -3,11 +3,13 @@
 //! This module provides a trait-based abstraction that allows workmux to work
 //! with different terminal multiplexers (tmux, WezTerm) interchangeably.
 
-pub mod agent;
+use crate::agent::profile as agent;
+
 pub mod conversation;
 pub mod handle;
 pub mod handshake;
 pub mod kitty;
+pub mod launch;
 pub mod tmux;
 pub mod types;
 pub mod util;
@@ -46,6 +48,15 @@ pub trait Multiplexer: Send + Sync {
     /// More reliable than current_pane_id() in run-shell contexts (keybindings)
     /// where the env var may be stale or missing.
     fn active_pane_id(&self) -> Option<String>;
+
+    /// Get the active pane ID within a specific window or session target.
+    ///
+    /// `target` may be a pane ID, window name, or `session:window` string.
+    /// Returns `None` if the target doesn't exist or the query fails.
+    fn active_pane_of(&self, target: &str) -> Option<String> {
+        let _ = target;
+        None
+    }
 
     /// Get the working directory of the active pane in the current client's session
     fn get_client_active_pane_path(&self) -> Result<PathBuf>;
@@ -252,6 +263,46 @@ pub trait Multiplexer: Send + Sync {
     /// Respawn a pane with optional command. Returns the (possibly new) pane ID.
     fn respawn_pane(&self, pane_id: &str, cwd: &Path, cmd: Option<&str>) -> Result<String>;
 
+    /// Whether this backend can exec an argv directly, with no shell in between.
+    ///
+    /// When true, agent panes are launched via [`Multiplexer::respawn_pane_argv`]
+    /// / [`Multiplexer::split_pane_argv`] instead of spawning a login shell and
+    /// typing a command into it — which removes all shell quoting from the
+    /// launch path and lets the prompt travel as one opaque argument.
+    fn supports_direct_exec(&self) -> bool {
+        false
+    }
+
+    /// Respawn a pane running `argv` directly, without a shell.
+    ///
+    /// Only called when [`Multiplexer::supports_direct_exec`] returns true.
+    fn respawn_pane_argv(&self, pane_id: &str, cwd: &Path, argv: &[String]) -> Result<String> {
+        let _ = (pane_id, cwd, argv);
+        Err(anyhow!(
+            "Direct exec is not supported by the {} backend",
+            self.name()
+        ))
+    }
+
+    /// Split a pane, running `argv` directly in the new pane without a shell.
+    ///
+    /// Only called when [`Multiplexer::supports_direct_exec`] returns true.
+    fn split_pane_argv(
+        &self,
+        target_pane_id: &str,
+        direction: &SplitDirection,
+        cwd: &Path,
+        size: Option<u16>,
+        percentage: Option<u8>,
+        argv: &[String],
+    ) -> Result<String> {
+        let _ = (target_pane_id, direction, cwd, size, percentage, argv);
+        Err(anyhow!(
+            "Direct exec is not supported by the {} backend",
+            self.name()
+        ))
+    }
+
     /// Capture the content of a pane
     fn capture_pane(&self, pane_id: &str, lines: u16) -> Option<String>;
 
@@ -348,6 +399,7 @@ pub trait Multiplexer: Send + Sync {
 
         let mut focus_pane_id: Option<String> = None;
         let mut zoom_pane_id: Option<String> = None;
+        let mut prompt_delivered = false;
         let mut pane_ids: Vec<String> = vec![initial_pane_id.to_string()];
         // Resolve agent name through the agents map
         let resolved_task_agent = task_agent.map(|a| {
@@ -359,6 +411,25 @@ pub trait Multiplexer: Send + Sync {
         });
         let effective_agent = resolved_task_agent.or(config.agent.as_deref());
         let shell = self.get_default_shell()?;
+
+        // Read the prompt up front. Previously the prompt reached the agent as
+        // `"$(cat PROMPT.md)"` evaluated by the pane's shell, so an unreadable
+        // file, or a shell whose rc files had changed directory, expanded to
+        // the empty string and launched the agent with no prompt at all — while
+        // workmux still painted the "working" status. Reading it here turns
+        // that class of failure into an error before anything is spawned.
+        let prompt_text: Option<String> = match options.prompt_file_path {
+            Some(path) if options.run_commands => {
+                let text = std::fs::read_to_string(path).map_err(|e| {
+                    anyhow!("Failed to read prompt file {}: {}", path.display(), e)
+                })?;
+                if text.trim().is_empty() {
+                    return Err(anyhow!("Prompt file {} is empty", path.display()));
+                }
+                Some(text)
+            }
+            _ => None,
+        };
 
         for (i, pane_config) in panes.iter().enumerate() {
             let is_first = i == 0;
@@ -382,6 +453,132 @@ pub trait Multiplexer: Send + Sync {
             let pane_id = if let Some(mut resolved) = adjusted_command {
                 // Use per-pane agent if set, otherwise fall back to window-level agent
                 let pane_agent = resolved.effective_agent.as_deref().or(effective_agent);
+
+                // Detect if this is an agent pane. Computed *before* spawning
+                // because it decides whether we can exec the agent directly.
+                let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
+                    let matches_configured_agent = effective_agent.is_some_and(|agent_cmd| {
+                        crate::config::is_agent_command(cmd, agent_cmd)
+                            || config
+                                .agent_type
+                                .as_deref()
+                                .is_some_and(|kind| crate::config::is_agent_command(cmd, kind))
+                    });
+                    cmd == "<agent>" || agent::is_known_agent(cmd) || matches_configured_agent
+                });
+
+                // Build the argv for a shell-free launch, when possible. The
+                // sandbox backends still produce shell command strings, so
+                // they keep the legacy path until converted.
+                let direct_argv = if is_agent_pane
+                    && self.supports_direct_exec()
+                    && !config.sandbox.is_enabled()
+                    && prompt_text
+                        .as_deref()
+                        .is_none_or(launch::prompt_fits_argv)
+                {
+                    let raw = pane_config.command.as_deref().unwrap_or_default();
+                    let base_command = if raw == "<agent>" {
+                        pane_agent.unwrap_or(raw)
+                    } else {
+                        raw
+                    };
+                    let profile = agent::resolve_profile_with_type(
+                        pane_agent,
+                        config.agent_type.as_deref(),
+                    );
+
+                    // Direct exec has no shell to report "command not found":
+                    // a failed execvp just makes the pane disappear. If we
+                    // can't find the binary, fall back to the shell path so
+                    // the error stays visible to the user.
+                    let exec_token = agent::find_executable_token(base_command);
+                    if crate::config::resolve_executable_path(exec_token).is_none() {
+                        tracing::warn!(
+                            executable = exec_token,
+                            "agent executable not found on PATH; using shell launch so the error is visible"
+                        );
+                        None
+                    } else {
+                        let flags = resume_and_permission_flags(
+                            &options.resume_mode,
+                            profile,
+                            pane_agent,
+                            config,
+                        );
+                        let flag_refs: Vec<&str> = flags.iter().map(String::as_str).collect();
+                        match launch::build_agent_argv(
+                            base_command,
+                            profile,
+                            prompt_text.as_deref(),
+                            &flag_refs,
+                        ) {
+                            Ok(argv) => Some(argv),
+                            Err(e) => {
+                                // A malformed agent command is worth surfacing:
+                                // the legacy path would have silently mangled it.
+                                eprintln!("Warning: {e}; falling back to shell launch");
+                                None
+                            }
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(argv) = &direct_argv {
+                    // No shell and no handshake: tmux execs the agent itself,
+                    // so there is no login shell to synchronise with and the
+                    // prompt never passes through a command line.
+                    let spawned_id = if is_first {
+                        self.respawn_pane_argv(&pane_ids[0], working_dir, argv)?
+                    } else {
+                        let direction = pane_config.split.as_ref().unwrap();
+                        let target_idx = pane_config.target.unwrap_or(pane_ids.len() - 1);
+                        let target = pane_ids
+                            .get(target_idx)
+                            .ok_or_else(|| anyhow!("Invalid target pane index: {}", target_idx))?;
+                        self.split_pane_argv(
+                            target,
+                            direction,
+                            working_dir,
+                            pane_config.size,
+                            pane_config.percentage,
+                            argv,
+                        )?
+                    };
+
+                    if prompt_text.is_some() {
+                        prompt_delivered = true;
+                    }
+
+                    if prompt_text.is_some()
+                        && agent::resolve_profile_with_type(
+                            pane_agent,
+                            config.agent_type.as_deref(),
+                        )
+                        .needs_auto_status()
+                    {
+                        let icon = config.status_icons.working();
+                        if config.status_format.unwrap_or(true) {
+                            let _ = self.ensure_status_format(&spawned_id);
+                        }
+                        let _ = self.set_status(&spawned_id, icon, false);
+                    }
+
+                    if is_first {
+                        pane_ids[0] = spawned_id.clone();
+                    } else {
+                        pane_ids.push(spawned_id.clone());
+                    }
+                    if pane_config.zoom || pane_config.focus {
+                        focus_pane_id = Some(spawned_id.clone());
+                    }
+                    if pane_config.zoom {
+                        zoom_pane_id = Some(spawned_id);
+                    }
+                    continue;
+                }
 
                 // Spawn with handshake so we can send the command after shell is ready
                 let handshake = self.create_handshake()?;
@@ -407,19 +604,11 @@ pub trait Multiplexer: Send + Sync {
 
                 handshake.wait()?;
 
-                // Detect if this is an agent pane for sandbox targeting
-                let is_agent_pane = pane_config.command.as_deref().is_some_and(|cmd| {
-                    let matches_configured_agent = effective_agent.is_some_and(|agent_cmd| {
-                        crate::config::is_agent_command(cmd, agent_cmd)
-                            || config
-                                .agent_type
-                                .as_deref()
-                                .is_some_and(|kind| crate::config::is_agent_command(cmd, kind))
-                    });
-                    cmd == "<agent>" || agent::is_known_agent(cmd) || matches_configured_agent
-                });
-
-                // Inject resume/continue flag for agent panes when requested
+                // Inject resume/continue flag and skip-permissions flag for agent panes.
+                // Skip-permissions (e.g. --yolo for kimi/codex/gemini,
+                // --dangerously-skip-permissions for claude) is applied to all
+                // agent panes, not only sandboxed ones, so unattended workflows
+                // like `workmux orchestrate` do not hang on approval prompts.
                 if is_agent_pane {
                     match &options.resume_mode {
                         crate::multiplexer::types::ResumeMode::Continue => {
@@ -458,7 +647,21 @@ pub trait Multiplexer: Send + Sync {
                         }
                         crate::multiplexer::types::ResumeMode::None => {}
                     }
+
+                    let profile = crate::agent::profile::resolve_profile_with_type(
+                        pane_agent,
+                        config.agent_type.as_deref(),
+                    );
+                    if let Some(flag) = profile.skip_permissions_flag() {
+                        resolved.command =
+                            util::inject_skip_permissions_flag(&resolved.command, flag);
+                    }
                 }
+
+                // Sandbox identity for this pane, if microsandbox-backed — used
+                // after launch to record the pane→sandbox association and to
+                // drive checkpoint-on-pane-reuse.
+                let mut pane_sandbox_id: Option<String> = None;
 
                 // Apply sandbox wrapping if enabled for this pane type
                 let final_command = if config.sandbox.is_enabled() {
@@ -470,28 +673,11 @@ pub trait Multiplexer: Send + Sync {
                         // Use worktree_root for mounting, working_dir for cwd
                         let wt_root = options.worktree_root.unwrap_or(working_dir);
 
-                        // Inject skip-permissions flag for agent panes only
-                        // (sandbox provides the security boundary, so permission
-                        // prompts are unnecessary and break autonomous workflow)
-                        let command_to_wrap = if is_agent_pane {
-                            let profile = crate::multiplexer::agent::resolve_profile_with_type(
-                                pane_agent,
-                                config.agent_type.as_deref(),
-                            );
-                            if let Some(flag) = profile.skip_permissions_flag() {
-                                util::inject_skip_permissions_flag(&resolved.command, flag)
-                            } else {
-                                resolved.command.clone()
-                            }
-                        } else {
-                            resolved.command.clone()
-                        };
-
                         // Choose backend based on config
                         let wrap_result = match config.sandbox.backend() {
                             crate::config::SandboxBackend::Container => {
                                 crate::sandbox::wrap_for_container(
-                                    &command_to_wrap,
+                                    &resolved.command,
                                     &config.sandbox,
                                     wt_root,
                                     working_dir,
@@ -505,11 +691,35 @@ pub trait Multiplexer: Send + Sync {
                                     )
                                 })?;
                                 crate::sandbox::wrap_for_lima(
-                                    &command_to_wrap,
+                                    &resolved.command,
                                     config,
                                     vm_name,
                                     working_dir,
                                 )
+                            }
+                            crate::config::SandboxBackend::MicroSandbox => {
+                                let wt_handle = working_dir
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("agent");
+                                let agent_slug = pane_agent.unwrap_or("agent");
+                                let handle = crate::sandbox::microsandbox::sandbox_name(
+                                    wt_handle, agent_slug,
+                                );
+                                // Resume from the latest snapshot if one exists for
+                                // this stable sandbox; otherwise create it fresh.
+                                let restore_from = crate::sandbox::checkpoint::latest_snapshot(
+                                    &handle,
+                                    &config.sandbox,
+                                );
+                                pane_sandbox_id = Some(handle.clone());
+                                Ok(crate::sandbox::microsandbox::launch_command(
+                                    &handle,
+                                    working_dir,
+                                    &resolved.command,
+                                    restore_from.as_deref(),
+                                    &config.sandbox.microsandbox,
+                                ))
                             }
                         };
 
@@ -531,8 +741,28 @@ pub trait Multiplexer: Send + Sync {
                     resolved.command.clone()
                 };
 
+                // Pane→sandbox association + checkpoint-on-pane-reuse: if this
+                // pane already hosts a *different* sandboxed agent, snapshot it
+                // (and stop its VM) before we replace it, so it can be resumed
+                // later — letting agents share a pane with low memory overhead.
+                if let Some(ref sid) = pane_sandbox_id {
+                    let key = crate::state::PaneKey {
+                        backend: self.name().to_string(),
+                        instance: self.instance_id(),
+                        pane_id: spawned_id.clone(),
+                    };
+                    if let Ok(store) = crate::state::StateStore::new() {
+                        checkpoint_outgoing_pane_agent(&store, &key, sid, config);
+                        let _ = store.record_pane_sandbox(&key, sid);
+                    }
+                }
+
                 let _ = self.clear_pane(&spawned_id);
                 self.send_keys(&spawned_id, &final_command)?;
+
+                if resolved.prompt_injected {
+                    prompt_delivered = true;
+                }
 
                 // Set working status for agent panes with injected prompts
                 if resolved.prompt_injected
@@ -580,6 +810,21 @@ pub trait Multiplexer: Send + Sync {
             if pane_config.zoom {
                 zoom_pane_id = Some(pane_id);
             }
+        }
+
+        // A prompt that reached no pane is silent data loss: the window opens,
+        // the agent starts, and it simply never sees the task. It happens when
+        // the pane command wraps the agent in a launcher we can't see through
+        // (`npx claude`, `mise exec -- claude`, a shell wrapper), so prompt
+        // injection matches nothing. We can't reliably guess those, but we can
+        // refuse to fail quietly.
+        if prompt_text.is_some() && !prompt_delivered {
+            eprintln!(
+                "Warning: a prompt was provided but no pane received it. \
+                 workmux injects the prompt only into a pane whose command is the \
+                 configured agent; wrapper commands (e.g. `npx claude`) aren't \
+                 recognized. Set the pane command to the agent itself, or to `<agent>`."
+            );
         }
 
         Ok(PaneSetupResult {
@@ -682,6 +927,91 @@ pub trait Multiplexer: Send + Sync {
 ///
 /// This ordering ensures that running tmux inside kitty (or wezterm) correctly
 /// selects the innermost multiplexer.
+/// Checkpoint and stop the sandboxed agent currently occupying a pane when a
+/// *different* sandboxed agent is about to take it over.
+///
+/// This is the "automatic on pane reuse" half of the orchestrator swap: the
+/// outgoing VM is snapshotted (so it can be resumed later) and then stopped to
+/// reclaim memory. Best-effort — any failure is logged and never blocks the
+/// incoming agent's launch.
+/// Flags injected after the agent executable: the resume/continue flag implied
+/// by `resume_mode`, followed by the agent's skip-permissions flag.
+///
+/// Skip-permissions (e.g. `--yolo` for kimi/codex/gemini,
+/// `--dangerously-skip-permissions` for claude) applies to all agent panes, not
+/// only sandboxed ones, so unattended workflows like `workmux orchestrate` do
+/// not hang on approval prompts.
+fn resume_and_permission_flags(
+    resume_mode: &types::ResumeMode,
+    profile: &'static dyn crate::agent::profile::AgentProfile,
+    pane_agent: Option<&str>,
+    config: &Config,
+) -> Vec<String> {
+    let mut flags: Vec<String> = Vec::new();
+
+    match resume_mode {
+        types::ResumeMode::Continue => match profile.continue_flag() {
+            Some(flag) => flags.push(flag.to_string()),
+            None => tracing::warn!(
+                agent = profile.name(),
+                "agent does not support --continue, flag ignored"
+            ),
+        },
+        types::ResumeMode::ForkSession(session_id) => {
+            let agent_name = pane_agent.or(config.agent.as_deref()).unwrap_or("claude");
+            match conversation::resolve_forker(agent_name) {
+                Some(forker) => {
+                    let resume_args = forker.resume_args(session_id);
+                    // Quote so the argv builder's `shlex::split` reverses this
+                    // exactly, even if a session id contains shell syntax.
+                    if let Ok(joined) = shlex::try_join(resume_args.iter().map(String::as_str)) {
+                        flags.push(joined);
+                    }
+                }
+                None => tracing::warn!(
+                    agent = agent_name,
+                    "agent does not support forking, resume flag ignored"
+                ),
+            }
+        }
+        types::ResumeMode::None => {}
+    }
+
+    if let Some(flag) = profile.skip_permissions_flag() {
+        flags.push(flag.to_string());
+    }
+
+    flags
+}
+
+fn checkpoint_outgoing_pane_agent(
+    store: &crate::state::StateStore,
+    key: &crate::state::PaneKey,
+    incoming_sandbox_id: &str,
+    config: &Config,
+) {
+    if !config.sandbox.checkpoint.is_enabled() {
+        return;
+    }
+    let Ok(Some(existing)) = store.get_agent(key) else {
+        return;
+    };
+    let Some(old_id) = existing.sandbox_id.clone() else {
+        return;
+    };
+    if old_id == incoming_sandbox_id {
+        return; // same agent re-launching — nothing to swap out
+    }
+    tracing::debug!(old = %old_id, new = %incoming_sandbox_id, "checkpoint-on-pane-reuse");
+    if let Err(e) = crate::sandbox::checkpoint::checkpoint_agent(&existing, &config.sandbox, store)
+    {
+        tracing::warn!(error = %e, sandbox = %old_id, "checkpoint-on-pane-reuse failed");
+    }
+    // Free the VM's memory now that it's snapshotted; ignore errors (e.g. a
+    // non-microsandbox backend, or an already-stopped VM).
+    let _ = crate::sandbox::microsandbox::stop(&old_id);
+}
+
 pub fn detect_backend() -> BackendType {
     if let Ok(val) = std::env::var("WORKMUX_BACKEND") {
         match val.parse() {

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Snapshot Claude Code config before pointing it at the provision gateway.
+# Copies ~/.claude/settings.json (and settings.local.json if present) into a
+# timestamped dir. claude_backup_restore reverts the latest.
+set -euo pipefail
+
+CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
+BACKUP_ROOT="${CLAUDE_BACKUP_ROOT:-$CLAUDE_DIR/config-backups}"
+
+# ponytail: date via shell, not committed — this is a runtime script, fine here.
+stamp="$(date +%Y%m%d-%H%M%S)"
+dest="$BACKUP_ROOT/$stamp"
+mkdir -p "$dest"
+
+copied=0
+for f in settings.json settings.local.json; do
+  if [ -f "$CLAUDE_DIR/$f" ]; then
+    cp -p "$CLAUDE_DIR/$f" "$dest/$f"
+    copied=$((copied + 1))
+  fi
+done
+
+if [ "$copied" -eq 0 ]; then
+  echo "no config files found in $CLAUDE_DIR" >&2
+  rmdir "$dest" 2>/dev/null || true
+  exit 1
+fi
+
+ln -sfn "$stamp" "$BACKUP_ROOT/latest"
+echo "backed up $copied file(s) -> $dest"

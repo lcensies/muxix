@@ -1,6 +1,6 @@
 use crate::command::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
 use crate::config::MuxMode;
-use crate::{claude, command, config, git, nerdfont};
+use crate::{claude, command, config, git, nerdfont, projects};
 use anyhow::{Context, Result};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -263,6 +263,10 @@ Worktree lifecycle:
   close        Close a worktree's tmux window (keeps the worktree and branch)
   resurrect    Restore worktree windows after a tmux or computer crash
 
+Projects:
+  project      Track project directories for 'workmux start'
+  start        Start all tracked projects (session per project, window per worktree)
+
 Monitoring:
   dashboard    Show a TUI dashboard of all active workmux agents
   sidebar      Toggle a live agent status sidebar in tmux
@@ -283,6 +287,7 @@ Agent interaction:
   capture      Capture terminal output from a running agent
   wait         Wait for agents to reach a target status
   run          Run a command in a worktree's window
+  exec         Launch a coding agent under a named agent-profile
 
 Help and updates:
   docs         Show detailed documentation (renders README.md)
@@ -294,12 +299,19 @@ Help and updates:
 Options:
   -h, --help     Print help
   -V, --version  Print version
+      --profile <NAME>  Config profile(s) to apply (comma-separated)
 
 Run 'workmux docs' for detailed documentation.
 ")]
 struct Cli {
+    /// Config profile(s) to apply, comma-separated for several (applied left
+    /// to right). Overrides WORKMUX_PROFILE and `default_profile:` in config;
+    /// pass an empty value to disable a configured default_profile.
+    #[arg(long, global = true, value_name = "NAME")]
+    profile: Option<String>,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -317,7 +329,7 @@ impl From<CliMuxMode> for MuxMode {
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Create a new worktree and tmux window
     Add {
@@ -325,6 +337,12 @@ enum Commands {
         /// When used with --pr, this becomes the custom local branch name.
         #[arg(required_unless_present_any = ["pr", "auto_name"], value_parser = GitBranchParser::new())]
         branch_name: Option<String>,
+
+        /// Agent runtime to create the agent in (default: the project's
+        /// `agent_runtime`, else `local`). A non-local runtime owns the agent
+        /// itself: no worktree, no window, no pane.
+        #[arg(long)]
+        runtime: Option<String>,
 
         /// Pull request number to checkout
         #[arg(long, conflicts_with_all = ["base", "auto_name"])]
@@ -444,11 +462,47 @@ enum Commands {
     /// Restore worktree windows after a tmux or computer crash
     ///
     /// Uses persisted agent state files to detect which worktrees had active
-    /// agents before the crash.
+    /// agents before the crash, then relaunches each one.
+    ///
+    /// Each agent's own session store decides how it comes back: if the
+    /// worktree has a resumable conversation the agent is relaunched with its
+    /// continue flag; if not (commonly because the configured agent changed,
+    /// leaving the old agent's sessions unreachable) the stored task prompt is
+    /// re-sent instead, naming the agent that spawned the worktree. Restored
+    /// windows are verified to still be alive before being reported.
     Resurrect {
         /// Show what would be restored without doing it
         #[arg(long)]
         dry_run: bool,
+    },
+
+    /// List every agent, from every runtime that owns one
+    Agents {
+        /// Omit to list; `stop` to end an agent whatever runtime owns it
+        #[command(subcommand)]
+        command: Option<AgentsCommand>,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List agent runtimes (where agents run) with health and features
+    Runtimes {
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Manage tracked project directories (used by `workmux start`)
+    Project {
+        #[command(subcommand)]
+        command: ProjectCommands,
+    },
+
+    /// Start all tracked projects: session per project, window per worktree
+    Start {
+        /// Relaunch the last coding agent in each project/worktree, resuming
+        /// its previous conversation where possible
+        #[arg(short = 'c', long = "continue")]
+        continue_session: bool,
     },
 
     /// Merge a branch, then clean up the worktree and tmux window
@@ -504,6 +558,7 @@ enum Commands {
         #[arg(short = 'b', long)]
         branch: bool,
     },
+
 
     /// Remove a worktree, tmux window, and branch without merging
     #[command(visible_alias = "rm")]
@@ -599,7 +654,8 @@ enum Commands {
         #[arg(required = true, value_parser = AgentTargetParser::new())]
         worktrees: Vec<String>,
 
-        /// Target status to wait for
+        /// Target status to wait for: comma-separated list of
+        /// working, waiting, done, completed, failed, merged
         #[arg(long, default_value = "done")]
         status: String,
 
@@ -648,12 +704,49 @@ enum Commands {
 
     /// Set up agent status tracking hooks and install skills
     Setup {
-        /// Only set up status tracking hooks
+        /// Only set up status tracking hooks (alias for --only hooks)
         #[arg(long)]
         hooks: bool,
-        /// Only install skills
+        /// Only install skills (alias for --only skills)
         #[arg(long)]
         skills: bool,
+        /// Apply every configured section without prompting. Required when
+        /// stdin is not a terminal (activation scripts, CI, devcontainers).
+        #[arg(long = "non-interactive", short = 'y')]
+        non_interactive: bool,
+        /// Report what would change and exit 2 if the machine has drifted.
+        /// Writes nothing.
+        #[arg(long, conflicts_with = "non_interactive")]
+        check: bool,
+        /// Emit one JSON object on stdout; progress goes to stderr
+        #[arg(long)]
+        json: bool,
+        /// Restrict to these sections, comma-separated:
+        /// hooks, skills, subagents, plugins, agent-settings, prompts, theme, mcp, agent-profiles, deps
+        #[arg(long, value_name = "SECTIONS")]
+        only: Option<String>,
+        /// Keep harness features workmux installed that the config no longer
+        /// declares, instead of removing them.
+        #[arg(long = "no-prune")]
+        no_prune: bool,
+    },
+
+    /// Sync local config with the org provision server and apply policy
+    Provision {
+        #[command(subcommand)]
+        command: Option<ProvisionCommand>,
+        /// Show what would change without applying
+        #[arg(long)]
+        dry_run: bool,
+        /// Exit with error on any policy violation (default: warn only)
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Export, import, or diff workmux config profiles for team sharing
+    Profile {
+        #[command(subcommand)]
+        command: ProfileCommand,
     },
 
     /// Show detailed documentation (renders README.md)
@@ -670,6 +763,9 @@ enum Commands {
         /// Scope sidebar to this session, or toggle this session off when global sidebar is active
         #[arg(short = 's', long)]
         session: bool,
+        /// Force global scope regardless of sidebar.default_scope config
+        #[arg(short = 'g', long, conflicts_with = "session")]
+        global: bool,
         #[command(subcommand)]
         action: Option<SidebarAction>,
     },
@@ -724,6 +820,9 @@ enum Commands {
     /// Manage global configuration
     Config(command::config::ConfigArgs),
 
+    /// Declare what agent harnesses contain (plugins, skills, subagents, prompts)
+    Bootstrap(command::bootstrap::BootstrapArgs),
+
     /// Claude Code integration commands
     Claude {
         #[command(subcommand)]
@@ -732,6 +831,26 @@ enum Commands {
 
     /// Manage sandbox settings
     Sandbox(command::sandbox::SandboxArgs),
+
+    /// Read/write the per-project runtime state store (for preflight & harness gates)
+    #[command(name = "project-state")]
+    ProjectState {
+        #[command(subcommand)]
+        command: command::project_state::ProjectStateCommand,
+    },
+
+    /// Manage the project's MCP servers (sync `.mcp.json`, show status)
+    Mcp {
+        #[command(subcommand)]
+        command: command::mcp::McpCommand,
+    },
+
+    /// Manage named agent definitions and the capability registry
+    #[command(name = "agent-registry")]
+    AgentRegistry {
+        #[command(subcommand)]
+        command: command::agent_registry::AgentRegistryCommand,
+    },
 
     /// Set agent status for the current tmux window (used by hooks)
     #[command(hide = true)]
@@ -754,6 +873,30 @@ enum Commands {
         /// Absolute path to run directory
         #[arg(long)]
         run_dir: std::path::PathBuf,
+    },
+
+    /// Launch a coding agent under a named agent-profile
+    ///
+    /// Overlays skills/extensions/config from `agent_profiles.<name>` on top of
+    /// the agent's real config dir, then execs the agent. Select the profile
+    /// with the global `--profile <name>` flag; with no profile it falls
+    /// through to the untouched base config dir. Build profiles with
+    /// `workmux setup`.
+    #[command(name = "exec")]
+    AgentExec {
+        /// The agent command to launch (e.g. `pi`, `claude`)
+        agent: String,
+
+        /// Arguments passed through to the agent
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Switch multiplexer focus to an agent by agent ID or window-name fragment
+    Focus {
+        /// Agent ID / UUID prefix (see `workmux status`) or window-name substring
+        /// (e.g. feature-auth)
+        target: String,
     },
 
     /// Switch to the agent that most recently completed or is waiting for input
@@ -807,7 +950,112 @@ enum Commands {
     /// Background update check (internal use)
     #[command(hide = true, name = "_check-update")]
     CheckUpdate,
+
+
+
+    /// Emit an out-of-band agent signal (called from Claude Code hooks, agent tools, or `/implement` slash command).
+    ///
+    /// Supports two modes:
+    /// 1. PANE-KEYED TURN SIGNALS (keyed by $TMUX_PANE):
+    ///    - turn-done   — agent finished a response turn (Stop hook)
+    ///    - needs-input — agent blocked on a user question (Notification hook)
+    ///    - working     — agent resumed; clears needs-input (PostToolUse/UserPromptSubmit)
+    ///    - proceed     — release current gate node and continue (e.g. /implement)
+    ///    - reject      — release current gate node with rejection + optional feedback
+    ///
+    /// 2. NODE-KEYED AGENT SIGNALS (keyed by --node, for inter-stage messaging):
+    ///    - done        — agent finished this stage explicitly (triggers hook signal routing)
+    ///    - error       — agent encountered error; request retry with feedback
+    ///
+    /// `done`/`error` are dual-mode: with --node, writes the pipeline hook-signal
+    /// file above; without --node, writes an agent-authored completion onto the
+    /// pane's AgentState (keyed by $TMUX_PANE or --pane), read by `wait`/`status`.
+    /// Read and mutate the task graph from the shell (list/get/create/update/delete).
+    ///
+    /// Relative `--graph` paths resolve against the main worktree root, so agents
+    /// in a feature worktree share the project's single graph.
+    Task {
+        #[command(subcommand)]
+        action: TaskAction,
+    },
+
+    Signal {
+        /// Signal kind: turn-done | needs-input | working | proceed | reject | done | error
+        kind: String,
+        /// Override the pane id (defaults to $TMUX_PANE). Used for pane-keyed signals
+        /// (including done/error without --node).
+        #[arg(long)]
+        pane: Option<String>,
+        /// Node id for agent-level signals (done/error). When set, writes to node-keyed
+        /// signal file; when omitted, done/error write a pane-keyed completion instead.
+        #[arg(long)]
+        node: Option<String>,
+        /// Feedback message (used by reject, error, or done with feedback).
+        #[arg(long)]
+        feedback: Option<String>,
+    },
+
+    /// Internal: emit an `agent.session` capability report (which workmux hooks
+    /// are installed) to the event log. Run from the agent's SessionStart hook so
+    /// a missing/stale hook setup is visible from the start of every session.
+    #[command(hide = true)]
+    HooksReport {
+        /// Override the pane id (defaults to $TMUX_PANE).
+        #[arg(long)]
+        pane: Option<String>,
+    },
+
+
+
+
+
+
 }
+
+#[derive(Subcommand, Debug)]
+pub enum ProjectCommands {
+    /// Track a project directory
+    Add {
+        /// Path to the project directory
+        dir: PathBuf,
+    },
+    /// Untrack a project by name or path
+    Rm {
+        /// Project name or path
+        target: String,
+    },
+    /// List tracked projects
+    List,
+    /// Open a tracked project's session and focus it
+    Open {
+        /// Project name or path
+        target: String,
+        /// Relaunch the last coding agent, resuming its previous conversation
+        #[arg(short = 'c', long = "continue")]
+        continue_session: bool,
+    },
+    /// Sync the project registry with configured ADEs
+    Sync {
+        /// Only sync this ADE
+        #[arg(long)]
+        ade: Option<String>,
+        /// Show what would change without touching either side
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentsCommand {
+    /// Stop an agent by reference (`<runtime>:<id>`, or a pane id for local)
+    Stop {
+        /// Agent reference as printed by `workmux agents`
+        reference: String,
+    },
+}
+
+
+
 
 #[derive(Subcommand, Debug)]
 pub enum SidebarAction {
@@ -823,10 +1071,31 @@ pub enum SidebarAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum ClaudeCommands {
     /// Remove stale entries from ~/.claude.json for deleted worktrees
     Prune,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProvisionCommand {
+    /// Show cached org policy status
+    Status,
+    /// Fetch latest policy from the provision server (requires server_url + token)
+    Sync,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ProfileCommand {
+    /// Print the current config profile snapshot
+    Show,
+    /// Export profile snapshot to a file
+    Export {
+        #[arg(short = 'o', long)]
+        output: Option<std::path::PathBuf>,
+    },
+    /// Diff local profile against the team profile from org policy
+    Diff,
 }
 
 /// Check if the command should show the nerdfont setup prompt.
@@ -885,9 +1154,21 @@ pub fn run() -> Result<()> {
         }
     };
 
+    // Record --profile before anything loads config: the side-effect loads
+    // below (nerdfont, update check) must see the same profile the command will.
+    crate::config::profiles::set_cli_profile(cli.profile.clone());
+    let cli_profile = cli.profile.clone();
+
+    let command = cli.command.unwrap_or(Commands::Dashboard {
+        preview_size: None,
+        diff: false,
+        session: false,
+        tab: None,
+    });
+
     // Extract config override early so the side-effect loads (nerdfont, update
     // check) respect the user's explicit --config choice.
-    let config_override = match &cli.command {
+    let config_override = match &command {
         Commands::Add { config, .. } => config.as_deref(),
         Commands::Open { config, .. } => config.as_deref(),
         _ => None,
@@ -899,14 +1180,25 @@ pub fn run() -> Result<()> {
     // the next successful run and the real error surfaces when the command loads
     // config with `?`.
     let (cfg, config_ok) = match config::Config::load_with_override(None, config_override) {
-        Ok(cfg) => (cfg, true),
-        Err(_) => (config::Config::default(), false),
+        Ok(cfg) => {
+            // Trace the actual resolved config so the log alone explains
+            // config-driven behaviour. Full data at debug to keep info lean.
+            crate::wm_evt!("config.load", ok = true, config_override = ?config_override);
+            crate::wm_evt_dbg!("config.data", cfg = ?cfg);
+            (cfg, true)
+        }
+        Err(e) => {
+            // Early side-effect load failed; the real error re-surfaces when the
+            // command loads config with `?`, but record it here too.
+            crate::wm_evt!("config.load", ok = false, err = %e, config_override = ?config_override);
+            (config::Config::default(), false)
+        }
     };
     let has_pua = nerdfont::config_has_pua(&cfg);
     let nerdfont_enabled = if cfg.nerdfont.is_some() || has_pua {
         // Already configured or PUA detected
         cfg.nerdfont.unwrap_or(has_pua)
-    } else if config_ok && should_prompt_nerdfont(&cli.command) {
+    } else if config_ok && should_prompt_nerdfont(&command) {
         // Prompt user (returns None in non-interactive mode)
         nerdfont::check_and_prompt(&cfg)?.unwrap_or(false)
     } else {
@@ -917,21 +1209,26 @@ pub fn run() -> Result<()> {
     // Check agent status tracking setup after nerdfont.
     // Uses a separate gate to avoid double-prompting when running `workmux setup`.
     if config_ok
-        && should_prompt_status_setup(&cli.command)
-        && let Err(e) = crate::agent_setup::prompt_wizard()
+        && should_prompt_status_setup(&command)
+        && let Err(e) = crate::agent::setup::prompt_wizard()
     {
         tracing::debug!(?e, "status setup wizard failed");
     }
 
     // Background update check: reads local cache, optionally shows a notice,
     // and spawns a background process to refresh the cache if stale.
-    if should_check_update(&cli.command) {
+    if should_check_update(&command) {
         command::update::check_and_notify(&cfg);
     }
 
-    match cli.command {
+    // The single dispatch chokepoint: `?command` Debug-renders the variant name
+    // and its parsed args, so every invocation's intent is in the log.
+    crate::wm_evt!("cmd.dispatch", cmd = ?command);
+
+    match command {
         Commands::Add {
             branch_name,
+            runtime,
             pr,
             auto_name,
             base,
@@ -949,6 +1246,32 @@ pub fn run() -> Result<()> {
             session,
             config,
         } => {
+            // Sugar: `workmux add <existing-repo-dir>` tracks the project
+            // instead of creating a worktree (directory containing .git wins
+            // over a same-named branch).
+            if let Some(bn) = branch_name.as_deref() {
+                let path = std::path::Path::new(bn);
+                if path.is_dir() && path.join(".git").exists() {
+                    println!(
+                        "'{}' is a git repository — tracking it as a project \
+                         (run `workmux add <branch>` inside a repo to create worktrees)",
+                        bn
+                    );
+                    return projects::cli_add(path);
+                }
+            }
+            // A non-local runtime owns the agent process; there is no
+            // worktree to make or pane to open, so this diverts before any of
+            // the local machinery runs.
+            if let Some(reference) = command::add::start_on_runtime(
+                runtime.as_deref(),
+                branch_name.as_deref(),
+                name.as_deref(),
+                prompt.prompt.as_deref(),
+            )? {
+                println!("{reference}");
+                return Ok(());
+            }
             let mode_override = mode
                 .map(MuxMode::from)
                 .or(session.then_some(MuxMode::Session));
@@ -1002,6 +1325,24 @@ pub fn run() -> Result<()> {
         }
         Commands::Close { name } => command::close::run(name.as_deref()),
         Commands::Resurrect { dry_run } => command::resurrect::run(dry_run),
+        Commands::Agents { command, json } => match command {
+            None => command::agents::run(json),
+            Some(AgentsCommand::Stop { reference }) => command::agents::stop(&reference),
+        },
+        Commands::Runtimes { json } => crate::agent::runtime::registry::print_runtimes(json),
+        Commands::Project { command } => match command {
+            ProjectCommands::Add { dir } => projects::cli_add(&dir),
+            ProjectCommands::Rm { target } => projects::cli_rm(&target),
+            ProjectCommands::List => projects::cli_list(),
+            ProjectCommands::Open {
+                target,
+                continue_session,
+            } => projects::start::open(&target, continue_session),
+            ProjectCommands::Sync { ade, dry_run } => {
+                projects::sync::cli_sync(ade.as_deref(), dry_run)
+            }
+        },
+        Commands::Start { continue_session } => projects::start::run(continue_session),
         Commands::Merge {
             name,
             into,
@@ -1058,13 +1399,75 @@ pub fn run() -> Result<()> {
             timeout,
         } => command::run::run(&name, command, background, keep, timeout),
         Commands::Exec { run_dir } => command::exec::run(&run_dir),
+        Commands::AgentExec { agent, args } => {
+            command::agent_exec::run(&agent, &args, cli_profile.as_deref())
+        }
         Commands::SyncFiles { all } => command::sync_files::run(all),
         Commands::Init => crate::config::Config::init(),
-        Commands::Setup { hooks, skills } => command::setup::run(hooks, skills),
+        Commands::Setup {
+            hooks,
+            skills,
+            non_interactive,
+            check,
+            json,
+            only,
+            no_prune,
+        } => {
+            // --hooks / --skills predate --only and remain accepted as aliases.
+            let mut sections = match only.as_deref() {
+                Some(raw) => command::setup::parse_sections(raw)?,
+                None => Vec::new(),
+            };
+            if hooks {
+                sections.push(command::setup::Section::Hooks);
+            }
+            if skills {
+                sections.push(command::setup::Section::Skills);
+            }
+
+            let opts = command::setup::SetupOptions {
+                non_interactive,
+                check,
+                json,
+                only: sections,
+                no_prune,
+                profile: cli_profile.clone(),
+            };
+            if opts.is_automated() {
+                let code = command::setup::run_automated(&opts)?;
+                if code != 0 {
+                    std::process::exit(code);
+                }
+                Ok(())
+            } else {
+                command::setup::run(&opts)
+            }
+        }
+        Commands::Provision {
+            command,
+            dry_run,
+            strict,
+        } => match command {
+            Some(ProvisionCommand::Status) => command::provision::run_status(),
+            Some(ProvisionCommand::Sync) => command::provision::run_sync(dry_run, strict),
+            None if dry_run => command::provision::run_sync(true, strict),
+            None => command::provision::run_status(),
+        },
+        Commands::Profile { command } => match command {
+            ProfileCommand::Show => command::profile::run_show(),
+            ProfileCommand::Export { output } => {
+                command::profile::run_export(output.as_deref())
+            }
+            ProfileCommand::Diff => command::profile::run_diff(),
+        },
         Commands::Docs => command::docs::run(),
         Commands::Changelog => command::changelog::run(),
         Commands::Update => command::update::run(),
-        Commands::Sidebar { session, action } => match action {
+        Commands::Sidebar {
+            session,
+            global,
+            action,
+        } => match action {
             Some(SidebarAction::Next) => {
                 command::sidebar::navigate(command::sidebar::NavAction::Next)
             }
@@ -1077,8 +1480,21 @@ pub fn run() -> Result<()> {
             None => {
                 if session {
                     command::sidebar::toggle_session()
-                } else {
+                } else if global {
                     command::sidebar::toggle()
+                } else {
+                    // No flags: check config default_scope
+                    let use_session = crate::config::Config::load(None)
+                        .ok()
+                        .and_then(|c| c.sidebar.default_scope)
+                        .is_some_and(|s| {
+                            s == crate::config::SidebarDefaultScope::Session
+                        });
+                    if use_session {
+                        command::sidebar::toggle_session()
+                    } else {
+                        command::sidebar::toggle()
+                    }
                 }
             }
         },
@@ -1094,12 +1510,17 @@ pub fn run() -> Result<()> {
             tab,
         } => command::dashboard::run(preview_size, diff, session, tab),
         Commands::Config(args) => command::config::run(args),
+        Commands::Bootstrap(args) => command::bootstrap::run(args),
         Commands::Claude { command } => match command {
             ClaudeCommands::Prune => prune_claude_config(),
         },
         Commands::Sandbox(args) => command::sandbox::run(args),
+        Commands::ProjectState { command } => command::project_state::run(command),
+        Commands::Mcp { command } => command::mcp::run(command),
+        Commands::AgentRegistry { command } => command::agent_registry::run(command),
         Commands::SetWindowStatus { command } => command::set_window_status::run(command),
         Commands::SetBase { base } => command::set_base::run(&base),
+        Commands::Focus { target } => command::focus::run(&target),
         Commands::LastDone => command::last_done::run(),
         Commands::LastAgent => command::last_agent::run(),
         Commands::HostExec { args } => {
@@ -1142,6 +1563,94 @@ pub fn run() -> Result<()> {
             Ok(())
         }
         Commands::CheckUpdate => command::update::run_background_check(),
+        Commands::Task { action } => match action {
+            TaskAction::List {
+                status,
+                label,
+                frontier,
+                json,
+                graph,
+            } => command::task_cli::list(&graph, status, label, frontier, json),
+            TaskAction::Get { query, json, graph } => command::task_cli::get(&graph, &query, json),
+            TaskAction::Resolve {
+                id,
+                retry,
+                abandon,
+                graph,
+            } => command::task_cli::resolve(&graph, &id, retry, abandon),
+            TaskAction::Claim {
+                id,
+                branch,
+                base,
+                worktree,
+                json,
+                graph,
+            } => command::task_cli::claim(&graph, &id, &branch, &base, &worktree, json),
+            TaskAction::Create {
+                id,
+                title,
+                description,
+                depends_on,
+                status,
+                worktree,
+                labels,
+                priority,
+                parent,
+                inherit_from,
+                graph,
+            } => command::task_cli::create(
+                &graph,
+                id,
+                title,
+                description,
+                depends_on,
+                status,
+                worktree,
+                labels,
+                priority,
+                parent,
+                inherit_from,
+            ),
+            TaskAction::Update {
+                id,
+                title,
+                description,
+                status,
+                worktree,
+                depends_on,
+                labels,
+                priority,
+                hint,
+                blocked_reason,
+                blocked_reason_file,
+                add_labels,
+                remove_labels,
+                graph,
+            } => command::task_cli::update(
+                &graph,
+                &id,
+                title,
+                description,
+                status,
+                worktree,
+                depends_on,
+                labels,
+                priority,
+                hint,
+                blocked_reason,
+                blocked_reason_file,
+                add_labels,
+                remove_labels,
+            ),
+            TaskAction::Delete { id, graph } => command::task_cli::delete(&graph, &id),
+        },
+        Commands::Signal {
+            kind,
+            pane,
+            node,
+            feedback,
+        } => command::signal::run(&kind, pane.as_deref(), node.as_deref(), feedback.as_deref()),
+        Commands::HooksReport { pane } => command::hooks_report::run(pane.as_deref()),
     }
 }
 
@@ -1222,9 +1731,156 @@ fn print_fish_dynamic_completion() {
     print!("{}", include_str!("scripts/completions/fish_dynamic.fish"));
 }
 
+#[derive(Subcommand, Debug)]
+pub enum TaskAction {
+    /// List tasks (optionally filter by status/label, or show only the ready frontier)
+    List {
+        /// Only tasks with this status (todo/in_progress/merging/done/failed)
+        #[arg(long)]
+        status: Option<String>,
+        /// Only tasks carrying this label
+        #[arg(long)]
+        label: Option<String>,
+        /// Only the ready frontier (todo tasks whose deps are all done).
+        /// `--ready` is the same filter, named for coordinator agents.
+        #[arg(long, visible_alias = "ready")]
+        frontier: bool,
+        /// Emit JSON instead of a table
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Get one task by exact id, or fuzzy-search id+title when no id matches
+    Get {
+        /// Task id (exact) or fuzzy query
+        query: String,
+        /// Emit JSON instead of a field listing
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Create a new task (agents use this to schedule discovered work)
+    Create {
+        /// Task id; defaults to a slug of --title when omitted
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long)]
+        title: String,
+        #[arg(long, default_value = "")]
+        description: String,
+        #[arg(long, value_delimiter = ',')]
+        depends_on: Vec<String>,
+        #[arg(long, default_value = "todo")]
+        status: String,
+        /// Worktree handle; defaults to the task id
+        #[arg(long)]
+        worktree: Option<String>,
+        #[arg(long = "label", value_delimiter = ',')]
+        labels: Vec<String>,
+        #[arg(long)]
+        priority: Option<i64>,
+        /// Containment edge: the task this one was decomposed FROM
+        #[arg(long)]
+        parent: Option<String>,
+        /// Copy the harness/testing fields of this task onto the new one
+        #[arg(long)]
+        inherit_from: Option<String>,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Decide what happens to a task whose slot is `unknown`.
+    ///
+    /// The daemon parks rather than guessing when it cannot prove a worker is
+    /// alive. This is the explicit decision that unparks it.
+    Resolve {
+        /// Id of the task to resolve
+        id: String,
+        /// Put it back in the ready queue. The slot is cleared, so the next
+        /// dispatch binds afresh and bumps the attempt — which fences the previous
+        /// worker out if it is somehow still alive.
+        #[arg(long, conflicts_with = "abandon")]
+        retry: bool,
+        /// Give up on it. Marked failed, worktree and branch left for inspection.
+        #[arg(long, conflicts_with = "retry")]
+        abandon: bool,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Bind a task to the worktree and branch you are about to create.
+    ///
+    /// Call this BEFORE `git worktree add`, so a crash in between leaves a record
+    /// naming the tree that may exist. Repeating the same claim is safe; claiming a
+    /// task already bound to something else fails.
+    Claim {
+        /// Id of the task to bind
+        id: String,
+        /// Branch the work will live on
+        #[arg(long)]
+        branch: String,
+        /// Ref the branch is cut from (base branch, or the parent's branch)
+        #[arg(long)]
+        base: String,
+        /// Path of the worktree you are about to create
+        #[arg(long)]
+        worktree: PathBuf,
+        /// Emit JSON instead of a human line
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Update fields of an existing task (only the flags you pass are changed)
+    Update {
+        /// Id of the task to update
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        worktree: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        depends_on: Option<Vec<String>>,
+        #[arg(long = "label", value_delimiter = ',')]
+        labels: Option<Vec<String>>,
+        #[arg(long)]
+        priority: Option<i64>,
+        /// Append a line to the task's agent_hints (retry guidance)
+        #[arg(long)]
+        hint: Option<String>,
+        /// Why the task stopped (read by the failure steward)
+        #[arg(long)]
+        blocked_reason: Option<String>,
+        /// Read the blocked reason from a file (e.g. .workmux/blocked/<id>.md)
+        #[arg(long, conflicts_with = "blocked_reason")]
+        blocked_reason_file: Option<PathBuf>,
+        /// Add a label, keeping the existing ones
+        #[arg(long = "add-label", value_delimiter = ',')]
+        add_labels: Vec<String>,
+        /// Remove a label, keeping the others
+        #[arg(long = "remove-label", value_delimiter = ',')]
+        remove_labels: Vec<String>,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+    /// Delete a task by id
+    Delete {
+        /// Id of the task to delete
+        id: String,
+        #[arg(long, default_value = "tasks/index.json")]
+        graph: PathBuf,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
 
     #[test]
     fn prepare_zsh_base_renames_function_identifiers() {

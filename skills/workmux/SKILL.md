@@ -20,13 +20,20 @@ context you already have. The worktree agent does all the work.
 ## Key Concepts
 
 - **Handle**: the worktree directory name, derived from the branch name
-  (slugified). Used to identify worktrees in all commands
+  (slugified per `worktree_naming`). Used to identify worktrees in all
+  commands
 - **Worktree directory**: defaults to `<project>__worktrees/<handle>` as a
-  sibling of the project root
+  sibling of the project root (`worktree_dir` overrides)
 - **Window prefix**: tmux windows are named `wm-<handle>` by default
-  (configurable via `window_prefix`)
+  (configurable via `window_prefix`; `worktree_prefix` prefixes both the
+  directory and the window name)
 - **Agent status**: agents report status via hooks: working, waiting (needs
   input), done (finished)
+- **Mode**: `window` (default) puts each worktree in a window of the current
+  tmux session; `session` gives each worktree its own session
+
+Some commands are not listed in `workmux --help` (its help text is a curated
+template). `workmux <cmd> --help` works for every command below.
 
 ## Commands
 
@@ -44,23 +51,38 @@ Key flags:
 - `-p <text>`: inline prompt for AI agent panes
 - `-P <file>`: prompt from file
 - `-e, --prompt-editor`: write prompt in $EDITOR
+- `--prompt-file-only`: write `.workmux/PROMPT-<branch>.md` without injecting
+  it into an agent pane
 - `-A, --auto-name`: generate branch name from prompt via LLM
-- `-a <agent>`: override the agent (can specify multiple for multi-worktree)
+- `-a <agent>`: override the agent (repeatable — one worktree per agent)
 - `-w, --with-changes`: move uncommitted changes to the new worktree
+  (`--patch` to select interactively, `-u` to include untracked)
 - `--base <branch>`: branch from a specific base
+- `--pr <number>`: check out a GitHub PR (positional arg becomes the local
+  branch name)
 - `--name <name>`: override the handle name
 - `-o, --open-if-exists`: open existing worktree if it exists (idempotent)
 - `-W, --wait`: block until the tmux window is closed
 - `-n, --count <N>`: create N worktree instances
-- `--foreach <matrix>`: create worktrees from variable matrix
-- `--no-hooks, --no-file-ops, --no-pane-cmds`: skip setup steps
+- `--foreach <matrix>`: create worktrees from a variable matrix
+  (`"var1:a,b;var2:x,y"`)
+- `--branch-template <tpl>`: branch naming for multi-worktree modes
+- `--max-concurrent <N>`: cap concurrent worktrees in multi-worktree modes
+- `-l, --layout <name>`: use a named pane layout from `layouts:` config
+- `--fork[=<session-id>]`: fork the current worktree's conversation into the
+  new one
+- `-s, --session` / `--mode <window|session>`: multiplexer mode override
+- `-S, --sandbox`: force sandbox mode on for this run
+- `--config <file>`: alternate config file for this invocation
+- `-H, --no-hooks`, `-F, --no-file-ops`, `-C, --no-pane-cmds`: skip setup steps
 
 ### List worktrees
 
 ```bash
 workmux list          # all worktrees
 workmux list --pr     # with GitHub PR status
-workmux list <name>   # filter by handle or branch
+workmux list --json   # machine-readable
+workmux list <name>   # filter by handle or branch (repeatable)
 ```
 
 Shows branch, agent status, tmux window status, and unmerged commits.
@@ -73,7 +95,11 @@ workmux merge <branch>        # merge specific branch
 workmux merge --rebase        # rebase before merging (linear history)
 workmux merge --squash        # squash all commits into one
 workmux merge --into <branch> # merge into a different target branch
-workmux merge --keep          # merge but keep worktree/window/branch
+workmux merge -k, --keep      # merge but keep worktree/window/branch
+workmux merge --cleanup       # force cleanup (overrides merge_keep config)
+workmux merge -n              # skip pre-merge hooks
+workmux merge --no-hooks      # skip pre-merge and pre-remove hooks
+workmux merge --ignore-uncommitted
 workmux merge --notification  # show system notification on success
 ```
 
@@ -89,17 +115,57 @@ workmux remove <name>...      # specific worktrees
 workmux rm --gone             # worktrees whose remote branch was deleted
 workmux rm --all              # all worktrees
 workmux rm -f <name>          # force, skip confirmation
-workmux rm --keep-branch      # keep the branch, remove worktree + window
+workmux rm -k, --keep-branch  # keep the branch, remove worktree + window
 ```
 
-### Open / close windows
+### Open / close / rename / restore
 
 ```bash
 workmux open <name>           # open or switch to tmux window
-workmux open --new            # force a new window (creates suffix -2, -3)
+workmux open -n, --new        # force a new window (creates suffix -2, -3)
 workmux open <name> -p "..."  # open with a prompt for agent panes
+workmux open <name> -c        # resume the agent's most recent conversation
+workmux open <name> --run-hooks --force-files   # re-run setup steps
 workmux close <name>          # close tmux window, keep worktree
+workmux rename <new>          # rename current worktree + window
+workmux rename <old> <new> -b # also rename the git branch
+workmux resurrect             # restore windows after a tmux/computer crash
+workmux resurrect --dry-run
 ```
+
+`resurrect` relaunches each crashed worktree's agent. How it comes back
+depends on that agent's own session store:
+
+- **Resumable session found** — relaunched with the agent's continue flag,
+  picking up the previous conversation.
+- **No resumable session** — relaunched fresh, with the stored task prompt
+  re-sent (`.workmux/PROMPT-<branch>.md`, or the orchestrate task workflow).
+  The re-sent prompt names the parent agent that spawned the worktree, so the
+  restored agent knows who to report back to. The original prompt file is
+  never overwritten.
+- Restored windows are verified alive before being reported, so an agent that
+  exits on startup is reported as a failure, not a success.
+
+A common cause of "no resumable session" is changing the configured `agent:`
+— the previous agent's sessions are not reachable by the new one.
+
+### Worktree / session journal
+
+`workmux add` records each worktree it creates in the project store
+(`.workmux/state/project.json`, one per project, shared by all worktrees):
+branch, parent worktree, agent, and the sessions observed in it.
+
+```bash
+workmux project-state show    # includes the worktrees journal
+```
+
+Sessions are recorded per agent, so a worktree that ran opencode and now runs
+claude keeps both and never offers one agent the other's session. The entry is
+dropped when the worktree is removed.
+
+The journal is a record of what workmux did, not the source of truth — the
+agent's own session store owns the conversation and a user can delete it. Any
+recorded session id is verified against that store before it is used.
 
 ### Interact with other agents
 
@@ -111,6 +177,7 @@ Use `project:handle` syntax to disambiguate when names collide.
 # Check agent statuses
 workmux status                          # all agents
 workmux status auth api-tests           # specific agents
+workmux status --json --git             # machine-readable, with git info
 
 # Wait for agents
 workmux wait agent-a agent-b            # block until done
@@ -131,16 +198,89 @@ workmux send myproject:docs "update the API section"  # cross-project
 # Run shell commands in an agent's worktree
 workmux run agent-a -- pytest tests/    # wait and stream output
 workmux run agent-a -b -- npm run build # run in background
+workmux run agent-a --timeout 600 -- just test
 ```
 
-### Other commands
+### Navigation and monitoring
 
 ```bash
-workmux path <name>           # print worktree filesystem path
 workmux dashboard             # TUI dashboard of all active agents
-workmux config edit           # open global config in $EDITOR
-workmux config reference      # print default config with all options documented
+workmux dashboard -t tasks    # open on a tab: agents|worktrees|tasks|planning|project
+workmux dashboard -s          # only agents in the current session
+workmux sidebar               # toggle the live agent status sidebar
+workmux sidebar -s|-g         # session-scoped / global scope
+workmux sidebar next|prev|jump <N>
+workmux focus <target>        # switch to an agent by ID or window-name fragment
+workmux path <name>           # print worktree filesystem path
+```
+
+### Setup and configuration
+
+```bash
 workmux init                  # generate .workmux.yaml in current project
+workmux setup                 # install status hooks + bundled skills
+workmux setup --hooks         # hooks only
+workmux setup --skills        # skills only
+workmux config edit           # open global config in $EDITOR
+workmux config path           # print global config path
+workmux config reference      # print default config with all options documented
+workmux mcp sync              # render .mcp.json from the `mcp:` config section
+workmux mcp status            # show configured MCP servers + integration status
+workmux sync-files            # re-apply copy/symlink ops to current worktree
+workmux sync-files --all      # ...to all worktrees
+workmux sandbox <cmd>         # sandbox image/VM management, sandboxed shells
+workmux agent-registry list   # resolved named agent definitions
+workmux claude prune          # drop stale ~/.claude.json entries
+workmux completions <shell>
+workmux docs | changelog | update
+```
+
+`workmux setup` also applies the project's `bootstrap:` section: per-agent
+plugins, skills, and prompt components (see Configuration below).
+
+### Task graph and orchestration
+
+For unattended multi-task runs. The task graph defaults to
+`tasks/index.json`; relative `--graph` paths resolve against the main
+worktree root, so agents in a feature worktree share one graph.
+
+```bash
+workmux task list                       # all tasks
+workmux task list --frontier            # ready tasks (deps satisfied)
+workmux task list --status todo --label backend --json
+workmux task get <id>                   # exact id, else fuzzy search
+workmux task create --title "..." [--id X] [--depends-on Y] [--label L]
+                    [--priority N] [--worktree <handle>]
+workmux task update <id> ...            # only the flags you pass change
+workmux task delete <id>
+workmux graph [--all]                   # frontier / stats
+workmux tasks                           # interactive task graph TUI
+
+workmux orchestrate                     # run the loop over the graph
+    [--slots N] [--workflow <yaml>] [--auto-merge] [--base-branch <b>]
+    [--pre-merge-cmd "..."] [--dry-run]
+workmux notify --task-id <id> [--status done]   # signal completion
+
+workmux pipeline run <workflow.yaml>    # single DAG run
+workmux pipeline validate <workflow.yaml>
+workmux pipeline tui | orchestrator-tui
+workmux pipeline approve <node> | reject <node> --feedback "..."
+
+workmux daemon start|stop|restart|status
+workmux project-state get-capability|set-fact|get-fact|show
+```
+
+Inside a pipeline, `/implement` and `/approve` release approval gates from
+the agent pane.
+
+### Org policy and profiles
+
+```bash
+workmux provision             # sync org policy and apply it
+workmux provision status      # cached org policy
+workmux provision sync        # fetch latest from the provision server
+workmux provision --dry-run --strict
+workmux profile show|export <file>|diff
 ```
 
 ## Configuration
@@ -152,13 +292,25 @@ Two levels: global (`~/.config/workmux/config.yaml`) and project
 
 ```yaml
 agent: claude                    # default agent for <agent> placeholder
+main_branch: main                # merge target (auto-detected by default)
+base_branch: develop             # default base for new worktrees
 merge_strategy: rebase           # merge, rebase, or squash
+merge_keep: false                # keep worktree/branch after merge
 mode: window                     # window or session
+worktree_dir: .worktrees         # supports ~ and {project}
+worktree_naming: full            # full or basename
+worktree_prefix: ""              # prefixes worktree dir and window name
+window_prefix: wm-               # tmux window name prefix
 
 panes:
   - command: <agent>             # <agent> resolves to configured agent
     focus: true
   - split: horizontal            # second pane with shell
+
+layouts:                         # named layouts for `workmux add -l <name>`
+  review:
+    panes:
+      - command: <agent>
 
 files:
   copy:
@@ -168,10 +320,31 @@ files:
 
 post_create:
   - '<global>'                   # include global hooks
-  - npm install                  # project-specific setup
+  - npm install
+pre_merge:
+  - just test
+pre_remove: []
 
-base_branch: develop             # default base for new worktrees
-window_prefix: wm-               # tmux window name prefix
+mcp:                             # rendered into .mcp.json by `workmux mcp sync`
+  context7:
+    command: npx
+    args: ["-y", "@upstash/context7-mcp"]
+
+bootstrap:                       # applied by `workmux setup`
+  default_skills:
+    - ./skills/workmux           # local path, or {url:, ref:} for a repo
+  default_prompt_components:     # from .workmux/prompt-components/<name>.md
+    - fff
+  features:                      # agent-agnostic capability -> plugin or prompt
+    ponytail:
+      pi: git:github.com/DietrichGebert/ponytail
+      default: ponytail
+  agents:
+    claude code:                 # key = agent display name, lowercased
+      additional_skills:
+        - ./skills/worktree
+      additional_prompt_components:
+        - code-review
 ```
 
 Use `'<global>'` in project config arrays to include global values.
@@ -181,9 +354,14 @@ For the full configuration reference with all options documented, run
 
 ### Agent detection
 
-Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`,
-`vibe`) are auto-detected in pane commands and receive prompt injection
+Built-in agents (`claude`, `gemini`, `codex`, `opencode`, `copilot`, `pi`,
+`omp`) are auto-detected in pane commands and receive prompt injection
 automatically. The `<agent>` placeholder resolves to the configured agent.
+
+Skills are installed per agent into that agent's own skills directory
+(`~/.claude/skills`, `~/.config/opencode/skills`, `~/.pi/agent/skills`,
+`~/.omp/agent/skills`). Codex, Copilot, and Gemini have no skills directory
+and are skipped.
 
 ## Common Workflows
 
@@ -247,3 +425,4 @@ other projects by path and let the agent explore on its own.
 - **`/worktree`**: delegate tasks to parallel worktree agents
 - **`/coordinator`**: orchestrate multiple agents (spawn, monitor, merge)
 - **`/open-pr`**: write PR description and open in browser
+- **`/implement`**, **`/approve`**: release pipeline approval gates

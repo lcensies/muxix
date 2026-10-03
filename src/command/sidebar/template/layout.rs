@@ -527,6 +527,9 @@ mod tests {
             window_cmd: None,
             agent_command: None,
             agent_kind: None,
+            pipeline_node_title: None,
+            pane_pid: 0,
+            runtime: None,
         }
     }
 

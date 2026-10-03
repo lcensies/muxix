@@ -1,6 +1,6 @@
 use crate::command::args::PromptArgs;
-use crate::config::MuxMode;
-use crate::multiplexer::{create_backend, detect_backend};
+use crate::config::{MuxMode, SplitDirection};
+use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
 use crate::workflow::prompt_loader::{PromptLoadArgs, load_prompt};
 use crate::workflow::{SetupOptions, WorkflowContext};
 use crate::{config, workflow};
@@ -109,7 +109,21 @@ pub fn run(
         options.mode = preliminary_mode;
         options.prompt_file_path = prompt_file_path;
         if continue_session {
-            options.resume_mode = crate::multiplexer::types::ResumeMode::Continue;
+            // Prefer resuming the exact session id when the agent's store is
+            // readable; a bare --continue silently starts fresh (and, on the
+            // direct-exec path, kills the window) when the agent disagrees
+            // about what "latest" means.
+            let agent_name = context
+                .config
+                .agent
+                .clone()
+                .unwrap_or_else(|| "claude".to_string());
+            options.resume_mode = match crate::git::get_worktree_path(resolved_name) {
+                Ok(path) => {
+                    crate::command::resurrect::resume_mode_for(&path, resolved_name, &agent_name)
+                }
+                Err(_) => crate::multiplexer::types::ResumeMode::Continue,
+            };
         }
         options.target_window_name = target_name.clone();
         options.target_session_name = target_name.clone();
@@ -154,6 +168,13 @@ pub fn run(
                         result.worktree_path.display()
                     );
                 } else {
+                    // New instruction cycle: relaunching clears any stale
+                    // completion claim from a previous run (D2).
+                    crate::state::persist_agent_completion(
+                        context.mux.as_ref(),
+                        &result.focus_pane_id,
+                        None,
+                    );
                     if result.post_create_hooks_run > 0 {
                         println!("✓ Setup complete");
                     }
@@ -164,6 +185,20 @@ pub fn run(
                         resolved_name,
                         result.worktree_path.display()
                     );
+
+                }
+
+                // Opened windows get the sidebar without a manual toggle.
+                // `focus_pane_id` is empty when the window was only switched to,
+                // so fall back to the window name. Best-effort: a missing
+                // sidebar must not fail the open.
+                let sidebar_target = if result.focus_pane_id.is_empty() {
+                    result.mux_target_full_name.as_str()
+                } else {
+                    result.focus_pane_id.as_str()
+                };
+                if let Err(e) = crate::command::sidebar::ensure_for_target(sidebar_target) {
+                    tracing::debug!(error = %e, "open: sidebar setup skipped");
                 }
             }
             Err(e) => {
@@ -188,3 +223,4 @@ pub fn run(
         )
     }
 }
+

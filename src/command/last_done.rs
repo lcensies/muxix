@@ -157,6 +157,7 @@ mod tests {
         updated_ts: u64,
     ) -> AgentState {
         AgentState {
+            agent_id: format!("test-{}", pane_id),
             pane_key: PaneKey {
                 backend: "tmux".to_string(),
                 instance: "default".to_string(),
@@ -173,6 +174,13 @@ mod tests {
             session_name: Some("main".to_string()),
             boot_id: None,
             agent_kind: None,
+            sandbox_id: None,
+            checkpoint_path: None,
+            checkpoint_ts: None,
+            pipeline_node_id: None,
+            pipeline_node_title: None,
+            runtime: None,
+            completion: None,
         }
     }
 

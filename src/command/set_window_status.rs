@@ -40,6 +40,11 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         return Ok(());
     };
 
+    // Hook-invocation trace: this command IS a Claude hook (Stop/PostToolUse/
+    // UserPromptSubmit/Notification), so logging it records that the hook fired,
+    // for which pane — alongside the runner's observe events in the same log.
+    crate::wm_evt!("hook.status", status = ?cmd, pane = %pane_id, side = "hook");
+
     let pane_key = crate::state::PaneKey {
         backend: mux.name().to_string(),
         instance: mux.instance_id(),
@@ -94,6 +99,10 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
             crate::state::persist_agent_update(&*mux, &pane_id, Some(status), None);
         }
     }
+
+    // Wake the sidebar daemon so status changes render immediately instead of
+    // on its next backstop sweep. This is also its updated_ts heartbeat.
+    crate::command::sidebar::poke_daemon();
 
     Ok(())
 }

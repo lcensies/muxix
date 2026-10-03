@@ -2,6 +2,7 @@
 //!
 //! These helpers are shared between tmux, WezTerm, and any future backends.
 
+use crate::agent::profile as agent;
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -69,7 +70,7 @@ pub fn rewrite_agent_command(
     let config_stem = Path::new(&resolved_config_path).file_stem();
 
     let type_stem = type_override.map(|kind| {
-        let token = super::agent::find_executable_token(kind);
+        let token = agent::find_executable_token(kind);
         let resolved =
             crate::config::resolve_executable_path(token).unwrap_or_else(|| token.to_string());
         Path::new(&resolved).file_stem().map(|stem| stem.to_owned())
@@ -86,7 +87,7 @@ pub fn rewrite_agent_command(
 
     // Build the inner command step-by-step to ensure correct order:
     // [executable] [default_subcommand?] [user_args] [prompt_argument]
-    let profile = super::agent::resolve_profile_with_type(effective_agent, type_override);
+    let profile = agent::resolve_profile_with_type(effective_agent, type_override);
     let mut inner_cmd = pane_token.to_string();
 
     // Insert default subcommand (e.g., "chat" for kiro-cli) if the user
@@ -149,7 +150,7 @@ pub fn resolve_pane_command(
         // Bare <agent> - use window-level effective agent
         let agent = effective_agent?;
         (agent, effective_agent)
-    } else if super::agent::is_known_agent(raw_command) {
+    } else if agent::is_known_agent(raw_command) {
         // Known agent command (e.g., "codex --flags") - use itself as effective
         // agent so prompt injection works even when it's not the configured agent
         (raw_command, Some(raw_command))
@@ -171,6 +172,15 @@ pub fn resolve_pane_command(
         type_override,
     );
     let prompt_injected = matches!(result, Cow::Owned(_));
+    // The single funnel every pane launch passes through: if a prompt file was
+    // supplied and `prompt_injected` is false here, the agent starts silent.
+    crate::wm_evt!(
+        "pane.command.resolved",
+        cmd = %result,
+        prompt_file = ?prompt_file_path,
+        prompt_injected = prompt_injected,
+        agent = ?pane_effective_agent,
+    );
     Some(ResolvedCommand {
         command: result.into_owned(),
         prompt_injected,
@@ -206,7 +216,7 @@ pub fn adjust_command<'a>(
     // Even without a prompt, insert the default subcommand if needed
     // (e.g., "kiro-cli" -> "kiro-cli chat"). Only applies when the
     // command itself is the agent (stem must match).
-    let profile = super::agent::resolve_profile_with_type(effective_agent, type_override);
+    let profile = agent::resolve_profile_with_type(effective_agent, type_override);
     if let Some(subcmd) = profile.default_subcommand()
         && let Some((token, rest_with_leading)) = crate::config::split_first_token(command)
     {
@@ -275,12 +285,19 @@ pub fn escape_for_sh_c_inner_single_quote(s: &str) -> String {
     escape_for_double_quotes(&single_escaped)
 }
 
+/// Escape a string for safe embedding inside a single-quoted `'...'` shell
+/// context. Each `'` becomes `'\''` (close-quote, escaped quote, reopen-quote),
+/// which is the only character that needs escaping inside single quotes.
+pub fn escape_for_single_quotes(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
+
 /// Wrap a command in `sh -c '...'` for execution in non-POSIX shells.
 ///
 /// Used when the default shell (nushell, fish, etc.) doesn't support
 /// POSIX command substitution like `$(...)`.
 pub fn wrap_for_non_posix_shell(command: &str) -> String {
-    let escaped = command.replace('\'', "'\\''");
+    let escaped = escape_for_single_quotes(command);
     format!("sh -c '{}'", escaped)
 }
 
@@ -293,6 +310,10 @@ pub fn wrap_for_non_posix_shell(command: &str) -> String {
 ///
 /// For non-POSIX wrapped commands like ` sh -c 'claude -- ...'`, the flag
 /// is inserted inside the inner command.
+///
+/// If the flag is already present, the command is returned unchanged so
+/// callers can safely inject even when the user already included the flag
+/// in their agent command.
 pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
     // Handle the leading space (history prevention prefix)
     let trimmed = command.trim_start();
@@ -302,9 +323,16 @@ pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
     if trimmed.starts_with("sh -c '") && trimmed.ends_with('\'') {
         let inner = &trimmed[7..trimmed.len() - 1];
         let inner_unescaped = inner.replace("'\\''", "'");
+        if command_contains_flag(&inner_unescaped, flag) {
+            return command.to_string();
+        }
         let injected = inject_flag_after_agent_executable(&inner_unescaped, flag);
         let re_escaped = injected.replace('\'', "'\\''");
         return format!("{}sh -c '{}'", leading_spaces, re_escaped);
+    }
+
+    if command_contains_flag(trimmed, flag) {
+        return command.to_string();
     }
 
     format!(
@@ -314,10 +342,23 @@ pub fn inject_skip_permissions_flag(command: &str, flag: &str) -> String {
     )
 }
 
+/// Check whether a command already contains the given flag as a contiguous
+/// whitespace-delimited token sequence.
+fn command_contains_flag(command: &str, flag: &str) -> bool {
+    let flag_tokens: Vec<&str> = flag.split_whitespace().collect();
+    if flag_tokens.is_empty() {
+        return false;
+    }
+    let command_tokens: Vec<&str> = command.split_whitespace().collect();
+    command_tokens
+        .windows(flag_tokens.len())
+        .any(|window| window == flag_tokens.as_slice())
+}
+
 /// Insert a flag after the real agent executable in a command,
 /// handling `env` wrappers and `VAR=value` assignments.
 fn inject_flag_after_agent_executable(command: &str, flag: &str) -> String {
-    let exe_token = super::agent::find_executable_token(command);
+    let exe_token = agent::find_executable_token(command);
     if exe_token.is_empty() {
         return format!("{} {}", command, flag);
     }
@@ -619,6 +660,33 @@ mod tests {
         );
     }
 
+    // --- escape_for_single_quotes tests ---
+
+    #[test]
+    fn test_escape_for_single_quotes_no_quote() {
+        assert_eq!(
+            escape_for_single_quotes("zellij action go-to-tab 3"),
+            "zellij action go-to-tab 3"
+        );
+    }
+
+    #[test]
+    fn test_escape_for_single_quotes_with_quote() {
+        // A window name like "it's" inside a single-quoted sh -c context must
+        // close, escape, and reopen the quote so it does not break out.
+        assert_eq!(
+            escape_for_single_quotes("kill it's-window"),
+            "kill it'\\''s-window"
+        );
+        // Round-trip: embedding the escaped form inside '...' yields the original.
+        let raw = "echo 'a' && rm -rf x";
+        let wrapped = format!("'{}'", escape_for_single_quotes(raw));
+        // No bare single quote can terminate the wrapper prematurely: every
+        // original `'` is represented as the `'\''` sequence.
+        assert!(wrapped.starts_with('\'') && wrapped.ends_with('\''));
+        assert!(wrapped.contains("'\\''"));
+    }
+
     // --- escape_for_sh_c_inner_single_quote tests ---
 
     #[test]
@@ -747,6 +815,40 @@ mod tests {
         let result =
             inject_skip_permissions_flag("env FOO=bar claude", "--dangerously-skip-permissions");
         assert_eq!(result, "env FOO=bar claude --dangerously-skip-permissions");
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_idempotent() {
+        let original = " claude --dangerously-skip-permissions -- \"$(cat PROMPT.md)\"";
+        let result = inject_skip_permissions_flag(original, "--dangerously-skip-permissions");
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_idempotent_env_wrapped() {
+        let original = " env -u FOO claude --dangerously-skip-permissions --verbose";
+        let result = inject_skip_permissions_flag(original, "--dangerously-skip-permissions");
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_idempotent_non_posix_shell() {
+        let original = " sh -c 'claude --yolo -- \"$(cat PROMPT.md)\"'";
+        let result = inject_skip_permissions_flag(original, "--yolo");
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_multi_token_flag_idempotent() {
+        let original = " vibe --agent auto-approve -- \"$(cat PROMPT.md)\"";
+        let result = inject_skip_permissions_flag(original, "--agent auto-approve");
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_inject_skip_permissions_multi_token_flag() {
+        let result = inject_skip_permissions_flag("vibe", "--agent auto-approve");
+        assert_eq!(result, "vibe --agent auto-approve");
     }
 
     // --- resolve_pane_command tests ---

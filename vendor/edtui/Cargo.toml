@@ -1,0 +1,60 @@
+[package]
+name = "edtui"
+version = "0.11.3"
+edition = "2021"
+repository = "https://github.com/preiter93/edtui"
+keywords = ["ratatui", "tui", "editor", "text", "vim"]
+description = "A TUI based vim inspired editor"
+authors = ["preiter <phil.reiter93@gmail.com>"]
+license = "MIT"
+
+[dependencies]
+ratatui-core = { package = "ratatui-core", version = "0.1" }
+ratatui-widgets = { version = "0.3.0", default-features = false }
+crossterm = { package = "crossterm", version = "0.29" }
+
+jagged = { path = "../edtui-jagged", package = "edtui-jagged" }
+enum_dispatch = { path = "../enum_dispatch" }
+arboard = { version = "3", optional = true }
+arbitrary = { version = "1", optional = true, features = ["derive"] }
+edit = { version = "0.1.5", optional = true }
+unicode-width = "0.2.0"
+syntect = { version = "5", optional = true }
+once_cell = { version = "1", optional = true }
+
+[dev-dependencies]
+ratatui = { package = "ratatui", version = "0.30" }
+
+[[example]]
+name = "app"
+required-features = ["syntax-highlighting"]
+
+[[example]]
+name = "syntax_highlighting"
+required-features = ["syntax-highlighting"]
+
+[[example]]
+name = "test_text"
+
+[[example]]
+name = "emacs"
+
+[[example]]
+name = "custom_keybindings"
+
+[[example]]
+name = "single_line_emacs"
+
+[[example]]
+name = "highlights"
+
+[[example]]
+name = "system_editor"
+required-features = ["system-editor"]
+
+[features]
+default = ["arboard", "mouse-support", "syntax-highlighting"]
+arboard = ["dep:arboard"]
+mouse-support = []
+syntax-highlighting = ["dep:syntect", "dep:once_cell"]
+system-editor = ["dep:edit"]

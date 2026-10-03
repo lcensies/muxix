@@ -3,7 +3,7 @@
 use anyhow::Result;
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton,
         MouseEventKind,
     },
     execute,
@@ -99,23 +99,38 @@ pub fn run_sidebar() -> Result<()> {
     spawn_input_thread(tx);
 
     let mut needs_render = true;
+    // Set on Resize. tmux may resize the pane and reflow it back to the same
+    // size before we draw (window-resized hook, background windows); ratatui
+    // then sees no size change and diff-draws over tmux-mangled content.
+    let mut needs_clear = false;
     let startup = std::time::Instant::now();
     let startup_grace = Duration::from_secs(3);
 
     loop {
-        // Render before blocking (redraws only when state changed)
+        // Render before blocking (redraws only when state changed). Background
+        // windows draw too: tmux keeps the pane screen, so skipping leaves
+        // stale content on switch.
         if needs_render {
+            if needs_clear {
+                terminal.clear()?;
+                needs_clear = false;
+            }
             terminal.draw(|f| render_sidebar(f, &mut app))?;
             needs_render = false;
         }
 
-        // Adaptive timeout: 250ms when active (for spinner), block when hidden.
+        // Adaptive timeout: 250ms when a spinner is animating, 1s when active
+        // but calm (elapsed counters only), block when hidden.
         // If a resize debounce is pending, wake early to process it.
         let timeout = if let Some(deadline) = app.resize_deadline {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             remaining.min(Duration::from_millis(250))
         } else if app.host_window_active() {
-            Duration::from_millis(250)
+            if app.needs_animation() {
+                Duration::from_millis(250)
+            } else {
+                Duration::from_secs(1)
+            }
         } else {
             // Block until a snapshot or input wakes us. Use a large timeout
             // since recv() without timeout would prevent clean shutdown if
@@ -150,6 +165,7 @@ pub fn run_sidebar() -> Result<()> {
                 &startup,
                 startup_grace,
                 &mut needs_render,
+                &mut needs_clear,
             );
         }
 
@@ -162,6 +178,7 @@ pub fn run_sidebar() -> Result<()> {
                 &startup,
                 startup_grace,
                 &mut needs_render,
+                &mut needs_clear,
             );
         }
 
@@ -190,6 +207,7 @@ fn process_event(
     startup: &std::time::Instant,
     startup_grace: Duration,
     needs_render: &mut bool,
+    needs_clear: &mut bool,
 ) {
     match event {
         AppEvent::SnapshotReady => {
@@ -207,22 +225,8 @@ fn process_event(
             }
         }
         AppEvent::Input(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-            match (key.code, key.modifiers) {
-                (KeyCode::Char('q'), _)
-                | (KeyCode::Esc, _)
-                | (KeyCode::Char('c'), crossterm::event::KeyModifiers::CONTROL) => {
-                    app.quit_reason = Some("user keypress".to_string());
-                    app.should_quit = true;
-                }
-                (KeyCode::Char('j'), _) | (KeyCode::Down, _) => app.next(),
-                (KeyCode::Char('k'), _) | (KeyCode::Up, _) => app.previous(),
-                (KeyCode::Enter, _) => app.jump_to_selected(),
-                (KeyCode::Char('G'), _) => app.select_last(),
-                (KeyCode::Char('g'), _) => app.select_first(),
-                (KeyCode::Char('v'), _) => app.toggle_layout_mode(),
-                (KeyCode::Char('z'), _) => app.toggle_sleeping(),
-                _ => {}
-            }
+            let chord = crate::tui::chord::KeyChord::from_event(key);
+            super::keymap::handle_key(app, chord);
             *needs_render = true;
         }
         AppEvent::Input(Event::Mouse(mouse)) => {
@@ -246,6 +250,7 @@ fn process_event(
         AppEvent::Input(Event::Resize(cols, rows)) => {
             app.on_resize_event(cols, rows);
             *needs_render = true;
+            *needs_clear = true;
         }
         AppEvent::Input(_) => {}
     }

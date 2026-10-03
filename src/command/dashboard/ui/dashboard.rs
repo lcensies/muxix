@@ -16,6 +16,10 @@ use super::super::app::{App, DashboardTab};
 use super::super::spinner::SPINNER_FRAMES;
 use super::format;
 use super::format::{format_git_status, format_pr_status, truncate};
+use super::tasks::{
+    render_task_detail, render_task_footer, render_task_footer_filter, render_task_modals,
+    render_task_table,
+};
 use super::worktree::{render_worktree_preview, render_worktree_table};
 
 /// Render the tab header line showing Agents | Worktrees with active tab highlighted.
@@ -27,16 +31,23 @@ fn render_tab_header(f: &mut Frame, app: &App, area: Rect) {
     let pipe_style = Style::default().fg(app.palette.border);
     let rule_style = Style::default().fg(app.palette.border);
 
-    let (agents_style, worktrees_style) = match app.active_tab {
-        DashboardTab::Agents => (active_style, inactive_style),
-        DashboardTab::Worktrees => (inactive_style, active_style),
+    let s = |tab: DashboardTab| {
+        if app.active_tab == tab {
+            active_style
+        } else {
+            inactive_style
+        }
     };
 
     let tabs_spans = vec![
         Span::raw("  "),
-        Span::styled("Agents", agents_style),
+        Span::styled("Agents", s(DashboardTab::Agents)),
         Span::styled(" \u{2502} ", pipe_style),
-        Span::styled("Worktrees", worktrees_style),
+        Span::styled("Worktrees", s(DashboardTab::Worktrees)),
+        Span::styled(" \u{2502} ", pipe_style),
+        Span::styled("Tasks", s(DashboardTab::Tasks)),
+        Span::styled(" \u{2502} ", pipe_style),
+        Span::styled(" \u{2502} ", pipe_style),
     ];
     let rule = Line::from(Span::styled(
         "\u{2500}".repeat(area.width as usize),
@@ -103,21 +114,36 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
     // Tab header
     render_tab_header(f, app, tab_area);
 
-    // Table (agents or worktrees based on active tab)
+
+    // Table (agents, worktrees, or tasks based on active tab)
     match app.active_tab {
-        DashboardTab::Agents => render_table(f, app, table_area),
+        DashboardTab::Agents => {
+            if app.grouped_agents {
+                super::grouped::render_grouped_agents(f, app, table_area);
+            } else {
+                render_table(f, app, table_area);
+            }
+        }
         DashboardTab::Worktrees => render_worktree_table(f, app, table_area),
+        DashboardTab::Tasks => {
+            // Split content into table + detail for tasks
+            let task_chunks =
+                Layout::vertical([Constraint::Fill(1), Constraint::Length(8)]).split(table_area);
+            render_task_table(f, app, task_chunks[0]);
+            render_task_detail(f, app, task_chunks[1]);
+        }
     }
 
-    // Preview (only for backends that support it)
+    // Preview (only for backends that support it, not shown on Tasks tab)
     if let Some(preview) = preview_area {
         match app.active_tab {
             DashboardTab::Agents => render_preview(f, app, preview),
             DashboardTab::Worktrees => render_worktree_preview(f, app, preview),
+            DashboardTab::Tasks => {} // Tasks tab uses its own detail panel
         }
     }
 
-    // Footer - show status message if active, otherwise mode-specific help
+    // Footer
     if let Some((msg, _)) = &app.status_message {
         let p = &app.palette;
         f.render_widget(
@@ -145,7 +171,19 @@ pub fn render_dashboard(f: &mut Frame, app: &mut App) {
                     render_worktree_footer_normal(f, app, footer_area);
                 }
             }
+            DashboardTab::Tasks => {
+                if app.tasks.filter_active {
+                    render_task_footer_filter(f, app, footer_area);
+                } else {
+                    render_task_footer(f, app, footer_area);
+                }
+            }
         }
+    }
+
+    // Task modals rendered on top
+    if app.active_tab == DashboardTab::Tasks {
+        render_task_modals(f, app, area);
     }
 }
 

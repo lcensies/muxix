@@ -9,6 +9,18 @@ use tracing::debug;
 use crate::{cmd, git, nerdfont};
 use which::{which, which_in};
 
+pub mod edit;
+pub mod include;
+pub mod profiles;
+pub mod resolve;
+pub mod secrets;
+
+#[cfg(test)]
+mod load_tests;
+
+#[cfg(test)]
+mod merge_differential;
+
 /// Default script for cleaning up node_modules directories before worktree deletion.
 /// This script moves node_modules to a temporary location and deletes them in the background,
 /// making the workmux remove command return almost instantly.
@@ -24,6 +36,59 @@ pub struct FileConfig {
     /// Glob patterns for files to symlink from the repo root into the new worktree
     #[serde(default)]
     pub symlink: Option<Vec<String>>,
+}
+
+/// Configuration for a single MCP (Model Context Protocol) server, declared in
+/// the `mcp:` section of `.workmux.yaml`.
+///
+/// workmux renders these into a project `.mcp.json` (Claude Code's native
+/// format) which is propagated into each worktree, making the server available
+/// to any agent that reads a project-level `.mcp.json`. The schema is
+/// agent-agnostic so the same declaration can drive other agents' formats later.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct McpServerConfig {
+    /// Executable that launches the server (e.g. `npx`).
+    pub command: String,
+
+    /// Arguments passed to `command` (e.g. `["-y", "socraticode"]`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+
+    /// Environment variables set for the server process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<BTreeMap<String, String>>,
+
+    /// Whether the server is enabled. Defaults to `true`; set `false` to keep
+    /// the declaration but omit it from the generated `.mcp.json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+
+    /// Agents this server applies to (short id like `pi` or lowercased display
+    /// name like `claude code`). Absent means all agents. Caveat: Claude, pi,
+    /// and omp share the project `.mcp.json`, so a server scoped to any one of
+    /// them is still visible to the others through that file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agents: Option<Vec<String>>,
+
+    /// What the server needs: npm packages workmux installs, executables it
+    /// asserts on PATH. Lets `command` name the binary instead of `npx -y`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<crate::deps::Requires>,
+}
+
+impl McpServerConfig {
+    /// Whether this server should be materialized (enabled defaults to true).
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    /// Whether this server applies to `agent` (no `agents` list means all).
+    pub fn applies_to(&self, agent: crate::agent::setup::Agent) -> bool {
+        match &self.agents {
+            None => true,
+            Some(keys) => keys.iter().any(|k| agent.matches_config_key(k)),
+        }
+    }
 }
 
 /// Configuration for agent status icons displayed in tmux window bar
@@ -104,10 +169,11 @@ impl DashboardConfig {
         self.merge.as_deref().unwrap_or("!workmux merge")
     }
 
-    /// Get the preview size percentage (clamped to 10-90).
+    /// Get the preview size percentage (clamped to 1-90, matching the
+    /// documented `preview_size` range and the `--preview` CLI flag).
     /// Default: 60
     pub fn preview_size(&self) -> u8 {
-        self.preview_size.unwrap_or(60).clamp(10, 90)
+        self.preview_size.unwrap_or(60).clamp(1, 90)
     }
 
     /// Whether to show check pass/total counts alongside check icons.
@@ -221,6 +287,11 @@ pub struct SidebarConfig {
 
     /// Per-agent icon overrides.
     pub agent_icons: Option<AgentIcons>,
+
+    /// Default scope for the sidebar toggle command: "global" or "session".
+    /// When "session", plain `wng sidebar` activates only the current session.
+    /// Use `wng sidebar --global` to force global scope regardless of this setting.
+    pub default_scope: Option<SidebarDefaultScope>,
 }
 
 /// Sidebar pane position.
@@ -230,6 +301,113 @@ pub enum SidebarPosition {
     #[default]
     Left,
     Top,
+}
+
+/// Default scope for the sidebar toggle command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarDefaultScope {
+    /// Sidebar toggle affects all sessions (current default).
+    #[default]
+    Global,
+    /// Sidebar toggle affects only the current session.
+    Session,
+}
+
+
+
+impl IdleDuration {
+    pub fn as_duration(self) -> std::time::Duration {
+        self.0
+    }
+}
+
+/// Renders back into the human-readable form it parses, so a config that is
+/// read and rewritten (merge resolver, `config resolve`) stays round-trippable.
+/// Idle duration parsed from human-readable strings like "5m", "30s", "2h".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdleDuration(pub std::time::Duration);
+
+impl std::fmt::Display for IdleDuration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let secs = self.0.as_secs();
+        if secs % 3600 == 0 {
+            write!(f, "{}h", secs / 3600)
+        } else if secs % 60 == 0 {
+            write!(f, "{}m", secs / 60)
+        } else {
+            write!(f, "{secs}s")
+        }
+    }
+}
+
+impl Serialize for IdleDuration {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for IdleDuration {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        parse_idle_duration(&s)
+            .map(IdleDuration)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+fn parse_idle_duration(s: &str) -> Result<std::time::Duration, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty duration".into());
+    }
+    let mut total_secs: u64 = 0;
+    let mut num_buf = String::new();
+    for ch in s.chars() {
+        match ch {
+            '0'..='9' => num_buf.push(ch),
+            'h' | 'H' => {
+                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                total_secs += n * 3600;
+                num_buf.clear();
+            }
+            'm' | 'M' => {
+                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                total_secs += n * 60;
+                num_buf.clear();
+            }
+            's' | 'S' => {
+                let n: u64 = num_buf.parse().map_err(|_| format!("invalid number in '{s}'"))?;
+                total_secs += n;
+                num_buf.clear();
+            }
+            _ => return Err(format!("unexpected character '{ch}' in duration '{s}'")),
+        }
+    }
+    if !num_buf.is_empty() {
+        return Err(format!("duration '{s}' has trailing number without unit"));
+    }
+    if total_secs == 0 {
+        return Err(format!("duration '{s}' resolved to zero"));
+    }
+    Ok(std::time::Duration::from_secs(total_secs))
+}
+
+/// Daemon-level configuration (applies globally, not per-project).
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct DaemonConfig {
+    /// Auto-freeze idle Done agents to reclaim CPU.
+    #[serde(default)]
+    pub auto_freeze: Option<AutoFreezeConfig>,
+}
+
+/// Configuration for the auto-freeze feature.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AutoFreezeConfig {
+    /// Freeze a Done agent's process tree after it has been idle (unfocused)
+    /// for this long. The process is SIGSTOPed and SIGCONTed when its pane
+    /// regains focus. Examples: "5m", "30s", "2h".
+    pub after_idle: IdleDuration,
 }
 
 /// Sidebar width: either absolute columns or a percentage of terminal width.
@@ -248,7 +426,9 @@ impl SidebarWidth {
                 if terminal_width == 0 {
                     25
                 } else {
-                    terminal_width * p / 100
+                    // Compute in u32 to avoid u16 overflow on wide terminals
+                    // (e.g. width 700 * 100 = 70000 > u16::MAX).
+                    ((terminal_width as u32 * *p as u32) / 100) as u16
                 }
             }
         }
@@ -324,7 +504,13 @@ impl SidebarHeight {
     pub fn resolve(&self, terminal_height: u16) -> u16 {
         match self {
             SidebarHeight::Absolute(h) => *h,
-            SidebarHeight::Percent(p) => terminal_height * p / 100,
+            SidebarHeight::Percent(p) => {
+                if terminal_height == 0 {
+                    return 0;
+                }
+                // Compute in u32 to avoid u16 overflow on tall terminals.
+                ((terminal_height as u32 * *p as u32) / 100) as u16
+            }
         }
     }
 }
@@ -398,9 +584,109 @@ pub struct WindowConfig {
     pub panes: Option<Vec<PaneConfig>>,
 }
 
+/// A declared agent config profile. The name is the map key; the source tree
+/// lives at `~/.config/workmux/agent-profiles/<name>/` and holds the deltas
+/// layered over the agent's base config dir.
+#[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq)]
+pub struct AgentProfile {
+    /// Human-readable note shown in listings. Optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Per-agent declarative deltas (keyed by agent id, e.g. `pi`), applied by
+    /// generating the agent's settings file into the derived overlay. Agents
+    /// without an entry get the plain file overlay.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agents: BTreeMap<String, AgentProfileAgent>,
+}
+
+/// Declarative per-agent deltas for one profile.
+#[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq)]
+pub struct AgentProfileAgent {
+    /// Plugin specs added to the base package list. Paths are absolutized
+    /// (`~/` → home, relative → base agent dir); scheme specs pass verbatim.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_plugins: Vec<String>,
+
+    /// Base package entries removed from the overlay (exact string match).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_plugins: Vec<String>,
+
+    /// Skill sources linked into the overlay at `skills/<basename>`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_skills: Vec<String>,
+
+    /// Installed skill dir names omitted from the overlay's `skills/`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_skills: Vec<String>,
+
+    /// Prompt components added to the overlay's rendered prompt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_prompt_components: Vec<String>,
+
+    /// Prompt components removed from the overlay's rendered prompt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_prompt_components: Vec<String>,
+
+    /// Feature keys whose per-agent artifacts (plugin spec and/or fallback
+    /// prompt component) are dropped from the overlay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_features: Vec<String>,
+
+    /// Agent-dir-relative paths (files or dirs) omitted from the overlay
+    /// entirely — skills, extension files, anything base carries that this
+    /// profile must not see. Exact path match, no globs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_paths: Vec<String>,
+
+    /// RFC 7386 merge patch applied to the generated settings file after the
+    /// package delta: objects merge recursively, scalars/arrays replace,
+    /// `null` deletes the key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
+}
+
+impl AgentProfileAgent {
+    /// True when no delta is declared — the overlay is a plain file merge.
+    pub fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
 /// Configuration for the workmux tool, read from .workmux.yaml
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Config {
+    /// Other config files merged in beneath this one, in declaration order.
+    ///
+    /// Directive, not configuration: the loader expands and strips it, so a
+    /// fully-resolved config never carries it. Present on the struct so that a
+    /// config using it still round-trips through serde.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<include::IncludeEntry>,
+
+    /// Named partial configs, overlaid on the resolved base when selected by
+    /// `--profile`, `WORKMUX_PROFILE`, or `default_profile`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub profiles: BTreeMap<String, serde_yaml::Value>,
+
+    /// Profile(s) applied when nothing higher-precedence selects one.
+    /// Comma-separated for several, applied left to right.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_profile: Option<String>,
+
+    /// Named agent config profiles: lightweight, host-override overlays of an
+    /// agent's skills/extensions/config, layered on top of the real config dir.
+    /// Materialized by `workmux setup`; selected by `workmux exec --profile`.
+    /// A different axis from `profiles:` (which layers *workmux* config).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agent_profiles: BTreeMap<String, AgentProfile>,
+
+    /// Agent profile `workmux exec` falls back to when `--profile` is omitted.
+    /// Note: only `exec` honors this; a bare agent launched outside workmux
+    /// still uses the untouched base config dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_agent_profile: Option<String>,
+
     /// The primary branch to merge into (optional, auto-detected if not set)
     #[serde(default)]
     pub main_branch: Option<String>,
@@ -432,6 +718,10 @@ pub struct Config {
     pub windows: Option<Vec<WindowConfig>>,
 
     /// Commands to run after creating the worktree
+    /// How `workmux start` multiplexes tracked projects.
+    #[serde(default)]
+    pub project_mux: Option<ProjectMux>,
+
     #[serde(default)]
     pub post_create: Option<Vec<String>>,
 
@@ -446,6 +736,25 @@ pub struct Config {
     /// The agent command to use (e.g., "claude", "gemini")
     #[serde(default)]
     pub agent: Option<String>,
+
+    /// Spawn worktrees with the same agent workmux is running inside.
+    ///
+    /// When enabled, an agent detected from the environment (see
+    /// `agent::identity::detect_parent_agent`) takes precedence over `agent`,
+    /// so running `workmux add` from inside Claude Code spawns Claude Code
+    /// rather than the configured default. An explicit `--agent` flag still
+    /// wins. Defaults to false — without it, `agent` is used as before.
+    #[serde(default)]
+    pub inherit_agent: Option<bool>,
+
+    /// Per-project agent selection by path regex, first match wins.
+    ///
+    /// Matched against the project's *main worktree* root, so every worktree
+    /// of a project resolves the same agent. Ranks below an `agent:` set by a
+    /// project config or profile and above the global `agent:`. Global-only:
+    /// a rule names a command workmux will execute.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_rules: Vec<AgentRule>,
 
     /// Default merge strategy for `workmux merge`
     #[serde(default)]
@@ -520,9 +829,251 @@ pub struct Config {
     #[serde(skip)]
     pub agent_type: Option<String>,
 
+    /// What decided `agent`. Set during loading so `workmux config agent which`
+    /// reports the real decision instead of re-deriving it.
+    #[serde(skip)]
+    pub agent_source: Option<AgentSource>,
+
     /// Container sandbox configuration
     #[serde(default)]
     pub sandbox: SandboxConfig,
+
+    /// Submodule worktree strategy configuration
+    #[serde(default)]
+    pub submodules: SubmoduleConfig,
+
+    /// MCP (Model Context Protocol) servers to expose to agents in this project.
+    /// Rendered into a project `.mcp.json` (Claude format) by `workmux mcp sync`
+    /// and propagated into each worktree. Reusable for any MCP server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<BTreeMap<String, McpServerConfig>>,
+
+    /// Agent bootstrap configuration: uniform setup for plugins, skills, and prompts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap: Option<crate::bootstrap::BootstrapConfig>,
+
+    /// Unified, provider-centric model registry: declare each provider (source)
+    /// and the models it serves, with context/compaction limits, once. Resolved
+    /// by provider id or logical name everywhere (a model can come from several
+    /// providers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub providers: Option<crate::model::ProviderRegistry>,
+
+    /// Proxy chain configuration for per-worktree agentgateway + RTK.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_chain: Option<crate::proxy::ProxyChainConfig>,
+
+
+    /// Pipeline event tracing controls (`wm::event`): level, master switch, and
+    /// per-kind/group enable/disable.
+    #[serde(default)]
+    pub events: EventsConfig,
+
+    /// Named agent capability profiles (inline definitions). Resolved by
+    /// `agent_ref:` in harness YAML nodes. Local overrides beat file-based defs.
+    /// Alternatively declare them in `.workmux/agents/<name>.yaml` files.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub agent_defs: BTreeMap<String, crate::agent::definition::AgentDefinition>,
+
+    /// Named prompt templates (inline). Resolved by `prompt_ref:` in agent
+    /// definitions or directly in harness nodes. Files in `.workmux/prompts/`
+    /// are also scanned (inline wins on conflict).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prompt_defs: BTreeMap<String, crate::prompt::PromptTemplate>,
+
+    /// Registry sources for resolving agent definitions and prompts by name.
+    /// `.workmux/agents/` and `.workmux/prompts/` are always searched first.
+    /// Additional sources (git repos, URLs) are searched in declaration order.
+    /// Phase 1: only `local:` sources are supported; git/url are stubs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_registries: Vec<crate::agent::registry::RegistrySource>,
+
+    /// Default agent runtime for this project: the name of an `ade` entry, or
+    /// `local` (the default) to run agents in a worktree and tmux pane here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_runtime: Option<String>,
+
+    /// Agent-development environments workmux can drive, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ade: BTreeMap<String, AdeConfig>,
+
+    /// Daemon-level settings (sidebar daemon, auto-freeze, etc.).
+    /// Global-only: project configs cannot override these.
+    #[serde(default)]
+    pub daemon: DaemonConfig,
+
+    /// Enterprise provision server settings. Global-only — project config cannot
+    /// override this to prevent a malicious repo from redirecting policy fetch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provision: Option<crate::provision::ProvisionConfig>,
+}
+
+
+fn default_true() -> bool {
+    true
+}
+
+/// Kill-switches for the OpenSpec integration. Both default to on; disabling
+/// `enabled` reverts the loop to pre-OpenSpec behavior, and disabling
+/// `writeback` keeps the import while never touching the user's tasks.md.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenspecConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub writeback: bool,
+}
+
+impl Default for OpenspecConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            writeback: true,
+        }
+    }
+}
+
+
+/// Ordering strategy for ready tasks.
+#[derive(Debug, Deserialize, Serialize, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionOrder {
+    /// Preserve task-graph file order (current behaviour).
+    #[default]
+    Graph,
+    /// Highest `priority` first; ties keep graph order.
+    Priority,
+    /// Stable ascending order by task id.
+    Fifo,
+}
+
+
+fn default_max_runtime() -> IdleDuration {
+    IdleDuration(std::time::Duration::from_secs(6 * 3600))
+}
+
+
+
+
+
+/// Merge policy for completed tasks in the loop.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct LoopMergeConfig {
+    /// Whether the loop merges completed tasks automatically. When unset, the
+    /// `--auto-merge` CLI flag decides. When false, tasks stop at `done`.
+    #[serde(default)]
+    pub auto_merge: Option<bool>,
+
+    /// Merge strategy for loop merges. Falls back to the top-level
+    /// `merge_strategy`, then a standard merge commit.
+    #[serde(default)]
+    pub strategy: Option<MergeStrategy>,
+
+    /// What to do when a deterministic merge hits conflicts.
+    #[serde(default)]
+    pub on_conflict: ConflictPolicy,
+
+    /// Shell commands run in the feature worktree before each task merge.
+    #[serde(default)]
+    pub pre_merge: Vec<String>,
+}
+
+/// How the loop reacts to a merge conflict during its deterministic merge step.
+#[derive(Debug, Deserialize, Serialize, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConflictPolicy {
+    /// Spawn an agent in the worktree to resolve the conflict (default).
+    #[default]
+    Agent,
+    /// Mark the task blocked/failed and surface it for manual handling.
+    Manual,
+}
+
+
+/// Configuration for submodule worktree management.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct SubmoduleConfig {
+    /// When true, workmux creates/removes/merges matching worktrees for each
+    /// git submodule alongside the parent worktree. Default: false.
+    #[serde(default)]
+    pub worktrees: bool,
+}
+
+/// Which step of the precedence chain supplied the resolved agent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentSource {
+    /// The `--agent` flag.
+    Flag,
+    /// An `agent:` from a project config or a selected profile.
+    ProjectConfig,
+    /// An `agent_rules` entry, by index and pattern.
+    Rule { index: usize, pattern: String },
+    /// Detected from the parent process under `inherit_agent`.
+    Inherited,
+    /// The global config's `agent:`.
+    Global,
+    /// The built-in fallback.
+    Builtin,
+}
+
+impl std::fmt::Display for AgentSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Flag => write!(f, "--agent flag"),
+            Self::ProjectConfig => write!(f, "project config or profile"),
+            Self::Rule { index, pattern } => write!(f, "agent_rules[{index}] match {pattern:?}"),
+            Self::Inherited => write!(f, "inherited from parent agent"),
+            Self::Global => write!(f, "global config agent:"),
+            Self::Builtin => write!(f, "built-in default"),
+        }
+    }
+}
+
+/// One `agent_rules` entry: a path regex and the agent to use when it matches.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AgentRule {
+    /// Regex matched against the project's main worktree root path. A leading
+    /// `~/` is expanded to the home directory. Unanchored: `wng-workspace`
+    /// matches any path containing it.
+    #[serde(rename = "match")]
+    pub pattern: String,
+    /// Agent name (a key of `agents`) or a bare command.
+    pub agent: String,
+}
+
+impl AgentRule {
+    /// Compile the pattern with `~/` expanded.
+    ///
+    /// The tilde is expanded after an optional leading `^`, since an anchored
+    /// home-relative pattern (`^~/repos/work/`) is the common hand-written form.
+    pub fn compile(&self) -> Result<regex::Regex, regex::Error> {
+        let (anchor, rest) = match self.pattern.strip_prefix('^') {
+            Some(rest) => ("^", rest),
+            None => ("", self.pattern.as_str()),
+        };
+        let expanded = match (rest.strip_prefix("~/"), home::home_dir()) {
+            (Some(tail), Some(home)) => format!(
+                "{anchor}{}/{tail}",
+                regex::escape(&home.to_string_lossy())
+            ),
+            _ => self.pattern.clone(),
+        };
+        regex::Regex::new(&expanded)
+    }
+}
+
+/// First rule whose pattern matches `path`, with its index. Patterns that fail
+/// to compile are reported on stderr and skipped: one bad rule must not take
+/// the others down.
+pub fn match_agent_rule<'a>(rules: &'a [AgentRule], path: &Path) -> Option<(usize, &'a AgentRule)> {
+    let path = path.to_string_lossy();
+    rules.iter().enumerate().find(|(_, rule)| match rule.compile() {
+        Ok(re) => re.is_match(&path),
+        Err(e) => {
+            eprintln!("workmux: invalid agent_rules pattern {:?}: {e}", rule.pattern);
+            false
+        }
+    })
 }
 
 /// A named agent entry: either a plain command string or a `{ command, type }` object.
@@ -893,16 +1444,106 @@ pub enum SandboxBackend {
     Container,
     /// Lima VM backend
     Lima,
+    /// Microsandbox microVM backend (libkrun, no TAP networking required)
+    MicroSandbox,
+}
+
+/// Checkpoint strategy for sandbox agents.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum CheckpointStrategy {
+    /// Checkpoint before switching permission modes (e.g. plan → implement).
+    #[default]
+    ModeSwitch,
+    /// Checkpoint at a fixed time interval (requires `interval_secs`).
+    Periodic,
+    /// Only checkpoint when explicitly requested via CLI.
+    Manual,
+}
+
+/// Checkpoint/restore configuration for sandbox agents.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct CheckpointConfig {
+    /// Enable checkpointing. Default: false
+    #[serde(default)]
+    pub enabled: Option<bool>,
+
+    /// Checkpoint strategy. Default: mode-switch
+    #[serde(default)]
+    pub strategy: CheckpointStrategy,
+
+    /// Interval in seconds between periodic checkpoints. Only used when
+    /// strategy is `periodic`.
+    #[serde(default)]
+    pub interval_secs: Option<u64>,
+
+    /// Directory to store checkpoint snapshots.
+    /// Default: `~/.local/state/workmux/checkpoints/`
+    #[serde(default)]
+    pub dir: Option<String>,
+
+    /// Maximum number of snapshots to keep per agent sandbox.
+    /// Older snapshots are deleted automatically after each new checkpoint.
+    /// Default: 1 (keep only the most recent snapshot).
+    /// Set to 0 to disable pruning entirely.
+    #[serde(default)]
+    pub keep: Option<usize>,
+}
+
+impl CheckpointConfig {
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
+
+    /// Number of snapshots to retain per sandbox. 0 means unlimited.
+    pub fn keep(&self) -> usize {
+        self.keep.unwrap_or(1)
+    }
+}
+
+/// Microsandbox-specific configuration.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct MicroSandboxConfig {
+    /// Container image to use (e.g. `ubuntu:22.04`).
+    #[serde(default)]
+    pub image: Option<String>,
+
+    /// Number of vCPUs per sandbox VM. Default: 2
+    #[serde(default)]
+    pub cpus: Option<u32>,
+
+    /// Memory per sandbox VM (e.g. `4G`). Default: `4G`
+    #[serde(default)]
+    pub memory: Option<String>,
+
+    /// Disk size per sandbox VM (e.g. `20G`). Default: `20G`
+    #[serde(default)]
+    pub disk: Option<String>,
+}
+
+impl MicroSandboxConfig {
+    pub fn resolved_image(&self) -> &str {
+        self.image.as_deref().unwrap_or("ubuntu:22.04")
+    }
+
+    pub fn cpus(&self) -> u32 {
+        self.cpus.unwrap_or(2)
+    }
+
+    pub fn memory(&self) -> &str {
+        self.memory.as_deref().unwrap_or("4G")
+    }
 }
 
 /// Container runtime for sandbox
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxRuntime {
-    /// Docker (default fallback when neither runtime is found in PATH)
-    #[default]
+    /// Docker
     Docker,
-    /// Podman
+    /// Podman (default — its CRIU checkpoint/restore is what powers agent
+    /// resume; requires a rootful runtime, see `detect`).
+    #[default]
     Podman,
     /// Apple Container (macOS only, uses `container` binary)
     #[serde(rename = "apple-container")]
@@ -913,22 +1554,26 @@ impl SandboxRuntime {
     /// Auto-detect container runtime by checking PATH.
     ///
     /// On macOS, prefers Apple Container (`container`) over Docker/Podman.
-    /// The `container` probe is gated behind macOS since the generic binary name
-    /// could false-positive on Linux. Falls back to Docker if nothing is found
-    /// (will fail later with a clear "command not found" error).
+    /// On Linux, prefers Podman over Docker: Podman is the default runtime for
+    /// agent sandboxes because its CRIU checkpoint/restore is what enables
+    /// seamless agent resume. Note this requires Podman to run *rootful*
+    /// (rootless Podman refuses to checkpoint: "checkpointing a container
+    /// requires root") — run workmux as root or point it at a rootful Podman
+    /// service. Falls back to Podman if nothing is found (fails later with a
+    /// clear "command not found" error).
     pub fn detect() -> Self {
         #[cfg(target_os = "macos")]
         if which("container").is_ok() {
             return SandboxRuntime::AppleContainer;
         }
 
-        if which("docker").is_ok() {
-            SandboxRuntime::Docker
-        } else if which("podman").is_ok() {
+        if which("podman").is_ok() {
             SandboxRuntime::Podman
-        } else {
-            debug!("no container runtime found in PATH, defaulting to docker");
+        } else if which("docker").is_ok() {
             SandboxRuntime::Docker
+        } else {
+            debug!("no container runtime found in PATH, defaulting to podman");
+            SandboxRuntime::Podman
         }
     }
 
@@ -1194,20 +1839,6 @@ impl LimaConfig {
         self.skip_default_provision.unwrap_or(false)
     }
 
-    /// Merge: project overrides global, per-field.
-    fn merge(global: Self, project: Self) -> Self {
-        Self {
-            isolation: project.isolation.or(global.isolation),
-            projects_dir: project.projects_dir.or(global.projects_dir),
-            cpus: project.cpus.or(global.cpus),
-            memory: project.memory.or(global.memory),
-            disk: project.disk.or(global.disk),
-            provision: project.provision.or(global.provision),
-            skip_default_provision: project
-                .skip_default_provision
-                .or(global.skip_default_provision),
-        }
-    }
 }
 
 /// Host device mapping for container sandboxes.
@@ -1422,29 +2053,6 @@ impl ContainerConfig {
         Ok(())
     }
 
-    /// Merge: project overrides global, per-field, EXCEPT for `devices` and
-    /// `group_add` which are security-sensitive and global-only. Warnings for
-    /// project-level attempts are emitted in `Config::merge` where both values
-    /// are visible.
-    fn merge(global: Self, project: Self) -> Self {
-        // Security: excluded_files is global-only. Project config cannot set it --
-        // otherwise a repo's .workmux.yaml could delete user-level secret
-        // protections by providing an empty/overriding list.
-        if project.excluded_files.is_some() {
-            tracing::warn!(
-                "sandbox.container.excluded_files in project config (.workmux.yaml) is ignored -- \
-                move it to your global config (~/.config/workmux/config.yaml)"
-            );
-        }
-        Self {
-            runtime: project.runtime.or(global.runtime),
-            cpus: project.cpus.or(global.cpus),
-            memory: project.memory.or(global.memory),
-            devices: global.devices,
-            group_add: global.group_add,
-            excluded_files: global.excluded_files,
-        }
-    }
 }
 
 /// Network restriction policy for sandboxed containers.
@@ -1579,6 +2187,49 @@ fn validate_domain(domain: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Configuration for structured pipeline event tracing (target `wm::event`).
+///
+/// `WORKMUX_EVENTS` / `RUST_LOG` set the level; this section lets `.workmux.yaml`
+/// set that level too and, beyond it, silence specific event kinds or whole
+/// groups. See `docs/reference/pipeline-events.md`.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct EventsConfig {
+    /// Master switch. Default: true. `false` silences all `wm::event` output.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+
+    /// Trace level for `wm::event`: `off` | `info` | `debug` | `trace`.
+    /// Applied only when `WORKMUX_EVENTS` is unset (env wins).
+    #[serde(default)]
+    pub level: Option<String>,
+
+    /// Allowlist of event kinds/groups to emit. Non-empty => only these.
+    /// Group-aware: `pane.probe` matches `pane.probe.*`.
+    #[serde(default)]
+    pub only: Vec<String>,
+
+    /// Denylist of event kinds/groups to silence (applied after `only`).
+    /// Group-aware: `pane.probe` matches `pane.probe.*`.
+    #[serde(default)]
+    pub disable: Vec<String>,
+}
+
+impl EventsConfig {
+    /// Whether event tracing is enabled. Default: true.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    /// Build the runtime per-kind filter installed into the event system.
+    pub fn to_filter(&self) -> crate::signals::event::EventFilter {
+        crate::signals::event::EventFilter {
+            enabled: self.is_enabled(),
+            only: self.only.clone(),
+            disable: self.disable.clone(),
+        }
+    }
+}
+
 /// Configuration for sandboxing (Container or Lima)
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct SandboxConfig {
@@ -1649,6 +2300,14 @@ pub struct SandboxConfig {
     /// Container-specific configuration
     #[serde(default)]
     pub container: ContainerConfig,
+
+    /// Microsandbox-specific configuration (microVM backend via libkrun).
+    #[serde(default)]
+    pub microsandbox: MicroSandboxConfig,
+
+    /// Checkpoint/restore configuration for sandbox agents.
+    #[serde(default)]
+    pub checkpoint: CheckpointConfig,
 
     /// Network restriction configuration (container backend only).
     #[serde(default)]
@@ -1838,6 +2497,19 @@ pub fn find_project_config(start_dir: &Path) -> anyhow::Result<Option<ConfigLoca
     Ok(None)
 }
 
+/// Locate the `.workmux/` state/workflow directory for a project.
+///
+/// Uses `find_project_config` to find the `.workmux.yaml` config file and returns
+/// its sibling `.workmux/` directory. Falls back to `project_dir/.workmux` when no
+/// config file is found (e.g. in a bare checkout or a repo that hasn't run `workmux init`).
+pub fn find_workmux_dir(project_dir: &Path) -> std::path::PathBuf {
+    if let Ok(Some(loc)) = find_project_config(project_dir) {
+        loc.config_dir.join(".workmux")
+    } else {
+        project_dir.join(".workmux")
+    }
+}
+
 impl WorktreeNaming {
     /// Derive a name from a branch name using this strategy
     pub fn derive_name(&self, branch: &str) -> String {
@@ -1983,7 +2655,366 @@ pub fn global_config_path() -> Option<PathBuf> {
     Some(yaml)
 }
 
+/// How `workmux start` multiplexes tracked projects.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectMux {
+    /// One tmux session per tracked project (the only strategy for now).
+    #[default]
+    Session,
+}
+
+/// Which way project records flow between workmux and an ADE.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncDirection {
+    /// No syncing at all. The default: syncing edits two registries at once,
+    /// so it is opt-in.
+    #[default]
+    Off,
+    /// Adopt the ADE's projects into workmux.
+    Pull,
+    /// Publish workmux's projects to the ADE.
+    Push,
+    Bidirectional,
+}
+
+/// What to do when both sides disagree about the same project.
+///
+/// Distinct from [`ConflictPolicy`], which is about git merge conflicts in the
+/// orchestrate loop.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncConflictPolicy {
+    /// Report and change nothing. The default: a wrong automatic resolution
+    /// here silently renames or drops a project.
+    #[default]
+    Manual,
+    Workmux,
+    Ade,
+    Newest,
+}
+
+/// Project-sync policy for one ADE.
+///
+/// The defaults are deliberately timid: identity is the canonical root path,
+/// removals do not propagate, and names are not compared. Naive bidirectional
+/// sync is how registries lose entries or ping-pong forever.
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct ProjectSyncConfig {
+    #[serde(default)]
+    pub direction: SyncDirection,
+    #[serde(default)]
+    pub conflict: SyncConflictPolicy,
+    /// Propagate removals. Only ever inferred from a recorded last-synced set.
+    #[serde(default)]
+    pub removals: bool,
+    /// Treat a differing display name as a conflict.
+    #[serde(default)]
+    pub names: bool,
+}
+
+/// How an ADE exposes its project registry.
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct AdeProjectsConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub list_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub add_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove_args: Vec<String>,
+    /// JSON field holding a project's display name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name_field: String,
+    /// JSON field holding a project's root path -- the identity workmux syncs on.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_field: String,
+    #[serde(default)]
+    pub sync: ProjectSyncConfig,
+}
+
+impl AdeProjectsConfig {
+    /// Overlay this block on a preset, field by field.
+    ///
+    /// A user block tweaks a preset rather than replacing it: blanking the
+    /// preset's command lists because the user only wanted to set a sync
+    /// policy leaves the ADE looking broken with no visible cause.
+    pub fn merge_over(mut self, preset: &AdeProjectsConfig) -> AdeProjectsConfig {
+        if self.list_args.is_empty() {
+            self.list_args = preset.list_args.clone();
+        }
+        if self.add_args.is_empty() {
+            self.add_args = preset.add_args.clone();
+        }
+        if self.remove_args.is_empty() {
+            self.remove_args = preset.remove_args.clone();
+        }
+        if self.name_field.is_empty() {
+            self.name_field = preset.name_field.clone();
+        }
+        if self.root_field.is_empty() {
+            self.root_field = preset.root_field.clone();
+        }
+        self
+    }
+}
+
+/// Which of an ADE's own status names map onto each neutral status.
+///
+/// `failed` is separate from `done` on purpose: a manager reporting an error
+/// must never render as successful completion. An unmapped state becomes
+/// `unknown` rather than a guess.
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct AdeStatusMap {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starting: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub working: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waiting: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub done: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<String>,
+}
+
+/// An agent-development-environment workmux drives through its CLI.
+///
+/// Driving the CLI rather than a wire protocol keeps zero protocol code here
+/// and survives the ADE's schema churn, at the cost of polled status instead of
+/// pushed events -- the same trade workmux already makes with tmux and git.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct AdeConfig {
+    /// Executable to invoke.
+    #[serde(default)]
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub start_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub send_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub list_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stop_args: Vec<String>,
+    /// Adopt an already-running agent into workmux.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub import_args: Vec<String>,
+    /// JSON field holding an agent's id.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id_field: String,
+    /// JSON field holding an agent's status.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub status_field: String,
+    #[serde(default)]
+    pub status_map: AdeStatusMap,
+    /// Whether the ADE creates and owns the worktree itself.
+    #[serde(default)]
+    pub owns_worktree: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub projects: Option<AdeProjectsConfig>,
+}
+
+/// Defaults to the paseo preset rather than an empty struct.
+///
+/// An `AdeConfig` with no status map maps every state to `unknown`, which
+/// renders every agent as statusless in the UI. Deserialization is unaffected:
+/// serde uses each field's own `#[serde(default)]`, not this impl.
+impl Default for AdeConfig {
+    fn default() -> Self {
+        Self::paseo()
+    }
+}
+
+impl AdeConfig {
+    /// Overlay this block on a preset, field by field. See
+    /// [`AdeProjectsConfig::merge_over`] for why this merges rather than
+    /// replaces.
+    pub fn merge_over(mut self, preset: &AdeConfig) -> AdeConfig {
+        if self.command.is_empty() {
+            self.command = preset.command.clone();
+        }
+        for (mine, theirs) in [
+            (&mut self.start_args, &preset.start_args),
+            (&mut self.send_args, &preset.send_args),
+            (&mut self.list_args, &preset.list_args),
+            (&mut self.stop_args, &preset.stop_args),
+            (&mut self.import_args, &preset.import_args),
+        ] {
+            if mine.is_empty() {
+                *mine = theirs.clone();
+            }
+        }
+        if self.id_field.is_empty() {
+            self.id_field = preset.id_field.clone();
+        }
+        if self.status_field.is_empty() {
+            self.status_field = preset.status_field.clone();
+        }
+        if self.status_map == AdeStatusMap::default() {
+            self.status_map = preset.status_map.clone();
+        }
+        self.projects = match (self.projects.take(), preset.projects.as_ref()) {
+            (Some(mine), Some(theirs)) => Some(mine.merge_over(theirs)),
+            (mine, theirs) => mine.or_else(|| theirs.cloned()),
+        };
+        self
+    }
+
+    /// The built-in paseo preset.
+    pub fn paseo() -> AdeConfig {
+        let a = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        AdeConfig {
+            command: "paseo".to_string(),
+            start_args: a(&["agent", "run", "--json", "--cwd", "{cwd}", "{prompt}"]),
+            send_args: a(&["agent", "send", "{id}", "{text}"]),
+            list_args: a(&["agent", "ls", "--json"]),
+            stop_args: a(&["agent", "stop", "{id}"]),
+            import_args: a(&["agent", "ls", "--json"]),
+            id_field: "id".to_string(),
+            status_field: "status".to_string(),
+            status_map: AdeStatusMap {
+                starting: a(&["initializing"]),
+                working: a(&["running", "thinking"]),
+                waiting: a(&["idle", "waiting", "needs_input"]),
+                done: a(&["closed", "completed"]),
+                failed: a(&["error"]),
+            },
+            owns_worktree: true,
+            projects: Some(AdeProjectsConfig {
+                list_args: a(&["project", "ls", "--json"]),
+                add_args: a(&["project", "create", "{name}", "{root}"]),
+                remove_args: a(&["project", "delete", "{name}"]),
+                name_field: "name".to_string(),
+                root_field: "root".to_string(),
+                sync: ProjectSyncConfig::default(),
+            }),
+        }
+    }
+
+    /// Every built-in preset, by name.
+    pub fn presets() -> BTreeMap<String, AdeConfig> {
+        BTreeMap::from([("paseo".to_string(), AdeConfig::paseo())])
+    }
+}
+
+/// Top-level keys a config may declare that are not `Config` fields.
+///
+/// `include`, `profiles`, and `default_profile` are directives consumed by the
+/// loader; they are `Config` fields too, so they are covered by the field list
+/// itself and listed here only for clarity.
+const DIRECTIVE_KEYS: &[&str] = &["include", "profiles", "default_profile"];
+
+/// The cached org policy, when one is usable.
+///
+/// Fresh applies silently; stale applies with a warning; expired contributes
+/// nothing. Reading the cache is local-only — no command outside
+/// `workmux provision` ever makes a network request for policy.
+fn cached_policy(
+    provision: Option<&crate::provision::ProvisionConfig>,
+) -> Option<crate::provision::types::OrgPolicy> {
+    use crate::provision::cache::{CacheStatus, load_policy};
+
+    let grace_secs = provision
+        .and_then(|p| p.grace_period_secs)
+        .unwrap_or(72 * 3600);
+
+    match load_policy(grace_secs) {
+        Ok(CacheStatus::Fresh(policy)) => Some(policy),
+        Ok(CacheStatus::Stale(policy)) => {
+            tracing::warn!(
+                "org policy {} is stale -- run 'workmux provision sync' to refresh",
+                policy.policy_version
+            );
+            Some(policy)
+        }
+        Ok(CacheStatus::Expired) => {
+            tracing::warn!("org policy cache expired -- run 'workmux provision sync' to refresh");
+            None
+        }
+        Ok(CacheStatus::Missing) => None,
+        Err(e) => {
+            tracing::debug!("could not load policy cache: {}", e);
+            None
+        }
+    }
+}
+
+/// Every top-level key the config schema accepts.
+///
+/// Read out of this file's own `struct Config` definition rather than out of a
+/// serialized `Config::default()`: a field carrying `skip_serializing_if` is
+/// absent from a default serialization, so that approach silently reported real
+/// keys (`bootstrap`, `mcp`, `providers`, ...) as typos. Parsing the source
+/// cannot drift from the struct the way a hand-maintained list would.
+fn known_config_keys() -> std::collections::BTreeSet<String> {
+    const SOURCE: &str = include_str!("config.rs");
+
+    let mut keys: std::collections::BTreeSet<String> =
+        DIRECTIVE_KEYS.iter().map(|s| (*s).to_string()).collect();
+
+    let Some(body) = SOURCE
+        .split_once("pub struct Config {")
+        .and_then(|(_, rest)| rest.split_once("\n}"))
+        .map(|(body, _)| body)
+    else {
+        return keys;
+    };
+
+    for line in body.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("pub ") else {
+            continue;
+        };
+        if let Some((name, _)) = rest.split_once(':') {
+            keys.insert(name.trim().to_string());
+        }
+    }
+    keys
+}
+
+/// Top-level keys in `value` that the config schema does not recognize.
+///
+/// serde ignores unknown fields by default, which means a misspelled key is
+/// silently dropped rather than reported. `workmux config validate` uses this
+/// to surface them. Only the top level is checked: `deny_unknown_fields` on
+/// every nested struct would be a much larger change, and top-level typos are
+/// the common case.
+pub fn unknown_top_level_keys(value: &serde_yaml::Value) -> Vec<String> {
+    let serde_yaml::Value::Mapping(map) = value else {
+        return Vec::new();
+    };
+
+    let known = known_config_keys();
+
+    let mut unknown: Vec<String> = map
+        .keys()
+        .filter_map(|k| k.as_str())
+        .filter(|k| !known.contains(*k))
+        .map(str::to_owned)
+        .collect();
+    unknown.sort_unstable();
+    unknown
+}
+
+/// One layer's identity, for `workmux config resolve --explain` output.
+#[derive(Debug, Clone)]
+pub struct LayerInfo {
+    /// Stable id used as the provenance value, e.g. `global`, `profile:corp`.
+    pub id: String,
+    /// Where the layer came from: a file path, a URL, or a profile description.
+    pub source: String,
+}
+
 impl Config {
+    /// Resolve a model from the unified [`Config::providers`] registry by
+    /// provider id or logical name. Returns `None` when no `providers` are
+    /// configured or nothing matches.
+    pub fn resolve_model(&self, key: &str) -> Option<crate::model::ResolvedModel<'_>> {
+        self.providers
+            .as_ref()
+            .and_then(|registry| crate::model::resolve(registry, key))
+    }
+
     /// Load and merge global and project configurations.
     pub fn load(cli_agent: Option<&str>) -> anyhow::Result<Self> {
         Self::load_with_override(cli_agent, None)
@@ -2006,6 +3037,13 @@ impl Config {
         Self::load_with_location_from_override(&start_dir, cli_agent, config_override)
     }
 
+    /// [`Config::load`], searching for the project config from `start_dir`
+    /// instead of the process CWD. Required anywhere one process serves several
+    /// projects -- the daemon -- since the CWD is global.
+    pub fn load_from(start_dir: &Path, cli_agent: Option<&str>) -> anyhow::Result<Self> {
+        Self::load_with_location_from(start_dir, cli_agent).map(|(cfg, _)| cfg)
+    }
+
     /// Like `load_with_location`, but searches for the project config starting
     /// from `start_dir` instead of CWD.
     pub fn load_with_location_from(
@@ -2020,45 +3058,56 @@ impl Config {
         cli_agent: Option<&str>,
         config_override: Option<&Path>,
     ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
-        debug!(start_dir = %start_dir.display(), "config:loading with location from");
-        let global_config = Self::load_global()?.unwrap_or_default();
+        // Every ordinary load honors the `--profile` flag recorded at startup;
+        // `load_with_options` is for callers that select a profile explicitly.
+        Self::load_with_options(
+            start_dir,
+            cli_agent,
+            config_override,
+            profiles::cli_profile(),
+        )
+    }
 
-        let (project_config, location) = if let Some(path) = config_override {
-            let meta = std::fs::metadata(path)
-                .with_context(|| format!("Config file not found: {}", path.display()))?;
-            if meta.is_dir() {
-                anyhow::bail!(
-                    "--config path must be a file, not a directory: {}",
-                    path.display()
-                );
-            }
-            if !meta.is_file() {
-                anyhow::bail!("--config path must be a regular file: {}", path.display());
-            }
-            let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-            let config = Self::load_from_path(&abs_path)?
-                .ok_or_else(|| anyhow::anyhow!("Config file not found: {}", path.display()))?;
-            let config_dir = abs_path
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| start_dir.to_path_buf());
-            // rel_dir is intentionally empty: --config overrides don't imply a subproject layout,
-            // so panes always open at the worktree root regardless of where the config file lives.
-            let location = ConfigLocation {
-                config_path: abs_path,
-                config_dir: config_dir.clone(),
-                rel_dir: PathBuf::new(),
-            };
-            (config, Some(location))
-        } else {
-            let location = find_project_config(start_dir)?;
-            let project_config = if let Some(ref loc) = location {
-                Self::load_from_path(&loc.config_path)?.unwrap_or_default()
-            } else {
-                Self::default()
-            };
-            (project_config, location)
-        };
+    /// The full load path: expand includes, merge layers, overlay profiles,
+    /// then apply defaults.
+    ///
+    /// `cli_profile` is the `--profile` flag; see [`profiles::select`] for how
+    /// it ranks against `WORKMUX_PROFILE` and `default_profile`.
+    pub fn load_with_options(
+        start_dir: &std::path::Path,
+        cli_agent: Option<&str>,
+        config_override: Option<&Path>,
+        cli_profile: Option<&str>,
+    ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
+        let result =
+            Self::load_with_options_inner(start_dir, cli_agent, config_override, cli_profile);
+        if let Err(e) = &result {
+            // Many callers degrade to Config::default() on error, which would
+            // otherwise turn a config typo into silently ignored settings.
+            // Warn loudly, once per process; the Err still propagates.
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                eprintln!("workmux: config error: {e:#} — commands may fall back to defaults");
+            });
+        }
+        result
+    }
+
+    fn load_with_options_inner(
+        start_dir: &std::path::Path,
+        cli_agent: Option<&str>,
+        config_override: Option<&Path>,
+        cli_profile: Option<&str>,
+    ) -> anyhow::Result<(Self, Option<ConfigLocation>)> {
+        let (layers, location, agent_above_global) =
+            Self::build_layers(start_dir, config_override, cli_profile)?;
+
+        let resolved = resolve::resolve(layers, false);
+        for warning in &resolved.warnings {
+            tracing::warn!("{} ({})", warning.message, warning.source);
+        }
+        let merged: Self = serde_yaml::from_value(resolved.value)
+            .map_err(|e| anyhow::anyhow!("Failed to load merged config: {}", e))?;
 
         let defaults_root = location
             .as_ref()
@@ -2073,9 +3122,9 @@ impl Config {
             .or_else(|| git::get_repo_root_for(start_dir).ok())
             .unwrap_or_else(|| start_dir.to_path_buf());
 
-        let config = Self::merge_and_apply_defaults(
-            global_config,
-            project_config,
+        let config = Self::apply_defaults(
+            merged,
+            agent_above_global.as_deref(),
             cli_agent,
             &defaults_root,
         )?;
@@ -2088,23 +3137,327 @@ impl Config {
         Ok((config, location))
     }
 
-    /// Merge global and project configs, resolve agent, and apply defaults.
-    fn merge_and_apply_defaults(
-        global_config: Self,
-        project_config: Self,
+    /// Resolve the effective config as a YAML value, without deserializing it
+    /// into [`Config`] or applying defaults.
+    ///
+    /// This is what `workmux config resolve` prints. It returns the merged
+    /// value plus the per-key provenance map when `track` is set, so callers
+    /// can attribute each key to the layer that set it. Defaults are
+    /// deliberately not applied: this shows what the config *files* say, which
+    /// is what someone debugging a layering question needs to see.
+    pub fn resolve_value(
+        start_dir: &std::path::Path,
+        config_override: Option<&Path>,
+        cli_profile: Option<&str>,
+        track: bool,
+    ) -> anyhow::Result<(resolve::Resolved, Vec<LayerInfo>)> {
+        let (layers, _location, _agent) =
+            Self::build_layers(start_dir, config_override, cli_profile)?;
+        let info: Vec<LayerInfo> = layers
+            .iter()
+            .map(|l| LayerInfo {
+                id: l.id.clone(),
+                source: l.source.clone(),
+            })
+            .collect();
+        Ok((resolve::resolve(layers, track), info))
+    }
+
+    /// Resolve a single config file in isolation, ignoring the ambient global
+    /// and project configs.
+    ///
+    /// This is what `workmux config validate --file` uses, and what the Nix
+    /// module's build-time check needs: a rendered file must be judged on its
+    /// own, not against whatever happens to be installed on the machine
+    /// running the build.
+    pub fn resolve_file(
+        path: &Path,
+        cli_profile: Option<&str>,
+        track: bool,
+    ) -> anyhow::Result<resolve::Resolved> {
+        let value = Self::load_value_from_path(path)?
+            .ok_or_else(|| anyhow::anyhow!("Config file not found: {}", path.display()))?;
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+
+        // Trusted: a file named explicitly is the user's own choice, the same
+        // standing as their global config.
+        let mut layers = include::expand(&value, &dir, path, true, "file:")?;
+        let mut value = value;
+        include::strip_include_key(&mut value);
+        layers.push(resolve::Layer::new(
+            "file",
+            path.display().to_string(),
+            resolve::LayerKind::Global,
+            value,
+        ));
+
+        let mut available = BTreeMap::new();
+        let mut trust = BTreeMap::new();
+        let mut default_profile = None;
+        for layer in &mut layers {
+            for (name, body) in profiles::declared(&layer.value)? {
+                trust.insert(name.clone(), true);
+                available.insert(name, body);
+            }
+            if let Some(v) = layer.value.get("default_profile").and_then(|v| v.as_str()) {
+                default_profile = Some(v.to_string());
+            }
+            profiles::strip_profiles_key(&mut layer.value);
+        }
+        let selection = profiles::select(cli_profile, default_profile.as_deref());
+        layers.extend(profiles::layers(&selection, &available, &trust)?);
+
+        Ok(resolve::resolve(layers, track))
+    }
+
+    /// Names of every profile a config file declares, for validation.
+    pub fn declared_profiles(path: &Path) -> anyhow::Result<Vec<String>> {
+        let Some(value) = Self::load_value_from_path(path)? else {
+            return Ok(Vec::new());
+        };
+        Ok(profiles::declared(&value)?.into_keys().collect())
+    }
+
+    /// Assemble every config layer in precedence order, lowest first.
+    ///
+    /// Returns the layers, where the project config was found, and the agent
+    /// named by the highest layer above the global config (which
+    /// `apply_defaults` needs and the merged config cannot express).
+    fn build_layers(
+        start_dir: &std::path::Path,
+        config_override: Option<&Path>,
+        cli_profile: Option<&str>,
+    ) -> anyhow::Result<(Vec<resolve::Layer>, Option<ConfigLocation>, Option<String>)> {
+        debug!(start_dir = %start_dir.display(), "config:loading with location from");
+        let global_value = Self::load_global_value()?;
+        let global_source = global_config_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<global>".to_string());
+
+        let (project_value, project_source, location) = if let Some(path) = config_override {
+            let meta = std::fs::metadata(path)
+                .with_context(|| format!("Config file not found: {}", path.display()))?;
+            if meta.is_dir() {
+                anyhow::bail!(
+                    "--config path must be a file, not a directory: {}",
+                    path.display()
+                );
+            }
+            if !meta.is_file() {
+                anyhow::bail!("--config path must be a regular file: {}", path.display());
+            }
+            let abs_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+            let value = Self::load_value_from_path(&abs_path)?
+                .ok_or_else(|| anyhow::anyhow!("Config file not found: {}", path.display()))?;
+            let config_dir = abs_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| start_dir.to_path_buf());
+            let source = abs_path.display().to_string();
+            // rel_dir is intentionally empty: --config overrides don't imply a subproject layout,
+            // so panes always open at the worktree root regardless of where the config file lives.
+            let location = ConfigLocation {
+                config_path: abs_path,
+                config_dir: config_dir.clone(),
+                rel_dir: PathBuf::new(),
+            };
+            (Some(value), source, Some(location))
+        } else {
+            let location = find_project_config(start_dir)?;
+            let (value, source) = if let Some(ref loc) = location {
+                (
+                    Self::load_value_from_path(&loc.config_path)?,
+                    loc.config_path.display().to_string(),
+                )
+            } else {
+                (None, "<project>".to_string())
+            };
+            (value, source, location)
+        };
+
+        let mut layers = Vec::with_capacity(2);
+        if let Some(value) = global_value {
+            // Includes of the global config are trusted like the global config
+            // itself: the user chose to pull them in from their own file.
+            let dir = global_config_path()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+                .unwrap_or_default();
+            let origin = global_config_path().unwrap_or_else(|| dir.join("config.yaml"));
+            layers.extend(include::expand(&value, &dir, &origin, true, "global:")?);
+
+            let mut value = value;
+            include::strip_include_key(&mut value);
+            layers.push(resolve::Layer::new(
+                "global",
+                global_source,
+                resolve::LayerKind::Global,
+                value,
+            ));
+        }
+        if let Some(value) = project_value {
+            // A project's includes inherit the project's trust level, so a repo
+            // cannot launder a global-only key in through an included file.
+            let (dir, origin) = match location.as_ref() {
+                Some(loc) => (loc.config_dir.clone(), loc.config_path.clone()),
+                None => (start_dir.to_path_buf(), start_dir.join(".workmux.yaml")),
+            };
+            layers.extend(include::expand(&value, &dir, &origin, false, "project:")?);
+
+            let mut value = value;
+            include::strip_include_key(&mut value);
+            layers.push(resolve::Layer::new(
+                "project",
+                project_source,
+                resolve::LayerKind::Project,
+                value,
+            ));
+        }
+
+        // The policy's defaults rank *below* profiles and CLI flags: a default is
+        // a suggestion for a machine that has not decided, and must not beat a
+        // deliberate project or profile choice. Its locks rank above everything
+        // and are appended last.
+        //
+        // `provision` is global-only, so the settings that govern the cache are
+        // read off the global layer rather than the not-yet-merged config.
+        let provision_cfg: Option<crate::provision::ProvisionConfig> = layers
+            .iter()
+            .find(|l| l.kind == resolve::LayerKind::Global)
+            .and_then(|l| l.value.get("provision"))
+            .and_then(|v| serde_yaml::from_value(v.clone()).ok());
+        let policy = cached_policy(provision_cfg.as_ref());
+        if let Some(ref policy) = policy
+            && let Some(layer) = crate::provision::layers::defaults_layer(policy)
+        {
+            layers.push(layer);
+        }
+
+        // Profiles are collected from every file layer, so an include or the
+        // global config can declare one the project selects. Each records the
+        // trust of the layer that declared it -- a project-declared profile is
+        // no more privileged than the project config itself.
+        let mut available: BTreeMap<String, serde_yaml::Value> = BTreeMap::new();
+        let mut profile_trust: BTreeMap<String, bool> = BTreeMap::new();
+        let mut default_profile: Option<String> = None;
+        for layer in &mut layers {
+            for (name, body) in profiles::declared(&layer.value)? {
+                profile_trust.insert(name.clone(), layer.trusted);
+                available.insert(name, body);
+            }
+            if let Some(value) = layer.value.get("default_profile").and_then(|v| v.as_str()) {
+                default_profile = Some(value.to_string());
+            }
+            profiles::strip_profiles_key(&mut layer.value);
+        }
+
+        let selection = profiles::select(cli_profile, default_profile.as_deref());
+        layers.extend(profiles::layers(&selection, &available, &profile_trust)?);
+
+        // Locks win over every layer, including CLI flags: a lock is the one
+        // thing an organization can rely on. Overrides are reported where a
+        // user is looking (`config resolve --explain` attributes the key, and
+        // `provision sync` names them) rather than on every config load.
+        if let Some(ref policy) = policy
+            && let Some(layer) = crate::provision::layers::locks_layer(policy)
+        {
+            layers.push(layer);
+        }
+
+        // An agent named by any layer above the global config outranks an agent
+        // detected from the environment; one named only by the global config
+        // does not. The merged config cannot express that difference, so it is
+        // read off the layers here, highest precedence first.
+        let agent_above_global = layers
+            .iter()
+            .rev()
+            .take_while(|l| l.kind != resolve::LayerKind::Global)
+            .find_map(|l| {
+                l.value
+                    .get("agent")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            });
+
+        Ok((layers, location, agent_above_global))
+    }
+
+    /// Resolve the agent and apply repo-derived defaults to an already-merged
+    /// config.
+    ///
+    /// Layer merging happens before this in [`resolve`]; everything here is
+    /// post-processing that is not a merge. `agent_above_global` carries the one
+    /// fact the merged config cannot express -- whether a layer above the global
+    /// config named an agent -- which decides if environment detection may
+    /// outrank the global default.
+    fn apply_defaults(
+        merged: Self,
+        agent_above_global: Option<&str>,
         cli_agent: Option<&str>,
         defaults_root: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let has_explicit_agent =
-            cli_agent.is_some() || project_config.agent.is_some() || global_config.agent.is_some();
+        let mut config = merged;
+        let has_explicit_agent = cli_agent.is_some() || config.agent.is_some();
 
-        let final_agent = cli_agent
-            .map(|s| s.to_string())
-            .or_else(|| project_config.agent.clone())
-            .or_else(|| global_config.agent.clone())
-            .unwrap_or_else(|| "claude".to_string());
+        // Opt-in agent inheritance: when `inherit_agent` is set, an agent
+        // detected from the surrounding environment outranks the *global*
+        // default, so `workmux add` run from inside Claude Code spawns Claude
+        // Code rather than whatever the global config happens to name. An
+        // explicit `--agent` flag and an agent named by any higher layer (a
+        // project config or a selected profile) still win, and detection only
+        // runs when neither is present -- it shells out to `tmux`/`ps`, so it
+        // must stay off the common path.
+        // Path rules: explicit per-project config, so they outrank parent
+        // detection (a `tmux`/`ps` heuristic) but never a project's own config.
+        // Resolved against the main worktree root so worktrees of a project
+        // match the project's rule; skipped entirely when no rules exist, which
+        // keeps the extra `git worktree list` off the common path.
+        let rule_agent: Option<(String, AgentSource)> = if config.agent_rules.is_empty()
+            || cli_agent.is_some()
+            || agent_above_global.is_some()
+        {
+            None
+        } else {
+            let root = crate::git::get_main_worktree_root_in(Some(defaults_root))
+                .unwrap_or_else(|_| defaults_root.to_path_buf());
+            match_agent_rule(&config.agent_rules, &root).map(|(index, r)| {
+                debug!(agent = %r.agent, pattern = %r.pattern, root = %root.display(), "config:agent from rule");
+                (
+                    r.agent.clone(),
+                    AgentSource::Rule {
+                        index,
+                        pattern: r.pattern.clone(),
+                    },
+                )
+            })
+        };
 
-        let mut config = global_config.merge(project_config);
+        let inherit_agent = config.inherit_agent.unwrap_or(false);
+        let detected_agent = if inherit_agent
+            && cli_agent.is_none()
+            && agent_above_global.is_none()
+            && rule_agent.is_none()
+        {
+            crate::agent::identity::detect_parent_agent()
+        } else {
+            None
+        };
+        if let Some(detected) = &detected_agent {
+            debug!(agent = %detected, "config:inherited agent from parent");
+        }
+
+        let (final_agent, agent_source) = cli_agent
+            .map(|s| (s.to_string(), AgentSource::Flag))
+            .or_else(|| agent_above_global.map(|a| (a.to_owned(), AgentSource::ProjectConfig)))
+            .or_else(|| rule_agent.clone())
+            .or_else(|| detected_agent.clone().map(|a| (a, AgentSource::Inherited)))
+            .or_else(|| config.agent.clone().map(|a| (a, AgentSource::Global)))
+            .unwrap_or_else(|| ("claude".to_string(), AgentSource::Builtin));
+        config.agent_source = Some(agent_source);
+
+        debug!(
+            bootstrap = config.bootstrap.is_some(),
+            "config:apply_defaults merged config"
+        );
 
         // Resolve agent name through agents map
         if let Some(entry) = config.agents.get(&final_agent) {
@@ -2149,380 +3502,55 @@ impl Config {
             .validate()
             .context("Invalid sandbox container config")?;
 
+        // Install pipeline event controls. Every config load routes through here,
+        // so the per-kind filter and (env-permitting) the trace level stay current.
+        crate::signals::event::set_filter(config.events.to_filter());
+        if let Some(level) = &config.events.level {
+            crate::logger::set_event_level(level);
+        }
+
+        // Validate against the cached org policy. The policy's `defaults` and
+        // `locked` values were already applied as layers during resolution;
+        // what is left here are deny-list assertions about the final config.
+        if let Some(policy) = cached_policy(config.provision.as_ref()) {
+            let violations = crate::provision::merge::validate_policy(&config, &policy);
+            crate::provision::merge::report_violations(&violations);
+        }
+
         Ok(config)
     }
 
-    /// Load configuration from a specific path.
-    fn load_from_path(path: &Path) -> anyhow::Result<Option<Self>> {
+    /// Read a config file as an unvalidated YAML value, for layer merging.
+    ///
+    /// Parsing to `Value` rather than to `Config` is what lets a later layer
+    /// override a key without each layer having to be independently valid.
+    fn load_value_from_path(path: &Path) -> anyhow::Result<Option<serde_yaml::Value>> {
         if !path.exists() {
             return Ok(None);
         }
         debug!(path = %path.display(), "config:reading file");
         let contents = fs::read_to_string(path)?;
-        let config: Config = serde_yaml::from_str(&contents)
+        let value: serde_yaml::Value = serde_yaml::from_str(&contents)
             .map_err(|e| anyhow::anyhow!("Failed to parse config at {}: {}", path.display(), e))?;
-        Ok(Some(config))
+        // An empty file parses as null; treat it as "no keys" so it merges as a
+        // no-op instead of wiping the layers beneath it.
+        if value.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(value))
     }
 
-    /// Load the global configuration file.
+    /// Load the global configuration file as an unvalidated YAML value.
     ///
     /// Uses `global_config_path()` which resolves via XDG_CONFIG_HOME with
     /// legacy fallback.
-    fn load_global() -> anyhow::Result<Option<Self>> {
+    fn load_global_value() -> anyhow::Result<Option<serde_yaml::Value>> {
         if let Some(path) = global_config_path()
             && path.exists()
         {
-            return Self::load_from_path(&path);
+            return Self::load_value_from_path(&path);
         }
         Ok(None)
-    }
-
-    /// Merge a project config into a global config.
-    /// Project config takes precedence. For lists, "<global>" placeholder expands to global items.
-    fn merge(self, project: Self) -> Self {
-        /// Merge vectors with "<global>" placeholder expansion.
-        /// When project contains "<global>", it expands to global items at that position.
-        fn merge_vec_with_placeholder(
-            global: Option<Vec<String>>,
-            project: Option<Vec<String>>,
-        ) -> Option<Vec<String>> {
-            match (global, project) {
-                (Some(global_items), Some(project_items)) => {
-                    let has_placeholder = project_items.iter().any(|s| s == "<global>");
-                    if has_placeholder {
-                        let mut result = Vec::new();
-                        for item in project_items {
-                            if item == "<global>" {
-                                result.extend(global_items.clone());
-                            } else {
-                                result.push(item);
-                            }
-                        }
-                        Some(result)
-                    } else {
-                        Some(project_items)
-                    }
-                }
-                (global, project) => project.or(global),
-            }
-        }
-
-        // Track which layout type the project config specified
-        let project_has_windows = project.windows.is_some();
-
-        /// Macro to merge Option fields where project overrides global.
-        /// Reduces boilerplate for simple `project.field.or(self.field)` patterns.
-        macro_rules! merge_options {
-            ($global:expr, $project:expr, $($field:ident),+ $(,)?) => {
-                Self {
-                    $($field: $project.$field.or($global.$field),)+
-                    ..Default::default()
-                }
-            };
-        }
-
-        // Merge simple Option<T> fields using the macro
-        let mut merged = merge_options!(
-            self,
-            project,
-            main_branch,
-            base_branch,
-            worktree_dir,
-            window_prefix,
-            agent,
-            merge_strategy,
-            merge_keep,
-            worktree_prefix,
-            panes,
-            windows,
-            status_format,
-            nerdfont,
-            auto_update_check,
-            prompt_file_only,
-        );
-
-        // Layouts: merge maps by key so project layouts extend global ones
-        merged.layouts = match (self.layouts, project.layouts) {
-            (Some(mut global), Some(proj)) => {
-                global.extend(proj);
-                Some(global)
-            }
-            (global, proj) => proj.or(global),
-        };
-
-        // Deep merge auto_name. Security: command is global-only to prevent
-        // a malicious .workmux.yaml from executing arbitrary commands on the host.
-        merged.auto_name = match (self.auto_name, project.auto_name) {
-            (Some(global), Some(project)) => {
-                if project.command.is_some() {
-                    tracing::warn!(
-                        "auto_name.command in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                Some(AutoNameConfig {
-                    command: global.command,
-                    model: project.model.or(global.model),
-                    system_prompt: project.system_prompt.or(global.system_prompt),
-                    background: project.background.or(global.background),
-                })
-            }
-            (Some(global), None) => Some(global),
-            (None, Some(project)) => {
-                if project.command.is_some() {
-                    tracing::warn!(
-                        "auto_name.command in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                Some(AutoNameConfig {
-                    command: None,
-                    model: project.model,
-                    system_prompt: project.system_prompt,
-                    background: project.background,
-                })
-            }
-            (None, None) => None,
-        };
-
-        // windows and panes are mutually exclusive: project layout choice wins entirely
-        if merged.windows.is_some() && merged.panes.is_some() {
-            // If project set windows, clear panes (project intended multi-window)
-            // If project set panes, clear windows (project intended single-window)
-            if project_has_windows {
-                merged.panes = None;
-            } else {
-                merged.windows = None;
-            }
-        }
-
-        // Special case: worktree_naming (project wins if not default)
-        merged.worktree_naming = if project.worktree_naming != WorktreeNaming::default() {
-            project.worktree_naming
-        } else {
-            self.worktree_naming
-        };
-
-        // Special case: theme (merge field-by-field, project wins if explicitly set)
-        merged.theme = ThemeConfig {
-            scheme: if project.theme.scheme != ThemeScheme::Default {
-                project.theme.scheme
-            } else {
-                self.theme.scheme
-            },
-            mode: project.theme.mode.or(self.theme.mode),
-            custom: project.theme.custom.or(self.theme.custom),
-        };
-
-        // Special case: mode (project wins if explicitly set)
-        merged.mode = project.mode.or(self.mode);
-
-        // List values with "<global>" placeholder support
-        merged.post_create = merge_vec_with_placeholder(self.post_create, project.post_create);
-        merged.pre_merge = merge_vec_with_placeholder(self.pre_merge, project.pre_merge);
-        merged.pre_remove = merge_vec_with_placeholder(self.pre_remove, project.pre_remove);
-
-        // File config with placeholder support
-        merged.files = FileConfig {
-            copy: merge_vec_with_placeholder(self.files.copy, project.files.copy),
-            symlink: merge_vec_with_placeholder(self.files.symlink, project.files.symlink),
-        };
-
-        // Status icons: per-field override
-        merged.status_icons = StatusIcons {
-            working: project.status_icons.working.or(self.status_icons.working),
-            waiting: project.status_icons.waiting.or(self.status_icons.waiting),
-            done: project.status_icons.done.or(self.status_icons.done),
-        };
-
-        // Dashboard actions: per-field override
-        merged.dashboard = DashboardConfig {
-            commit: project.dashboard.commit.or(self.dashboard.commit),
-            merge: project.dashboard.merge.or(self.dashboard.merge),
-            preview_size: project
-                .dashboard
-                .preview_size
-                .or(self.dashboard.preview_size),
-            show_check_counts: project
-                .dashboard
-                .show_check_counts
-                .or(self.dashboard.show_check_counts),
-        };
-
-        // Sidebar config: per-field override
-        merged.sidebar = SidebarConfig {
-            position: project.sidebar.position.or(self.sidebar.position),
-            width: project.sidebar.width.or(self.sidebar.width),
-            height: project.sidebar.height.or(self.sidebar.height),
-            layout: project.sidebar.layout.or(self.sidebar.layout),
-            horizontal: HorizontalSidebarConfig {
-                item_width: project
-                    .sidebar
-                    .horizontal
-                    .item_width
-                    .or(self.sidebar.horizontal.item_width),
-            },
-            templates: project
-                .sidebar
-                .templates
-                .clone()
-                .or(self.sidebar.templates.clone()),
-            agent_icons: match (
-                self.sidebar.agent_icons.clone(),
-                project.sidebar.agent_icons.clone(),
-            ) {
-                (Some(mut global), Some(proj)) => {
-                    global.extend(proj);
-                    Some(global)
-                }
-                (g, p) => p.or(g),
-            },
-        };
-
-        // Sandbox config: per-field override with nested struct merging
-        merged.sandbox = SandboxConfig {
-            enabled: project.sandbox.enabled.or(self.sandbox.enabled),
-            backend: project
-                .sandbox
-                .backend
-                .clone()
-                .or(self.sandbox.backend.clone()),
-            target: project
-                .sandbox
-                .target
-                .clone()
-                .or(self.sandbox.target.clone()),
-            image: project.sandbox.image.clone().or(self.sandbox.image.clone()),
-            // Security: env_passthrough is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from requesting
-            // passthrough of host env secrets via .workmux.yaml.
-            env_passthrough: {
-                if project.sandbox.env_passthrough.is_some() {
-                    tracing::warn!(
-                        "env_passthrough in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.env_passthrough.clone()
-            },
-            // Security: env is global-only. A sandboxed agent could modify
-            // .workmux.yaml to inject env vars into its next session.
-            env: {
-                if project.sandbox.env.is_some() {
-                    tracing::warn!(
-                        "env in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.env
-            },
-            // Security: rpc_host is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from redirecting
-            // RPC traffic to attacker infrastructure via .workmux.yaml.
-            rpc_host: {
-                if project.sandbox.rpc_host.is_some() {
-                    tracing::warn!(
-                        "rpc_host in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.rpc_host.clone()
-            },
-            toolchain: project
-                .sandbox
-                .toolchain
-                .clone()
-                .or(self.sandbox.toolchain.clone()),
-            // Security: host_commands is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from granting itself
-            // host-exec access via .workmux.yaml.
-            host_commands: {
-                if project.sandbox.host_commands.is_some() {
-                    tracing::warn!(
-                        "host_commands in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.host_commands.clone()
-            },
-            // Security: extra_mounts is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from mounting over
-            // host paths via .workmux.yaml.
-            extra_mounts: {
-                if project.sandbox.extra_mounts.is_some() {
-                    tracing::warn!(
-                        "extra_mounts in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.extra_mounts.clone()
-            },
-            // Security: agent_config_dir is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from redirecting agent
-            // config mounts via .workmux.yaml.
-            agent_config_dir: {
-                if project.sandbox.agent_config_dir.is_some() {
-                    tracing::warn!(
-                        "agent_config_dir in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.agent_config_dir.clone()
-            },
-            lima: LimaConfig::merge(self.sandbox.lima, project.sandbox.lima),
-            // Security: sandbox.container.devices and sandbox.container.group_add
-            // are global-only. They expose host hardware and can expand
-            // filesystem access via supplementary groups, so a malicious repo
-            // must not be able to enable them via .workmux.yaml.
-            container: {
-                if project.sandbox.container.devices.is_some() {
-                    tracing::warn!(
-                        "sandbox.container.devices in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                if project.sandbox.container.group_add.is_some() {
-                    tracing::warn!(
-                        "sandbox.container.group_add in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                ContainerConfig::merge(self.sandbox.container, project.sandbox.container)
-            },
-            // Security: network is global-only. Project config cannot
-            // set it -- this prevents a malicious repo from weakening
-            // network restrictions via .workmux.yaml.
-            network: {
-                if project.sandbox.network.policy.is_some()
-                    || project.sandbox.network.allowed_domains.is_some()
-                {
-                    tracing::warn!(
-                        "network in project config (.workmux.yaml) is ignored -- \
-                        move it to your global config (~/.config/workmux/config.yaml)"
-                    );
-                }
-                self.sandbox.network.clone()
-            },
-            // Security: global-only, same as host_commands.
-            dangerously_allow_unsandboxed_host_exec: self
-                .sandbox
-                .dangerously_allow_unsandboxed_host_exec,
-        };
-
-        // Security: agents is global-only. Project config cannot define agents
-        // -- this prevents a malicious repo from executing arbitrary commands
-        // via .workmux.yaml.
-        merged.agents = if !project.agents.is_empty() {
-            tracing::warn!(
-                "agents in project config (.workmux.yaml) is ignored -- \
-                move it to your global config (~/.config/workmux/config.yaml)"
-            );
-            self.agents
-        } else {
-            self.agents
-        };
-
-        merged
     }
 
     /// Get default panes.
@@ -2720,6 +3748,17 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 # Default: "claude"
 # agent: claude
 
+# Per-project agent selection by path regex (global config only).
+# Matched against the project's main worktree root, first match wins. Ranks
+# below an `agent:` in a project .workmux.yaml and above the global `agent:`.
+# Edit with `workmux config agent set|unset`; inspect with
+# `workmux config agent list|which`.
+# agent_rules:
+#   - match: "^~/repos/work/"
+#     agent: opencode
+#   - match: "^~/repos/workmux(/|$)"
+#     agent: pi
+
 # LLM-based branch name generation (`workmux add -A`).
 # auto_name:
 #   model: "gpt-4o-mini"
@@ -2805,10 +3844,15 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   # Default: "10%" (clamped to 25-50 columns).
 #   # Explicit values are not clamped (minimum 10 columns).
 #   width: 40       # absolute columns
-#   # width: "15%"  # percentage of terminal width
+#   # width: "15%"  # percentage of terminal width (takes precedence over any saved interactive size)
 #
 #   # Top bar height in rows.
 #   height: 3
+#
+#   # Default scope for the sidebar toggle command: "global" or "session".
+#   # "session" makes plain `wng sidebar` activate only the current tmux session.
+#   # Use `wng sidebar --global` to override to global regardless of this setting.
+#   # default_scope: session
 #
 #   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
@@ -2857,6 +3901,82 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# workmux project configuration
 #   #   - host_path: ~/data
 #   #     guest_path: /mnt/data
 #   #     writable: true
+
+# Pipeline event tracing (`wm::event`, logged to ~/.local/state/workmux.log).
+# Controls the structured event timeline the runner/orchestrator emit. The
+# `WORKMUX_EVENTS` env var still overrides `level` when set.
+# events:
+#   # Master switch. false silences every wm::event. Default: true.
+#   enabled: true
+#   # Trace level: off | info | debug | trace. Ignored if WORKMUX_EVENTS is set.
+#   level: info
+#   # Silence specific kinds or whole groups (group-aware: `pane.probe` matches
+#   # pane.probe.ok, pane.probe.retry, ...).
+#   disable:
+#     - pane.probe
+#     - turn.poll
+#   # Allowlist: when non-empty, ONLY these kinds/groups are emitted (still
+#   # subject to `disable`). Empty = all.
+#   only: []
+
+#-------------------------------------------------------------------------------
+# Agent bootstrap
+#-------------------------------------------------------------------------------
+
+# Uniform per-agent setup, applied by `workmux setup`: skills, plugins, and
+# system-prompt components. Keeps "what the project needs" in one place
+# instead of in each agent's own config.
+# bootstrap:
+#   # Skills installed into every skills-capable agent's skills directory
+#   # (~/.claude/skills, ~/.config/opencode/skills, ~/.pi/agent/skills,
+#   # ~/.omp/agent/skills). Each entry is a path to a directory containing a
+#   # SKILL.md, relative to the project root or absolute. Codex, Copilot, and
+#   # Gemini have no skills directory and are skipped.
+#   default_skills:
+#     - ./skills/workmux
+#     # Table form: what the skill needs. `npm` packages are installed by
+#     # workmux into `npm_prefix` (pinned when `@version` is given, pruned when
+#     # no entity declares them any more); `bin` names are only asserted on
+#     # PATH -- provide them via the system. Same block works on `mcp.<name>`.
+#     - path: ./skills/openspec-taskflow
+#       requires:
+#         npm: ["@fission-ai/openspec@1.6.0"]
+#         bin: [python3]
+#
+#   # npm global prefix for `requires.npm` installs (bins in <prefix>/bin).
+#   npm_prefix: ~/.local
+#   # true: every package under the prefix that no entity declares is pruned,
+#   # not only the ones workmux installed. Hand installs get reverted.
+#   deps_strict: false
+#
+#   # Prompt components merged into each agent's system prompt. A bare name
+#   # loads .workmux/prompt-components/<name>.md; anything containing `/` is a
+#   # path to a .md file (absolute, ~, or relative to the project root).
+#   default_prompt_components:
+#     - house-style
+#     - ~/repos/harness/prompt-components/jj.md
+#
+#   # Plugins installed for agents that support them (pi, omp).
+#   default_plugins:
+#     - npm:pi-web-access
+#
+#   # Agent-agnostic capabilities: a feature resolves to that agent's plugin
+#   # when one is declared, otherwise to the `default` prompt component.
+#   features:
+#     ponytail:
+#       pi: git:github.com/DietrichGebert/ponytail
+#       default: ponytail
+#
+#   # Per-agent additions. Keys are agent display names, lowercased
+#   # ("claude code", "opencode", "pi", "omp", "codex", "gemini cli").
+#   agents:
+#     claude code:
+#       additional_skills:
+#         - ./skills/worktree
+#       additional_prompt_components:
+#         - code-review
+#       disabled_prompt_components:
+#         - ponytail
 "#;
 
 /// Resolves an executable name or path to its full absolute path.
@@ -2925,7 +4045,7 @@ pub fn split_first_token(command: &str) -> Option<(&str, &str)> {
 /// Looks past `env` wrappers and `VAR=value` assignments to find the
 /// real executable in both the command and agent strings.
 pub fn is_agent_command(command_line: &str, agent_command: &str) -> bool {
-    use crate::multiplexer::agent::find_executable_token;
+    use crate::agent::profile::find_executable_token;
 
     let trimmed = command_line.trim();
     if trimmed.is_empty() {
@@ -2959,11 +4079,113 @@ mod tests {
 
     use super::{
         AgentIconConfig, AgentIconDetails, AllowedDomainDetails, AllowedDomainEntry, Config,
-        ContainerConfig, ContainerDevice, ExtraMount, LayoutConfig, LimaConfig, NetworkConfig,
-        NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget, SidebarHeight,
-        SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode, is_agent_command,
-        split_first_token, validate_domain, validate_group_add_entry, validate_layouts_config,
+        ContainerConfig, ContainerDevice, EventsConfig, ExtraMount, LayoutConfig, LimaConfig,
+        NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget,
+        SidebarHeight, SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode,
+        is_agent_command, split_first_token, validate_domain, validate_group_add_entry,
+        validate_layouts_config,
     };
+
+
+
+
+    #[test]
+    fn agent_profile_deltas_roundtrip() {
+        let yaml = r#"
+agent_profiles:
+  corp:
+    description: corp litellm
+    agents:
+      pi:
+        additional_plugins: ["~/repos/x"]
+        exclude_plugins: ["npm:pi-cliproxyapi"]
+        exclude_features: ["taskflow"]
+        exclude_paths: ["extensions/x.ts"]
+        settings:
+          defaultProvider: litellm
+          taskflow: null
+  plain:
+    description: file-overlay only
+"#;
+        let cfg: Config = serde_yaml::from_str(yaml).unwrap();
+        let corp = &cfg.agent_profiles["corp"];
+        let pi = &corp.agents["pi"];
+        assert_eq!(pi.exclude_plugins, vec!["npm:pi-cliproxyapi"]);
+        assert_eq!(pi.settings.as_ref().unwrap()["defaultProvider"], "litellm");
+        assert!(pi.settings.as_ref().unwrap()["taskflow"].is_null());
+        assert!(!pi.is_empty());
+        assert!(cfg.agent_profiles["plain"].agents.is_empty());
+
+        // Round-trips without inventing fields.
+        let out = serde_yaml::to_string(&cfg.agent_profiles).unwrap();
+        let back: std::collections::BTreeMap<String, super::AgentProfile> =
+            serde_yaml::from_str(&out).unwrap();
+        assert_eq!(back, cfg.agent_profiles);
+    }
+
+    /// Merge two typed configs through the value-level resolver.
+    ///
+    /// The merge tests below predate the resolver and were written against the
+    /// typed `Config::merge` it replaced. Routing them through this helper keeps
+    /// every one of them asserting against the code path that actually runs.
+    ///
+    /// Serializing a `Config` emits its unset fields as nulls and its empty
+    /// collections as empty maps; both are stripped here, because at the value
+    /// level an explicit null means "remove this key" and would wipe the layer
+    /// underneath. A config built with `..Default::default()` must merge as
+    /// "sets nothing", which is what the typed merge did.
+    fn merge_configs(global: Config, project: Config) -> Config {
+        use super::resolve::{Layer, LayerKind, resolve};
+
+        fn prune(value: serde_yaml::Value) -> Option<serde_yaml::Value> {
+            match value {
+                serde_yaml::Value::Null => None,
+                serde_yaml::Value::Mapping(map) => {
+                    let pruned: serde_yaml::Mapping = map
+                        .into_iter()
+                        .filter_map(|(k, v)| prune(v).map(|v| (k, v)))
+                        .collect();
+                    if pruned.is_empty() {
+                        None
+                    } else {
+                        Some(serde_yaml::Value::Mapping(pruned))
+                    }
+                }
+                other => Some(other),
+            }
+        }
+
+        let to_layer = |config: &Config, id: &'static str, kind: LayerKind| {
+            let value = prune(serde_yaml::to_value(config).expect("Config serializes"))
+                .unwrap_or_else(|| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+            Layer::new(id, id, kind, value)
+        };
+
+        let layers = vec![
+            to_layer(&global, "global", LayerKind::Global),
+            to_layer(&project, "project", LayerKind::Project),
+        ];
+        serde_yaml::from_value(resolve(layers, false).value)
+            .expect("resolved value deserializes as Config")
+    }
+
+    #[test]
+    fn sidebar_width_percent_no_overflow_on_wide_terminal() {
+        // 700 cols * 100 = 70000 would overflow u16 if computed in u16.
+        assert_eq!(SidebarWidth::Percent(100).resolve(700), 700);
+        assert_eq!(SidebarWidth::Percent(50).resolve(700), 350);
+        assert_eq!(SidebarWidth::Percent(25).resolve(0), 25);
+        assert_eq!(SidebarWidth::Absolute(40).resolve(700), 40);
+    }
+
+    #[test]
+    fn sidebar_height_percent_no_overflow_and_zero_guard() {
+        assert_eq!(SidebarHeight::Percent(100).resolve(900), 900);
+        assert_eq!(SidebarHeight::Percent(33).resolve(300), 99);
+        // Zero terminal height must not divide a bogus value; returns 0.
+        assert_eq!(SidebarHeight::Percent(50).resolve(0), 0);
+        assert_eq!(SidebarHeight::Absolute(10).resolve(0), 10);
+    }
 
     #[test]
     fn merge_keep_parses_boolean_values() {
@@ -2985,7 +4207,7 @@ mod tests {
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.merge_keep, Some(false));
     }
 
@@ -3061,7 +4283,7 @@ sidebar:
 "##;
         let global: Config = serde_yaml::from_str(yaml_global).unwrap();
         let project: Config = serde_yaml::from_str(yaml_project).unwrap();
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let icons = merged.sidebar.agent_icons.unwrap();
         // codex (only in global) survives.
         assert!(icons.contains_key("codex"));
@@ -3113,7 +4335,7 @@ sidebar:
         )
         .unwrap();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
 
         assert_eq!(merged.sidebar.position, Some(SidebarPosition::Top));
         assert_eq!(merged.sidebar.width, Some(SidebarWidth::Absolute(40)));
@@ -3376,7 +4598,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.is_enabled()); // from global
         assert_eq!(merged.sandbox.resolved_image("claude"), "project-image"); // project overrides global
         assert_eq!(merged.sandbox.runtime(), SandboxRuntime::Podman); // from project
@@ -3405,7 +4627,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.lima.provision_script(), Some("echo project"));
     }
 
@@ -3423,7 +4645,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.lima.provision_script(), Some("echo global"));
     }
 
@@ -3450,7 +4672,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         // Empty string wins over global (project explicitly set it)
         assert_eq!(merged.sandbox.lima.provision, Some("".to_string()));
         // But provision_script() filters it out
@@ -3477,7 +4699,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.lima.skip_default_provision());
     }
 
@@ -3504,7 +4726,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(!merged.sandbox.lima.skip_default_provision());
     }
 
@@ -3563,7 +4785,7 @@ agents:
             },
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.toolchain(), ToolchainMode::Off);
     }
 
@@ -3577,7 +4799,7 @@ agents:
             ..Default::default()
         };
         let project = Config::default();
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.toolchain(), ToolchainMode::Devbox);
     }
 
@@ -3605,7 +4827,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.sandbox.host_commands(),
             &["just".to_string(), "cargo".to_string()]
@@ -3623,7 +4845,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.host_commands().is_empty());
     }
 
@@ -3638,7 +4860,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.host_commands(), &["just".to_string()]);
     }
 
@@ -3666,7 +4888,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.allow_unsandboxed_host_exec());
     }
 
@@ -3681,7 +4903,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         // Project value should be ignored
         assert!(!merged.sandbox.allow_unsandboxed_host_exec());
     }
@@ -3704,7 +4926,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.rpc_host, Some("trusted.host".to_string()));
     }
 
@@ -3719,7 +4941,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.rpc_host.is_none());
     }
 
@@ -3734,7 +4956,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.rpc_host, Some("custom.host".to_string()));
     }
 
@@ -3755,7 +4977,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.image, Some("custom:latest".to_string()));
     }
 
@@ -3770,7 +4992,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.image, Some("custom:latest".to_string()));
     }
 
@@ -3785,7 +5007,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.image, Some("global:latest".to_string()));
     }
 
@@ -3830,7 +5052,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.sandbox.container.excluded_files,
             Some(vec![".env".into()])
@@ -3853,7 +5075,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.container.excluded_files, None);
     }
 
@@ -3869,7 +5091,7 @@ agents:
             },
             ..Default::default()
         };
-        let merged = global.merge(Config::default());
+        let merged = merge_configs(global, Config::default());
         assert_eq!(
             merged.sandbox.container.excluded_files,
             Some(vec![".env".into()])
@@ -3894,7 +5116,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.sandbox.env_passthrough,
             Some(vec!["GITHUB_TOKEN".to_string()])
@@ -3912,7 +5134,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.env_passthrough.is_none());
     }
 
@@ -3927,7 +5149,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.sandbox.env_passthrough,
             Some(vec!["GITHUB_TOKEN".to_string()])
@@ -3958,7 +5180,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let env = merged.sandbox.env.unwrap();
         assert_eq!(env.get("GH_TOKEN").unwrap(), "global_token");
     }
@@ -3977,7 +5199,7 @@ agents:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.env.is_none());
     }
 
@@ -3995,7 +5217,7 @@ agents:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let env = merged.sandbox.env.unwrap();
         assert_eq!(env.get("GH_TOKEN").unwrap(), "global_token");
     }
@@ -4116,7 +5338,7 @@ extra_mounts:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.extra_mounts().len(), 1);
         let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
         assert_eq!(host, std::path::PathBuf::from("/global/path"));
@@ -4133,7 +5355,7 @@ extra_mounts:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.extra_mounts().is_empty());
     }
 
@@ -4148,7 +5370,7 @@ extra_mounts:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.extra_mounts().len(), 1);
         let (host, _, _) = merged.sandbox.extra_mounts()[0].resolve().unwrap();
         assert_eq!(host, std::path::PathBuf::from("/global/path"));
@@ -4217,7 +5439,7 @@ extra_mounts:
             },
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.sandbox.agent_config_dir,
             Some("~/global/{agent}".to_string())
@@ -4234,7 +5456,7 @@ extra_mounts:
             },
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.agent_config_dir.is_none());
     }
 
@@ -4283,19 +5505,31 @@ container:
 
     #[test]
     fn sandbox_lima_config_merge() {
-        let global = LimaConfig {
-            isolation: Some(super::IsolationLevel::Shared),
-            cpus: Some(4),
-            memory: Some("4GiB".to_string()),
+        let global = Config {
+            sandbox: SandboxConfig {
+                lima: LimaConfig {
+                    isolation: Some(super::IsolationLevel::Shared),
+                    cpus: Some(4),
+                    memory: Some("4GiB".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let project = LimaConfig {
-            cpus: Some(8),
-            provision: Some("echo project".to_string()),
+        let project = Config {
+            sandbox: SandboxConfig {
+                lima: LimaConfig {
+                    cpus: Some(8),
+                    provision: Some("echo project".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
 
-        let merged = LimaConfig::merge(global, project);
+        let merged = merge_configs(global, project).sandbox.lima;
         // Project overrides
         assert_eq!(merged.cpus(), 8);
         assert_eq!(merged.provision_script(), Some("echo project"));
@@ -4306,16 +5540,28 @@ container:
 
     #[test]
     fn sandbox_container_config_merge() {
-        let global = ContainerConfig {
-            runtime: Some(SandboxRuntime::Docker),
+        let global = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    runtime: Some(SandboxRuntime::Docker),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let project = ContainerConfig {
-            runtime: Some(SandboxRuntime::Podman),
+        let project = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    runtime: Some(SandboxRuntime::Podman),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
 
-        let merged = ContainerConfig::merge(global, project);
+        let merged = merge_configs(global, project).sandbox.container;
         assert_eq!(merged.runtime(), SandboxRuntime::Podman);
     }
 
@@ -4372,7 +5618,7 @@ container:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         // Global value should win
         assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
         assert_eq!(
@@ -4395,7 +5641,7 @@ container:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Allow);
         assert!(merged.sandbox.network.allowed_domains().is_empty());
     }
@@ -4416,7 +5662,7 @@ container:
         };
         let project = Config::default();
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(merged.sandbox.network.policy(), NetworkPolicy::Deny);
         assert_eq!(
             merged.sandbox.network.allowed_domains(),
@@ -4568,13 +5814,7 @@ network:
             },
             ..Default::default()
         };
-        let err = Config::merge_and_apply_defaults(
-            config,
-            Config::default(),
-            None,
-            std::path::Path::new(""),
-        )
-        .unwrap_err();
+        let err = Config::apply_defaults(config, None, None, std::path::Path::new("")).unwrap_err();
         assert!(err.to_string().contains("Invalid sandbox network config"));
     }
 
@@ -4730,7 +5970,7 @@ container:
         project.sandbox.container.devices =
             Some(vec![ContainerDevice::String("/dev/ttyUSB0".to_string())]);
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let devs = merged.sandbox.container.devices.unwrap();
         assert_eq!(devs.len(), 1);
         assert_eq!(devs[0].to_arg(), "/dev/kvm");
@@ -4743,7 +5983,7 @@ container:
         project.sandbox.container.devices =
             Some(vec![ContainerDevice::String("/dev/ttyUSB0".to_string())]);
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.sandbox.container.devices.is_none());
     }
 
@@ -4754,7 +5994,7 @@ container:
         let mut project = Config::default();
         project.sandbox.container.group_add = Some(vec!["video".to_string()]);
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let groups = merged.sandbox.container.group_add.unwrap();
         assert_eq!(groups, vec!["dialout".to_string()]);
     }
@@ -4889,7 +6129,7 @@ windows:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         // Project windows should win, panes should be cleared
         assert!(merged.windows.is_some());
         assert!(merged.panes.is_none());
@@ -4914,7 +6154,7 @@ windows:
             ..Default::default()
         };
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         // Project panes should win, windows should be cleared
         assert!(merged.panes.is_some());
         assert!(merged.windows.is_none());
@@ -4931,7 +6171,7 @@ windows:
         };
         let project = Config::default(); // no panes or windows
 
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert!(merged.windows.is_some());
         assert!(merged.panes.is_none());
     }
@@ -5035,19 +6275,31 @@ sandbox:
 
     #[test]
     fn container_config_merge_resources() {
-        let global = ContainerConfig {
-            runtime: Some(SandboxRuntime::Docker),
-            memory: Some("8G".to_string()),
-            cpus: Some(4),
+        let global = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    runtime: Some(SandboxRuntime::Docker),
+                    memory: Some("8G".to_string()),
+                    cpus: Some(4),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let project = ContainerConfig {
-            runtime: None,
-            memory: Some("16G".to_string()),
-            cpus: None,
+        let project = Config {
+            sandbox: SandboxConfig {
+                container: ContainerConfig {
+                    runtime: None,
+                    memory: Some("16G".to_string()),
+                    cpus: None,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let merged = ContainerConfig::merge(global, project);
+        let merged = merge_configs(global, project).sandbox.container;
         assert_eq!(merged.memory.as_deref(), Some("16G")); // project overrides
         assert_eq!(merged.cpus, Some(4)); // falls back to global
         assert_eq!(merged.runtime, Some(SandboxRuntime::Docker));
@@ -5318,7 +6570,7 @@ panes:
             )])),
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let layouts = merged.layouts.unwrap();
         // Project layouts extend global (both available)
         assert!(layouts.contains_key("a"));
@@ -5351,7 +6603,7 @@ panes:
             )])),
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let layouts = merged.layouts.unwrap();
         // Project wins on collision
         assert_eq!(
@@ -5370,7 +6622,7 @@ panes:
             ..Default::default()
         };
         let project = Config::default();
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         let layouts = merged.layouts.unwrap();
         assert!(layouts.contains_key("a"));
     }
@@ -5455,7 +6707,7 @@ theme:
             },
             ..Default::default()
         };
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.theme.custom.unwrap().accent,
             Some("#222222".to_string())
@@ -5476,10 +6728,99 @@ theme:
             ..Default::default()
         };
         let project = Config::default();
-        let merged = global.merge(project);
+        let merged = merge_configs(global, project);
         assert_eq!(
             merged.theme.custom.unwrap().accent,
             Some("#111111".to_string())
         );
+    }
+
+    #[test]
+    fn events_config_deserializes() {
+        let yaml = r#"
+enabled: true
+level: debug
+disable:
+  - pane.probe
+  - turn.poll
+only:
+  - node
+"#;
+        let cfg: EventsConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.is_enabled());
+        assert_eq!(cfg.level.as_deref(), Some("debug"));
+        assert_eq!(cfg.disable, vec!["pane.probe", "turn.poll"]);
+        assert_eq!(cfg.only, vec!["node"]);
+    }
+
+    #[test]
+    fn events_config_defaults_enabled() {
+        let cfg: EventsConfig = serde_yaml::from_str("{}").unwrap();
+        assert!(cfg.is_enabled());
+        assert!(cfg.level.is_none());
+        assert!(cfg.disable.is_empty());
+        assert!(cfg.only.is_empty());
+    }
+
+    #[test]
+    fn events_to_filter_maps_fields() {
+        let cfg = EventsConfig {
+            enabled: Some(false),
+            level: Some("debug".to_string()),
+            only: vec!["node".to_string()],
+            disable: vec!["pane.probe".to_string()],
+        };
+        let filter = cfg.to_filter();
+        assert!(!filter.enabled);
+        assert_eq!(filter.only, vec!["node"]);
+        assert_eq!(filter.disable, vec!["pane.probe"]);
+    }
+
+    #[test]
+    fn events_merge_project_overrides_global() {
+        let global = Config {
+            events: EventsConfig {
+                enabled: Some(true),
+                level: Some("info".to_string()),
+                only: vec![],
+                disable: vec!["global.kind".to_string()],
+            },
+            ..Default::default()
+        };
+        let project = Config {
+            events: EventsConfig {
+                enabled: None,
+                level: Some("debug".to_string()),
+                only: vec![],
+                disable: vec!["pane.probe".to_string()],
+            },
+            ..Default::default()
+        };
+        let merged = merge_configs(global, project);
+        // project level overrides global
+        assert_eq!(merged.events.level.as_deref(), Some("debug"));
+        // project disable (non-empty) overrides global disable
+        assert_eq!(merged.events.disable, vec!["pane.probe"]);
+        // enabled inherits global since project left it unset
+        assert_eq!(merged.events.enabled, Some(true));
+    }
+
+    #[test]
+    fn events_merge_inherits_global_when_project_empty() {
+        let global = Config {
+            events: EventsConfig {
+                enabled: Some(false),
+                level: Some("off".to_string()),
+                only: vec!["node".to_string()],
+                disable: vec!["pane.probe".to_string()],
+            },
+            ..Default::default()
+        };
+        let project = Config::default();
+        let merged = merge_configs(global, project);
+        assert_eq!(merged.events.enabled, Some(false));
+        assert_eq!(merged.events.level.as_deref(), Some("off"));
+        assert_eq!(merged.events.only, vec!["node"]);
+        assert_eq!(merged.events.disable, vec!["pane.probe"]);
     }
 }

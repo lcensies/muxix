@@ -269,6 +269,10 @@ pub fn open(
             base_branch: None,
             did_switch: true,
             mux_target_full_name: target.full_name(),
+            focus_pane_id: context
+                .mux
+                .active_pane_of(&target.full_name())
+                .unwrap_or_default(),
             resolved_handle: base_handle,
             mode,
         });

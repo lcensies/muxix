@@ -13,10 +13,14 @@ impl App {
         if !self.mux.supports_preview() {
             return;
         }
+        // A pane-less agent's id is a namespaced reference; capturing it would
+        // hand the multiplexer something it cannot resolve on every selection
+        // change. No pane, no preview.
         let current_pane_id = self
             .table_state
             .selected()
             .and_then(|idx| self.agents.get(idx))
+            .filter(|agent| agent.has_pane())
             .map(|agent| agent.pane_id.clone());
 
         // Only fetch if selection changed

@@ -41,11 +41,14 @@ pub struct CreateResult {
     pub resolved_handle: String,
     /// The full mux target name that was created or selected.
     pub mux_target_full_name: String,
+    /// The pane ID of the agent (focus) pane.
+    pub focus_pane_id: String,
     /// The mux mode that was actually used (window or session)
     pub mode: MuxMode,
 }
 
 /// Result of merging a worktree
+#[derive(Debug)]
 pub struct MergeResult {
     pub branch_merged: String,
     pub main_branch: String,

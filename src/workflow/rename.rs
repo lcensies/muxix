@@ -23,7 +23,9 @@ pub fn rename(
     //    `find_worktree` handles both. Always derive the authoritative handle
     //    from the worktree's directory basename to keep metadata/tmux/state
     //    migrations consistent regardless of what the user typed.
-    let (old_path, branch_name) = git::find_worktree(user_target).with_context(|| {
+    let repo = context.main_worktree_root.clone();
+    let repo = repo.as_path();
+    let (old_path, branch_name) = git::find_worktree_in(user_target, Some(repo)).with_context(|| {
         format!(
             "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
             user_target
@@ -88,7 +90,7 @@ pub fn rename(
                 new_path.display()
             ));
         }
-        if git::find_worktree(&new_handle).is_ok() {
+        if git::find_worktree_in(&new_handle, Some(repo)).is_ok() {
             return Err(anyhow!(
                 "Another worktree with handle '{}' already exists",
                 new_handle
@@ -98,13 +100,13 @@ pub fn rename(
 
     if let Some(ref b) = new_branch
         && b != &branch_name
-        && git::branch_exists(b).unwrap_or(false)
+        && git::branch_exists_in(b, Some(repo)).unwrap_or(false)
     {
         return Err(anyhow!("Branch '{}' already exists", b));
     }
 
     // 7. tmux target collision check (only if handle is changing)
-    let mode = git::get_worktree_mode(&old_handle);
+    let mode = git::get_worktree_mode_in(&old_handle, Some(repo));
     let old_full = prefixed(&context.prefix, &old_handle);
     let new_full = prefixed(&context.prefix, &new_handle);
     let mux_running = context.mux.is_running().unwrap_or(false);
@@ -141,13 +143,13 @@ pub fn rename(
     //    match stored agent workdirs (which are usually canonicalized).
     let old_canonical = canon_or_self(&old_path);
 
-    // 9. Change to safe CWD before filesystem ops. If we're running from inside
-    //    the worktree being moved, we'd otherwise lose our CWD.
-    context.chdir_to_main_worktree()?;
+    // 9. Filesystem ops below run against the main worktree explicitly. The
+    //    process CWD may be inside the worktree being moved, and one process
+    //    serves several projects, so changing it globally is not an option.
 
     // 10. Execute: git worktree move
     if new_handle != old_handle {
-        git::move_worktree(&old_path, &new_path)
+        git::move_worktree_in(&old_path, &new_path, Some(repo))
             .context("Failed to move worktree (is the directory in use?)")?;
         info!(from = %old_path.display(), to = %new_path.display(), "rename:worktree moved");
     }
@@ -156,13 +158,13 @@ pub fn rename(
     if let Some(ref nb) = new_branch
         && nb != &branch_name
     {
-        git::rename_branch(&branch_name, nb)?;
+        git::rename_branch_in(&branch_name, nb, Some(repo))?;
         info!(old = branch_name, new = nb, "rename:branch renamed");
     }
 
     // 12. Migrate workmux.worktree.<handle>.* metadata
     if new_handle != old_handle
-        && let Err(e) = git::migrate_worktree_meta(&old_handle, &new_handle)
+        && let Err(e) = git::migrate_worktree_meta_in(&old_handle, &new_handle, Some(repo))
     {
         warn!(error = %e, "rename:failed to migrate worktree metadata");
     }

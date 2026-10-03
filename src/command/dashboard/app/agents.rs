@@ -19,6 +19,101 @@ use super::super::sort::SortMode;
 use super::super::spinner::SPINNER_FRAMES;
 use super::App;
 
+/// Coarse status grouping for the sectioned ("grouped") agents view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusBucket {
+    NeedsInput,
+    Review,
+    Working,
+    Idle,
+    Stale,
+}
+
+impl StatusBucket {
+    /// Display order (lower sorts first), matching the priority sort.
+    pub fn rank(self) -> u8 {
+        match self {
+            StatusBucket::NeedsInput => 0,
+            StatusBucket::Review => 1,
+            StatusBucket::Working => 2,
+            StatusBucket::Idle => 3,
+            StatusBucket::Stale => 4,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StatusBucket::NeedsInput => "Needs input",
+            StatusBucket::Review => "Ready to review",
+            StatusBucket::Working => "Working",
+            StatusBucket::Idle => "Idle",
+            StatusBucket::Stale => "Stale",
+        }
+    }
+}
+
+/// Pure status -> bucket mapping (extracted for testability). Stale agents
+/// always sink to [`StatusBucket::Stale`] regardless of their last status.
+pub fn bucket_for(is_stale: bool, status: Option<AgentStatus>) -> StatusBucket {
+    if is_stale {
+        return StatusBucket::Stale;
+    }
+    match status {
+        Some(AgentStatus::Waiting) => StatusBucket::NeedsInput,
+        Some(AgentStatus::Done) => StatusBucket::Review,
+        Some(AgentStatus::Working) => StatusBucket::Working,
+        None => StatusBucket::Idle,
+    }
+}
+
+#[cfg(test)]
+mod bucket_tests {
+    use super::*;
+
+    #[test]
+    fn stale_overrides_any_status() {
+        for status in [
+            Some(AgentStatus::Waiting),
+            Some(AgentStatus::Working),
+            Some(AgentStatus::Done),
+            None,
+        ] {
+            assert_eq!(bucket_for(true, status), StatusBucket::Stale);
+        }
+    }
+
+    #[test]
+    fn status_maps_to_bucket() {
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Waiting)),
+            StatusBucket::NeedsInput
+        );
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Done)),
+            StatusBucket::Review
+        );
+        assert_eq!(
+            bucket_for(false, Some(AgentStatus::Working)),
+            StatusBucket::Working
+        );
+        assert_eq!(bucket_for(false, None), StatusBucket::Idle);
+    }
+
+    #[test]
+    fn rank_orders_needs_input_first_stale_last() {
+        let order = [
+            StatusBucket::NeedsInput,
+            StatusBucket::Review,
+            StatusBucket::Working,
+            StatusBucket::Idle,
+            StatusBucket::Stale,
+        ];
+        for pair in order.windows(2) {
+            assert!(pair[0].rank() < pair[1].rank());
+        }
+    }
+}
+
 impl App {
     /// Apply name and stale filters to the cached agent list, sort, and restore selection.
     /// This is fast (in-memory only) and safe to call on every filter keystroke.
@@ -155,26 +250,95 @@ impl App {
 
         // Use sort_by_cached_key for better performance (calls key fn O(N) times vs O(N log N))
         // Include pane_id as final tiebreaker for stable ordering within groups
-        match self.sort_mode {
-            SortMode::Priority => {
-                // Sort by priority, then by elapsed time (most recent first), then by pane_id
-                self.agents
-                    .sort_by_cached_key(|a| (get_priority(a), get_elapsed(a), pane_num(a)));
-            }
-            SortMode::Project => {
-                // Sort by project name first, then by status priority within each project
-                self.agents.sort_by_cached_key(|a| {
-                    (Self::extract_project_name(a), get_priority(a), pane_num(a))
-                });
-            }
-            SortMode::Recency => {
-                self.agents
-                    .sort_by_cached_key(|a| (get_elapsed(a), pane_num(a)));
-            }
-            SortMode::Natural => {
-                self.agents.sort_by_cached_key(pane_num);
+        if self.grouped_agents {
+            // Sectioned view: order strictly by status bucket so each group is
+            // contiguous, then most-recent-first, then by pane for stability.
+            self.agents
+                .sort_by_cached_key(|a| (get_priority(a), get_elapsed(a), pane_num(a)));
+        } else {
+            match self.sort_mode {
+                SortMode::Priority => {
+                    // Sort by priority, then by elapsed time (most recent first), then by pane_id
+                    self.agents
+                        .sort_by_cached_key(|a| (get_priority(a), get_elapsed(a), pane_num(a)));
+                }
+                SortMode::Project => {
+                    // Sort by project name first, then by status priority within each project
+                    self.agents.sort_by_cached_key(|a| {
+                        (Self::extract_project_name(a), get_priority(a), pane_num(a))
+                    });
+                }
+                SortMode::Recency => {
+                    self.agents
+                        .sort_by_cached_key(|a| (get_elapsed(a), pane_num(a)));
+                }
+                SortMode::Natural => {
+                    self.agents.sort_by_cached_key(pane_num);
+                }
             }
         }
+    }
+
+    /// Coarse status bucket for an agent (used by the grouped view).
+    pub fn status_bucket(&self, agent: &AgentPane) -> StatusBucket {
+        bucket_for(self.is_stale(agent), agent.status)
+    }
+
+    /// Toggle the sectioned (status-grouped) agents view, re-sorting and
+    /// following the previously selected agent across the reorder.
+    pub fn toggle_grouped_agents(&mut self) {
+        self.grouped_agents = !self.grouped_agents;
+        self.sort_agents();
+        if let Some(pane_id) = self.selected_pane_id.clone()
+            && let Some(idx) = self.agents.iter().position(|a| a.pane_id == pane_id)
+        {
+            self.table_state.select(Some(idx));
+        }
+    }
+
+    /// Build DSL list rows for the grouped agents view: a section header
+    /// whenever the status bucket changes, followed by one row per agent.
+    pub fn grouped_agent_items(&self) -> Vec<crate::tui::dsl::ListItem> {
+        use crate::tui::dsl::{FieldValue, ListItem};
+
+        let selected = self.table_state.selected();
+        let mut items = Vec::new();
+        let mut prev: Option<StatusBucket> = None;
+        for (idx, agent) in self.agents.iter().enumerate() {
+            let bucket = self.status_bucket(agent);
+            if prev != Some(bucket) {
+                items.push(ListItem::header(bucket.label()));
+                prev = Some(bucket);
+            }
+            let (worktree, _is_main) = self.extract_worktree_name(agent);
+            let title = agent
+                .pane_title
+                .as_ref()
+                .map(|t| {
+                    let t = crate::agent_display::strip_oc_title_prefix(t);
+                    t.strip_prefix("... ").unwrap_or(t).to_string()
+                })
+                .unwrap_or_default();
+            let time = self
+                .get_elapsed(agent)
+                .map(|d| self.format_duration(d))
+                .unwrap_or_else(|| "-".to_string());
+            let fields = vec![
+                (
+                    "status".to_string(),
+                    FieldValue::Spans(self.get_status_display(agent)),
+                ),
+                (
+                    "project".to_string(),
+                    FieldValue::text(Self::extract_project_name(agent)),
+                ),
+                ("name".to_string(), FieldValue::text(worktree)),
+                ("time".to_string(), FieldValue::text(time)),
+                ("title".to_string(), FieldValue::text(title)),
+            ];
+            items.push(ListItem::row(fields, selected == Some(idx)));
+        }
+        items
     }
 
     pub fn cycle_sort_mode(&mut self) {
@@ -494,6 +658,7 @@ impl App {
     /// Open a URL derived from the selected item's PR URL.
     fn open_pr_url(&mut self, make_url: impl FnOnce(&str) -> String) {
         let pr = match self.active_tab {
+            DashboardTab::Tasks => None,
             DashboardTab::Agents => self
                 .table_state
                 .selected()

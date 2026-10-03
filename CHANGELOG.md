@@ -22,6 +22,103 @@ description: Release notes and version history for workmux
 
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- **`wait` no longer aborts on the first crashed agent.** When waiting on
+  multiple worktrees, one agent exiting unexpectedly used to abort the whole
+  invocation immediately with exit code `3`. It now marks that target as
+  exited and keeps waiting on the rest, still exiting non-zero once every
+  target has settled. Scripts relying on an immediate `exit 3` on the first
+  crash need to check which names are missing instead. See
+  [wait](docs/reference/commands/wait.md#crash-handling).
+- **Skill `coordinator` renamed `harness-coordinator`; workflow
+  `coordinator.yaml` renamed `task-coordinator.yaml`.** The former is the
+  agent-first coordinator skill (spawn/wait/review/merge over `workmux`
+  commands); the latter is the daemon-owned task-graph pipeline. Projects
+  referencing `skills/coordinator` or `resources/workflows/coordinator.yaml`
+  by path need to update to the new names; re-run `workmux setup` to reinstall
+  the skill under its new name.
+- **Provisioning environment variables renamed.** `WORKMUX_SC_URL` and
+  `WORKMUX_SC_TOKEN` are now `WORKMUX_PROVISION_URL` and
+  `WORKMUX_PROVISION_TOKEN`. The old names keep working for one release and
+  print a deprecation warning; when both are set, the new name wins. See
+  [provision](docs/reference/commands/provision.md#migrating-from-workmux_sc_).
+
+### Added
+
+- **`workmux open` now brings up the sidebar itself.** Sidebar state lives in
+  tmux globals, so after a server restart it was off until someone pressed the
+  toggle. Opening a worktree now activates it (honouring
+  `sidebar.default_scope`) and makes sure the opened window has a sidebar pane.
+
+- **`workmux setup` now removes harness features the config no longer
+  declares.** Dropping a skill, subagent, plugin, or hook from `.workmux.yaml`
+  and re-running setup takes it off the machine, reported as a new `removed`
+  outcome that `--check` counts as drift. Only features workmux itself
+  installed are ever removed — they are tracked in
+  `$XDG_STATE_HOME/workmux/managed.json`, hand-installed skills are never
+  touched, and a feature another project still declares survives. The first
+  run after upgrading prunes nothing (it writes the manifest); `--no-prune`
+  opts out of removal entirely. See
+  [bootstrap → Removing a feature](docs/guide/bootstrap.md#removing-a-feature).
+- Profile-aware bootstrap: `agent_profiles.<name>.agents.<id>` declares
+  per-profile bootstrap deltas — `additional_/exclude_plugins`,
+  `additional_/exclude_skills`, `additional_/exclude_prompt_components`,
+  `exclude_features`, `exclude_paths`, and a `settings` RFC 7386 merge patch
+  (`null` deletes a key). `workmux setup` materializes them as generated files
+  in the derived overlay (pi only for now); the user-authored profile source
+  tree still wins file-level. See
+  [Agent config profiles](docs/guide/profiles.md#agent-config-profiles).
+- Pane-keyed completion signal: `workmux signal done [--feedback]` /
+  `workmux signal error --feedback <why>` now work without `--node`, writing
+  an agent-authored completion record onto the pane's `AgentState`, keyed by
+  `$TMUX_PANE` like the turn signals. The node-keyed form is unchanged. See
+  [signal](docs/reference/commands/signal.md).
+- `workmux wait --status completed|failed` waits on that completion record
+  instead of a turn boundary; `--status merged` waits for the worktree to
+  disappear (e.g. after `/merge`); `--status` accepts a comma-separated list.
+  `workmux status` and `status --json` show the completion alongside turn
+  status. See [wait](docs/reference/commands/wait.md) and
+  [status](docs/reference/commands/status.md).
+- `workmux add` and `workmux send` clear a pane's completion record on launch
+  or delivery, so a resurrected agent or a follow-up prompt cannot inherit a
+  stale `completed`/`failed`.
+- `include:` and `profiles:` for composing configuration, with
+  `workmux config resolve --explain` to attribute every key to the layer that
+  set it. See [Profiles & includes](docs/guide/profiles.md).
+- `workmux config validate`, including `--file` for judging a generated config
+  on its own and `--strict` for treating unrecognized keys as errors.
+- `workmux setup --non-interactive`, `--check`, `--json`, `--only`, and
+  `--profile`, making setup usable from an activation script or CI.
+- Nix `homeManagerModules.workmux`, `nixosModules.workmux`, and
+  `lib.mkWorkmuxConfig`, with build-time config validation.
+- Pluggable provisioning backends (`http`, `file`, `exec`) with configurable
+  endpoints, and `${env:}` / `${file:}` placeholders resolved at use so a
+  resolved config never holds a secret.
+- Skill hooks: a skill entry can bind its scripts to `session-ready` /
+  `turn-done`, and `workmux setup` installs them into each agent's native hook
+  config (Claude, Codex, Gemini) — with optional `sha256` pinning that fails
+  closed on mismatch. Global-only, like `agents:`. The vendored `auto-git`
+  skill uses this for a per-turn commit safety net.
+- Skill hooks for OpenCode and pi via Claude-hooks-compat plugins
+  (`opencode-claude-hooks`, `@hsingjui/pi-hooks`): declared hooks are written
+  in Claude format to each plugin's config file, and the plugin itself is
+  auto-added to the agent's install list when hooks are declared.
+
+### Fixed
+
+- A project-declared `bootstrap` section (which replaces the global one
+  wholesale) silently wiped global hook declarations — both `bootstrap.hooks`
+  and hook-carrying `default_skills` entries — so global-only hooks never
+  installed in any project that used `bootstrap`. Trusted hook declarations
+  now survive the replace.
+- `orchestrate`, `daemon`, `proxy_chain`, `submodules`, `agent_runtime`, and
+  `ade` were silently discarded when merging global and project configs, so
+  settings under them had no effect.
+
+
 ## v0.1.211 (2026-05-22)
 
 - Respect each repository's configured base branch when adding worktrees from the dashboard.

@@ -23,6 +23,7 @@ mod client;
 mod daemon;
 mod daemon_ctrl;
 mod hooks;
+mod keymap;
 mod layout_tree;
 mod panes;
 mod runtime;
@@ -41,6 +42,13 @@ use self::panes::{
     create_sidebar_in_window, create_sidebars_in_all_windows, create_sidebars_in_session,
     find_sidebar_in_window, kill_all_sidebars_and_restore_layouts, kill_sidebars_in_session,
 };
+
+/// Poke the sidebar daemon for an immediate refresh. No-op when no daemon runs.
+/// Called from agent status hooks so the sidebar updates event-driven instead
+/// of waiting for the daemon's slow backstop sweep.
+pub fn poke_daemon() {
+    signal_daemon();
+}
 
 const SIDEBAR_ROLE_VALUE: &str = "sidebar";
 const MIN_WIDTH: u16 = 25;
@@ -224,14 +232,16 @@ fn set_sidebar_position(position: SidebarPosition) {
 /// The result is clamped to ensure the sidebar is at least 10 columns
 /// and leaves at least 20 columns for content panes.
 fn resolve_width_for(config: &crate::config::Config, tw: u16, synced_width: Option<u16>) -> u16 {
+    // Explicit config takes precedence over any interactively synced width.
+    // This ensures percentage-based configs scale with terminal width rather
+    // than being overridden by a stale absolute value (e.g. from tmux-tilish rebalancing).
+    if let Some(ref w) = config.sidebar.width {
+        return w.resolve(tw).max(10);
+    }
+
     if let Some(w) = synced_width {
         let max_w = tw.saturating_sub(10).max(10);
         return w.clamp(10, max_w);
-    }
-
-    if let Some(ref w) = config.sidebar.width {
-        // Explicit config: respect it, only enforce a minimum of 10
-        return w.resolve(tw).max(10);
     }
 
     // Default: 10% of terminal, clamped to [MIN_WIDTH, MAX_WIDTH]
@@ -357,6 +367,20 @@ fn effective_size_for(
     }
 }
 
+/// Actual size of a pane along the sidebar axis, or 0 on failure.
+fn pane_actual_size(pane_id: &str, position: SidebarPosition) -> u16 {
+    let fmt = match position {
+        SidebarPosition::Left => "#{pane_width}",
+        SidebarPosition::Top => "#{pane_height}",
+    };
+    Cmd::new("tmux")
+        .args(&["display-message", "-t", pane_id, "-p", fmt])
+        .run_and_capture_stdout()
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
 /// Reflow all sidebar windows except the given one.
 pub(super) fn reflow_all_sidebars_except(exclude_window_id: &str) {
     let config = crate::config::Config::load(None).unwrap_or_default();
@@ -384,6 +408,9 @@ pub(super) fn reflow_all_sidebars_except(exclude_window_id: &str) {
                 resolve_height_for(&config, window_extent, read_sidebar_height())
             }
         };
+        if pane_actual_size(&pane_id, position) == size {
+            continue;
+        }
         layout_tree::reflow_after_sidebar_add(&window_id, &pane_id, position, size);
     }
 }
@@ -391,11 +418,12 @@ pub(super) fn reflow_all_sidebars_except(exclude_window_id: &str) {
 /// Reflow sidebar layouts in all windows. Called by the window-resized hook
 /// so inactive windows get their sidebar widths corrected without waiting for
 /// the user to visit them.
+///
+/// This hook is the single server-wide enforcer: windows whose sidebar is
+/// already at the target size are skipped, so repeated firings converge
+/// instead of re-applying layouts (which fed a resize feedback loop with
+/// clients' manual-resize detection).
 pub fn reflow_all() -> Result<()> {
-    reflow_all_to_window_extent(None)
-}
-
-pub(super) fn reflow_all_to_window_extent(window_extent: Option<u16>) -> Result<()> {
     let scope = current_scope();
     if matches!(scope, SidebarScope::Off) {
         return Ok(());
@@ -426,15 +454,12 @@ pub(super) fn reflow_all_to_window_extent(window_extent: Option<u16>) -> Result<
             SidebarPosition::Left => "#{window_width}",
             SidebarPosition::Top => "#{window_height}",
         };
-        let current_extent = match window_extent {
-            Some(extent) => extent,
-            None => Cmd::new("tmux")
-                .args(&["display-message", "-t", &window_id, "-p", format])
-                .run_and_capture_stdout()
-                .ok()
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0),
-        };
+        let current_extent: u16 = Cmd::new("tmux")
+            .args(&["display-message", "-t", &window_id, "-p", format])
+            .run_and_capture_stdout()
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
         if current_extent == 0 {
             continue;
         }
@@ -443,13 +468,10 @@ pub(super) fn reflow_all_to_window_extent(window_extent: Option<u16>) -> Result<
             SidebarPosition::Left => resolve_width_for(&config, current_extent, synced_width),
             SidebarPosition::Top => resolve_height_for(&config, current_extent, synced_height),
         };
-        layout_tree::reflow_after_sidebar_add_to_window_extent(
-            &window_id,
-            &pane_id,
-            position,
-            size,
-            window_extent,
-        );
+        if pane_actual_size(&pane_id, position) == size {
+            continue;
+        }
+        layout_tree::reflow_after_sidebar_add(&window_id, &pane_id, position, size);
     }
 
     Ok(())
@@ -503,8 +525,10 @@ pub fn toggle() -> Result<()> {
     // Ensure daemon is running (spawns if needed)
     ensure_daemon_running()?;
 
-    create_sidebars_in_all_windows(&config)?;
+    // Install hooks BEFORE creating sidebars so each creation split fires the
+    // after-split-window[99] reflow that re-asserts width over tilish's retile.
     install_hooks()?;
+    create_sidebars_in_all_windows(&config)?;
 
     Ok(())
 }
@@ -584,8 +608,8 @@ pub fn toggle_session() -> Result<()> {
     set_scope(&new_scope);
 
     ensure_daemon_running()?;
-    create_sidebars_in_session(&session_id, &config)?;
     install_hooks()?;
+    create_sidebars_in_session(&session_id, &config)?;
 
     Ok(())
 }
@@ -650,9 +674,90 @@ pub fn sync(window_id: Option<&str>) -> Result<()> {
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
     let size = effective_size_for(&config, position, window_extent);
-    create_sidebar_in_window(&target, position, size)?;
+    // Hook path: `after-new-window` runs `run-shell -b`, so this executes after
+    // the hook returns and the window may be mid-teardown by now — the split
+    // then fails with tmux's "no such window/pane" and the nonzero exit
+    // surfaces to the user as `'workmux _sidebar-sync …' returned 1`. Nothing
+    // here can recover a window that is going away, and a missing sidebar in a
+    // closing window is not worth an error. Callers that create sidebars
+    // deliberately (session/all-windows paths) still propagate.
+    if let Err(err) = create_sidebar_in_window(&target, position, size) {
+        tracing::debug!(window_id = target.as_str(), error = %err, "sidebar sync: skipped");
+    }
 
     Ok(())
+}
+
+/// Resolve a window id from a pane id, window id, or window name.
+///
+/// A bare window name is only a valid tmux target inside the session that owns
+/// it, and worktree windows usually live in another session than the caller, so
+/// an exact-name search over every window is the fallback.
+fn resolve_window_id(target: &str) -> Option<String> {
+    if let Ok(out) = Cmd::new("tmux")
+        .args(&["display-message", "-t", target, "-p", "#{window_id}"])
+        .run_and_capture_stdout()
+    {
+        let id = out.trim();
+        if !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+
+    let listed = Cmd::new("tmux")
+        .args(&["list-windows", "-a", "-F", "#{window_id} #{window_name}"])
+        .run_and_capture_stdout()
+        .ok()?;
+    listed.lines().find_map(|line| {
+        let (id, name) = line.split_once(' ')?;
+        (name == target).then(|| id.to_string())
+    })
+}
+
+/// Scope `ensure_for_target` activates: session-only when the config asks for
+/// it and the window's session is known, global otherwise.
+fn activation_scope(
+    default_scope: Option<crate::config::SidebarDefaultScope>,
+    window_session_id: Option<String>,
+) -> SidebarScope {
+    match (default_scope, window_session_id) {
+        (Some(crate::config::SidebarDefaultScope::Session), Some(sid)) => {
+            SidebarScope::Sessions(std::iter::once(sid).collect())
+        }
+        _ => SidebarScope::Global,
+    }
+}
+
+/// Ensure the sidebar is active and present in the window that owns `target`
+/// (a window or pane id). `workmux open` calls this so an opened worktree comes
+/// up with the sidebar even on a tmux server where nobody toggled it yet:
+/// scope lives in tmux globals, so it is `Off` again after every server restart.
+///
+/// `sidebar.default_scope: session` keeps the activation to that window's
+/// session, matching what a plain `workmux sidebar` would have done.
+pub fn ensure_for_target(target: &str) -> Result<()> {
+    let Some(window_id) = resolve_window_id(target) else {
+        return Ok(());
+    };
+
+    if matches!(current_scope(), SidebarScope::Off) {
+        let config = crate::config::Config::load(None).unwrap_or_default();
+        Cmd::new("tmux")
+            .args(&["set-option", "-g", "@workmux_sidebar_enabled", "1"])
+            .run()?;
+        set_sidebar_position(configured_position(&config));
+        let scope = activation_scope(
+            config.sidebar.default_scope,
+            get_window_session_id(&window_id),
+        );
+        set_scope(&scope);
+        ensure_daemon_running()?;
+        // Hooks before the first split, so the reflow hook re-asserts our width
+        // over any external retiling (same ordering as `toggle`).
+        install_hooks()?;
+    }
+
+    sync(Some(&window_id))
 }
 
 /// Reflow sidebar layout after a window resize (called by tmux hook).
@@ -718,6 +823,13 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
     let size = effective_size_for(&config, position, window_extent);
+
+    // Check actual pane size before reflowing to avoid triggering external
+    // layout managers (e.g. tmux-tilish) in a loop: if the sidebar is already
+    // at the target size, a select-layout call is unnecessary.
+    if pane_actual_size(&sidebar_pane_id, position) == size {
+        return Ok(());
+    }
 
     layout_tree::reflow_after_sidebar_add(&target, &sidebar_pane_id, position, size);
     Ok(())
@@ -816,6 +928,29 @@ pub fn navigate(action: NavAction) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn activation_scope_respects_default_scope() {
+        use crate::config::SidebarDefaultScope;
+        assert_eq!(
+            activation_scope(None, Some("$3".to_string())),
+            SidebarScope::Global
+        );
+        assert_eq!(
+            activation_scope(Some(SidebarDefaultScope::Global), Some("$3".to_string())),
+            SidebarScope::Global
+        );
+        assert_eq!(
+            activation_scope(Some(SidebarDefaultScope::Session), Some("$3".to_string())),
+            SidebarScope::Sessions(["$3".to_string()].into_iter().collect())
+        );
+        // No session id (window vanished) must not produce an empty session set,
+        // which parse_scope would read back as a scope matching nothing.
+        assert_eq!(
+            activation_scope(Some(SidebarDefaultScope::Session), None),
+            SidebarScope::Global
+        );
+    }
 
     #[test]
     fn parses_session_id_set() {

@@ -1,0 +1,11 @@
+[package]
+name = "edtui-jagged"
+version = "0.1.13"
+edition = "2021"
+repository = "https://github.com/preiter93/edtui-jagged"
+keywords = ["edtui", "jagged", "vec", "nested"]
+description = "A jagged array data structure for the edtui editor"
+authors = ["preiter <phil.reiter93@gmail.com>"]
+license = "MIT"
+
+[dependencies]

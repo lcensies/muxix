@@ -88,29 +88,43 @@ pub fn create_worktree_in(
 /// Git updates the worktree admin dir's `gitdir` file and the worktree's
 /// `.git` pointer. Note: the admin dir itself (`.git/worktrees/<basename>/`)
 /// keeps its original basename; workmux does not rely on that path shape.
-pub fn move_worktree(old_path: &Path, new_path: &Path) -> Result<()> {
+pub fn move_worktree_in(old_path: &Path, new_path: &Path, workdir: Option<&Path>) -> Result<()> {
     let old = old_path
         .to_str()
         .ok_or_else(|| anyhow!("Invalid old worktree path"))?;
     let new = new_path
         .to_str()
         .ok_or_else(|| anyhow!("Invalid new worktree path"))?;
-    Cmd::new("git")
-        .args(&["worktree", "move", old, new])
-        .run()
+    let cmd = Cmd::new("git").args(&["worktree", "move", old, new]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to move worktree {} -> {}", old, new))?;
     Ok(())
 }
 
 /// Migrate all `workmux.worktree.<old_handle>.*` config entries to
 /// `workmux.worktree.<new_handle>.*`, then remove the old section.
-pub fn migrate_worktree_meta(old_handle: &str, new_handle: &str) -> Result<()> {
+pub fn migrate_worktree_meta_in(
+    old_handle: &str,
+    new_handle: &str,
+    workdir: Option<&Path>,
+) -> Result<()> {
     if old_handle == new_handle {
         return Ok(());
     }
+    let git = || {
+        let cmd = Cmd::new("git");
+        match workdir {
+            Some(path) => cmd.workdir(path),
+            None => cmd,
+        }
+    };
     let old_section = format!("workmux.worktree.{}", old_handle);
     let regex_pattern = format!(r"^{}\.", regex::escape(&old_section));
-    let output = Cmd::new("git")
+    let output = git()
         .args(&["config", "--local", "--get-regexp", &regex_pattern])
         .run_and_capture_stdout()
         .unwrap_or_default();
@@ -125,14 +139,14 @@ pub fn migrate_worktree_meta(old_handle: &str, new_handle: &str) -> Result<()> {
             continue;
         };
         let new_key = format!("workmux.worktree.{}.{}", new_handle, suffix);
-        Cmd::new("git")
+        git()
             .args(&["config", "--local", &new_key, value])
             .run()
             .with_context(|| format!("Failed to set {}", new_key))?;
     }
 
     // Remove the old section (ignore "no such section" errors).
-    let _ = Cmd::new("git")
+    let _ = git()
         .args(&["config", "--local", "--remove-section", &old_section])
         .run();
 
@@ -173,7 +187,47 @@ pub(super) fn parse_worktree_list_porcelain(output: &str) -> Result<Vec<(PathBuf
     Ok(worktrees)
 }
 
+/// Whether a path recorded on a task is still this repository's worktree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindingState {
+    /// git lists it as a worktree of this repository.
+    Live,
+    /// git does not list it, and nothing is at that path.
+    Missing,
+    /// Something exists at that path but git does not call it ours. Never removed:
+    /// a recorded path that drifted onto someone else's directory must not be
+    /// deleted on the strength of a stale record.
+    Foreign,
+}
+
+/// Resolve a path as far as the filesystem allows. Recorded paths may not exist,
+/// so a failed canonicalize is not an error — it just leaves the path as written.
+fn resolved(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Classify a recorded worktree path against git's own registry.
+///
+/// git is the authority here rather than a naming convention: once the agent picks
+/// worktree names, a path derived from a task id proves nothing about what is
+/// actually on disk or which repository owns it.
+pub fn binding_state(recorded: &Path, workdir: Option<&Path>) -> Result<BindingState> {
+    let want = resolved(recorded);
+    if list_worktrees_in(workdir)?
+        .iter()
+        .any(|(path, _)| resolved(path) == want)
+    {
+        return Ok(BindingState::Live);
+    }
+    Ok(if recorded.exists() {
+        BindingState::Foreign
+    } else {
+        BindingState::Missing
+    })
+}
+
 /// Get the path to a worktree for a given branch
+#[allow(dead_code)]
 pub fn get_worktree_path(branch_name: &str) -> Result<PathBuf> {
     get_worktree_path_in(branch_name, None)
 }
@@ -184,6 +238,9 @@ pub fn get_worktree_path_in(branch_name: &str, workdir: Option<&Path>) -> Result
 
     for (path, branch) in worktrees {
         if branch == branch_name {
+            if !path.exists() {
+                return Err(WorktreeNotFound(branch_name.to_string()).into());
+            }
             return Ok(path);
         }
     }
@@ -207,6 +264,9 @@ pub fn find_worktree_in(name: &str, workdir: Option<&Path>) -> Result<(PathBuf, 
         if let Some(dir_name) = path.file_name()
             && dir_name.to_string_lossy() == name
         {
+            if !path.exists() {
+                return Err(WorktreeNotFound(name.to_string()).into());
+            }
             return Ok((path.clone(), branch.clone()));
         }
     }
@@ -214,6 +274,9 @@ pub fn find_worktree_in(name: &str, workdir: Option<&Path>) -> Result<(PathBuf, 
     // Fallback: try to match by branch name
     for (path, branch) in worktrees {
         if branch == name {
+            if !path.exists() {
+                return Err(WorktreeNotFound(name.to_string()).into());
+            }
             return Ok((path, branch));
         }
     }
@@ -323,7 +386,13 @@ pub fn get_worktree_mode_opt_in(handle: &str, workdir: Option<&Path>) -> Option<
 /// Determine the tmux mode for a worktree from git metadata.
 /// Falls back to Window mode if no metadata is found (backward compatibility).
 pub fn get_worktree_mode(handle: &str) -> MuxMode {
-    get_worktree_mode_opt(handle).unwrap_or(MuxMode::Window)
+    get_worktree_mode_in(handle, None)
+}
+
+/// [`get_worktree_mode`], reading metadata from an explicit directory instead
+/// of the process CWD.
+pub fn get_worktree_mode_in(handle: &str, workdir: Option<&Path>) -> MuxMode {
+    get_worktree_mode_opt_in(handle, workdir).unwrap_or(MuxMode::Window)
 }
 
 pub fn get_all_worktree_meta_key_in(
@@ -395,16 +464,15 @@ pub fn get_all_worktree_modes_in(
 }
 
 /// Remove all metadata for a worktree handle.
-pub fn remove_worktree_meta(handle: &str) -> Result<()> {
+pub fn remove_worktree_meta_in(handle: &str, workdir: Option<&Path>) -> Result<()> {
     // Use --remove-section to remove all keys under the handle's section
-    let _ = Cmd::new("git")
-        .args(&[
-            "config",
-            "--local",
-            "--remove-section",
-            &format!("workmux.worktree.{}", handle),
-        ])
-        .run();
+    let section = format!("workmux.worktree.{}", handle);
+    let cmd = Cmd::new("git").args(&["config", "--local", "--remove-section", &section]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    let _ = cmd.run();
     Ok(())
 }
 
@@ -507,6 +575,59 @@ mod tests {
         std::fs::write(dir.join("README.md"), "test\n").unwrap();
         run_git(dir, &["add", "README.md"]);
         run_git(dir, &["commit", "-m", "initial"]);
+    }
+
+    #[test]
+    fn porcelain_parser_reads_branches_and_detached_heads() {
+        let listed = parse_worktree_list_porcelain(
+            "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\
+             \n\
+             worktree /repo/../wm-a\nHEAD def\nbranch refs/heads/feat/login\n\
+             \n\
+             worktree /repo/../wm-b\nHEAD 123\ndetached\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            listed,
+            vec![
+                (PathBuf::from("/repo"), "main".to_string()),
+                (PathBuf::from("/repo/../wm-a"), "feat/login".to_string()),
+                (PathBuf::from("/repo/../wm-b"), "(detached)".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn binding_state_classifies_live_missing_and_foreign_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+
+        let tree = dir.path().join("wm-live");
+        run_git(
+            &repo,
+            &["worktree", "add", "-b", "feat/live", tree.to_str().unwrap()],
+        );
+
+        assert_eq!(
+            binding_state(&tree, Some(&repo)).unwrap(),
+            BindingState::Live
+        );
+        assert_eq!(
+            binding_state(&dir.path().join("never-existed"), Some(&repo)).unwrap(),
+            BindingState::Missing
+        );
+
+        // A directory that exists but is not one of this repo's worktrees. Cleanup
+        // driven by a stale record would otherwise delete it.
+        let stranger = dir.path().join("not-ours");
+        std::fs::create_dir(&stranger).unwrap();
+        assert_eq!(
+            binding_state(&stranger, Some(&repo)).unwrap(),
+            BindingState::Foreign
+        );
     }
 
     #[test]

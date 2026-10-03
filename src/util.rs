@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
@@ -402,4 +402,25 @@ mod tests {
         let p = Path::new("/../foo");
         assert_eq!(normalize_path(p), PathBuf::from("/foo"));
     }
+}
+
+/// Write `content` to `path` atomically: unique temp file in the same directory,
+/// then rename. The temp name carries pid + a process-local counter so two
+/// concurrent writers never share a path and tear each other's file.
+pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    static WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = WRITE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let tmp = path.with_file_name(format!("{file_name}.{pid}.{seq}.tmp"));
+    std::fs::write(&tmp, content)
+        .with_context(|| format!("write temp for {}", path.display()))?;
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e).with_context(|| format!("rename temp onto {}", path.display()));
+    }
+    Ok(())
 }

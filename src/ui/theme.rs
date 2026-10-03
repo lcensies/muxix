@@ -5,6 +5,7 @@ use ratatui::style::Color;
 use crate::config::{CustomThemeColors, ThemeConfig, ThemeMode, ThemeScheme};
 
 /// All customizable colors used in the UI.
+#[derive(Debug, Clone, Copy)]
 pub struct ThemePalette {
     // --- Base UI elements ---
     /// Background for the current worktree row

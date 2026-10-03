@@ -1,0 +1,39 @@
+# Packages the microsandbox `msb` CLI + libkrunfw so workmux can use the
+# microsandbox backend on hosts where `msb` is not installed natively.
+#
+# Built locally by `workmux sandbox build` (microsandbox backend) — NOT pulled
+# from a registry, since it bundles release binaries fetched at build time.
+#
+# IMPORTANT: `msb` launches libkrun microVMs, which require /dev/kvm. Any
+# container started from this image must be run with `--device /dev/kvm` (and
+# typically a mounted host state dir so sandbox metadata survives across
+# invocations). See src/sandbox/microsandbox.rs for how workmux invokes it.
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.description="microsandbox msb CLI for workmux"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+# Pinned to match the version workmux was developed against.
+ARG MSB_VERSION=0.5.6
+# Set automatically by buildkit: "amd64" or "arm64".
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Map Docker's TARGETARCH to the release asset arch naming.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ARCH=x86_64 ;; \
+        arm64) ARCH=aarch64 ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    base="https://github.com/superradcompany/microsandbox/releases/download/v${MSB_VERSION}"; \
+    curl -fsSL "${base}/msb-linux-${ARCH}" -o /usr/local/bin/msb; \
+    chmod +x /usr/local/bin/msb; \
+    curl -fsSL "${base}/libkrunfw-linux-${ARCH}.so" -o "/usr/local/lib/libkrunfw.so.4"; \
+    ldconfig
+
+ENTRYPOINT ["msb"]
+CMD ["--help"]

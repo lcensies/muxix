@@ -5,6 +5,7 @@ mod merge;
 mod remote;
 mod repo;
 mod status;
+mod submodule;
 mod types;
 mod worktree;
 
@@ -15,5 +16,6 @@ pub use merge::*;
 pub use remote::*;
 pub use repo::*;
 pub use status::*;
+pub use submodule::*;
 pub use types::*;
 pub use worktree::*;

@@ -9,7 +9,7 @@ use tabled::{
 
 use crate::git;
 use crate::multiplexer::{AgentStatus, create_backend, detect_backend};
-use crate::state::StateStore;
+use crate::state::{Completion, CompletionKind, StateStore};
 use crate::util;
 use crate::workflow;
 
@@ -21,6 +21,8 @@ struct StatusEntry {
     elapsed_secs: Option<u64>,
     title: Option<String>,
     pane_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completion: Option<Completion>,
     #[serde(skip_serializing_if = "Option::is_none")]
     git: Option<GitInfo>,
 }
@@ -76,6 +78,22 @@ fn status_label(status: Option<AgentStatus>) -> String {
     }
 }
 
+/// Table STATUS cell: `<status>` normally, `<status> · completed|failed` once
+/// the agent has signalled a completion claim (`workmux signal done|error`).
+fn status_cell(status_label: &str, completion: &Option<Completion>) -> String {
+    match completion {
+        Some(c) => format!("{} · {}", status_label, completion_label(c.kind)),
+        None => status_label.to_string(),
+    }
+}
+
+fn completion_label(kind: CompletionKind) -> &'static str {
+    match kind {
+        CompletionKind::Completed => "completed",
+        CompletionKind::Failed => "failed",
+    }
+}
+
 /// Compute git info for a worktree path.
 ///
 /// Runs git commands with the worktree's directory as the working dir,
@@ -115,6 +133,8 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
         }
         return Ok(());
     }
+
+    let completions = crate::state::completion_by_pane(mux.as_ref());
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -169,6 +189,7 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
                     elapsed_secs,
                     title: agent.pane_title.clone(),
                     pane_id: agent.pane_id.clone(),
+                    completion: completions.get(&agent.pane_id).cloned(),
                     git: git_info.clone(),
                 });
             }
@@ -203,6 +224,7 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
                             elapsed_secs,
                             title: agent.pane_title.clone(),
                             pane_id: agent.pane_id.clone(),
+                            completion: completions.get(&agent.pane_id).cloned(),
                             git: git_info.clone(),
                         });
                     }
@@ -232,7 +254,7 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
                 };
                 StatusRow {
                     worktree,
-                    status: e.status.clone(),
+                    status: status_cell(&e.status, &e.completion),
                     elapsed: e
                         .elapsed_secs
                         .map(util::format_elapsed_secs)
@@ -256,4 +278,31 @@ pub fn run(worktrees: &[String], json: bool, show_git: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_cell_plain_when_no_completion() {
+        assert_eq!(status_cell("working", &None), "working");
+    }
+
+    #[test]
+    fn status_cell_appends_completion_suffix() {
+        let completed = Some(Completion {
+            kind: CompletionKind::Completed,
+            feedback: None,
+            ts: 0,
+        });
+        assert_eq!(status_cell("done", &completed), "done \u{b7} completed");
+
+        let failed = Some(Completion {
+            kind: CompletionKind::Failed,
+            feedback: None,
+            ts: 0,
+        });
+        assert_eq!(status_cell("working", &failed), "working \u{b7} failed");
+    }
 }

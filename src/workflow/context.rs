@@ -125,21 +125,10 @@ impl WorkflowContext {
         self.ensure_mux_running()
     }
 
-    /// Change working directory to main worktree root
-    ///
-    /// This is necessary for destructive operations (merge, remove) to prevent
-    /// "Unable to read current working directory" errors when the command is run
-    /// from within a worktree that is about to be deleted.
-    pub fn chdir_to_main_worktree(&self) -> Result<()> {
-        debug!(
-            safe_cwd = %self.main_worktree_root.display(),
-            "workflow_context:changing to main worktree"
-        );
-        std::env::set_current_dir(&self.main_worktree_root).with_context(|| {
-            format!(
-                "Could not change directory to '{}'",
-                self.main_worktree_root.display()
-            )
-        })
-    }
 }
+
+// Destructive workflows (merge, rename, cleanup) used to chdir here to avoid
+// "Unable to read current working directory" errors when run from inside the
+// worktree being deleted. They now pass `main_worktree_root` explicitly to every
+// git call instead: the process CWD is global, and the daemon serves several
+// projects from one process, so mutating it is never safe.

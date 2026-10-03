@@ -24,6 +24,7 @@
 //!   - `help`: Help overlay
 
 mod actions;
+mod bindings;
 pub mod agent;
 mod ansi;
 mod app;
@@ -53,7 +54,7 @@ use crate::github;
 use crate::multiplexer::{create_backend, detect_backend};
 
 use self::actions::apply_action;
-use self::app::{App, AppEvent, ViewMode};
+use self::app::{App, AppEvent, TaskModal, ViewMode};
 use self::diff_ops::DiffOps;
 use self::keymap::{Context, action_for_key};
 use self::spinner::SPINNER_FRAME_COUNT;
@@ -77,6 +78,13 @@ fn get_context(app: &App) -> Context {
                     Context::WorktreeFilter
                 } else {
                     Context::WorktreeNormal
+                }
+            }
+            DashboardTab::Tasks => {
+                if app.tasks.filter_active {
+                    Context::TasksFilter
+                } else {
+                    Context::TasksNormal
                 }
             }
         },
@@ -299,7 +307,7 @@ fn handle_terminal_event(
         return;
     }
 
-    // Handle mouse scroll events in diff view
+    // Mouse events only drive diff-view scrolling.
     if let Event::Mouse(mouse) = &event {
         handle_mouse_event(app, mouse.kind);
         return;
@@ -348,10 +356,14 @@ fn handle_terminal_event(
                 app.base_picker_up()
             }
             crossterm::event::KeyCode::Enter => app.confirm_base_picker(),
-            crossterm::event::KeyCode::Backspace => app.base_picker_filter_delete(),
             crossterm::event::KeyCode::Esc => app.pending_base_picker = None,
-            crossterm::event::KeyCode::Char(c) => app.base_picker_filter_append(c),
-            _ => {}
+            _ => {
+                if let Some(ref mut picker) = app.pending_base_picker
+                    && crate::ui::text_input::handle_text_input(&mut picker.filter, &key)
+                {
+                    picker.cursor = 0;
+                }
+            }
         }
         return;
     }
@@ -366,115 +378,233 @@ fn handle_terminal_event(
                 app.project_picker_up()
             }
             crossterm::event::KeyCode::Enter => app.confirm_project_picker(),
-            crossterm::event::KeyCode::Backspace => app.project_picker_filter_delete(),
             crossterm::event::KeyCode::Esc => app.pending_project_picker = None,
-            crossterm::event::KeyCode::Char(c) => app.project_picker_filter_append(c),
-            _ => {}
+            _ => {
+                if let Some(ref mut picker) = app.pending_project_picker
+                    && crate::ui::text_input::handle_text_input(&mut picker.filter, &key)
+                {
+                    picker.cursor = 0;
+                }
+            }
         }
         return;
     }
 
     // Command palette modal
     if app.pending_command_palette.is_some() {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
-            crossterm::event::KeyCode::Esc => app.pending_command_palette = None,
-            crossterm::event::KeyCode::Enter => {
-                // Confirm selection: extract the action, close palette, dispatch
-                if let Some(ref palette) = app.pending_command_palette {
-                    let filtered = palette.filtered();
-                    if let Some(&idx) = filtered.get(palette.cursor) {
-                        let action = palette.commands[idx].action.clone();
-                        app.pending_command_palette = None;
-                        let refreshed = apply_action(app, action);
-                        if refreshed {
-                            *last_preview_refresh = std::time::Instant::now();
+            KeyCode::Esc => app.pending_command_palette = None,
+            KeyCode::Enter => {
+                // Confirm selection: extract the action, close palette, dispatch.
+                let action = app
+                    .pending_command_palette
+                    .as_ref()
+                    .and_then(|p| p.selected_action().cloned());
+                app.pending_command_palette = None;
+                if let Some(action) = action {
+                    let refreshed = apply_action(app, action);
+                    if refreshed {
+                        *last_preview_refresh = std::time::Instant::now();
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_down();
+                }
+            }
+            KeyCode::Up => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_up();
+                }
+            }
+            KeyCode::Char('j') if !ctrl => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_down();
+                }
+            }
+            KeyCode::Char('k') if !ctrl => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_up();
+                }
+            }
+            KeyCode::Char('n') if ctrl => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_down();
+                }
+            }
+            KeyCode::Char('p') if ctrl => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.move_up();
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(p) = app.pending_command_palette.as_mut() {
+                    p.backspace();
+                }
+            }
+            _ => {
+                if let Some(p) = app.pending_command_palette.as_mut()
+                    && crate::ui::text_input::handle_text_input(&mut p.filter, &key)
+                {
+                    p.cursor = 0;
+                }
+            }
+        }
+        return;
+    }
+
+    // Task modals
+    if app.tasks.modal.is_some() {
+        match &app.tasks.modal {
+            Some(TaskModal::Help) => {
+                // Any key closes help
+                app.tasks.modal = None;
+            }
+            Some(TaskModal::DeleteConfirm(_)) => match key.code {
+                crossterm::event::KeyCode::Char('y') => {
+                    if let Some(TaskModal::DeleteConfirm(plan)) = app.tasks.modal.take() {
+                        app.task_delete(plan);
+                    }
+                }
+                crossterm::event::KeyCode::Char('w') => {
+                    if let Some(TaskModal::DeleteConfirm(ref mut plan)) = app.tasks.modal
+                        && plan.worktree.is_some()
+                    {
+                        plan.delete_worktree = !plan.delete_worktree;
+                    }
+                }
+                crossterm::event::KeyCode::Char('n') | crossterm::event::KeyCode::Esc => {
+                    app.tasks.modal = None;
+                }
+                _ => {}
+            },
+            Some(TaskModal::Form(_)) => match key.code {
+                crossterm::event::KeyCode::Esc => {
+                    app.tasks.modal = None;
+                }
+                crossterm::event::KeyCode::Enter => {
+                    // If dep suggestions visible, accept selection instead of confirming form
+                    let has_suggestions = matches!(
+                        &app.tasks.modal,
+                        Some(TaskModal::Form(f)) if !f.dep_suggestions.is_empty()
+                    );
+                    if has_suggestions {
+                        if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                            form.accept_dep_suggestion();
+                            let all = app.tasks.all_tasks.clone();
+                            if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                                form.update_dep_suggestions(&all);
+                            }
                         }
                     } else {
-                        app.pending_command_palette = None;
+                        // Shift+Enter inserts newline in description; plain Enter always submits
+                        let is_shift = key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::SHIFT);
+                        let is_description = matches!(
+                            &app.tasks.modal,
+                            Some(TaskModal::Form(f)) if f.focused_field() == crate::command::dashboard::app::TaskFormField::Description
+                        );
+                        if is_description && is_shift {
+                            if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal
+                                && let Some(ta) = form.focused_textarea_mut()
+                            {
+                                ta.input(crate::ui::text_input::to_textarea_input(key));
+                            }
+                        } else {
+                            app.task_confirm_form();
+                        }
                     }
                 }
-            }
-            crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j')
-                if !key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    let count = palette.filtered().len();
-                    if count > 0 {
-                        palette.cursor = (palette.cursor + 1).min(count - 1);
+                crossterm::event::KeyCode::Tab => {
+                    if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                        form.error = None;
+                        // Cycle dep suggestions when DependsOn is focused and suggestions exist
+                        if form.focused_field()
+                            == crate::command::dashboard::app::TaskFormField::DependsOn
+                            && !form.dep_suggestions.is_empty()
+                        {
+                            form.dep_suggestion_cursor =
+                                (form.dep_suggestion_cursor + 1) % form.dep_suggestions.len();
+                        } else {
+                            form.dep_suggestions.clear();
+                            form.dep_suggestion_cursor = 0;
+                            form.focused = (form.focused + 1)
+                                % crate::command::dashboard::app::TASK_FORM_FIELDS.len();
+                            // Recompute suggestions when switching to DependsOn field
+                            let all = app.tasks.all_tasks.clone();
+                            if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                                form.update_dep_suggestions(&all);
+                            }
+                        }
                     }
                 }
-            }
-            crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k')
-                if !key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    palette.cursor = palette.cursor.saturating_sub(1);
-                }
-            }
-            crossterm::event::KeyCode::Char('n')
-                if key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    let count = palette.filtered().len();
-                    if count > 0 {
-                        palette.cursor = (palette.cursor + 1).min(count - 1);
+                crossterm::event::KeyCode::BackTab => {
+                    if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                        form.error = None;
+                        form.dep_suggestions.clear();
+                        form.dep_suggestion_cursor = 0;
+                        let len = crate::command::dashboard::app::TASK_FORM_FIELDS.len();
+                        form.focused = if form.focused == 0 {
+                            len - 1
+                        } else {
+                            form.focused - 1
+                        };
+                        let all = app.tasks.all_tasks.clone();
+                        if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                            form.update_dep_suggestions(&all);
+                        }
                     }
                 }
-            }
-            crossterm::event::KeyCode::Char('p')
-                if key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    palette.cursor = palette.cursor.saturating_sub(1);
-                }
-            }
-            crossterm::event::KeyCode::Backspace => {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    palette.filter.pop();
-                    palette.cursor = 0;
-                }
-            }
-            crossterm::event::KeyCode::Char('w')
-                if key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    // Delete last word
-                    let trimmed = palette.filter.trim_end();
-                    if let Some(pos) = trimmed.rfind(' ') {
-                        palette.filter.truncate(pos + 1);
-                    } else {
-                        palette.filter.clear();
+                _ => {
+                    if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                        let field = form.focused_field();
+                        if field == crate::command::dashboard::app::TaskFormField::Status {
+                            if key.code == crossterm::event::KeyCode::Char(' ')
+                                && !key
+                                    .modifiers
+                                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                            {
+                                form.error = None;
+                                form.cycle_status();
+                            }
+                        } else if let Some(ta) = form.focused_textarea_mut() {
+                            ta.input(crate::ui::text_input::to_textarea_input(key));
+                            form.error = None;
+                            if field == crate::command::dashboard::app::TaskFormField::Id
+                                && matches!(key.code, crossterm::event::KeyCode::Char(_))
+                                && !key
+                                    .modifiers
+                                    .contains(crossterm::event::KeyModifiers::CONTROL)
+                            {
+                                form.id_auto = false;
+                            }
+                        }
                     }
-                    palette.cursor = 0;
+                    // Post-input side effects
+                    if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                        let field = form.focused_field();
+                        if form.id_auto
+                            && field == crate::command::dashboard::app::TaskFormField::Title
+                        {
+                            let title_val =
+                                crate::command::dashboard::app::textarea_value(&form.title);
+                            let new_id = crate::command::dashboard::app::derive_id(&title_val);
+                            form.id = crate::command::dashboard::app::make_textarea(&new_id);
+                        }
+                        if field == crate::command::dashboard::app::TaskFormField::DependsOn {
+                            let all = app.tasks.all_tasks.clone();
+                            if let Some(TaskModal::Form(ref mut form)) = app.tasks.modal {
+                                form.update_dep_suggestions(&all);
+                            }
+                        }
+                    }
                 }
-            }
-            crossterm::event::KeyCode::Char('u')
-                if key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    palette.filter.clear();
-                    palette.cursor = 0;
-                }
-            }
-            crossterm::event::KeyCode::Char(c) => {
-                if let Some(ref mut palette) = app.pending_command_palette {
-                    palette.filter.push(c);
-                    palette.cursor = 0;
-                }
-            }
-            _ => {}
+            },
+            None => {}
         }
         return;
     }
@@ -569,6 +699,7 @@ fn handle_terminal_event(
         }
         return;
     }
+
 
     // Get current context and map key to action
     let ctx = get_context(app);

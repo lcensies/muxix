@@ -110,11 +110,22 @@ pub enum SandboxCommand {
         #[arg(last = true)]
         command: Vec<String>,
     },
+    /// Restore an agent sandbox from its last checkpoint and switch focus to it.
+    Resume {
+        /// Agent ID (UUID) to resume. Run `workmux status` to see agent IDs.
+        /// If omitted, lists agents with checkpoints interactively.
+        agent_id: Option<String>,
+    },
+    /// Checkpoint a running agent sandbox immediately (manual trigger).
+    Checkpoint {
+        /// Agent ID (UUID) to checkpoint. Run `workmux status` to see agent IDs.
+        agent_id: String,
+    },
 }
 
 /// Resolve the canonical agent name from config.
 fn resolve_agent(config: &Config) -> &'static str {
-    crate::multiplexer::agent::resolve_profile_with_type(
+    crate::agent::profile::resolve_profile_with_type(
         config.agent.as_deref(),
         config.agent_type.as_deref(),
     )
@@ -168,6 +179,8 @@ pub fn run(args: SandboxArgs) -> Result<()> {
         SandboxCommand::Prune { force } => run_prune(force),
         SandboxCommand::Stop { name, all, yes } => run_stop(name, all, yes),
         SandboxCommand::Shell { exec, command } => run_shell(exec, command),
+        SandboxCommand::Resume { agent_id } => run_resume(agent_id),
+        SandboxCommand::Checkpoint { agent_id } => run_checkpoint(agent_id),
     }
 }
 
@@ -565,35 +578,7 @@ fn install_dev_container(binary_path: &Path, image_name: &str, config: &Config) 
 
     println!("Patching container image '{}'...", image_name);
 
-    let temp_dir = tempfile::Builder::new()
-        .prefix("workmux-install-dev-")
-        .tempdir()
-        .context("Failed to create temp directory")?;
-    let context_path = temp_dir.path();
-
-    // Copy binary to build context
-    let dest = context_path.join("workmux");
-    std::fs::copy(binary_path, &dest).context("Failed to copy binary")?;
-
-    // Write overlay Dockerfile
-    let dockerfile = format!("FROM {}\nCOPY workmux /usr/local/bin/workmux\n", image_name);
-    std::fs::write(context_path.join("Dockerfile"), &dockerfile)
-        .context("Failed to write Dockerfile")?;
-
-    // Build, tagging as the same image name (replaces it in-place).
-    // Pass the absolute context path as the argument instead of using
-    // current_dir + "." because Apple Container doesn't resolve "." correctly
-    // when current_dir differs from the process working directory.
-    let status = Command::new(runtime)
-        .env("DOCKER_CLI_HINTS", "false")
-        .args(["build", "-t", image_name])
-        .arg(context_path)
-        .status()
-        .with_context(|| format!("Failed to run {} build", runtime))?;
-
-    if !status.success() {
-        bail!("Container image patch build failed");
-    }
+    sandbox::overlay_workmux_binary(runtime, binary_path, image_name)?;
 
     println!("  {} ... ok", image_name);
     Ok(true)
@@ -928,6 +913,7 @@ fn run_shell(exec: bool, command: Vec<String>) -> Result<()> {
     match config.sandbox.backend() {
         SandboxBackend::Container => run_shell_container(exec, command, &config),
         SandboxBackend::Lima => run_shell_lima(exec, command, &config),
+        SandboxBackend::MicroSandbox => run_shell_microsandbox(exec, command, &config),
     }
 }
 
@@ -1104,6 +1090,153 @@ fn run_shell_lima(exec: bool, command: Vec<String>, config: &Config) -> Result<(
         .context("Failed to execute limactl shell")?;
 
     std::process::exit(status.code().unwrap_or(1));
+}
+
+fn run_shell_microsandbox(exec: bool, command: Vec<String>, config: &Config) -> Result<()> {
+    use crate::sandbox::microsandbox;
+
+    if exec {
+        bail!("--exec is not supported with the microsandbox backend");
+    }
+
+    // Auto-installs msb to the host if it isn't already available.
+    microsandbox::ensure_installed()
+        .context("microsandbox (`msb`) is required for the microsandbox backend")?;
+
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+    let handle = cwd.file_name().and_then(|n| n.to_str()).unwrap_or("agent");
+    let agent = resolve_agent(config);
+    let vm_name = microsandbox::sandbox_name(handle, agent);
+
+    // Create the sandbox VM if it doesn't already exist.
+    microsandbox::create(&vm_name, &config.sandbox.microsandbox)
+        .context("failed to create microsandbox VM")?;
+
+    // Mount the worktree read-write inside the VM.
+    microsandbox::mount(&vm_name, &cwd, &cwd.to_string_lossy())
+        .context("failed to mount worktree into microsandbox VM")?;
+
+    let exit_code = if command.is_empty() {
+        microsandbox::shell(&vm_name)?
+    } else {
+        let cmd_refs: Vec<&str> = command.iter().map(String::as_str).collect();
+        microsandbox::exec(&vm_name, &cmd_refs)?
+    };
+
+    std::process::exit(exit_code);
+}
+
+/// Find an agent by its stable `agent_id` UUID.
+///
+/// Unlike pane IDs (which are recycled by multiplexers and can collide across
+/// different tmux server sockets), `agent_id` is globally unique.
+fn find_agent_by_id(
+    store: &crate::state::StateStore,
+    agent_id: &str,
+) -> anyhow::Result<crate::state::AgentState> {
+    let agents = store.list_all_agents()?;
+    agents
+        .into_iter()
+        .find(|a| a.agent_id == agent_id)
+        .ok_or_else(|| anyhow::anyhow!("no agent found with id {}", agent_id))
+}
+
+fn run_checkpoint(agent_id: String) -> Result<()> {
+    use crate::sandbox::checkpoint;
+    use crate::state::StateStore;
+
+    let store = StateStore::new()?;
+    let state = find_agent_by_id(&store, &agent_id)?;
+    // Load the agent's own project config (sandbox backend, checkpoint policy)
+    // from its worktree, not from the caller's cwd.
+    let config = config_for_agent(&state)?;
+
+    let snapshot_path = checkpoint::checkpoint_agent(&state, &config.sandbox, &store)?;
+    println!("Checkpoint saved: {}", snapshot_path.display());
+    Ok(())
+}
+
+/// Load the project config that governs an agent, resolved from its worktree.
+///
+/// Agents run inside their own worktree, which carries its own `.workmux.yaml`
+/// (notably the sandbox backend and checkpoint policy). Resolving config from
+/// the caller's cwd would pick up the wrong project — or none at all.
+fn config_for_agent(state: &crate::state::AgentState) -> Result<Config> {
+    Config::load_with_location_from(&state.workdir, None)
+        .map(|(cfg, _)| cfg)
+        .with_context(|| format!("load config for agent workdir {}", state.workdir.display()))
+}
+
+fn run_resume(agent_id: Option<String>) -> Result<()> {
+    use crate::multiplexer::{create_backend, detect_backend};
+    use crate::sandbox::checkpoint;
+    use crate::state::StateStore;
+
+    let store = StateStore::new()?;
+    let mux = create_backend(detect_backend());
+
+    let agent_id = match agent_id {
+        Some(id) => id,
+        None => {
+            // Interactive: list agents that have checkpoints
+            let agents = store.list_all_agents()?;
+            let checkpointed: Vec<_> = agents
+                .iter()
+                .filter(|a| a.checkpoint_path.is_some())
+                .collect();
+
+            if checkpointed.is_empty() {
+                println!("No agents with checkpoints found.");
+                return Ok(());
+            }
+
+            println!("Agents with checkpoints:");
+            for (i, a) in checkpointed.iter().enumerate() {
+                println!(
+                    "  {}. {} — {} ({})",
+                    i + 1,
+                    &a.agent_id[..8],
+                    a.window_name.as_deref().unwrap_or("?"),
+                    a.workdir.display()
+                );
+                if let Some(ref p) = a.checkpoint_path {
+                    println!("     checkpoint: {}", p.display());
+                }
+            }
+            print!("\nSelect agent number: ");
+            use std::io::Write;
+            std::io::stdout().flush()?;
+
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            let idx: usize = input.trim().parse().context("invalid selection")?;
+
+            if idx < 1 || idx > checkpointed.len() {
+                anyhow::bail!("selection out of range");
+            }
+            checkpointed[idx - 1].agent_id.clone()
+        }
+    };
+
+    let state = find_agent_by_id(&store, &agent_id)?;
+    let config = config_for_agent(&state)?;
+
+    checkpoint::restore_agent(&state, &config.sandbox)?;
+
+    // Switch multiplexer focus to the restored pane
+    let pane_id = &state.pane_key.pane_id;
+    let window_hint = state.window_name.as_deref();
+    if let Err(e) = mux.switch_to_pane(pane_id, window_hint) {
+        eprintln!("warning: restore succeeded but could not switch to pane: {e}");
+    } else {
+        println!(
+            "Restored and switched to agent {} (pane {})",
+            &agent_id[..8],
+            pane_id
+        );
+    }
+
+    Ok(())
 }
 
 fn select_vms_interactive<'a>(

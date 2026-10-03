@@ -120,3 +120,73 @@ pub fn abort_merge_in_worktree(worktree_path: &Path) -> Result<()> {
         .context("Failed to abort merge. The worktree may not be in a merging state.")?;
     Ok(())
 }
+
+/// Abort a rebase in progress in a specific worktree.
+pub fn abort_rebase_in_worktree(worktree_path: &Path) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["rebase", "--abort"])
+        .run()
+        .context("Failed to abort rebase. The worktree may not be in a rebasing state.")?;
+    Ok(())
+}
+
+/// Returns true if the worktree currently has unmerged (conflicted) paths or an
+/// in-progress merge/rebase. Used to distinguish a merge *conflict* — which a
+/// human or agent can resolve — from any other kind of failure.
+///
+/// `git ls-files --unmerged` lists entries with a non-zero stage (the hallmark
+/// of a conflict). We also treat an in-progress rebase/merge as conflicted so
+/// the caller can hand the half-applied state off for resolution.
+pub fn worktree_has_conflicts(worktree_path: &Path) -> Result<bool> {
+    let out = Command::new("git")
+        .current_dir(worktree_path)
+        .args(["ls-files", "--unmerged"])
+        .output()
+        .context("Failed to query unmerged files")?;
+    if !out.stdout.is_empty() {
+        return Ok(true);
+    }
+
+    // A rebase or merge left in progress also signals an unresolved conflict.
+    let git_dir = Command::new("git")
+        .current_dir(worktree_path)
+        .args(["rev-parse", "--git-path", "."])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| worktree_path.join(".git"));
+
+    let in_progress = git_dir.join("MERGE_HEAD").exists()
+        || git_dir.join("rebase-merge").exists()
+        || git_dir.join("rebase-apply").exists();
+    Ok(in_progress)
+}
+
+/// Stage a specific path (file or directory) in a worktree.
+pub fn stage_path_in_worktree(worktree_path: &Path, path: &str) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["add", path])
+        .run()
+        .with_context(|| {
+            format!(
+                "Failed to stage '{}' in worktree '{}'",
+                path,
+                worktree_path.display()
+            )
+        })?;
+    Ok(())
+}
+
+/// Commit staged changes in a worktree with a fixed message (non-interactive).
+pub fn commit_with_message(worktree_path: &Path, message: &str) -> Result<()> {
+    Cmd::new("git")
+        .workdir(worktree_path)
+        .args(&["commit", "-m", message])
+        .run()
+        .context("Failed to commit with message")?;
+    Ok(())
+}

@@ -292,7 +292,7 @@ pub fn generate_mounts(
     // This is separate from the data directory (~/.local/share/opencode/) and
     // contains opencode.json, plugins, and global MCP definitions.
     if agent == "opencode"
-        && let Some(cfg_dir) = crate::agent_setup::opencode::opencode_config_dir()
+        && let Some(cfg_dir) = crate::agent::setup::opencode::opencode_config_dir()
         && cfg_dir.is_dir()
     {
         let guest_path = lima_guest_home()

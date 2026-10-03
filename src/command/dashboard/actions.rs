@@ -1,8 +1,11 @@
 //! Action enum and dispatcher for dashboard key handling.
 
-use super::app::{App, CommandPaletteState, DashboardTab, PaletteCommand, ViewMode};
+use super::app::{
+    App, CommandPaletteState, DashboardTab, DeleteTaskPlan, PaletteCommand, TaskForm, ViewMode,
+};
 use super::diff_ops::DiffOps;
 use super::keymap::Context;
+use super::bindings::BINDINGS;
 
 /// All possible actions in the dashboard.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,10 +24,12 @@ pub enum Action {
 
     // Tab switching
     SwitchTab,
+    SwitchTabBackward,
 
     // Dashboard commands
     CycleColorScheme,
     CycleSortMode,
+    ToggleGroupedAgents,
     ToggleScopeFilter,
     ToggleStaleFilter,
     EnterInputMode,
@@ -85,6 +90,7 @@ pub enum Action {
     ClearFilter,
     FilterAppendChar(char),
     FilterDeleteChar,
+    FilterDeleteWord,
 
     // Comment input
     CancelComment,
@@ -94,6 +100,27 @@ pub enum Action {
 
     // Command palette
     ShowCommandPalette,
+
+    // Tasks tab
+    SwitchToTasks,
+    TaskNext,
+    TaskPrevious,
+    TaskEnterFilter,
+    TaskAcceptFilter,
+    TaskClearFilter,
+    TaskFilterAppendChar(char),
+    TaskFilterDeleteChar,
+    TaskFilterDeleteWord,
+    TaskCycleStatusFilter,
+    TaskCycleStatus,
+    TaskAdd,
+    TaskEdit,
+    TaskDelete,
+    TaskReload,
+
+
+
+
 }
 
 /// Apply an action to the app state.
@@ -119,6 +146,14 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
                     if !app.worktree_filter_text.is_empty() {
                         app.worktree_filter_text.clear();
                         app.trigger_worktree_refetch();
+                    } else {
+                        app.should_quit = true;
+                    }
+                }
+                DashboardTab::Tasks => {
+                    if !app.tasks.filter_text.is_empty() {
+                        app.tasks.filter_text.clear();
+                        app.task_apply_filters();
                     } else {
                         app.should_quit = true;
                     }
@@ -160,6 +195,10 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
         }
         Action::CycleSortMode => {
             app.cycle_sort_mode();
+            false
+        }
+        Action::ToggleGroupedAgents => {
+            app.toggle_grouped_agents();
             false
         }
         Action::ToggleScopeFilter => {
@@ -229,6 +268,11 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             false
         }
 
+        Action::SwitchTabBackward => {
+            app.switch_tab_backward();
+            false
+        }
+
         // Worktree view
         Action::WorktreeNext => {
             app.worktree_next();
@@ -280,6 +324,7 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             match app.active_tab {
                 DashboardTab::Agents => app.filter_active = true,
                 DashboardTab::Worktrees => app.worktree_filter_active = true,
+                DashboardTab::Tasks => app.tasks.filter_active = true,
             }
             false
         }
@@ -287,6 +332,7 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             match app.active_tab {
                 DashboardTab::Agents => app.filter_active = false,
                 DashboardTab::Worktrees => app.worktree_filter_active = false,
+                DashboardTab::Tasks => app.tasks.filter_active = false,
             }
             false
         }
@@ -300,8 +346,12 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
                 DashboardTab::Worktrees => {
                     app.worktree_filter_active = false;
                     app.worktree_filter_text.clear();
-                    // Trigger re-fetch to restore full list
                     app.trigger_worktree_refetch();
+                }
+                DashboardTab::Tasks => {
+                    app.tasks.filter_active = false;
+                    app.tasks.filter_text.clear();
+                    app.task_apply_filters();
                 }
             }
             false
@@ -314,8 +364,11 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
                 }
                 DashboardTab::Worktrees => {
                     app.worktree_filter_text.push(c);
-                    // Trigger re-fetch to apply filter
                     app.trigger_worktree_refetch();
+                }
+                DashboardTab::Tasks => {
+                    app.tasks.filter_text.push(c);
+                    app.task_apply_filters();
                 }
             }
             false
@@ -328,8 +381,28 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
                 }
                 DashboardTab::Worktrees => {
                     app.worktree_filter_text.pop();
-                    // Trigger re-fetch to apply filter
                     app.trigger_worktree_refetch();
+                }
+                DashboardTab::Tasks => {
+                    app.tasks.filter_text.pop();
+                    app.task_apply_filters();
+                }
+            }
+            false
+        }
+        Action::FilterDeleteWord => {
+            match app.active_tab {
+                DashboardTab::Agents => {
+                    crate::ui::text_input::delete_word_backward(&mut app.filter_text);
+                    app.apply_filters();
+                }
+                DashboardTab::Worktrees => {
+                    crate::ui::text_input::delete_word_backward(&mut app.worktree_filter_text);
+                    app.trigger_worktree_refetch();
+                }
+                DashboardTab::Tasks => {
+                    crate::ui::text_input::delete_word_backward(&mut app.tasks.filter_text);
+                    app.task_apply_filters();
                 }
             }
             false
@@ -468,121 +541,110 @@ pub fn apply_action(app: &mut App, action: Action) -> bool {
             });
             false
         }
+
+        // Tasks tab
+        Action::SwitchToTasks => {
+            app.switch_to_tasks();
+            false
+        }
+        Action::TaskNext => {
+            app.task_navigate_down();
+            false
+        }
+        Action::TaskPrevious => {
+            app.task_navigate_up();
+            false
+        }
+        Action::TaskEnterFilter => {
+            app.tasks.filter_active = true;
+            false
+        }
+        Action::TaskAcceptFilter => {
+            app.tasks.filter_active = false;
+            false
+        }
+        Action::TaskClearFilter => {
+            app.tasks.filter_active = false;
+            app.tasks.filter_text.clear();
+            app.task_apply_filters();
+            false
+        }
+        Action::TaskFilterAppendChar(c) => {
+            app.tasks.filter_text.push(c);
+            app.task_apply_filters();
+            false
+        }
+        Action::TaskFilterDeleteChar => {
+            app.tasks.filter_text.pop();
+            app.task_apply_filters();
+            false
+        }
+        Action::TaskFilterDeleteWord => {
+            crate::ui::text_input::delete_word_backward(&mut app.tasks.filter_text);
+            app.task_apply_filters();
+            false
+        }
+        Action::TaskCycleStatusFilter => {
+            app.task_cycle_status_filter();
+            false
+        }
+        Action::TaskCycleStatus => {
+            app.task_cycle_status();
+            false
+        }
+        Action::TaskAdd => {
+            app.tasks.modal = Some(super::app::TaskModal::Form(TaskForm::new_add()));
+            false
+        }
+        Action::TaskEdit => {
+            if let Some(task) = app.task_selected_task() {
+                let form = TaskForm::new_edit(task);
+                app.tasks.modal = Some(super::app::TaskModal::Form(form));
+            }
+            false
+        }
+        Action::TaskDelete => {
+            if let Some(task) = app.task_selected_task() {
+                let plan = DeleteTaskPlan {
+                    id: task.id.clone(),
+                    worktree: task.worktree.clone(),
+                    delete_worktree: task.worktree.is_some(),
+                };
+                app.tasks.modal = Some(super::app::TaskModal::DeleteConfirm(plan));
+            }
+            false
+        }
+        Action::TaskReload => {
+            app.task_reload();
+            false
+        }
+
+
+
+
     }
 }
 
 /// Build the list of palette commands available in the given context.
 fn palette_commands(ctx: Context, app: &App) -> Vec<PaletteCommand> {
+    // Base commands are derived from the binding registry (single source of
+    // truth shared with the keymap and help overlay).
+    let mut cmds: Vec<PaletteCommand> =
+        crate::tui::binding::palette_entries(BINDINGS, super::keymap::context_name(ctx))
+            .into_iter()
+            .filter_map(|b| {
+                b.action.clone().map(|action| PaletteCommand {
+                    label: b.label,
+                    key_hint: b.hint,
+                    action,
+                })
+            })
+            .collect();
+
+    // Context-specific entries that depend on runtime app state and so cannot
+    // live in the static table.
     match ctx {
         Context::DashboardNormal => {
-            let mut cmds = vec![
-                PaletteCommand {
-                    label: "Show help",
-                    key_hint: "?",
-                    action: Action::ShowHelp,
-                },
-                PaletteCommand {
-                    label: "Quit",
-                    key_hint: "q",
-                    action: Action::Quit,
-                },
-                PaletteCommand {
-                    label: "Switch to worktrees",
-                    key_hint: "Tab",
-                    action: Action::SwitchTab,
-                },
-                PaletteCommand {
-                    label: "Jump to agent",
-                    key_hint: "Enter",
-                    action: Action::JumpToSelected,
-                },
-                PaletteCommand {
-                    label: "Last agent",
-                    key_hint: "Bksp",
-                    action: Action::JumpToLast,
-                },
-                PaletteCommand {
-                    label: "Peek agent",
-                    key_hint: "p",
-                    action: Action::PeekSelected,
-                },
-                PaletteCommand {
-                    label: "View diff",
-                    key_hint: "d",
-                    action: Action::LoadWipDiff,
-                },
-                PaletteCommand {
-                    label: "Commit changes",
-                    key_hint: "c",
-                    action: Action::SendCommitDashboard,
-                },
-                PaletteCommand {
-                    label: "Merge branch",
-                    key_hint: "m",
-                    action: Action::TriggerMergeDashboard,
-                },
-                PaletteCommand {
-                    label: "Change base branch",
-                    key_hint: "b",
-                    action: Action::ShowBaseBranchPicker,
-                },
-                PaletteCommand {
-                    label: "Open PR in browser",
-                    key_hint: "o",
-                    action: Action::OpenPr,
-                },
-                PaletteCommand {
-                    label: "Open PR checks",
-                    key_hint: "O",
-                    action: Action::OpenPrChecks,
-                },
-                PaletteCommand {
-                    label: "Kill agent",
-                    key_hint: "X",
-                    action: Action::KillSelected,
-                },
-                PaletteCommand {
-                    label: "Remove worktree",
-                    key_hint: "r",
-                    action: Action::RemoveSelectedWorktree,
-                },
-                PaletteCommand {
-                    label: "Sweep cleanup",
-                    key_hint: "R",
-                    action: Action::StartSweep,
-                },
-                PaletteCommand {
-                    label: "Cycle sort mode",
-                    key_hint: "s",
-                    action: Action::CycleSortMode,
-                },
-                PaletteCommand {
-                    label: "Toggle session filter",
-                    key_hint: "F",
-                    action: Action::ToggleScopeFilter,
-                },
-                PaletteCommand {
-                    label: "Toggle stale filter",
-                    key_hint: "f",
-                    action: Action::ToggleStaleFilter,
-                },
-                PaletteCommand {
-                    label: "Enter input mode",
-                    key_hint: "i",
-                    action: Action::EnterInputMode,
-                },
-                PaletteCommand {
-                    label: "Cycle theme",
-                    key_hint: "T",
-                    action: Action::CycleColorScheme,
-                },
-                PaletteCommand {
-                    label: "Filter agents",
-                    key_hint: "/",
-                    action: Action::EnterFilterMode,
-                },
-            ];
-            // Only show "Add worktree" if on agents tab but it's useful cross-tab
             if app.active_tab == DashboardTab::Agents {
                 cmds.push(PaletteCommand {
                     label: "Add worktree",
@@ -590,109 +652,8 @@ fn palette_commands(ctx: Context, app: &App) -> Vec<PaletteCommand> {
                     action: Action::AddWorktree,
                 });
             }
-            cmds
         }
-        Context::WorktreeNormal => vec![
-            PaletteCommand {
-                label: "Show help",
-                key_hint: "?",
-                action: Action::ShowHelp,
-            },
-            PaletteCommand {
-                label: "Quit",
-                key_hint: "q",
-                action: Action::Quit,
-            },
-            PaletteCommand {
-                label: "Switch to agents",
-                key_hint: "Tab",
-                action: Action::SwitchTab,
-            },
-            PaletteCommand {
-                label: "Jump to worktree",
-                key_hint: "Enter",
-                action: Action::JumpToSelectedWorktree,
-            },
-            PaletteCommand {
-                label: "Open PR in browser",
-                key_hint: "o",
-                action: Action::OpenPr,
-            },
-            PaletteCommand {
-                label: "Open PR checks",
-                key_hint: "O",
-                action: Action::OpenPrChecks,
-            },
-            PaletteCommand {
-                label: "Add worktree",
-                key_hint: "a",
-                action: Action::AddWorktree,
-            },
-            PaletteCommand {
-                label: "Remove worktree",
-                key_hint: "r",
-                action: Action::RemoveSelectedWorktree,
-            },
-            PaletteCommand {
-                label: "Close mux window",
-                key_hint: "c",
-                action: Action::CloseSelectedWorktreeWindow,
-            },
-            PaletteCommand {
-                label: "Sweep cleanup",
-                key_hint: "R",
-                action: Action::StartSweep,
-            },
-            PaletteCommand {
-                label: "Cycle sort mode",
-                key_hint: "s",
-                action: Action::CycleWorktreeSortMode,
-            },
-            PaletteCommand {
-                label: "Change base branch",
-                key_hint: "b",
-                action: Action::ShowBaseBranchPicker,
-            },
-            PaletteCommand {
-                label: "Switch project",
-                key_hint: "p",
-                action: Action::ShowProjectPicker,
-            },
-            PaletteCommand {
-                label: "Filter worktrees",
-                key_hint: "/",
-                action: Action::EnterFilterMode,
-            },
-            PaletteCommand {
-                label: "Cycle theme",
-                key_hint: "T",
-                action: Action::CycleColorScheme,
-            },
-        ],
         Context::DiffNormal => {
-            let mut cmds = vec![
-                PaletteCommand {
-                    label: "Close diff",
-                    key_hint: "q",
-                    action: Action::CloseDiff,
-                },
-                PaletteCommand {
-                    label: "Toggle WIP/Review",
-                    key_hint: "Tab",
-                    action: Action::ToggleDiffType,
-                },
-                PaletteCommand {
-                    label: "Commit changes",
-                    key_hint: "c",
-                    action: Action::SendCommitDiff,
-                },
-                PaletteCommand {
-                    label: "Merge branch",
-                    key_hint: "m",
-                    action: Action::TriggerMergeDiff,
-                },
-            ];
-            // Only show patch mode for WIP diffs
             if let ViewMode::Diff(ref diff) = app.view_mode
                 && !diff.is_branch_diff
             {
@@ -702,51 +663,8 @@ fn palette_commands(ctx: Context, app: &App) -> Vec<PaletteCommand> {
                     action: Action::EnterPatchMode,
                 });
             }
-            cmds
         }
-        Context::Patch => vec![
-            PaletteCommand {
-                label: "Stage hunk",
-                key_hint: "y",
-                action: Action::StageAndNext,
-            },
-            PaletteCommand {
-                label: "Skip hunk",
-                key_hint: "n",
-                action: Action::SkipHunk,
-            },
-            PaletteCommand {
-                label: "Undo last staged",
-                key_hint: "u",
-                action: Action::UndoStagedHunk,
-            },
-            PaletteCommand {
-                label: "Split hunk",
-                key_hint: "s",
-                action: Action::SplitHunk,
-            },
-            PaletteCommand {
-                label: "Add comment",
-                key_hint: "o",
-                action: Action::StartComment,
-            },
-            PaletteCommand {
-                label: "Commit changes",
-                key_hint: "c",
-                action: Action::SendCommitDiff,
-            },
-            PaletteCommand {
-                label: "Merge branch",
-                key_hint: "m",
-                action: Action::TriggerMergeDiff,
-            },
-            PaletteCommand {
-                label: "Exit patch mode",
-                key_hint: "Esc",
-                action: Action::ExitPatchMode,
-            },
-        ],
-        // Don't offer palette in text-entry contexts
-        _ => Vec::new(),
+        _ => {}
     }
+    cmds
 }

@@ -50,6 +50,10 @@ Each agent is displayed as a tile showing:
 - Optional pull request number and check status for the current branch
 - Agent task description
 
+Agents are grouped per project: each group is sorted by activity and preceded
+by a divider line with the project name (hidden when only one project is
+present).
+
 The exact layout, styling, and per-agent icons are fully customizable; see
 [Customization](./customization).
 
@@ -115,11 +119,12 @@ the list. Requires `set -g mouse on` in your `~/.tmux.conf`.
 
 ## Keybindings
 
-| Key     | Action                   |
-| ------- | ------------------------ |
-| `j`/`k` | Navigate up/down         |
-| `Enter` | Jump to agent pane       |
-| `g`/`G` | Jump to first/last       |
+| Key               | Action                          |
+| ----------------- | ------------------------------- |
+| `j`/`k`           | Navigate up/down (count: `2j`)  |
+| `Enter`           | Jump to agent pane              |
+| `gg`/`G`          | Jump to first/last (`3G` = 3rd) |
+| `Ctrl+d`/`Ctrl+u` | Half page down/up               |
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
 | `q`     | Quit sidebar             |

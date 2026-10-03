@@ -1,0 +1,4700 @@
+--- empty both
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- scalar override
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: codex
+inherit_agent: null
+merge_strategy: rebase
+merge_keep: false
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global only
+main_branch: null
+base_branch: null
+worktree_dir: /tmp/wt
+window_prefix: w-
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: claude
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- project only
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: codex
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: true
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- project windows overrides global panes
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows:
+- name: main
+  panes:
+  - command: b
+    focus: false
+    split: null
+    size: null
+    percentage: null
+    target: null
+    zoom: false
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- project panes overrides global windows
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes:
+- command: a
+  focus: true
+  split: null
+  size: null
+  percentage: null
+  target: null
+  zoom: false
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global windows inherited when project sets no layout
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows:
+- name: main
+  panes:
+  - command: b
+    focus: false
+    split: null
+    size: null
+    percentage: null
+    target: null
+    zoom: false
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: codex
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- layouts extend
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts:
+  wide:
+    panes:
+    - command: a
+      focus: false
+      split: null
+      size: null
+      percentage: null
+      target: null
+      zoom: false
+  tall:
+    panes:
+    - command: b
+      focus: false
+      split: null
+      size: null
+      percentage: null
+      target: null
+      zoom: false
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- layouts collision
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts:
+  wide:
+    panes:
+    - command: b
+      focus: false
+      split: null
+      size: null
+      percentage: null
+      target: null
+      zoom: false
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- layouts global only
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts:
+  wide:
+    panes:
+    - command: a
+      focus: false
+      split: null
+      size: null
+      percentage: null
+      target: null
+      zoom: false
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- mcp extend and override
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+mcp:
+  a:
+    command: z
+  b:
+    command: y
+  c:
+    command: w
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- placeholder lists expand
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create:
+- p1
+pre_merge:
+- g1
+- g2
+- p1
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- files placeholder
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy:
+  - c
+  symlink:
+  - a
+  - b
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox nested per-field
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: true
+  backend: null
+  target: null
+  image: project-image
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: podman
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox lima merge
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: 2
+    memory: null
+    disk: null
+    provision: echo project
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox lima fallback
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: echo global
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox toolchain project overrides
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: flake
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox toolchain falls back to global
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: i
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: devbox
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox lima skip_default_provision
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: true
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox lima skip_default_provision project overrides
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: false
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- theme custom falls back to global
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: dark
+  custom:
+    current_row_bg: null
+    highlight_row_bg: null
+    current_worktree_fg: null
+    dimmed: null
+    text: null
+    border: null
+    help_border: null
+    help_muted: null
+    header: null
+    keycap: null
+    info: null
+    success: null
+    warning: null
+    danger: null
+    accent: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sandbox container resources
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: docker
+    cpus: 2
+    memory: 8g
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: excluded_files project ignored
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files:
+    - .env
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: excluded_files project only
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: container devices
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: 2
+    memory: null
+    devices:
+    - /dev/kvm
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: container group_add
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add:
+    - video
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: sandbox env and network
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: keep-me
+  env_passthrough: null
+  env:
+    A: '1'
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: deny
+    allowed_domains:
+    - api.example.com
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: host_commands and extra_mounts
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands:
+  - just
+  extra_mounts:
+  - /opt/a
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: agents map
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents:
+  mine:
+    command: claude
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: auto_name command
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name:
+  command: echo global
+  model: m2
+  system_prompt: null
+  background: true
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- auto_name project only
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name:
+  command: null
+  model: m2
+  system_prompt: null
+  background: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- global-only: provision
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+provision:
+  server_url: https://a.example.com
+  token_path: null
+  sync_on_setup: null
+  policy_ttl_secs: null
+  grace_period_secs: null
+  insecure_skip_tls: null
+--- sidebar per-field
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: top
+  width: 40
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons:
+    claude:
+      icon: C
+    codex:
+      icon: X
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- sidebar templates replace wholesale
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates:
+    compact: p
+    tiles: null
+    horizontal: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- theme custom replace wholesale
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Mossfire
+  mode: null
+  custom:
+    current_row_bg: null
+    highlight_row_bg: null
+    current_worktree_fg: null
+    dimmed: null
+    text: null
+    border: null
+    help_border: null
+    help_muted: null
+    header: null
+    keycap: null
+    info: null
+    success: null
+    warning: null
+    danger: null
+    accent: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- theme scheme default sentinel
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Mossfire
+  mode: dark
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- theme scheme real override
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Lasergrid
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- events project overrides
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: true
+  level: null
+  only:
+  - a
+  disable:
+  - turn.poll
+daemon:
+  auto_freeze: null
+--- events empty project list inherits
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable:
+  - pane.probe
+daemon:
+  auto_freeze: null
+--- worktree_naming sentinel
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: basename
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- worktree_naming real override
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: basename
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- bootstrap replaced wholesale
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+bootstrap:
+  default_subagents:
+  - ./b
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- bootstrap global only
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: codex
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+bootstrap:
+  default_skills:
+  - ./a
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null
+--- agent_defs and prompt_defs extend
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: null
+  waiting: null
+  done: null
+auto_name: null
+dashboard:
+  commit: null
+  merge: null
+  preview_size: null
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+agent_defs:
+  a: {}
+  b: {}
+prompt_defs:
+  p:
+    content: t
+  q:
+    content: u
+daemon:
+  auto_freeze: null
+--- status_icons and dashboard per-field
+main_branch: null
+base_branch: null
+worktree_dir: null
+window_prefix: null
+panes: null
+layouts: null
+windows: null
+project_mux: null
+post_create: null
+pre_merge: null
+pre_remove: null
+agent: null
+inherit_agent: null
+merge_strategy: null
+merge_keep: null
+worktree_naming: full
+worktree_prefix: null
+files:
+  copy: null
+  symlink: null
+status_format: null
+status_icons:
+  working: X
+  waiting: null
+  done: D
+auto_name: null
+dashboard:
+  commit: c
+  merge: m
+  preview_size: 40
+  show_check_counts: null
+sidebar:
+  position: null
+  width: null
+  height: null
+  layout: null
+  horizontal:
+    item_width: null
+  templates: null
+  agent_icons: null
+  default_scope: null
+nerdfont: null
+theme:
+  scheme: Default
+  mode: null
+mode: null
+auto_update_check: null
+prompt_file_only: null
+agents: {}
+sandbox:
+  enabled: null
+  backend: null
+  target: null
+  image: null
+  env_passthrough: null
+  env: null
+  rpc_host: null
+  toolchain: null
+  host_commands: null
+  extra_mounts: null
+  agent_config_dir: null
+  lima:
+    isolation: null
+    projects_dir: null
+    cpus: null
+    memory: null
+    disk: null
+    provision: null
+    skip_default_provision: null
+  container:
+    runtime: null
+    cpus: null
+    memory: null
+    devices: null
+    group_add: null
+    excluded_files: null
+  microsandbox:
+    image: null
+    cpus: null
+    memory: null
+    disk: null
+  checkpoint:
+    enabled: null
+    strategy: mode-switch
+    interval_secs: null
+    dir: null
+    keep: null
+  network:
+    policy: null
+    allowed_domains: null
+  dangerously_allow_unsandboxed_host_exec: null
+submodules:
+  worktrees: false
+events:
+  enabled: null
+  level: null
+  only: []
+  disable: []
+daemon:
+  auto_freeze: null

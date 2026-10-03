@@ -23,6 +23,9 @@ pub struct ResurrectCandidate {
     pub action: ResurrectAction,
     pub stale_pane_keys: Vec<PaneKey>,
     pub mode: MuxMode,
+    /// Canonical worktree root. Needed to probe the agent's session store and
+    /// to locate the stored task prompt when no session can be resumed.
+    pub worktree_path: PathBuf,
 }
 
 pub struct ResurrectPlan {
@@ -163,6 +166,7 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
             action,
             stale_pane_keys: pane_keys,
             mode,
+            worktree_path: canon_wt,
         });
     }
 

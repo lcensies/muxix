@@ -36,9 +36,13 @@ thiserror = "2.0"
 glob = "0.3"
 pathdiff = "0.2"
 percent-encoding = "2.3"
+uuid = { version = "1", features = ["v4"] }
+ureq = { version = "2", features = ["json"] }
+# Direct for hook-script integrity pinning; already in the tree via the TLS stack.
+sha2 = "0.10"
 home = "0.5"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time", "json"] }
 tracing-appender = "0.2"
 edit = "0.1"
 which = "8.0"
@@ -54,6 +58,9 @@ pulldown-cmark = { version = "0.13", default-features = false }
 textwrap = "0.16"
 ratatui = "0.30"
 crossterm = "0.29"
+tui-textarea = { path = "vendor/tui-textarea" }
+edtui = { path = "vendor/edtui", default-features = false }
+edtui-jagged = { path = "vendor/edtui-jagged" }
 ansi-to-tui = "8"
 notify-rust = "4"
 libc = "0.2"
@@ -66,22 +73,49 @@ similar = "3"
 terminal-light = "1.8"
 unicode-width = "0.2"
 signal-hook = "0.4"
+alacritty_terminal = "0.26"
 notify = "9.0.0-rc.3"
+tiny_http = "0.12"
 ignore = "0.4"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+# NOTE: the `microsandbox` SDK crate is intentionally NOT a dependency. Its
+# default `net` feature pulls `rcgen`, which currently conflicts with `time`
+# (E0119) and fails to compile. We drive microsandbox via the `msb` CLI instead
+# (discovered on PATH, or run from a locally-built Docker image — see
+# docker/Dockerfile.microsandbox).
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
 
 [dev-dependencies]
 filetime = "0.2.27"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [patch.crates-io]
 crossterm = { git = "https://github.com/raine/crossterm" }
+edtui-jagged = { path = "vendor/edtui-jagged" }
+
+[profile.dev]
+debug = 0              # Skip DWARF generation — biggest single win
+split-debuginfo = "off"
+
 
 [profile.release]
 strip = true       # Strip debug symbols
 lto = true         # Link Time Optimization for smaller binaries
 codegen-units = 1  # Maximize optimization
+
+# Fast optimized profile for local/dev installs. Skips the slow whole-program
+# fat-LTO + single-codegen-unit pass that `release` uses for GitHub artifacts:
+# thin LTO + parallel codegen means the final `workmux(bin)` link step is no
+# longer single-threaded, cutting build time dramatically for ~same runtime
+# perf. `release` is unchanged and still used by CI/Docker release builds.
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
 
 [package.metadata.binstall]
 pkg-fmt = "tgz"

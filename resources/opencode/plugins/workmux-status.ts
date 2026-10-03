@@ -33,7 +33,21 @@ export const WorkmuxStatusPlugin: Plugin = async ({ $ }) => {
     }
 
     await $`workmux set-window-status ${status}`.quiet();
+    if (status === 'done') {
+      // Pane-keyed pipeline signal: lets the harness runner detect turn completion
+      // deterministically instead of scraping the pane for an idle prompt.
+      try {
+        await $`workmux signal turn-done`.quiet();
+      } catch {}
+    }
   }
+
+  // Emitted once when the plugin loads (≈ session start), so the harness runner's
+  // readiness gate has a deterministic "this (re)launched agent is up" signal.
+  // Guarded: harmless no-op outside tmux / the pipeline.
+  try {
+    await $`workmux signal session-ready`.quiet();
+  } catch {}
 
   return {
     event: async ({ event }) => {

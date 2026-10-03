@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1.4
+#
+# Build the workmux binary against Debian bookworm glibc (2.36) so it runs on any
+# bookworm-based runtime — including node:20, the demo devstation. Built via
+# `just build-docker` or the `make demo-build-workmux`, then consumed with
+# `COPY --from=<image>`.
+#
+# Caching model (fast incremental rebuilds):
+#   • The dependency layer compiles crates.io deps + vendor/* path deps against a
+#     stub main.rs. It stays cached until Cargo.toml/Cargo.lock/vendor//build.rs
+#     change.
+#   • Editing src/ only re-runs the final workmux-crate compile — not the dep graph.
+#   • registry/git cache mounts speed dep *downloads*. target/ is deliberately NOT
+#     cache-mounted: compiled artifacts are glibc-specific and a target/ cache from a
+#     different base image (e.g. trixie, glibc 2.39) poisons a bookworm build.
+
+FROM rust:1.94-slim-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    git \
+    ca-certificates \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# --- Dependency layer -------------------------------------------------------
+# Copy ONLY what cargo needs to resolve + compile dependencies (NOT the crate's own
+# sources). Path deps (vendor/*) and build.rs must be present.
+# A stub main.rs lets cargo build the full dep graph; this whole layer is cached
+# until one of these inputs changes. (A bare `COPY . .` would ship the repo's ~10G
+# target/ dir as build context and is avoided entirely.)
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY .cargo ./.cargo
+COPY vendor ./vendor
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    mkdir -p src && echo 'fn main() {}' > src/main.rs && \
+    cargo build --release && \
+    rm -rf src target/release/workmux target/release/deps/workmux-*
+
+# --- Application layer ------------------------------------------------------
+# Only this layer rebuilds on code changes; the dependency layer above stays cached.
+# Besides src/, the crate include_str!'s resource files from these top-level paths
+# (see Cargo.toml `include`), so they must be present to compile. All tiny (<300K).
+COPY src ./src
+COPY docker ./docker
+COPY skills ./skills
+COPY resources ./resources
+COPY .claude-plugin ./.claude-plugin
+COPY .codex ./.codex
+COPY .github ./.github
+COPY .pi ./.pi
+COPY CHANGELOG.md README.md LICENSE ./
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --release && \
+    cp target/release/workmux /workmux
+
+# --- Runtime ----------------------------------------------------------------
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /workmux /usr/local/bin/workmux
+ENTRYPOINT ["workmux"]

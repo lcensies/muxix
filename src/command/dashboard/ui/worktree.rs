@@ -624,6 +624,7 @@ fn render_info_panel(
     ];
     lines.push(Line::from(mux_spans));
 
+
     let paragraph = Paragraph::new(Text::from(lines)).block(block);
     f.render_widget(paragraph, area);
 }

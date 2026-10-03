@@ -8,15 +8,16 @@ pub mod run;
 pub mod store;
 mod types;
 
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::warn;
 
-use crate::agent_identity::classify_agent_kind;
+use crate::agent::identity::classify_agent_kind;
 use crate::multiplexer::{AgentStatus, Multiplexer};
 
 pub use store::StateStore;
-pub use types::{AgentState, LastDoneCycleState, PaneKey, RuntimeState};
+pub use types::{AgentState, Completion, CompletionKind, LastDoneCycleState, PaneKey, RuntimeState};
 
 /// Persist an agent state update to the StateStore.
 ///
@@ -70,8 +71,34 @@ pub fn persist_agent_update(
         now
     };
 
-    // Capture existing agent_kind before `existing` is consumed below.
+    // Capture fields from `existing` before it is consumed by `and_then` below.
     let existing_agent_kind = existing.as_ref().and_then(|e| e.agent_kind.clone());
+    // Preserve agent_id across status/title updates; generate once on first registration.
+    let agent_id = existing
+        .as_ref()
+        .map(|e| e.agent_id.clone())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    // Preserve sandbox / checkpoint metadata: it is written only by the
+    // dedicated sandbox commands, never by this status-update path, so it
+    // must be carried over from existing state or it would be wiped. The
+    // sandbox id is first established at launch via the pane→sandbox sidecar,
+    // so adopt that when existing state has none yet.
+    let sandbox_id = existing
+        .as_ref()
+        .and_then(|e| e.sandbox_id.clone())
+        .or_else(|| {
+            StateStore::new()
+                .ok()
+                .and_then(|store| store.pane_sandbox(&pane_key))
+        });
+    let checkpoint_path = existing.as_ref().and_then(|e| e.checkpoint_path.clone());
+    let checkpoint_ts = existing.as_ref().and_then(|e| e.checkpoint_ts);
+    // Preserve pipeline node fields written by the runner; never cleared by the status-update path.
+    let pipeline_node_id = existing.as_ref().and_then(|e| e.pipeline_node_id.clone());
+    let pipeline_node_title = existing.as_ref().and_then(|e| e.pipeline_node_title.clone());
+    // Preserve completion: this path is a hook-driven status/title update, not
+    // a launch or send, so it must never clear an agent's completion claim.
+    let existing_completion = existing.as_ref().and_then(|e| e.completion.clone());
 
     // Snapshot the live title for classification before the resolved
     // `pane_title` consumes `live_info.title`.
@@ -101,6 +128,8 @@ pub fn persist_agent_update(
     );
 
     let state = AgentState {
+        runtime: None,
+        agent_id,
         pane_key,
         workdir: live_info.working_dir,
         status: final_status,
@@ -113,6 +142,12 @@ pub fn persist_agent_update(
         session_name: live_info.session,
         boot_id,
         agent_kind,
+        sandbox_id,
+        checkpoint_path,
+        checkpoint_ts,
+        pipeline_node_id,
+        pipeline_node_title,
+        completion: existing_completion,
     };
 
     if let Ok(store) = StateStore::new()
@@ -120,6 +155,69 @@ pub fn persist_agent_update(
     {
         warn!(error = %e, "failed to persist agent state");
     }
+}
+
+/// Persist an agent-authored completion claim (or clear one) for a pane.
+///
+/// Mirrors `persist_agent_update`'s merge shape but touches only `completion`
+/// and `updated_ts`: load the existing record for the pane, set `completion`,
+/// bump `updated_ts`, save. Unlike `persist_agent_update`, this does not
+/// consult live pane info — the pane may have gone away between the agent
+/// emitting the signal and this call landing, and completion is meaningful
+/// even for a now-dead pane. If no record exists yet for the pane, there is
+/// nothing to merge into; warn and return.
+pub fn persist_agent_completion(
+    mux: &dyn Multiplexer,
+    pane_id: &str,
+    completion: Option<Completion>,
+) {
+    let pane_key = PaneKey {
+        backend: mux.name().to_string(),
+        instance: mux.instance_id(),
+        pane_id: pane_id.to_string(),
+    };
+
+    let Some(store) = StateStore::new().ok() else {
+        warn!(%pane_id, "failed to open state store, skipping completion persist");
+        return;
+    };
+
+    let Some(mut state) = store.get_agent(&pane_key).ok().flatten() else {
+        warn!(%pane_id, "no live agent info for pane, skipping completion persist");
+        return;
+    };
+
+    state.completion = completion;
+    state.updated_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if let Err(e) = store.upsert_agent(&state) {
+        warn!(error = %e, "failed to persist agent completion");
+    }
+}
+
+/// Build a `pane_id -> Completion` lookup for the current backend/instance.
+///
+/// `wait`/`status` match agents via `AgentPane` (derived from `AgentState` but
+/// omitting fields nothing else needs); widening `AgentPane` with `completion`
+/// would touch every test fixture that constructs it as a struct literal
+/// (sidebar, dashboard, ...). Looking it up separately here is cheaper and
+/// keeps `AgentPane` unchanged.
+pub fn completion_by_pane(mux: &dyn Multiplexer) -> HashMap<String, Completion> {
+    let backend = mux.name();
+    let instance = mux.instance_id();
+    StateStore::new()
+        .and_then(|store| store.list_all_agents())
+        .map(|agents| {
+            agents
+                .into_iter()
+                .filter(|a| a.pane_key.backend == backend && a.pane_key.instance == instance)
+                .filter_map(|a| a.completion.map(|c| (a.pane_key.pane_id.clone(), c)))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Merge a freshly classified agent kind with the previously cached one.

@@ -59,6 +59,7 @@ pub fn branch_exists(branch_name: &str) -> Result<bool> {
 }
 
 /// Check if a local branch exists.
+#[allow(dead_code)]
 pub fn local_branch_exists(branch_name: &str) -> Result<bool> {
     local_branch_exists_in(branch_name, None)
 }
@@ -199,10 +200,13 @@ pub fn list_local_branches_in(workdir: Option<&Path>) -> Result<Vec<String>> {
 /// Git automatically migrates `branch.<old>.*` config (including
 /// `branch.<old>.workmux-base`) to `branch.<new>.*`, so we don't need to
 /// touch branch-base metadata manually.
-pub fn rename_branch(old: &str, new: &str) -> Result<()> {
-    Cmd::new("git")
-        .args(&["branch", "-m", old, new])
-        .run()
+pub fn rename_branch_in(old: &str, new: &str, workdir: Option<&Path>) -> Result<()> {
+    let cmd = Cmd::new("git").args(&["branch", "-m", old, new]);
+    let cmd = match workdir {
+        Some(path) => cmd.workdir(path),
+        None => cmd,
+    };
+    cmd.run()
         .with_context(|| format!("Failed to rename branch {} -> {}", old, new))?;
     Ok(())
 }

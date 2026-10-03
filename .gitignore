@@ -27,3 +27,26 @@ result
 result-*
 history
 .claude/temp
+
+# Project-local workmux config and state. None of it is product: it is this
+# checkout's own agent/orchestration setup, so it never gets committed.
+/.workmux.yaml
+/.workmux/
+/tasks/
+/openspec/
+/.codegraph/
+
+# Per-repo agent homes written by `workmux setup` (preferences, not product).
+# The two files the binary compiles in stay tracked:
+#   .pi/extensions/workmux-status.ts, .codex/hooks/workmux-status.json
+.claude/
+.gemini/
+.opencode/
+opencode.json
+.pi/*
+!.pi/extensions/
+.codex/*
+!.codex/hooks/
+
+# workmux-managed MCP config, generated from the `mcp:` section of .workmux.yaml
+.mcp.json

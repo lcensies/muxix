@@ -128,20 +128,21 @@ fn parse_osascript_hex(output: &str) -> Result<Option<Vec<u8>>> {
 #[cfg(target_os = "linux")]
 fn read_png_linux() -> Result<Option<Vec<u8>>> {
     // Try wl-paste first (Wayland)
-    if let Ok(output) = Command::new("wl-paste").args(["-t", "image/png"]).output() {
-        if output.status.success() && !output.stdout.is_empty() {
-            return Ok(Some(output.stdout));
-        }
+    if let Ok(output) = Command::new("wl-paste").args(["-t", "image/png"]).output()
+        && output.status.success()
+        && !output.stdout.is_empty()
+    {
+        return Ok(Some(output.stdout));
     }
 
     // Fall back to xclip (X11)
     if let Ok(output) = Command::new("xclip")
         .args(["-selection", "clipboard", "-t", "image/png", "-o"])
         .output()
+        && output.status.success()
+        && !output.stdout.is_empty()
     {
-        if output.status.success() && !output.stdout.is_empty() {
-            return Ok(Some(output.stdout));
-        }
+        return Ok(Some(output.stdout));
     }
 
     Ok(None)

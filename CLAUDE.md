@@ -1,0 +1,1 @@
+../../wng/CLAUDE.md

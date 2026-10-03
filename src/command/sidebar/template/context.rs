@@ -2,11 +2,11 @@
 
 use ratatui::style::{Color, Modifier, Style};
 
+use crate::agent::identity::AgentKind;
+use crate::agent::profile::resolve_profile_for_display;
 use crate::agent_display::{extract_project_name, extract_worktree_name, sanitize_pane_title};
-use crate::agent_identity::AgentKind;
 use crate::git::GitStatus;
 use crate::github::PrSummary;
-use crate::multiplexer::agent::resolve_profile_for_display;
 use crate::multiplexer::{AgentPane, AgentStatus};
 use crate::ui::theme::ThemePalette;
 
@@ -188,6 +188,17 @@ impl<'a> RowContext<'a> {
                     String::new()
                 }
             }
+            // Shows the pipeline node id running in this pane, or empty for foreign agents.
+            TokenId::PipelineNode => self
+                .agent
+                .pipeline_node_title
+                .clone()
+                .or_else(|| {
+                    // Fall back to node_id if title is not set
+                    // (title is currently same as id since PipelineNode has no title field)
+                    None
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -554,6 +565,9 @@ mod tests {
             window_cmd: None,
             agent_command: None,
             agent_kind: None,
+            pipeline_node_title: None,
+            pane_pid: 0,
+            runtime: None,
         }
     }
 

@@ -1,0 +1,33 @@
+# Example project config — copy to `.workmux.yaml` at your repo root and trim.
+# Only project-specific things belong here; personal defaults go in
+# ~/.config/workmux/config.yaml (see docs/guide/configuration.md).
+# `workmux init` writes a fully annotated version of this file for you.
+
+panes:
+  - command: <agent> # the configured agent (claude, pi, codex, ...)
+    focus: true
+  - split: horizontal
+    command: '(cd docs && npm install)' # per-worktree setup, keep it fast
+
+files:
+  # Per-worktree links back to the primary checkout. Cheaper than copying and
+  # keeps one shared state (venvs, agent instructions, hooks).
+  symlink:
+    - CLAUDE.md
+    - tests/venv
+    - .ignore
+    - hooks/pre-commit
+  # copy:
+  #   - .env
+
+# Gate `workmux merge` on the project's own checks.
+pre_merge:
+  - just check-ci
+  - just test
+
+# Pipeline event tracing (`~/.local/state/workmux.log`), see
+# docs/reference/pipeline-events.md. WORKMUX_EVENTS overrides `level`.
+# events:
+#   enabled: true
+#   level: info
+#   disable: [pane.probe, turn.poll]

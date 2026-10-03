@@ -5,9 +5,14 @@ mod appearance;
 mod background;
 mod events;
 mod preview;
+mod tasks;
 mod types;
 mod worktrees;
 
+pub use tasks::{
+    DeleteTaskPlan, TASK_FORM_FIELDS, TaskForm, TaskFormField, TaskModal, TaskState, derive_id,
+    make_textarea, textarea_value,
+};
 pub use types::*;
 
 use anyhow::Result;
@@ -154,6 +159,13 @@ pub struct App {
     pub interrupted_pane_ids: std::collections::HashSet<String>,
     /// Pending command palette state (shown in command palette modal)
     pub pending_command_palette: Option<CommandPaletteState>,
+    /// Whether the agents tab renders the sectioned (status-grouped) view,
+    /// driven by the layout DSL.
+    pub grouped_agents: bool,
+    /// Hot-reloadable layout spec for the grouped agents view.
+    pub agents_spec: crate::tui::dsl::SpecSource,
+    /// Task graph tab state
+    pub tasks: TaskState,
 }
 
 impl App {
@@ -266,7 +278,15 @@ impl App {
             show_sidebar_tip: crate::tips::should_show_sidebar_tip(),
             interrupted_pane_ids: std::collections::HashSet::new(),
             pending_command_palette: None,
+            grouped_agents: false,
+            agents_spec: crate::tui::dsl::SpecSource::new(
+                super::ui::grouped::DEFAULT_AGENTS_SPEC,
+                std::env::current_dir()
+                    .ok()
+                    .map(|d| d.join(".workmux").join("ui").join("agents.yaml")),
+            ),
             sweep_progress: None,
+            tasks: TaskState::new(std::path::PathBuf::from("tasks/index.json")),
         };
 
         app.refresh();
@@ -286,11 +306,16 @@ impl App {
         Ok(app)
     }
 
+
     pub fn refresh(&mut self) {
         // Load agents from StateStore with reconciliation against live pane state
         self.all_agents = StateStore::new()
             .and_then(|store| store.load_reconciled_agents(self.mux.as_ref()))
             .unwrap_or_default();
+        // Agents an ADE owns have no pane, so reconciliation never sees them.
+        // Fold them in so the dashboard shows the same set as the sidebar.
+        let (foreign, _problems) = crate::agent::runtime::registry::foreign_agent_panes();
+        self.all_agents.extend(foreign);
 
         // Load interrupted pane IDs from daemon runtime state
         if let Ok(store) = StateStore::new() {
@@ -372,7 +397,11 @@ impl App {
             self.status_message = None;
         }
 
+        // Auto-reload task graph
+        self.task_maybe_autoreload();
+
         // Apply name filter, stale filter, sort, and restore selection
         self.apply_filters();
     }
 }
+

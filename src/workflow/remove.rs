@@ -129,8 +129,31 @@ pub fn remove(
         ));
     }
 
-    // Note: Unmerged branch check removed - git branch -d/D handles this natively
-    // The CLI provides a user-friendly confirmation prompt before calling this function
+    // Remove submodule worktrees before the parent worktree.
+    if context.config.submodules.worktrees && worktree_path.exists() {
+        let sub_worktrees =
+            git::get_submodule_worktrees(&context.main_worktree_root, &worktree_path)
+                .unwrap_or_default();
+        for (submodule, sub_wt_path) in &sub_worktrees {
+            if let Err(e) = git::remove_submodule_worktree(
+                &context.main_worktree_root,
+                submodule,
+                sub_wt_path,
+                force,
+            ) {
+                tracing::warn!(
+                    submodule = submodule.name,
+                    error = %e,
+                    "remove:failed to remove submodule worktree, skipping"
+                );
+            } else {
+                tracing::info!(
+                    submodule = submodule.name,
+                    "remove:submodule worktree removed"
+                );
+            }
+        }
+    }
 
     // Stop any running containers for this worktree before killing the window.
     // This is necessary because tmux kill-window sends SIGHUP which doesn't allow

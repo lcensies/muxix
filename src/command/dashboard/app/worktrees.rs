@@ -50,18 +50,47 @@ impl App {
         self.last_worktree_fetch = std::time::Instant::now() - Duration::from_secs(60);
     }
 
-    /// Switch between Agents and Worktrees tabs
+    /// Cycle Agents → Worktrees → Tasks
     pub fn switch_tab(&mut self) {
         self.active_tab = match self.active_tab {
             DashboardTab::Agents => DashboardTab::Worktrees,
-            DashboardTab::Worktrees => DashboardTab::Agents,
+            DashboardTab::Worktrees => DashboardTab::Tasks,
+            DashboardTab::Tasks => DashboardTab::Agents,
         };
+        self.on_tab_switched();
+    }
+
+    /// Switch between tabs in reverse order (Shift+Tab)
+    pub fn switch_tab_backward(&mut self) {
+        self.active_tab = match self.active_tab {
+            DashboardTab::Tasks => DashboardTab::Worktrees,
+            DashboardTab::Worktrees => DashboardTab::Agents,
+            DashboardTab::Agents => DashboardTab::Tasks,
+        };
+        self.on_tab_switched();
+    }
+
+    /// Side effects to run after the active tab changes (immediate fetch, etc.).
+    fn on_tab_switched(&mut self) {
         if self.active_tab == DashboardTab::Worktrees {
             // Trigger immediate fetch on switch
             self.last_worktree_fetch = std::time::Instant::now();
             self.spawn_worktree_fetch();
         }
     }
+
+
+
+
+
+
+
+
+
+    pub fn switch_to_tasks(&mut self) {
+        self.active_tab = DashboardTab::Tasks;
+    }
+
 
     /// Spawn background thread to fetch worktree list
     pub(super) fn spawn_worktree_fetch(&self) {
@@ -217,6 +246,7 @@ impl App {
     /// (finds the worktree matching the selected agent's path).
     pub fn remove_selected_worktree(&mut self) {
         let worktree = match self.active_tab {
+            DashboardTab::Tasks => return,
             DashboardTab::Worktrees => {
                 let Some(selected) = self.worktree_table_state.selected() else {
                     return;
@@ -587,6 +617,7 @@ impl App {
     pub fn show_base_branch_picker(&mut self) {
         // Resolve repo path, branch, and current base from whichever tab is active
         let (repo_path, worktree_branch, current_base) = match self.active_tab {
+            DashboardTab::Tasks => return,
             DashboardTab::Worktrees => {
                 let Some(selected) = self.worktree_table_state.selected() else {
                     return;
@@ -756,14 +787,22 @@ impl App {
 
         let mut options = workflow::types::SetupOptions::new(false, false, true);
         options.mode = self.config.mode();
-        if workflow::open(&handle, &ctx, options, false, None, None).is_ok() {
-            self.should_jump = true;
-        }
+        let agent_name = self
+            .config
+            .agent
+            .clone()
+            .unwrap_or_else(|| "claude".to_string());
+        options.resume_mode = match crate::git::get_worktree_path(&handle) {
+            Ok(path) => crate::command::resurrect::resume_mode_for(&path, &handle, &agent_name),
+            Err(_) => crate::multiplexer::types::ResumeMode::Continue,
+        };
+        let _ = workflow::open(&handle, &ctx, options, false, None, None);
     }
 
     /// Jump to the selected worktree's agent or mux window.
     /// Tries the agent pane first, then falls back to workflow::open
     /// which switches to an existing window/session or creates one.
+    /// Switches focus without closing the dashboard.
     pub fn jump_to_selected_worktree(&mut self) {
         let Some(selected) = self.worktree_table_state.selected() else {
             return;
@@ -772,10 +811,16 @@ impl App {
             return;
         };
 
-        // Try agent pane first for direct pane targeting
-        if let Some(agent) = self.all_agents.iter().find(|a| a.path == worktree.path) {
-            let target = agent.pane_id.clone();
-            self.switch_to_pane_and_track(&target);
+        // Try agent pane first for direct pane targeting. An ADE agent has no
+        // pane to switch to, so it falls through to the worktree path below.
+        if let Some(agent) = self
+            .all_agents
+            .iter()
+            .find(|a| a.has_pane() && a.path == worktree.path)
+        {
+            let _ = self
+                .mux
+                .switch_to_pane(&agent.pane_id, Some(&agent.window_name));
             return;
         }
 
@@ -786,7 +831,7 @@ impl App {
     // ── Add worktree methods ───────────────────────────────────────
 
     /// Get the repo path for the current worktree view context.
-    fn worktree_repo_path(&self) -> Option<PathBuf> {
+    pub(super) fn worktree_repo_path(&self) -> Option<PathBuf> {
         self.worktree_project_override
             .as_ref()
             .map(|(_, p)| p.clone())
@@ -1308,6 +1353,8 @@ impl App {
             }
         }
     }
+
+
 
     /// Update the preview for the selected worktree (git log)
     fn update_worktree_preview(&mut self) {

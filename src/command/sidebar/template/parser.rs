@@ -45,6 +45,8 @@ pub enum TokenId {
     StatusLabel,
     Idx,
     JumpKey,
+    /// Current pipeline node id executing in this agent pane (empty for foreign agents).
+    PipelineNode,
 }
 
 impl TokenId {
@@ -92,6 +94,7 @@ impl fmt::Display for TokenId {
             TokenId::StatusLabel => "status_label",
             TokenId::Idx => "idx",
             TokenId::JumpKey => "jump_key",
+            TokenId::PipelineNode => "pipeline_node",
         };
         write!(f, "{}", s)
     }
@@ -221,6 +224,7 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                     "session" => TokenId::Session,
                     "window" => TokenId::Window,
                     "pane_title" => TokenId::PaneTitle,
+                    "pipeline_node" => TokenId::PipelineNode,
                     "pane_suffix" => TokenId::PaneSuffix,
                     "elapsed" => TokenId::Elapsed,
                     "git_stats" => TokenId::GitStats,

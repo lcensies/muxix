@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Restore the most recent Claude Code config snapshot made by claude_backup.
+# Pass a specific snapshot dir name as $1 to restore that one instead of latest.
+set -euo pipefail
+
+CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
+BACKUP_ROOT="${CLAUDE_BACKUP_ROOT:-$CLAUDE_DIR/config-backups}"
+
+snap="${1:-latest}"
+src="$BACKUP_ROOT/$snap"
+
+if [ ! -d "$src" ]; then
+  echo "no backup at $src" >&2
+  echo "available:" >&2
+  ls -1 "$BACKUP_ROOT" 2>/dev/null | grep -v '^latest$' >&2 || echo "  (none)" >&2
+  exit 1
+fi
+
+restored=0
+for f in settings.json settings.local.json; do
+  if [ -f "$src/$f" ]; then
+    cp -p "$src/$f" "$CLAUDE_DIR/$f"
+    restored=$((restored + 1))
+  fi
+done
+
+echo "restored $restored file(s) from $(readlink -f "$src")"
+echo "reload Claude Code for changes to take effect"

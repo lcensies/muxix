@@ -64,7 +64,7 @@ panes:
     split: vertical
 ```
 
-For a real-world example, see [workmux's own `.workmux.yaml`](https://github.com/raine/workmux/blob/main/.workmux.yaml).
+For a full annotated example, see [`example-config.yaml`](../reference/example-config.yaml).
 
 ## Configuration options
 
@@ -81,11 +81,54 @@ Most options have sensible defaults. You only need to configure what you want to
 | `window_prefix`    | Override tmux window/session prefix                                                 | Icon or `wm-`               |
 | `agent`            | Default agent for `<agent>` placeholder                                             | `claude`                    |
 | `agents`           | Named agent commands (global-only). See [named agents](/guide/agents#named-agents). | `{}`                        |
+| `agent_rules`      | Per-project agent by path regex (global-only). See [per-project agents](#per-project-agents). | `[]`             |
 | `prompt_file_only` | Write prompt files without injecting into agent commands                            | `false`                     |
 | `merge_strategy`   | Default merge strategy (`merge`, `rebase`, `squash`)                                | `merge`                     |
 | `merge_keep`       | Keep resources after `workmux merge` by default                                     | `false`                     |
 | `theme`            | Dashboard color scheme (see [themes](#themes))                                      | `default` (auto dark/light) |
 | `mode`             | Tmux mode (`window` or `session`). See [session mode](/guide/session-mode).         | `window`                    |
+
+### Per-project agents
+
+`agent_rules` maps project paths to agents in one place, so a repo does not need its own
+`.workmux.yaml` to get the right CLI. Rules live in the **global** config only (like `agents`, a
+rule names a command workmux executes) and are matched in order against the project's **main
+worktree root** — every worktree of a project resolves the same agent.
+
+```yaml
+agent: claude # fallback for anything no rule matches
+
+agent_rules:
+  - match: "^~/repos/work/" # a leading ~/ expands to your home dir
+    agent: cpi # a key of `agents:`, or a bare command
+  - match: "^~/repos/workmux(/|$)"
+    agent: pi
+```
+
+Precedence, highest first:
+
+1. `--agent` flag
+2. `agent:` in a project `.workmux.yaml`, a file it includes, or a selected profile
+3. the first matching `agent_rules` entry
+4. the agent detected from the parent process, when `inherit_agent: true`
+5. `agent:` in the global config
+6. the built-in default, `claude`
+
+Edit and inspect rules from the CLI:
+
+```bash
+workmux config agent list                      # default agent + rules, in evaluation order
+workmux config agent which [DIR]               # resolved agent + what decided it
+workmux config agent set cpi --path ~/repos/work   # rule for a dir and everything under it
+workmux config agent set pi --project workmux      # rule for a tracked project's root
+workmux config agent set opencode --match '/work/' # raw regex
+workmux config agent set codex --default           # global `agent:` instead of a rule
+workmux config agent unset --index 0               # also --match / --project
+```
+
+`set`/`unset` rewrite only the `agent_rules` block of your global config; comments and every other
+key are left untouched. When an agent is not what you expect, `workmux config agent which` names
+the deciding source — a repo's own config, a rule (with its index), inheritance, or the default.
 
 ### Themes
 
@@ -318,6 +361,73 @@ To override back to `llm` when an agent is configured, set `auto_name.command: "
 | `system_prompt` | Custom system prompt for branch name generation                  | Built-in prompt            |
 
 See [`workmux add --auto-name`](../reference/commands/add.md#automatic-branch-name-generation) for usage details.
+
+### Agent bootstrap
+
+The `bootstrap` section configures plugins, skills, prompt components, and
+cross-agent **features** once and applies them to every detected agent via
+[`workmux setup`](../reference/commands/setup.md). See the dedicated
+[Agent bootstrap](./bootstrap.md) guide.
+
+```yaml
+bootstrap:
+  default_prompt_components:
+    - fff
+  features:
+    ponytail:
+      pi: git:github.com/DietrichGebert/ponytail
+      default: ponytail
+  agents:
+    claude code:
+      additional_prompt_components:
+        - code-review
+```
+
+#### Declaring items from the CLI
+
+`workmux bootstrap` edits the `bootstrap:` block and then applies it, so a plugin
+is declared in config and installed in one step — never installed behind
+workmux's back, where it would be untracked and never pruned:
+
+```bash
+workmux bootstrap plugin   add git:github.com/x/y --agent pi
+workmux bootstrap skill    add ./skills/auto-git          # every agent
+workmux bootstrap subagent add ./.workmux/subagents/x.md
+workmux bootstrap prompt   add fff --agent claude
+
+workmux bootstrap plugin rm git:github.com/x/y --agent pi  # uninstalls on sync
+workmux bootstrap list --agent pi   # what pi resolves to, with each item's origin
+workmux bootstrap sync              # apply hand-edited config (full `workmux setup`)
+```
+
+- `--agent <name>` writes to `bootstrap.agents.<name>.additional_*`; without it
+  the entry goes to the shared `default_*` list.
+- Edits land in the project `.workmux.yaml` when one is discoverable, otherwise
+  the global config. `--global` and `--project` force the choice; the file
+  written is always printed.
+- `--no-sync` declares without applying. `rm` relies on setup's managed manifest
+  to uninstall, the same as deleting the line by hand.
+- Comments elsewhere in the file are preserved; comments *inside* an edited list
+  are not, since that list is re-rendered.
+
+The bundled `agent-packages` skill points coding agents at these commands, so an
+agent asked to install something into itself declares it instead of running its
+own installer.
+
+### Models
+
+The top-level `providers` section is a unified, provider-centric model registry:
+declare each provider and the models it serves, with context/compaction limits,
+once and resolve them everywhere. See the [Models](./models.md) guide.
+
+```yaml
+providers:
+  anthropic:
+    limit: 200000
+    models:
+      - name: sonnet
+        id: claude-sonnet-4-6
+```
 
 ## Default behavior
 

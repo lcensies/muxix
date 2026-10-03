@@ -141,6 +141,9 @@ pub fn build_image(config: &SandboxConfig, agent: &str) -> Result<()> {
         anyhow::bail!("Failed to build image '{}'", image);
     }
 
+    // Embedded Dockerfile.base installs upstream workmux; swap in the fork's.
+    overlay_local_workmux(config, &image);
+
     Ok(())
 }
 
@@ -157,7 +160,106 @@ pub fn pull_image(config: &SandboxConfig, image: &str) -> Result<()> {
         anyhow::bail!("Failed to pull image '{}'", image);
     }
 
+    overlay_local_workmux(config, image);
     Ok(())
+}
+
+/// Builder image produced by `just build-docker`; carries a guest-glibc workmux.
+const BUILDER_IMAGE: &str = "localhost/workmux:build";
+
+/// Replace /usr/local/bin/workmux in `image` with `binary` via a thin overlay
+/// build, retagging the image in place.
+pub fn overlay_workmux_binary(runtime_bin: &str, binary: &Path, image: &str) -> Result<()> {
+    let temp_dir = tempfile::Builder::new()
+        .prefix("workmux-overlay-")
+        .tempdir()
+        .context("Failed to create temp directory")?;
+    std::fs::copy(binary, temp_dir.path().join("workmux")).context("Failed to copy binary")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            temp_dir.path().join("workmux"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .context("Failed to set binary permissions")?;
+    }
+    let dockerfile = format!("FROM {}\nCOPY workmux /usr/local/bin/workmux\n", image);
+    std::fs::write(temp_dir.path().join("Dockerfile"), dockerfile)
+        .context("Failed to write Dockerfile")?;
+
+    // Pass the absolute context path instead of current_dir + "." — Apple
+    // Container doesn't resolve "." when current_dir differs from the process cwd.
+    let status = Command::new(runtime_bin)
+        .env("DOCKER_CLI_HINTS", "false")
+        .args(["build", "-t", image])
+        .arg(temp_dir.path())
+        .status()
+        .with_context(|| format!("Failed to run {} build", runtime_bin))?;
+
+    if !status.success() {
+        anyhow::bail!("Overlay build for '{}' failed", image);
+    }
+    Ok(())
+}
+
+/// Patch this fork's workmux into `image` so in-guest hooks (`workmux signal`,
+/// `workmux hooks-report`) match the host binary — upstream images ship upstream
+/// workmux, which lacks the fork's subcommands. The binary is extracted from the
+/// `localhost/workmux:build` builder image (glibc-compatible with the guest;
+/// the host binary usually isn't). Warns and leaves the image untouched when
+/// the builder image is missing; never fails the surrounding pull/build.
+pub fn overlay_local_workmux(config: &SandboxConfig, image: &str) {
+    let runtime_bin = config.runtime().binary_name();
+
+    let builder_exists = Command::new(runtime_bin)
+        .args(["image", "inspect", BUILDER_IMAGE])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !builder_exists {
+        eprintln!(
+            "warning: builder image '{}' not found; '{}' keeps upstream workmux \
+             (fork hooks like `workmux signal` will fail in the sandbox). \
+             Run `just build-docker` in the workmux repo, then re-run this command.",
+            BUILDER_IMAGE, image
+        );
+        return;
+    }
+
+    let result = (|| -> Result<()> {
+        let output = Command::new(runtime_bin)
+            .args([
+                "run",
+                "--rm",
+                "--entrypoint",
+                "cat",
+                BUILDER_IMAGE,
+                "/usr/local/bin/workmux",
+            ])
+            .output()
+            .context("Failed to extract workmux from builder image")?;
+        if !output.status.success() || output.stdout.is_empty() {
+            anyhow::bail!(
+                "extracting workmux from '{}' failed: {}",
+                BUILDER_IMAGE,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let temp_dir = tempfile::Builder::new()
+            .prefix("workmux-guest-bin-")
+            .tempdir()?;
+        let bin_path = temp_dir.path().join("workmux");
+        std::fs::write(&bin_path, &output.stdout)?;
+        overlay_workmux_binary(runtime_bin, &bin_path, image)
+    })();
+
+    match result {
+        Ok(()) => println!("Patched fork workmux into '{}'.", image),
+        Err(e) => eprintln!("warning: failed to patch fork workmux into '{}': {}", image, e),
+    }
 }
 
 /// Ensure the container image is ready to run.
@@ -581,7 +683,7 @@ pub fn build_docker_run_args(
     // This is separate from the data directory (~/.local/share/opencode/) and
     // contains opencode.json, plugins, and global MCP definitions.
     if agent == "opencode"
-        && let Some(cfg_dir) = crate::agent_setup::opencode::opencode_config_dir()
+        && let Some(cfg_dir) = crate::agent::setup::opencode::opencode_config_dir()
         && cfg_dir.is_dir()
     {
         let target = "/tmp/.config/opencode";

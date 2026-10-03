@@ -7,8 +7,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# Run all checks via three parallel pipelines
-[parallel]
+# Run all checks
 check: _rust-pipeline _python-pipeline docs-check
 
 # Run check and fail if there are uncommitted changes (for CI)
@@ -47,9 +46,41 @@ clippy:
 build:
     cargo build --all
 
-# Install release binary globally from local source
+# Build release binary via Docker (cached deps, portable)
+build-docker:
+    DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.build -t workmux:build .
+
+# Install optimized binary globally from local source (fast thin-LTO profile)
 install:
+    cargo install --offline --path . --locked --profile release-fast
+
+# Install fully-optimized binary from local source (fat LTO, matches CI release; slow)
+install-full:
     cargo install --offline --path . --locked
+
+# Build via Docker then install binary to host (~/.cargo/bin)
+install-docker: build-docker
+    #!/usr/bin/env bash
+    set -euo pipefail
+    install_dir="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin"
+    mkdir -p "$install_dir"
+    docker run --rm --entrypoint cat workmux:build /usr/local/bin/workmux > "$install_dir/workmux"
+    chmod +x "$install_dir/workmux"
+    echo "Installed to $install_dir/workmux"
+
+# Patch the local fork's workmux into the pulled sandbox image (needed because
+# the upstream ghcr.io image lacks fork subcommands like `signal`/`hooks-report`).
+# Uses the Docker-built bookworm-glibc binary since the host toolchain has no musl std.
+sandbox-install-dev: build-docker
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # ponytail: install-dev --skip-build expects the musl target path; the
+    # bookworm-glibc binary works in the bookworm image, so we park it there.
+    dest=target/x86_64-unknown-linux-musl/release
+    mkdir -p "$dest"
+    docker run --rm --entrypoint cat workmux:build /usr/local/bin/workmux > "$dest/workmux"
+    chmod +x "$dest/workmux"
+    workmux sandbox install-dev --skip-build --release
 
 # Install release binary globally from GitHub releases
 install-release:
@@ -115,6 +146,18 @@ test *ARGS: build
         pytest $quiet_flag "$@"
     fi
 
+# Real CRIU checkpoint/resume e2e (needs criu + rootful runtime; uses sudo).
+# Auto-skips in the normal `just test` run unless WORKMUX_CRIU_E2E=1 is set.
+# Rootless podman cannot CRIU-checkpoint, so the test drives workmux under sudo;
+# pre-cache credentials with `sudo -v` so it doesn't stall mid-run.
+test-criu-e2e: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sudo -v
+    export WORKMUX_CRIU_E2E=1 WORKMUX_TEST=1
+    criu_run() { if command -v criu >/dev/null; then "$@"; else nix-shell -p criu --run "$*"; fi; }
+    criu_run tests/venv/bin/python -m pytest tests/test_sandbox_checkpoint_e2e.py -v -s
+
 # Run docs dev server
 docs:
     cd docs && npm install && npm run dev -- --open
@@ -122,6 +165,52 @@ docs:
 # Format documentation files
 format-docs:
     cd docs && npm run format
+
+# Live preview of a talk deck: base (full) or sec (security). Default base.
+slides deck="base": _slides-deps
+    cd presentation && npx slidev presentation-{{deck}}.md --open
+
+# Install slide deps (slidev + playwright chromium), idempotent
+_slides-deps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd presentation
+    [ -d node_modules ] || npm install
+    npx playwright install chromium >/dev/null 2>&1 || true
+
+# Pick a runnable Chromium: prefer system one (works on NixOS), else playwright's
+_chromium := `command -v chromium || command -v chromium-browser || command -v google-chrome-stable || true`
+
+# Export a deck (base|sec) to dist/<deck>.pdf (via playwright)
+slides-pdf deck="base": _slides-deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd presentation
+    exe="{{_chromium}}"
+    if [ -n "$exe" ]; then
+        npx slidev export presentation-{{deck}}.md --output dist/{{deck}}.pdf --executable-path "$exe"
+    else
+        npx slidev export presentation-{{deck}}.md --output dist/{{deck}}.pdf
+    fi
+    echo "→ presentation/dist/{{deck}}.pdf"
+
+# Export a deck (base|sec) to per-page PNGs in dist/png-<deck>/
+slides-png deck="base": _slides-deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd presentation
+    exe="{{_chromium}}"
+    if [ -n "$exe" ]; then
+        npx slidev export presentation-{{deck}}.md --format png --output dist/png-{{deck}} --executable-path "$exe"
+    else
+        npx slidev export presentation-{{deck}}.md --format png --output dist/png-{{deck}}
+    fi
+    echo "→ presentation/dist/png-{{deck}}/"
+
+# Build a deck (base|sec) static site into presentation/dist/<deck>/
+slides-build deck="base": _slides-deps
+    cd presentation && npx slidev build presentation-{{deck}}.md --out dist/{{deck}}
+    @echo "→ presentation/dist/{{deck}}/"
 
 # Release a new patch version
 release *ARGS:

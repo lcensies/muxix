@@ -308,7 +308,7 @@ const TRUSTED_BWRAP_PATHS: &[&str] = &[
 
 /// Find bwrap at a trusted absolute path. Returns the first match.
 #[cfg(target_os = "linux")]
-fn find_bwrap() -> Option<&'static str> {
+pub(crate) fn find_bwrap() -> Option<&'static str> {
     TRUSTED_BWRAP_PATHS
         .iter()
         .find(|p| Path::new(p).is_file())
@@ -364,27 +364,27 @@ fn spawn_bwrap(
     // Hide secret directories behind tmpfs
     for dir in DENY_READ_DIRS {
         let path = home_path.join(dir);
-        if path.exists() {
-            if let Some(s) = path.to_str() {
-                cmd.args(["--tmpfs", s]);
-            }
+        if path.exists()
+            && let Some(s) = path.to_str()
+        {
+            cmd.args(["--tmpfs", s]);
         }
     }
     for path in &extra_deny {
-        if path.exists() {
-            if let Some(s) = path.to_str() {
-                cmd.args(["--tmpfs", s]);
-            }
+        if path.exists()
+            && let Some(s) = path.to_str()
+        {
+            cmd.args(["--tmpfs", s]);
         }
     }
 
     // Hide secret files by binding /dev/null over them
     for file in DENY_READ_FILES {
         let path = home_path.join(file);
-        if path.is_file() {
-            if let Some(s) = path.to_str() {
-                cmd.args(["--ro-bind", "/dev/null", s]);
-            }
+        if path.is_file()
+            && let Some(s) = path.to_str()
+        {
+            cmd.args(["--ro-bind", "/dev/null", s]);
         }
     }
 
@@ -392,22 +392,22 @@ fn spawn_bwrap(
     // (the root is read-only, so the process can't create them itself)
     for dir in ALLOW_WRITE_DIRS {
         let path = home_path.join(dir);
-        if !path.exists() {
-            if let Err(e) = std::fs::create_dir_all(&path) {
-                debug!(?path, error = %e, "failed to create cache dir for bwrap binding");
-                continue;
-            }
+        if !path.exists()
+            && let Err(e) = std::fs::create_dir_all(&path)
+        {
+            debug!(?path, error = %e, "failed to create cache dir for bwrap binding");
+            continue;
         }
         if let Some(s) = path.to_str() {
             cmd.args(["--bind", s, s]);
         }
     }
     for path in &extra_write {
-        if !path.exists() {
-            if let Err(e) = std::fs::create_dir_all(path) {
-                debug!(?path, error = %e, "failed to create XDG dir for bwrap binding");
-                continue;
-            }
+        if !path.exists()
+            && let Err(e) = std::fs::create_dir_all(path)
+        {
+            debug!(?path, error = %e, "failed to create XDG dir for bwrap binding");
+            continue;
         }
         if let Some(s) = path.to_str() {
             cmd.args(["--bind", s, s]);

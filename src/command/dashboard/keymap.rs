@@ -3,6 +3,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::actions::Action;
+use super::bindings::BINDINGS;
+use crate::tui::binding;
+use crate::tui::chord::KeyChord;
 
 /// Context for key handling - determines which keymap is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,65 +15,65 @@ pub enum Context {
     DashboardFilter,
     WorktreeNormal,
     WorktreeFilter,
+    TasksNormal,
+    TasksFilter,
     DiffNormal,
     Patch,
     Comment,
 }
 
-/// Map a key event to an action for the given context.
-pub fn action_for_key(ctx: Context, key: KeyEvent) -> Option<Action> {
+/// Map a Context to its canonical string name (used for widget spec matching).
+pub fn context_name(ctx: Context) -> &'static str {
     match ctx {
-        Context::DashboardNormal => dashboard_normal_key(key),
-        Context::DashboardInput => dashboard_input_key(key),
-        Context::DashboardFilter => dashboard_filter_key(key),
-        Context::WorktreeNormal => worktree_normal_key(key),
-        Context::WorktreeFilter => dashboard_filter_key(key),
-        Context::DiffNormal => diff_normal_key(key),
-        Context::Patch => patch_key(key),
-        Context::Comment => comment_key(key),
+        Context::DashboardNormal => "DashboardNormal",
+        Context::DashboardInput => "DashboardInput",
+        Context::DashboardFilter => "DashboardFilter",
+        Context::WorktreeNormal => "WorktreeNormal",
+        Context::WorktreeFilter => "WorktreeFilter",
+        Context::TasksNormal => "TasksNormal",
+        Context::TasksFilter => "TasksFilter",
+        Context::DiffNormal => "DiffNormal",
+        Context::Patch => "Patch",
+        Context::Comment => "Comment",
     }
 }
 
-fn dashboard_normal_key(key: KeyEvent) -> Option<Action> {
+/// Map a key event to an action for the given context.
+///
+/// Discrete command bindings live in the binding registry (`super::bindings`);
+/// this consults it first, then falls back to per-context dynamic handling for
+/// text entry, PTY forwarding, and parameterized keys (quick-jump digits).
+pub fn action_for_key(ctx: Context, key: KeyEvent) -> Option<Action> {
+    let chord = KeyChord::from_event(key);
+    if let Some(action) = binding::lookup(BINDINGS, context_name(ctx), chord) {
+        return Some(action);
+    }
+    match ctx {
+        Context::DashboardNormal => dashboard_normal_dynamic(key),
+        Context::WorktreeNormal => worktree_normal_dynamic(key),
+        Context::DashboardInput => dashboard_input_key(key),
+        Context::DashboardFilter | Context::WorktreeFilter => dashboard_filter_key(key),
+        Context::TasksFilter => tasks_filter_key(key),
+        Context::Comment => comment_key(key),
+        // TasksNormal, DiffNormal, Patch, ProjectNormal are fully registry-driven.
+        _ => None,
+    }
+}
+
+/// Quick-jump digits for the agents list (registry handles the rest).
+fn dashboard_normal_dynamic(key: KeyEvent) -> Option<Action> {
     match key.code {
-        KeyCode::Char('?') => Some(Action::ShowHelp),
-        KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
-        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Next),
-        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::Previous)
-        }
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::Next),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::Previous),
-        KeyCode::Enter => Some(Action::JumpToSelected),
-        KeyCode::Tab => Some(Action::SwitchTab),
-        KeyCode::Backspace => Some(Action::JumpToLast),
-        KeyCode::Char('p') => Some(Action::PeekSelected),
-        KeyCode::Char('s') => Some(Action::CycleSortMode),
-        KeyCode::Char('F') => Some(Action::ToggleScopeFilter),
-        KeyCode::Char('f') => Some(Action::ToggleStaleFilter),
-        KeyCode::Char('i') => Some(Action::EnterInputMode),
-        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPreviewUp)
-        }
-        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPreviewDown)
-        }
-        KeyCode::Char('+') | KeyCode::Char('=') => Some(Action::IncreasePreviewSize),
-        KeyCode::Char('-') | KeyCode::Char('_') => Some(Action::DecreasePreviewSize),
-        KeyCode::Char('d') => Some(Action::LoadWipDiff),
-        KeyCode::Char('c') => Some(Action::SendCommitDashboard),
-        KeyCode::Char('m') => Some(Action::TriggerMergeDashboard),
-        KeyCode::Char('T') => Some(Action::CycleColorScheme),
-        KeyCode::Char('/') => Some(Action::EnterFilterMode),
-        KeyCode::Char('o') => Some(Action::OpenPr),
-        KeyCode::Char('O') => Some(Action::OpenPrChecks),
-        KeyCode::Char('b') => Some(Action::ShowBaseBranchPicker),
-        KeyCode::Char('X') => Some(Action::KillSelected),
-        KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
-        KeyCode::Char('R') => Some(Action::StartSweep),
-        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
         KeyCode::Char(c @ '1'..='9') => Some(Action::JumpToIndex((c as u8 - b'1') as usize)),
+        _ => None,
+    }
+}
+
+/// Quick-jump digits for the worktree list (registry handles the rest).
+fn worktree_normal_dynamic(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Char(c @ '1'..='9') => {
+            Some(Action::WorktreeJumpToIndex((c as u8 - b'1') as usize))
+        }
         _ => None,
     }
 }
@@ -80,42 +83,24 @@ fn dashboard_filter_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Esc => Some(Action::ClearFilter),
         KeyCode::Enter => Some(Action::AcceptFilter),
         KeyCode::Backspace => Some(Action::FilterDeleteChar),
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(Action::FilterDeleteWord)
+        }
         KeyCode::Char('?') => Some(Action::ShowHelp),
         KeyCode::Char(c) => Some(Action::FilterAppendChar(c)),
         _ => None,
     }
 }
 
-fn worktree_normal_key(key: KeyEvent) -> Option<Action> {
+fn tasks_filter_key(key: KeyEvent) -> Option<Action> {
     match key.code {
-        KeyCode::Char('?') => Some(Action::ShowHelp),
-        KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
-        KeyCode::Tab => Some(Action::SwitchTab),
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::WorktreeNext),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::WorktreePrevious),
-        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::WorktreeNext)
+        KeyCode::Esc => Some(Action::TaskClearFilter),
+        KeyCode::Enter => Some(Action::TaskAcceptFilter),
+        KeyCode::Backspace => Some(Action::TaskFilterDeleteChar),
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(Action::TaskFilterDeleteWord)
         }
-        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::WorktreePrevious)
-        }
-        KeyCode::Enter => Some(Action::JumpToSelectedWorktree),
-        KeyCode::Char('o') => Some(Action::OpenPr),
-        KeyCode::Char('O') => Some(Action::OpenPrChecks),
-        KeyCode::Char('r') => Some(Action::RemoveSelectedWorktree),
-        KeyCode::Char('c') => Some(Action::CloseSelectedWorktreeWindow),
-        KeyCode::Char('R') => Some(Action::StartSweep),
-        KeyCode::Char('s') => Some(Action::CycleWorktreeSortMode),
-        KeyCode::Char('p') => Some(Action::ShowProjectPicker),
-        KeyCode::Char('a') => Some(Action::AddWorktree),
-        KeyCode::Char('b') => Some(Action::ShowBaseBranchPicker),
-        KeyCode::Char('/') => Some(Action::EnterFilterMode),
-        KeyCode::Char('T') => Some(Action::CycleColorScheme),
-        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
-        KeyCode::Char(c @ '1'..='9') => {
-            Some(Action::WorktreeJumpToIndex((c as u8 - b'1') as usize))
-        }
+        KeyCode::Char(c) => Some(Action::TaskFilterAppendChar(c)),
         _ => None,
     }
 }
@@ -135,55 +120,6 @@ fn dashboard_input_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
-fn diff_normal_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        KeyCode::Char('?') => Some(Action::ShowHelp),
-        KeyCode::Esc | KeyCode::Char('q') => Some(Action::CloseDiff),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-        KeyCode::PageDown => Some(Action::ScrollPageDown),
-        KeyCode::PageUp => Some(Action::ScrollPageUp),
-        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPageDown)
-        }
-        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPageUp)
-        }
-        KeyCode::Tab => Some(Action::ToggleDiffType),
-        KeyCode::Char('a') => Some(Action::EnterPatchMode),
-        KeyCode::Char('c') => Some(Action::SendCommitDiff),
-        KeyCode::Char('m') => Some(Action::TriggerMergeDiff),
-        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
-        _ => None,
-    }
-}
-
-fn patch_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        KeyCode::Char('?') => Some(Action::ShowHelp),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Action::Quit),
-        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPageDown)
-        }
-        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Some(Action::ScrollPageUp)
-        }
-        KeyCode::Char('y') => Some(Action::StageAndNext),
-        KeyCode::Char('n') => Some(Action::SkipHunk),
-        KeyCode::Char('u') => Some(Action::UndoStagedHunk),
-        KeyCode::Char('s') => Some(Action::SplitHunk),
-        KeyCode::Char('o') => Some(Action::StartComment),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::PrevHunk),
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::NextHunk),
-        KeyCode::Char('c') => Some(Action::SendCommitDiff),
-        KeyCode::Char('m') => Some(Action::TriggerMergeDiff),
-        KeyCode::Char(':') => Some(Action::ShowCommandPalette),
-        KeyCode::Esc | KeyCode::Char('q') => Some(Action::ExitPatchMode),
-        _ => None,
-    }
-}
-
 fn comment_key(key: KeyEvent) -> Option<Action> {
     match key.code {
         KeyCode::Esc => Some(Action::CancelComment),
@@ -194,93 +130,37 @@ fn comment_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
+
+
+
+
 /// Get help rows for a context: (key, description) pairs.
+///
+/// Registry-driven contexts derive their rows from `super::bindings`; the
+/// remaining text-entry/PTY contexts keep curated rows.
 pub fn help_rows(ctx: Context) -> Vec<(&'static str, &'static str)> {
+    if super::bindings::REGISTRY_CONTEXTS.contains(&context_name(ctx)) {
+        return binding::help_rows(BINDINGS, context_name(ctx));
+    }
     match ctx {
-        Context::DashboardNormal => vec![
-            ("?", "Show help"),
-            ("q/Esc", "Quit"),
-            ("j/k/C-n/C-p", "Navigate up/down"),
-            ("Enter", "Jump to agent"),
-            ("Tab", "Switch view"),
-            ("Bksp", "Last agent"),
-            ("p", "Peek agent (keep popup)"),
-            ("s", "Cycle sort mode"),
-            ("F", "Toggle session filter"),
-            ("f", "Toggle stale filter"),
-            ("i", "Enter input mode"),
-            ("Ctrl+u/d", "Scroll preview"),
-            ("+/-", "Resize preview"),
-            ("d", "View diff"),
-            ("c", "Commit changes"),
-            ("m", "Merge branch"),
-            ("b", "Change base branch"),
-            ("o", "Open PR in browser"),
-            ("O", "Open PR checks in browser"),
-            ("X", "Kill agent"),
-            ("r", "Remove worktree"),
-            ("R", "Sweep cleanup"),
-            ("/", "Filter agents"),
-            ("T", "Cycle theme"),
-            (":", "Command palette"),
-            ("1-9", "Quick jump"),
-        ],
         Context::DashboardInput => vec![("Esc", "Exit input mode"), ("<keys>", "Send to agent")],
         Context::DashboardFilter | Context::WorktreeFilter => vec![
             ("Enter", "Accept filter"),
             ("Esc", "Clear filter"),
             ("<type>", "Filter text"),
         ],
-        Context::WorktreeNormal => vec![
-            ("?", "Show help"),
-            ("q/Esc", "Quit"),
-            ("j/k/C-n/C-p", "Navigate up/down"),
-            ("Enter", "Jump to worktree"),
-            ("Tab", "Switch to agents"),
-            ("o", "Open PR in browser"),
-            ("O", "Open PR checks in browser"),
-            ("a", "Add worktree"),
-            ("r", "Remove worktree"),
-            ("c", "Close mux window"),
-            ("R", "Sweep cleanup"),
-            ("s", "Cycle sort mode"),
-            ("b", "Change base branch"),
-            ("p", "Switch project"),
-            ("/", "Filter worktrees"),
-            ("T", "Cycle theme"),
-            (":", "Command palette"),
-            ("1-9", "Quick jump"),
-        ],
-        Context::DiffNormal => vec![
-            ("?", "Show help"),
-            ("q/Esc", "Close diff"),
-            ("j/k", "Scroll line"),
-            ("Ctrl+d/u", "Scroll page"),
-            ("Tab", "Toggle WIP/Review"),
-            ("a", "Enter patch mode (WIP only)"),
-            ("c", "Commit changes"),
-            ("m", "Merge branch"),
-            (":", "Command palette"),
-        ],
-        Context::Patch => vec![
-            ("?", "Show help"),
-            ("y", "Stage hunk"),
-            ("n", "Skip hunk"),
-            ("u", "Undo last staged"),
-            ("s", "Split hunk"),
-            ("o", "Add comment"),
-            ("j/k", "Next/prev hunk"),
-            ("Ctrl+d/u", "Scroll hunk"),
-            ("c", "Commit changes"),
-            ("m", "Merge branch"),
-            (":", "Command palette"),
-            ("q/Esc", "Exit patch mode"),
+        Context::TasksFilter => vec![
+            ("Enter", "Accept filter"),
+            ("Esc", "Clear filter"),
+            ("<type>", "Filter text"),
         ],
         Context::Comment => vec![
             ("Esc", "Cancel"),
             ("Enter", "Send comment"),
             ("<type>", "Input text"),
         ],
+        // Registry-driven contexts are handled by the early return above.
+        _ => Vec::new(),
     }
 }
 
@@ -295,6 +175,8 @@ mod tests {
         assert!(!help_rows(Context::DashboardFilter).is_empty());
         assert!(!help_rows(Context::WorktreeNormal).is_empty());
         assert!(!help_rows(Context::WorktreeFilter).is_empty());
+        assert!(!help_rows(Context::TasksNormal).is_empty());
+        assert!(!help_rows(Context::TasksFilter).is_empty());
         assert!(!help_rows(Context::DiffNormal).is_empty());
         assert!(!help_rows(Context::Patch).is_empty());
         assert!(!help_rows(Context::Comment).is_empty());
@@ -308,6 +190,8 @@ mod tests {
             Context::DashboardFilter,
             Context::WorktreeNormal,
             Context::WorktreeFilter,
+            Context::TasksNormal,
+            Context::TasksFilter,
             Context::DiffNormal,
             Context::Patch,
             Context::Comment,

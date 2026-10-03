@@ -224,6 +224,7 @@ pub fn list_in(
 
             let base_branch = git::get_branch_base_in(&branch, repo).ok();
 
+
             WorktreeInfo {
                 handle,
                 branch,

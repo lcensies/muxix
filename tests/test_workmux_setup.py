@@ -401,3 +401,47 @@ class TestSetupInstall:
         assert "UserPromptSubmit" in settings["hooks"]
         assert "Notification" in settings["hooks"]
         assert "PostToolUse" in settings["hooks"]
+
+
+class TestAgentSettings:
+    """`bootstrap.agents.<agent>.settings` patched into the agent's own file."""
+
+    def test_pi_settings_patch_preserves_agent_owned_keys(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        repo_path: Path,
+    ):
+        """Declared keys are applied; keys pi wrote for itself survive."""
+        pi_dir = mux_server.home_path / ".pi" / "agent"
+        pi_dir.mkdir(parents=True)
+        (pi_dir / "settings.json").write_text(
+            json.dumps(
+                {
+                    "packages": ["npm:pi-web-access"],
+                    "defaultTools": ["read", "bash"],
+                    "theme": "dark",
+                },
+                indent=2,
+            )
+        )
+        (repo_path / ".workmux.yaml").write_text(
+            "bootstrap:\n"
+            "  agents:\n"
+            "    pi:\n"
+            "      settings:\n"
+            "        defaultTools: [read, edit]\n"
+            "        theme: null\n"
+        )
+
+        run_workmux_command(
+            mux_server,
+            workmux_exe_path,
+            repo_path,
+            "setup --non-interactive --only agent-settings",
+        )
+
+        settings = json.loads((pi_dir / "settings.json").read_text())
+        assert settings["defaultTools"] == ["read", "edit"]
+        assert "theme" not in settings
+        assert settings["packages"] == ["npm:pi-web-access"]

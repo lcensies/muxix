@@ -1,0 +1,8 @@
+# Keep the Docker build context small. target/ alone is ~10G.
+target/
+**/target/
+.git/
+.workmux/
+presentation/dist/
+node_modules/
+*.log

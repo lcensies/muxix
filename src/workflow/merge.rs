@@ -1,13 +1,36 @@
 use anyhow::{Context, Result, anyhow};
+use std::path::PathBuf;
 
 use crate::{cmd, git};
 use tracing::{debug, info};
 
-use super::cleanup::{self, get_worktree_mode};
+use super::cleanup;
 use super::context::WorkflowContext;
 use super::types::MergeResult;
 
-/// Merge a branch into the target branch and clean up
+/// Outcome of an attempted merge.
+///
+/// Distinguishes a clean merge from a *conflict* — a recoverable state that a
+/// human or an agent can resolve — so callers (notably the orchestrator) can
+/// react differently to each without parsing error strings.
+#[derive(Debug)]
+pub enum MergeOutcome {
+    /// The branch merged cleanly into the target.
+    Merged(MergeResult),
+    /// The merge or rebase hit conflicts. The feature worktree is left in a
+    /// state ready for resolution (or aborted clean, see `merge_with_outcome`).
+    Conflict {
+        worktree_path: PathBuf,
+        target_branch: String,
+        branch: String,
+    },
+}
+
+/// Merge a branch into the target branch and clean up.
+///
+/// Conflicts are surfaced as an `Err` with resolution guidance, preserving the
+/// historical CLI behaviour (the in-progress rebase/merge is left for the user
+/// to resolve manually).
 #[allow(clippy::too_many_arguments)]
 pub fn merge(
     name: &str,
@@ -21,6 +44,97 @@ pub fn merge(
     notification: bool,
     context: &WorkflowContext,
 ) -> Result<MergeResult> {
+    match merge_inner(
+        name,
+        into_branch,
+        ignore_uncommitted,
+        rebase,
+        squash,
+        keep,
+        no_verify,
+        no_hooks,
+        notification,
+        false, // leave conflicted state for manual resolution
+        context,
+    )? {
+        MergeOutcome::Merged(result) => Ok(result),
+        MergeOutcome::Conflict {
+            worktree_path,
+            target_branch,
+            branch,
+        } => {
+            let retry_cmd = if into_branch.is_some() {
+                format!("workmux merge {} --into {}", branch, target_branch)
+            } else {
+                format!("workmux merge {}", branch)
+            };
+            Err(anyhow!(
+                "Merge failed due to conflicts. Target worktree kept clean.\n\n\
+                To resolve, update your branch in worktree at {}:\n\
+                  git rebase {}  (recommended)\n\
+                Or:\n\
+                  git merge {}\n\n\
+                After resolving conflicts, retry: {}",
+                worktree_path.display(),
+                target_branch,
+                target_branch,
+                retry_cmd
+            ))
+        }
+    }
+}
+
+/// Merge a branch into the target, returning a typed [`MergeOutcome`] instead of
+/// collapsing conflicts into an error.
+///
+/// On conflict the in-progress rebase is aborted so the feature worktree is left
+/// clean, ready to be handed to an agent for a fresh resolution attempt. Used by
+/// the orchestrator's deterministic merge step.
+#[allow(clippy::too_many_arguments)]
+pub fn merge_with_outcome(
+    name: &str,
+    into_branch: Option<&str>,
+    ignore_uncommitted: bool,
+    rebase: bool,
+    squash: bool,
+    keep: bool,
+    no_verify: bool,
+    no_hooks: bool,
+    notification: bool,
+    context: &WorkflowContext,
+) -> Result<MergeOutcome> {
+    merge_inner(
+        name,
+        into_branch,
+        ignore_uncommitted,
+        rebase,
+        squash,
+        keep,
+        no_verify,
+        no_hooks,
+        notification,
+        true, // abort conflicted rebase for a clean agent handoff
+        context,
+    )
+}
+
+/// Shared merge implementation. `abort_on_conflict` controls whether an
+/// in-progress rebase is aborted when a conflict is detected (clean handoff) or
+/// left in place for manual resolution.
+#[allow(clippy::too_many_arguments)]
+fn merge_inner(
+    name: &str,
+    into_branch: Option<&str>,
+    ignore_uncommitted: bool,
+    rebase: bool,
+    squash: bool,
+    keep: bool,
+    no_verify: bool,
+    no_hooks: bool,
+    notification: bool,
+    abort_on_conflict: bool,
+    context: &WorkflowContext,
+) -> Result<MergeOutcome> {
     info!(
         name = name,
         into = into_branch,
@@ -33,12 +147,14 @@ pub fn merge(
         "merge:start"
     );
 
-    // Change CWD to main worktree to prevent errors if the command is run from within
-    // the worktree that is about to be deleted.
-    context.chdir_to_main_worktree()?;
+    // Every git lookup below runs in the main worktree rather than the process
+    // CWD: the CWD may be inside the worktree about to be deleted, and the
+    // daemon runs several projects' merges from one process, so changing it
+    // globally is not an option.
+    let repo = context.main_worktree_root.as_path();
 
     // Smart resolution: try handle first, then branch name
-    let (worktree_path, branch_to_merge) = git::find_worktree(name).map_err(|_| {
+    let (worktree_path, branch_to_merge) = git::find_worktree_in(name, Some(repo)).map_err(|_| {
         anyhow!(
             "Worktree '{}' not found. Use 'workmux list' to see available worktrees.",
             name
@@ -57,7 +173,7 @@ pub fn merge(
         })?;
 
     // Capture mode BEFORE cleanup (cleanup removes the metadata)
-    let mode = get_worktree_mode(handle);
+    let mode = git::get_worktree_mode_in(handle, Some(repo));
 
     debug!(
         name = name,
@@ -74,10 +190,10 @@ pub fn merge(
     let detected_base: Option<String> = if into_branch.is_some() {
         None // User explicitly specified target, no auto-detection needed
     } else {
-        match git::get_branch_base(&branch_to_merge) {
+        match git::get_branch_base_in(&branch_to_merge, Some(repo)) {
             Ok(base) => {
                 // Verify the base branch still exists locally.
-                if git::local_branch_exists(&base)? {
+                if git::local_branch_exists_in(&base, Some(repo))? {
                     info!(
                         branch = %branch_to_merge,
                         base = %base,
@@ -112,7 +228,8 @@ pub fn merge(
     // Resolve the worktree path and window handle for the TARGET branch.
     // We prioritize finding an existing worktree for the target branch to support
     // workflows where 'main' is checked out in a linked worktree (issue #29).
-    let (target_worktree_path, target_window_name) = match git::get_worktree_path(target_branch) {
+    let (target_worktree_path, target_window_name) =
+        match git::get_worktree_path_in(target_branch, Some(repo)) {
         Ok(path) => {
             // Target is checked out in a worktree (could be main root or a linked worktree)
             if path == context.main_worktree_root {
@@ -230,25 +347,64 @@ pub fn merge(
         }
     }
 
-    // Helper closure to generate the error message for merge conflicts
-    let conflict_err = |branch: &str| -> anyhow::Error {
-        let retry_cmd = if into_branch.is_some() {
-            format!("workmux merge {} --into {}", branch, target_branch)
-        } else {
-            format!("workmux merge {}", branch)
-        };
-        anyhow!(
-            "Merge failed due to conflicts. Target worktree kept clean.\n\n\
-            To resolve, update your branch in worktree at {}:\n\
-              git rebase {}  (recommended)\n\
-            Or:\n\
-              git merge {}\n\n\
-            After resolving conflicts, retry: {}",
-            worktree_path.display(),
-            target_branch,
-            target_branch,
-            retry_cmd
-        )
+    // Merge submodule worktrees first, then update the parent's submodule pointer.
+    if context.config.submodules.worktrees {
+        let sub_worktrees =
+            git::get_submodule_worktrees(&context.main_worktree_root, &worktree_path)
+                .unwrap_or_default();
+
+        for (submodule, _sub_wt_path) in &sub_worktrees {
+            info!(
+                submodule = submodule.name,
+                branch = %branch_to_merge,
+                target = target_branch,
+                "merge:merging submodule worktree"
+            );
+            match git::merge_submodule_worktree(
+                &context.main_worktree_root,
+                submodule,
+                &branch_to_merge,
+                target_branch,
+            ) {
+                Ok(()) => {
+                    git::stage_path_in_worktree(&target_worktree_path, &submodule.path)
+                        .with_context(|| {
+                            format!(
+                                "Failed to stage submodule pointer for '{}' after merge",
+                                submodule.name
+                            )
+                        })?;
+                    info!(submodule = submodule.name, "merge:submodule pointer staged");
+                }
+                Err(e) => {
+                    return Err(e).with_context(|| {
+                        format!(
+                            "Submodule '{}' merge failed. Resolve conflicts in {} first.",
+                            submodule.name,
+                            context.main_worktree_root.join(&submodule.path).display()
+                        )
+                    });
+                }
+            }
+        }
+
+        if !sub_worktrees.is_empty() && git::has_staged_changes(&target_worktree_path)? {
+            git::commit_with_message(
+                &target_worktree_path,
+                &format!("chore: update submodule pointers for '{}'", branch_to_merge),
+            )
+            .context("Failed to commit updated submodule pointers")?;
+            info!("merge:submodule pointer commit created");
+        }
+    }
+
+    // Helper to build a Conflict outcome for the current merge target.
+    let conflict_outcome = |branch: &str| -> MergeOutcome {
+        MergeOutcome::Conflict {
+            worktree_path: worktree_path.clone(),
+            target_branch: target_branch.to_string(),
+            branch: branch.to_string(),
+        }
     };
 
     if rebase {
@@ -263,14 +419,25 @@ pub fn merge(
             base = target_branch,
             "merge:rebase start"
         );
-        git::rebase_branch_onto_base(&worktree_path, target_branch).with_context(|| {
-            format!(
-                "Rebase failed, likely due to conflicts.\n\n\
-                Please resolve them manually inside the worktree at '{}'.\n\
-                Then, run 'git rebase --continue' to proceed or 'git rebase --abort' to cancel.",
-                worktree_path.display()
-            )
-        })?;
+        if let Err(e) = git::rebase_branch_onto_base(&worktree_path, target_branch) {
+            // A rebase failure is usually a conflict; confirm via worktree state
+            // so genuine errors (bad ref, etc.) still surface as errors.
+            if git::worktree_has_conflicts(&worktree_path).unwrap_or(false) {
+                info!(branch = %branch_to_merge, "merge:rebase conflict");
+                if abort_on_conflict {
+                    let _ = git::abort_rebase_in_worktree(&worktree_path);
+                }
+                return Ok(conflict_outcome(&branch_to_merge));
+            }
+            return Err(e).with_context(|| {
+                format!(
+                    "Rebase failed.\n\n\
+                    Please resolve manually inside the worktree at '{}'.\n\
+                    Then, run 'git rebase --continue' to proceed or 'git rebase --abort' to cancel.",
+                    worktree_path.display()
+                )
+            });
+        }
 
         // After a successful rebase, merge into target. This will be a fast-forward.
         git::merge_in_worktree(&target_worktree_path, &branch_to_merge)
@@ -282,7 +449,7 @@ pub fn merge(
             info!(branch = %branch_to_merge, error = %e, "merge:squash merge failed, resetting target worktree");
             // Best effort to reset; ignore failure as the user message is the priority.
             let _ = git::reset_hard(&target_worktree_path);
-            return Err(conflict_err(&branch_to_merge));
+            return Ok(conflict_outcome(&branch_to_merge));
         }
 
         // Prompt the user to provide a commit message for the squashed changes.
@@ -296,7 +463,7 @@ pub fn merge(
             info!(branch = %branch_to_merge, error = %e, "merge:standard merge failed, aborting merge in target worktree");
             // Best effort to abort; ignore failure as the user message is the priority.
             let _ = git::abort_merge_in_worktree(&target_worktree_path);
-            return Err(conflict_err(&branch_to_merge));
+            return Ok(conflict_outcome(&branch_to_merge));
         }
         info!(branch = %branch_to_merge, "merge:standard merge complete");
     }
@@ -313,11 +480,11 @@ pub fn merge(
     // Skip cleanup when keep behavior is enabled
     if keep {
         info!(branch = %branch_to_merge, "merge:skipping cleanup");
-        return Ok(MergeResult {
+        return Ok(MergeOutcome::Merged(MergeResult {
             branch_merged: branch_to_merge,
             main_branch: target_branch.to_string(),
             had_staged_changes,
-        });
+        }));
     }
 
     // Always force cleanup after a successful merge
@@ -342,11 +509,11 @@ pub fn merge(
         mode,
     )?;
 
-    Ok(MergeResult {
+    Ok(MergeOutcome::Merged(MergeResult {
         branch_merged: branch_to_merge,
         main_branch: target_branch.to_string(),
         had_staged_changes,
-    })
+    }))
 }
 
 /// Shows a system notification on macOS or Linux

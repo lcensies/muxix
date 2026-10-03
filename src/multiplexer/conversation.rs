@@ -148,8 +148,233 @@ impl ConversationForker for ClaudeForker {
     }
 }
 
+/// pi-style session forker (pi and its fork omp share the layout):
+/// `<sessions_dir>/-<cwd with '/' → '-'>--/<timestamp>_<uuid>.jsonl`,
+/// resume by id via `--session <id>` (partial UUIDs accepted by the CLI).
+pub struct PiStyleForker {
+    sessions_dir: PathBuf,
+}
+
+impl PiStyleForker {
+    pub fn pi() -> Self {
+        let agent_dir = std::env::var("PI_AGENT_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                home::home_dir()
+                    .expect("could not determine home directory")
+                    .join(".pi/agent")
+            });
+        Self {
+            sessions_dir: agent_dir.join("sessions"),
+        }
+    }
+
+    pub fn omp() -> Self {
+        Self {
+            sessions_dir: home::home_dir()
+                .expect("could not determine home directory")
+                .join(".omp/agent/sessions"),
+        }
+    }
+
+    /// `/home/user/repo` → `--home-user-repo--`
+    fn encode_path(path: &Path) -> String {
+        format!("-{}--", path.to_string_lossy().replace('/', "-"))
+    }
+
+    fn project_dir_for(&self, worktree_path: &Path) -> PathBuf {
+        self.sessions_dir.join(Self::encode_path(worktree_path))
+    }
+
+    /// Session id is the UUID after the timestamp: `<ts>_<uuid>.jsonl`.
+    fn session_id_of(stem: &str) -> String {
+        stem.split_once('_')
+            .map(|(_, id)| id.to_string())
+            .unwrap_or_else(|| stem.to_string())
+    }
+
+    fn list_sessions(&self, project_dir: &Path) -> Result<Vec<SessionInfo>> {
+        if !project_dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut sessions = Vec::new();
+        for entry in fs::read_dir(project_dir)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("jsonl")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                sessions.push(SessionInfo {
+                    id: Self::session_id_of(stem),
+                    timestamp: fs::metadata(&path)?.modified()?,
+                    path,
+                });
+            }
+        }
+        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        Ok(sessions)
+    }
+}
+
+impl ConversationForker for PiStyleForker {
+    fn find_latest_conversation(&self, worktree_path: &Path) -> Result<Option<SessionInfo>> {
+        Ok(self
+            .list_sessions(&self.project_dir_for(worktree_path))?
+            .into_iter()
+            .next())
+    }
+
+    fn find_conversation(
+        &self,
+        worktree_path: &Path,
+        session_id: &str,
+    ) -> Result<Option<SessionInfo>> {
+        Ok(self
+            .list_sessions(&self.project_dir_for(worktree_path))?
+            .into_iter()
+            .find(|s| s.id == session_id || s.id.starts_with(session_id)))
+    }
+
+    fn fork_conversation(&self, session: &SessionInfo, target_worktree: &Path) -> Result<String> {
+        let target_dir = self.project_dir_for(target_worktree);
+        fs::create_dir_all(&target_dir).context("Failed to create target session directory")?;
+        let file_name = session
+            .path
+            .file_name()
+            .context("Session file has no name")?;
+        fs::copy(&session.path, target_dir.join(file_name))
+            .context("Failed to copy session file")?;
+        Ok(session.id.clone())
+    }
+
+    fn resume_args(&self, session_id: &str) -> Vec<String> {
+        vec!["--session".to_string(), session_id.to_string()]
+    }
+}
+
+/// Codex CLI forker. Sessions are date-partitioned rollout files
+/// (`~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`) whose first
+/// JSONL line records the session's `cwd` — that is how they map to worktrees.
+pub struct CodexForker {
+    sessions_dir: PathBuf,
+}
+
+impl CodexForker {
+    pub fn new() -> Self {
+        let codex_home = std::env::var("CODEX_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                home::home_dir()
+                    .expect("could not determine home directory")
+                    .join(".codex")
+            });
+        Self {
+            sessions_dir: codex_home.join("sessions"),
+        }
+    }
+
+    /// Read the SessionMeta first line and pull out (cwd, session id), leniently.
+    fn read_meta(path: &Path) -> Option<(PathBuf, String)> {
+        use std::io::BufRead;
+        let file = fs::File::open(path).ok()?;
+        let mut first_line = String::new();
+        std::io::BufReader::new(file).read_line(&mut first_line).ok()?;
+        let v: serde_json::Value = serde_json::from_str(first_line.trim()).ok()?;
+        let meta = v.get("payload").unwrap_or(&v);
+        let cwd = meta.get("cwd").and_then(|c| c.as_str())?;
+        let id = ["id", "session_id"]
+            .iter()
+            .find_map(|k| meta.get(*k).and_then(|s| s.as_str()))?;
+        Some((PathBuf::from(cwd), id.to_string()))
+    }
+
+    /// All rollout files whose recorded cwd matches the worktree, newest first.
+    fn sessions_for(&self, worktree_path: &Path) -> Result<Vec<SessionInfo>> {
+        let canon_wt = crate::util::canon_or_self(worktree_path);
+        let mut sessions = Vec::new();
+        // Fixed YYYY/MM/DD depth — walk it directly instead of pulling a crate.
+        for year in read_dirs(&self.sessions_dir) {
+            for month in read_dirs(&year) {
+                for day in read_dirs(&month) {
+                    let Ok(entries) = fs::read_dir(&day) else {
+                        continue;
+                    };
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        let is_rollout = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| {
+                                n.starts_with("rollout-") && n.ends_with(".jsonl")
+                            });
+                        if !is_rollout {
+                            continue;
+                        }
+                        let Some((cwd, id)) = Self::read_meta(&path) else {
+                            continue;
+                        };
+                        if crate::util::canon_or_self(&cwd) != canon_wt {
+                            continue;
+                        }
+                        let Ok(timestamp) = fs::metadata(&path).and_then(|m| m.modified()) else {
+                            continue;
+                        };
+                        sessions.push(SessionInfo {
+                            id,
+                            path,
+                            timestamp,
+                        });
+                    }
+                }
+            }
+        }
+        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        Ok(sessions)
+    }
+}
+
+fn read_dirs(dir: &Path) -> Vec<PathBuf> {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+impl ConversationForker for CodexForker {
+    fn find_latest_conversation(&self, worktree_path: &Path) -> Result<Option<SessionInfo>> {
+        Ok(self.sessions_for(worktree_path)?.into_iter().next())
+    }
+
+    fn find_conversation(
+        &self,
+        worktree_path: &Path,
+        session_id: &str,
+    ) -> Result<Option<SessionInfo>> {
+        Ok(self
+            .sessions_for(worktree_path)?
+            .into_iter()
+            .find(|s| s.id == session_id || s.id.starts_with(session_id)))
+    }
+
+    fn fork_conversation(&self, _session: &SessionInfo, _target: &Path) -> Result<String> {
+        // Codex sessions are not directory-partitioned; a copied rollout would
+        // keep its original cwd and stay invisible to the target worktree.
+        anyhow::bail!("forking conversations is not supported for codex")
+    }
+
+    fn resume_args(&self, session_id: &str) -> Vec<String> {
+        vec!["resume".to_string(), session_id.to_string()]
+    }
+}
+
 /// Resolve a conversation forker for the given agent name.
-/// Returns None if the agent doesn't support conversation forking.
+/// Returns None if the agent's session store can't be read from disk
+/// (SQLite- or hash-keyed stores); such agents can still resume via their
+/// profile's continue flag.
 pub fn resolve_forker(agent_name: &str) -> Option<Box<dyn ConversationForker>> {
     // Normalize: strip path, take basename
     let basename = agent_name.rsplit('/').next().unwrap_or(agent_name);
@@ -161,6 +386,9 @@ pub fn resolve_forker(agent_name: &str) -> Option<Box<dyn ConversationForker>> {
 
     match name.as_str() {
         "claude" => Some(Box::new(ClaudeForker::new())),
+        "pi" => Some(Box::new(PiStyleForker::pi())),
+        "omp" => Some(Box::new(PiStyleForker::omp())),
+        "codex" => Some(Box::new(CodexForker::new())),
         _ => None,
     }
 }
@@ -203,6 +431,108 @@ mod tests {
     #[test]
     fn test_resolve_forker_unknown() {
         assert!(resolve_forker("unknown-agent").is_none());
+        // SQLite/hash-keyed stores: no forker, resume happens via continue flag
+        assert!(resolve_forker("opencode").is_none());
+    }
+
+    #[test]
+    fn test_resolve_forker_pi_omp_codex() {
+        assert!(resolve_forker("pi").is_some());
+        assert!(resolve_forker("omp").is_some());
+        assert!(resolve_forker("codex").is_some());
+    }
+
+    #[test]
+    fn test_pi_encode_path() {
+        assert_eq!(
+            PiStyleForker::encode_path(Path::new("/home/esc2/repos/foo")),
+            "--home-esc2-repos-foo--"
+        );
+        // dots and underscores survive, unlike claude's encoding
+        assert_eq!(
+            PiStyleForker::encode_path(Path::new("/home/u/.pi/my_app")),
+            "--home-u-.pi-my_app--"
+        );
+    }
+
+    #[test]
+    fn test_pi_find_latest_and_resume_args() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forker = PiStyleForker {
+            sessions_dir: tmp.path().to_path_buf(),
+        };
+        let project_dir = forker.project_dir_for(Path::new("/test/project"));
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let old = project_dir.join("2026-01-01T00-00-00-000Z_aaaa1111.jsonl");
+        fs::write(&old, "{}").unwrap();
+        filetime::set_file_mtime(
+            &old,
+            filetime::FileTime::from_system_time(
+                std::time::SystemTime::now() - std::time::Duration::from_secs(10),
+            ),
+        )
+        .unwrap();
+        fs::write(project_dir.join("2026-02-02T00-00-00-000Z_bbbb2222.jsonl"), "{}").unwrap();
+
+        let latest = forker
+            .find_latest_conversation(Path::new("/test/project"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.id, "bbbb2222");
+        assert_eq!(
+            forker.resume_args(&latest.id),
+            vec!["--session".to_string(), "bbbb2222".to_string()]
+        );
+
+        // find by partial id
+        let found = forker
+            .find_conversation(Path::new("/test/project"), "aaaa")
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.id, "aaaa1111");
+    }
+
+    #[test]
+    fn test_codex_matches_sessions_by_recorded_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forker = CodexForker {
+            sessions_dir: tmp.path().to_path_buf(),
+        };
+        let day = tmp.path().join("2026/08/19");
+        fs::create_dir_all(&day).unwrap();
+
+        let meta = |cwd: &str, id: &str| {
+            format!(
+                "{{\"timestamp\":\"t\",\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"{cwd}\"}}}}\n{{\"type\":\"other\"}}"
+            )
+        };
+        fs::write(
+            day.join("rollout-2026-08-19T10-00-00-11111111-aaaa.jsonl"),
+            meta("/my/worktree", "11111111-aaaa"),
+        )
+        .unwrap();
+        fs::write(
+            day.join("rollout-2026-08-19T11-00-00-22222222-bbbb.jsonl"),
+            meta("/other/dir", "22222222-bbbb"),
+        )
+        .unwrap();
+
+        let latest = forker
+            .find_latest_conversation(Path::new("/my/worktree"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.id, "11111111-aaaa");
+        assert!(
+            forker
+                .find_latest_conversation(Path::new("/nowhere"))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            forker.resume_args("11111111-aaaa"),
+            vec!["resume".to_string(), "11111111-aaaa".to_string()]
+        );
     }
 
     #[test]

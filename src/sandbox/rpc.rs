@@ -1015,9 +1015,13 @@ impl RpcClient {
     /// Receive a single response line.
     pub fn recv(&mut self) -> Result<RpcResponse> {
         let mut line = String::new();
-        self.reader.read_line(&mut line)?;
-        serde_json::from_str(&line)
-            .with_context(|| format!("Failed to parse RPC response: {}", line))
+        // Bound the read (reuse the server's limit) and treat EOF as an
+        // explicit "connection closed" rather than an empty-string parse error.
+        match read_bounded_line(&mut self.reader, &mut line)? {
+            Some(()) => serde_json::from_str(&line)
+                .with_context(|| format!("Failed to parse RPC response: {}", line)),
+            None => anyhow::bail!("RPC connection closed by host before a response was received"),
+        }
     }
 }
 
@@ -1421,15 +1425,18 @@ mod tests {
     fn test_exec_sandbox_blocks_ssh_read() {
         #[cfg(target_os = "linux")]
         {
-            // Probe bwrap usability, not just existence. bwrap requires user
-            // namespaces which are unavailable inside nested sandboxes (Nix
-            // build sandbox, Docker without --privileged, etc.).
-            let probe = std::process::Command::new("bwrap")
+            // Use find_bwrap() so the probe is consistent with what spawn_sandboxed
+            // actually uses — a PATH-based probe would succeed even when the sandbox
+            // code can't find bwrap at a trusted absolute path.
+            let Some(bwrap_path) = crate::sandbox::host_exec_sandbox::find_bwrap() else {
+                return; // bwrap not at a trusted path in this environment
+            };
+            let probe = std::process::Command::new(bwrap_path)
                 .args(["--ro-bind", "/", "/", "--", "true"])
                 .status();
             match probe {
                 Ok(s) if s.success() => {}
-                _ => return, // bwrap not usable in this environment
+                _ => return, // bwrap exists but user namespaces unavailable
             }
         }
 

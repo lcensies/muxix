@@ -100,7 +100,7 @@ You can customize the skill to add additional instructions for worktree agents. 
 
 Orchestrates the full lifecycle of multiple worktree agents: spawning, monitoring, communicating, and merging. Unlike `/worktree` which dispatches tasks and returns, `/coordinator` turns the agent into a persistent orchestrator that manages agents through completion.
 
-[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/coordinator/SKILL.md)
+[**View skill ->**](https://github.com/raine/workmux/tree/main/skills/harness-coordinator/SKILL.md)
 
 The coordinator agent does not implement tasks itself. It writes prompt files, spawns worktree agents, monitors their status, sends follow-up instructions, and triggers merges.
 

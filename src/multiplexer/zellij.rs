@@ -281,7 +281,10 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn run_deferred_script(&self, script: &str) -> Result<()> {
-        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        let bg_script = format!(
+            "nohup sh -c '{}' >/dev/null 2>&1 &",
+            super::util::escape_for_single_quotes(script)
+        );
         Cmd::new("sh").args(&["-c", &bg_script]).run()?;
         Ok(())
     }
@@ -718,7 +721,7 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn send_keys_to_agent(&self, pane_id: &str, command: &str, agent: Option<&str>) -> Result<()> {
-        use super::agent;
+        use crate::agent::profile as agent;
 
         let profile = agent::resolve_profile(agent);
 

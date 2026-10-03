@@ -67,7 +67,37 @@ pub fn setup_environment(
 
     // Perform file operations (copy and symlink) if requested
     if options.run_file_ops {
-        handle_file_operations(file_ops_source, effective_working_dir, &config.files)
+        // When MCP servers are configured, render/refresh the project `.mcp.json`
+        // at the file-ops source root and symlink it into the worktree so the
+        // agent sees the configured servers. Reuses the existing symlink path.
+        let mut files = config.files.clone();
+        if config.mcp.as_ref().is_some_and(|m| !m.is_empty()) {
+            // Render + pre-approve every detected agent's MCP config (Claude
+            // `.mcp.json`, OpenCode `opencode.json`, …), then symlink each
+            // project-root config file into the worktree so the agent sees it.
+            match crate::mcp::sync_agent_mcp_configs(file_ops_source, config) {
+                Ok(written) => {
+                    let symlinks = files.symlink.get_or_insert_with(Vec::new);
+                    for path in &written {
+                        // Only bare project-root files can be symlinked by name;
+                        // nested configs (e.g. .gemini/settings.json) are skipped.
+                        if path.parent() == Some(file_ops_source)
+                            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                            && !symlinks.iter().any(|s| s == name)
+                        {
+                            symlinks.push(name.to_string());
+                        }
+                    }
+                    if let Err(e) = crate::mcp::record_synced(file_ops_source) {
+                        tracing::debug!(error = %e, "failed to record mcp.synced fact");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to sync MCP configs; skipping MCP propagation");
+                }
+            }
+        }
+        handle_file_operations(file_ops_source, effective_working_dir, &files)
             .context("Failed to perform file operations")?;
         debug!(
             branch = branch_name,
@@ -160,6 +190,17 @@ pub fn setup_environment(
         options,
         agent,
     )?;
+
+    // Ensure the `msb` CLI is installed before creating panes that wrap their
+    // command in a microsandbox VM (auto-installs to the host if needed).
+    if config.sandbox.is_enabled()
+        && matches!(
+            config.sandbox.backend(),
+            crate::config::SandboxBackend::MicroSandbox
+        )
+    {
+        crate::sandbox::microsandbox::ensure_installed()?;
+    }
 
     let pane_setup_options = PaneSetupOptions {
         run_commands: options.run_pane_commands,
@@ -350,6 +391,7 @@ pub fn setup_environment(
         did_switch: false,
         resolved_handle: handle.to_string(),
         mux_target_full_name,
+        focus_pane_id,
         mode: options.mode,
     })
 }
@@ -433,7 +475,7 @@ fn resolve_effective_agent<'a>(
 
 fn pane_runs_agent(command: &str, agent_command: &str, agent_type: Option<&str>) -> bool {
     command == "<agent>"
-        || crate::multiplexer::agent::is_known_agent(command)
+        || crate::agent::profile::is_known_agent(command)
         || config::is_agent_command(command, agent_command)
         || agent_type.is_some_and(|kind| config::is_agent_command(command, kind))
 }
@@ -524,6 +566,19 @@ pub fn write_prompt_file(
         std::env::temp_dir().join(prompt_filename)
     };
 
+    // An empty prompt file yields `agent "$(cat PROMPT.md)"` with nothing in it:
+    // the agent starts idle and the caller thinks it dispatched work. Fail loud.
+    anyhow::ensure!(
+        !content.trim().is_empty(),
+        "refusing to write an empty prompt file for '{branch_name}' — the agent would start with no instructions"
+    );
+    crate::wm_evt!(
+        "prompt.file.written",
+        path = %prompt_path.display(),
+        bytes = content.len(),
+        branch = branch_name,
+        prompt = %content,
+    );
     fs::write(&prompt_path, content)
         .with_context(|| format!("Failed to write prompt file '{}'", prompt_path.display()))?;
     Ok(prompt_path)
@@ -955,7 +1010,7 @@ fn validate_prompt_consumption(
     let has_self_identifying_agent = panes.iter().any(|pane| {
         pane.command
             .as_deref()
-            .is_some_and(crate::multiplexer::agent::is_known_agent)
+            .is_some_and(crate::agent::profile::is_known_agent)
     });
 
     if has_self_identifying_agent {

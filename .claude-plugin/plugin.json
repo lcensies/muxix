@@ -8,6 +8,7 @@
   "repository": "https://github.com/raine/workmux",
   "license": "MIT",
   "keywords": ["tmux", "workmux", "status", "agent"],
+  "commands": "./commands/",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -15,6 +16,10 @@
           {
             "type": "command",
             "command": "workmux set-window-status working"
+          },
+          {
+            "type": "command",
+            "command": "workmux signal working"
           }
         ]
       }
@@ -26,6 +31,10 @@
           {
             "type": "command",
             "command": "workmux set-window-status waiting"
+          },
+          {
+            "type": "command",
+            "command": "workmux signal needs-input"
           }
         ]
       }
@@ -36,6 +45,10 @@
           {
             "type": "command",
             "command": "workmux set-window-status working"
+          },
+          {
+            "type": "command",
+            "command": "workmux signal working"
           }
         ]
       }
@@ -46,6 +59,24 @@
           {
             "type": "command",
             "command": "workmux set-window-status done"
+          },
+          {
+            "type": "command",
+            "command": "workmux signal turn-done"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "workmux signal session-ready"
+          },
+          {
+            "type": "command",
+            "command": "workmux hooks-report"
           }
         ]
       }

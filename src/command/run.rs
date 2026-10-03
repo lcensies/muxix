@@ -9,21 +9,9 @@ use anyhow::{Result, anyhow};
 
 use crate::config::SplitDirection;
 use crate::multiplexer::{create_backend, detect_backend};
+use crate::shell::shell_quote;
 use crate::state::run::{RunSpec, cleanup_run, create_run, generate_run_id, read_result};
 use crate::workflow;
-
-/// Escape a string for safe shell embedding.
-fn shell_escape(s: &str) -> String {
-    if s.is_empty() {
-        return "''".to_string();
-    }
-    if s.chars()
-        .all(|c| c.is_ascii_alphanumeric() || "-_./=@:".contains(c))
-    {
-        return s.to_string();
-    }
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
 
 pub fn run(
     worktree_name: &str,
@@ -44,7 +32,7 @@ pub fn run(
     // Build command string (preserve argument boundaries via shell escaping)
     let command = command_parts
         .iter()
-        .map(|s| shell_escape(s))
+        .map(|s| shell_quote(s))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -64,8 +52,8 @@ pub fn run(
     // Split pane with _exec command (pass absolute run_dir path)
     let exec_cmd = format!(
         "{} _exec --run-dir {}",
-        shell_escape(&exe_path),
-        shell_escape(&run_dir.to_string_lossy())
+        shell_quote(&exe_path),
+        shell_quote(&run_dir.to_string_lossy())
     );
     let new_pane_id = mux.split_pane(
         &agent.pane_id,

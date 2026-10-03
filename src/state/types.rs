@@ -11,6 +11,10 @@ pub(crate) const FILENAME_ENCODE_SET: &AsciiSet =
 
 use crate::multiplexer::types::{AgentPane, AgentStatus};
 
+fn new_agent_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 /// Composite pane identifier for unique state file naming.
 ///
 /// Combines backend type, instance identifier, and pane ID to create
@@ -72,6 +76,21 @@ impl PaneKey {
 /// convert to `AgentPane` using `to_agent_pane()`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentState {
+    /// Stable unique identifier for this agent instance (UUID v4).
+    ///
+    /// Generated once when the agent is first registered and preserved across
+    /// all subsequent status/title updates. Unlike `pane_key.pane_id`, this ID
+    /// is globally unique — pane IDs can be recycled by the multiplexer or
+    /// shared across different tmux servers. Commands that need to address a
+    /// specific agent (checkpoint, resume, focus) should use this ID.
+    ///
+    /// `skip_serializing_if` is intentionally absent: every state file must
+    /// carry this field. The `default` allows old files (written before this
+    /// field existed) to deserialise cleanly; they will receive a new UUID on
+    /// the next write.
+    #[serde(default = "new_agent_id")]
+    pub agent_id: String,
+
     /// Composite identifier for the pane
     pub pane_key: PaneKey,
 
@@ -118,7 +137,7 @@ pub struct AgentState {
 
     /// Cached agent identity (canonical profile name, e.g. "claude", "kiro-cli").
     ///
-    /// Classified once by `crate::agent_identity::classify_agent_kind` from the
+    /// Classified once by `crate::agent::identity::classify_agent_kind` from the
     /// foreground command and pane title. Cached because tmux reports an
     /// agent's `pane_current_command` as a version string ("2.1.118") or a
     /// generic interpreter ("node", "Python") that the stem-based profile
@@ -126,6 +145,64 @@ pub struct AgentState {
     /// over time, so we lock in the first definitive answer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_kind: Option<String>,
+
+    /// Sandbox VM / container handle for this agent (e.g. microsandbox VM name,
+    /// Docker container ID). Used by checkpoint/resume to locate the sandbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_id: Option<String>,
+
+    /// Path to the most recent sandbox checkpoint/snapshot for this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_path: Option<PathBuf>,
+
+    /// Unix timestamp when the last checkpoint was taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ts: Option<u64>,
+
+    /// ID of the pipeline node currently executing in this agent (if any).
+    /// Written by the pipeline runner when a node starts; cleared when it ends.
+    /// None for agents not managed by a pipeline (foreign agents).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pipeline_node_id: Option<String>,
+
+    /// Human-readable title of the pipeline node (matches PipelineNode::title).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pipeline_node_title: Option<String>,
+
+    /// Which agent runtime owns this agent's process. `None` means the local
+    /// runtime — the historical and default case, so records written before
+    /// runtimes existed read correctly.
+    ///
+    /// Distinct from `pane_key.backend`, which names the *multiplexer*
+    /// (tmux/wezterm). A remote-managed agent has a runtime and no multiplexer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+
+    /// Agent-authored completion claim for the current instruction cycle.
+    ///
+    /// Distinct from `status`: `status` is a hook-driven turn-boundary signal
+    /// that flips on every Stop hook, while `completion` is an explicit
+    /// `workmux signal done|error` call meaning "the task is finished", not
+    /// "a turn ended". Cleared on launch and on `workmux send` (a new
+    /// instruction starts a new completion cycle).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion: Option<Completion>,
+}
+
+/// Outcome of an agent-authored completion signal (`workmux signal done|error`).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Completion {
+    pub kind: CompletionKind,
+    pub feedback: Option<String>,
+    pub ts: u64,
+}
+
+/// Which outcome an agent claimed via `workmux signal done|error`.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CompletionKind {
+    Completed,
+    Failed,
 }
 
 impl AgentState {
@@ -147,6 +224,9 @@ impl AgentState {
             window_cmd: None,
             agent_command: Some(self.command.clone()),
             agent_kind: self.agent_kind.clone(),
+            pipeline_node_title: self.pipeline_node_title.clone(),
+            pane_pid: self.pane_pid,
+            runtime: None,
         }
     }
 }
@@ -291,5 +371,74 @@ mod tests {
         let parsed = PaneKey::from_filename(&filename).unwrap();
         assert_eq!(parsed.instance, "/private/tmp/tmux-501/default");
         assert_eq!(parsed.pane_id, "%79");
+    }
+
+    fn sample_agent_state(completion: Option<Completion>) -> AgentState {
+        AgentState {
+            agent_id: "test-agent".to_string(),
+            pane_key: PaneKey {
+                backend: "tmux".to_string(),
+                instance: "default".to_string(),
+                pane_id: "%1".to_string(),
+            },
+            workdir: PathBuf::from("/tmp"),
+            status: None,
+            status_ts: None,
+            pane_title: None,
+            pane_pid: 1,
+            command: "node".to_string(),
+            updated_ts: 1234567890,
+            window_name: None,
+            session_name: None,
+            boot_id: None,
+            agent_kind: None,
+            sandbox_id: None,
+            checkpoint_path: None,
+            checkpoint_ts: None,
+            pipeline_node_id: None,
+            pipeline_node_title: None,
+            runtime: None,
+            completion,
+        }
+    }
+
+    #[test]
+    fn test_agent_state_completion_roundtrip_some() {
+        let original = sample_agent_state(Some(Completion {
+            kind: CompletionKind::Completed,
+            feedback: Some("all tests pass".to_string()),
+            ts: 42,
+        }));
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: AgentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.completion, original.completion);
+    }
+
+    #[test]
+    fn test_agent_state_completion_roundtrip_none() {
+        let original = sample_agent_state(None);
+        let json = serde_json::to_string(&original).unwrap();
+        // completion is skip_serializing_if none: must not appear in the JSON.
+        assert!(!json.contains("completion"));
+        let parsed: AgentState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.completion, None);
+    }
+
+    #[test]
+    fn test_agent_state_old_json_without_completion_field_deserialises() {
+        // Simulates a state file written before `completion` existed.
+        let json = r#"{
+            "agent_id": "old-agent",
+            "pane_key": {"backend": "tmux", "instance": "default", "pane_id": "%1"},
+            "workdir": "/tmp",
+            "status": null,
+            "status_ts": null,
+            "pane_title": null,
+            "pane_pid": 1,
+            "command": "node",
+            "updated_ts": 100
+        }"#;
+        let parsed: AgentState = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.completion, None);
     }
 }

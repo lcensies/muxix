@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from .conftest import (
@@ -773,3 +774,4 @@ def test_merge_succeeds_with_bare_repo_and_linked_worktrees(
     assert branch_name not in branch_list_result.stdout, (
         "Local branch should be deleted"
     )
+

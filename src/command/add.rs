@@ -51,7 +51,7 @@ fn generate_branch_name_with_spinner(
         .map(str::trim)
         .filter(|s| !s.is_empty());
     let profile_command =
-        crate::multiplexer::agent::resolve_profile(config.agent.as_deref()).auto_name_command();
+        crate::agent::profile::resolve_profile(config.agent.as_deref()).auto_name_command();
     let effective_command = config_command.or(profile_command);
 
     tracing::info!(
@@ -998,4 +998,48 @@ fn run_add_via_rpc(
         }
         other => bail!("Unexpected RPC response: {:?}", other),
     }
+}
+
+/// Create the agent on a non-local runtime, if one is selected.
+///
+/// Returns `Some(reference)` when an ADE took the agent, `None` when the local
+/// path below should run. Diverting here rather than deeper keeps the local
+/// flow — worktree, window, pane, hooks — completely untouched.
+///
+/// A non-local runtime owns the process, so none of `--base`, `--pr`, `--fork`,
+/// layouts, or modes apply; they are rejected rather than silently ignored.
+pub fn start_on_runtime(
+    runtime_flag: Option<&str>,
+    branch_name: Option<&str>,
+    name: Option<&str>,
+    prompt: Option<&str>,
+) -> Result<Option<crate::agent::runtime::AgentRef>> {
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let cfg = crate::config::Config::load_from(&project_root, None).unwrap_or_default();
+    let selected = runtime_flag
+        .map(str::to_string)
+        .or_else(|| cfg.agent_runtime.clone());
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    if selected == crate::agent::runtime::LOCAL {
+        return Ok(None);
+    }
+
+    let registry = crate::agent::runtime::registry::RuntimeRegistry::for_config(&cfg);
+    let runtime = registry.select(Some(&selected), None)?;
+
+    let handle = name
+        .or(branch_name)
+        .ok_or_else(|| anyhow::anyhow!("a name is required when creating an agent on '{selected}'"))?
+        .to_string();
+
+    let reference = runtime.start(&crate::agent::runtime::StartRequest {
+        project_root,
+        handle,
+        prompt: prompt.map(str::to_string),
+        kind: cfg.agent.clone(),
+        worktree: None,
+    })?;
+    Ok(Some(reference))
 }

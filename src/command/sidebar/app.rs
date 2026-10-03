@@ -190,6 +190,13 @@ pub struct SidebarApp {
     pub agent_icons: ResolvedAgentIcons,
     /// Cached tile heights for hit testing (updated each render).
     pub tile_heights: Vec<usize>,
+    /// Per-agent project divider: `Some(name)` on the first agent of each
+    /// project group. All `None` when a single project is present.
+    pub project_headers: Vec<Option<String>>,
+    /// Accumulated vim-style count prefix (e.g. `2` in `2j`).
+    pub pending_count: Option<usize>,
+    /// A `g` was pressed and awaits a second `g`.
+    pub pending_g: bool,
     /// Cached horizontal chip hitboxes for top bar mouse hit testing.
     pub horizontal_hitboxes: Vec<HitBox>,
     /// First agent index rendered in the horizontal top bar.
@@ -260,6 +267,9 @@ impl SidebarApp {
             template_error: Some(template_error),
             agent_icons: ResolvedAgentIcons::default(),
             tile_heights: Vec::new(),
+            project_headers: Vec::new(),
+            pending_count: None,
+            pending_g: false,
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width: 24,
@@ -274,6 +284,52 @@ impl SidebarApp {
             pending_resize_rows: None,
             resize_deadline: None,
         }
+    }
+
+    /// Test app populated with one agent per path, via `apply_snapshot`
+    /// (so sorting and project headers are computed).
+    #[cfg(test)]
+    pub(crate) fn test_with_agents(paths: &[&str]) -> Self {
+        let mut app = Self::test_with_template_error(TemplateError {
+            location: "test".to_string(),
+            message: "test".to_string(),
+        });
+        app.template_error = None;
+        let agents = paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| AgentPane {
+                session: "s".to_string(),
+                window_name: format!("w{i}"),
+                pane_id: format!("%{i}"),
+                window_id: String::new(),
+                path: PathBuf::from(p),
+                pane_title: None,
+                status: None,
+                status_ts: Some(i as u64),
+                updated_ts: None,
+                window_cmd: None,
+                agent_command: None,
+                agent_kind: None,
+                pipeline_node_title: None,
+                pane_pid: 0,
+                runtime: None,
+            })
+            .collect();
+        app.apply_snapshot(SidebarSnapshot {
+            position: SidebarPosition::Left,
+            layout_mode: SidebarLayoutMode::Compact,
+            active_windows: Default::default(),
+            active_pane_ids: Default::default(),
+            window_pane_counts: Default::default(),
+            git_statuses: Default::default(),
+            pr_statuses: Default::default(),
+            interrupted_pane_ids: Default::default(),
+            sleeping_pane_ids: Default::default(),
+            agents,
+            config_version: 0,
+        });
+        app
     }
 
     /// Create a new sidebar client. Does config + host detection only, no tmux polling.
@@ -334,6 +390,9 @@ impl SidebarApp {
             template_error,
             agent_icons,
             tile_heights: Vec::new(),
+            project_headers: Vec::new(),
+            pending_count: None,
+            pending_g: false,
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width,
@@ -351,8 +410,28 @@ impl SidebarApp {
     }
 
     /// Apply a snapshot received from the daemon.
-    pub fn apply_snapshot(&mut self, snapshot: SidebarSnapshot) {
+    pub fn apply_snapshot(&mut self, mut snapshot: SidebarSnapshot) {
         self.has_loaded_snapshot = true;
+
+        // Group agents per project. Stable sort preserves the daemon's
+        // (is_sleeping, elapsed, pane) order within each project.
+        snapshot
+            .agents
+            .sort_by_cached_key(|a| extract_project_name(&a.path));
+
+        let projects: Vec<String> = snapshot
+            .agents
+            .iter()
+            .map(|a| extract_project_name(&a.path))
+            .collect();
+        let multi_project = projects.windows(2).any(|w| w[0] != w[1]);
+        self.project_headers = projects
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                (multi_project && (i == 0 || projects[i - 1] != *p)).then(|| p.clone())
+            })
+            .collect();
 
         // Compute host agent index from the new snapshot first so that a
         // config_version bump anchors the reload to the *current* host path,
@@ -494,6 +573,26 @@ impl SidebarApp {
         self.spinner_frame = self.spinner_frame.wrapping_add(1) % 10;
     }
 
+    /// Whether any visible row currently animates (working spinner, pending PR
+    /// checks, or the initial loading spinner). When false, the event loop can
+    /// drop from the 250ms spinner tick to a 1s tick that only keeps elapsed
+    /// counters moving.
+    pub fn needs_animation(&self) -> bool {
+        if !self.has_loaded_snapshot {
+            return true;
+        }
+        let working = self.agents.iter().any(|a| {
+            a.status == Some(crate::multiplexer::AgentStatus::Working)
+                && !self.interrupted_pane_ids.contains(&a.pane_id)
+                && !self.sleeping_pane_ids.contains(&a.pane_id)
+        });
+        working
+            || self
+                .pr_statuses
+                .values()
+                .any(|pr| matches!(pr.checks, Some(crate::github::CheckState::Pending { .. })))
+    }
+
     pub fn next(&mut self) {
         self.selection_mode = SelectionMode::Manual;
         if self.agents.is_empty() {
@@ -550,6 +649,64 @@ impl SidebarApp {
         }
     }
 
+    /// Move selection down `n` agents, clamped (no wrap).
+    pub fn move_down(&mut self, n: usize) {
+        self.selection_mode = SelectionMode::Manual;
+        if self.agents.is_empty() {
+            return;
+        }
+        let i = self.list_state.selected().unwrap_or(0);
+        self.list_state
+            .select(Some((i + n).min(self.agents.len() - 1)));
+    }
+
+    /// Move selection up `n` agents, clamped (no wrap).
+    pub fn move_up(&mut self, n: usize) {
+        self.selection_mode = SelectionMode::Manual;
+        if self.agents.is_empty() {
+            return;
+        }
+        let i = self.list_state.selected().unwrap_or(0);
+        self.list_state.select(Some(i.saturating_sub(n)));
+    }
+
+    /// Select the n-th agent, 1-based, clamped (vim `NG`).
+    pub fn select_nth(&mut self, n: usize) {
+        self.select_index(n.saturating_sub(1));
+    }
+
+    pub fn half_page_down(&mut self) {
+        let n = self.half_page_items();
+        self.move_down(n);
+    }
+
+    pub fn half_page_up(&mut self) {
+        let n = self.half_page_items();
+        self.move_up(n);
+    }
+
+    /// Number of agents that fit in half the visible list height.
+    fn half_page_items(&self) -> usize {
+        let rows = (self.list_area.height as usize) / 2;
+        let items = match self.layout_mode {
+            SidebarLayoutMode::Compact => rows,
+            SidebarLayoutMode::Tiles => {
+                // Walk item heights from the current selection.
+                let sel = self.list_state.selected().unwrap_or(0);
+                let mut y = 0;
+                let mut items = 0;
+                let mut idx = sel;
+                while y < rows && idx < self.agents.len() {
+                    y += self.tile_item_height(idx);
+                    idx += 1;
+                    items += 1;
+                }
+                items
+            }
+        };
+        items.max(1)
+    }
+
     pub fn hit_test(&self, column: u16, row: u16) -> Option<usize> {
         if self.agents.is_empty() {
             return None;
@@ -572,8 +729,15 @@ impl SidebarApp {
 
         match self.layout_mode {
             SidebarLayoutMode::Compact => {
-                let idx = offset + relative_row;
-                (idx < self.agents.len()).then_some(idx)
+                let mut y = 0;
+                for idx in offset..self.agents.len() {
+                    let h = 1 + usize::from(self.has_project_header(idx));
+                    if relative_row < y + h {
+                        return Some(idx);
+                    }
+                    y += h;
+                }
+                None
             }
             SidebarLayoutMode::Tiles => {
                 let mut y = 0;
@@ -600,13 +764,22 @@ impl SidebarApp {
         }
     }
 
+    /// Whether the agent at `idx` starts a new project group.
+    pub fn has_project_header(&self, idx: usize) -> bool {
+        self.project_headers
+            .get(idx)
+            .is_some_and(|h| h.is_some())
+    }
+
     /// Height in rows of a tile-mode item at the given index.
     /// Uses cached heights from the last render pass.
     fn tile_item_height(&self, idx: usize) -> usize {
         let base = self.tile_heights.get(idx).copied().unwrap_or(3);
         let mut h = base;
         if idx > 0 {
-            h += 1; // top separator
+            h += 1; // top separator (project header replaces it, same height)
+        } else if self.has_project_header(0) {
+            h += 1; // first item has no separator, header adds a line
         }
         if idx == self.agents.len() - 1 {
             h += 1; // bottom separator
@@ -701,6 +874,10 @@ impl SidebarApp {
     }
 
     /// Record a resize event for debounced manual pane resize processing.
+    ///
+    /// A changed window extent means the terminal (not the user) resized the
+    /// pane; the window-resized[99] tmux hook is the single reflow-all
+    /// enforcer for that case, so the client only refreshes its baseline.
     pub fn on_resize_event(&mut self, cols: u16, rows: u16) {
         match self.position {
             SidebarPosition::Left => {
@@ -710,7 +887,6 @@ impl SidebarApp {
                     self.pending_resize_cols = None;
                     self.pending_resize_rows = None;
                     self.resize_deadline = None;
-                    let _ = super::reflow_all_to_window_extent(Some(window_w));
                     return;
                 }
                 self.pending_resize_cols = Some(cols);
@@ -722,7 +898,6 @@ impl SidebarApp {
                     self.pending_resize_cols = None;
                     self.pending_resize_rows = None;
                     self.resize_deadline = None;
-                    let _ = super::reflow_all_to_window_extent(Some(window_h));
                     return;
                 }
                 self.pending_resize_rows = Some(rows);
@@ -1055,6 +1230,69 @@ fn try_reparse_templates(
 mod tests {
     use super::*;
     use crate::config::{AgentIconConfig, AgentIconDetails};
+
+    #[test]
+    fn snapshot_groups_agents_by_project() {
+        let app = SidebarApp::test_with_agents(&["/tmp/x/beta", "/tmp/x/alpha", "/tmp/x/beta"]);
+        let projects: Vec<_> = app
+            .agents
+            .iter()
+            .map(|a| a.path.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(projects, ["alpha", "beta", "beta"]);
+        assert_eq!(
+            app.project_headers,
+            [Some("alpha".to_string()), Some("beta".to_string()), None]
+        );
+    }
+
+    #[test]
+    fn single_project_has_no_headers() {
+        let app = SidebarApp::test_with_agents(&["/tmp/x/alpha", "/tmp/x/alpha"]);
+        assert_eq!(app.project_headers, [None, None]);
+    }
+
+    #[test]
+    fn compact_hit_test_accounts_for_header_lines() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/beta", "/tmp/x/alpha", "/tmp/x/beta"]);
+        app.list_area = Rect::new(0, 0, 20, 10);
+        // Rows: 0 header(alpha), 1 alpha, 2 header(beta), 3 beta, 4 beta
+        assert_eq!(app.hit_test(1, 0), Some(0)); // header maps to group leader
+        assert_eq!(app.hit_test(1, 1), Some(0));
+        assert_eq!(app.hit_test(1, 3), Some(1));
+        assert_eq!(app.hit_test(1, 4), Some(2));
+        assert_eq!(app.hit_test(1, 5), None);
+    }
+
+    #[test]
+    fn counted_moves_clamp_without_wrapping() {
+        let mut app =
+            SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a"]);
+        app.list_state.select(Some(0));
+        app.move_down(2);
+        assert_eq!(app.list_state.selected(), Some(2));
+        app.move_down(10);
+        assert_eq!(app.list_state.selected(), Some(3));
+        app.move_up(10);
+        assert_eq!(app.list_state.selected(), Some(0));
+        app.select_nth(3);
+        assert_eq!(app.list_state.selected(), Some(2));
+        app.select_nth(100);
+        assert_eq!(app.list_state.selected(), Some(3));
+    }
+
+    #[test]
+    fn half_page_uses_list_height() {
+        let mut app = SidebarApp::test_with_agents(&[
+            "/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a",
+        ]);
+        app.list_area = Rect::new(0, 0, 20, 10);
+        app.list_state.select(Some(0));
+        app.half_page_down();
+        assert_eq!(app.list_state.selected(), Some(5));
+        app.half_page_up();
+        assert_eq!(app.list_state.selected(), Some(0));
+    }
 
     #[test]
     fn resolved_icons_legacy_string() {

@@ -3,6 +3,7 @@
 //! This module provides TmuxBackend, which wraps all tmux-specific operations
 //! and exposes them through the Multiplexer trait interface.
 
+use crate::agent::profile as agent;
 use anyhow::{Context, Result, anyhow};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -14,7 +15,7 @@ use crate::config::SplitDirection as ConfigSplitDirection;
 
 use super::handshake::TmuxHandshake;
 use super::types::*;
-use super::{Multiplexer, PaneHandshake, agent, util};
+use super::{Multiplexer, PaneHandshake, util};
 
 /// tmux backend implementation.
 ///
@@ -167,6 +168,26 @@ impl TmuxBackend {
 
         Ok(new_pane_id.trim().to_string())
     }
+    fn dismiss_update_dialog_if_present(&self, pane_id: &str) {
+        let Some(content) = self.capture_pane(pane_id, 30) else {
+            return;
+        };
+        let lower = content.to_lowercase();
+        let is_update_dialog = lower.contains("update available")
+            || lower.contains("new version")
+            || lower.contains("upgrade available")
+            || lower.contains("would you like to update")
+            || lower.contains("press any key")
+            || (lower.contains("(y/n)") && lower.contains("update"));
+        if is_update_dialog {
+            let _ = self.tmux_cmd(&["send-keys", "-t", pane_id, "n"]);
+            thread::sleep(Duration::from_millis(100));
+            let _ = self.tmux_cmd(&["send-keys", "-t", pane_id, "Enter"]);
+            thread::sleep(Duration::from_millis(200));
+            let _ = self.tmux_cmd(&["send-keys", "-t", pane_id, "Escape"]);
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
 }
 
 impl Multiplexer for TmuxBackend {
@@ -186,6 +207,13 @@ impl Multiplexer for TmuxBackend {
 
     fn active_pane_id(&self) -> Option<String> {
         self.tmux_query(&["display-message", "-p", "#{pane_id}"])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    fn active_pane_of(&self, target: &str) -> Option<String> {
+        self.tmux_query(&["display-message", "-t", target, "-p", "#{pane_id}"])
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -697,6 +725,7 @@ impl Multiplexer for TmuxBackend {
     }
 
     fn send_keys_to_agent(&self, pane_id: &str, command: &str, agent: Option<&str>) -> Result<()> {
+        self.dismiss_update_dialog_if_present(pane_id);
         if agent::resolve_profile(agent).needs_bang_delay() && command.starts_with('!') {
             // Send ! first
             self.tmux_cmd(&["send-keys", "-t", pane_id, "-l", "!"])?;
@@ -720,6 +749,8 @@ impl Multiplexer for TmuxBackend {
 
     fn paste_multiline(&self, pane_id: &str, content: &str) -> Result<()> {
         use std::io::Write;
+
+        self.dismiss_update_dialog_if_present(pane_id);
 
         let mut child = std::process::Command::new("tmux")
             .args(["load-buffer", "-"])
@@ -817,6 +848,93 @@ impl Multiplexer for TmuxBackend {
         command: Option<&str>,
     ) -> Result<String> {
         self.split_pane_internal(target_pane_id, direction, cwd, size, percentage, command)
+    }
+
+    // tmux's split-window/respawn-pane accept the command as multiple
+    // arguments and exec it directly, without `sh -c` (see the shell-command
+    // section of tmux(1)). Combined with `std::process::Command`, which also
+    // passes argv without a shell, this makes the launch path completely
+    // shell-free end to end.
+    fn supports_direct_exec(&self) -> bool {
+        true
+    }
+
+    fn respawn_pane_argv(&self, pane_id: &str, cwd: &Path, argv: &[String]) -> Result<String> {
+        if argv.is_empty() {
+            return Err(anyhow!("respawn_pane_argv called with empty argv"));
+        }
+        let working_dir_str = cwd
+            .to_str()
+            .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
+
+        let mut args: Vec<&str> = vec![
+            "respawn-pane",
+            "-t",
+            pane_id,
+            "-c",
+            working_dir_str,
+            "-k",
+            "--",
+        ];
+        args.extend(argv.iter().map(String::as_str));
+
+        Cmd::new("tmux")
+            .args(&args)
+            .run()
+            .context("Failed to respawn pane")?;
+
+        // tmux respawn-pane keeps the same pane_id
+        Ok(pane_id.to_string())
+    }
+
+    fn split_pane_argv(
+        &self,
+        target_pane_id: &str,
+        direction: &crate::config::SplitDirection,
+        cwd: &Path,
+        size: Option<u16>,
+        percentage: Option<u8>,
+        argv: &[String],
+    ) -> Result<String> {
+        if argv.is_empty() {
+            return Err(anyhow!("split_pane_argv called with empty argv"));
+        }
+        let split_arg = match direction {
+            ConfigSplitDirection::Horizontal => "-h",
+            ConfigSplitDirection::Vertical => "-v",
+        };
+        let working_dir_str = cwd
+            .to_str()
+            .ok_or_else(|| anyhow!("Working directory path contains non-UTF8 characters"))?;
+
+        let size_arg;
+        let mut args: Vec<&str> = vec![
+            "split-window",
+            split_arg,
+            "-t",
+            target_pane_id,
+            "-c",
+            working_dir_str,
+            "-P",
+            "-F",
+            "#{pane_id}",
+        ];
+        if let Some(p) = percentage {
+            size_arg = format!("{}%", p);
+            args.extend(["-l", &size_arg]);
+        } else if let Some(s) = size {
+            size_arg = s.to_string();
+            args.extend(["-l", &size_arg]);
+        }
+        args.push("--");
+        args.extend(argv.iter().map(String::as_str));
+
+        let new_pane_id = Cmd::new("tmux")
+            .args(&args)
+            .run_and_capture_stdout()
+            .context("Failed to split pane")?;
+
+        Ok(new_pane_id.trim().to_string())
     }
 
     // === State Reconciliation ===

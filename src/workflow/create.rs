@@ -6,6 +6,30 @@ use crate::multiplexer::MuxHandle;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
 
+/// Handle of the worktree a `workmux add` was issued from, or None when it was
+/// issued from the main worktree.
+///
+/// An agent that delegates work runs `workmux add` inside its own worktree, so
+/// the execution directory identifies the spawning agent. A spawn from the main
+/// worktree is top-level and has no parent agent.
+fn spawning_worktree_handle(execution_dir: &Path) -> Option<String> {
+    use crate::util::canon_or_self;
+
+    let canon_exec = canon_or_self(execution_dir);
+    if canon_exec == canon_or_self(&git::get_main_worktree_root().ok()?) {
+        return None;
+    }
+
+    git::list_worktrees_in(Some(execution_dir))
+        .ok()?
+        .into_iter()
+        .find(|(path, _)| {
+            let canon = canon_or_self(path);
+            canon_exec == canon || canon_exec.starts_with(&canon)
+        })
+        .and_then(|(path, _)| Some(path.file_name()?.to_string_lossy().to_string()))
+}
+
 /// Check if a path is registered as a git worktree.
 /// Uses canonicalize() to handle symlinks, case sensitivity, and relative paths.
 fn is_registered_worktree(path: &Path, context: &WorkflowContext) -> Result<bool> {
@@ -100,6 +124,26 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     );
     let full_target_name = target.full_name();
     let mut target_exists = target.exists()?;
+
+    // Detect stale git worktree metadata: a branch may still be registered to a
+    // directory that no longer exists (e.g. after cloning from another machine).
+    // Prune those stale entries so we can recreate the worktree on demand.
+    if let Some(stale_path) = git::list_worktrees_in(Some(&context.execution_dir))?
+        .into_iter()
+        .find(|(_, branch)| branch == branch_name)
+        .map(|(path, _)| path)
+    {
+        if !stale_path.exists() {
+            warn!(
+                branch = branch_name,
+                path = %stale_path.display(),
+                "create: registered worktree directory is missing, pruning stale metadata"
+            );
+            git::prune_worktrees_in(&context.git_common_dir)
+                .context("Failed to prune stale worktree metadata")?;
+        }
+    }
+
     let worktree_exists = git::worktree_exists_in(branch_name, Some(&context.execution_dir))?;
 
     // Detect cross-repo collision: mux target exists but local worktree does not.
@@ -425,6 +469,27 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             current_handle
         )
     })?;
+    // Journal the worktree in the project store, including who spawned it. An
+    // agent delegating work runs `workmux add` from inside its own worktree, so
+    // the execution dir names the parent; a restored child uses this to know
+    // which agent to report back to.
+    //
+    // Best-effort: losing the journal entry must never fail worktree creation.
+    {
+        let parent = spawning_worktree_handle(&context.execution_dir)
+            .filter(|parent| *parent != current_handle);
+        let record = crate::project_state::ProjectStateStore::open_project().and_then(|store| {
+            store.record_worktree(
+                &current_handle,
+                Some(branch_name),
+                parent.as_deref(),
+                context.config.agent.as_deref(),
+            )
+        });
+        if let Err(e) = record {
+            tracing::debug!(?e, "failed to journal worktree in project state");
+        }
+    }
     if let Some(target_window_name) = &options.target_window_name {
         git::set_worktree_meta_in(
             &current_handle,
@@ -472,6 +537,36 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         mode = mode_str,
         "create:stored tmux mode in git config"
     );
+
+    // Create submodule worktrees if the feature is enabled in config.
+    if context.config.submodules.worktrees {
+        let submodules = git::list_submodules(&context.main_worktree_root).unwrap_or_default();
+        for submodule in &submodules {
+            let sub_base = base_branch_for_creation.as_deref();
+            match git::create_submodule_worktree(
+                &context.main_worktree_root,
+                &worktree_path,
+                submodule,
+                branch_name,
+                sub_base,
+            ) {
+                Ok(()) => {
+                    info!(
+                        submodule = submodule.name,
+                        branch = branch_name,
+                        "create:submodule worktree created"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        submodule = submodule.name,
+                        error = %e,
+                        "create:failed to create submodule worktree, skipping"
+                    );
+                }
+            }
+        }
+    }
 
     // Release the config lock before proceeding to non-git operations
     // (prompt files, tmux setup, hooks, etc.)
@@ -550,6 +645,10 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         agent,
         None,
     )?;
+    // New instruction cycle: clear any stale completion claim on this pane
+    // before its first status write could be misread as "already done" (D2).
+    // Best-effort: never fails worktree creation.
+    crate::state::persist_agent_completion(context.mux.as_ref(), &result.focus_pane_id, None);
     result.base_branch = base_branch_for_creation.clone();
     info!(
         branch = branch_name,

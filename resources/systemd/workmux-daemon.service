@@ -1,0 +1,28 @@
+[Unit]
+Description=workmux system daemon (one process, every tracked project)
+Documentation=https://github.com/lcensies/workmux
+After=graphical-session.target
+
+[Service]
+Type=simple
+# ExecStart must be absolute, or resolved through ExecSearchPath (systemd 250+).
+# A bare `workmux` resolves against systemd's default /usr/bin:/bin, which is
+# empty on NixOS, so the search path is spelled out here instead.
+ExecSearchPath=%h/.cargo/bin:%h/.nix-profile/bin:/run/current-system/sw/bin:/usr/local/bin:/usr/bin
+# Override the binary path with a drop-in when running a locally built workmux:
+#   systemctl --user edit workmux-daemon
+#   [Service]
+#   ExecStart=
+#   ExecStart=%h/.cargo/bin/workmux daemon system
+# This is the point of the unit: supervising the daemon does not have to mean
+# putting workmux in the system closure and rebuilding it to iterate.
+ExecStart=workmux daemon system
+Restart=on-failure
+RestartSec=2
+# Holds daemon.json, projects.json, and the control directory.
+RuntimeDirectory=workmux
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

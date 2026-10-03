@@ -79,6 +79,12 @@ pub fn run(worktree: PathBuf, worktree_root: Option<PathBuf>, command: Vec<Strin
                 .unwrap_or_else(|| worktree.clone());
             run_container(&config, &worktree, &wt_root, &command)
         }
+        SandboxBackend::MicroSandbox => {
+            bail!(
+                "sandbox run is not used with the microsandbox backend; \
+                   use `workmux sandbox shell` or `workmux sandbox agent` instead"
+            )
+        }
     }
 }
 
@@ -154,7 +160,7 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
     let vm_name = lima::ensure_vm_running(config, worktree)?;
     info!(vm_name = %vm_name, "Lima VM ready");
 
-    let agent = crate::multiplexer::agent::resolve_profile_with_type(
+    let agent = crate::agent::profile::resolve_profile_with_type(
         config.agent.as_deref(),
         config.agent_type.as_deref(),
     )
@@ -281,7 +287,7 @@ fn run_container(
 
     // Ensure image is present and up-to-date before setting up RPC/state.
     // Done early so an interrupted pull doesn't leave stale state entries.
-    let agent = crate::multiplexer::agent::resolve_profile_with_type(
+    let agent = crate::agent::profile::resolve_profile_with_type(
         config.agent.as_deref(),
         config.agent_type.as_deref(),
     )

@@ -86,6 +86,11 @@ pub(super) fn create_sidebar_in_window(
 
     reflow_after_sidebar_add(window_id, &new_pane_id, position, size);
 
+    // An external tiling manager (e.g. tmux-tilish) may rebalance this window to
+    // ~50/50 via its own `after-split-window` hook after the split above. The
+    // `after-split-window[99]` hook installed in hooks.rs runs after tilish's and
+    // re-asserts the configured sidebar width deterministically — no timer race.
+
     debug!(
         window_id,
         pane_id = new_pane_id.as_str(),

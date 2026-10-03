@@ -82,6 +82,26 @@ impl StateStore {
         write_atomic(&path, content.as_bytes())
     }
 
+    /// Update just the pipeline node fields on an existing agent state.
+    ///
+    /// Called by the pipeline runner when a node starts (`Some`) or ends (`None`).
+    /// No-ops if no state file exists yet for this pane.
+    pub fn update_pipeline_node(
+        &self,
+        key: &PaneKey,
+        node_id: Option<&str>,
+        node_title: Option<&str>,
+    ) -> Result<()> {
+        let path = self.agent_path(key);
+        let Some(mut state) = read_agent_file(&path)? else {
+            return Ok(());
+        };
+        state.pipeline_node_id = node_id.map(str::to_owned);
+        state.pipeline_node_title = node_title.map(str::to_owned);
+        let content = serde_json::to_string_pretty(&state)?;
+        write_atomic(&path, content.as_bytes())
+    }
+
     /// Read agent state by pane key.
     ///
     /// Returns None if the agent doesn't exist or the file is corrupted.
@@ -131,6 +151,8 @@ impl StateStore {
             warn!(error = %error, "failed to clear Codex status state for deleted agent");
         }
 
+        self.clear_pane_sandbox(key);
+
         agent_result
     }
 
@@ -159,6 +181,40 @@ impl StateStore {
         let path = self.settings_path();
         let content = serde_json::to_string_pretty(settings)?;
         write_atomic(&path, content.as_bytes())
+    }
+
+    // ── Pane → sandbox association ──────────────────────────────────────────
+
+    /// Directory holding pane→sandbox-id sidecar files.
+    fn pane_sandbox_dir(&self) -> PathBuf {
+        self.runtime_dir().join("pane-sandbox")
+    }
+
+    /// Record the sandbox (microVM / container) that backs a pane's agent.
+    ///
+    /// Written at launch time, when the sandbox name is known but the full
+    /// `AgentState` does not yet exist (the daemon creates it on its next poll).
+    /// `persist_agent_update` reads this sidecar so the id lands in `AgentState`
+    /// without us having to fabricate a partial state record here — which the
+    /// reconcile loop would promptly delete on PID mismatch.
+    pub fn record_pane_sandbox(&self, key: &PaneKey, sandbox_id: &str) -> Result<()> {
+        let dir = self.pane_sandbox_dir();
+        fs::create_dir_all(&dir).context("create pane-sandbox dir")?;
+        write_atomic(&dir.join(key.to_filename()), sandbox_id.as_bytes())
+    }
+
+    /// Look up the sandbox id recorded for a pane, if any.
+    pub fn pane_sandbox(&self, key: &PaneKey) -> Option<String> {
+        let path = self.pane_sandbox_dir().join(key.to_filename());
+        fs::read_to_string(path)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// Remove a pane's sandbox sidecar (called when the agent state is deleted).
+    fn clear_pane_sandbox(&self, key: &PaneKey) {
+        let _ = fs::remove_file(self.pane_sandbox_dir().join(key.to_filename()));
     }
 
     // ── Container state management ──────────────────────────────────────────
@@ -198,7 +254,8 @@ impl StateStore {
     /// List registered containers for a worktree handle.
     ///
     /// Returns container names paired with their stored runtime. For backwards
-    /// compatibility with empty marker files (pre-runtime-storage), defaults to Docker.
+    /// compatibility with empty marker files (pre-runtime-storage), defaults to
+    /// the default runtime (`SandboxRuntime::default()`, i.e. Podman).
     pub fn list_containers(&self, handle: &str) -> Vec<(String, SandboxRuntime)> {
         let dir = self.containers_dir().join(handle);
         if !dir.exists() {
@@ -381,6 +438,14 @@ impl StateStore {
         let backend = mux.name();
         let instance = mux.instance_id();
 
+        // Pane IDs with a state file for this backend/instance, including
+        // entries preserved for resurrect: adoption below must never clobber those.
+        let stored_pane_ids: HashSet<String> = all_agents
+            .iter()
+            .filter(|s| s.pane_key.backend == backend && s.pane_key.instance == instance)
+            .map(|s| s.pane_key.pane_id.clone())
+            .collect();
+
         for state in all_agents {
             // Skip agents from other backends/instances
             if state.pane_key.backend != backend || state.pane_key.instance != instance {
@@ -488,6 +553,69 @@ impl StateStore {
             }
         }
 
+        // Adopt live agent panes that have no state file yet, so agents are
+        // tracked from the moment their pane spawns instead of from their
+        // first status hook. A pane whose foreground command is still the
+        // launching shell won't classify yet; it's adopted on a later call
+        // once the agent process is visible.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for (pane_id, live) in &live_panes {
+            if stored_pane_ids.contains(pane_id) {
+                continue;
+            }
+            let Some(agent_kind) = crate::agent::identity::classify_agent_kind(
+                live.current_command.as_deref(),
+                live.title.as_deref(),
+            ) else {
+                continue;
+            };
+            let pane_key = PaneKey {
+                backend: backend.to_string(),
+                instance: instance.clone(),
+                pane_id: pane_id.clone(),
+            };
+            // Re-check just before writing: a status hook may have registered
+            // this pane (with a real status) since all_agents was listed, and
+            // adoption must not clobber that with a status-less entry.
+            if self.get_agent(&pane_key).ok().flatten().is_some() {
+                continue;
+            }
+            let state = AgentState {
+                agent_id: uuid::Uuid::new_v4().to_string(),
+                pane_key,
+                workdir: live.working_dir.clone(),
+                status: None,
+                status_ts: None,
+                pane_title: live.title.clone(),
+                pane_pid: live.pid.unwrap_or(0),
+                command: live.current_command.clone().unwrap_or_default(),
+                updated_ts: now,
+                window_name: live.window.clone(),
+                session_name: live.session.clone(),
+                boot_id: current_boot_id.clone(),
+                agent_kind: Some(agent_kind),
+                sandbox_id: None,
+                checkpoint_path: None,
+                checkpoint_ts: None,
+                pipeline_node_id: None,
+                pipeline_node_title: None,
+                runtime: None,
+                completion: None,
+            };
+            if let Err(e) = self.upsert_agent(&state) {
+                warn!(pane_id, error = %e, "reconcile: failed to adopt untracked agent");
+                continue;
+            }
+            info!(pane_id, "reconcile: adopted untracked agent pane");
+            valid_agents.push(state.to_agent_pane(
+                live.session.clone().unwrap_or_default(),
+                live.window.clone().unwrap_or_default(),
+            ));
+        }
+
         Ok(valid_agents)
     }
 }
@@ -506,11 +634,29 @@ fn tmux_auto_renamed_windows(
 
 /// Write content atomically using temp file + rename.
 ///
-/// This ensures the target file is never partially written.
-fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
-    let tmp = path.with_extension("json.tmp");
+/// This ensures the target file is never partially written. The temp file name
+/// is unique per write (pid + process-local counter) so that two processes (or
+/// threads) writing the same target concurrently do not share a temp path and
+/// clobber each other into a torn file — each writes its own temp and performs
+/// an atomic rename. A failed rename removes the orphaned temp file.
+pub(crate) fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
+    static WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = WRITE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "state".to_string());
+    // Keeps the `.tmp` suffix (and a non-"json" extension) so list_all_agents
+    // and similar scans continue to skip in-flight temp files.
+    let tmp = path.with_file_name(format!("{file_name}.{pid}.{seq}.tmp"));
+
     fs::write(&tmp, content).context("Failed to write temp file")?;
-    fs::rename(&tmp, path).context("Failed to rename temp file")?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e).context("Failed to rename temp file");
+    }
     Ok(())
 }
 
@@ -582,6 +728,7 @@ mod tests {
 
     fn test_agent_state(key: PaneKey) -> AgentState {
         AgentState {
+            agent_id: "test-agent-id-fixed".to_string(),
             pane_key: key,
             workdir: PathBuf::from("/home/user/project"),
             status: Some(AgentStatus::Working),
@@ -594,6 +741,13 @@ mod tests {
             session_name: Some("main".to_string()),
             boot_id: None,
             agent_kind: None,
+            sandbox_id: None,
+            checkpoint_path: None,
+            checkpoint_ts: None,
+            pipeline_node_id: None,
+            pipeline_node_title: None,
+            runtime: None,
+            completion: None,
         }
     }
 
@@ -619,6 +773,46 @@ mod tests {
 
         let result = store.get_agent(&key).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_concurrent_upserts_same_key_never_corrupt() {
+        // Many writers updating the same pane key concurrently must never leave
+        // a torn/half-written file (regression: the fixed `<key>.json.tmp` temp
+        // name let two writers clobber the same temp path).
+        let dir = TempDir::new().unwrap();
+        let base = dir.path().to_path_buf();
+        let key = test_pane_key();
+
+        let mut handles = Vec::new();
+        for i in 0..16 {
+            let base = base.clone();
+            let key = key.clone();
+            handles.push(std::thread::spawn(move || {
+                let store = StateStore::with_path(base).unwrap();
+                for j in 0..40 {
+                    let mut state = test_agent_state(key.clone());
+                    state.pane_pid = (i * 1000 + j) as u32;
+                    store.upsert_agent(&state).unwrap();
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // The final file must be complete and parse cleanly.
+        let store = StateStore::with_path(base.clone()).unwrap();
+        let got = store.get_agent(&key).unwrap();
+        assert!(got.is_some(), "agent file should exist and parse");
+
+        // No orphaned temp files should remain after successful renames.
+        let leftovers: Vec<_> = fs::read_dir(base.join("agents"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "no .tmp files should remain: {leftovers:?}");
     }
 
     #[test]
@@ -962,7 +1156,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_containers_empty_marker_defaults_to_docker() {
+    fn test_list_containers_empty_marker_defaults_to_default_runtime() {
         let (store, dir) = test_store();
 
         // Simulate old marker file with empty content
@@ -973,6 +1167,7 @@ mod tests {
         let containers = store.list_containers("handle");
         assert_eq!(containers.len(), 1);
         assert_eq!(containers[0].0, "old-container");
-        assert_eq!(containers[0].1, SandboxRuntime::Docker);
+        // Empty (legacy) markers fall back to the default runtime.
+        assert_eq!(containers[0].1, SandboxRuntime::default());
     }
 }

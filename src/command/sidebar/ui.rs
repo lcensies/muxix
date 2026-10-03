@@ -22,7 +22,11 @@ use super::template::layout::{
 };
 use super::template::parser::Token;
 
-/// Compute pane suffixes like " (1)", " (2)" for agents sharing the same window.
+/// Compute pane suffixes like "(2)", "(14)" for agents sharing the same window.
+///
+/// The suffix is the agent's own pane id, not its position in the list: rows are
+/// sorted by recency, so a positional ordinal renames every row whenever an agent
+/// changes status. A pane id is also what `tmux select-pane -t` accepts.
 fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
     let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
     for agent in agents {
@@ -31,15 +35,12 @@ fn compute_pane_suffixes(agents: &[AgentPane]) -> Vec<String> {
             .or_default() += 1;
     }
 
-    let mut positions: HashMap<(&str, &str), usize> = HashMap::new();
     agents
         .iter()
         .map(|agent| {
             let key = (agent.session.as_str(), agent.window_name.as_str());
             if counts[&key] > 1 {
-                let pos = positions.entry(key).or_default();
-                *pos += 1;
-                format!("({})", pos)
+                format!("({})", agent.pane_id.trim_start_matches('%'))
             } else {
                 String::new()
             }
@@ -611,9 +612,15 @@ fn render_horizontal_bar(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
         visible_count += 1;
 
         if x.saturating_add(2) < max_x && idx + 1 < app.agents.len() {
+            // Thick separator marks a project boundary
+            let sep = if app.has_project_header(idx + 1) {
+                "┃"
+            } else {
+                "│"
+            };
             for row in &mut rows {
                 row.push(Span::raw(" "));
-                row.push(Span::styled("│", Style::default().fg(app.palette.border)));
+                row.push(Span::styled(sep, Style::default().fg(app.palette.border)));
                 row.push(Span::raw(" "));
             }
             x = x.saturating_add(3);
@@ -670,6 +677,16 @@ fn status_icon_extra_width(ctx: &RowContext<'_>) -> usize {
     }
 }
 
+/// Divider line naming the project group that starts at this row.
+fn project_header_line(name: &str, width: usize, color: ratatui::style::Color) -> Line<'static> {
+    let label = format!("─ {name} ");
+    let fill = width.saturating_sub(display_width(&label));
+    Line::from(Span::styled(
+        format!("{label}{}", "─".repeat(fill)),
+        Style::default().fg(color),
+    ))
+}
+
 /// Compact single-line-per-agent list (original layout).
 fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
     if app.agents.is_empty() {
@@ -704,7 +721,8 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
 
     let items: Vec<ListItem> = contexts
         .iter()
-        .map(|ctx| {
+        .enumerate()
+        .map(|(idx, ctx)| {
             let mut spans = render_line_with_options(ctx, &template, width, &render_options);
 
             // Post-pass: apply selection background where the template has
@@ -717,7 +735,12 @@ fn render_compact_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 }
             }
 
-            ListItem::new(Line::from(spans))
+            let mut lines = Vec::new();
+            if let Some(name) = app.project_headers.get(idx).and_then(|h| h.as_deref()) {
+                lines.push(project_header_line(name, width, app.palette.border));
+            }
+            lines.push(Line::from(spans));
+            ListItem::new(lines)
         })
         .collect();
 
@@ -785,9 +808,12 @@ fn render_tile_list(f: &mut Frame, app: &mut SidebarApp, area: Rect) {
                 String::new()
             };
 
-            // Separator at the top (between tiles, not on first item)
+            // Separator at the top (between tiles, not on first item).
+            // A project header replaces it on group leaders.
             let mut lines = Vec::new();
-            if idx > 0 {
+            if let Some(name) = app.project_headers.get(idx).and_then(|h| h.as_deref()) {
+                lines.push(project_header_line(name, sep_width, app.palette.border));
+            } else if idx > 0 {
                 lines.push(Line::from(Span::styled(
                     "─".repeat(sep_width),
                     Style::default().fg(app.palette.border),
@@ -984,6 +1010,49 @@ mod tests {
     use super::*;
     use crate::agent_display::{sanitize_pane_title, strip_oc_title_prefix};
     use crate::command::sidebar::app::TemplateError;
+
+    fn pane_agent(session: &str, window: &str, pane_id: &str) -> AgentPane {
+        AgentPane {
+            session: session.to_string(),
+            window_name: window.to_string(),
+            pane_id: pane_id.to_string(),
+            window_id: String::new(),
+            path: std::path::PathBuf::new(),
+            pane_title: None,
+            status: None,
+            status_ts: None,
+            updated_ts: None,
+            window_cmd: None,
+            agent_command: None,
+            agent_kind: None,
+            pipeline_node_title: None,
+            pane_pid: 0,
+            runtime: None,
+        }
+    }
+
+    #[test]
+    fn compute_pane_suffixes_identify_the_pane_not_the_row() {
+        let a = pane_agent("local", "taskflow", "%2");
+        let b = pane_agent("local", "taskflow", "%3");
+        let c = pane_agent("local", "taskflow", "%14");
+
+        let shared = vec![a.clone(), b.clone(), c.clone()];
+        assert_eq!(compute_pane_suffixes(&shared), ["(2)", "(3)", "(14)"]);
+
+        // Re-sorting rows must not reassign suffixes.
+        let resorted = vec![c, a, b];
+        assert_eq!(compute_pane_suffixes(&resorted), ["(14)", "(2)", "(3)"]);
+
+        // A lone agent gets no suffix, and neither do two agents that are each
+        // alone in their own window despite differing pane ids.
+        assert_eq!(compute_pane_suffixes(&shared[..1]), [""]);
+        let separate = vec![
+            pane_agent("local", "taskflow", "%2"),
+            pane_agent("local", "other", "%3"),
+        ];
+        assert_eq!(compute_pane_suffixes(&separate), ["", ""]);
+    }
 
     #[test]
     fn render_sidebar_shows_template_error_warning() {

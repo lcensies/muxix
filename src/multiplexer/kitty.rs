@@ -17,11 +17,11 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use super::agent;
 use super::handshake::UnixPipeHandshake;
 use super::types::*;
 use super::util;
 use super::{Multiplexer, PaneHandshake};
+use crate::agent::profile as agent;
 
 /// Kitty process info from `foreground_processes` in ls output
 #[derive(Debug, Deserialize)]
@@ -271,6 +271,38 @@ impl Multiplexer for KittyBackend {
         })
     }
 
+    fn active_pane_of(&self, target: &str) -> Option<String> {
+        // If the target is already a numeric pane/window ID, validate it exists.
+        if let Ok(id) = target.parse::<u64>() {
+            let panes = self.list_panes().ok()?;
+            if panes.iter().any(|p| p.window_id == id) {
+                return Some(target.to_string());
+            }
+            return None;
+        }
+
+        // Otherwise treat `target` as a window/tab name (e.g. `wm-alpha`) and
+        // return the active/focused pane in that tab. Kitty tabs correspond to
+        // workmux windows, and each tab normally contains one or more windows
+        // (workmux panes). We scope the search to the current OS window so the
+        // orchestrator finds the worktree it just created in this instance.
+        let panes = self.list_panes().ok()?;
+        let scoped = self.panes_in_current_scope(&panes);
+        let matching: Vec<&FlatPane> = scoped
+            .iter()
+            .filter(|p| p.tab_title == target)
+            .copied()
+            .collect();
+        if matching.is_empty() {
+            return None;
+        }
+        matching
+            .iter()
+            .find(|p| p.is_focused)
+            .or_else(|| matching.first())
+            .map(|p| p.window_id.to_string())
+    }
+
     fn get_client_active_pane_path(&self) -> Result<PathBuf> {
         let window_id = self
             .current_window_id()
@@ -435,7 +467,10 @@ impl Multiplexer for KittyBackend {
 
     fn run_deferred_script(&self, script: &str) -> Result<()> {
         // Run the script in the background using nohup
-        let bg_script = format!("nohup sh -c '{}' >/dev/null 2>&1 &", script);
+        let bg_script = format!(
+            "nohup sh -c '{}' >/dev/null 2>&1 &",
+            super::util::escape_for_single_quotes(script)
+        );
         Cmd::new("sh").args(&["-c", &bg_script]).run()?;
         Ok(())
     }

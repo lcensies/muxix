@@ -39,3 +39,19 @@ pub fn cache_dir() -> Result<PathBuf> {
 pub fn state_dir() -> Result<PathBuf> {
     Ok(base_dir("XDG_STATE_HOME", ".local/state")?.join("workmux"))
 }
+
+/// `$XDG_RUNTIME_DIR/workmux`, falling back to the state dir.
+///
+/// Holds the system daemon's live coordination files (instance record, control
+/// requests, project status). `XDG_RUNTIME_DIR` is the correct home for these —
+/// it is user-private and cleared on logout — but it is not guaranteed to
+/// exist, so the state dir is the fallback rather than a hard error.
+pub fn runtime_dir() -> Result<PathBuf> {
+    if let Some(val) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
+        let path = PathBuf::from(val);
+        if path.is_absolute() {
+            return Ok(path.join("workmux"));
+        }
+    }
+    state_dir()
+}

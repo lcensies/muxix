@@ -1,8 +1,103 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tracing::debug;
+
+// ─── Prompt template registry ────────────────────────────────────────────────
+
+/// A named prompt template with `{{VARIABLE}}` holes, stored in
+/// `.workmux/prompts/<name>.md` or inline in `prompt_defs:` of `.workmux.yaml`.
+///
+/// Referenced by agent definitions via `prompt_ref:` and resolved at node
+/// execution time after `input_variables` are bound.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PromptTemplate {
+    /// Human description of this template's purpose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Template content with `{{VARIABLE}}` holes.
+    pub content: String,
+
+    /// Variable names that must be supplied (informational; not enforced at load).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_variables: Vec<String>,
+}
+
+/// Registry of named prompt templates loaded from the project.
+///
+/// Resolution order (first match wins):
+///   1. Inline `prompt_defs:` in `.workmux.yaml`
+///   2. Files in `.workmux/prompts/<name>.md` (content only; no frontmatter)
+#[derive(Debug, Default, Clone)]
+pub struct PromptRegistry {
+    templates: BTreeMap<String, PromptTemplate>,
+}
+
+impl PromptRegistry {
+    /// Load a registry from inline defs and the default `.workmux/prompts/` dir.
+    pub fn load(
+        inline_defs: &BTreeMap<String, PromptTemplate>,
+        project_root: &Path,
+    ) -> Result<Self> {
+        let mut registry = Self::default();
+
+        // Inline defs win.
+        for (name, tmpl) in inline_defs {
+            registry.templates.insert(name.clone(), tmpl.clone());
+        }
+
+        // Scan .workmux/prompts/ for *.md files.
+        let prompts_dir = project_root.join(".workmux/prompts");
+        if prompts_dir.exists() {
+            let mut entries: Vec<_> = fs::read_dir(&prompts_dir)
+                .with_context(|| format!("reading prompts dir {}", prompts_dir.display()))?
+                .filter_map(|e| e.ok())
+                .collect();
+            entries.sort_by_key(|e| e.file_name());
+
+            for entry in entries {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "md" && ext != "txt" {
+                    continue;
+                }
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if name.is_empty() || registry.templates.contains_key(&name) {
+                    continue;
+                }
+                let content = fs::read_to_string(&path)
+                    .with_context(|| format!("reading prompt template {}", path.display()))?;
+                debug!(name = %name, "loaded prompt template");
+                registry.templates.insert(
+                    name,
+                    PromptTemplate {
+                        content,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        Ok(registry)
+    }
+
+    /// Resolve a named prompt template. Returns `None` if not found.
+    pub fn get(&self, name: &str) -> Option<&PromptTemplate> {
+        self.templates.get(name)
+    }
+
+    /// All known template names, sorted.
+    pub fn names(&self) -> Vec<&str> {
+        self.templates.keys().map(|s| s.as_str()).collect()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Prompt {

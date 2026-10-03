@@ -256,8 +256,8 @@ panes:
     split: vertical
 ```
 
-For a real-world example, see
-[workmux's own `.workmux.yaml`](https://github.com/raine/workmux/blob/main/.workmux.yaml).
+For a full annotated example, see
+[`docs/reference/example-config.yaml`](docs/reference/example-config.yaml).
 
 ### Configuration options
 
@@ -526,6 +526,9 @@ alias wm='workmux'
 - [`close`](#workmux-close-name) - Close a worktree's tmux window (keeps
   worktree)
 - [`resurrect`](#workmux-resurrect) - Restore worktree windows after a crash
+- [`project`](#workmux-project) - Track project directories for `workmux start`
+- [`start`](#workmux-start) - Launch all tracked projects (session per project,
+  window per worktree)
 - [`path`](#workmux-path-name) - Get the filesystem path of a worktree
 - [`dashboard`](#workmux-dashboard) - Show TUI dashboard of all active agents
 - [`sidebar`](#workmux-sidebar) - Toggle a compact agent status sidebar in tmux
@@ -1483,6 +1486,50 @@ workmux resurrect
    repo
 3. Skips worktrees that are already open or no longer exist
 4. Opens each matched worktree with `--continue` to resume the agent
+
+---
+
+### `workmux project`
+
+Manages the list of tracked project directories used by `workmux start`. The
+registry is a plain YAML list at `~/.config/workmux/projects.yaml`.
+
+```bash
+workmux project add ~/repos/my-app   # track a project
+workmux project list                 # list tracked projects
+workmux project rm my-app            # untrack by name or path
+workmux project open my-app          # start that project's session and focus it
+```
+
+`project open <name|path>` does what `workmux start` does for a single
+project (session + base layout + worktree windows, idempotent), then focuses
+the session — switching the client inside tmux, attaching from a plain shell.
+It accepts the same `-c`/`--continue` agent resume flag.
+
+As a shortcut, `workmux add <dir>` tracks the directory as a project when the
+argument is an existing directory containing `.git`.
+
+---
+
+### `workmux start`
+
+Launches every tracked project: one tmux session per project (base layout from
+`.workmux.yaml` `windows:`, `~/.config/tmuxrs/<name>.yml`, or
+`~/.config/tmuxinator/<name>.yml`), plus one window per workmux worktree.
+Idempotent — existing sessions and windows are left untouched.
+
+#### Options
+
+- `-c`, `--continue`: Relaunch the last coding agent in each project/worktree,
+  resuming its previous conversation where possible (same resume ladder as
+  `workmux resurrect`).
+
+```bash
+workmux start        # open all tracked projects
+workmux start -c     # ...and resume the last agent everywhere
+```
+
+See the [Projects guide](https://workmux.raine.dev/guide/projects) for details.
 
 ---
 

@@ -432,6 +432,92 @@ printf '%s' "$prompt" > "{output_filename}"
         # Verify the prompt was received
         assert agent_output.read_text() == prompt_text
 
+    def test_kimi_yolo_flag_injected_without_sandbox(
+        self,
+        mux_server: MuxEnvironment,
+        workmux_exe_path: Path,
+        mux_repo_path: Path,
+        fake_agent_installer: FakeAgentInstaller,
+    ):
+        """Bare `kimi` agent should receive --yolo even when sandbox is disabled."""
+        env = mux_server
+        branch_name = "feature-kimi-yolo"
+        window_name = get_window_name(branch_name)
+        prompt_text = "Implement kimi yolo feature"
+        output_filename = "agent_output.txt"
+        flag_marker = "flag_found.txt"
+
+        fake_kimi_path = fake_agent_installer.install(
+            "kimi",
+            f"""#!/bin/sh
+set -e
+echo "ARGS: $@" > debug_args.txt
+
+# Check for --yolo flag
+flag_found=0
+for arg in "$@"; do
+    if [ "$arg" = "--yolo" ]; then
+        flag_found=1
+        echo "yes" > "{flag_marker}"
+        break
+    fi
+done
+
+if [ "$flag_found" = "0" ]; then
+    echo "no" > "{flag_marker}"
+fi
+
+# Kimi prompt injection format: kimi --yolo -p "$(cat PROMPT.md)"
+# The -p flag is followed by the prompt content.
+prompt=""
+found_p=0
+for arg in "$@"; do
+    if [ "$found_p" = "1" ]; then
+        prompt="$arg"
+        break
+    fi
+    if [ "$arg" = "-p" ]; then
+        found_p=1
+    fi
+done
+
+printf '%s' "$prompt" > "{output_filename}"
+""",
+        )
+
+        write_workmux_config(
+            mux_repo_path,
+            agent=str(fake_kimi_path),
+            panes=[{"command": "<agent>"}],
+        )
+
+        worktree_path = add_branch_and_get_worktree(
+            env,
+            workmux_exe_path,
+            mux_repo_path,
+            branch_name,
+            extra_args=f"--prompt {shlex.quote(prompt_text)}",
+        )
+
+        agent_output = worktree_path / output_filename
+        flag_file = worktree_path / flag_marker
+        debug_file = worktree_path / "debug_args.txt"
+
+        wait_for_file(
+            env,
+            agent_output,
+            window_name=window_name,
+            worktree_path=worktree_path,
+            debug_log_path=debug_file,
+        )
+
+        assert flag_file.exists(), "Flag marker file not created"
+        assert flag_file.read_text().strip() == "yes", (
+            f"--yolo flag not found. Debug: {debug_file.read_text() if debug_file.exists() else 'no debug'}"
+        )
+
+        assert agent_output.read_text() == prompt_text
+
     def test_agent_with_multiple_arguments(
         self,
         mux_server: MuxEnvironment,
