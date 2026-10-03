@@ -111,22 +111,42 @@ impl Agent {
     }
 }
 
-/// Where this agent keeps its own **JSON** settings file — the file the agent
-/// itself reads, not a muxix-owned copy.
+/// The format an agent's settings file is written in, which decides how a
+/// declared `settings:` merge patch is applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsFormat {
+    Json,
+    Yaml,
+}
+
+/// Where this agent keeps its own settings file — the file the agent itself
+/// reads, not a muxix-owned copy — and in which format.
 ///
 /// `None` for an agent whose settings muxix cannot patch: Codex keeps its
-/// config in TOML (`~/.codex/config.toml`), and Copilot CLI has no known
-/// global settings file. A declared settings patch for those is skipped rather
-/// than written to a guessed path or a format the merge patch cannot express.
-pub fn settings_file(agent: Agent) -> Option<PathBuf> {
-    match agent {
+/// config in TOML (`~/.codex/config.toml`), which RFC 7386 merge-patch
+/// semantics cannot express. A declared settings patch for those is skipped
+/// rather than written to a guessed path or an unexpressible format.
+pub fn settings_target(agent: Agent) -> Option<(PathBuf, SettingsFormat)> {
+    let path = match agent {
         Agent::Pi => pi::settings_file(),
         Agent::Omp => omp::settings_file(),
         Agent::Claude => claude::settings_file(),
         Agent::Gemini => gemini::settings_file(),
         Agent::OpenCode => opencode::settings_file(),
-        Agent::Codex | Agent::Copilot => None,
-    }
+        Agent::Copilot => copilot::settings_file(),
+        Agent::Codex => None,
+    }?;
+    // omp's store is YAML (`config.yml`); every other supported agent's is JSON.
+    let format = match agent {
+        Agent::Omp => SettingsFormat::Yaml,
+        _ => SettingsFormat::Json,
+    };
+    Some((path, format))
+}
+
+/// The agent's settings file path, ignoring its format.
+pub fn settings_file(agent: Agent) -> Option<PathBuf> {
+    settings_target(agent).map(|(path, _)| path)
 }
 
 /// Result of verifying an agent's status tracking.
@@ -446,7 +466,11 @@ pub fn bootstrap(
                 .unwrap_or_default();
             omp::Bootstrapper::new_with_method(method).map(|b| Box::new(b) as _)
         }
-        Agent::Codex | Agent::Copilot => None,
+        // Codex and Copilot have no plugin installer, so their instructions
+        // file is the ONLY channel a declared prompt component (or a feature's
+        // prompt fallback) can reach them through.
+        Agent::Codex => codex::Bootstrapper::new().map(|b| Box::new(b) as _),
+        Agent::Copilot => copilot::Bootstrapper::new().map(|b| Box::new(b) as _),
     };
     match b {
         Some(b) => {
@@ -714,6 +738,44 @@ fn confirm_install_skills() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_target_declares_a_format_per_agent() {
+        for agent in Agent::ALL {
+            match agent {
+                // TOML: RFC 7386 merge-patch semantics do not map onto it.
+                Agent::Codex => assert!(settings_target(agent).is_none()),
+                _ => {
+                    let (path, format) =
+                        settings_target(agent).unwrap_or_else(|| panic!("{}", agent.name()));
+                    match format {
+                        SettingsFormat::Yaml => assert_eq!(
+                            path.extension().and_then(|e| e.to_str()),
+                            Some("yml"),
+                            "{path:?}"
+                        ),
+                        SettingsFormat::Json => assert_eq!(
+                            path.extension().and_then(|e| e.to_str()),
+                            Some("json"),
+                            "{path:?}"
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn omp_settings_are_yaml_and_copilot_is_json() {
+        // omp keeps settings in config.yml and never reads pi's settings.json.
+        let (omp_path, omp_format) = settings_target(Agent::Omp).unwrap();
+        assert!(omp_path.ends_with("config.yml"), "{omp_path:?}");
+        assert_eq!(omp_format, SettingsFormat::Yaml);
+
+        let (copilot_path, copilot_format) = settings_target(Agent::Copilot).unwrap();
+        assert!(copilot_path.ends_with("settings.json"), "{copilot_path:?}");
+        assert_eq!(copilot_format, SettingsFormat::Json);
+    }
 
     #[test]
     fn test_agent_name() {

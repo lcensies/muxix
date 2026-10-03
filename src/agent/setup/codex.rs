@@ -19,8 +19,40 @@ use super::StatusCheck;
 /// Hooks configuration embedded at compile time.
 const HOOKS_JSON: &str = include_str!("../../../.codex/hooks/muxix-status.json");
 
-fn codex_dir() -> Option<PathBuf> {
+/// Codex's home directory, honoring `CODEX_HOME` (the var a muxix agent
+/// profile redirects).
+pub fn codex_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("CODEX_HOME") {
+        return Some(PathBuf::from(dir));
+    }
     home::home_dir().map(|h| h.join(".codex"))
+}
+
+/// Codex's global instructions file: the first link in its instruction chain
+/// (`$CODEX_HOME/AGENTS.md`), read before any repository `AGENTS.md`.
+///
+/// `AGENTS.override.md` sits above it and is deliberately left to the user:
+/// muxix writing there would silence the user's own repo instructions.
+pub fn instructions_file() -> Option<PathBuf> {
+    codex_dir().map(|d| d.join("AGENTS.md"))
+}
+
+/// Codex global instructions bootstrapper: a muxix-managed sentinel region in
+/// `$CODEX_HOME/AGENTS.md`, so hand-written guidance around it survives.
+pub struct Bootstrapper {
+    instructions: PathBuf,
+}
+
+impl Bootstrapper {
+    pub fn new() -> Option<Self> {
+        instructions_file().map(|instructions| Self { instructions })
+    }
+}
+
+impl super::AgentBootstrapper for Bootstrapper {
+    fn instructions_path(&self) -> PathBuf {
+        self.instructions.clone()
+    }
 }
 
 fn hooks_path() -> Option<PathBuf> {
@@ -146,15 +178,29 @@ fn render_providers_region(
 /// outside the markers is preserved byte-for-byte. Returns None when the file
 /// already contains exactly this region (or has no region and none is needed).
 fn splice_providers_region(content: &str, region: &str) -> Option<String> {
+    splice_region(content, PROVIDERS_BEGIN, PROVIDERS_END, region)
+}
+
+/// Marker-delimited managed-region splice over a TOML body.
+///
+/// Shared by every managed region muxix owns in `config.toml` (providers, MCP
+/// servers): the markers are the only thing that differs, and content outside
+/// them is never touched.
+pub fn splice_region(
+    content: &str,
+    begin: &str,
+    end_marker: &str,
+    region: &str,
+) -> Option<String> {
     let block = if region.is_empty() {
         String::new()
     } else {
-        format!("{PROVIDERS_BEGIN}\n{region}{PROVIDERS_END}\n")
+        format!("{begin}\n{region}{end_marker}\n")
     };
 
-    match (content.find(PROVIDERS_BEGIN), content.find(PROVIDERS_END)) {
+    match (content.find(begin), content.find(end_marker)) {
         (Some(start), Some(end)) => {
-            let end = end + PROVIDERS_END.len();
+            let end = end + end_marker.len();
             // Swallow the trailing newline of the old block so an emptied
             // region doesn't leave a blank line behind.
             let end = if content[end..].starts_with('\n') { end + 1 } else { end };
@@ -172,6 +218,96 @@ fn splice_providers_region(content: &str, region: &str) -> Option<String> {
             Some(format!("{content}{sep}{block}"))
         }
     }
+}
+
+const MCP_BEGIN: &str = "# muxix:mcp begin";
+const MCP_END: &str = "# muxix:mcp end";
+
+/// TOML string literal: basic form with the few escapes TOML requires.
+fn toml_string(value: &str) -> String {
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t");
+    format!("\"{escaped}\"")
+}
+
+/// Render the managed `[mcp_servers.*]` region for `servers`.
+///
+/// Codex names the table `mcp_servers` and takes `command`, `args` and `env`
+/// in the same shape every other agent uses, so the declaration maps across
+/// without interpretation.
+pub fn render_mcp_region(
+    servers: &std::collections::BTreeMap<String, crate::config::McpServerConfig>,
+) -> String {
+    let mut region = String::new();
+    for (name, cfg) in servers {
+        region.push_str(&format!("[mcp_servers.{name}]\n"));
+        region.push_str(&format!("command = {}\n", toml_string(&cfg.command)));
+        if let Some(args) = &cfg.args {
+            let rendered: Vec<String> = args.iter().map(|a| toml_string(a)).collect();
+            region.push_str(&format!("args = [{}]\n", rendered.join(", ")));
+        }
+        if let Some(env) = &cfg.env {
+            if !env.is_empty() {
+                region.push_str(&format!("[mcp_servers.{name}.env]\n"));
+                for (k, v) in env {
+                    region.push_str(&format!("{k} = {}\n", toml_string(v)));
+                }
+            }
+        }
+    }
+    region
+}
+
+/// Splice the declared MCP servers into a `config.toml` body (project layer or
+/// global). Hand-written entries outside the markers are preserved.
+pub fn splice_mcp_region(content: &str, region: &str) -> Option<String> {
+    splice_region(content, MCP_BEGIN, MCP_END, region)
+}
+
+/// Mark `project_root` trusted in the GLOBAL `~/.codex/config.toml`.
+///
+/// Codex loads a project's `.codex/config.toml` layer only for a trusted
+/// project, so without this the MCP config muxix just wrote is ignored.
+pub fn trust_project(project_root: &std::path::Path, dry_run: bool) -> Result<bool> {
+    let path =
+        config_toml_path().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let content = if path.exists() {
+        fs::read_to_string(&path).context("Failed to read ~/.codex/config.toml")?
+    } else {
+        String::new()
+    };
+
+    let key = format!(
+        "[projects.{}]",
+        toml_string(&project_root.to_string_lossy())
+    );
+    let entry = format!("{key}\ntrust_level = \"trusted\"\n");
+    if content.contains(&entry) {
+        return Ok(false);
+    }
+    if content.contains(&key) {
+        // The project is already declared with some other trust level: that is
+        // the user's call, not ours to overwrite.
+        return Ok(false);
+    }
+    if dry_run {
+        return Ok(true);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).context("Failed to create ~/.codex/ directory")?;
+    }
+    let sep = if content.is_empty() || content.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    fs::write(&path, format!("{content}{sep}{entry}"))
+        .context("Failed to write ~/.codex/config.toml")?;
+    Ok(true)
 }
 
 /// Sync registry providers with connection details into `~/.codex/config.toml`
@@ -282,6 +418,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
         file: hooks_path()?,
         event_key: key,
         requires_plugin: None,
+        dialect: crate::command::setup::agent_hooks::HookDialect::Grouped,
     })
 }
 
@@ -377,6 +514,29 @@ pub fn install() -> Result<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use super::super::AgentBootstrapper;
+
+    #[test]
+    fn global_instructions_region_is_managed_and_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("AGENTS.md");
+        std::fs::write(&path, "# hand-written\n\nkeep me\n").unwrap();
+        let b = Bootstrapper {
+            instructions: path.clone(),
+        };
+
+        b.apply_prompt("declared component").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("keep me"), "{body}");
+        assert!(body.contains("declared component"), "{body}");
+        assert_eq!(b.current_prompt().as_deref(), Some("declared component"));
+
+        // Second apply of the same prompt leaves one region, not two.
+        b.apply_prompt("declared component").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(body.matches("muxix-bootstrap-begin").count(), 1, "{body}");
+    }
 
     #[test]
     fn providers_region_create_rewrite_and_preserve() {

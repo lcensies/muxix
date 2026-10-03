@@ -45,7 +45,7 @@ fn plugin_path() -> Option<PathBuf> {
 /// files per event, so a hook installed for Claude Code may fire here too —
 /// hook scripts must tolerate running twice per event.
 pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::HookTarget> {
-    use crate::command::setup::agent_hooks::{HookTarget, RequiredPlugin};
+    use crate::command::setup::agent_hooks::{HookDialect, HookTarget, RequiredPlugin};
     fn key(event: crate::bootstrap::HookEvent) -> Option<&'static str> {
         use crate::bootstrap::HookEvent;
         match event {
@@ -60,6 +60,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
             spec: "opencode-claude-hooks",
             name_fragment: "opencode-claude-hooks",
         }),
+        dialect: HookDialect::Grouped,
     })
 }
 

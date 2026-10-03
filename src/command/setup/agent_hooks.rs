@@ -7,9 +7,13 @@
 //! same inner JSON shape (the one muxix's own status hooks already use), and
 //! OpenCode/pi consume that shape too through Claude-hooks-compat plugins
 //! (auto-injected into their plugin lists, see [`plugin_to_inject`]) — so one
-//! writer serves every agent that has a target. Agents without one (omp
-//! unverified, Copilot has no user-level hook config) report `Skipped` so the
-//! gap is visible in `setup --check` rather than silent.
+//! writer serves every agent that has a target. Copilot keeps its own dialect
+//! (a `version`-stamped file with flat per-event entries keyed by `bash`), so
+//! the writer carries a [`HookDialect`] instead of a second implementation.
+//! omp has no target: its pi heritage would point at the pi hooks compat
+//! plugin, which writes pi's `settings.json` — a file omp (`config.yml`) does
+//! not read. That gap reports `Skipped` so it stays visible in `setup --check`
+//! rather than silent.
 
 use anyhow::{Context as _, Result};
 use serde_json::{Value, json};
@@ -41,11 +45,26 @@ pub struct HookTarget {
     /// Compat plugin auto-injected into the agent's plugin install list when
     /// hooks are declared. `None` for agents with native shell-hook config.
     pub requires_plugin: Option<RequiredPlugin>,
+    /// The JSON dialect this agent's hook file uses.
+    pub dialect: HookDialect,
+}
+
+/// How an agent's hook file nests and names a hook command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HookDialect {
+    /// Claude/Codex/Gemini and the OpenCode/pi compat plugins:
+    /// `{"hooks": {"<Event>": [{"hooks": [{"type": "command", "command": …}]}]}}`.
+    #[default]
+    Grouped,
+    /// Copilot CLI: a `version`-stamped file whose events hold flat entries
+    /// keyed by the shell to run:
+    /// `{"version": 1, "hooks": {"sessionStart": [{"type": "command", "bash": …}]}}`.
+    CopilotFlat,
 }
 
 /// The hook target for an agent, when it has one.
 fn hook_target(agent: Agent) -> Option<HookTarget> {
-    use crate::agent::setup::{claude, codex, gemini, opencode, pi};
+    use crate::agent::setup::{claude, codex, copilot, gemini, opencode, pi};
     match agent {
         Agent::Claude => claude::declared_hook_target(),
         Agent::Codex => codex::declared_hook_target(),
@@ -55,9 +74,12 @@ fn hook_target(agent: Agent) -> Option<HookTarget> {
         // carries the plugin dependency.
         Agent::OpenCode => opencode::declared_hook_target(),
         Agent::Pi => pi::declared_hook_target(),
-        // omp is pi-compatible in principle but its config paths and install
-        // spec format are unverified; Copilot has no user-level hook config.
-        Agent::Omp | Agent::Copilot => None,
+        Agent::Copilot => copilot::declared_hook_target(),
+        // omp shares pi's extension mechanism but not its settings store: the pi
+        // hooks compat plugin reads pi's `settings.json`, and omp keeps settings
+        // in `config.yml`, so pointing at either file installs a hook nothing
+        // will run. Reported as a skip until omp grows its own hook config.
+        Agent::Omp => None,
     }
 }
 
@@ -288,7 +310,7 @@ fn apply_to_target(
             continue;
         }
 
-        if has_hook(&settings, event_key, &hook.command) {
+        if has_hook(&settings, target.dialect, event_key, &hook.command) {
             out.push(
                 ItemResult::new(Section::AgentHooks, agent_name, item_name, Outcome::UpToDate)
                     .managed_at(&hook.command),
@@ -297,7 +319,7 @@ fn apply_to_target(
         }
 
         if !dry_run {
-            add_hook(&mut settings, event_key, &hook.command);
+            add_hook(&mut settings, target.dialect, event_key, &hook.command);
             changed = true;
         }
         out.push(
@@ -333,43 +355,49 @@ fn apply_to_target(
 /// The shape is shared by Claude's settings.json, Codex's hooks.json, and
 /// Gemini's settings.json:
 /// `{"hooks": {"<Event>": [{"hooks": [{"type": "command", "command": ...}]}]}}`
-fn has_hook(settings: &Value, event_key: &str, command: &str) -> bool {
-    settings["hooks"][event_key]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|group| group["hooks"].as_array())
-        .flatten()
-        .any(|h| h["command"].as_str() == Some(command))
+fn has_hook(settings: &Value, dialect: HookDialect, event_key: &str, command: &str) -> bool {
+    let mut entries = settings["hooks"][event_key].as_array().into_iter().flatten();
+    match dialect {
+        HookDialect::Grouped => entries
+            .filter_map(|group| group["hooks"].as_array())
+            .flatten()
+            .any(|h| h["command"].as_str() == Some(command)),
+        HookDialect::CopilotFlat => entries.any(|h| h["bash"].as_str() == Some(command)),
+    }
 }
 
 /// Merge one hook command into the settings document.
-fn add_hook(settings: &mut Value, event_key: &str, command: &str) {
+fn add_hook(settings: &mut Value, dialect: HookDialect, event_key: &str, command: &str) {
     if !settings.is_object() {
         *settings = json!({});
     }
-    let hooks = settings
-        .as_object_mut()
-        .expect("just ensured object")
-        .entry("hooks")
-        .or_insert_with(|| json!({}));
+    let root = settings.as_object_mut().expect("just ensured object");
+    if dialect == HookDialect::CopilotFlat {
+        // Copilot rejects a hook file without its schema version.
+        root.entry("version").or_insert_with(|| json!(1));
+    }
+    let hooks = root.entry("hooks").or_insert_with(|| json!({}));
     if !hooks.is_object() {
         *hooks = json!({});
     }
-    let groups = hooks
+    let entries = hooks
         .as_object_mut()
         .expect("just ensured object")
         .entry(event_key)
         .or_insert_with(|| json!([]));
-    if !groups.is_array() {
-        *groups = json!([]);
+    if !entries.is_array() {
+        *entries = json!([]);
     }
-    groups
+    let entry = match dialect {
+        HookDialect::Grouped => json!({
+            "hooks": [{ "type": "command", "command": command }]
+        }),
+        HookDialect::CopilotFlat => json!({ "type": "command", "bash": command }),
+    };
+    entries
         .as_array_mut()
         .expect("just ensured array")
-        .push(json!({
-            "hooks": [{ "type": "command", "command": command }]
-        }));
+        .push(entry);
 }
 
 /// Remove one exact hook command from an agent's hook config.
@@ -383,12 +411,12 @@ pub fn remove_command(agent: Agent, command: &str) -> Result<String> {
     let Some(target) = hook_target(agent) else {
         anyhow::bail!("{} has no hook config", agent.name());
     };
-    remove_command_in(&target.file, command)
+    remove_command_in(&target.file, target.dialect, command)
 }
 
 /// File-parameterized core of [`remove_command`], so it can be tested against
 /// a scratch config instead of a real agent's.
-fn remove_command_in(path: &Path, command: &str) -> Result<String> {
+fn remove_command_in(path: &Path, dialect: HookDialect, command: &str) -> Result<String> {
     let Ok(content) = std::fs::read_to_string(path) else {
         return Ok(format!("no hook config at {}", path.display()));
     };
@@ -400,18 +428,24 @@ fn remove_command_in(path: &Path, command: &str) -> Result<String> {
     };
 
     let mut removed = false;
-    for groups in hooks.values_mut() {
-        let Some(groups) = groups.as_array_mut() else {
+    for entries in hooks.values_mut() {
+        let Some(entries) = entries.as_array_mut() else {
             continue;
         };
-        for group in groups.iter_mut() {
+        if dialect == HookDialect::CopilotFlat {
+            let before = entries.len();
+            entries.retain(|h| h["bash"].as_str() != Some(command));
+            removed |= entries.len() != before;
+            continue;
+        }
+        for group in entries.iter_mut() {
             if let Some(list) = group.get_mut("hooks").and_then(|h| h.as_array_mut()) {
                 let before = list.len();
                 list.retain(|h| h["command"].as_str() != Some(command));
                 removed |= list.len() != before;
             }
         }
-        groups.retain(|g| !g["hooks"].as_array().is_some_and(|l| l.is_empty()));
+        entries.retain(|g| !g["hooks"].as_array().is_some_and(|l| l.is_empty()));
     }
     hooks.retain(|_, groups| !groups.as_array().is_some_and(|g| g.is_empty()));
     let hooks_empty = hooks.is_empty();
@@ -483,6 +517,7 @@ mod tests {
             file: file.clone(),
             event_key: keys,
             requires_plugin: None,
+            dialect: HookDialect::Grouped,
         };
         let hook = ResolvedHook {
             origin: Some("s".into()),
@@ -496,7 +531,7 @@ mod tests {
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(v["model"], "kimi-k3");
         assert_eq!(v["theme"], "dark");
-        assert!(has_hook(&v, "Stop", "bash go.sh"));
+        assert!(has_hook(&v, HookDialect::Grouped, "Stop", "bash go.sh"));
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -504,10 +539,58 @@ mod tests {
     #[test]
     fn add_then_detect_round_trips() {
         let mut settings = json!({});
-        assert!(!has_hook(&settings, "Stop", "bash x.sh"));
-        add_hook(&mut settings, "Stop", "bash x.sh");
-        assert!(has_hook(&settings, "Stop", "bash x.sh"));
-        assert!(!has_hook(&settings, "Stop", "bash other.sh"));
+        assert!(!has_hook(&settings, HookDialect::Grouped, "Stop", "bash x.sh"));
+        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash x.sh");
+        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "bash x.sh"));
+        assert!(!has_hook(&settings, HookDialect::Grouped, "Stop", "bash other.sh"));
+    }
+
+    #[test]
+    fn copilot_dialect_is_version_stamped_and_flat() {
+        // Copilot's own file shape: {version, hooks: {event: [{type, bash}]}} --
+        // a Grouped entry written here would never run.
+        let mut settings = json!({});
+        assert!(!has_hook(
+            &settings,
+            HookDialect::CopilotFlat,
+            "sessionStart",
+            "bash go.sh"
+        ));
+        add_hook(
+            &mut settings,
+            HookDialect::CopilotFlat,
+            "sessionStart",
+            "bash go.sh",
+        );
+        assert_eq!(settings["version"], 1);
+        assert_eq!(settings["hooks"]["sessionStart"][0]["type"], "command");
+        assert_eq!(settings["hooks"]["sessionStart"][0]["bash"], "bash go.sh");
+        assert!(has_hook(
+            &settings,
+            HookDialect::CopilotFlat,
+            "sessionStart",
+            "bash go.sh"
+        ));
+        // The two dialects do not see each other's entries.
+        assert!(!has_hook(
+            &settings,
+            HookDialect::Grouped,
+            "sessionStart",
+            "bash go.sh"
+        ));
+    }
+
+    #[test]
+    fn copilot_target_maps_both_events_and_omp_has_none() {
+        let target = crate::agent::setup::copilot::declared_hook_target()
+            .expect("copilot has a hook target");
+        assert_eq!(target.dialect, HookDialect::CopilotFlat);
+        assert!(target.file.ends_with("hooks/muxix.json"), "{:?}", target.file);
+        assert_eq!((target.event_key)(HookEvent::SessionReady), Some("sessionStart"));
+        assert_eq!((target.event_key)(HookEvent::TurnDone), Some("agentStop"));
+
+        // omp: no hook config muxix can write (see hook_target).
+        assert!(hook_target(Agent::Omp).is_none());
     }
 
     #[test]
@@ -516,10 +599,10 @@ mod tests {
             "model": "opus",
             "hooks": { "Stop": [ { "hooks": [{"type":"command","command":"existing"}] } ] }
         });
-        add_hook(&mut settings, "Stop", "bash new.sh");
+        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash new.sh");
         assert_eq!(settings["model"], "opus");
-        assert!(has_hook(&settings, "Stop", "existing"));
-        assert!(has_hook(&settings, "Stop", "bash new.sh"));
+        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "existing"));
+        assert!(has_hook(&settings, HookDialect::Grouped, "Stop", "bash new.sh"));
     }
 
     /// Removal is the inverse of `add_hook`: the named command goes, the
@@ -531,18 +614,18 @@ mod tests {
         let file = tmp.path().join("settings.json");
 
         let mut settings = json!({"model": "opus"});
-        add_hook(&mut settings, "Stop", "bash ours.sh");
-        add_hook(&mut settings, "Stop", "bash theirs.sh");
-        add_hook(&mut settings, "SessionStart", "bash only.sh");
+        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash ours.sh");
+        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash theirs.sh");
+        add_hook(&mut settings, HookDialect::Grouped, "SessionStart", "bash only.sh");
         std::fs::write(&file, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
-        remove_command_in(&file, "bash ours.sh").unwrap();
-        remove_command_in(&file, "bash only.sh").unwrap();
+        remove_command_in(&file, HookDialect::Grouped, "bash ours.sh").unwrap();
+        remove_command_in(&file, HookDialect::Grouped, "bash only.sh").unwrap();
 
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(v["model"], "opus", "siblings survive");
-        assert!(!has_hook(&v, "Stop", "bash ours.sh"));
-        assert!(has_hook(&v, "Stop", "bash theirs.sh"));
+        assert!(!has_hook(&v, HookDialect::Grouped, "Stop", "bash ours.sh"));
+        assert!(has_hook(&v, HookDialect::Grouped, "Stop", "bash theirs.sh"));
         assert!(
             v["hooks"].get("SessionStart").is_none(),
             "an event key with no groups left must be dropped, got {v}"
@@ -554,10 +637,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("settings.json");
         let mut settings = json!({"theme": "dark"});
-        add_hook(&mut settings, "Stop", "bash x.sh");
+        add_hook(&mut settings, HookDialect::Grouped, "Stop", "bash x.sh");
         std::fs::write(&file, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
-        remove_command_in(&file, "bash x.sh").unwrap();
+        remove_command_in(&file, HookDialect::Grouped, "bash x.sh").unwrap();
 
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(v, json!({"theme": "dark"}));
@@ -570,7 +653,7 @@ mod tests {
         let original = r#"{"model":"opus"}"#;
         std::fs::write(&file, original).unwrap();
 
-        remove_command_in(&file, "bash nope.sh").unwrap();
+        remove_command_in(&file, HookDialect::Grouped, "bash nope.sh").unwrap();
 
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
     }
@@ -581,7 +664,7 @@ mod tests {
         let file = tmp.path().join("settings.json");
         std::fs::write(&file, "{not json").unwrap();
 
-        assert!(remove_command_in(&file, "bash x.sh").is_err());
+        assert!(remove_command_in(&file, HookDialect::Grouped, "bash x.sh").is_err());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{not json");
     }
 
@@ -640,6 +723,7 @@ mod tests {
             file: tmp.join("settings.json"),
             event_key: keys,
             requires_plugin: None,
+            dialect: HookDialect::Grouped,
         };
         let hook = |sha: Option<String>| ResolvedHook {
             origin: Some("s".into()),

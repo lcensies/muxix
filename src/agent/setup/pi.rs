@@ -44,7 +44,8 @@ pub struct PiBootstrapConfig {
     pub injection_method: PiInjectionMethod,
 }
 
-fn pi_agent_dir() -> Option<PathBuf> {
+/// Pi's config/agent directory, honoring `PI_CODING_AGENT_DIR`.
+pub fn agent_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
         return Some(PathBuf::from(dir));
     }
@@ -54,14 +55,14 @@ fn pi_agent_dir() -> Option<PathBuf> {
 /// Pi's own settings file (`~/.pi/agent/settings.json`), co-owned: pi writes
 /// `packages` and its own preferences here too.
 pub fn settings_file() -> Option<PathBuf> {
-    Some(pi_agent_dir()?.join("settings.json"))
+    Some(agent_dir()?.join("settings.json"))
 }
 
 /// Where pi's `@hsingjui/pi-hooks` compat extension reads Claude-format hooks:
 /// the `hooks` key of the general settings file (the writer only appends under
 /// that key, sibling settings are untouched).
 pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::HookTarget> {
-    use crate::command::setup::agent_hooks::{HookTarget, RequiredPlugin};
+    use crate::command::setup::agent_hooks::{HookDialect, HookTarget, RequiredPlugin};
     fn key(event: crate::bootstrap::HookEvent) -> Option<&'static str> {
         use crate::bootstrap::HookEvent;
         match event {
@@ -76,11 +77,12 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
             spec: "npm:@hsingjui/pi-hooks",
             name_fragment: "pi-hooks",
         }),
+        dialect: HookDialect::Grouped,
     })
 }
 
 fn extension_path() -> Option<PathBuf> {
-    pi_agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
+    agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
 }
 
 pub struct Bootstrapper {
@@ -90,14 +92,14 @@ pub struct Bootstrapper {
 
 impl Bootstrapper {
     pub fn new() -> Option<Self> {
-        pi_agent_dir().map(|d| Self {
+        agent_dir().map(|d| Self {
             agent_dir: d,
             injection_method: PiInjectionMethod::default(),
         })
     }
 
     pub fn new_with_method(method: PiInjectionMethod) -> Option<Self> {
-        pi_agent_dir().map(|d| Self {
+        agent_dir().map(|d| Self {
             agent_dir: d,
             injection_method: method,
         })
@@ -150,7 +152,7 @@ pub fn detect() -> Option<&'static str> {
     if std::env::var("PI_CODING_AGENT_DIR").is_ok_and(|d| PathBuf::from(d).is_dir()) {
         return Some("found $PI_CODING_AGENT_DIR");
     }
-    if pi_agent_dir().is_some_and(|d| d.is_dir()) {
+    if agent_dir().is_some_and(|d| d.is_dir()) {
         return Some("found ~/.pi/agent/");
     }
     None
@@ -187,7 +189,7 @@ pub fn check() -> Result<StatusCheck> {
 /// `false` so setup still attempts the install rather than skipping a
 /// genuinely missing plugin.
 pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
-    let Some(dir) = pi_agent_dir() else {
+    let Some(dir) = agent_dir() else {
         return false;
     };
     let Ok(body) = fs::read_to_string(dir.join("settings.json")) else {

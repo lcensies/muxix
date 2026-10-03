@@ -47,6 +47,7 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
 /// Return the skills base directory for a given agent.
 /// Returns None if the agent doesn't support skills.
 pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
+    use crate::agent::setup::{copilot, gemini, omp, pi};
     let home = home::home_dir()?;
     match agent {
         Agent::Claude => {
@@ -56,23 +57,14 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
             Some(base.join("skills"))
         }
         Agent::OpenCode => Some(home.join(".config/opencode/skills")),
-        Agent::Pi => {
-            let pi_dir = if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
-                PathBuf::from(dir)
-            } else {
-                home.join(".pi/agent")
-            };
-            Some(pi_dir.join("skills"))
-        }
-        Agent::Omp => {
-            let omp_dir = if let Ok(dir) = std::env::var("OMP_CODING_AGENT_DIR") {
-                PathBuf::from(dir)
-            } else {
-                home.join(".omp/agent")
-            };
-            Some(omp_dir.join("skills"))
-        }
-        Agent::Codex | Agent::Copilot | Agent::Gemini => None,
+        Agent::Pi => Some(pi::agent_dir()?.join("skills")),
+        Agent::Omp => Some(omp::agent_dir()?.join("skills")),
+        Agent::Gemini => Some(gemini::skills_dir()?),
+        Agent::Copilot => copilot::skills_dir(),
+        // Codex reads USER-scope skills from `$HOME/.agents/skills` — the shared
+        // cross-agent location, NOT a path under `CODEX_HOME`. A profile that
+        // redirects `CODEX_HOME` therefore cannot isolate Codex's skills.
+        Agent::Codex => Some(home.join(".agents/skills")),
     }
 }
 
@@ -293,13 +285,35 @@ mod tests {
     }
 
     #[test]
-    fn test_skills_dir_codex_none() {
-        assert!(skills_dir(Agent::Codex).is_none());
+    fn skills_dir_codex_is_the_shared_agents_location() {
+        // Codex reads USER-scope skills from $HOME/.agents/skills, NOT from
+        // under CODEX_HOME -- a profile cannot isolate them.
+        let dir = skills_dir(Agent::Codex).expect("codex has a skills dir");
+        assert!(dir.ends_with(".agents/skills"), "{dir:?}");
     }
 
     #[test]
-    fn test_skills_dir_copilot_none() {
-        assert!(skills_dir(Agent::Copilot).is_none());
+    fn skills_dir_gemini_is_user_scope() {
+        let dir = skills_dir(Agent::Gemini).expect("gemini has a skills dir");
+        assert!(dir.ends_with(".gemini/skills"), "{dir:?}");
+    }
+
+    #[test]
+    fn skills_dir_copilot_follows_copilot_home() {
+        let dir = skills_dir(Agent::Copilot).expect("copilot has a skills dir");
+        assert!(dir.ends_with("skills"), "{dir:?}");
+        assert!(dir.parent().is_some_and(|p| p.ends_with(".copilot")
+            || std::env::var_os("COPILOT_HOME").is_some()));
+    }
+
+    #[test]
+    fn every_agent_has_an_explicit_skills_decision() {
+        // No agent may fall through a catch-all arm: each one is either a real
+        // directory or a documented `None`.
+        for agent in Agent::ALL {
+            let dir = skills_dir(agent);
+            assert!(dir.is_some(), "{} has no skills dir decision", agent.name());
+        }
     }
 
     #[test]

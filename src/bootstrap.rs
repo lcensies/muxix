@@ -1047,8 +1047,9 @@ fn opencode_tools_frontmatter(content: &str) -> String {
 }
 
 /// Return the subagents directory for a given agent, or `None` if the agent
-/// has no native subagent support.
+/// has no native subagent support in a format muxix can write.
 pub fn subagents_dir(agent: Agent) -> Option<PathBuf> {
+    use crate::agent::setup::{copilot, gemini, omp, pi};
     let home = home::home_dir()?;
     match agent {
         Agent::Claude => {
@@ -1058,17 +1059,39 @@ pub fn subagents_dir(agent: Agent) -> Option<PathBuf> {
             Some(base.join("agents"))
         }
         Agent::OpenCode => Some(home.join(".config/opencode/agent")),
-        Agent::Pi => {
-            let pi_dir = if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
-                PathBuf::from(dir)
-            } else {
-                home.join(".pi/agent")
-            };
-            Some(pi_dir.join("agents"))
-        }
-        // ponytail: omp/codex/copilot/gemini subagent dirs unverified;
-        // add each here once its layout is confirmed.
-        _ => None,
+        Agent::Pi => Some(pi::agent_dir()?.join("agents")),
+        Agent::Omp => Some(omp::agent_dir()?.join("agents")),
+        Agent::Gemini => gemini::subagents_dir(),
+        Agent::Copilot => copilot::subagents_dir(),
+        // Codex custom agents are standalone *TOML config layers* under
+        // `~/.codex/agents/`, not markdown documents with frontmatter: the
+        // shared `SubagentDef` body has nowhere to go. Reported as a skip by
+        // `install_subagents_for_agent` rather than written in a shape Codex
+        // would reject.
+        Agent::Codex => None,
+    }
+}
+
+/// The filename an agent expects for a subagent named `name`.
+///
+/// Copilot CLI identifies personal agents by the `.agent.md` suffix; every
+/// other supported agent reads a plain `<name>.md`.
+pub fn subagent_filename(agent: Agent, name: &str) -> String {
+    match agent {
+        Agent::Copilot => format!("{name}.agent.md"),
+        _ => format!("{name}.md"),
+    }
+}
+
+/// Why `agent` cannot take declared subagents, for the setup report. `None`
+/// when it can.
+pub fn subagents_unsupported_reason(agent: Agent) -> Option<&'static str> {
+    match agent {
+        Agent::Codex => Some(
+            "Codex custom agents are TOML config layers (~/.codex/agents/*.toml), \
+             not markdown subagent documents",
+        ),
+        _ => subagents_dir(agent).is_none().then_some("no subagents directory for this agent"),
     }
 }
 
@@ -1135,7 +1158,7 @@ fn install_subagents_into(
         } else {
             content
         };
-        let dest = base_dir.join(format!("{name}.md"));
+        let dest = base_dir.join(subagent_filename(agent, &name));
 
         let existing = fs::read_to_string(&dest).ok();
         results.push(match existing {
@@ -1312,6 +1335,42 @@ pub fn print_bootstrap_info(config: &BootstrapConfig, agent: Agent) {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn subagents_dir_covers_every_markdown_agent() {
+        // Agents whose subagents are markdown-with-frontmatter get a directory;
+        // Codex (TOML config layers) is the only declared exception.
+        for agent in Agent::ALL {
+            let dir = subagents_dir(agent);
+            match agent {
+                Agent::Codex => assert!(dir.is_none(), "codex has no markdown subagent dir"),
+                _ => assert!(dir.is_some(), "{} has no subagents dir", agent.name()),
+            }
+        }
+        assert!(subagents_dir(Agent::Gemini).unwrap().ends_with(".gemini/agents"));
+        assert!(subagents_dir(Agent::Copilot).unwrap().ends_with("agents"));
+        assert!(subagents_dir(Agent::Omp).unwrap().ends_with("agents"));
+    }
+
+    #[test]
+    fn subagent_filename_uses_copilots_suffix() {
+        assert_eq!(subagent_filename(Agent::Copilot, "reviewer"), "reviewer.agent.md");
+        assert_eq!(subagent_filename(Agent::Claude, "reviewer"), "reviewer.md");
+        assert_eq!(subagent_filename(Agent::Gemini, "reviewer"), "reviewer.md");
+    }
+
+    #[test]
+    fn only_codex_reports_a_subagent_unsupported_reason() {
+        for agent in Agent::ALL {
+            let reason = subagents_unsupported_reason(agent);
+            match agent {
+                Agent::Codex => {
+                    assert!(reason.is_some_and(|r| r.contains("TOML")), "{reason:?}")
+                }
+                _ => assert!(reason.is_none(), "{} unexpectedly unsupported", agent.name()),
+            }
+        }
+    }
 
     #[test]
     fn test_merge_component_by_name_and_path() {
@@ -1659,16 +1718,28 @@ agents:
     }
 
     #[test]
-    fn test_install_skills_for_agent_without_skills_dir_is_noop() {
+    fn every_agent_takes_declared_skills() {
+        // There is no longer an agent whose skills muxix cannot place: Codex
+        // (`$HOME/.agents/skills`), Gemini (`~/.gemini/skills`) and Copilot
+        // (`$COPILOT_HOME/skills`) all have one. The no-skills-dir branch is
+        // reachable only when the home dir cannot be resolved at all, so a
+        // declared skill must never be silently dropped for an agent.
         let config = BootstrapConfig {
             skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
             ..Default::default()
         };
-        // Codex has no skills directory, so nothing is installed and the
-        // (possibly nonexistent) source path is never touched.
-        let results =
-            install_skills_for_agent(Agent::Codex, &config, Path::new("/nonexistent"), false).unwrap();
-        assert!(results.is_empty());
+        for agent in Agent::ALL {
+            assert!(
+                crate::skills::skills_dir(agent).is_some(),
+                "{} has no skills dir",
+                agent.name()
+            );
+            // Source path does not exist -> the attempt surfaces as an error
+            // rather than an empty, silent success.
+            let err = install_skills_for_agent(agent, &config, Path::new("/nonexistent"), false)
+                .expect_err("a missing skill source must not be a silent no-op");
+            assert!(err.to_string().contains("does not exist"), "{err}");
+        }
     }
 
     /// Serializes the tests that redirect `OMP_CODING_AGENT_DIR`, so they

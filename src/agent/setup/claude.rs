@@ -48,6 +48,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
         file: settings_path()?,
         event_key: key,
         requires_plugin: None,
+        dialect: crate::command::setup::agent_hooks::HookDialect::Grouped,
     })
 }
 

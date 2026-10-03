@@ -18,20 +18,34 @@ use super::StatusCheck;
 /// The extension source, shared with pi (omp is pi-compatible).
 const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
 
-fn omp_agent_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("OMP_CODING_AGENT_DIR") {
-        return Some(PathBuf::from(dir));
+/// omp's agent directory.
+///
+/// omp itself honors `PI_CODING_AGENT_DIR` (its pi heritage: the var relocates
+/// the default profile's agent dir, `config.yml` and agent data included; omp's
+/// own named profiles ignore it). `OMP_CODING_AGENT_DIR` is a muxix-side
+/// override only and wins when set, so a host can point muxix at an omp tree
+/// without also relocating pi.
+pub fn agent_dir() -> Option<PathBuf> {
+    for var in ["OMP_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"] {
+        if let Ok(dir) = std::env::var(var) {
+            return Some(PathBuf::from(dir));
+        }
     }
     home::home_dir().map(|h| h.join(".omp/agent"))
 }
 
 fn extension_path() -> Option<PathBuf> {
-    omp_agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
+    agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
 }
 
-/// omp's own settings file (pi-shaped), honoring `OMP_CODING_AGENT_DIR`.
+/// omp's own settings file.
+///
+/// omp is pi-compatible in its extension and prompt mechanisms but NOT in its
+/// settings store: it keeps settings in YAML at `<agent dir>/config.yml` and
+/// never reads pi's `settings.json`. A declared `settings:` patch is applied as
+/// YAML (see `settings_format`).
 pub fn settings_file() -> Option<PathBuf> {
-    omp_agent_dir().map(|d| d.join("settings.json"))
+    agent_dir().map(|d| d.join("config.yml"))
 }
 
 pub struct Bootstrapper {
@@ -41,14 +55,14 @@ pub struct Bootstrapper {
 
 impl Bootstrapper {
     pub fn new() -> Option<Self> {
-        omp_agent_dir().map(|d| Self {
+        agent_dir().map(|d| Self {
             agent_dir: d,
             injection_method: PiInjectionMethod::default(),
         })
     }
 
     pub fn new_with_method(method: PiInjectionMethod) -> Option<Self> {
-        omp_agent_dir().map(|d| Self {
+        agent_dir().map(|d| Self {
             agent_dir: d,
             injection_method: method,
         })
@@ -87,7 +101,7 @@ pub fn detect() -> Option<&'static str> {
     if std::env::var("OMP_CODING_AGENT_DIR").is_ok_and(|d| PathBuf::from(d).is_dir()) {
         return Some("found $OMP_CODING_AGENT_DIR");
     }
-    if omp_agent_dir().is_some_and(|d| d.is_dir()) {
+    if agent_dir().is_some_and(|d| d.is_dir()) {
         return Some("found ~/.omp/agent/");
     }
     None
@@ -123,7 +137,7 @@ pub fn check() -> Result<StatusCheck> {
 /// installed), this returns `false` so setup still attempts the install
 /// rather than skipping a genuinely missing plugin.
 pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
-    let Some(dir) = omp_agent_dir() else {
+    let Some(dir) = agent_dir() else {
         return false;
     };
     let Ok(body) = fs::read_to_string(dir.join("settings.json")) else {

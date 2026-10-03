@@ -180,6 +180,20 @@ pub fn subagents(
     let mut out = Vec::new();
     for check in checks {
         let agent = check.agent;
+        let declared = config.subagents_for(agent);
+        // An agent whose subagent format muxix cannot write must say so per
+        // declared subagent, not drop them on the floor.
+        if let Some(reason) = bootstrap::subagents_unsupported_reason(agent) {
+            for def in &declared {
+                out.push(ItemResult::skipped(
+                    Section::Subagents,
+                    Some(agent.name()),
+                    def.display(),
+                    reason,
+                ));
+            }
+            continue;
+        }
         let base = bootstrap::subagents_dir(agent);
         match bootstrap::install_subagents_for_agent(
             agent,
@@ -190,7 +204,8 @@ pub fn subagents(
         ) {
             Ok(results) => out.extend(results.into_iter().map(|r| {
                 from_skill_install(Section::Subagents, agent, r, |name| {
-                    base.as_ref().map(|d| d.join(format!("{name}.md")))
+                    base.as_ref()
+                        .map(|d| d.join(bootstrap::subagent_filename(agent, name)))
                 })
             })),
             Err(e) => out.push(ItemResult::failed(
@@ -565,31 +580,42 @@ pub fn agent_settings(
             continue;
         };
         let agent = Some(check.agent.name());
-        let Some(path) = setup::settings_file(check.agent) else {
+        let Some((path, format)) = setup::settings_target(check.agent) else {
             out.push(ItemResult::skipped(
                 Section::AgentSettings,
                 agent,
                 "settings",
-                "no JSON settings file known for this agent",
+                "this agent's settings store cannot express a merge patch \
+                 (Codex: TOML in ~/.codex/config.toml)",
             ));
             continue;
         };
 
         let existing = std::fs::read_to_string(&path).ok();
-        let before: serde_json::Value = match existing.as_deref().map(str::trim) {
-            None | Some("") => serde_json::json!({}),
-            Some(text) => match serde_json::from_str(text) {
-                Ok(v) => v,
-                Err(e) => {
-                    out.push(ItemResult::failed(
-                        Section::AgentSettings,
-                        agent,
-                        "settings",
-                        format!("{}: {e}", path.display()),
-                    ));
-                    continue;
+        // One merge implementation for every agent: the format only decides how
+        // the document is parsed and re-serialized (omp keeps YAML).
+        let parsed = match existing.as_deref().map(str::trim) {
+            None | Some("") => Ok(serde_json::json!({})),
+            Some(text) => match format {
+                setup::SettingsFormat::Json => {
+                    serde_json::from_str(text).map_err(|e| e.to_string())
+                }
+                setup::SettingsFormat::Yaml => {
+                    serde_yaml::from_str(text).map_err(|e| e.to_string())
                 }
             },
+        };
+        let before: serde_json::Value = match parsed {
+            Ok(v) => v,
+            Err(e) => {
+                out.push(ItemResult::failed(
+                    Section::AgentSettings,
+                    agent,
+                    "settings",
+                    format!("{}: {e}", path.display()),
+                ));
+                continue;
+            }
         };
 
         let mut after = before.clone();
@@ -633,10 +659,13 @@ pub fn agent_settings(
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            crate::util::write_atomic(
-                &path,
-                &format!("{}\n", serde_json::to_string_pretty(&after)?),
-            )
+            let body = match format {
+                setup::SettingsFormat::Json => {
+                    format!("{}\n", serde_json::to_string_pretty(&after)?)
+                }
+                setup::SettingsFormat::Yaml => serde_yaml::to_string(&after)?,
+            };
+            crate::util::write_atomic(&path, &body)
         };
         match write() {
             Ok(()) => out.push(item),
@@ -1597,6 +1626,72 @@ mod agent_settings_tests {
 
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].outcome, Outcome::Skipped, "{:?}", out[0]);
+    }
+
+    /// omp keeps its settings in YAML (`config.yml`), so the patch has to be
+    /// read and written as YAML or it lands in a file omp never reads.
+    #[test]
+    fn omp_patch_is_applied_as_yaml_and_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("config.yml"),
+            "setupVersion: 1\nmodelRoles:\n  default: zai/glm-5.1\ndefaultThinkingLevel: auto\n",
+        )
+        .unwrap();
+
+        let cfg = bootstrap::BootstrapConfig {
+            agents: [(
+                "omp".to_string(),
+                bootstrap::AgentBootstrapOverrides {
+                    settings: Some(serde_json::json!({
+                        "modelRoles": {"smol": "zai/glm-5.1"},
+                        "defaultThinkingLevel": null,
+                    })),
+                    ..Default::default()
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let check = setup::AgentCheck {
+            agent: Agent::Omp,
+            reason: "test",
+            status: StatusCheck::Installed,
+        };
+
+        let run = || {
+            let _g = super::super::tests::ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let prev = std::env::var_os("OMP_CODING_AGENT_DIR");
+            unsafe { std::env::set_var("OMP_CODING_AGENT_DIR", tmp.path()) };
+            let out = agent_settings(std::slice::from_ref(&check), &cfg, false);
+            unsafe {
+                match prev {
+                    Some(v) => std::env::set_var("OMP_CODING_AGENT_DIR", v),
+                    None => std::env::remove_var("OMP_CODING_AGENT_DIR"),
+                }
+            }
+            out
+        };
+
+        let out = run();
+        assert_eq!(out[0].outcome, Outcome::Updated, "{:?}", out[0]);
+
+        let body = std::fs::read_to_string(tmp.path().join("config.yml")).unwrap();
+        let v: serde_json::Value = serde_yaml::from_str(&body).unwrap();
+        assert_eq!(v["modelRoles"]["smol"], "zai/glm-5.1");
+        // Agent-authored keys the patch did not name survive;
+        // an explicit null deletes.
+        assert_eq!(v["modelRoles"]["default"], "zai/glm-5.1");
+        assert_eq!(v["setupVersion"], 1);
+        assert!(v.get("defaultThinkingLevel").is_none(), "{body}");
+        assert!(!body.contains('{'), "written as YAML, not JSON: {body}");
+
+        // Re-running the same patch must not rewrite the file.
+        let again = run();
+        assert_eq!(again[0].outcome, Outcome::UpToDate, "{:?}", again[0]);
     }
 }
 

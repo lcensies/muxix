@@ -6,11 +6,12 @@
 //! file lives and *how* to merge the declared servers into it without
 //! disturbing entries the user added by hand.
 //!
-//! Currently implemented: Claude (`.mcp.json`) and Gemini
-//! (`.gemini/settings.json`) — both use the `{ "mcpServers": { … } }` shape, so
-//! they share [`super::merge_mcp_json`]. OpenCode (`opencode.json`, different
-//! `mcp` schema) and Codex (`~/.codex/config.toml`, TOML, global) need their
-//! own adapters and are tracked as separate tasks.
+//! Every agent has a target. Claude, pi, omp and Copilot share the project
+//! `.mcp.json` and Gemini its `.gemini/settings.json` — all the
+//! `{ "mcpServers": { … } }` shape, via [`super::merge_mcp_json`]. OpenCode has
+//! its own `mcp` schema in `opencode.json`. Codex is the one non-JSON store:
+//! a marker-delimited region of `[mcp_servers.*]` tables in the project's
+//! `.codex/config.toml` layer, written through [`McpTarget::render`].
 
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -33,6 +34,22 @@ pub trait McpTarget {
     /// Must be idempotent and preserve unmanaged (hand-added) entries.
     fn merge(&self, existing: Option<&Value>, servers: &BTreeMap<String, McpServerConfig>)
     -> Value;
+
+    /// Render the whole file body to write, given its current text.
+    ///
+    /// JSON targets get this for free from [`McpTarget::merge`]. A target whose
+    /// native config is not JSON (Codex: TOML) overrides this instead and
+    /// leaves `merge` unused — the text seam is what lets one `sync_target`
+    /// drive both.
+    fn render(
+        &self,
+        existing: Option<&str>,
+        servers: &BTreeMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        let parsed: Option<Value> = existing.and_then(|s| serde_json::from_str(s).ok());
+        let merged = self.merge(parsed.as_ref(), servers);
+        Ok(format!("{}\n", serde_json::to_string_pretty(&merged)?))
+    }
 
     /// Pre-approve the named servers in this agent's *native* trust mechanism so
     /// a harness-launched agent doesn't block on an interactive "trust this MCP
@@ -174,6 +191,73 @@ impl McpTarget for OmpTarget {
     }
 }
 
+/// Copilot CLI: project-root `.mcp.json`, the same `{ "mcpServers": { … } }`
+/// shape Claude uses — Copilot reads that file (and `.github/mcp.json`) as its
+/// project-level MCP config, so this target converges the same file Claude/pi/omp
+/// already write and `sync_agent_mcp_configs` reports it once.
+///
+/// Tool approval lives in Copilot's own `permissions-config.json`, keyed by
+/// project path and written by the CLI itself; muxix does not forge entries
+/// there, so `approve_servers` stays the no-op default.
+pub struct CopilotTarget;
+
+impl McpTarget for CopilotTarget {
+    fn agent(&self) -> Agent {
+        Agent::Copilot
+    }
+    fn config_path(&self, repo_root: &Path) -> PathBuf {
+        repo_root.join(super::MCP_JSON_FILENAME)
+    }
+    fn merge(
+        &self,
+        existing: Option<&Value>,
+        servers: &BTreeMap<String, McpServerConfig>,
+    ) -> Value {
+        merge_mcp_json(existing, servers)
+    }
+}
+
+/// Codex: the project config layer `.codex/config.toml`, TOML, with the servers
+/// in a muxix-managed marker region of `[mcp_servers.*]` tables.
+///
+/// TOML has no merge-patch, so this target overrides `render` (text in, text
+/// out) and leaves `merge` unused; everything outside the markers — including
+/// hand-written `[mcp_servers.*]` entries — is preserved byte-for-byte.
+pub struct CodexTarget;
+
+impl McpTarget for CodexTarget {
+    fn agent(&self) -> Agent {
+        Agent::Codex
+    }
+    fn config_path(&self, repo_root: &Path) -> PathBuf {
+        repo_root.join(".codex").join("config.toml")
+    }
+    fn merge(
+        &self,
+        _existing: Option<&Value>,
+        _servers: &BTreeMap<String, McpServerConfig>,
+    ) -> Value {
+        // Unused: `render` owns this target's TOML body.
+        Value::Null
+    }
+    fn render(
+        &self,
+        existing: Option<&str>,
+        servers: &BTreeMap<String, McpServerConfig>,
+    ) -> Result<String> {
+        let content = existing.unwrap_or_default();
+        let region = setup::codex::render_mcp_region(servers);
+        Ok(setup::codex::splice_mcp_region(content, &region)
+            .unwrap_or_else(|| content.to_string()))
+    }
+    fn approve_servers(&self, repo_root: &Path, _server_names: &[&str]) -> Result<()> {
+        // Codex reads a project `.codex/config.toml` layer only for a project it
+        // trusts, so without this the file above is inert. Failing loudly beats
+        // leaving an unread config behind.
+        setup::codex::trust_project(repo_root, false).map(|_| ())
+    }
+}
+
 /// OpenCode: project-root `opencode.json`, `{ "mcp": { name: { type, command[], enabled } } }`.
 /// Different schema from Claude/Gemini — `command` is an argv array and servers
 /// carry `type`/`enabled`. OpenCode has no interactive startup trust prompt:
@@ -257,12 +341,8 @@ pub fn mcp_support(agent: Agent) -> McpSupport {
         Agent::Claude => McpSupport::Supported(Box::new(ClaudeTarget)),
         Agent::OpenCode => McpSupport::Supported(Box::new(OpenCodeTarget)),
         Agent::Gemini => McpSupport::Supported(Box::new(GeminiTarget)),
-        Agent::Codex => McpSupport::Unsupported(
-            "Codex MCP lives in global ~/.codex/config.toml (TOML) — adapter + trust not written",
-        ),
-        Agent::Copilot => {
-            McpSupport::Unsupported("Copilot CLI MCP config/trust adapter not written")
-        }
+        Agent::Codex => McpSupport::Supported(Box::new(CodexTarget)),
+        Agent::Copilot => McpSupport::Supported(Box::new(CopilotTarget)),
         Agent::Pi => McpSupport::Supported(Box::new(PiTarget)),
         Agent::Omp => McpSupport::Supported(Box::new(OmpTarget)),
     }
@@ -315,12 +395,9 @@ pub fn sync_target(
     }
 
     let raw = std::fs::read_to_string(&path).ok();
-    let existing: Option<Value> = raw.as_deref().and_then(|s| serde_json::from_str(s).ok());
-
-    let merged = target.merge(existing.as_ref(), servers);
-    let mut content = serde_json::to_string_pretty(&merged)
-        .with_context(|| format!("Failed to serialize {}", path.display()))?;
-    content.push('\n');
+    let content = target
+        .render(raw.as_deref(), servers)
+        .with_context(|| format!("Failed to render {}", path.display()))?;
     // Converged already: no write, no "updated" report, `--check` stays quiet.
     if raw.as_deref() == Some(content.as_str()) {
         return Ok(None);
@@ -517,22 +594,54 @@ mod tests {
     }
 
     #[test]
-    fn mcp_support_is_exhaustive_and_targets_match() {
-        // Supported set drives all_targets(); unsupported agents carry a reason.
+    fn every_agent_has_an_mcp_target() {
+        // Every agent now has an adapter; `all_targets()` must list them all and
+        // no agent may report an "unsupported" reason.
         let supported: Vec<Agent> = all_targets().iter().map(|t| t.agent()).collect();
-        assert!(supported.contains(&Agent::Claude));
-        assert!(supported.contains(&Agent::OpenCode));
-        assert!(supported.contains(&Agent::Gemini));
-        assert!(supported.contains(&Agent::Pi));
-        assert!(supported.contains(&Agent::Omp));
-        for (agent, support) in support_overview() {
-            match agent {
-                Agent::Claude | Agent::OpenCode | Agent::Gemini | Agent::Pi | Agent::Omp => {
-                    assert!(support.is_ok())
-                }
-                Agent::Codex | Agent::Copilot => assert!(support.is_err()),
-            }
+        for agent in Agent::ALL {
+            assert!(supported.contains(&agent), "{} has no MCP target", agent.name());
         }
+        for (agent, support) in support_overview() {
+            assert!(support.is_ok(), "{} reported unsupported", agent.name());
+        }
+    }
+
+    #[test]
+    fn copilot_shares_the_project_mcp_json() {
+        let t = CopilotTarget;
+        assert_eq!(
+            t.config_path(Path::new("/repo")),
+            Path::new("/repo/.mcp.json"),
+            "Copilot reads the same project file Claude does"
+        );
+        let merged = t.merge(None, &socraticode_map());
+        assert!(merged["mcpServers"]["socraticode"].is_object());
+    }
+
+    #[test]
+    fn codex_renders_a_managed_toml_region() {
+        let t = CodexTarget;
+        assert_eq!(
+            t.config_path(Path::new("/repo")),
+            Path::new("/repo/.codex/config.toml")
+        );
+
+        // Hand-written content outside the markers survives.
+        let existing = "model = \"gpt-5\"\n";
+        let body = t.render(Some(existing), &socraticode_map()).unwrap();
+        assert!(body.starts_with("model = \"gpt-5\""), "{body}");
+        assert!(body.contains("[mcp_servers.socraticode]"), "{body}");
+        assert!(body.contains("command = \"npx\""), "{body}");
+        assert!(body.contains("args = [\"-y\", \"socraticode\"]"), "{body}");
+
+        // Idempotent: rendering the same servers over the result is a fixpoint.
+        let again = t.render(Some(&body), &socraticode_map()).unwrap();
+        assert_eq!(again, body);
+
+        // Dropping a server removes its table but keeps the rest of the file.
+        let emptied = t.render(Some(&body), &BTreeMap::new()).unwrap();
+        assert!(!emptied.contains("mcp_servers"), "{emptied}");
+        assert!(emptied.contains("model = \"gpt-5\""), "{emptied}");
     }
 
     #[test]

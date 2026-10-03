@@ -95,6 +95,16 @@ pub fn config_dir_env(agent_id: &str) -> Option<&'static str> {
         "pi" => Some("PI_CODING_AGENT_DIR"),
         "claude" => Some("CLAUDE_CONFIG_DIR"),
         "codex" => Some("CODEX_HOME"),
+        // Copilot: replaces the whole `~/.copilot` path — config, customizations
+        // and session history together.
+        "copilot" => Some("COPILOT_HOME"),
+        // omp inherits pi's var name: `PI_CODING_AGENT_DIR` relocates omp's
+        // default-profile agent dir (`config.yml` + agent data). muxix sets it
+        // per-process, so profiling omp never disturbs pi.
+        "omp" => Some("PI_CODING_AGENT_DIR"),
+        // gemini (`~/.gemini`) and opencode (`OPENCODE_CONFIG` names a *file*,
+        // and the data/state dir overrides are not in a release) expose no
+        // single config-dir redirect.
         _ => None,
     }
 }
@@ -164,8 +174,10 @@ pub fn session_dir_env(agent_id: &str) -> Option<&'static str> {
     match agent_id {
         // Pi's own precedence: --session-dir > PI_CODING_AGENT_SESSION_DIR > sessionDir setting.
         "pi" => Some("PI_CODING_AGENT_SESSION_DIR"),
-        // claude keeps transcripts under CLAUDE_CONFIG_DIR; codex under CODEX_HOME.
-        // Both are already redirected by config_dir_env, so there is nothing to add.
+        // claude keeps transcripts under CLAUDE_CONFIG_DIR, codex under CODEX_HOME,
+        // copilot under COPILOT_HOME (`session-state/`, `logs/`), and omp under its
+        // agent dir (`sessions/`, `history.db`) which PI_CODING_AGENT_DIR moves.
+        // All four are already redirected by config_dir_env — nothing to add.
         _ => None,
     }
 }
@@ -649,8 +661,16 @@ mod tests {
         assert_eq!(session_dir_env("pi"), Some("PI_CODING_AGENT_SESSION_DIR"));
         // These keep transcripts under their redirected config dir, so there is
         // nothing extra to point at.
-        assert_eq!(session_dir_env("claude"), None);
-        assert_eq!(session_dir_env("codex"), None);
+        // These keep sessions under a dir that config_dir_env already redirects,
+        // so there is nothing extra to point at: claude/codex/copilot inside the
+        // config dir, omp inside its agent dir.
+        for agent in ["claude", "codex", "copilot", "omp"] {
+            assert_eq!(session_dir_env(agent), None, "{agent}");
+            assert!(
+                config_dir_env(agent).is_some(),
+                "{agent} keeps history in its config dir, so that dir MUST be redirectable"
+            );
+        }
         assert_eq!(session_dir_env("opencode"), None);
     }
 
@@ -670,7 +690,13 @@ mod tests {
     fn config_dir_env_known_and_unknown() {
         assert_eq!(config_dir_env("pi"), Some("PI_CODING_AGENT_DIR"));
         assert_eq!(config_dir_env("claude"), Some("CLAUDE_CONFIG_DIR"));
+        assert_eq!(config_dir_env("codex"), Some("CODEX_HOME"));
+        assert_eq!(config_dir_env("copilot"), Some("COPILOT_HOME"));
+        // omp honors pi's var name, not an OMP_-prefixed one.
+        assert_eq!(config_dir_env("omp"), Some("PI_CODING_AGENT_DIR"));
+        // No single config-dir redirect upstream.
         assert_eq!(config_dir_env("opencode"), None);
+        assert_eq!(config_dir_env("gemini"), None);
     }
 
     #[test]

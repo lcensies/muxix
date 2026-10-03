@@ -26,6 +26,20 @@ pub fn settings_file() -> Option<PathBuf> {
     settings_path()
 }
 
+/// Gemini CLI user-scope skills: `~/.gemini/skills/<name>/SKILL.md`.
+///
+/// `~/.agents/skills/` is an accepted alias upstream; muxix writes the
+/// agent-owned path so an uninstall touches only Gemini's tree.
+pub fn skills_dir() -> Option<PathBuf> {
+    gemini_dir().map(|d| d.join("skills"))
+}
+
+/// Gemini CLI user-scope subagents: `~/.gemini/agents/<name>.md`, markdown with
+/// YAML frontmatter — the same document shape Claude and pi accept.
+pub fn subagents_dir() -> Option<PathBuf> {
+    gemini_dir().map(|d| d.join("agents"))
+}
+
 pub struct Bootstrapper {
     gemini_dir: PathBuf,
 }
@@ -66,6 +80,7 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
         file: settings_path()?,
         event_key: key,
         requires_plugin: None,
+        dialect: crate::command::setup::agent_hooks::HookDialect::Grouped,
     })
 }
 
