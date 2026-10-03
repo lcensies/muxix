@@ -41,8 +41,8 @@ declared in Nix and materialized on activation.
     mergeStrategy = "rebase";
 
     bootstrap = {
-      default_skills = [ "./skills/muxix" ];
-      default_prompt_components = [ "fff" "slim-comments" ];
+      skills = [ "./skills/muxix" ];
+      prompt_components = [ "fff" "slim-comments" ];
       theme.default = "catppuccin";
     };
 
@@ -119,7 +119,7 @@ programs.muxix = {
     personal.agent = "claude";
     corp = {
       agent = "codex";
-      bootstrap.default_prompt_components = [ "no-coauthor" ];
+      bootstrap.prompt_components = [ "no-coauthor" ];
     };
   };
 };

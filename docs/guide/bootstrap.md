@@ -13,7 +13,7 @@ installed and applies the manifest to each of them.
 
 ```yaml
 bootstrap:
-  default_prompt_components:
+  prompt_components:
     - fff
   features:
     ponytail:
@@ -21,10 +21,10 @@ bootstrap:
       default: ponytail
   agents:
     claude code:
-      additional_prompt_components:
+      add_prompt_components:
         - code-review
     pi:
-      additional_plugins:
+      add_plugins:
         - npm:pi-web-access
 ```
 
@@ -46,7 +46,7 @@ to do it:
 ```yaml
 # ~/.config/muxix/config.yaml -- hooks are global-only (see below)
 bootstrap:
-  default_skills:
+  skills:
     - path: ./skills/auto-git
       hooks:
         turn-done:
@@ -101,7 +101,7 @@ says why it cannot:
 ```yaml
 bootstrap:
   npm_prefix: ~/.local        # default; bins land in ~/.local/bin
-  default_skills:
+  skills:
     - path: ./skills/openspec-taskflow
       requires:
         npm: ["@fission-ai/openspec@1.6.0"]   # installed by muxix, pinned
@@ -138,10 +138,10 @@ For a given agent, `muxix setup` computes four merged lists:
 
 | List                  | Sources (in order)                                                                 |
 | --------------------- | ---------------------------------------------------------------------------------- |
-| **Plugins**           | `default_plugins` → `agents.<id>.additional_plugins` → `features` with an agent plugin |
-| **Skills**            | `default_skills` → `agents.<id>.additional_skills`                                  |
-| **Subagents**         | `default_subagents` → `agents.<id>.additional_subagents`                            |
-| **Prompt components** | `default_prompt_components` → `features` falling back to `default` → `agents.<id>.additional_prompt_components`, minus `agents.<id>.disabled_prompt_components` |
+| **Plugins**           | `plugins` → `agents.<id>.add_plugins` → `features` with an agent plugin |
+| **Skills**            | `skills` → `agents.<id>.add_skills`                                  |
+| **Subagents**         | `subagents` → `agents.<id>.add_subagents`                            |
+| **Prompt components** | `prompt_components` → `features` falling back to `default` → `agents.<id>.add_prompt_components`, minus `agents.<id>.exclude_prompt_components` |
 
 The lists are de-duplicated and sorted before installation. [`theme`](#theme) is
 resolved separately: it is a single value per agent, not a list.
@@ -191,7 +191,7 @@ Resolution per agent:
 3. Otherwise the feature is a no-op for that agent.
 
 A feature's prompt fallback can still be suppressed for a specific agent via that
-agent's `disabled_prompt_components`.
+agent's `exclude_prompt_components`.
 
 ::: tip Why features exist
 Before features, sharing a plugin list across agents (e.g. a YAML anchor from
@@ -240,7 +240,7 @@ installer.
 ::: warning pi and omp specs are not interchangeable
 `pi` uses **scheme-prefixed** specs (`npm:`, `git:`); `omp` uses **bare** npm
 specs / marketplace refs with **no** prefix. Feeding pi-style `npm:foo` to omp
-fails with `Invalid package name`. Give each agent its own `additional_plugins`
+fails with `Invalid package name`. Give each agent its own `add_plugins`
 (or use a feature with per-agent entries) rather than sharing one list.
 :::
 
@@ -282,16 +282,16 @@ see [Injection method](#pi-and-omp-injection-method).
 
 ```yaml
 bootstrap:
-  default_prompt_components:
+  prompt_components:
     - caveman-full     # .muxix/prompt-components/caveman-full.md
     - fff
     - ~/dotfiles/prompt-components/jj.md   # absolute paths work too
   agents:
     claude code:
-      additional_prompt_components:
+      add_prompt_components:
         - code-review
     pi:
-      disabled_prompt_components:
+      exclude_prompt_components:
         - caveman-full   # pi opts out of this one
 ```
 
@@ -339,12 +339,12 @@ Skills are directories containing a `SKILL.md`. Sources are local paths:
 
 ```yaml
 bootstrap:
-  default_skills:
+  skills:
     - ./shared/skills/my-skill                        # directory
     - ./shared/skills/other/SKILL.md                  # or the file itself
   agents:
     claude code:
-      additional_skills:
+      add_skills:
         - ./skills/claude-only
 ```
 
@@ -410,7 +410,7 @@ body) or an **inline** entry rendered to that same format on install:
 
 ```yaml
 bootstrap:
-  default_subagents:
+  subagents:
     - ./agents/reviewer.md          # file: name is the file stem ("reviewer")
     - name: planner                 # inline
       description: Plans work before execution
@@ -420,7 +420,7 @@ bootstrap:
         You are a planning specialist...
   agents:
     claude code:
-      additional_subagents:
+      add_subagents:
         - ./agents/claude-only.md
 ```
 
@@ -544,7 +544,7 @@ settings file by `muxix setup`.
 bootstrap:
   agents:
     pi:
-      additional_plugins:
+      add_plugins:
         - npm:pi-unified-exec # session-oriented exec, replaces blocking bash
       settings:
         # Built-in tools pi starts with. `bash` is omitted: the plugin above
@@ -612,7 +612,7 @@ bootstrap:
 
 ```yaml
 bootstrap:
-  default_prompt_components:
+  prompt_components:
     - fff
 
   features:
@@ -624,10 +624,10 @@ bootstrap:
 
   agents:
     claude code:
-      additional_prompt_components:
+      add_prompt_components:
         - code-review
     pi:
-      additional_plugins:
+      add_plugins:
         - npm:pi-web-access
         - npm:pi-mcp-adapter
         - npm:@ff-labs/pi-fff

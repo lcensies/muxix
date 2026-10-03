@@ -4375,7 +4375,7 @@ sandbox:
 submodules:
   worktrees: false
 bootstrap:
-  default_subagents:
+  subagents:
   - ./b
 events:
   enabled: null
@@ -4479,7 +4479,7 @@ sandbox:
 submodules:
   worktrees: false
 bootstrap:
-  default_skills:
+  skills:
   - ./a
 events:
   enabled: null

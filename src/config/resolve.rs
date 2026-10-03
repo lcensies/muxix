@@ -275,7 +275,7 @@ pub fn merge_values(
             // replace must not wipe the trusted values — otherwise any project
             // declaring `bootstrap` silently disables every global hook. That
             // covers both `bootstrap.hooks` and hook-carrying entries of
-            // `bootstrap.default_skills` (a skill and its hooks are declared
+            // `bootstrap.skills` (a skill and its hooks are declared
             // as one unit and must survive as one).
             let mut over = over;
             if path == "bootstrap"
@@ -423,14 +423,14 @@ fn expand_placeholder(base: &[Value], over: &[Value]) -> Vec<Value> {
     out
 }
 
-/// Carry `default_skills` entries that declare hooks across a bootstrap
+/// Carry `skills` entries that declare hooks across a bootstrap
 /// replace. Such entries can only come from trusted layers (untrusted ones
 /// have hooks stripped by [`strip_skill_hooks`] before merging), and a skill
 /// with its hooks is one unit — dropping it would silently disable the hook.
 /// An entry in `over` with the same `path`/`url` is superseded by the trusted
 /// one.
 fn graft_hook_skills(base_map: &Mapping, over_map: &mut Mapping) {
-    let skills_key = Value::String("default_skills".to_string());
+    let skills_key = Value::String("skills".to_string());
     let hooks_key = Value::String("hooks".to_string());
 
     fn source_of(entry: &Value) -> Option<&Value> {
@@ -531,14 +531,14 @@ fn strip_skill_hooks(layer: &mut Layer, warnings: &mut Vec<LayerWarning>) {
         String::new()
     }
 
-    if let Some(list) = bootstrap.get_mut("default_skills") {
-        strip_list(list, "bootstrap.default_skills");
+    if let Some(list) = bootstrap.get_mut("skills") {
+        strip_list(list, "bootstrap.skills");
     }
 
     if let Some(Value::Mapping(agents)) = bootstrap.get_mut("agents") {
         for (_, overrides) in agents.iter_mut() {
-            if let Some(list) = overrides.get_mut("additional_skills") {
-                strip_list(list, "bootstrap.agents.*.additional_skills");
+            if let Some(list) = overrides.get_mut("add_skills") {
+                strip_list(list, "bootstrap.agents.*.add_skills");
             }
         }
     }
@@ -754,12 +754,12 @@ mod tests {
 
     #[test]
     fn bootstrap_replaces_wholesale() {
-        // Deep-merging would leave `default_skills` behind from the base.
+        // Deep-merging would leave `skills` behind from the base.
         let got = merge2(
-            "bootstrap:\n  default_skills: [a]\n  default_subagents: [s]",
-            "bootstrap:\n  default_plugins: [p]",
+            "bootstrap:\n  skills: [a]\n  subagents: [s]",
+            "bootstrap:\n  plugins: [p]",
         );
-        assert_eq!(got, yaml("bootstrap:\n  default_plugins: [p]"));
+        assert_eq!(got, yaml("bootstrap:\n  plugins: [p]"));
     }
 
     #[test]
@@ -768,24 +768,24 @@ mod tests {
         // bootstrap must not drop it (and a same-source project entry without
         // hooks is superseded, not duplicated).
         let got = merge2(
-            "bootstrap:\n  default_skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x\n    - /s/plain",
-            "bootstrap:\n  default_skills: [/p/own]",
+            "bootstrap:\n  skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x\n    - /s/plain",
+            "bootstrap:\n  skills: [/p/own]",
         );
         assert_eq!(
             got,
             yaml(
-                "bootstrap:\n  default_skills:\n    - /p/own\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x"
+                "bootstrap:\n  skills:\n    - /p/own\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x"
             )
         );
 
         let superseded = merge2(
-            "bootstrap:\n  default_skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x",
-            "bootstrap:\n  default_skills:\n    - path: /s/auto-git",
+            "bootstrap:\n  skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x",
+            "bootstrap:\n  skills:\n    - path: /s/auto-git",
         );
         assert_eq!(
             superseded,
             yaml(
-                "bootstrap:\n  default_skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x"
+                "bootstrap:\n  skills:\n    - path: /s/auto-git\n      hooks:\n        turn-done:\n          - command: x"
             )
         );
     }
@@ -795,12 +795,12 @@ mod tests {
         // hooks is global-only (stripped from untrusted layers before merging),
         // so a project bootstrap must not wipe it.
         let got = merge2(
-            "bootstrap:\n  hooks:\n    turn-done:\n      - command: x\n  default_skills: [a]",
-            "bootstrap:\n  default_plugins: [p]",
+            "bootstrap:\n  hooks:\n    turn-done:\n      - command: x\n  skills: [a]",
+            "bootstrap:\n  plugins: [p]",
         );
         assert_eq!(
             got,
-            yaml("bootstrap:\n  default_plugins: [p]\n  hooks:\n    turn-done:\n      - command: x")
+            yaml("bootstrap:\n  plugins: [p]\n  hooks:\n    turn-done:\n      - command: x")
         );
     }
 

@@ -606,7 +606,7 @@ pub struct AgentProfileAgent {
     /// Plugin specs added to the base package list. Paths are absolutized
     /// (`~/` → home, relative → base agent dir); scheme specs pass verbatim.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_plugins: Vec<String>,
+    pub add_plugins: Vec<String>,
 
     /// Base package entries removed from the overlay (exact string match).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -614,7 +614,7 @@ pub struct AgentProfileAgent {
 
     /// Skill sources linked into the overlay at `skills/<basename>`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_skills: Vec<String>,
+    pub add_skills: Vec<String>,
 
     /// Installed skill dir names omitted from the overlay's `skills/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -622,7 +622,7 @@ pub struct AgentProfileAgent {
 
     /// Prompt components added to the overlay's rendered prompt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_prompt_components: Vec<String>,
+    pub add_prompt_components: Vec<String>,
 
     /// Prompt components removed from the overlay's rendered prompt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -3932,7 +3932,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # ~/.omp/agent/skills). Each entry is a path to a directory containing a
 #   # SKILL.md, relative to the project root or absolute. Codex, Copilot, and
 #   # Gemini have no skills directory and are skipped.
-#   default_skills:
+#   skills:
 #     - ./skills/muxix
 #     # Table form: what the skill needs. `npm` packages are installed by
 #     # muxix into `npm_prefix` (pinned when `@version` is given, pruned when
@@ -3952,12 +3952,12 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # Prompt components merged into each agent's system prompt. A bare name
 #   # loads .muxix/prompt-components/<name>.md; anything containing `/` is a
 #   # path to a .md file (absolute, ~, or relative to the project root).
-#   default_prompt_components:
+#   prompt_components:
 #     - house-style
 #     - ~/repos/harness/prompt-components/jj.md
 #
 #   # Plugins installed for agents that support them (pi, omp).
-#   default_plugins:
+#   plugins:
 #     - npm:pi-web-access
 #
 #   # Agent-agnostic capabilities: a feature resolves to that agent's plugin
@@ -3971,11 +3971,11 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # ("claude code", "opencode", "pi", "omp", "codex", "gemini cli").
 #   agents:
 #     claude code:
-#       additional_skills:
+#       add_skills:
 #         - ./skills/worktree
-#       additional_prompt_components:
+#       add_prompt_components:
 #         - code-review
-#       disabled_prompt_components:
+#       exclude_prompt_components:
 #         - ponytail
 "#;
 
@@ -4097,7 +4097,7 @@ agent_profiles:
     description: corp litellm
     agents:
       pi:
-        additional_plugins: ["~/repos/x"]
+        add_plugins: ["~/repos/x"]
         exclude_plugins: ["npm:pi-cliproxyapi"]
         exclude_features: ["taskflow"]
         exclude_paths: ["extensions/x.ts"]

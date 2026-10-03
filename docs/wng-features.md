@@ -150,18 +150,18 @@ agents from `.muxix.yaml`:
 ```yaml
 bootstrap:
   theme: catppuccin                     # per-agent map also allowed
-  default_plugins:
+  plugins:
     - npm:pi-web-access
-  default_skills:
+  skills:
     - ./skills/worktree                 # local paths only (remote is skipped)
-  default_subagents:
+  subagents:
     - ./agents/reviewer.md
     - name: planner                     # or inline
       description: Plans work before execution
       model: haiku                      # resolved against `providers:`
       prompt: |
         You are a planning specialist...
-  default_prompt_components:            # .muxix/prompt-components/<name>.md
+  prompt_components:            # .muxix/prompt-components/<name>.md
     - fff
   template_vars:                        # rendered into each SKILL.md
     review_cmd:
@@ -174,7 +174,7 @@ bootstrap:
   agents:
     claude code:
       default_provider: anthropic
-      additional_prompt_components: [code-review]
+      add_prompt_components: [code-review]
       subagent_models:
         explore: haiku
 ```

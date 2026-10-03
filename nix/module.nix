@@ -205,8 +205,8 @@ in
       default = { };
       example = lib.literalExpression ''
         {
-          default_skills = [ "./skills/muxix" ];
-          default_prompt_components = [ "fff" ];
+          skills = [ "./skills/muxix" ];
+          prompt_components = [ "fff" ];
           theme.default = "catppuccin";
         }
       '';

@@ -384,7 +384,7 @@ fn normalize(p: &Path) -> PathBuf {
     out
 }
 
-/// Resolve an `additional_skills` source to an absolute path: `~/` → home,
+/// Resolve an `add_skills` source to an absolute path: `~/` → home,
 /// relative → project root.
 fn resolve_skill_source(src: &str, project_root: &Path) -> PathBuf {
     if let Some(rest) = src.strip_prefix("~/") {
@@ -458,16 +458,16 @@ fn generate_pi_settings(
         }
     }
 
-    for add in &deltas.additional_plugins {
+    for add in &deltas.add_plugins {
         let spec = absolutize_spec(add, base);
         if let Some(name) = spec.strip_prefix("npm:") {
             if !base.join("npm/node_modules").join(name).exists() {
                 warnings.push(format!(
-                    "additional_plugins: `{spec}` not fetched under base npm tree; overlays install nothing"
+                    "add_plugins: `{spec}` not fetched under base npm tree; overlays install nothing"
                 ));
             }
         } else if !spec.contains(':') && !Path::new(&spec).exists() {
-            warnings.push(format!("additional_plugins: path `{spec}` does not exist"));
+            warnings.push(format!("add_plugins: path `{spec}` does not exist"));
         }
         if !arr.iter().any(|v| v.as_str() == Some(spec.as_str())) {
             arr.push(Value::String(spec));
@@ -498,7 +498,7 @@ fn generate_pi_prompt(
         .filter_map(|k| bootstrap.features.get(k))
         .filter_map(|f| f.prompt_component_for(Agent::Pi))
         .collect();
-    let has_delta = !deltas.additional_prompt_components.is_empty()
+    let has_delta = !deltas.add_prompt_components.is_empty()
         || !deltas.exclude_prompt_components.is_empty()
         || !feature_components.is_empty();
     if !has_delta {
@@ -517,7 +517,7 @@ fn generate_pi_prompt(
         !deltas.exclude_prompt_components.contains(c)
             && !feature_components.iter().any(|f| f == c)
     });
-    comps.extend(deltas.additional_prompt_components.iter().cloned());
+    comps.extend(deltas.add_prompt_components.iter().cloned());
     comps.sort();
     comps.dedup();
 
@@ -552,7 +552,7 @@ pub fn pi_delta_plan(
     }
     let mut warnings = Vec::new();
 
-    let needs_settings = !deltas.additional_plugins.is_empty()
+    let needs_settings = !deltas.add_plugins.is_empty()
         || !deltas.exclude_plugins.is_empty()
         || deltas.settings.is_some()
         || deltas.exclude_features.iter().any(|k| {
@@ -572,7 +572,7 @@ pub fn pi_delta_plan(
                 dp.generated.insert(rel, content);
             }
         }
-        None if !deltas.additional_prompt_components.is_empty()
+        None if !deltas.add_prompt_components.is_empty()
             || !deltas.exclude_prompt_components.is_empty() =>
         {
             warnings.push(
@@ -590,13 +590,13 @@ pub fn pi_delta_plan(
         }
         dp.excludes.insert(rel);
     }
-    for src in &deltas.additional_skills {
+    for src in &deltas.add_skills {
         let abs = resolve_skill_source(src, project_root);
         if !abs.exists() {
-            warnings.push(format!("additional_skills: `{}` does not exist", abs.display()));
+            warnings.push(format!("add_skills: `{}` does not exist", abs.display()));
         }
         let Some(name) = abs.file_name() else {
-            warnings.push(format!("additional_skills: `{src}` has no basename"));
+            warnings.push(format!("add_skills: `{src}` has no basename"));
             continue;
         };
         dp.extra_links.insert(Path::new("skills").join(name), abs.clone());
@@ -844,7 +844,7 @@ mod tests {
         std::fs::create_dir_all(&ext).unwrap();
 
         let d = deltas(|d| {
-            d.additional_plugins = vec![ext.to_string_lossy().into_owned()];
+            d.add_plugins = vec![ext.to_string_lossy().into_owned()];
             d.exclude_plugins = vec!["npm:pi-cliproxyapi".into()];
             d.settings = Some(serde_json::json!({"defaultProvider": "litellm", "taskflow": null}));
         });
@@ -905,7 +905,7 @@ mod tests {
 
         let d = deltas(|d| {
             d.exclude_skills = vec!["drop".into()];
-            d.additional_skills = vec![extra.to_string_lossy().into_owned()];
+            d.add_skills = vec![extra.to_string_lossy().into_owned()];
         });
         let dp = pi_delta_plan(&base, &source, &d, None, tmp.path()).unwrap();
         let p = plan(&base, &source, &dp);

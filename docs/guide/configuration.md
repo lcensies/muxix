@@ -371,7 +371,7 @@ cross-agent **features** once and applies them to every detected agent via
 
 ```yaml
 bootstrap:
-  default_prompt_components:
+  prompt_components:
     - fff
   features:
     ponytail:
@@ -379,7 +379,7 @@ bootstrap:
       default: ponytail
   agents:
     claude code:
-      additional_prompt_components:
+      add_prompt_components:
         - code-review
 ```
 
@@ -400,8 +400,8 @@ muxix bootstrap list --agent pi   # what pi resolves to, with each item's origin
 muxix bootstrap sync              # apply hand-edited config (full `muxix setup`)
 ```
 
-- `--agent <name>` writes to `bootstrap.agents.<name>.additional_*`; without it
-  the entry goes to the shared `default_*` list.
+- `--agent <name>` writes to `bootstrap.agents.<name>.add_*`; without it the
+  entry goes to the shared `bootstrap.*` list.
 - Edits land in the project `.muxix.yaml` when one is discoverable, otherwise
   the global config. `--global` and `--project` force the choice; the file
   written is always printed.

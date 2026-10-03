@@ -179,7 +179,7 @@ fn agent_profiles_apply_declared_deltas() {
     std::fs::create_dir_all(&litellm).unwrap();
 
     let deltas = AgentProfileAgent {
-        additional_plugins: vec![litellm.to_string_lossy().into_owned()],
+        add_plugins: vec![litellm.to_string_lossy().into_owned()],
         exclude_plugins: vec!["npm:pi-cliproxyapi".into()],
         settings: Some(serde_json::json!({"defaultProvider": "litellm"})),
         ..Default::default()
@@ -305,8 +305,8 @@ fn dropping_a_declared_feature_removes_it_on_the_next_run() {
 
     let mut config = Config::default();
     config.bootstrap = Some(BootstrapConfig {
-        default_skills: vec![Source::LocalPath("./skills/demo".into()).into()],
-        default_subagents: vec![SubagentDef::File("./agents/scout.md".into())],
+        skills: vec![Source::LocalPath("./skills/demo".into()).into()],
+        subagents: vec![SubagentDef::File("./agents/scout.md".into())],
         ..Default::default()
     });
 

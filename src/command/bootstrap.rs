@@ -100,10 +100,10 @@ impl Kind {
     /// The shared list key, and the per-agent one under `bootstrap.agents.<a>`.
     fn keys(self) -> (&'static str, &'static str) {
         match self {
-            Kind::Plugin => ("default_plugins", "additional_plugins"),
-            Kind::Skill => ("default_skills", "additional_skills"),
-            Kind::Subagent => ("default_subagents", "additional_subagents"),
-            Kind::Prompt => ("default_prompt_components", "additional_prompt_components"),
+            Kind::Plugin => ("plugins", "add_plugins"),
+            Kind::Skill => ("skills", "add_skills"),
+            Kind::Subagent => ("subagents", "add_subagents"),
+            Kind::Prompt => ("prompt_components", "add_prompt_components"),
         }
     }
 
@@ -365,7 +365,7 @@ fn run_list(agent_filter: Option<String>) -> Result<()> {
         }
         println!("{}", agent.profile_id());
         for p in &plugins {
-            let origin = if bootstrap.default_plugins.contains(p) {
+            let origin = if bootstrap.plugins.contains(p) {
                 "shared"
             } else if bootstrap
                 .features
@@ -379,7 +379,7 @@ fn run_list(agent_filter: Option<String>) -> Result<()> {
             println!("  plugin    {p}  [{origin}]");
         }
         for s in &skills {
-            let origin = if bootstrap.default_skills.contains(s) {
+            let origin = if bootstrap.skills.contains(s) {
                 "shared"
             } else {
                 agent.profile_id()
@@ -390,7 +390,7 @@ fn run_list(agent_filter: Option<String>) -> Result<()> {
             println!("  subagent  {}", subagent_label(s));
         }
         for p in &prompts {
-            let origin = if bootstrap.default_prompt_components.contains(p) {
+            let origin = if bootstrap.prompt_components.contains(p) {
                 "shared"
             } else if bootstrap
                 .features
@@ -440,14 +440,14 @@ mod tests {
 
     #[test]
     fn key_paths_match_the_config_schema() {
-        assert_eq!(key_path(Kind::Plugin, None), ["bootstrap", "default_plugins"]);
+        assert_eq!(key_path(Kind::Plugin, None), ["bootstrap", "plugins"]);
         assert_eq!(
             key_path(Kind::Skill, Some(Agent::Pi)),
-            ["bootstrap", "agents", "pi", "additional_skills"]
+            ["bootstrap", "agents", "pi", "add_skills"]
         );
         assert_eq!(
             key_path(Kind::Prompt, Some(Agent::Claude)),
-            ["bootstrap", "agents", "claude", "additional_prompt_components"]
+            ["bootstrap", "agents", "claude", "add_prompt_components"]
         );
     }
 
@@ -475,11 +475,11 @@ mod tests {
 
     #[test]
     fn an_emptied_list_removes_the_key() {
-        assert!(render("default_plugins", &[]).unwrap().is_none());
+        assert!(render("plugins", &[]).unwrap().is_none());
         let one = vec![serde_yaml::Value::String("a".into())];
         assert_eq!(
-            render("default_plugins", &one).unwrap().as_deref(),
-            Some("default_plugins:\n- a")
+            render("plugins", &one).unwrap().as_deref(),
+            Some("plugins:\n- a")
         );
     }
 }

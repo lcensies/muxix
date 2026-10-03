@@ -258,12 +258,12 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "bootstrap replaced wholesale",
-        global: "bootstrap:\n  default_skills: ['./a']\n  default_prompt_components: ['x']",
-        project: "bootstrap:\n  default_subagents: ['./b']",
+        global: "bootstrap:\n  skills: ['./a']\n  prompt_components: ['x']",
+        project: "bootstrap:\n  subagents: ['./b']",
     },
     Case {
         name: "bootstrap global only",
-        global: "bootstrap:\n  default_skills: ['./a']",
+        global: "bootstrap:\n  skills: ['./a']",
         project: "agent: codex",
     },
     Case {

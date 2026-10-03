@@ -184,7 +184,7 @@ mod tests {
 
     const SAMPLE: &str = "# global config\nagent: claude\n\n# panes are documented upstream\npanes:\n  - command: <agent>\n\nmode: window\n";
 
-    const NESTED: &str = "# top\nbootstrap:\n  # keep this comment\n  default_plugins:\n    - old\n  agents:\n    pi:\n      additional_plugins:\n        - a\n\nmode: window\n";
+    const NESTED: &str = "# top\nbootstrap:\n  # keep this comment\n  plugins:\n    - old\n  agents:\n    pi:\n      add_plugins:\n        - a\n\nmode: window\n";
 
     #[test]
     fn replaces_scalar_key_and_keeps_comments() {
@@ -236,15 +236,15 @@ mod tests {
     fn replaces_a_nested_list() {
         let out = splice_path(
             NESTED,
-            &["bootstrap", "default_plugins"],
-            Some("default_plugins:\n- old\n- new"),
+            &["bootstrap", "plugins"],
+            Some("plugins:\n- old\n- new"),
         );
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(value["bootstrap"]["default_plugins"][1].as_str(), Some("new"));
+        assert_eq!(value["bootstrap"]["plugins"][1].as_str(), Some("new"));
         assert!(out.contains("# keep this comment"), "{out}");
         assert!(out.contains("mode: window"));
         assert_eq!(
-            value["bootstrap"]["agents"]["pi"]["additional_plugins"][0].as_str(),
+            value["bootstrap"]["agents"]["pi"]["add_plugins"][0].as_str(),
             Some("a"),
             "sibling keys survive"
         );
@@ -254,15 +254,15 @@ mod tests {
     fn replaces_a_deeply_nested_list() {
         let out = splice_path(
             NESTED,
-            &["bootstrap", "agents", "pi", "additional_plugins"],
-            Some("additional_plugins:\n- a\n- b"),
+            &["bootstrap", "agents", "pi", "add_plugins"],
+            Some("add_plugins:\n- a\n- b"),
         );
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
         assert_eq!(
-            value["bootstrap"]["agents"]["pi"]["additional_plugins"][1].as_str(),
+            value["bootstrap"]["agents"]["pi"]["add_plugins"][1].as_str(),
             Some("b")
         );
-        assert_eq!(value["bootstrap"]["default_plugins"][0].as_str(), Some("old"));
+        assert_eq!(value["bootstrap"]["plugins"][0].as_str(), Some("old"));
         assert!(out.contains("mode: window"));
     }
 
@@ -270,16 +270,16 @@ mod tests {
     fn creates_missing_levels() {
         let out = splice_path(
             NESTED,
-            &["bootstrap", "agents", "claude", "additional_skills"],
-            Some("additional_skills:\n- ./skills/x"),
+            &["bootstrap", "agents", "claude", "add_skills"],
+            Some("add_skills:\n- ./skills/x"),
         );
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
         assert_eq!(
-            value["bootstrap"]["agents"]["claude"]["additional_skills"][0].as_str(),
+            value["bootstrap"]["agents"]["claude"]["add_skills"][0].as_str(),
             Some("./skills/x")
         );
         assert_eq!(
-            value["bootstrap"]["agents"]["pi"]["additional_plugins"][0].as_str(),
+            value["bootstrap"]["agents"]["pi"]["add_plugins"][0].as_str(),
             Some("a"),
             "the existing agent is untouched"
         );
@@ -289,23 +289,23 @@ mod tests {
     fn creates_the_whole_path_in_an_empty_file() {
         let out = splice_path(
             "",
-            &["bootstrap", "agents", "pi", "additional_plugins"],
-            Some("additional_plugins:\n- x"),
+            &["bootstrap", "agents", "pi", "add_plugins"],
+            Some("add_plugins:\n- x"),
         );
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
         assert_eq!(
-            value["bootstrap"]["agents"]["pi"]["additional_plugins"][0].as_str(),
+            value["bootstrap"]["agents"]["pi"]["add_plugins"][0].as_str(),
             Some("x")
         );
     }
 
     #[test]
     fn removes_a_nested_list() {
-        let out = splice_path(NESTED, &["bootstrap", "default_plugins"], None);
+        let out = splice_path(NESTED, &["bootstrap", "plugins"], None);
         let value: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
-        assert!(value["bootstrap"].get("default_plugins").is_none());
+        assert!(value["bootstrap"].get("plugins").is_none());
         assert_eq!(
-            value["bootstrap"]["agents"]["pi"]["additional_plugins"][0].as_str(),
+            value["bootstrap"]["agents"]["pi"]["add_plugins"][0].as_str(),
             Some("a")
         );
     }

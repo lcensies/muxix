@@ -111,7 +111,7 @@ description: Release notes and version history for workmux
 
 - A project-declared `bootstrap` section (which replaces the global one
   wholesale) silently wiped global hook declarations — both `bootstrap.hooks`
-  and hook-carrying `default_skills` entries — so global-only hooks never
+  and hook-carrying `skills` entries — so global-only hooks never
   installed in any project that used `bootstrap`. Trusted hook declarations
   now survive the replace.
 - `orchestrate`, `daemon`, `proxy_chain`, `submodules`, `agent_runtime`, and

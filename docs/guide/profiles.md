@@ -85,7 +85,7 @@ profiles:
   corp:
     agent: codex
     bootstrap:
-      default_prompt_components: [no-coauthor]
+      prompt_components: [no-coauthor]
   python:
     files:
       symlink: [.venv]
@@ -223,13 +223,13 @@ agent_profiles:
     description: pi via corp LiteLLM proxy
     agents:
       pi:
-        additional_plugins:
+        add_plugins:
           - ~/dotfiles/pi/pi-provider-litellm
         exclude_plugins:            # base packages entries, exact match
           - npm:pi-cliproxyapi
-        additional_skills: []       # source paths, linked at skills/<basename>
+        add_skills: []       # source paths, linked at skills/<basename>
         exclude_skills: []          # installed skill dir names
-        additional_prompt_components: []
+        add_prompt_components: []
         exclude_prompt_components: []
         exclude_features: []        # drops the feature's plugin and/or prompt component
         exclude_paths: []           # agent-dir-relative files/dirs, the raw escape hatch

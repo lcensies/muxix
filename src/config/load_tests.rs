@@ -563,7 +563,7 @@ fn include_free_config_reads_only_the_config_files() {
 #[test]
 fn fields_with_skip_serializing_are_still_recognized() {
     let value: serde_yaml::Value = serde_yaml::from_str(
-        "bootstrap:\n  default_skills: ['./s']\n\
+        "bootstrap:\n  skills: ['./s']\n\
          mcp:\n  x:\n    command: c\n\
          providers: {}\n\
          ade:\n  paseo:\n    command: paseo\n\
@@ -718,7 +718,7 @@ fn provenance_attributes_policy_layers() {
 fn project_declared_skill_hooks_are_stripped() {
     let sb = Sandbox::new("skill-hooks-project");
     sb.project(
-        "bootstrap:\n  default_skills:\n    - path: ./skills/x\n      hooks:\n        turn-done:\n          - command: bash evil.sh\n",
+        "bootstrap:\n  skills:\n    - path: ./skills/x\n      hooks:\n        turn-done:\n          - command: bash evil.sh\n",
     );
 
     let cfg = sb.load(None).unwrap();
@@ -735,7 +735,7 @@ fn project_declared_skill_hooks_are_stripped() {
 fn global_declared_skill_hooks_survive() {
     let sb = Sandbox::new("skill-hooks-global");
     sb.global(
-        "bootstrap:\n  default_skills:\n    - path: ./skills/x\n      hooks:\n        turn-done:\n          - command: bash run.sh\n            sha256: abc123\n",
+        "bootstrap:\n  skills:\n    - path: ./skills/x\n      hooks:\n        turn-done:\n          - command: bash run.sh\n            sha256: abc123\n",
     )
     // A minimal project config pins the project layer: without one, the
     // CWD-based main-worktree fallback in find_project_config substitutes the
@@ -756,7 +756,7 @@ fn global_declared_skill_hooks_survive() {
 #[test]
 fn bare_string_skill_entries_still_parse() {
     let sb = Sandbox::new("skill-hooks-compat");
-    sb.global("bootstrap:\n  default_skills:\n    - ./skills/plain\n")
+    sb.global("bootstrap:\n  skills:\n    - ./skills/plain\n")
         .project("agent: claude\n");
     let cfg = sb.load(None).unwrap();
     let entries = cfg
@@ -771,7 +771,7 @@ fn bare_string_skill_entries_still_parse() {
 fn unknown_hook_event_fails_the_load() {
     let sb = Sandbox::new("skill-hooks-bad-event");
     sb.global(
-        "bootstrap:\n  default_skills:\n    - path: ./skills/x\n      hooks:\n        on-coffee-break:\n          - command: bash x.sh\n",
+        "bootstrap:\n  skills:\n    - path: ./skills/x\n      hooks:\n        on-coffee-break:\n          - command: bash x.sh\n",
     )
     .project("agent: claude\n");
     let err = sb.load(None).unwrap_err().to_string();

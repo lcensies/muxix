@@ -323,9 +323,9 @@ mcp:                             # rendered into .mcp.json by `muxix mcp sync`
     args: ["-y", "@upstash/context7-mcp"]
 
 bootstrap:                       # applied by `muxix setup`
-  default_skills:
+  skills:
     - ./skills/muxix           # local path, or {url:, ref:} for a repo
-  default_prompt_components:     # from .muxix/prompt-components/<name>.md
+  prompt_components:     # from .muxix/prompt-components/<name>.md
     - fff
   features:                      # agent-agnostic capability -> plugin or prompt
     ponytail:
@@ -333,9 +333,9 @@ bootstrap:                       # applied by `muxix setup`
       default: ponytail
   agents:
     claude code:                 # key = agent display name, lowercased
-      additional_skills:
+      add_skills:
         - ./skills/worktree
-      additional_prompt_components:
+      add_prompt_components:
         - code-review
 ```
 

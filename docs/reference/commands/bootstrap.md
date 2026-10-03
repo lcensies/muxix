@@ -24,7 +24,7 @@ another project still declares it.
 
 | Flag             | Effect                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------- |
-| `--agent <NAME>` | Write to `bootstrap.agents.<name>.additional_*` instead of the shared `default_*` list     |
+| `--agent <NAME>` | Write to `bootstrap.agents.<name>.add_*` instead of the shared `bootstrap.*` list          |
 | `--global`       | Write the global config                                                                    |
 | `--project`      | Write the project `.muxix.yaml` (fails when there is none)                               |
 | `--no-sync`      | Declare only; do not run setup                                                             |
@@ -45,7 +45,7 @@ muxix bootstrap list --agent pi
 
 Prints what each detected agent resolves to from the effective config, tagging
 each item with its origin: `[shared]`, `[feature]`, or the agent's own
-`additional_*` list.
+`add_*` list.
 
 ## bootstrap sync
 

@@ -741,7 +741,7 @@ mod plugins_tests {
         // No plugins/installed_plugins.json at all: nothing is installed.
         with_claude_dir(tmp.path(), || {
             let config = bootstrap::BootstrapConfig {
-                default_plugins: vec!["ponytail@ponytail".to_string()],
+                plugins: vec!["ponytail@ponytail".to_string()],
                 ..Default::default()
             };
             let project_root = Path::new("/does/not/matter");
@@ -767,7 +767,7 @@ mod plugins_tests {
         .unwrap();
         with_claude_dir(tmp.path(), || {
             let config = bootstrap::BootstrapConfig {
-                default_plugins: vec!["ponytail@ponytail".to_string()],
+                plugins: vec!["ponytail@ponytail".to_string()],
                 ..Default::default()
             };
             let project_root = Path::new("/does/not/matter");
@@ -798,7 +798,7 @@ mod plugins_tests {
     #[test]
     fn plugins_emits_items_in_canonical_agent_order_when_run_concurrently() {
         let config = bootstrap::BootstrapConfig {
-            default_plugins: vec!["a-plugin".to_string(), "b-plugin".to_string()],
+            plugins: vec!["a-plugin".to_string(), "b-plugin".to_string()],
             ..Default::default()
         };
         let project_root = Path::new("/does/not/matter");
@@ -874,7 +874,7 @@ mod plugins_tests {
         }
 
         let config = bootstrap::BootstrapConfig {
-            default_plugins: vec!["./vendor/x".to_string()],
+            plugins: vec!["./vendor/x".to_string()],
             ..Default::default()
         };
         let checks = [check_for(Agent::Pi), check_for(Agent::Codex)];
@@ -1657,7 +1657,7 @@ mod deps_tests {
         with_fake_npm(tmp.path(), || {
             let cfg = config(
                 &prefix,
-                "  default_skills:\n    - path: ./skills/x\n      requires:\n        npm: [\"foo@1.0.0\", \"@s/bar\"]\n        bin: [sh, definitely-not-a-binary-xyz]\nmcp:\n  srv:\n    command: foo\n    requires: {npm: [\"foo@1.0.0\"]}\n",
+                "  skills:\n    - path: ./skills/x\n      requires:\n        npm: [\"foo@1.0.0\", \"@s/bar\"]\n        bin: [sh, definitely-not-a-binary-xyz]\nmcp:\n  srv:\n    command: foo\n    requires: {npm: [\"foo@1.0.0\"]}\n",
             );
 
             // --check: drift, no npm invocation.
@@ -1679,12 +1679,12 @@ mod deps_tests {
             assert_eq!(deps(&cfg, false).iter().filter(|i| i.outcome == Outcome::UpToDate).count(), 3);
 
             // version bump → updated.
-            let cfg2 = config(&prefix, "  default_skills:\n    - path: ./skills/x\n      requires: {npm: [\"foo@2.0.0\"]}\n");
+            let cfg2 = config(&prefix, "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"foo@2.0.0\"]}\n");
             assert_eq!(by_name(&deps(&cfg2, false), "foo").outcome, Outcome::Updated);
             assert_eq!(crate::deps::installed_version(&prefix, "foo").as_deref(), Some("2.0.0"));
 
             // conflicting pins → one failure, nothing installed.
-            let cfg3 = config(&prefix, "  default_skills:\n    - path: ./skills/x\n      requires: {npm: [\"baz@1.0.0\"]}\n    - path: ./skills/y\n      requires: {npm: [\"baz@2.0.0\"]}\n");
+            let cfg3 = config(&prefix, "  skills:\n    - path: ./skills/x\n      requires: {npm: [\"baz@1.0.0\"]}\n    - path: ./skills/y\n      requires: {npm: [\"baz@2.0.0\"]}\n");
             let items = deps(&cfg3, false);
             assert_eq!(by_name(&items, "baz").outcome, Outcome::Failed);
             assert!(crate::deps::installed_version(&prefix, "baz").is_none());
@@ -1717,13 +1717,13 @@ mod deps_tests {
     #[test]
     fn deps_without_requires_is_silent_and_npm_missing_fails() {
         let tmp = tempfile::tempdir().unwrap();
-        let cfg = config(tmp.path(), "  default_skills: [./skills/x]\n");
+        let cfg = config(tmp.path(), "  skills: [./skills/x]\n");
         assert!(deps(&cfg, true).is_empty());
 
         let _g = super::super::tests::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var_os("PATH");
         unsafe { std::env::set_var("PATH", tmp.path()) };
-        let cfg = config(tmp.path(), "  default_skills:\n    - path: ./skills/x\n      requires: {npm: [foo]}\n");
+        let cfg = config(tmp.path(), "  skills:\n    - path: ./skills/x\n      requires: {npm: [foo]}\n");
         let items = deps(&cfg, true);
         unsafe {
             match prev {

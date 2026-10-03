@@ -234,7 +234,7 @@ impl<'de> serde::Deserialize<'de> for SkillEntry {
 /// same format at install time.
 ///
 /// ```yaml
-/// default_subagents:
+/// subagents:
 ///   - ./agents/reviewer.md          # file (default)
 ///   - name: planner                 # inline
 ///     description: Plans work before execution
@@ -328,15 +328,15 @@ impl SubagentDef {
 pub struct AgentBootstrapOverrides {
     /// Additional plugins for this agent only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_plugins: Vec<String>,
+    pub add_plugins: Vec<String>,
 
     /// Additional skills for this agent only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_skills: Vec<SkillEntry>,
+    pub add_skills: Vec<SkillEntry>,
 
     /// Additional subagents for this agent only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_subagents: Vec<SubagentDef>,
+    pub add_subagents: Vec<SubagentDef>,
 
     /// Provider this agent resolves unqualified model names against.
     ///
@@ -357,11 +357,11 @@ pub struct AgentBootstrapOverrides {
 
     /// Additional prompt components for this agent only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub additional_prompt_components: Vec<String>,
+    pub add_prompt_components: Vec<String>,
 
     /// Prompt components to exclude for this agent (overrides defaults and additionals).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_prompt_components: Vec<String>,
+    pub exclude_prompt_components: Vec<String>,
 
     /// RFC 7386 merge patch applied to the agent's own settings file, so
     /// preferences that are not harness items (pi's `defaultTools`,
@@ -430,7 +430,7 @@ impl FeatureConfig {
 pub struct BootstrapConfig {
     /// Default plugins to install for all agents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub default_plugins: Vec<String>,
+    pub plugins: Vec<String>,
 
     /// Named features resolved per-agent to a plugin or a prompt component.
     /// Keeps agent-agnostic intent ("enable ponytail") separate from the
@@ -448,7 +448,7 @@ pub struct BootstrapConfig {
 
     /// Default skills to install for all agents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub default_skills: Vec<SkillEntry>,
+    pub skills: Vec<SkillEntry>,
 
     /// npm global prefix for `requires.npm` installs. Default `~/.local`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -484,12 +484,12 @@ pub struct BootstrapConfig {
 
     /// Default subagents to install for all agents that support them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub default_subagents: Vec<SubagentDef>,
+    pub subagents: Vec<SubagentDef>,
 
     /// Default prompt components to merge for all agents.
     /// Components are loaded from `.muxix/prompt-components/` directory.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub default_prompt_components: Vec<String>,
+    pub prompt_components: Vec<String>,
 
     /// Per-agent overrides.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -589,12 +589,12 @@ impl BootstrapConfig {
 
     /// Get the list of plugins for a specific agent.
     ///
-    /// Combines (1) `default_plugins`, (2) per-agent `additional_plugins`, and
+    /// Combines (1) `plugins`, (2) per-agent `add_plugins`, and
     /// (3) any `features` that provide a plugin impl for this agent.
     pub fn plugins_for(&self, agent: Agent) -> Vec<String> {
-        let mut plugins = self.default_plugins.clone();
+        let mut plugins = self.plugins.clone();
         if let Some(overrides) = self.overrides_for(agent) {
-            plugins.extend(overrides.additional_plugins.clone());
+            plugins.extend(overrides.add_plugins.clone());
         }
         for feature in self.features.values() {
             if let Some(spec) = feature.plugin_for(agent) {
@@ -616,39 +616,39 @@ impl BootstrapConfig {
 
     /// Skills for an agent with their hook declarations intact.
     pub fn skill_entries_for(&self, agent: Agent) -> Vec<SkillEntry> {
-        let mut skills = self.default_skills.clone();
+        let mut skills = self.skills.clone();
         if let Some(overrides) = self.overrides_for(agent) {
-            skills.extend(overrides.additional_skills.clone());
+            skills.extend(overrides.add_skills.clone());
         }
         skills
     }
 
     /// Get the list of subagents for a specific agent.
     pub fn subagents_for(&self, agent: Agent) -> Vec<SubagentDef> {
-        let mut subagents = self.default_subagents.clone();
+        let mut subagents = self.subagents.clone();
         if let Some(overrides) = self.overrides_for(agent) {
-            subagents.extend(overrides.additional_subagents.clone());
+            subagents.extend(overrides.add_subagents.clone());
         }
         subagents
     }
 
     /// Get the list of prompt components for a specific agent.
     ///
-    /// Combines (1) `default_prompt_components`, (2) per-agent
-    /// `additional_prompt_components`, and (3) `features` that fall back to a
+    /// Combines (1) `prompt_components`, (2) per-agent
+    /// `add_prompt_components`, and (3) `features` that fall back to a
     /// `default` prompt component for this agent (i.e. have no plugin impl for
-    /// it). Per-agent `disabled_prompt_components` filters the final set, so a
+    /// it). Per-agent `exclude_prompt_components` filters the final set, so a
     /// feature default can still be suppressed for a specific agent.
     pub fn prompt_components_for(&self, agent: Agent) -> Vec<String> {
-        let mut components = self.default_prompt_components.clone();
+        let mut components = self.prompt_components.clone();
         for feature in self.features.values() {
             if let Some(component) = feature.prompt_component_for(agent) {
                 components.push(component.to_string());
             }
         }
         if let Some(overrides) = self.overrides_for(agent) {
-            components.extend(overrides.additional_prompt_components.clone());
-            components.retain(|c| !overrides.disabled_prompt_components.contains(c));
+            components.extend(overrides.add_prompt_components.clone());
+            components.retain(|c| !overrides.exclude_prompt_components.contains(c));
         }
         components.sort();
         components.dedup();
@@ -1368,7 +1368,7 @@ mod tests {
     #[test]
     fn test_plugins_for_agent_without_overrides() {
         let config = BootstrapConfig {
-            default_plugins: vec!["caveman".to_string(), "opencode".to_string()],
+            plugins: vec!["caveman".to_string(), "opencode".to_string()],
             ..Default::default()
         };
 
@@ -1382,13 +1382,13 @@ mod tests {
         overrides.insert(
             "claude code".to_string(),
             AgentBootstrapOverrides {
-                additional_plugins: vec!["custom-plugin".to_string()],
+                add_plugins: vec!["custom-plugin".to_string()],
                 ..Default::default()
             },
         );
 
         let config = BootstrapConfig {
-            default_plugins: vec!["caveman".to_string()],
+            plugins: vec!["caveman".to_string()],
             agents: overrides,
             ..Default::default()
         };
@@ -1402,7 +1402,7 @@ mod tests {
     #[test]
     fn test_skills_with_mixed_sources() {
         let config = BootstrapConfig {
-            default_skills: vec![
+            skills: vec![
                 Source::LocalPath("./shared/skill1".to_string()).into(),
                 Source::Remote {
                     url: "https://github.com/user/skill-repo".to_string(),
@@ -1420,7 +1420,7 @@ mod tests {
     #[test]
     fn test_prompt_components_for_agent_default() {
         let config = BootstrapConfig {
-            default_prompt_components: vec!["caveman".to_string(), "code-review".to_string()],
+            prompt_components: vec!["caveman".to_string(), "code-review".to_string()],
             ..Default::default()
         };
 
@@ -1434,13 +1434,13 @@ mod tests {
         overrides.insert(
             "claude code".to_string(),
             AgentBootstrapOverrides {
-                additional_prompt_components: vec!["claude-optimization".to_string()],
+                add_prompt_components: vec!["claude-optimization".to_string()],
                 ..Default::default()
             },
         );
 
         let config = BootstrapConfig {
-            default_prompt_components: vec!["caveman".to_string()],
+            prompt_components: vec!["caveman".to_string()],
             agents: overrides,
             ..Default::default()
         };
@@ -1502,7 +1502,7 @@ mod tests {
         overrides.insert(
             "claude code".to_string(),
             AgentBootstrapOverrides {
-                disabled_prompt_components: vec!["ponytail".to_string()],
+                exclude_prompt_components: vec!["ponytail".to_string()],
                 ..Default::default()
             },
         );
@@ -1661,7 +1661,7 @@ agents:
     #[test]
     fn test_install_skills_for_agent_without_skills_dir_is_noop() {
         let config = BootstrapConfig {
-            default_skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
+            skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
             ..Default::default()
         };
         // Codex has no skills directory, so nothing is installed and the
@@ -1697,7 +1697,7 @@ agents:
         }
 
         let config = BootstrapConfig {
-            default_skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
+            skills: vec![Source::LocalPath("./skills/muxix".to_string()).into()],
             ..Default::default()
         };
 
@@ -1783,7 +1783,7 @@ agents:
         }
 
         let config = BootstrapConfig {
-            default_skills: vec![
+            skills: vec![
                 Source::Remote {
                     url: "https://github.com/user/cool-skill".to_string(),
                     r#ref: None,
@@ -1809,22 +1809,22 @@ agents:
     }
 
     #[test]
-    fn test_default_skills_parses_from_yaml() {
-        let yaml = "default_skills:\n  - ./skills/muxix\n  - url: https://github.com/u/r\n    ref: main\n";
+    fn test_skills_parses_from_yaml() {
+        let yaml = "skills:\n  - ./skills/muxix\n  - url: https://github.com/u/r\n    ref: main\n";
         let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.default_skills.len(), 2);
-        assert!(matches!(config.default_skills[0].source, Source::LocalPath(_)));
-        assert!(config.default_skills[1].source.is_git_url());
+        assert_eq!(config.skills.len(), 2);
+        assert!(matches!(config.skills[0].source, Source::LocalPath(_)));
+        assert!(config.skills[1].source.is_git_url());
     }
 
     #[test]
     fn test_subagents_parse_from_yaml_file_and_inline() {
-        let yaml = "default_subagents:\n  - ./agents/reviewer.md\n  - name: planner\n    description: 'Plans: work'\n    prompt: |\n      You plan.\n";
+        let yaml = "subagents:\n  - ./agents/reviewer.md\n  - name: planner\n    description: 'Plans: work'\n    prompt: |\n      You plan.\n";
         let config: BootstrapConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.default_subagents.len(), 2);
-        assert!(matches!(config.default_subagents[0], SubagentDef::File(_)));
+        assert_eq!(config.subagents.len(), 2);
+        assert!(matches!(config.subagents[0], SubagentDef::File(_)));
         assert!(matches!(
-            config.default_subagents[1],
+            config.subagents[1],
             SubagentDef::Inline { .. }
         ));
     }
@@ -2125,12 +2125,12 @@ agents:
         overrides.insert(
             "claude code".to_string(),
             AgentBootstrapOverrides {
-                additional_subagents: vec![SubagentDef::File("./agents/extra.md".to_string())],
+                add_subagents: vec![SubagentDef::File("./agents/extra.md".to_string())],
                 ..Default::default()
             },
         );
         let config = BootstrapConfig {
-            default_subagents: vec![SubagentDef::File("./agents/reviewer.md".to_string())],
+            subagents: vec![SubagentDef::File("./agents/reviewer.md".to_string())],
             agents: overrides,
             ..Default::default()
         };
@@ -2217,7 +2217,7 @@ mod skill_install_dir_tests {
         fs::write(src.join("scripts/go.sh"), "#!/bin/sh\n").unwrap();
 
         let config = BootstrapConfig {
-            default_skills: vec![Source::LocalPath(src.display().to_string()).into()],
+            skills: vec![Source::LocalPath(src.display().to_string()).into()],
             ..Default::default()
         };
 

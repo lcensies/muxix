@@ -86,7 +86,7 @@
               merge_strategy = "rebase";
               include = [ "./extra.yaml" ];
               profiles.corp.agent = "codex";
-              bootstrap.default_prompt_components = [ "fff" ];
+              bootstrap.prompt_components = [ "fff" ];
               mcp.context7 = {
                 command = "npx";
                 args = [ "-y" "@upstash/context7-mcp" ];

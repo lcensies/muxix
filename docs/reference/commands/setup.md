@@ -132,7 +132,7 @@ once per session to render the status icons.
 
 Installs the **bundled** muxix skills into every detected agent that has a
 skills directory. Skill installation failures do not abort the rest of setup.
-Project-declared skills (`bootstrap.default_skills`) are installed in the
+Project-declared skills (`bootstrap.skills`) are installed in the
 bootstrap phase below, not here.
 
 ### 4. Bootstrap (theme, plugins, skills, subagents, prompt components)
@@ -150,10 +150,10 @@ described above, applied in this order:
   When hooks are declared for OpenCode or pi, their Claude-hooks-compat
   plugin is auto-added to this list (reported `auto-added`); see
   [Skill hooks](../../guide/bootstrap.md#skill-hooks).
-- **Skills** from `default_skills` / `additional_skills` are copied into each
+- **Skills** from `skills` / `add_skills` are copied into each
   agent's skills directory, with `SKILL.md` rendered per host agent against
   [`template_vars`](../../guide/bootstrap.md#skill-template-variables).
-- **Subagents** from `default_subagents` / `additional_subagents` are installed
+- **Subagents** from `subagents` / `add_subagents` are installed
   into each agent's native subagents directory, with `model:` resolved against
   the [`providers:`](../../guide/models.md) registry.
 - **Prompt components** from `.muxix/prompt-components/` are merged into each
@@ -161,8 +161,8 @@ described above, applied in this order:
 - **Features** resolve per agent to either a plugin or a `default` prompt
   component; see [Features](../../guide/bootstrap.md#features).
 
-The bootstrap phase runs when any of `default_plugins`, `default_skills`,
-`default_subagents`, `default_prompt_components`, `features`, `theme`, or
+The bootstrap phase runs when any of `plugins`, `skills`,
+`subagents`, `prompt_components`, `features`, `theme`, or
 per-agent `agents` overrides are set.
 
 Individual failures are reported per item and do not abort the phase — setup

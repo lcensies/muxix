@@ -456,7 +456,7 @@ mod tests {
 
         // A pinned/prefixed entry already carrying the fragment suppresses it.
         config
-            .default_plugins
+            .plugins
             .push("npm:@hsingjui/pi-hooks@1.2.0".into());
         assert!(plugin_to_inject(Agent::Pi, &config).is_none());
     }
