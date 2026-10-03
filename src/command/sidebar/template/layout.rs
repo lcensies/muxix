@@ -528,6 +528,7 @@ mod tests {
             agent_command: None,
             agent_kind: None,
             pipeline_node_title: None,
+            activity: None,
             pane_pid: 0,
             runtime: None,
         }
@@ -661,6 +662,40 @@ mod tests {
             .iter()
             .map(|s| s.content.clone())
             .collect()
+    }
+
+    #[test]
+    fn activity_token_renders_and_collapses_when_empty() {
+        let tokens = vec![
+            Token::Field(TokenId::Primary),
+            Token::Literal(" ".to_string()),
+            Token::Field(TokenId::Activity),
+            Token::Fill,
+            Token::Field(TokenId::Elapsed),
+        ];
+
+        let mut agent = test_agent("foo");
+        agent.activity = Some("tf:review 2/5".to_string());
+        let ctx = make_context(&agent);
+        assert!(
+            render_text(&ctx, &tokens, 60).contains("tf:review 2/5"),
+            "activity label missing"
+        );
+
+        let bare = test_agent("foo");
+        let ctx = make_context(&bare);
+        assert_eq!(
+            render_text(&ctx, &tokens, 60),
+            render_text(
+                &ctx,
+                &[
+                    Token::Field(TokenId::Primary),
+                    Token::Fill,
+                    Token::Field(TokenId::Elapsed),
+                ],
+                60
+            ),
+        );
     }
 
     fn render_text_with_options(

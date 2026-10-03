@@ -199,6 +199,8 @@ impl<'a> RowContext<'a> {
                     None
                 })
                 .unwrap_or_default(),
+            // Agent-authored label (`muxix signal activity`), empty when unset.
+            TokenId::Activity => self.agent.activity.clone().unwrap_or_default(),
         }
     }
 
@@ -566,6 +568,7 @@ mod tests {
             agent_command: None,
             agent_kind: None,
             pipeline_node_title: None,
+            activity: None,
             pane_pid: 0,
             runtime: None,
         }

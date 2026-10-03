@@ -96,6 +96,11 @@ pub struct AgentPane {
     #[serde(default)]
     pub pipeline_node_title: Option<String>,
 
+    /// Agent-authored activity label, rendered by the sidebar's `{activity}`
+    /// token. None when the agent never set one.
+    #[serde(default)]
+    pub activity: Option<String>,
+
     /// PID of the pane's shell process. Used by the daemon to walk the process
     /// tree for auto-freeze (SIGSTOP/SIGCONT). Zero when not yet populated.
     #[serde(default)]

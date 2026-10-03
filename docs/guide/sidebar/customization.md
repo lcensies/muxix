@@ -11,17 +11,17 @@ can override the built-in templates per layout mode:
 sidebar:
   templates:
     # Compact mode: a single line per agent.
-    compact: "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+    compact: "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}"
 
     # Tile mode: one string per visual line in the tile body.
     tiles:
-      - "{primary} {pane_suffix} {fill} {elapsed}"
+      - "{primary} {pane_suffix} {activity} {fill} {elapsed}"
       - "{secondary} {fill} {git_stats}"
       - "{pane_title}"
 
     # Horizontal mode: one string per visual line in each top bar chip.
     horizontal:
-      - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+      - "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}"
       - "{secondary} {fill} {git_stats}"
       - "{pane_title}"
 ```
@@ -46,6 +46,7 @@ sidebars without a restart.
 | `{window}`       | Tmux window name (blank for generic shell names like `zsh`, `bash`).                                                       |
 | `{pane_title}`   | Sanitized agent task title from the pane title.                                                                            |
 | `{pane_suffix}`  | Disambiguator like `(1)`, `(2)` when multiple agents share a window. Empty otherwise.                                      |
+| `{activity}`     | Agent-authored label set by `muxix signal activity --label "…"` (e.g. a running taskflow). Empty otherwise.                |
 | `{status_icon}`  | Status indicator (working spinner, waiting, done, sleeping, etc.).                                                         |
 | `{agent_icon}`   | Per-agent icon based on the running agent's profile (see [Agent identity](#agent-identity)).                               |
 | `{agent_label}`  | Capitalized agent name (e.g. `Claude`, `Codex`).                                                                           |

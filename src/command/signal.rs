@@ -33,22 +33,49 @@ use crate::state::{self, Completion, CompletionKind};
 /// - With `--node`: NODE-KEYED, writes the pipeline hook-signal file for inter-stage messaging.
 /// - Without `--node`: PANE-KEYED, writes an agent-authored `Completion` onto
 ///   `AgentState` (uses $TMUX_PANE or --pane) — this is the signal `wait`/`status` read.
+/// `activity` is PANE-KEYED and writes `AgentState.activity`, the free-text label
+/// the sidebar renders via its `{activity}` token (`--clear` or an empty
+/// `--label` clears it).
 pub fn run(
     kind: &str,
     pane: Option<&str>,
     node: Option<&str>,
     feedback: Option<&str>,
+    label: Option<&str>,
+    clear: bool,
 ) -> Result<()> {
     match kind {
         // PANE-KEYED TURN SIGNALS (agent lifecycle hooks)
         "turn-done" | "needs-input" | "working" | "proceed" | "reject" | "session-ready" => {
             run_pane_signal(kind, pane, feedback)
         }
+        "activity" => run_activity_signal(pane, if clear { None } else { label }),
         // done/error: node-keyed if --node given, else pane-keyed completion
         "done" | "error" if node.is_some() => run_node_signal(kind, node, feedback),
         "done" | "error" => run_completion_signal(kind, pane, feedback),
         other => Err(anyhow!("unknown signal kind {other:?}")),
     }
+}
+
+/// Set or clear the agent-authored activity label for a pane.
+///
+/// No-ops when muxix has no record for the pane: the label is advisory and
+/// must never conjure an agent record.
+fn run_activity_signal(pane: Option<&str>, label: Option<&str>) -> Result<()> {
+    let pane = pane
+        .map(str::to_string)
+        .or_else(turn::current_pane)
+        .ok_or_else(|| anyhow!("no pane id available (set $TMUX_PANE or pass --pane)"))?;
+
+    let mux = create_backend(detect_backend());
+    let key = crate::state::PaneKey {
+        backend: mux.name().to_string(),
+        instance: mux.instance_id(),
+        pane_id: pane.clone(),
+    };
+    crate::state::StateStore::new()?.set_activity(&key, label)?;
+    crate::wm_evt!("signal.write", kind = "activity", pane = %pane, side = "agent");
+    Ok(())
 }
 
 /// Handle pane-keyed signals (turn-done, proceed, reject, etc.)
@@ -167,7 +194,7 @@ mod tests {
         let pane = "%wmtest-proceed-9001";
         let path = turn::proceed_path(pane);
         let _ = fs::remove_file(&path);
-        run("proceed", Some(pane), None, None).unwrap();
+        run("proceed", Some(pane), None, None, None, false).unwrap();
         let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["approved"], Value::Bool(true));
         let _ = fs::remove_file(&path);
@@ -178,7 +205,7 @@ mod tests {
         let pane = "%wmtest-reject-9002";
         let path = turn::proceed_path(pane);
         let _ = fs::remove_file(&path);
-        run("reject", Some(pane), None, Some("needs tests")).unwrap();
+        run("reject", Some(pane), None, Some("needs tests"), None, false).unwrap();
         let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["approved"], Value::Bool(false));
         assert_eq!(v["feedback"], Value::String("needs tests".into()));
@@ -187,7 +214,7 @@ mod tests {
 
     #[test]
     fn unknown_kind_errors() {
-        assert!(run("bogus", Some("%wmtest-x"), None, None).is_err());
+        assert!(run("bogus", Some("%wmtest-x"), None, None, None, false).is_err());
     }
 
     #[test]
@@ -197,8 +224,8 @@ mod tests {
         unsafe {
             std::env::remove_var("TMUX_PANE");
         }
-        assert!(run("done", None, None, None).is_err());
-        assert!(run("error", None, None, None).is_err());
+        assert!(run("done", None, None, None, None, false).is_err());
+        assert!(run("error", None, None, None, None, false).is_err());
     }
 
     #[test]
@@ -213,7 +240,7 @@ mod tests {
             std::env::set_var("TASK_ID", task_id);
         }
 
-        run("done", None, Some(node_id), Some("tests passed")).unwrap();
+        run("done", None, Some(node_id), Some("tests passed"), None, false).unwrap();
         assert!(path.exists(), "Signal file should be created");
 
         // Verify it contains valid JSON

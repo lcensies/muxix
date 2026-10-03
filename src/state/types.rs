@@ -169,6 +169,12 @@ pub struct AgentState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pipeline_node_title: Option<String>,
 
+    /// Agent-authored activity label (`muxix signal activity --label …`).
+    /// Free-text, advisory, last-writer-wins; shown by the sidebar's
+    /// `{activity}` token. Cleared with `--clear`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+
     /// Which agent runtime owns this agent's process. `None` means the local
     /// runtime — the historical and default case, so records written before
     /// runtimes existed read correctly.
@@ -225,6 +231,7 @@ impl AgentState {
             agent_command: Some(self.command.clone()),
             agent_kind: self.agent_kind.clone(),
             pipeline_node_title: self.pipeline_node_title.clone(),
+            activity: self.activity.clone(),
             pane_pid: self.pane_pid,
             runtime: None,
         }
@@ -397,6 +404,7 @@ mod tests {
             checkpoint_ts: None,
             pipeline_node_id: None,
             pipeline_node_title: None,
+            activity: None,
             runtime: None,
             completion,
         }

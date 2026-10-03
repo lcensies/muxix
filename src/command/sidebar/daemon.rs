@@ -2078,6 +2078,7 @@ mod tests {
             agent_command: None,
             agent_kind: None,
             pipeline_node_title: None,
+            activity: None,
             pane_pid: 0,
             runtime: None,
         }
@@ -2485,6 +2486,7 @@ mod tests {
                 checkpoint_ts: None,
                 pipeline_node_id: None,
                 pipeline_node_title: None,
+                activity: None,
                 runtime: None,
                 completion: None,
             };
@@ -2850,6 +2852,7 @@ mod tests {
                 agent_command: None,
                 agent_kind: None,
                 pipeline_node_title: None,
+                activity: None,
                 pane_pid: shell_pid,
                 runtime: None,
             }

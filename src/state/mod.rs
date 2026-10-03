@@ -96,6 +96,8 @@ pub fn persist_agent_update(
     // Preserve pipeline node fields written by the runner; never cleared by the status-update path.
     let pipeline_node_id = existing.as_ref().and_then(|e| e.pipeline_node_id.clone());
     let pipeline_node_title = existing.as_ref().and_then(|e| e.pipeline_node_title.clone());
+    // Same for the agent-authored activity label: only `signal activity` owns it.
+    let activity = existing.as_ref().and_then(|e| e.activity.clone());
     // Preserve completion: this path is a hook-driven status/title update, not
     // a launch or send, so it must never clear an agent's completion claim.
     let existing_completion = existing.as_ref().and_then(|e| e.completion.clone());
@@ -147,6 +149,7 @@ pub fn persist_agent_update(
         checkpoint_ts,
         pipeline_node_id,
         pipeline_node_title,
+        activity,
         completion: existing_completion,
     };
 

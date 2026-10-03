@@ -280,6 +280,7 @@ impl RuntimeAgent {
             agent_command: None,
             agent_kind: self.kind.clone(),
             pipeline_node_title: None,
+            activity: None,
             pane_pid: 0,
             runtime: Some(self.reference.runtime.clone()),
         }

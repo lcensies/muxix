@@ -10,6 +10,10 @@ use tracing::{info, trace, warn};
 use super::types::{AgentState, GlobalSettings, PaneKey};
 use crate::config::SandboxRuntime;
 
+/// Cap on a stored activity label: long enough to be useful in a sidebar row,
+/// short enough that a chatty producer cannot bloat the state file.
+const ACTIVITY_MAX_CHARS: usize = 64;
+
 /// Manages filesystem-based state persistence for muxix agents.
 ///
 /// Directory structure:
@@ -98,6 +102,23 @@ impl StateStore {
         };
         state.pipeline_node_id = node_id.map(str::to_owned);
         state.pipeline_node_title = node_title.map(str::to_owned);
+        let content = serde_json::to_string_pretty(&state)?;
+        write_atomic(&path, content.as_bytes())
+    }
+
+    /// Set or clear the agent-authored activity label on an existing agent state.
+    ///
+    /// `None` (or an empty label) clears it. No-ops if no state file exists yet
+    /// for this pane: the label is advisory, never a reason to invent a record.
+    pub fn set_activity(&self, key: &PaneKey, label: Option<&str>) -> Result<()> {
+        let path = self.agent_path(key);
+        let Some(mut state) = read_agent_file(&path)? else {
+            return Ok(());
+        };
+        state.activity = label
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|l| l.chars().take(ACTIVITY_MAX_CHARS).collect());
         let content = serde_json::to_string_pretty(&state)?;
         write_atomic(&path, content.as_bytes())
     }
@@ -602,6 +623,7 @@ impl StateStore {
                 checkpoint_ts: None,
                 pipeline_node_id: None,
                 pipeline_node_title: None,
+                activity: None,
                 runtime: None,
                 completion: None,
             };
@@ -746,9 +768,50 @@ mod tests {
             checkpoint_ts: None,
             pipeline_node_id: None,
             pipeline_node_title: None,
+            activity: None,
             runtime: None,
             completion: None,
         }
+    }
+
+    #[test]
+    fn set_activity_sets_truncates_and_clears() {
+        let (store, _dir) = test_store();
+        let key = test_pane_key();
+        store.upsert_agent(&test_agent_state(key.clone())).unwrap();
+
+        store.set_activity(&key, Some("  tf:review 2/5  ")).unwrap();
+        assert_eq!(
+            store.get_agent(&key).unwrap().unwrap().activity.as_deref(),
+            Some("tf:review 2/5")
+        );
+
+        let long = "x".repeat(ACTIVITY_MAX_CHARS + 20);
+        store.set_activity(&key, Some(&long)).unwrap();
+        assert_eq!(
+            store
+                .get_agent(&key)
+                .unwrap()
+                .unwrap()
+                .activity
+                .map(|a| a.chars().count()),
+            Some(ACTIVITY_MAX_CHARS)
+        );
+
+        store.set_activity(&key, Some("")).unwrap();
+        assert!(store.get_agent(&key).unwrap().unwrap().activity.is_none());
+
+        store.set_activity(&key, Some("back")).unwrap();
+        store.set_activity(&key, None).unwrap();
+        assert!(store.get_agent(&key).unwrap().unwrap().activity.is_none());
+    }
+
+    #[test]
+    fn set_activity_without_state_file_is_a_noop() {
+        let (store, _dir) = test_store();
+        let key = test_pane_key();
+        store.set_activity(&key, Some("tf:review")).unwrap();
+        assert!(store.get_agent(&key).unwrap().is_none());
     }
 
     #[test]

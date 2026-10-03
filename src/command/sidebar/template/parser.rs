@@ -47,6 +47,8 @@ pub enum TokenId {
     JumpKey,
     /// Current pipeline node id executing in this agent pane (empty for foreign agents).
     PipelineNode,
+    /// Agent-authored activity label (`muxix signal activity --label …`).
+    Activity,
 }
 
 impl TokenId {
@@ -95,6 +97,7 @@ impl fmt::Display for TokenId {
             TokenId::Idx => "idx",
             TokenId::JumpKey => "jump_key",
             TokenId::PipelineNode => "pipeline_node",
+            TokenId::Activity => "activity",
         };
         write!(f, "{}", s)
     }
@@ -225,6 +228,7 @@ pub fn parse_line(input: &str) -> Result<Vec<Token>, ParseError> {
                     "window" => TokenId::Window,
                     "pane_title" => TokenId::PaneTitle,
                     "pipeline_node" => TokenId::PipelineNode,
+                    "activity" => TokenId::Activity,
                     "pane_suffix" => TokenId::PaneSuffix,
                     "elapsed" => TokenId::Elapsed,
                     "git_stats" => TokenId::GitStats,

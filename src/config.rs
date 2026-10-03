@@ -3863,7 +3863,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #
 #   templates:
 #     horizontal:
-#       - "{status_icon} {primary} {pane_suffix} {fill} {elapsed}"
+#       - "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}"
 #       - "{secondary} {fill} {git_stats}"
 #       - "{pane_title}"
 

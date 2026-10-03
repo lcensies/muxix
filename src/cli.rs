@@ -983,8 +983,11 @@ enum Commands {
     /// `done`/`error` are dual-mode: with --node, writes the node-keyed signal file
     /// a harness polls; without --node, writes an agent-authored completion onto the
     /// pane's AgentState (keyed by $TMUX_PANE or --pane), read by `wait`/`status`.
+    ///
+    /// `activity` is pane-keyed and sets the free-text label the sidebar renders
+    /// via its `{activity}` token: `--label "tf:review 2/5"`, `--clear` to clear.
     Signal {
-        /// Signal kind: turn-done | needs-input | working | proceed | reject | done | error
+        /// Signal kind: turn-done | needs-input | working | proceed | reject | done | error | activity
         kind: String,
         /// Override the pane id (defaults to $TMUX_PANE). Used for pane-keyed signals
         /// (including done/error without --node).
@@ -997,6 +1000,12 @@ enum Commands {
         /// Feedback message (used by reject, error, or done with feedback).
         #[arg(long)]
         feedback: Option<String>,
+        /// Activity label text (kind `activity`). Empty clears it.
+        #[arg(long)]
+        label: Option<String>,
+        /// Clear the activity label (kind `activity`).
+        #[arg(long)]
+        clear: bool,
     },
 
     /// Internal: emit an `agent.session` capability report (which muxix hooks
@@ -1653,7 +1662,16 @@ pub fn run() -> Result<()> {
             pane,
             node,
             feedback,
-        } => command::signal::run(&kind, pane.as_deref(), node.as_deref(), feedback.as_deref()),
+            label,
+            clear,
+        } => command::signal::run(
+            &kind,
+            pane.as_deref(),
+            node.as_deref(),
+            feedback.as_deref(),
+            label.as_deref(),
+            clear,
+        ),
         Commands::HooksReport { pane } => command::hooks_report::run(pane.as_deref()),
     }
 }

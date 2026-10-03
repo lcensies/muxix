@@ -107,14 +107,15 @@ impl ResolvedAgentIcons {
     }
 }
 
-const DEFAULT_COMPACT_TEMPLATE: &str = "{status_icon} {primary} {pane_suffix} {fill} {elapsed}";
+const DEFAULT_COMPACT_TEMPLATE: &str =
+    "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}";
 const DEFAULT_TILE_TEMPLATES: &[&str] = &[
-    "{primary} {pane_suffix} {fill} {elapsed}",
+    "{primary} {pane_suffix} {activity} {fill} {elapsed}",
     "{secondary} {fill} {git_stats}",
     "{pane_title}",
 ];
 const DEFAULT_HORIZONTAL_TEMPLATES: &[&str] = &[
-    "{status_icon} {primary} {pane_suffix} {fill} {elapsed}",
+    "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}",
     "{secondary} {fill} {git_stats}",
     "{pane_title}",
 ];
@@ -312,6 +313,7 @@ impl SidebarApp {
                 agent_command: None,
                 agent_kind: None,
                 pipeline_node_title: None,
+                activity: None,
                 pane_pid: 0,
                 runtime: None,
             })

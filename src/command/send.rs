@@ -150,6 +150,7 @@ mod tests {
             checkpoint_ts: None,
             pipeline_node_id: None,
             pipeline_node_title: None,
+            activity: None,
             runtime: None,
             completion: Some(Completion {
                 kind: CompletionKind::Completed,
