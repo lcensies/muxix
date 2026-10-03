@@ -19,10 +19,10 @@
 
 ---
 
-Giga opinionated zero-friction workflow tool for managing
+Opinionated workflow tool for managing
 [git worktrees](https://git-scm.com/docs/git-worktree) and tmux windows as
-isolated development environments. Perfect for running multiple AI agents in
-parallel without conflict.
+isolated development environments, so several AI agents can work in parallel
+without conflict.
 
 **Philosophy**: Build on tools you already use. tmux/zellij/kitty/etc. for
 windowing, git for worktrees, your agent for coding - muxix ties them together.
@@ -54,52 +54,13 @@ backends.</sub></sup>
 > microVM), org policy provisioning, a project registry, event tracing, and a
 > third dashboard tab.
 >
-> **Removed from upstream's direction:** nothing of upstream's — but muxix
-> deliberately does *not* schedule work. There is no pipeline runner and no
-> orchestration loop; deciding what runs next belongs to your agent harness,
-> and muxix is the plumbing it calls.
->
 > The rename is a clean break: muxix reads `.muxix.yaml` (not `.workmux.yaml`),
 > `MUXIX_*` environment variables, and `~/.config/muxix/`. Coming from workmux,
 > rename the project file and the config directory. Binary and plugin names
 > differ too, so both tools can be installed side by side.
 
-📖 **New to the worktree-per-agent idea?** Upstream's
-[introduction blog post](https://raine.dev/blog/introduction-to-workmux/) is
-still the best overview of the core model.
-
 ![muxix screenshot](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/screenshot_20260329_165534.webp)
 
-> [!TIP]
-> [consult-llm](https://github.com/raine/consult-llm) pairs naturally with
-> muxix: let your agents consult another AI model to plan architecture,
-> review changes, debate approaches, or get unstuck on tricky bugs without
-> leaving the worktree.
->
-> See [How to orchestrate large coding tasks without context bloat](https://raine.dev/blog/phased-implement-workflow/)
-> for a workflow that combines muxix and consult-llm.
-
-## Why muxix?
-
-**Parallel workflows.** Work on multiple features the same time, each with its
-own AI agent. No stashing, no branch switching, no conflicts.
-
-**One window per task.** A natural mental model. Each has its own terminal
-state, editor session, dev server, and AI agent. Context switching is switching
-tabs.
-
-**Automated setup.** New worktrees start broken (no `.env`, no `node_modules`,
-no dev server). muxix can copy config files, symlink dependencies, and run
-install commands on creation.
-
-**One-command cleanup.** `muxix merge` handles the full lifecycle: merge the
-branch, delete the worktree, close the tmux window, remove the local branch.
-
-**Terminal workflow.** Build on your terminal setup instead of yet another
-agentic GUI that won't exist next year. If you don't have one yet, tmux might be
-worth picking up.
-
-New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 
 ## Features
 
@@ -126,33 +87,15 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
   prompts using LLM
 - Shell completions
 
-## Hype
-
-> "I've been using (and loving) muxix which brings together tmux, git
-> worktrees, and CLI agents into an opinionated workflow."  
-> — @Coolin96 [🔗](https://news.ycombinator.com/item?id=46029809)
-
-> "Thank you so much for your work with muxix! It's a tool I've been wanting
-> to exist for a long time."  
-> — @rstacruz [🔗](https://github.com/raine/workmux/issues/2)
-
-> "It's become my daily driver - the perfect level of abstraction over tmux +
-> git, without getting in the way or obscuring the underlying tooling."  
-> — @cisaacstern [🔗](https://github.com/raine/workmux/issues/33)
-
-> "I have to mention muxix at every opportunity because it's the perfect glue
-> between worktrees, agents and tmux windows."  
-> — @dedbrizz [🔗](https://www.threads.com/@dedbrizz/post/DVt1DtLkr_l)
-
 ## Installation
 
-### Bash YOLO
+### Install script
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lcensies/muxix/main/scripts/install.sh | bash
 ```
 
-### From source (works today)
+### From source
 
 ```bash
 cargo install --git https://github.com/lcensies/muxix
@@ -564,7 +507,7 @@ alias wm='muxix'
 - [`add`](#muxix-add-branch-name) - Create a new worktree and tmux window
 - [`merge`](#muxix-merge-branch-name) - Merge a branch and clean up everything
 - [`remove`](#muxix-remove-name-alias-rm) - Remove worktrees without merging
-- [`list`](#muxix-list) - List all worktrees with status
+- [`list`](#muxix-list-alias-ls) - List all worktrees with status
 - [`open`](#muxix-open-name) - Open a tmux window for an existing worktree
 - [`close`](#muxix-close-name) - Close a worktree's tmux window (keeps
   worktree)
@@ -1190,9 +1133,8 @@ enabled.
 
 #### Typical workflow
 
-When you're done working in a worktree, simply run `muxix merge` from within
-that worktree's tmux window. The command will automatically detect which branch
-you're on, merge it into main, and close the current window as part of cleanup.
+Run `muxix merge` from inside the worktree's tmux window: it detects the branch
+you are on, merges it into main, and closes the window as part of cleanup.
 
 #### Examples
 
@@ -2261,122 +2203,18 @@ which window is selected when the session opens.
   for the same worktree (`-2`, `-3` suffixes), session mode creates one session
   per worktree.
 
-## Workflow example
-
-Here's a complete workflow:
-
-```bash
-# Start a new feature
-muxix add user-auth
-
-# Work on your feature...
-# (tmux automatically sets up your configured panes and environment)
-
-# When ready, merge and clean up
-muxix merge user-auth
-
-# Start another feature
-muxix add api-endpoint
-
-# List all active worktrees
-muxix list
-```
-
-## Before and after
-
-muxix turns a multi-step manual workflow into simple commands, making parallel
-development workflows practical.
-
-### Without muxix
-
-```bash
-# 1. Manually create the worktree and environment
-git worktree add ../worktrees/user-auth -b user-auth
-cd ../worktrees/user-auth
-cp ../../project/.env.example .env
-ln -s ../../project/node_modules .
-npm install
-# ... and other setup steps
-
-# 2. Manually create and configure the tmux window
-tmux new-window -n user-auth
-tmux split-window -h 'npm run dev'
-tmux send-keys -t 0 'claude' C-m
-# ... repeat for every pane in your desired layout
-
-# 3. When done, manually merge and clean everything up
-cd ../../project
-git switch main && git pull
-git merge --no-ff user-auth
-tmux kill-window -t user-auth
-git worktree remove ../worktrees/user-auth
-git branch -d user-auth
-```
-
-### With muxix
-
-```bash
-# Create the environment
-muxix add user-auth
-
-# ... work on the feature ...
-
-# Merge and clean up
-muxix merge
-```
-
-### The parallel AI workflow
-
-Run multiple AI agents simultaneously, each in its own worktree.
-
-```bash
-# Spin up two agents working on different tasks
-muxix add refactor-user-model -p "Refactor the User model to use composition"
-muxix add add-search-endpoint -p "Add a /search endpoint with pagination"
-
-# Each agent works in isolation. Check progress via tmux windows or the dashboard
-muxix dashboard
-
-# Merge completed work back to main
-muxix merge refactor-user-model
-muxix merge add-search-endpoint
-```
-
-<!-- prettier-ignore -->
-> [!TIP]
-> Use `-A` (`--auto-name`) to generate branch names automatically from your
-> prompt, so you don't have to think of one. See
-> [Automatic branch name generation](#automatic-branch-name-generation).
 
 ## Why git worktrees?
 
-[Git worktrees](https://git-scm.com/docs/git-worktree) let you have multiple
-branches checked out at once in the same repository, each in a separate
-directory. This provides two main advantages over a standard single-directory
-setup:
-
-- **Painless context switching**: Switch between tasks just by changing
-  directories (`cd ../other-branch`). There's no need to `git stash` or make
-  temporary commits. Your work-in-progress, editor state, and command history
-  remain isolated and intact for each branch.
-
-- **True parallel development**: Work on multiple branches simultaneously
-  without interference. You can run builds, install dependencies
-  (`npm install`), or run tests in one worktree while actively coding in
-  another. This isolation is perfect for running multiple AI agents in parallel
-  on different tasks.
-
-In a standard Git setup, switching branches disrupts your flow by requiring a
-clean working tree. Worktrees remove this friction. `muxix` automates the
-entire process and pairs each worktree with a dedicated tmux window, creating
-fully isolated development environments. See
-[Before and after](#before-and-after) for how muxix streamlines this workflow.
+[Git worktrees](https://git-scm.com/docs/git-worktree) keep several branches
+checked out at once, each in its own directory, so switching tasks is a `cd`
+rather than a `git stash`, and builds, installs or tests in one branch never
+disturb another. muxix pairs each worktree with a tmux window and automates
+the setup and teardown around it.
 
 ## Git worktree caveats
 
-While powerful, git worktrees have nuances that are important to understand.
-muxix is designed to automate solutions to these, but awareness of the
-underlying mechanics helps.
+Worktrees have nuances muxix automates around; the mechanics are worth knowing.
 
 - [Gitignored files require configuration](#gitignored-files-require-configuration)
 - [Conflicts](#conflicts)
@@ -2655,10 +2493,6 @@ delegate tasks to parallel worktree agents directly from your conversation. A
 main agent on the main branch can act as a coordinator: planning work and
 spinning up worktree agents for each task.
 
-📝 **See
-[this blog post](https://raine.dev/blog/git-worktrees-parallel-agents/)** for a
-detailed walkthrough of the workflow.
-
 #### Usage
 
 ```
@@ -2701,36 +2535,26 @@ muxix completions fish | source
 
 ### Alternative backends
 
-While tmux is the primary and recommended backend, muxix also supports
-alternative terminal multiplexers:
+tmux is the primary backend. Experimental alternatives:
 
-- **[WezTerm](https://muxix.dev/guide/wezterm)** (experimental) - For
-  users who prefer WezTerm's features. Thanks to
-  [@JeremyBYU](https://github.com/JeremyBYU) for contributing this backend.
-- **[kitty](https://muxix.dev/guide/kitty)** (experimental) - For users
-  who prefer kitty terminal. Requires `allow_remote_control` and `listen_on`
-  configuration.
-- **[Zellij](https://muxix.dev/guide/zellij)** (experimental) - For
-  users who prefer Zellij. Detected automatically via `$ZELLIJ`.
+- **[WezTerm](https://muxix.dev/guide/wezterm)** — contributed by
+  [@JeremyBYU](https://github.com/JeremyBYU).
+- **[kitty](https://muxix.dev/guide/kitty)** — requires `allow_remote_control`
+  and `listen_on`.
+- **[Zellij](https://muxix.dev/guide/zellij)** — detected via `$ZELLIJ`.
 
 muxix auto-detects the backend from environment variables (`$TMUX`,
 `$WEZTERM_PANE`, `$KITTY_WINDOW_ID`, or `$ZELLIJ`). Session-specific variables
 are checked first, so running tmux inside kitty correctly selects the tmux
 backend. Set `$MUXIX_BACKEND` to override detection.
 
-## Inspiration and related tools
+## Prior art
 
-muxix is inspired by [wtp](https://github.com/satococoa/wtp), an excellent git
-worktree management tool. While wtp streamlines worktree creation and setup,
-muxix takes this further by tightly coupling worktrees with tmux window
-management.
-
-For managing multiple AI agents in parallel, tools like
-[claude-squad](https://github.com/smtg-ai/claude-squad) and
-[vibe-kanban](https://github.com/BloopAI/vibe-kanban/) offer dedicated
-interfaces, like a TUI or kanban board. In contrast, muxix adheres to its
-philosophy that **tmux is the interface**, providing a native tmux experience
-for managing parallel workflows without requiring a separate interface to learn.
+- [wtp](https://github.com/satococoa/wtp) — worktree creation and setup, which
+  muxix extends by coupling each worktree to a tmux window.
+- [claude-squad](https://github.com/smtg-ai/claude-squad),
+  [vibe-kanban](https://github.com/BloopAI/vibe-kanban/) — parallel agents
+  behind a dedicated TUI or kanban board, where muxix stays inside tmux.
 
 ## Contributing
 
@@ -2745,7 +2569,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
 - [tmux-tools](https://github.com/raine/tmux-tools) — Collection of tmux
   utilities including file picker, smart sessions, and more
 - [tmux-file-picker](https://github.com/raine/tmux-file-picker) — Pop up fzf in
-  tmux to quickly insert file paths, perfect for AI coding assistants
+  tmux to insert file paths
 - [tmux-bro](https://github.com/raine/tmux-bro) — Smart tmux session manager
   that sets up project-specific sessions automatically
 - [git-surgeon](https://github.com/raine/git-surgeon) — Non-interactive
