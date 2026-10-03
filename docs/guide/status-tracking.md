@@ -20,6 +20,7 @@ Muxix can display the status of the agent in your tmux window list, giving you a
 | Copilot CLI  | ✅ Supported\*                                                              |
 | Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | ✅ Supported                                                                |
+| omp          | ✅ Supported\*                                                              |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
@@ -28,6 +29,7 @@ Muxix can display the status of the agent in your tmux window list, giving you a
 - **Codex**: No 💬 waiting state. Requires `hooks = true` in `~/.codex/config.toml` (see [Codex setup](#codex-setup))
 - **Copilot CLI**: No 💬 waiting state
 - **Pi**: No 💬 waiting state
+- **omp**: No 💬 waiting state; installs the same extension as pi into `~/.omp/agent/extensions/`
 - **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
 
 ## Status icons
@@ -44,7 +46,7 @@ Run `muxix setup` to automatically detect your agent CLIs and install status tra
 muxix setup
 ```
 
-This detects Claude Code, Copilot CLI, OpenCode, and Pi by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Muxix will also prompt you on first run if it detects an agent without status tracking configured.
+This detects Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi, and omp by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Muxix will also prompt you on first run if it detects an agent without status tracking configured.
 
 Muxix automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 

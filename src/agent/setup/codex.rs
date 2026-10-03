@@ -250,12 +250,10 @@ pub fn render_mcp_region(
             let rendered: Vec<String> = args.iter().map(|a| toml_string(a)).collect();
             region.push_str(&format!("args = [{}]\n", rendered.join(", ")));
         }
-        if let Some(env) = &cfg.env {
-            if !env.is_empty() {
-                region.push_str(&format!("[mcp_servers.{name}.env]\n"));
-                for (k, v) in env {
-                    region.push_str(&format!("{k} = {}\n", toml_string(v)));
-                }
+        if let Some(env) = cfg.env.as_ref().filter(|e| !e.is_empty()) {
+            region.push_str(&format!("[mcp_servers.{name}.env]\n"));
+            for (k, v) in env {
+                region.push_str(&format!("{k} = {}\n", toml_string(v)));
             }
         }
     }

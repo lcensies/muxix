@@ -116,7 +116,7 @@ Detects each agent by looking for its configuration directory or CLI:
 | Gemini CLI  | Gemini config directory                                        |
 | OpenCode    | OpenCode config directory                                      |
 | pi          | `~/.pi/agent/` (or `PI_CODING_AGENT_DIR`)                      |
-| omp         | `~/.omp/agent/` (or `OMP_CODING_AGENT_DIR`)                    |
+| omp         | `~/.omp/agent/` (`PI_CODING_AGENT_DIR`, or `OMP_CODING_AGENT_DIR` to point muxix alone) |
 
 If no agents are detected, `setup` exits with a hint to install an agent CLI.
 
@@ -146,16 +146,20 @@ described above, applied in this order:
 - **Plugins** are installed via each agent's own installer (`pi install`,
   `omp install`, `claude plugin install`, `opencode plugin`). Spec formats
   differ per agent; see [Plugins](../../guide/bootstrap.md#plugins). Codex,
-  Copilot, and Gemini have no plugin installer wired up and are skipped.
+  Copilot, and Gemini have no plugin installer wired up and are skipped — a
+  feature falls back to their prompt component instead.
   When hooks are declared for OpenCode or pi, their Claude-hooks-compat
   plugin is auto-added to this list (reported `auto-added`); see
-  [Skill hooks](../../guide/bootstrap.md#skill-hooks).
+  [Skill hooks](../../guide/bootstrap.md#skill-hooks). Copilot CLI has its own
+  hook file and needs no plugin; omp has neither and is reported `skipped`.
 - **Skills** from `skills` / `add_skills` are copied into each
   agent's skills directory, with `SKILL.md` rendered per host agent against
   [`template_vars`](../../guide/bootstrap.md#skill-template-variables).
 - **Subagents** from `subagents` / `add_subagents` are installed
   into each agent's native subagents directory, with `model:` resolved against
-  the [`providers:`](../../guide/models.md) registry.
+  the [`providers:`](../../guide/models.md) registry. Copilot uses its own
+  `<name>.agent.md` naming; Codex is reported `skipped` because its custom
+  agents are TOML config layers, not markdown documents.
 - **Prompt components** from `.muxix/prompt-components/` are merged into each
   agent's system prompt.
 - **Features** resolve per agent to either a plugin or a `default` prompt
@@ -173,7 +177,10 @@ continues with the next plugin, skill, subagent, or agent.
 When `mcp` servers are configured, the `mcp` section renders them
 into each detected agent's native config and pre-approves them in that agent's
 trust mechanism, so a harness-launched agent never blocks on an interactive
-"trust this MCP server?" prompt at startup.
+"trust this MCP server?" prompt at startup. Claude, pi, omp and Copilot share
+the project `.mcp.json`; Gemini uses `.gemini/settings.json`, OpenCode
+`opencode.json`, and Codex a managed `[mcp_servers.*]` region in
+`.codex/config.toml` plus the project-trust entry it needs to read that layer.
 
 ### 6. Dependencies (`deps`)
 

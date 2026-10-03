@@ -744,6 +744,53 @@ fn confirm_install_skills() -> Result<bool> {
 mod tests {
     use super::*;
 
+    /// Every agent must have an explicit, documented decision for every harness
+    /// capability. This is the guard against a new `Agent` variant (or a stale
+    /// `_ => None` arm) quietly dropping a declared item; it states the same
+    /// support set as the table in `docs/guide/bootstrap.md`.
+    #[test]
+    fn harness_capability_coverage_is_declared_for_every_agent() {
+        use crate::bootstrap::{subagents_dir, subagents_unsupported_reason};
+        use crate::mcp::targets::{McpSupport, mcp_support};
+
+        for agent in Agent::ALL {
+            // Skills and MCP: every agent, no exceptions.
+            assert!(
+                crate::skills::skills_dir(agent).is_some(),
+                "{}: no skills dir",
+                agent.name()
+            );
+            assert!(
+                matches!(mcp_support(agent), McpSupport::Supported(_)),
+                "{}: no MCP target",
+                agent.name()
+            );
+
+            // Subagents and settings may be unsupported, but only with a reason.
+            if subagents_dir(agent).is_none() {
+                assert!(
+                    subagents_unsupported_reason(agent).is_some(),
+                    "{}: no subagents dir and no reason",
+                    agent.name()
+                );
+            }
+            if settings_target(agent).is_none() {
+                assert_eq!(agent, Agent::Codex, "{}: settings gap undocumented", agent.name());
+            }
+
+            // Profiling: profilable unless the agent has no config-dir redirect
+            // upstream (gemini, opencode).
+            let profilable =
+                crate::agent::agent_profiles::config_dir_env(agent.profile_id()).is_some();
+            assert_eq!(
+                profilable,
+                !matches!(agent, Agent::Gemini | Agent::OpenCode),
+                "{}: profiling decision changed",
+                agent.name()
+            );
+        }
+    }
+
     #[test]
     fn settings_target_declares_a_format_per_agent() {
         for agent in Agent::ALL {

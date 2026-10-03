@@ -48,6 +48,32 @@ description: Release notes and version history for workmux
 
 ### Added
 
+- **The declarative harness now covers every supported agent.** Skills install
+  for Codex (`$HOME/.agents/skills`), Gemini and Copilot CLI; subagents for
+  Gemini, Copilot (`<name>.agent.md`) and omp; prompt components reach Codex
+  (`$CODEX_HOME/AGENTS.md`) and Copilot
+  (`$COPILOT_HOME/copilot-instructions.md`), so a `features:` prompt fallback is
+  no longer inert for either; hooks reach Copilot
+  (`$COPILOT_HOME/hooks/muxix.json`); MCP reaches Copilot (project `.mcp.json`)
+  and Codex (a managed `[mcp_servers.*]` region in `.codex/config.toml`, plus
+  the project-trust entry Codex needs to read it). Remaining gaps are reported
+  as `skipped` with the reason — see the support table in
+  [bootstrap](docs/guide/bootstrap.md).
+
+- **`settings:` patches are format-aware.** The merge patch is applied in the
+  agent's own format, so omp's YAML `config.yml` is patched with the same RFC
+  7386 semantics as everyone else's JSON. Copilot CLI gained support
+  (`$COPILOT_HOME/settings.json`); Codex stays unsupported (TOML).
+
+- **Agent config profiles cover Copilot and omp, and deltas work for every
+  profilable agent.** `COPILOT_HOME` and `PI_CODING_AGENT_DIR` (the var omp
+  actually honors) join pi/claude/codex as redirects `muxix exec --profile`
+  can use. Declarative deltas are no longer pi-only: each agent takes the keys
+  its config dir can express, and a key it cannot express is reported by name
+  while the rest of the profile still builds. Instruction files muxix shares
+  with the user (codex `AGENTS.md`, copilot `copilot-instructions.md`) keep
+  their own text in the overlay and only the managed region is replaced.
+
 - **`workmux open` now brings up the sidebar itself.** Sidebar state lives in
   tmux globals, so after a server restart it was off until someone pressed the
   toggle. Opening a worktree now activates it (honouring

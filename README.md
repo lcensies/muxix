@@ -28,9 +28,10 @@ parallel without conflict.
 windowing, git for worktrees, your agent for coding - muxix ties them together.
 
 muxix also treats the *agent itself* as something to provision: one declarative
-config installs skills, plugins, MCP servers and system-prompt components across
-Claude Code, Codex, Gemini, OpenCode, Copilot and pi, so every worktree gets an
-identically equipped agent.
+config installs skills, subagents, plugins, MCP servers, hooks and system-prompt
+components across Claude Code, Codex, Copilot CLI, Gemini, OpenCode, pi and omp,
+so every worktree gets an identically equipped agent — and whatever an agent
+cannot take is reported with the reason instead of silently skipped.
 
 <sup><sub>\* Also supports
 <a href="https://muxix.dev/guide/kitty">kitty</a>,
@@ -46,8 +47,9 @@ backends.</sub></sup>
 > directions.
 >
 > **Added in this fork:** a declarative agent harness (`setup`/`bootstrap`:
-> skills, plugins, MCP servers, prompt components, per-agent profiles), six
-> supported agent CLIs with status hooks, a task-graph store (`task`) for
+> skills, subagents, plugins, MCP servers, hooks, settings patches, prompt
+> components, per-agent profiles), seven supported agent CLIs with status hooks,
+> a task-graph store (`task`) for
 > external harnesses to drive, sandboxed worktrees (container / Lima /
 > microVM), org policy provisioning, a project registry, event tracing, and a
 > third dashboard tab.
@@ -111,6 +113,9 @@ New to worktrees? See [Why git worktrees?](#why-git-worktrees)
 - [Delegate tasks to worktree agents](#delegating-tasks-with-worktree) with the
   `/worktree` skill
 - [Display agent status in tmux window names](#agent-status-tracking)
+- [Provision the agents themselves](#declarative-agent-harness) from one config:
+  skills, subagents, plugins, MCP servers, hooks, settings and prompt components
+  across seven agent CLIs (`setup`)
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
@@ -1935,6 +1940,54 @@ You can ask an agent to read the docs and configure muxix for you:
   - Right bottom: empty shell
 ```
 
+## Declarative agent harness
+
+One `bootstrap:` block provisions every agent CLI you have installed, and
+`muxix setup` makes it true:
+
+```yaml
+bootstrap:
+  skills:
+    - path: ./skills/auto-git
+  subagents:
+    - path: ./agents/reviewer.md
+  prompt_components: [fff]
+  features:
+    ponytail:
+      pi: git:github.com/DietrichGebert/ponytail  # pi installs a plugin
+      default: ponytail                           # everyone else gets the prompt
+  agents:
+    omp:
+      settings:            # RFC 7386 merge patch, in the agent's own format
+        modelRoles: { smol: zai/glm-5.1 }
+```
+
+Declarations are agent-agnostic; what lands where is the agent's own layout.
+Anything an agent cannot take is reported as `skipped` **with the reason** —
+never silently dropped.
+
+| | claude | codex | copilot | gemini | opencode | pi | omp |
+|---|---|---|---|---|---|---|---|
+| skills | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| subagents | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| prompt components / features | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| plugins | ✅ | — | — | — | ✅ | ✅ | ✅ |
+| hooks | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| MCP servers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `settings` patch | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| theme | ✅ | — | — | ✅ | ✅ | — | — |
+| config profiles (`exec --profile`) | ✅ | ✅ | ✅ | — | — | ✅ | ✅ |
+
+Each gap has a documented cause (Codex subagents are TOML config layers, its
+settings are TOML, omp's hooks have no compat plugin, Gemini/OpenCode expose no
+config-dir redirect), listed in
+[the bootstrap guide](https://muxix.dev/guide/bootstrap).
+
+Per-agent **config profiles** layer a named overlay on top of an agent's own
+config dir — `muxix exec --profile corp pi` runs pi with a different provider,
+plugin set and session history, without touching your base config. See
+[profiles](https://muxix.dev/guide/profiles).
+
 ## Agent status tracking
 
 Muxix can display the status of the agent in your tmux window list, giving you
@@ -1956,6 +2009,7 @@ at-a-glance visibility into what the agent in each window doing.
 | Copilot CLI  | ✅ Supported\*                                                              |
 | Pi           | ✅ Supported\*                                                              |
 | Gemini CLI   | ✅ Supported                                                                |
+| omp          | ✅ Supported\*                                                              |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
@@ -1964,6 +2018,7 @@ at-a-glance visibility into what the agent in each window doing.
 - **Codex**: No 💬 waiting state
 - **Copilot CLI**: No 💬 waiting state
 - **Pi**: No 💬 waiting state
+- **omp**: No 💬 waiting state (pi-compatible extension)
 - **Kiro**: Hooks support is messy: requires a custom agent since the default
   can't be edited
 

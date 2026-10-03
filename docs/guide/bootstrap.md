@@ -31,6 +31,41 @@ bootstrap:
 Everything in `bootstrap` is opt-in and backwards compatible: projects without a
 `bootstrap` section are unaffected, and each field defaults to empty.
 
+## What each agent can take
+
+Declarations are agent-agnostic; what an agent accepts is bounded by its own
+config surface. Anything an agent cannot take is reported as `skipped` with the
+reason — never silently dropped.
+
+| | claude | codex | copilot | gemini | opencode | pi | omp |
+|---|---|---|---|---|---|---|---|
+| `plugins` | ✅ | — ¹ | — ¹ | — ¹ | ✅ | ✅ | ✅ |
+| `skills` | ✅ | ✅ ² | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `subagents` | ✅ | — ³ | ✅ ⁴ | ✅ | ✅ | ✅ | ✅ |
+| `prompt_components` / `features` fallback | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `hooks` (+ skill hooks) | ✅ | ✅ | ✅ | ✅ | ✅ ⁵ | ✅ ⁵ | — ⁶ |
+| `mcp` | ✅ | ✅ ⁷ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `settings` patch | ✅ | — ⁸ | ✅ | ✅ | ✅ | ✅ | ✅ ⁹ |
+| `theme` | ✅ | — | — | ✅ | ✅ | — | — |
+| provider sync | — | ✅ | — | — | ✅ | — | — |
+| `agent_profiles` | ✅ | ✅ | ✅ | — ¹⁰ | — ¹⁰ | ✅ | ✅ |
+
+1. No plugin installer CLI wired up; use a `features:` prompt-component
+   fallback instead.
+2. `$HOME/.agents/skills` — the shared cross-agent location, outside
+   `CODEX_HOME`, so a profile cannot isolate Codex's skills.
+3. Codex custom agents are TOML config layers (`~/.codex/agents/*.toml`), not
+   markdown subagent documents.
+4. Written as `<name>.agent.md`, Copilot's own naming.
+5. Through a Claude-hooks compat plugin, auto-added to that agent's plugin list.
+6. The pi compat plugin reads pi's `settings.json`; omp keeps settings in
+   `config.yml` and never reads it.
+7. A managed `[mcp_servers.*]` region in the project's `.codex/config.toml`
+   layer, plus the trust entry Codex needs to read that layer.
+8. TOML (`~/.codex/config.toml`): a merge patch cannot express it.
+9. Applied to `config.yml` as YAML.
+10. No single config-dir redirect env var upstream.
+
 ::: tip Per-machine and per-org variation
 A bootstrap block does not have to be one-size-fits-all. Use
 [profiles and includes](/guide/profiles) to keep a corporate machine, a personal
@@ -66,8 +101,11 @@ any existing entry matching the plugin name). Two caveats: the OpenCode plugin
 also reads `.claude/settings*.json` and concatenates all files, so a hook
 installed for Claude Code may fire in OpenCode sessions too — write hook
 scripts to tolerate running twice per event (the auto-git sweeper does); and
-omp/Copilot still report `skipped` in `muxix setup`, so that gap stays
-visible rather than silent.
+Copilot CLI has its own hook file instead: muxix writes
+`$COPILOT_HOME/hooks/muxix.json` (`sessionStart` / `agentStop`) in Copilot's own
+dialect. omp still reports `skipped` — the pi compat plugin reads pi's
+`settings.json`, which omp (`config.yml`) does not — so that gap stays visible
+rather than silent.
 
 Hooks not tied to any skill go under `bootstrap.hooks` with the same shape;
 `{{ skill_install_dir }}` has no meaning there and is a render error.
@@ -245,7 +283,9 @@ fails with `Invalid package name`. Give each agent its own `add_plugins`
 :::
 
 Codex, Copilot, and Gemini have no plugin installer wired up today; a feature
-falls back to their prompt component instead.
+falls back to their prompt component instead, which now reaches all three
+(Codex `$CODEX_HOME/AGENTS.md`, Copilot `$COPILOT_HOME/copilot-instructions.md`,
+Gemini `~/.gemini/GEMINI.md`).
 
 ### Detecting already-installed plugins
 
@@ -573,20 +613,26 @@ Two caveats worth stating plainly:
   with its own `bootstrap.agents.pi` block shadows the global one entirely,
   settings patch included.
 
-Supported wherever the agent keeps its config in JSON:
+Supported wherever the agent keeps its config in a format a merge patch can
+express (JSON, or omp's YAML):
 
 | Agent       | File patched                                   |
 | ----------- | ---------------------------------------------- |
 | pi          | `~/.pi/agent/settings.json` (`PI_CODING_AGENT_DIR`) |
-| omp         | `~/.omp/agent/settings.json` (`OMP_CODING_AGENT_DIR`) |
 | Claude Code | `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR`) |
 | Gemini CLI  | `~/.gemini/settings.json`                      |
 | OpenCode    | `~/.config/opencode/opencode.json` (`OPENCODE_CONFIG`) |
 
-Codex and Copilot CLI are **not** supported: Codex's config is TOML
-(`~/.codex/config.toml`), which a JSON merge patch cannot express, and Copilot
-CLI has no known global settings file. A patch declared for either is reported
-as skipped rather than written somewhere guessed.
+| Copilot CLI | `~/.copilot/settings.json` (`COPILOT_HOME`)     |
+| omp         | `~/.omp/agent/config.yml` (**YAML**)           |
+
+omp's store is YAML, so the patch is applied with the same RFC 7386 semantics
+and written back as YAML; pi's `settings.json` is a different file omp never
+reads.
+
+Codex is **not** supported: its config is TOML (`~/.codex/config.toml`), which a
+merge patch cannot express. A patch declared for it is reported as skipped
+rather than written somewhere guessed.
 
 Each agent's keys are its own — `defaultTools` means nothing to Claude Code,
 `autoCompact` means nothing to pi. Muxix does not validate them against any
