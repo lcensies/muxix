@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 0 215 206" fill="none">
   <g transform="translate(43.5 0) scale(1.7500)">
     <rect x="4" y="7.5" width="56" height="49" rx="11" stroke="#c8c8c8" stroke-width="2.6"/>
-    <path d="M4 19h56" stroke="#c8c8c8" stroke-width="2.2"/>
-    <path d="M10.5 12.3l3.2 2.6-3.2 2.6" stroke="#30e1c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M18.5 17.5h6.5" stroke="#30e1c8" stroke-width="2" stroke-linecap="round"/>
-    <path d="M19.5 26c-3.2 0-3.2 2.6-3.2 4.8s0 4.4-3.3 4.7c3.3.3 3.3 2.5 3.3 4.7s0 4.8 3.2 4.8" stroke="#c8c8c8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4 21h56" stroke="#c8c8c8" stroke-width="2.2"/>
+    <path d="M14 11.9l3.3 2.6-3.3 2.6" stroke="#30e1c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M21.5 17.1h7" stroke="#30e1c8" stroke-width="2" stroke-linecap="round"/>
+    <path d="M19.5 28c-3.2 0-3.2 2.5-3.2 4.6s0 4.2-3.3 4.5c3.3.3 3.3 2.4 3.3 4.5s0 4.6 3.2 4.6" stroke="#c8c8c8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
     <g stroke="#30e1c8" stroke-width="2.2" stroke-linecap="round">
-      <path d="M25 28.5h3.5M25 35.2h3.5M25 41.9h3.5"/>
-      <path d="M33 28.5h18M33 35.2h12M33 41.9h18"/>
+      <path d="M25 30.3h3.5M25 37.1h3.5M25 43.9h3.5"/>
+      <path d="M33 30.3h18M33 37.1h12M33 43.9h18"/>
     </g>
   </g>
   <g transform="translate(0 138)">
