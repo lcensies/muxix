@@ -33,6 +33,7 @@ history
 /.muxix.yaml
 /.muxix/
 /tasks/
+/presentation/
 /openspec/
 /.codegraph/
 
