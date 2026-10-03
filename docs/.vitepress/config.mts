@@ -17,7 +17,7 @@ export default defineConfig({
 
   title: "muxix",
   description:
-    "A CLI tool for parallel development with AI coding agents using git worktrees and tmux",
+    "Declarative meta-harness in your terminal: provision coding agents and run them in parallel across git worktrees and tmux",
   lang: "en-US",
   lastUpdated: true,
   cleanUrls: true,
@@ -26,7 +26,7 @@ export default defineConfig({
   },
 
   head: [
-    ["link", { rel: "icon", href: "/branch-icon.svg" }],
+    ["link", { rel: "icon", href: "/icon.svg" }],
     [
       "meta",
       { name: "algolia-site-verification", content: "3CFC51B41FBBDD13" },

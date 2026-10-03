@@ -6,7 +6,8 @@
 </p>
 
 <p align="center">
-  <strong>Parallel development in tmux* with git worktrees</strong>
+  <strong>Declarative meta-harness in your terminal</strong><br>
+  <sub>Parallel AI agents in tmux* with git worktrees</sub>
 </p>
 
 <p align="center">
@@ -53,13 +54,8 @@ backends.</sub></sup>
 > external harnesses to drive, sandboxed worktrees (container / Lima /
 > microVM), org policy provisioning, a project registry, event tracing, and a
 > third dashboard tab.
->
-> The rename is a clean break: muxix reads `.muxix.yaml` (not `.workmux.yaml`),
-> `MUXIX_*` environment variables, and `~/.config/muxix/`. Coming from workmux,
-> rename the project file and the config directory. Binary and plugin names
-> differ too, so both tools can be installed side by side.
 
-![muxix screenshot](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/screenshot_20260329_165534.webp)
+![muxix screenshot](meta/screenshot_20260329_165534.webp)
 
 
 ## Features
@@ -77,6 +73,11 @@ backends.</sub></sup>
 - [Provision the agents themselves](#declarative-agent-harness) from one config:
   skills, subagents, plugins, MCP servers, hooks, settings and prompt components
   across seven agent CLIs (`setup`)
+- [Config profiles](https://muxix.dev/guide/profiles): named overlays on an
+  agent's own config dir — run the same agent against a different provider,
+  model or MCP set (`exec --profile`, `profile show/export/diff`)
+- Background daemon behind the sidebar: tracks agent status across windows and
+  auto-freezes idle done agents (SIGSTOP/SIGCONT) to reclaim CPU
 - Automatically set up your preferred tmux pane layout (editor, shell, watchers,
   etc.)
 - Run post-creation hooks (install dependencies, setup database, etc.)
@@ -86,6 +87,12 @@ backends.</sub></sup>
 - [Automatic branch name generation](#automatic-branch-name-generation) from
   prompts using LLM
 - Shell completions
+
+## Roadmap
+
+- **Mobile / remote clients.** Drive worktrees, agent status and the task graph
+  from a phone through clients like [Paseo](https://paseo.sh) — the daemon and
+  task API become a remote control surface, not just a local TUI.
 
 ## Installation
 
@@ -1585,7 +1592,7 @@ Useful for monitoring multiple parallel agents and quickly jumping between them.
 > This feature requires [agent status tracking](#agent-status-tracking) to be
 > configured. Without it, no agents will appear in the dashboard.
 
-![muxix dashboard](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/dashboard.webp)
+![muxix dashboard](meta/dashboard.webp)
 
 #### Keybindings
 
@@ -1935,7 +1942,7 @@ plugin set and session history, without touching your base config. See
 Muxix can display the status of the agent in your tmux window list, giving you
 at-a-glance visibility into what the agent in each window doing.
 
-![tmux status showing agent icons](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/status.webp)
+![tmux status showing agent icons](meta/status.webp)
 
 #### Key
 
@@ -2424,7 +2431,7 @@ correctly. If you have a [Nerd Font](https://www.nerdfonts.com/) installed,
 answer yes to enable nerdfont icons throughout the interface, including the tmux
 window prefix.
 
-![nerdfont window prefix](https://raw.githubusercontent.com/lcensies/muxix/refs/heads/main/meta/nerdfont-prefix.webp)
+![nerdfont window prefix](meta/nerdfont-prefix.webp)
 
 To change the setting later, edit `~/.config/muxix/config.yaml`:
 

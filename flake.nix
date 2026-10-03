@@ -1,5 +1,5 @@
 {
-  description = "Parallel development in tmux with git worktrees";
+  description = "Declarative meta-harness in your terminal";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

@@ -1,7 +1,7 @@
 ---
 layout: home
-title: muxix - parallel AI agents in your terminal
-description: Terminal-first workflow for parallel AI agents using git worktrees
+title: muxix - declarative meta-harness in your terminal
+description: Declarative meta-harness in your terminal - provision agents and run them in parallel across git worktrees
 ---
 
 <div class="mono-editorial">
@@ -14,7 +14,7 @@ description: Terminal-first workflow for parallel AI agents using git worktrees
   <div class="ed-container ed-hero-inner">
     <div class="ed-hero-text">
       <span class="ed-hero-name">muxix</span>
-      <h1 class="ed-hero-headline">Terminal-first workflow for parallel AI agents.</h1>
+      <h1 class="ed-hero-headline">Declarative meta-harness in your terminal.</h1>
       <p class="ed-hero-tagline">Turn your terminal into a multi-agent workspace. Every task gets a dedicated <span class="ed-term">git worktree</span> and <span class="ed-term">tmux window</span>, letting agents code conflict-free.</p>
       <div class="ed-hero-actions">
         <a href="/guide/quick-start" class="ed-btn-primary">Get started</a>
