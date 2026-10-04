@@ -35,7 +35,7 @@ This will:
 - Create a git worktree at `<project_root>/../<project_name>__worktrees/new-feature`
 - Copy config files and symlink dependencies (if [configured](/guide/configuration#file-operations))
 - Run any [`post_create`](/guide/configuration#lifecycle-hooks) setup commands
-- Create a tmux window named `wm-new-feature` (the prefix is configurable)
+- Create a tmux window named `mx-new-feature` (the prefix is configurable)
 - Set up your configured or the default tmux pane layout
 - Automatically switch your tmux client to the new window
 

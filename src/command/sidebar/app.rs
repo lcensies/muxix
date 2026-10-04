@@ -250,7 +250,7 @@ impl SidebarApp {
             position: SidebarPosition::Left,
             layout_mode: SidebarLayoutMode::Compact,
             list_area: Rect::default(),
-            window_prefix: "wm-".to_string(),
+            window_prefix: "mx-".to_string(),
             host_session: None,
             host_window_id: None,
             host_agent_idx: None,

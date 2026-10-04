@@ -663,7 +663,7 @@ def skip_if_backend_unavailable(backend: str):
 MuxEnv = TmuxEnvironment | WezTermEnvironment
 
 # Default window prefix - must match src/config.rs window_prefix() default
-DEFAULT_WINDOW_PREFIX = "wm-"
+DEFAULT_WINDOW_PREFIX = "mx-"
 
 # Type alias for backward compatibility - tests can use either
 MuxEnv = TmuxEnvironment | WezTermEnvironment
@@ -1322,7 +1322,7 @@ def write_muxix_config(
     layouts: dict[str, Any] | None = None,
 ):
     """Creates a .muxix.yaml file from structured data and optionally commits it."""
-    # Disable nerdfonts by default to ensure consistent "wm-" prefix in tests,
+    # Disable nerdfonts by default to ensure consistent "mx-" prefix in tests,
     # regardless of user's global config
     config: dict[str, Any] = {"nerdfont": False}
     if panes is not None:

@@ -47,7 +47,7 @@ pub fn run(name: Option<&str>) -> Result<()> {
     };
 
     // When no name is provided, prefer the current window/session name
-    // This handles duplicate windows/sessions (e.g., wm:feature-2) correctly
+    // This handles duplicate windows/sessions (e.g., mx:feature-2) correctly
     let (full_target_name, is_current_target) = match name {
         Some(_) => {
             // Explicit name provided - worktree already validated above
@@ -178,10 +178,10 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let previous_dir = std::env::current_dir().unwrap();
         let previous_env: Vec<(&str, Option<std::ffi::OsString>)> = [
-            "WM_SANDBOX_GUEST",
-            "WM_RPC_HOST",
-            "WM_RPC_PORT",
-            "WM_RPC_TOKEN",
+            "MUXIX_SANDBOX_GUEST",
+            "MUXIX_RPC_HOST",
+            "MUXIX_RPC_PORT",
+            "MUXIX_RPC_TOKEN",
         ]
         .into_iter()
         .map(|key| (key, std::env::var_os(key)))
@@ -220,10 +220,10 @@ mod tests {
             std::fs::create_dir_all(&worktree_dir)?;
             std::env::set_current_dir(&worktree_dir)?;
 
-            set_env("WM_SANDBOX_GUEST", "1");
-            set_env("WM_RPC_HOST", "127.0.0.1");
-            set_env("WM_RPC_PORT", &port.to_string());
-            set_env("WM_RPC_TOKEN", token);
+            set_env("MUXIX_SANDBOX_GUEST", "1");
+            set_env("MUXIX_RPC_HOST", "127.0.0.1");
+            set_env("MUXIX_RPC_PORT", &port.to_string());
+            set_env("MUXIX_RPC_TOKEN", token);
 
             run(None)?;
             let name = server.join().unwrap()?;

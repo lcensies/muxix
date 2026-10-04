@@ -174,7 +174,7 @@ pub fn resolve_pane_command(
     let prompt_injected = matches!(result, Cow::Owned(_));
     // The single funnel every pane launch passes through: if a prompt file was
     // supplied and `prompt_injected` is false here, the agent starts silent.
-    crate::wm_evt!(
+    crate::muxix_evt!(
         "pane.command.resolved",
         cmd = %result,
         prompt_file = ?prompt_file_path,
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_prefixed() {
-        assert_eq!(prefixed("wm-", "feature"), "wm-feature");
+        assert_eq!(prefixed("mx-", "feature"), "mx-feature");
         assert_eq!(prefixed("", "feature"), "feature");
         assert_eq!(prefixed("prefix-", ""), "prefix-");
     }

@@ -75,7 +75,7 @@ fn run_activity_signal(pane: Option<&str>, label: Option<&str>) -> Result<()> {
         pane_id: pane.clone(),
     };
     crate::state::StateStore::new()?.set_activity(&key, label)?;
-    crate::wm_evt!("signal.write", kind = "activity", pane = %pane, side = "agent");
+    crate::muxix_evt!("signal.write", kind = "activity", pane = %pane, side = "agent");
     Ok(())
 }
 
@@ -110,7 +110,7 @@ fn run_pane_signal(kind: &str, pane: Option<&str>, feedback: Option<&str>) -> Re
     }
     // Records the write from the *agent hook* process. Same `muxix.log` as the
     // runner's observe events, so write→observe latency is directly measurable.
-    crate::wm_evt!("signal.write", kind = kind, pane = %pane, side = "hook");
+    crate::muxix_evt!("signal.write", kind = kind, pane = %pane, side = "hook");
     Ok(())
 }
 
@@ -147,7 +147,7 @@ fn run_completion_signal(kind: &str, pane: Option<&str>, feedback: Option<&str>)
             ts,
         }),
     );
-    crate::wm_evt!("signal.write", kind = kind, pane = %pane, side = "agent");
+    crate::muxix_evt!("signal.write", kind = kind, pane = %pane, side = "agent");
     println!("Signal {kind} written for pane {pane}");
     Ok(())
 }
@@ -174,7 +174,7 @@ fn run_node_signal(kind: &str, node: Option<&str>, feedback: Option<&str>) -> Re
 
     let signal_path = signals::paths::hook_signal(&task_id, node_id);
     fs::write(&signal_path, payload.to_string())?;
-    crate::wm_evt!("signal.write", kind = kind, node = node_id, side = "agent");
+    crate::muxix_evt!("signal.write", kind = kind, node = node_id, side = "agent");
     println!(
         "Signal {} written for node {} ({})",
         kind,

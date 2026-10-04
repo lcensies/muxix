@@ -180,31 +180,6 @@ description: Declarative meta-harness in your terminal - provision agents and ru
   </div>
 </section>
 
-<section class="ed-testimonials">
-  <div class="ed-container">
-    <div class="ed-accent-rule"></div>
-    <span class="ed-section-label">What people are saying</span>
-    <div class="ed-testimonial-list">
-      <div class="ed-testimonial">
-        <blockquote>"I've been using (and loving) muxix which brings together tmux, git worktrees, and CLI agents into an opinionated workflow."</blockquote>
-        <cite>— @Coolin96 <a href="https://news.ycombinator.com/item?id=46029809">via Hacker News</a></cite>
-      </div>
-      <div class="ed-testimonial">
-        <blockquote>"Thank you so much for your work with muxix! It's a tool I've been wanting to exist for a long time."</blockquote>
-        <cite>— @rstacruz <a href="https://github.com/raine/workmux/issues/2">via GitHub</a></cite>
-      </div>
-      <div class="ed-testimonial">
-        <blockquote>"It's become my daily driver — the perfect level of abstraction over tmux + git, without getting in the way or obscuring the underlying tooling."</blockquote>
-        <cite>— @cisaacstern <a href="https://github.com/raine/workmux/issues/33">via GitHub</a></cite>
-      </div>
-      <div class="ed-testimonial">
-        <blockquote>"I have to mention muxix at every opportunity because it's the perfect glue between worktrees, agents and tmux windows."</blockquote>
-        <cite>— @dedbrizz <a href="https://www.threads.com/@dedbrizz/post/DVt1DtLkr_l">via Threads</a></cite>
-      </div>
-    </div>
-  </div>
-</section>
-
 <section class="ed-cta">
   <div class="ed-container ed-align-center">
     <div class="ed-cta-actions">

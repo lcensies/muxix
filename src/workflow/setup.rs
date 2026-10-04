@@ -134,10 +134,9 @@ pub fn setup_environment(
         let config_dir_str = abs_config_dir.to_string_lossy();
         let hook_env = [
             ("MUXIX_HANDLE", handle),
-            ("WM_HANDLE", handle),
-            ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
-            ("WM_PROJECT_ROOT", project_root_str.as_ref()),
-            ("WM_CONFIG_DIR", config_dir_str.as_ref()),
+            ("MUXIX_WORKTREE_PATH", worktree_path_str.as_ref()),
+            ("MUXIX_PROJECT_ROOT", project_root_str.as_ref()),
+            ("MUXIX_CONFIG_DIR", config_dir_str.as_ref()),
         ];
         for (idx, command) in post_create.iter().enumerate() {
             info!(branch = branch_name, step = idx + 1, total = hooks_run, command = %command, "setup_environment:hook start");
@@ -247,14 +246,14 @@ pub fn setup_environment(
                         .context("Failed to create session")?
                     }
                 } else {
-                    let last_wm_window = after_window
+                    let last_mx_window = after_window
                         .or_else(|| mux.find_last_window_with_prefix(prefix).unwrap_or(None));
 
                     mux.create_window(CreateWindowParams {
                         prefix,
                         name: target_window_name,
                         cwd: effective_working_dir,
-                        after_window: last_wm_window.as_deref(),
+                        after_window: last_mx_window.as_deref(),
                     })
                     .context("Failed to create window")?
                 };
@@ -571,7 +570,7 @@ pub fn write_prompt_file(
         !content.trim().is_empty(),
         "refusing to write an empty prompt file for '{branch_name}' — the agent would start with no instructions"
     );
-    crate::wm_evt!(
+    crate::muxix_evt!(
         "prompt.file.written",
         path = %prompt_path.display(),
         bytes = content.len(),

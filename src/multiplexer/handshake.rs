@@ -66,7 +66,7 @@ impl TmuxHandshake {
             .unwrap_or_default()
             .as_nanos();
         let pid = std::process::id();
-        let channel = format!("wm_ready_{}_{}", pid, nanos);
+        let channel = format!("mx_ready_{}_{}", pid, nanos);
 
         // Lock the channel (ensures we don't miss the signal)
         Cmd::new("tmux")

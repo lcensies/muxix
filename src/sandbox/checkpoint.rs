@@ -265,7 +265,7 @@ fn checkpoint_label(snapshot_path: &Path) -> String {
     snapshot_path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("wm-checkpoint")
+        .unwrap_or("mx-checkpoint")
         .to_string()
 }
 
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn podman_checkpoint_argv_exports_to_file() {
-        let argv = podman_checkpoint_argv("/snaps/wm-x-1.snap", "wm-x");
+        let argv = podman_checkpoint_argv("/snaps/mx-x-1.snap", "mx-x");
         assert_eq!(
             argv,
             vec![
@@ -454,8 +454,8 @@ mod tests {
                 "checkpoint",
                 "--leave-running",
                 "--export",
-                "/snaps/wm-x-1.snap",
-                "wm-x",
+                "/snaps/mx-x-1.snap",
+                "mx-x",
             ]
         );
     }
@@ -463,34 +463,34 @@ mod tests {
     #[test]
     fn podman_restore_argv_imports_file() {
         assert_eq!(
-            podman_restore_argv("/snaps/wm-x-1.snap"),
-            vec!["container", "restore", "--import", "/snaps/wm-x-1.snap"]
+            podman_restore_argv("/snaps/mx-x-1.snap"),
+            vec!["container", "restore", "--import", "/snaps/mx-x-1.snap"]
         );
     }
 
     #[test]
     fn docker_checkpoint_and_restore_argv_use_checkpoint_dir() {
         assert_eq!(
-            docker_checkpoint_argv("/tmp/cp", "wm-x", "wm-x-1"),
+            docker_checkpoint_argv("/tmp/cp", "mx-x", "mx-x-1"),
             vec![
                 "checkpoint",
                 "create",
                 "--leave-running",
                 "--checkpoint-dir",
                 "/tmp/cp",
-                "wm-x",
-                "wm-x-1",
+                "mx-x",
+                "mx-x-1",
             ]
         );
         assert_eq!(
-            docker_restore_argv("/tmp/cp", "wm-x-1", "wm-x"),
+            docker_restore_argv("/tmp/cp", "mx-x-1", "mx-x"),
             vec![
                 "start",
                 "--checkpoint-dir",
                 "/tmp/cp",
                 "--checkpoint",
-                "wm-x-1",
-                "wm-x",
+                "mx-x-1",
+                "mx-x",
             ]
         );
     }
@@ -498,8 +498,8 @@ mod tests {
     #[test]
     fn checkpoint_label_is_file_stem() {
         assert_eq!(
-            checkpoint_label(Path::new("/snaps/wm-feat-1700.snap")),
-            "wm-feat-1700"
+            checkpoint_label(Path::new("/snaps/mx-feat-1700.snap")),
+            "mx-feat-1700"
         );
     }
 
@@ -516,7 +516,7 @@ mod tests {
     #[test]
     fn prune_keeps_only_most_recent() {
         let dir = tempfile::tempdir().unwrap();
-        let sandbox_id = "wm-test-1234";
+        let sandbox_id = "mx-test-1234";
         let prefix = format!("{}-", sandbox_id);
 
         // Create 3 fake snapshot files with distinct timestamps in the name.
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn prune_keeps_n_most_recent() {
         let dir = tempfile::tempdir().unwrap();
-        let sandbox_id = "wm-test-5678";
+        let sandbox_id = "mx-test-5678";
         let prefix = format!("{}-", sandbox_id);
 
         let snaps: Vec<PathBuf> = (1u64..=4)
@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn prune_unlimited_keeps_all() {
         let dir = tempfile::tempdir().unwrap();
-        let sandbox_id = "wm-test-unlimited";
+        let sandbox_id = "mx-test-unlimited";
         let prefix = format!("{}-", sandbox_id);
 
         let snaps: Vec<PathBuf> = (1u64..=5)

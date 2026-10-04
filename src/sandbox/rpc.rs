@@ -508,10 +508,10 @@ fn handle_clipboard_read(mime: &str, worktree_path: &std::path::Path) -> RpcResp
 fn host_muxix_command() -> std::process::Command {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("muxix"));
     let mut cmd = std::process::Command::new(exe);
-    cmd.env_remove("WM_SANDBOX_GUEST")
-        .env_remove("WM_RPC_HOST")
-        .env_remove("WM_RPC_PORT")
-        .env_remove("WM_RPC_TOKEN");
+    cmd.env_remove("MUXIX_SANDBOX_GUEST")
+        .env_remove("MUXIX_RPC_HOST")
+        .env_remove("MUXIX_RPC_PORT")
+        .env_remove("MUXIX_RPC_TOKEN");
 
     cmd
 }
@@ -956,7 +956,7 @@ fn handle_exec(
 /// RPC client for guest-side use. Connects to the host supervisor.
 ///
 /// Used by the guest muxix binary to send requests to the host supervisor
-/// when `WM_SANDBOX_GUEST=1` is set. Commands like `set-window-status` route
+/// when `MUXIX_SANDBOX_GUEST=1` is set. Commands like `set-window-status` route
 /// through RPC instead of calling tmux directly.
 pub struct RpcClient {
     reader: BufReader<TcpStream>,
@@ -964,14 +964,14 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
-    /// Connect using WM_RPC_HOST, WM_RPC_PORT, and WM_RPC_TOKEN env vars.
+    /// Connect using MUXIX_RPC_HOST, MUXIX_RPC_PORT, and MUXIX_RPC_TOKEN env vars.
     pub fn from_env() -> Result<Self> {
-        let host = std::env::var("WM_RPC_HOST").context("WM_RPC_HOST not set")?;
-        let port: u16 = std::env::var("WM_RPC_PORT")
-            .context("WM_RPC_PORT not set")?
+        let host = std::env::var("MUXIX_RPC_HOST").context("MUXIX_RPC_HOST not set")?;
+        let port: u16 = std::env::var("MUXIX_RPC_PORT")
+            .context("MUXIX_RPC_PORT not set")?
             .parse()
-            .context("WM_RPC_PORT is not a valid port")?;
-        let token = std::env::var("WM_RPC_TOKEN").context("WM_RPC_TOKEN not set")?;
+            .context("MUXIX_RPC_PORT is not a valid port")?;
+        let token = std::env::var("MUXIX_RPC_TOKEN").context("MUXIX_RPC_TOKEN not set")?;
 
         Self::connect(&host, port, &token)
     }
@@ -1232,7 +1232,7 @@ mod tests {
         // Common secret env vars should never appear
         assert!(!envs.contains_key("AWS_SECRET_ACCESS_KEY"));
         assert!(!envs.contains_key("GITHUB_TOKEN"));
-        assert!(!envs.contains_key("WM_RPC_TOKEN"));
+        assert!(!envs.contains_key("MUXIX_RPC_TOKEN"));
         // Only allowlisted keys should be present
         for key in envs.keys() {
             assert!(
@@ -1399,8 +1399,8 @@ mod tests {
         // The RPC token is in our process env but should NOT leak to child
         let env_lines: Vec<&str> = stdout.lines().collect();
         assert!(
-            !env_lines.iter().any(|l| l.starts_with("WM_RPC_TOKEN=")),
-            "WM_RPC_TOKEN should not be in child environment"
+            !env_lines.iter().any(|l| l.starts_with("MUXIX_RPC_TOKEN=")),
+            "MUXIX_RPC_TOKEN should not be in child environment"
         );
 
         // PATH should still be present (it's in the allowlist)
@@ -1701,22 +1701,22 @@ mod tests {
         let envs: std::collections::HashMap<&OsStr, Option<&OsStr>> = cmd.get_envs().collect();
 
         assert_eq!(
-            envs.get(OsStr::new("WM_SANDBOX_GUEST")),
+            envs.get(OsStr::new("MUXIX_SANDBOX_GUEST")),
             Some(&None),
             "host muxix child must not inherit guest mode"
         );
         assert_eq!(
-            envs.get(OsStr::new("WM_RPC_HOST")),
+            envs.get(OsStr::new("MUXIX_RPC_HOST")),
             Some(&None),
             "host muxix child must not inherit guest RPC host"
         );
         assert_eq!(
-            envs.get(OsStr::new("WM_RPC_PORT")),
+            envs.get(OsStr::new("MUXIX_RPC_PORT")),
             Some(&None),
             "host muxix child must not inherit guest RPC port"
         );
         assert_eq!(
-            envs.get(OsStr::new("WM_RPC_TOKEN")),
+            envs.get(OsStr::new("MUXIX_RPC_TOKEN")),
             Some(&None),
             "host muxix child must not inherit guest RPC token"
         );

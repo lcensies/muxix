@@ -516,7 +516,7 @@ mod tests {
     fn test_agent(name: &str) -> AgentPane {
         AgentPane {
             session: "session".to_string(),
-            window_name: format!("wm-{}", name),
+            window_name: format!("mx-{}", name),
             pane_id: "%1".to_string(),
             window_id: "@1".to_string(),
             path: PathBuf::from(format!("/tmp/{}", name)),

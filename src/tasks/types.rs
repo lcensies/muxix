@@ -224,7 +224,7 @@ pub struct TaskSlot {
     /// Multiplexer pane id running the task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harness_pane: Option<String>,
-    /// Multiplexer window name (e.g. `wm-add-auth-1-2`).
+    /// Multiplexer window name (e.g. `mx-add-auth-1-2`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<String>,
     /// Agent session id, when known (enables `--resume <session>`).

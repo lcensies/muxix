@@ -388,8 +388,8 @@ mod tests {
 
     #[test]
     fn normalize_path_collapses_parent_dir() {
-        let p = Path::new("/Users/test/repo/../wm/handle");
-        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/wm/handle"));
+        let p = Path::new("/Users/test/repo/../mx/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/mx/handle"));
     }
 
     #[test]
@@ -406,14 +406,14 @@ mod tests {
 
     #[test]
     fn normalize_path_preserves_leading_parent() {
-        let p = Path::new("../wm/handle");
-        assert_eq!(normalize_path(p), PathBuf::from("../wm/handle"));
+        let p = Path::new("../mx/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("../mx/handle"));
     }
 
     #[test]
     fn normalize_path_no_op_for_clean_path() {
-        let p = Path::new("/Users/test/wm/handle");
-        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/wm/handle"));
+        let p = Path::new("/Users/test/mx/handle");
+        assert_eq!(normalize_path(p), PathBuf::from("/Users/test/mx/handle"));
     }
 
     #[test]

@@ -170,7 +170,7 @@ mod tests {
             pane_pid: 1000,
             command: "node".to_string(),
             updated_ts,
-            window_name: Some("wm-test".to_string()),
+            window_name: Some("mx-test".to_string()),
             session_name: Some("main".to_string()),
             boot_id: None,
             agent_kind: None,

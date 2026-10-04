@@ -74,11 +74,11 @@ mod tests {
     #[test]
     fn test_basic_info_message() {
         let start = Instant::now();
-        let line = r#"time="2026-02-06T07:30:37+02:00" level=info msg="Starting the instance \"wm-415bdd35\" with internal VM driver \"vz\"""#;
+        let line = r#"time="2026-02-06T07:30:37+02:00" level=info msg="Starting the instance \"mx-415bdd35\" with internal VM driver \"vz\"""#;
         assert_eq!(
             format_lima_log_line(line, &start),
             Some(
-                r#"  [00:00] Starting the instance "wm-415bdd35" with internal VM driver "vz""#
+                r#"  [00:00] Starting the instance "mx-415bdd35" with internal VM driver "vz""#
                     .to_string()
             )
         );

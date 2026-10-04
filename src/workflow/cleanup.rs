@@ -255,9 +255,8 @@ pub fn cleanup(
                 let project_root_str = abs_project_root.to_string_lossy();
                 let hook_env = [
                     ("MUXIX_HANDLE", handle),
-                    ("WM_HANDLE", handle),
-                    ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
-                    ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+                    ("MUXIX_WORKTREE_PATH", worktree_path_str.as_ref()),
+                    ("MUXIX_PROJECT_ROOT", project_root_str.as_ref()),
                 ];
                 for command in pre_remove_hooks {
                     // Run the hook with the worktree path as the working directory.
@@ -462,9 +461,8 @@ pub fn cleanup(
             let project_root_str = abs_project_root.to_string_lossy();
             let hook_env = [
                 ("MUXIX_HANDLE", handle),
-                ("WM_HANDLE", handle),
-                ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
-                ("WM_PROJECT_ROOT", project_root_str.as_ref()),
+                ("MUXIX_WORKTREE_PATH", worktree_path_str.as_ref()),
+                ("MUXIX_PROJECT_ROOT", project_root_str.as_ref()),
             ];
             for command in pre_remove_hooks {
                 cmd::shell_command_with_env(command, worktree_path, &hook_env)

@@ -50,7 +50,7 @@ impl<'a> MuxHandle<'a> {
         self.mode == MuxMode::Session
     }
 
-    /// The prefixed name (e.g., "wm-feature-auth").
+    /// The prefixed name (e.g., "mx-feature-auth").
     pub fn full_name(&self) -> String {
         util::prefixed(self.prefix, self.name)
     }

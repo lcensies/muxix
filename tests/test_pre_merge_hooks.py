@@ -55,11 +55,11 @@ class TestPreMergeHooks:
         write_muxix_config(
             repo_path,
             pre_merge=[
-                f'echo "BRANCH=$WM_BRANCH_NAME" >> {env_file}',
-                f'echo "TARGET=$WM_TARGET_BRANCH" >> {env_file}',
-                f'echo "PATH=$WM_WORKTREE_PATH" >> {env_file}',
-                f'echo "ROOT=$WM_PROJECT_ROOT" >> {env_file}',
-                f'echo "HANDLE=$WM_HANDLE" >> {env_file}',
+                f'echo "BRANCH=$MUXIX_BRANCH_NAME" >> {env_file}',
+                f'echo "TARGET=$MUXIX_TARGET_BRANCH" >> {env_file}',
+                f'echo "PATH=$MUXIX_WORKTREE_PATH" >> {env_file}',
+                f'echo "ROOT=$MUXIX_PROJECT_ROOT" >> {env_file}',
+                f'echo "HANDLE=$MUXIX_HANDLE" >> {env_file}',
             ],
             env=env,
         )

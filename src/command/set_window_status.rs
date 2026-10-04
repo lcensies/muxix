@@ -43,7 +43,7 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
     // Hook-invocation trace: this command IS a Claude hook (Stop/PostToolUse/
     // UserPromptSubmit/Notification), so logging it records that the hook fired,
     // for which pane — alongside the runner's observe events in the same log.
-    crate::wm_evt!("hook.status", status = ?cmd, pane = %pane_id, side = "hook");
+    crate::muxix_evt!("hook.status", status = ?cmd, pane = %pane_id, side = "hook");
 
     let pane_key = crate::state::PaneKey {
         backend: mux.name().to_string(),

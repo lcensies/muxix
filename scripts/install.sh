@@ -330,7 +330,7 @@ verify_installation() {
 	echo "  muxix add feature  # create a worktree and tmux window"
 	echo ""
 	echo "Recommended:"
-	echo "  alias wm='muxix'   # add to your shell profile for faster typing"
+	echo "  alias mx='muxix'   # add to your shell profile for faster typing"
 	echo ""
 	echo "Documentation: https://github.com/lcensies/muxix/blob/main/docs/index.md"
 	echo ""

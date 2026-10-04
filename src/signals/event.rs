@@ -9,11 +9,11 @@
 //! # Model: spans carry context, events mark transitions
 //!
 //! Ambient context (which node, what kind, which pane, how long) lives on
-//! **spans**, not on every call site. The scheduler enters a [`wm_span!`]
+//! **spans**, not on every call site. The scheduler enters a [`muxix_span!`]
 //! `"node"` span per node; the pane driver enters a nested `"turn"` span per
 //! prompt. Because the fmt subscriber prints the active span scope on every
 //! line, all events inside automatically carry `node{node=… kind=…}:turn{pane=…}:`
-//! — so individual events stay lean (`wm_evt!("prompt.sent", bytes = n)`), and
+//! — so individual events stay lean (`muxix_evt!("prompt.sent", bytes = n)`), and
 //! span close lines report elapsed time (`time.busy`) for free.
 //!
 //! Every event/span uses the dedicated tracing target [`TARGET`], so they land
@@ -39,7 +39,7 @@
 //! on by default. High-frequency per-poll/per-tick events are `debug` so the
 //! default log isn't flooded. Control the *level* independently of everything
 //! else via the `MUXIX_EVENTS` env var (`off` | `info` | `debug` | `trace`),
-//! or with a standard `RUST_LOG=wm::event=debug` directive. See [`crate::logger`].
+//! or with a standard `RUST_LOG=muxix::event=debug` directive. See [`crate::logger`].
 //!
 //! # Per-kind filtering from config
 //!
@@ -49,7 +49,7 @@
 //!
 //! ```yaml
 //! events:
-//!   enabled: true            # master switch; false silences all wm::event
+//!   enabled: true            # master switch; false silences all muxix::event
 //!   level: debug             # off|info|debug|trace (ignored if MUXIX_EVENTS set)
 //!   disable: [pane.probe, turn.poll]   # group prefix or exact kind
 //!   only: []                 # allowlist; non-empty => only these are emitted
@@ -65,15 +65,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Tracing target every pipeline span and event shares. Filter or silence with
-/// `MUXIX_EVENTS=off` / `RUST_LOG=wm::event=off`.
-pub const TARGET: &str = "wm::event";
+/// `MUXIX_EVENTS=off` / `RUST_LOG=muxix::event=off`.
+pub const TARGET: &str = "muxix::event";
 
 /// Runtime per-event-kind filter, configured from `.muxix.yaml` (`events:`).
 ///
 /// The `MUXIX_EVENTS` env var / `RUST_LOG` directive controls the *level*
 /// (`off|info|debug|trace`) at the tracing subscriber, but it cannot single out
-/// individual event kinds. This filter does: it is consulted by the [`wm_evt!`]
-/// / [`wm_evt_dbg!`] macros before they emit, so specific kinds or whole groups
+/// individual event kinds. This filter does: it is consulted by the [`muxix_evt!`]
+/// / [`muxix_evt_dbg!`] macros before they emit, so specific kinds or whole groups
 /// can be silenced while the rest of that level keeps flowing.
 ///
 /// Matching is group-aware: a pattern matches an event kind when it equals the
@@ -81,7 +81,7 @@ pub const TARGET: &str = "wm::event";
 /// `pane.probe.ok` and `pane.probe.retry` but not `pane.gate.ok`.
 #[derive(Debug, Clone)]
 pub struct EventFilter {
-    /// Master switch. `false` silences every `wm::event` regardless of the rest.
+    /// Master switch. `false` silences every `muxix::event` regardless of the rest.
     pub enabled: bool,
     /// Allowlist. When non-empty, only kinds matching one of these are emitted.
     pub only: Vec<String>,
@@ -164,9 +164,9 @@ pub fn should_emit(kind: &str) -> bool {
 /// events themselves carry no repeated context. Returns a [`tracing::Span`];
 /// hold its `.entered()` guard for the scope.
 ///
-/// `let _g = wm_span!("node", node = %id, kind = node_kind_label(n)).entered();`
+/// `let _g = muxix_span!("node", node = %id, kind = node_kind_label(n)).entered();`
 #[macro_export]
-macro_rules! wm_span {
+macro_rules! muxix_span {
     ($($tt:tt)*) => {
         ::tracing::info_span!(target: $crate::signals::event::TARGET, $($tt)*)
     };
@@ -176,9 +176,9 @@ macro_rules! wm_span {
 /// is the event kind (recorded as `ev="…"`); the rest are forwarded verbatim to
 /// `tracing`, so `%`/`?` sigils and `key = value` pairs work as usual.
 ///
-/// `wm_evt!("prompt.sent", bytes = n, multiline = ml)`
+/// `muxix_evt!("prompt.sent", bytes = n, multiline = ml)`
 #[macro_export]
-macro_rules! wm_evt {
+macro_rules! muxix_evt {
     ($kind:expr) => {
         if $crate::signals::event::should_emit($kind) {
             ::tracing::info!(target: $crate::signals::event::TARGET, ev = $kind)
@@ -195,7 +195,7 @@ macro_rules! wm_evt {
 /// `MUXIX_EVENTS=debug`). Use for per-poll / per-tick traces that would
 /// otherwise flood the default log.
 #[macro_export]
-macro_rules! wm_evt_dbg {
+macro_rules! muxix_evt_dbg {
     ($kind:expr) => {
         if $crate::signals::event::should_emit($kind) {
             ::tracing::debug!(target: $crate::signals::event::TARGET, ev = $kind)

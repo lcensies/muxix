@@ -282,13 +282,13 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let bin = tmp.path().join("bin");
             std::fs::create_dir_all(&bin).unwrap();
-            let exe = bin.join("wm-test-bin");
+            let exe = bin.join("mx-test-bin");
             std::fs::write(&exe, "#!/bin/sh\n").unwrap();
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
             let path = std::env::join_paths([bin.clone(), tmp.path().join("bin")]).unwrap();
-            assert_eq!(which_in(Some(&path), "wm-test-bin"), Some(exe));
+            assert_eq!(which_in(Some(&path), "mx-test-bin"), Some(exe));
             assert!(which_in(Some(&path), "definitely-not-a-binary-xyz").is_none());
-            assert!(which_in(None, "wm-test-bin").is_none());
+            assert!(which_in(None, "mx-test-bin").is_none());
             assert!(prefix_bin_in(Some(&path), tmp.path()));
             assert!(!prefix_bin_in(Some(&path), &p));
         }

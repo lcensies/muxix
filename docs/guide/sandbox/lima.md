@@ -78,8 +78,8 @@ The guest VM connects back to the host via `host.lima.internal` (Lima's built-in
 
 VMs are named deterministically based on the isolation level:
 
-- **Project isolation** (default): `wm-<project>-<hash>` (e.g., `wm-myproject-a1b2c3d4`). The project name (up to 18 characters) is included for readability in `limactl list`.
-- **Shared isolation**: `wm-<hash>` (e.g., `wm-5f6g7h8i`). A single global VM is used for all projects.
+- **Project isolation** (default): `mx-<project>-<hash>` (e.g., `mx-myproject-a1b2c3d4`). The project name (up to 18 characters) is included for readability in `limactl list`.
+- **Shared isolation**: `mx-<hash>` (e.g., `mx-5f6g7h8i`). A single global VM is used for all projects.
 
 ### Auto-start behavior
 
@@ -187,7 +187,7 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
 2. After the VM is running, stop it:
 
    ```bash
-   limactl stop wm-yourproject-abc12345
+   limactl stop mx-yourproject-abc12345
    ```
 
 3. Export the disk image (flattens base + changes into a single file):
@@ -195,7 +195,7 @@ Custom `provision` scripts still run even when `skip_default_provision` is true,
    ```bash
    mkdir -p ~/.lima/images
    qemu-img convert -O qcow2 \
-     ~/.lima/wm-yourproject-abc12345/diffdisk \
+     ~/.lima/mx-yourproject-abc12345/diffdisk \
      ~/.lima/images/muxix-golden.qcow2
    ```
 
@@ -289,7 +289,7 @@ muxix sandbox prune
 
 This command:
 
-- Lists all Lima VMs with the `wm-` prefix (muxix VMs)
+- Lists all Lima VMs with the `mx-` prefix (muxix VMs)
 - Shows details for each VM: name, status, size, age, and last accessed time
 - Displays total disk space used
 - Prompts for confirmation before deletion
@@ -305,11 +305,11 @@ muxix sandbox prune --force
 ```
 Found 2 muxix Lima VM(s):
 
-1. wm-myproject-bbeb2cbf (Running)
+1. mx-myproject-bbeb2cbf (Running)
    Age: 2 hours ago
    Last accessed: 5 minutes ago
 
-2. wm-another-proj-d1370a2a (Stopped)
+2. mx-another-proj-d1370a2a (Stopped)
    Age: 1 day ago
    Last accessed: 1 day ago
 
@@ -327,7 +327,7 @@ When using the Lima backend, you can stop running VMs to free up system resource
 muxix sandbox stop
 
 # Stop a specific VM
-muxix sandbox stop wm-myproject-abc12345
+muxix sandbox stop mx-myproject-abc12345
 
 # Stop all muxix VMs
 muxix sandbox stop --all

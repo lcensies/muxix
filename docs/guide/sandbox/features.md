@@ -159,7 +159,7 @@ The supervisor and guest communicate via JSON-lines over TCP. Each request is a 
 - `Merge` - runs `muxix merge` on the host with all flags forwarded
 - `ClipboardRead` - reads the host clipboard and writes image data to the shared worktree filesystem (used by `wl-paste`/`xclip` shims)
 
-Requests are authenticated with a per-session token passed via the `WM_RPC_TOKEN` environment variable.
+Requests are authenticated with a per-session token passed via the `MUXIX_RPC_TOKEN` environment variable.
 
 ## Troubleshooting
 

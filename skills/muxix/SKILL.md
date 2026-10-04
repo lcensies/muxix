@@ -24,7 +24,7 @@ context you already have. The worktree agent does all the work.
   commands
 - **Worktree directory**: defaults to `<project>__worktrees/<handle>` as a
   sibling of the project root (`worktree_dir` overrides)
-- **Window prefix**: tmux windows are named `wm-<handle>` by default
+- **Window prefix**: tmux windows are named `mx-<handle>` by default
   (configurable via `window_prefix`; `worktree_prefix` prefixes both the
   directory and the window name)
 - **Agent status**: agents report status via hooks: working, waiting (needs
@@ -292,7 +292,7 @@ mode: window                     # window or session
 worktree_dir: .worktrees         # supports ~ and {project}
 worktree_naming: full            # full or basename
 worktree_prefix: ""              # prefixes worktree dir and window name
-window_prefix: wm-               # tmux window name prefix
+window_prefix: mx-               # tmux window name prefix
 
 panes:
   - command: <agent>             # <agent> resolves to configured agent

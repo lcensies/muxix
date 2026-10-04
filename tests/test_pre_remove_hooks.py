@@ -47,14 +47,14 @@ class TestPreRemoveHooksRemove:
         muxix_exe_path: Path,
         repo_path: Path,
     ):
-        """Verifies that WM_HANDLE environment variable is set correctly."""
+        """Verifies that MUXIX_HANDLE environment variable is set correctly."""
         env = mux_server
         branch_name = "feature-handle-test"
         env_file = env.tmp_path / "hook_env.txt"
 
         write_muxix_config(
             repo_path,
-            pre_remove=[f'echo "$WM_HANDLE" > {env_file}'],
+            pre_remove=[f'echo "$MUXIX_HANDLE" > {env_file}'],
         )
 
         run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
@@ -63,7 +63,7 @@ class TestPreRemoveHooksRemove:
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
         assert content == branch_name, (
-            f"WM_HANDLE should be '{branch_name}', got '{content}'"
+            f"MUXIX_HANDLE should be '{branch_name}', got '{content}'"
         )
 
     def test_pre_remove_hook_receives_wm_worktree_path(
@@ -72,14 +72,14 @@ class TestPreRemoveHooksRemove:
         muxix_exe_path: Path,
         repo_path: Path,
     ):
-        """Verifies that WM_WORKTREE_PATH environment variable is set correctly."""
+        """Verifies that MUXIX_WORKTREE_PATH environment variable is set correctly."""
         env = mux_server
         branch_name = "feature-path-test"
         env_file = env.tmp_path / "hook_worktree_path.txt"
 
         write_muxix_config(
             repo_path,
-            pre_remove=[f'echo "$WM_WORKTREE_PATH" > {env_file}'],
+            pre_remove=[f'echo "$MUXIX_WORKTREE_PATH" > {env_file}'],
         )
 
         run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
@@ -90,7 +90,7 @@ class TestPreRemoveHooksRemove:
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
         assert content == str(expected_path), (
-            f"WM_WORKTREE_PATH should be '{expected_path}', got '{content}'"
+            f"MUXIX_WORKTREE_PATH should be '{expected_path}', got '{content}'"
         )
 
     def test_pre_remove_hook_receives_wm_project_root(
@@ -99,14 +99,14 @@ class TestPreRemoveHooksRemove:
         muxix_exe_path: Path,
         repo_path: Path,
     ):
-        """Verifies that WM_PROJECT_ROOT environment variable is set correctly."""
+        """Verifies that MUXIX_PROJECT_ROOT environment variable is set correctly."""
         env = mux_server
         branch_name = "feature-root-test"
         env_file = env.tmp_path / "hook_project_root.txt"
 
         write_muxix_config(
             repo_path,
-            pre_remove=[f'echo "$WM_PROJECT_ROOT" > {env_file}'],
+            pre_remove=[f'echo "$MUXIX_PROJECT_ROOT" > {env_file}'],
         )
 
         run_muxix_add(env, muxix_exe_path, repo_path, branch_name)
@@ -115,7 +115,7 @@ class TestPreRemoveHooksRemove:
         assert env_file.exists(), "Hook should have written environment variable"
         content = env_file.read_text().strip()
         assert content == str(repo_path), (
-            f"WM_PROJECT_ROOT should be '{repo_path}', got '{content}'"
+            f"MUXIX_PROJECT_ROOT should be '{repo_path}', got '{content}'"
         )
 
     def test_pre_remove_hook_can_copy_files_to_project_root(
@@ -134,8 +134,8 @@ class TestPreRemoveHooksRemove:
             repo_path,
             post_create=["echo 'test content' > artifact.txt"],
             pre_remove=[
-                f'mkdir -p "$WM_PROJECT_ROOT/{artifacts_dir}/$WM_HANDLE"',
-                f'cp artifact.txt "$WM_PROJECT_ROOT/{artifacts_dir}/$WM_HANDLE/"',
+                f'mkdir -p "$MUXIX_PROJECT_ROOT/{artifacts_dir}/$MUXIX_HANDLE"',
+                f'cp artifact.txt "$MUXIX_PROJECT_ROOT/{artifacts_dir}/$MUXIX_HANDLE/"',
             ],
         )
 
@@ -219,9 +219,9 @@ class TestPreRemoveHooksMerge:
         write_muxix_config(
             repo_path,
             pre_remove=[
-                f'echo "HANDLE=$WM_HANDLE" >> {env_file}',
-                f'echo "PATH=$WM_WORKTREE_PATH" >> {env_file}',
-                f'echo "ROOT=$WM_PROJECT_ROOT" >> {env_file}',
+                f'echo "HANDLE=$MUXIX_HANDLE" >> {env_file}',
+                f'echo "PATH=$MUXIX_WORKTREE_PATH" >> {env_file}',
+                f'echo "ROOT=$MUXIX_PROJECT_ROOT" >> {env_file}',
             ],
             env=env,
         )

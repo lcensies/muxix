@@ -281,7 +281,7 @@ impl Multiplexer for KittyBackend {
             return None;
         }
 
-        // Otherwise treat `target` as a window/tab name (e.g. `wm-alpha`) and
+        // Otherwise treat `target` as a window/tab name (e.g. `mx-alpha`) and
         // return the active/focused pane in that tab. Kitty tabs correspond to
         // muxix windows, and each tab normally contains one or more windows
         // (muxix panes). We scope the search to the current OS window so the

@@ -38,7 +38,7 @@ import pytest
 import yaml
 
 IMAGE = "alpine:latest"
-SANDBOX_ID = "wm-e2e-criu"
+SANDBOX_ID = "mx-e2e-criu"
 AGENT_ID = "aaaabbbb-e2e0-0000-0000-0000000000e2"
 
 # A stateful, interactive process: fixes an in-memory nonce at boot, advances a
@@ -196,7 +196,7 @@ def _seed_agent_state(xdg: Path, *, workdir: str) -> Path:
         "pane_pid": 12345,
         "command": "opencode",
         "updated_ts": int(time.time()),
-        "window_name": "wm-e2e-feature",
+        "window_name": "mx-e2e-feature",
         "session_name": "main",
         "boot_id": None,
         "agent_kind": "opencode",
@@ -223,7 +223,7 @@ def _read_state(state_file: Path) -> dict:
 
 def test_container_checkpoint_resume_resumes_process(tmp_path):
     criu_dir = _require_e2e()
-    wm = muxix_exe()
+    mx = muxix_exe()
 
     xdg = tmp_path / "state"
     home = tmp_path / "home"
@@ -237,7 +237,7 @@ def test_container_checkpoint_resume_resumes_process(tmp_path):
         return subprocess.run(
             _sudo_env(
                 criu_dir,
-                str(wm),
+                str(mx),
                 "sandbox",
                 sub,
                 AGENT_ID,

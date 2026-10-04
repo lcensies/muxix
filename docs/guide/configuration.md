@@ -78,7 +78,7 @@ Most options have sensible defaults. You only need to configure what you want to
 | `base_branch`      | Default base branch for new worktrees (overridden by `--base`)                      | Current branch              |
 | `worktree_dir`     | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.       | `<project>__worktrees/`     |
 | `nerdfont`         | Enable nerdfont icons (prompted on first run)                                       | Prompted                    |
-| `window_prefix`    | Override tmux window/session prefix                                                 | Icon or `wm-`               |
+| `window_prefix`    | Override tmux window/session prefix                                                 | Icon or `mx-`               |
 | `agent`            | Default agent for `<agent>` placeholder                                             | `claude`                    |
 | `agents`           | Named agent commands (global-only). See [named agents](/guide/agents#named-agents). | `{}`                        |
 | `agent_rules`      | Per-project agent by path regex (global-only). See [per-project agents](#per-project-agents). | `[]`             |
@@ -291,15 +291,15 @@ To re-apply file operations to existing worktrees (e.g., after updating the conf
 
 ### Lifecycle hooks
 
-Run commands at specific points in the worktree lifecycle, such as installing dependencies or running database migrations. All hooks run with the **worktree directory** as the working directory (or the nested config directory for [nested configs](./monorepos.md#nested-configuration)) and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`, `WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
+Run commands at specific points in the worktree lifecycle, such as installing dependencies or running database migrations. All hooks run with the **worktree directory** as the working directory (or the nested config directory for [nested configs](./monorepos.md#nested-configuration)) and receive environment variables: `MUXIX_HANDLE`, `MUXIX_WORKTREE_PATH`, `MUXIX_PROJECT_ROOT`, `MUXIX_CONFIG_DIR`.
 
 | Hook          | When it runs                                      | Additional env vars                  |
 | ------------- | ------------------------------------------------- | ------------------------------------ |
 | `post_create` | After worktree creation, before tmux window opens | —                                    |
-| `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
+| `pre_merge`   | Before merging (aborts on failure)                | `MUXIX_BRANCH_NAME`, `MUXIX_TARGET_BRANCH` |
 | `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
 
-`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
+`MUXIX_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was used, which may differ from `MUXIX_WORKTREE_PATH` when using nested configs.
 
 Example:
 

@@ -109,7 +109,7 @@ def seed_agent_state(
         "pane_pid": 12345,
         "command": "opencode",
         "updated_ts": int(time.time()),
-        "window_name": "wm-test-feature",
+        "window_name": "mx-test-feature",
         "session_name": "main",
         "boot_id": None,
         "agent_kind": "opencode",
@@ -266,7 +266,7 @@ def test_checkpoint_calls_msb_snapshot(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-my-feature-1234",
+        sandbox_id="mx-my-feature-1234",
         workdir=str(project),
     )
 
@@ -279,7 +279,7 @@ def test_checkpoint_calls_msb_snapshot(tmp_path):
     args = read_log(log)
     assert "sandbox" in args, f"Expected 'sandbox' subcommand in msb call: {args}"
     assert "snapshot" in args, f"Expected 'snapshot' in msb call: {args}"
-    assert "wm-my-feature-1234" in args, (
+    assert "mx-my-feature-1234" in args, (
         f"Expected sandbox_id in msb snapshot call: {args}"
     )
     assert "--output" in args, f"Expected --output flag in msb snapshot call: {args}"
@@ -297,7 +297,7 @@ def test_checkpoint_writes_path_to_state(tmp_path):
     state_file = seed_agent_state(
         xdg,
         agent_id=AGENT_ID_2,
-        sandbox_id="wm-test-5678",
+        sandbox_id="mx-test-5678",
         workdir=str(project),
     )
 
@@ -323,7 +323,7 @@ def test_checkpoint_writes_path_to_state(tmp_path):
 def test_resume_errors_without_checkpoint_path(tmp_path):
     """resume command fails gracefully when no checkpoint has been recorded."""
     xdg = tmp_path / "state"
-    seed_agent_state(xdg, agent_id=AGENT_ID_1, sandbox_id="wm-test-1234")
+    seed_agent_state(xdg, agent_id=AGENT_ID_1, sandbox_id="mx-test-1234")
 
     result = run_wm(
         ["sandbox", "resume", AGENT_ID_1],
@@ -339,7 +339,7 @@ def test_resume_errors_when_snapshot_missing(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-test-1234",
+        sandbox_id="mx-test-1234",
         checkpoint_path="/nonexistent/path/snap.snap",
         checkpoint_ts=int(time.time()),
     )
@@ -360,7 +360,7 @@ def test_resume_calls_msb_restore(tmp_path):
     log = tmp_path / "msb-calls.log"
 
     # Create a real (empty) snapshot file so the existence check passes.
-    snap_path = tmp_path / "wm-test-9999-1700000000.snap"
+    snap_path = tmp_path / "mx-test-9999-1700000000.snap"
     snap_path.write_bytes(b"")
 
     # Fake msb records args and exits 0.
@@ -374,7 +374,7 @@ def test_resume_calls_msb_restore(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-test-9999",
+        sandbox_id="mx-test-9999",
         checkpoint_path=str(snap_path),
         checkpoint_ts=1700000000,
         workdir=str(project),
@@ -388,7 +388,7 @@ def test_resume_calls_msb_restore(tmp_path):
 
     args = read_log(log)
     assert "restore" in args, f"Expected 'restore' in msb call: {args}"
-    assert "wm-test-9999" in args, f"Expected sandbox_id in msb restore: {args}"
+    assert "mx-test-9999" in args, f"Expected sandbox_id in msb restore: {args}"
     assert "--from" in args, f"Expected --from flag in msb restore: {args}"
     assert str(snap_path) in args, f"Expected snapshot path in msb restore: {args}"
 
@@ -442,14 +442,14 @@ def test_focus_errors_for_ambiguous_window_name(tmp_path):
 
     # Patch both to share a common window_name prefix.
     agents_dir = xdg / "muxix" / "agents"
-    window_names = ["wm-feature-auth", "wm-feature-auth-v2"]
+    window_names = ["mx-feature-auth", "mx-feature-auth-v2"]
     for i, f in enumerate(sorted(agents_dir.iterdir())):
         data = json.loads(f.read_text())
         data["window_name"] = window_names[i]
         f.write_text(json.dumps(data))
 
     result = run_wm(
-        ["focus", "wm-feature"],
+        ["focus", "mx-feature"],
         xdg_state=xdg,
         expect_fail=True,
     )
@@ -500,7 +500,7 @@ def test_checkpoint_retention_prunes_old_snapshots(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_3,
-        sandbox_id="wm-retention-test",
+        sandbox_id="mx-retention-test",
         workdir=str(project),
     )
 
@@ -557,7 +557,7 @@ def test_container_checkpoint_requires_criu(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-criu-missing",
+        sandbox_id="mx-criu-missing",
         workdir=str(project),
     )
 
@@ -595,7 +595,7 @@ def test_checkpoint_calls_podman_criu(tmp_path):
     state_file = seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-podman-feat",
+        sandbox_id="mx-podman-feat",
         workdir=str(project),
     )
 
@@ -610,7 +610,7 @@ def test_checkpoint_calls_podman_criu(tmp_path):
         f"Expected `podman container checkpoint`, got: {args}"
     )
     assert "--export" in args, f"Expected --export flag: {args}"
-    assert "wm-podman-feat" in args, f"Expected container id in argv: {args}"
+    assert "mx-podman-feat" in args, f"Expected container id in argv: {args}"
     # The export path is the snapshot recorded in state.
     updated = json.loads(state_file.read_text())
     snap = updated.get("checkpoint_path")
@@ -626,7 +626,7 @@ def test_resume_calls_podman_criu(tmp_path):
     fake_bin.mkdir()
     log = tmp_path / "podman-calls.log"
 
-    snap_path = tmp_path / "wm-podman-feat-1700000000.snap"
+    snap_path = tmp_path / "mx-podman-feat-1700000000.snap"
     snap_path.write_bytes(b"")
 
     make_fake_criu(fake_bin)
@@ -639,7 +639,7 @@ def test_resume_calls_podman_criu(tmp_path):
     seed_agent_state(
         xdg,
         agent_id=AGENT_ID_1,
-        sandbox_id="wm-podman-feat",
+        sandbox_id="mx-podman-feat",
         checkpoint_path=str(snap_path),
         checkpoint_ts=1700000000,
         workdir=str(project),

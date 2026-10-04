@@ -183,7 +183,7 @@ For manual installation, see
    - Copy config files and symlink dependencies (if
      [configured](#file-operations))
    - Run any [`post_create`](#lifecycle-hooks) setup commands
-   - Create a tmux window named `wm-new-feature` (the prefix is configurable)
+   - Create a tmux window named `mx-new-feature` (the prefix is configurable)
    - Set up your configured or the default tmux pane layout
    - Automatically switch your tmux client to the new window
 
@@ -314,7 +314,7 @@ These options allow you to skip expensive setup steps when they're not needed
 4. Executes `post_create` commands if defined (runs before the tmux window
    opens, so keep them fast)
 5. Creates a new tmux window named `<window_prefix><handle>` (e.g.,
-   `wm-feature-auth` with `window_prefix: wm-`)
+   `mx-feature-auth` with `window_prefix: mx-`)
 6. Sets up your configured tmux pane layout
 7. Automatically switches your tmux client to the new window
 
@@ -1772,7 +1772,7 @@ customize.
 | `main_branch`    | Branch to merge into                                                                                  | Auto-detected               |
 | `base_branch`    | Default base branch for new worktrees                                                                 | Current branch              |
 | `worktree_dir`   | Directory for worktrees (absolute or relative). Supports `~` and `{project}`.                         | `<project>__worktrees/`     |
-| `window_prefix`  | Prefix for tmux window/session names                                                                  | `wm-`                       |
+| `window_prefix`  | Prefix for tmux window/session names                                                                  | `mx-`                       |
 | `mode`           | Tmux mode (`window` or `session`)                                                                     | `window`                    |
 | `agent`          | Default agent for `<agent>` placeholder                                                               | `claude`                    |
 | `agents`         | Named agent commands ([docs](https://github.com/lcensies/muxix/blob/main/docs/guide/agents.md#named-agents), global-only)       | `{}`                        |
@@ -1893,16 +1893,16 @@ Run commands at specific points in the worktree lifecycle, such as installing
 dependencies or running database migrations. All hooks run with the **worktree
 directory** as the working directory (or the nested config directory for
 [nested configs](https://github.com/lcensies/muxix/blob/main/docs/guide/monorepos.md#nested-configuration))
-and receive environment variables: `WM_HANDLE`, `WM_WORKTREE_PATH`,
-`WM_PROJECT_ROOT`, `WM_CONFIG_DIR`.
+and receive environment variables: `MUXIX_HANDLE`, `MUXIX_WORKTREE_PATH`,
+`MUXIX_PROJECT_ROOT`, `MUXIX_CONFIG_DIR`.
 
-`WM_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was
-used, which may differ from `WM_WORKTREE_PATH` when using nested configs.
+`MUXIX_CONFIG_DIR` points to the directory containing the `.muxix.yaml` that was
+used, which may differ from `MUXIX_WORKTREE_PATH` when using nested configs.
 
 | Hook          | When it runs                                      | Additional env vars                  |
 | ------------- | ------------------------------------------------- | ------------------------------------ |
 | `post_create` | After worktree creation, before tmux window opens | —                                    |
-| `pre_merge`   | Before merging (aborts on failure)                | `WM_BRANCH_NAME`, `WM_TARGET_BRANCH` |
+| `pre_merge`   | Before merging (aborts on failure)                | `MUXIX_BRANCH_NAME`, `MUXIX_TARGET_BRANCH` |
 | `pre_remove`  | Before worktree removal (aborts on failure)       | —                                    |
 
 Example:
@@ -2011,10 +2011,10 @@ global config namespace every repo's worktrees under one root, e.g.
 
 ### Shell alias (recommended)
 
-For faster typing, alias `muxix` to `wm`:
+For faster typing, alias `muxix` to `mx`:
 
 ```bash
-alias wm='muxix'
+alias mx='muxix'
 ```
 
 ---
@@ -2368,7 +2368,7 @@ find_port() {
 }
 
 # Hash the handle to get a deterministic port offset (0-99)
-hash=$(echo -n "$WM_HANDLE" | md5 | cut -c1-4)
+hash=$(echo -n "$MUXIX_HANDLE" | md5 | cut -c1-4)
 offset=$((16#$hash % 100))
 
 # Find available ports starting from the hash-based offset

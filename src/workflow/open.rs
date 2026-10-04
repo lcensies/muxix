@@ -399,8 +399,8 @@ pub fn open(
 /// Find a unique handle by appending a suffix if necessary.
 ///
 /// If `base_handle` is "my-feature" and windows exist for:
-/// - wm-my-feature
-/// - wm-my-feature-2
+/// - mx-my-feature
+/// - mx-my-feature-2
 ///
 /// This returns "my-feature-3".
 ///

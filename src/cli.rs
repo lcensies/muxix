@@ -1184,14 +1184,14 @@ pub fn run() -> Result<()> {
         Ok(cfg) => {
             // Trace the actual resolved config so the log alone explains
             // config-driven behaviour. Full data at debug to keep info lean.
-            crate::wm_evt!("config.load", ok = true, config_override = ?config_override);
-            crate::wm_evt_dbg!("config.data", cfg = ?cfg);
+            crate::muxix_evt!("config.load", ok = true, config_override = ?config_override);
+            crate::muxix_evt_dbg!("config.data", cfg = ?cfg);
             (cfg, true)
         }
         Err(e) => {
             // Early side-effect load failed; the real error re-surfaces when the
             // command loads config with `?`, but record it here too.
-            crate::wm_evt!("config.load", ok = false, err = %e, config_override = ?config_override);
+            crate::muxix_evt!("config.load", ok = false, err = %e, config_override = ?config_override);
             (config::Config::default(), false)
         }
     };
@@ -1224,7 +1224,7 @@ pub fn run() -> Result<()> {
 
     // The single dispatch chokepoint: `?command` Debug-renders the variant name
     // and its parsed args, so every invocation's intent is in the log.
-    crate::wm_evt!("cmd.dispatch", cmd = ?command);
+    crate::muxix_evt!("cmd.dispatch", cmd = ?command);
 
     match command {
         Commands::Add {

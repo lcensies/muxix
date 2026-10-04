@@ -26,7 +26,7 @@ muxix rename [old-name] <new-name> [--branch]
 ## What gets renamed
 
 1. The worktree directory (`git worktree move`)
-2. The tmux window or session (matching duplicates like `wm-feature-2` are renamed preserving their `-N` suffix)
+2. The tmux window or session (matching duplicates like `mx-feature-2` are renamed preserving their `-N` suffix)
 3. `muxix.worktree.<handle>.*` git config entries (e.g. the stored window/session mode)
 4. Agent state files in `$XDG_STATE_HOME/muxix/agents/*.json` (updates `workdir`, `window_name`, `session_name`)
 5. Sandbox container marker directory, if present

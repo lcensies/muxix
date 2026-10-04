@@ -34,7 +34,7 @@ class TestCrossRepoCollision:
     def test_same_branch_in_two_repos_succeeds(
         self, mux_server: MuxEnvironment, muxix_exe_path, mux_repo_path
     ):
-        """Second `wm add` with same branch name in different repo succeeds with project-name suffix."""
+        """Second `muxix add` with same branch name in different repo succeeds with project-name suffix."""
         env = mux_server
         branch = "feature-auth"
 

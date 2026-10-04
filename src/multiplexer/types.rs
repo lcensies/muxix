@@ -56,7 +56,7 @@ pub enum AgentStatus {
 pub struct AgentPane {
     /// Session name (tmux session or WezTerm workspace)
     pub session: String,
-    /// Window name (e.g., wm-feature-auth)
+    /// Window name (e.g., mx-feature-auth)
     pub window_name: String,
     /// Pane ID (e.g., %0 for tmux, numeric for WezTerm)
     pub pane_id: String,
@@ -138,7 +138,7 @@ impl AgentPane {
 /// Parameters for creating a new window/tab
 #[derive(Debug, Clone)]
 pub struct CreateWindowParams<'a> {
-    /// Prefix for the window name (e.g., "wm-")
+    /// Prefix for the window name (e.g., "mx-")
     pub prefix: &'a str,
     /// Base window name
     pub name: &'a str,
@@ -151,7 +151,7 @@ pub struct CreateWindowParams<'a> {
 /// Parameters for creating a new session
 #[derive(Debug, Clone)]
 pub struct CreateSessionParams<'a> {
-    /// Prefix for the session name (e.g., "wm-")
+    /// Prefix for the session name (e.g., "mx-")
     pub prefix: &'a str,
     /// Base session name
     pub name: &'a str,
@@ -164,7 +164,7 @@ pub struct CreateSessionParams<'a> {
 /// Parameters for creating a new window within an existing session
 #[derive(Debug, Clone)]
 pub struct CreateWindowInSessionParams<'a> {
-    /// Full session name (already prefixed, e.g., "wm-feature-auth")
+    /// Full session name (already prefixed, e.g., "mx-feature-auth")
     pub session_name: &'a str,
     /// Optional window name. If None, tmux auto-names based on running command.
     pub name: Option<&'a str>,

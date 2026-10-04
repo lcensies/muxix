@@ -136,7 +136,7 @@ class TestWorkingDirectory:
         muxix_exe_path: Path,
         repo_path: Path,
     ):
-        """wm add from nested config opens tmux in nested directory."""
+        """muxix add from nested config opens tmux in nested directory."""
         env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
@@ -151,7 +151,7 @@ class TestWorkingDirectory:
         assert result.exit_code == 0
 
         # Verify tmux pane is in the nested directory
-        pane_cwd = get_pane_cwd(env, "wm-feature-nested")
+        pane_cwd = get_pane_cwd(env, "mx-feature-nested")
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
         expected = worktrees_dir / "feature-nested" / "backend"
         assert pane_cwd.resolve() == expected.resolve()
@@ -162,7 +162,7 @@ class TestWorkingDirectory:
         muxix_exe_path: Path,
         repo_path: Path,
     ):
-        """wm open from nested config opens tmux in nested directory."""
+        """muxix open from nested config opens tmux in nested directory."""
         env = mux_server
         backend = repo_path / "backend"
         backend.mkdir()
@@ -178,7 +178,7 @@ class TestWorkingDirectory:
 
         # Close the tmux window (but keep worktree on disk)
         assert isinstance(env, TmuxEnvironment)
-        env.tmux(["kill-window", "-t", "wm-test-branch"])
+        env.tmux(["kill-window", "-t", "mx-test-branch"])
 
         # Reopen from backend/
         result = run_muxix_open(
@@ -187,7 +187,7 @@ class TestWorkingDirectory:
         assert result.exit_code == 0
 
         # Verify opened in nested directory
-        pane_cwd = get_pane_cwd(env, "wm-test-branch")
+        pane_cwd = get_pane_cwd(env, "mx-test-branch")
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
         expected = worktrees_dir / "test-branch" / "backend"
         assert pane_cwd.resolve() == expected.resolve()
@@ -233,21 +233,21 @@ class TestFileOperations:
 class TestHooksEnvironment:
     """Tests for hook environment variables."""
 
-    def test_wm_config_dir_env_var(
+    def test_muxix_config_dir_env_var(
         self,
         mux_server: MuxEnvironment,
         muxix_exe_path: Path,
         repo_path: Path,
         tmp_path: Path,
     ):
-        """WM_CONFIG_DIR points to nested directory in new worktree."""
+        """MUXIX_CONFIG_DIR points to nested directory in new worktree."""
         env = mux_server
-        output_file = tmp_path / "wm_config_dir.txt"
+        output_file = tmp_path / "mx_config_dir.txt"
 
         backend = repo_path / "backend"
         backend.mkdir()
         (backend / ".muxix.yaml").write_text(
-            f"agent: claude\npost_create:\n  - 'echo $WM_CONFIG_DIR > {output_file}'\n"
+            f"agent: claude\npost_create:\n  - 'echo $MUXIX_CONFIG_DIR > {output_file}'\n"
         )
 
         run_cmd(["git", "add", "."], cwd=repo_path, env=env)
@@ -340,7 +340,7 @@ class TestEdgeCases:
         assert result.exit_code == 0
 
         # Working dir should fall back to worktree root since backend/ doesn't exist
-        pane_cwd = get_pane_cwd(env, "wm-feature-old")
+        pane_cwd = get_pane_cwd(env, "mx-feature-old")
         worktrees_dir = repo_path.parent / f"{repo_path.name}__worktrees"
         expected_root = worktrees_dir / "feature-old"
         assert pane_cwd.resolve() == expected_root.resolve()

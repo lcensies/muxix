@@ -311,7 +311,7 @@ cat ~/.local/state/muxix.log | jq 'select(.fields.pane == "%12")'
 ### Event format
 
 ```json
-{"timestamp":"2026-06-19T10:23:01Z","level":"INFO","target":"wm::event",
+{"timestamp":"2026-06-19T10:23:01Z","level":"INFO","target":"muxix::event",
  "fields":{"ev":"turn.start","pane":"%12"},"spans":[{"node":"implement","kind":"agent"}]}
 ```
 

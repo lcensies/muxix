@@ -10,8 +10,8 @@ hook fire?", "which pane did the prompt go to?", "why did this command fail?"
 without attaching to anything.
 
 Implementation: [`src/signals/event.rs`](../../src/signals/event.rs) —
-`wm_span!`, `wm_evt!`, `wm_evt_dbg!`. Everything uses the dedicated tracing
-target `wm::event`, so it can be filtered or silenced wholesale.
+`muxix_span!`, `muxix_evt!`, `muxix_evt_dbg!`. Everything uses the dedicated tracing
+target `muxix::event`, so it can be filtered or silenced wholesale.
 
 ```bash
 grep 'ev=' ~/.local/state/muxix/muxix.log            # the whole timeline
@@ -28,7 +28,7 @@ greppable. Each line carries `timestamp`, `level`, `target`, the event `fields`
 - `MUXIX_LOG_FORMAT=text` — switch to the human-readable formatter.
 - `MUXIX_EVENTS=off` — silence the event target.
 - `MUXIX_EVENTS=debug` — add the high-frequency `*.poll` / `*.retry` events.
-- (equivalently `RUST_LOG=wm::event=off|debug`).
+- (equivalently `RUST_LOG=muxix::event=off|debug`).
 
 ## Events
 
@@ -62,7 +62,7 @@ and to silence _specific_ kinds or whole groups, use the `events:` section of
 
 ```yaml
 events:
-  enabled: true # master switch; false silences all wm::event. Default: true.
+  enabled: true # master switch; false silences all muxix::event. Default: true.
   level: debug # off | info | debug | trace. Ignored when MUXIX_EVENTS is set.
   disable: # silence these kinds/groups
     - config.data #   exact kind

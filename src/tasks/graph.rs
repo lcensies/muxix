@@ -812,7 +812,7 @@ fn with_lock<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
             }
             Err(_) => match reclaimable_lock_holder(&lock_path) {
                 Some(holder) => {
-                    crate::wm_evt!(
+                    crate::muxix_evt!(
                         "graph.lock.reclaim",
                         lock = %lock_path.display(),
                         holder = holder

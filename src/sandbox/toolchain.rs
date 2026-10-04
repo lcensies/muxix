@@ -51,16 +51,16 @@ pub fn toolchain_wrapper_script(toolchain: &DetectedToolchain) -> Option<String>
     match toolchain {
         DetectedToolchain::Devbox => Some(
             concat!(
-                "_WM_CWD=\"$PWD\"; ",
-                "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                "_WM_CACHE=\"${XDG_CACHE_HOME:-$HOME/.cache}/muxix/devbox/$_WM_HASH\"; ",
-                "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
-                "mkdir -p \"$_WM_CACHE\" && ",
-                "cp devbox.json \"$_WM_CACHE/\" && ",
-                "{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }; ",
+                "_MUXIX_CWD=\"$PWD\"; ",
+                "_MUXIX_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
+                "_MUXIX_CACHE=\"${XDG_CACHE_HOME:-$HOME/.cache}/muxix/devbox/$_MUXIX_HASH\"; ",
+                "if [ ! -f \"$_MUXIX_CACHE/devbox.json\" ]; then ",
+                "mkdir -p \"$_MUXIX_CACHE\" && ",
+                "cp devbox.json \"$_MUXIX_CACHE/\" && ",
+                "{ [ ! -f devbox.lock ] || cp devbox.lock \"$_MUXIX_CACHE/\"; }; ",
                 "fi; ",
-                "export _WM_CWD; ",
-                "devbox run -c \"$_WM_CACHE\" -- bash -c 'cd \"$_WM_CWD\" && exec \"$@\"' -- \"$@\""
+                "export _MUXIX_CWD; ",
+                "devbox run -c \"$_MUXIX_CACHE\" -- bash -c 'cd \"$_MUXIX_CWD\" && exec \"$@\"' -- \"$@\""
             )
             .to_string(),
         ),
@@ -100,16 +100,16 @@ pub fn wrap_command(command: &str, toolchain: &DetectedToolchain) -> String {
             // any command substitutions like $(cat ...).
             format!(
                 concat!(
-                    "_WM_CWD=\"$PWD\"; ",
-                    "_WM_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
-                    "_WM_CACHE=\"${{XDG_CACHE_HOME:-$HOME/.cache}}/muxix/devbox/$_WM_HASH\"; ",
-                    "if [ ! -f \"$_WM_CACHE/devbox.json\" ]; then ",
-                    "mkdir -p \"$_WM_CACHE\" && ",
-                    "cp devbox.json \"$_WM_CACHE/\" && ",
-                    "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_WM_CACHE/\"; }}; ",
+                    "_MUXIX_CWD=\"$PWD\"; ",
+                    "_MUXIX_HASH=$(cat devbox.json devbox.lock 2>/dev/null | (md5sum 2>/dev/null || md5 -q) | cut -d\" \" -f1); ",
+                    "_MUXIX_CACHE=\"${{XDG_CACHE_HOME:-$HOME/.cache}}/muxix/devbox/$_MUXIX_HASH\"; ",
+                    "if [ ! -f \"$_MUXIX_CACHE/devbox.json\" ]; then ",
+                    "mkdir -p \"$_MUXIX_CACHE\" && ",
+                    "cp devbox.json \"$_MUXIX_CACHE/\" && ",
+                    "{{ [ ! -f devbox.lock ] || cp devbox.lock \"$_MUXIX_CACHE/\"; }}; ",
                     "fi; ",
-                    "export _WM_CWD; ",
-                    "devbox run -c \"$_WM_CACHE\" -- 'cd \"$_WM_CWD\" && {}'"
+                    "export _MUXIX_CWD; ",
+                    "devbox run -c \"$_MUXIX_CACHE\" -- 'cd \"$_MUXIX_CWD\" && {}'"
                 ),
                 escaped
             )
@@ -197,9 +197,9 @@ mod tests {
     fn test_wrap_devbox_uses_cache() {
         let wrapped = wrap_command("claude --help", &DetectedToolchain::Devbox);
         // Should save working directory and restore it inside devbox
-        assert!(wrapped.contains("_WM_CWD=\"$PWD\""));
-        assert!(wrapped.contains("export _WM_CWD"));
-        assert!(wrapped.contains("cd \"$_WM_CWD\""));
+        assert!(wrapped.contains("_MUXIX_CWD=\"$PWD\""));
+        assert!(wrapped.contains("export _MUXIX_CWD"));
+        assert!(wrapped.contains("cd \"$_MUXIX_CWD\""));
         // Should hash config files for cache key (portable: md5sum || md5)
         assert!(wrapped.contains("md5sum"));
         assert!(wrapped.contains("md5 -q"));
@@ -269,7 +269,7 @@ mod tests {
         assert!(script.contains(r#"exec "$@"'"#));
         // Must have the devbox cache logic
         assert!(script.contains("devbox run -c"));
-        assert!(script.contains("_WM_CACHE"));
+        assert!(script.contains("_MUXIX_CACHE"));
     }
 
     #[test]

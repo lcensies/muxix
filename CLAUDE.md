@@ -34,7 +34,7 @@ commit the result rather than fighting CI.
 | `src/workflow/` | worktree lifecycle shared by add/open/merge/remove |
 | `src/multiplexer/` | tmux / WezTerm / kitty / Zellij backends behind one trait |
 | `src/tasks/` | task graph store (atomic, locked writes) |
-| `src/signals/` | agent↔muxix signals, hooks, and `wm::event` tracing |
+| `src/signals/` | agent↔muxix signals, hooks, and `muxix::event` tracing |
 | `src/agent/` | agent profiles, registry, per-agent setup (`muxix setup`) |
 | `src/command/sidebar/`, `src/command/dashboard/` | the two TUIs |
 | `resources/` | files compiled into the binary with `include_str!` |
@@ -49,4 +49,4 @@ commit the result rather than fighting CI.
   in the same change.
 - `src/config.rs` holds both the config types and the annotated template
   `muxix init` writes — change them together.
-- Events use the `wm_evt!` macro so they land in the log file, never in a pane.
+- Events use the `muxix_evt!` macro so they land in the log file, never in a pane.

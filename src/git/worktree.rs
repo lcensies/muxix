@@ -582,9 +582,9 @@ mod tests {
         let listed = parse_worktree_list_porcelain(
             "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\
              \n\
-             worktree /repo/../wm-a\nHEAD def\nbranch refs/heads/feat/login\n\
+             worktree /repo/../mx-a\nHEAD def\nbranch refs/heads/feat/login\n\
              \n\
-             worktree /repo/../wm-b\nHEAD 123\ndetached\n",
+             worktree /repo/../mx-b\nHEAD 123\ndetached\n",
         )
         .unwrap();
 
@@ -592,8 +592,8 @@ mod tests {
             listed,
             vec![
                 (PathBuf::from("/repo"), "main".to_string()),
-                (PathBuf::from("/repo/../wm-a"), "feat/login".to_string()),
-                (PathBuf::from("/repo/../wm-b"), "(detached)".to_string()),
+                (PathBuf::from("/repo/../mx-a"), "feat/login".to_string()),
+                (PathBuf::from("/repo/../mx-b"), "(detached)".to_string()),
             ]
         );
     }
@@ -605,7 +605,7 @@ mod tests {
         std::fs::create_dir(&repo).unwrap();
         init_repo(&repo);
 
-        let tree = dir.path().join("wm-live");
+        let tree = dir.path().join("mx-live");
         run_git(
             &repo,
             &["worktree", "add", "-b", "feat/live", tree.to_str().unwrap()],

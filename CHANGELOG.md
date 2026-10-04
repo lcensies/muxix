@@ -1,5 +1,5 @@
 ---
-description: Release notes and version history for workmux
+description: Release notes and version history for muxix
 ---
 
 <!-- skipped: v0.1.167 -->
@@ -25,6 +25,23 @@ description: Release notes and version history for workmux
 ## Unreleased
 
 ### Breaking
+
+- **The inherited `workmux` / `wm` names are gone.** Four surfaces change at
+  once, with no compatibility aliases:
+  - Default window/session prefix is `mx-` instead of `wm-`. An explicit
+    `window_prefix` and the nerdfont icon are unaffected.
+  - Hook environment variables are `MUXIX_*` only: `MUXIX_HANDLE`,
+    `MUXIX_BRANCH_NAME`, `MUXIX_TARGET_BRANCH`, `MUXIX_WORKTREE_PATH`,
+    `MUXIX_PROJECT_ROOT`, `MUXIX_CONFIG_DIR`. Hooks reading `WM_*` must be
+    updated.
+  - Sandbox guests receive `MUXIX_SANDBOX_GUEST`, `MUXIX_RPC_*`,
+    `MUXIX_PROXY_*`, `MUXIX_TARGET_UID`/`GID` and `MUXIX_EXTRA_GIDS`, and
+    containers, Lima VMs and microsandboxes are named `mx-*`. Instances created
+    by an older build keep their `wm-` names and are no longer matched by
+    `muxix sandbox stop-all` — remove them once by hand.
+  - Event tracing lives on the `muxix::event` target:
+    `RUST_LOG=muxix::event=debug`. `MUXIX_EVENTS` and the `events:` config block
+    are unchanged.
 
 - **`wait` no longer aborts on the first crashed agent.** When waiting on
   multiple worktrees, one agent exiting unexpectedly used to abort the whole

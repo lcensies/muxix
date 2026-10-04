@@ -44,7 +44,7 @@ use tracing::error;
 fn main() -> Result<()> {
     logger::init()?;
     let context = LogContext::current();
-    crate::wm_evt!(
+    crate::muxix_evt!(
         "app.start",
         version = env!("CARGO_PKG_VERSION"),
         args = ?std::env::args().collect::<Vec<_>>(),
@@ -54,14 +54,14 @@ fn main() -> Result<()> {
 
     match cli::run() {
         Ok(result) => {
-            crate::wm_evt!("app.done");
+            crate::muxix_evt!("app.done");
             Ok(result)
         }
         Err(err) => {
             error!(error = ?err, "muxix failed");
             // Full anyhow chain (Debug renders every `.context()` cause) so the
             // log alone pins the source of the failure.
-            crate::wm_evt!("app.fail", err = %err, chain = ?err);
+            crate::muxix_evt!("app.fail", err = %err, chain = ?err);
             Err(err)
         }
     }

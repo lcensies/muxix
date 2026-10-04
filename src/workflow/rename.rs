@@ -264,40 +264,40 @@ mod tests {
 
     #[test]
     fn remap_exact_match() {
-        assert_eq!(remap_duplicate_name("wm-old", "wm-old", "wm-new"), "wm-new");
+        assert_eq!(remap_duplicate_name("mx-old", "mx-old", "mx-new"), "mx-new");
     }
 
     #[test]
     fn remap_numeric_suffix() {
         assert_eq!(
-            remap_duplicate_name("wm-old-2", "wm-old", "wm-new"),
-            "wm-new-2"
+            remap_duplicate_name("mx-old-2", "mx-old", "mx-new"),
+            "mx-new-2"
         );
         assert_eq!(
-            remap_duplicate_name("wm-old-42", "wm-old", "wm-new"),
-            "wm-new-42"
+            remap_duplicate_name("mx-old-42", "mx-old", "mx-new"),
+            "mx-new-42"
         );
     }
 
     #[test]
     fn remap_non_matching_unchanged() {
-        assert_eq!(remap_duplicate_name("other", "wm-old", "wm-new"), "other");
+        assert_eq!(remap_duplicate_name("other", "mx-old", "mx-new"), "other");
         // Non-numeric suffix: not a duplicate pattern
         assert_eq!(
-            remap_duplicate_name("wm-old-abc", "wm-old", "wm-new"),
-            "wm-old-abc"
+            remap_duplicate_name("mx-old-abc", "mx-old", "mx-new"),
+            "mx-old-abc"
         );
     }
 
     #[test]
     fn duplicate_regex_matches_base_and_suffixes() {
-        let re = duplicate_name_regex("wm-feature");
-        assert!(re.is_match("wm-feature"));
-        assert!(re.is_match("wm-feature-2"));
-        assert!(re.is_match("wm-feature-99"));
-        assert!(!re.is_match("wm-feature-abc"));
-        assert!(!re.is_match("wm-feature-x"));
-        assert!(!re.is_match("wm-feature2"));
+        let re = duplicate_name_regex("mx-feature");
+        assert!(re.is_match("mx-feature"));
+        assert!(re.is_match("mx-feature-2"));
+        assert!(re.is_match("mx-feature-99"));
+        assert!(!re.is_match("mx-feature-abc"));
+        assert!(!re.is_match("mx-feature-x"));
+        assert!(!re.is_match("mx-feature2"));
         assert!(!re.is_match("other"));
     }
 }

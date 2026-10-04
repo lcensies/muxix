@@ -751,7 +751,7 @@ impl Multiplexer for WezTermBackend {
         // For WezTerm, we could update the tab title to include the icon.
         // However, agent state is now managed by StateStore, so this is just UI feedback.
         // For now, we just log the status change - tab title remains stable.
-        // Future: could update tab title to show icon like "🔄 wm-feature"
+        // Future: could update tab title to show icon like "🔄 mx-feature"
         let _ = (pane_id, icon); // Acknowledge parameters
         Ok(())
     }

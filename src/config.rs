@@ -705,7 +705,7 @@ pub struct Config {
     #[serde(default)]
     pub worktree_dir: Option<String>,
 
-    /// Prefix for tmux window names (optional, defaults to "wm-")
+    /// Prefix for tmux window names (optional, defaults to "mx-")
     #[serde(default)]
     pub window_prefix: Option<String>,
 
@@ -867,7 +867,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_chain: Option<crate::proxy::ProxyChainConfig>,
 
-    /// Pipeline event tracing controls (`wm::event`): level, master switch, and
+    /// Pipeline event tracing controls (`muxix::event`): level, master switch, and
     /// per-kind/group enable/disable.
     #[serde(default)]
     pub events: EventsConfig,
@@ -2189,18 +2189,18 @@ fn validate_domain(domain: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Configuration for structured pipeline event tracing (target `wm::event`).
+/// Configuration for structured pipeline event tracing (target `muxix::event`).
 ///
 /// `MUXIX_EVENTS` / `RUST_LOG` set the level; this section lets `.muxix.yaml`
 /// set that level too and, beyond it, silence specific event kinds or whole
 /// groups. See `docs/reference/events.md`.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct EventsConfig {
-    /// Master switch. Default: true. `false` silences all `wm::event` output.
+    /// Master switch. Default: true. `false` silences all `muxix::event` output.
     #[serde(default)]
     pub enabled: Option<bool>,
 
-    /// Trace level for `wm::event`: `off` | `info` | `debug` | `trace`.
+    /// Trace level for `muxix::event`: `off` | `info` | `debug` | `trace`.
     /// Applied only when `MUXIX_EVENTS` is unset (env wins).
     #[serde(default)]
     pub level: Option<String>,
@@ -3594,14 +3594,14 @@ impl Config {
     }
 
     /// Get the window prefix to use.
-    /// Priority: explicit window_prefix config > nerdfont icon > "wm-"
+    /// Priority: explicit window_prefix config > nerdfont icon > "mx-"
     pub fn window_prefix(&self) -> &str {
         if let Some(ref prefix) = self.window_prefix {
             prefix
         } else if nerdfont::is_enabled() {
             "\u{f418} " // nf-oct-git_branch
         } else {
-            "wm-"
+            "mx-"
         }
     }
 
@@ -3700,8 +3700,8 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 # worktree_prefix: ""
 
 # Prefix for tmux window names.
-# Default: "wm-"
-# window_prefix: "wm-"
+# Default: "mx-"
+# window_prefix: "mx-"
 
 #-------------------------------------------------------------------------------
 # Tmux
@@ -3789,11 +3789,11 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 # Aborts the merge if any command fails.
 # Use "<global>" to inherit from global config.
 # Environment variables available:
-#   - WM_BRANCH_NAME: The name of the branch being merged
-#   - WM_TARGET_BRANCH: The name of the target branch (e.g., main)
-#   - WM_WORKTREE_PATH: Absolute path to the worktree
-#   - WM_PROJECT_ROOT: Absolute path of the main project directory
-#   - WM_HANDLE: The worktree handle/window name
+#   - MUXIX_BRANCH_NAME: The name of the branch being merged
+#   - MUXIX_TARGET_BRANCH: The name of the target branch (e.g., main)
+#   - MUXIX_WORKTREE_PATH: Absolute path to the worktree
+#   - MUXIX_PROJECT_ROOT: Absolute path of the main project directory
+#   - MUXIX_HANDLE: The worktree handle/window name
 # pre_merge:
 #   - "<global>"
 #   - cargo test
@@ -3804,12 +3804,12 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 # Default: Auto-detects Node.js projects and fast-deletes node_modules.
 # Set to empty list to disable: `pre_remove: []`
 # Environment variables available:
-#   - WM_HANDLE: The worktree handle (directory name)
-#   - WM_WORKTREE_PATH: Absolute path of the worktree being deleted
-#   - WM_PROJECT_ROOT: Absolute path of the main project directory
+#   - MUXIX_HANDLE: The worktree handle (directory name)
+#   - MUXIX_WORKTREE_PATH: Absolute path of the worktree being deleted
+#   - MUXIX_PROJECT_ROOT: Absolute path of the main project directory
 # pre_remove:
-#   - mkdir -p "$WM_PROJECT_ROOT/artifacts/$WM_HANDLE"
-#   - cp -r test-results/ "$WM_PROJECT_ROOT/artifacts/$WM_HANDLE/"
+#   - mkdir -p "$MUXIX_PROJECT_ROOT/artifacts/$MUXIX_HANDLE"
+#   - cp -r test-results/ "$MUXIX_PROJECT_ROOT/artifacts/$MUXIX_HANDLE/"
 
 #-------------------------------------------------------------------------------
 # Files
@@ -3910,11 +3910,11 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   #     guest_path: /mnt/data
 #   #     writable: true
 
-# Pipeline event tracing (`wm::event`, logged to ~/.local/state/muxix.log).
+# Pipeline event tracing (`muxix::event`, logged to ~/.local/state/muxix.log).
 # Controls the structured event timeline the runner/orchestrator emit. The
 # `MUXIX_EVENTS` env var still overrides `level` when set.
 # events:
-#   # Master switch. false silences every wm::event. Default: true.
+#   # Master switch. false silences every muxix::event. Default: true.
 #   enabled: true
 #   # Trace level: off | info | debug | trace. Ignored if MUXIX_EVENTS is set.
 #   level: info

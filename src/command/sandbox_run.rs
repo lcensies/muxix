@@ -208,10 +208,10 @@ fn run_lima(config: &Config, worktree: &Path, command: &[String]) -> Result<i32>
 
     let mut env_exports = vec![
         r#"PATH="$HOME/.muxix-state/shims/bin:$HOME/.local/bin:/nix/var/nix/profiles/default/bin:$PATH""#.to_string(),
-        "WM_SANDBOX_GUEST=1".to_string(),
-        "WM_RPC_HOST=host.lima.internal".to_string(),
-        format!("WM_RPC_PORT={}", rpc_port),
-        format!("WM_RPC_TOKEN={}", rpc_token),
+        "MUXIX_SANDBOX_GUEST=1".to_string(),
+        "MUXIX_RPC_HOST=host.lima.internal".to_string(),
+        format!("MUXIX_RPC_PORT={}", rpc_port),
+        format!("MUXIX_RPC_TOKEN={}", rpc_token),
     ];
 
     for term_var in ["TERM", "COLORTERM"] {
@@ -363,7 +363,7 @@ fn run_container(
     // Slugify only the container name; the raw handle is used as the state store key
     // so cleanup (which derives the handle from the directory name without slugifying)
     // can find it.
-    let container_name = format!("wm-{}-{}", slug::slugify(&handle), std::process::id());
+    let container_name = format!("mx-{}-{}", slug::slugify(&handle), std::process::id());
 
     // Register container in state store so cleanup can find it without docker ps
     if let Ok(store) = StateStore::new()
@@ -376,10 +376,10 @@ fn run_container(
     // Proxy URL is a local String so we can't use &str slices directly.
     let rpc_port_str = rpc_port.to_string();
     let mut owned_envs: Vec<(String, String)> = vec![
-        ("WM_SANDBOX_GUEST".into(), "1".into()),
-        ("WM_RPC_HOST".into(), rpc_host.clone()),
-        ("WM_RPC_PORT".into(), rpc_port_str.clone()),
-        ("WM_RPC_TOKEN".into(), rpc_token.clone()),
+        ("MUXIX_SANDBOX_GUEST".into(), "1".into()),
+        ("MUXIX_RPC_HOST".into(), rpc_host.clone()),
+        ("MUXIX_RPC_PORT".into(), rpc_port_str.clone()),
+        ("MUXIX_RPC_TOKEN".into(), rpc_token.clone()),
     ];
 
     if let Some((proxy_port, ref proxy_token, _)) = proxy {
@@ -394,8 +394,8 @@ fn run_container(
         owned_envs.push(("no_proxy".into(), no_proxy));
         // Pass hostname (not IP literal) so the init script can resolve ALL
         // IPs and whitelist them all in iptables.
-        owned_envs.push(("WM_PROXY_HOST".into(), rpc_host.clone()));
-        owned_envs.push(("WM_PROXY_PORT".into(), proxy_port.to_string()));
+        owned_envs.push(("MUXIX_PROXY_HOST".into(), rpc_host.clone()));
+        owned_envs.push(("MUXIX_PROXY_PORT".into(), proxy_port.to_string()));
     }
 
     // Inject host git user config (user.name, user.email) for commits
@@ -453,7 +453,7 @@ fn run_container(
 /// and explicit sandbox.env values (which may contain secrets).
 pub(super) fn redact_env_arg(arg: &str, extra_redact_keys: &[&str]) -> String {
     if let Some((key, _)) = arg.split_once('=')
-        && (key == "WM_RPC_TOKEN"
+        && (key == "MUXIX_RPC_TOKEN"
             || key.to_uppercase().contains("PROXY")
             || extra_redact_keys.contains(&key))
     {
@@ -469,8 +469,8 @@ mod tests {
     #[test]
     fn redact_rpc_token() {
         assert_eq!(
-            redact_env_arg("WM_RPC_TOKEN=abc123", &[]),
-            "WM_RPC_TOKEN=<redacted>"
+            redact_env_arg("MUXIX_RPC_TOKEN=abc123", &[]),
+            "MUXIX_RPC_TOKEN=<redacted>"
         );
     }
 
@@ -506,8 +506,8 @@ mod tests {
         assert_eq!(redact_env_arg("HOME=/tmp", &[]), "HOME=/tmp");
         assert_eq!(redact_env_arg("--rm", &[]), "--rm");
         assert_eq!(
-            redact_env_arg("WM_SANDBOX_GUEST=1", &[]),
-            "WM_SANDBOX_GUEST=1"
+            redact_env_arg("MUXIX_SANDBOX_GUEST=1", &[]),
+            "MUXIX_SANDBOX_GUEST=1"
         );
     }
 

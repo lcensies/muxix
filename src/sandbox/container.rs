@@ -417,16 +417,16 @@ pub fn build_docker_run_args(
             args.extend(deny_mode_run_flags());
         }
         args.push("--env".to_string());
-        args.push(format!("WM_TARGET_UID={}", uid));
+        args.push(format!("MUXIX_TARGET_UID={}", uid));
         args.push("--env".to_string());
-        args.push(format!("WM_TARGET_GID={}", gid));
+        args.push(format!("MUXIX_TARGET_GID={}", gid));
         // Supplementary groups are applied inside the container by setpriv
         // (see docker/Dockerfile.base). We do NOT pass --group-add here because
         // in deny mode the root process drops privileges after iptables setup,
         // and the --group-add groups would be stripped during that drop.
         if !group_add.is_empty() {
             args.push("--env".to_string());
-            args.push(format!("WM_EXTRA_GIDS={}", group_add.join(",")));
+            args.push(format!("MUXIX_EXTRA_GIDS={}", group_add.join(",")));
         }
     } else {
         // Normal mode: run as user directly.
@@ -1307,14 +1307,14 @@ mod tests {
             "claude",
             Path::new("/tmp/project"),
             Path::new("/tmp/project"),
-            &[("WM_SANDBOX_GUEST", "1"), ("WM_RPC_PORT", "12345")],
+            &[("MUXIX_SANDBOX_GUEST", "1"), ("MUXIX_RPC_PORT", "12345")],
             None,
             false,
         )
         .unwrap();
 
-        assert!(args.contains(&"WM_SANDBOX_GUEST=1".to_string()));
-        assert!(args.contains(&"WM_RPC_PORT=12345".to_string()));
+        assert!(args.contains(&"MUXIX_SANDBOX_GUEST=1".to_string()));
+        assert!(args.contains(&"MUXIX_RPC_PORT=12345".to_string()));
     }
 
     #[test]
@@ -1769,8 +1769,8 @@ mod tests {
         .unwrap();
 
         let args_str = args.join(" ");
-        assert!(args_str.contains("WM_TARGET_UID="));
-        assert!(args_str.contains("WM_TARGET_GID="));
+        assert!(args_str.contains("MUXIX_TARGET_UID="));
+        assert!(args_str.contains("MUXIX_TARGET_GID="));
     }
 
     #[test]
@@ -1956,8 +1956,8 @@ mod tests {
         assert!(!args.contains(&"--cap-add=NET_ADMIN".to_string()));
         assert!(!args.contains(&"--security-opt".to_string()));
         // Should still have UID/GID env vars for deny mode
-        assert!(args.iter().any(|a| a.starts_with("WM_TARGET_UID=")));
-        assert!(args.iter().any(|a| a.starts_with("WM_TARGET_GID=")));
+        assert!(args.iter().any(|a| a.starts_with("MUXIX_TARGET_UID=")));
+        assert!(args.iter().any(|a| a.starts_with("MUXIX_TARGET_GID=")));
     }
 
     #[test]
@@ -2136,11 +2136,11 @@ mod tests {
         let groups = find_flag_value(&args, "--group-add");
         assert!(groups.contains(&"dialout"));
         assert!(groups.contains(&"video"));
-        assert!(!args.iter().any(|a| a.starts_with("WM_EXTRA_GIDS=")));
+        assert!(!args.iter().any(|a| a.starts_with("MUXIX_EXTRA_GIDS=")));
     }
 
     #[test]
-    fn docker_deny_mode_uses_wm_extra_gids_not_group_add() {
+    fn docker_deny_mode_uses_muxix_extra_gids_not_group_add() {
         let config = SandboxConfig {
             enabled: Some(true),
             container: ContainerConfig {
@@ -2164,7 +2164,7 @@ mod tests {
         .unwrap();
 
         assert!(!args.iter().any(|a| a == "--group-add"));
-        assert!(args.iter().any(|a| a == "WM_EXTRA_GIDS=dialout,20"));
+        assert!(args.iter().any(|a| a == "MUXIX_EXTRA_GIDS=dialout,20"));
     }
 
     #[test]

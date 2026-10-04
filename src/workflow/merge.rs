@@ -336,11 +336,10 @@ fn merge_inner(
 
         let hook_env = [
             ("MUXIX_HANDLE", handle),
-            ("WM_BRANCH_NAME", branch_to_merge.as_str()),
-            ("WM_TARGET_BRANCH", target_branch),
-            ("WM_WORKTREE_PATH", worktree_path_str.as_ref()),
-            ("WM_PROJECT_ROOT", project_root_str.as_ref()),
-            ("WM_HANDLE", handle),
+            ("MUXIX_BRANCH_NAME", branch_to_merge.as_str()),
+            ("MUXIX_TARGET_BRANCH", target_branch),
+            ("MUXIX_WORKTREE_PATH", worktree_path_str.as_ref()),
+            ("MUXIX_PROJECT_ROOT", project_root_str.as_ref()),
         ];
 
         for command in hooks {

@@ -54,10 +54,10 @@ For manual installation, see [pre-built binaries](https://github.com/lcensies/mu
 
 ## Shell alias (recommended)
 
-For faster typing, alias `muxix` to `wm`:
+For faster typing, alias `muxix` to `mx`:
 
 ```bash
-alias wm='muxix'
+alias mx='muxix'
 ```
 
 Add this to your `.bashrc`, `.zshrc`, or equivalent shell configuration file.

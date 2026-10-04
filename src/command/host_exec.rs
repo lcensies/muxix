@@ -12,7 +12,7 @@ use crate::sandbox::rpc::{RpcClient, RpcRequest, RpcResponse};
 /// Returns the remote process exit code.
 pub fn run(command: &str, args: &[String]) -> Result<i32> {
     if !crate::sandbox::guest::is_sandbox_guest() {
-        bail!("host-exec only works inside a sandbox guest (WM_SANDBOX_GUEST=1)");
+        bail!("host-exec only works inside a sandbox guest (MUXIX_SANDBOX_GUEST=1)");
     }
 
     let mut client = RpcClient::from_env()?;

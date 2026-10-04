@@ -108,12 +108,12 @@ pub fn plan(
         SyncDirection::Push | SyncDirection::Bidirectional
     );
 
-    let wm_roots: BTreeSet<PathBuf> = muxix.iter().map(|p| canon(&p.root)).collect();
+    let muxix_roots: BTreeSet<PathBuf> = muxix.iter().map(|p| canon(&p.root)).collect();
     let ade_roots: BTreeSet<PathBuf> = ade.iter().map(|p| canon(&p.root)).collect();
 
     for p in ade {
         let root = canon(&p.root);
-        if wm_roots.contains(&root) {
+        if muxix_roots.contains(&root) {
             continue;
         }
         // Known at last sync and now gone from muxix → a removal to mirror,

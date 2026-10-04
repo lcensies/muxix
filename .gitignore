@@ -53,5 +53,6 @@ opencode.json
 .mcp.json
 
 # local agent/session state (purged from history 2026-10-03)
-.workmux.yaml
+.muxix.yaml
+.muxix.yml
 .omc/

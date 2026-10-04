@@ -15,7 +15,7 @@ use crate::shell::shell_escape;
 /// The supervisor handles:
 /// - Ensuring the VM is running
 /// - Starting the TCP RPC server
-/// - Passing sandbox env vars (WM_SANDBOX_GUEST, WM_RPC_HOST, WM_RPC_PORT, WM_RPC_TOKEN)
+/// - Passing sandbox env vars (MUXIX_SANDBOX_GUEST, MUXIX_RPC_HOST, MUXIX_RPC_PORT, MUXIX_RPC_TOKEN)
 /// - Setting the working directory via `limactl shell --workdir`
 /// - Running the command via `limactl shell`
 ///
@@ -77,7 +77,7 @@ mod tests {
         let result = wrap_for_lima(
             "claude",
             &config,
-            "wm-abc12345",
+            "mx-abc12345",
             Path::new("/Users/test/project"),
         )
         .unwrap();
@@ -95,7 +95,7 @@ mod tests {
         let result = wrap_for_lima(
             " claude -- \"$(cat PROMPT.md)\"",
             &config,
-            "wm-abc12345",
+            "mx-abc12345",
             Path::new("/tmp/wt"),
         )
         .unwrap();
@@ -110,7 +110,7 @@ mod tests {
         let result = wrap_for_lima(
             "claude",
             &config,
-            "wm-abc12345",
+            "mx-abc12345",
             Path::new("/Users/test user/my project"),
         )
         .unwrap();
@@ -126,7 +126,7 @@ mod tests {
         let result = wrap_for_lima(
             "claude --dangerously-skip-permissions -- \"$(cat .muxix/prompts/PROMPT.md)\"",
             &config,
-            "wm-abc",
+            "mx-abc",
             Path::new("/tmp/wt"),
         )
         .unwrap();
@@ -143,7 +143,7 @@ mod tests {
         let result = wrap_for_lima(
             "echo 'hello world'",
             &config,
-            "wm-abc",
+            "mx-abc",
             Path::new("/tmp/wt"),
         )
         .unwrap();

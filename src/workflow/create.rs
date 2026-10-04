@@ -161,7 +161,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         let mut project_slug = slug::slugify(project_name);
         // Guard against empty slugs (e.g., project dir "___") and purely numeric
         // slugs (e.g., "123") which would match cleanup's `base(-\d+)?` regex and
-        // cause `wm rm` in one repo to kill the other repo's window.
+        // cause `muxix rm` in one repo to kill the other repo's window.
         if project_slug.is_empty() || project_slug.chars().all(|c| c.is_ascii_digit()) {
             project_slug = format!(
                 "repo-{}",

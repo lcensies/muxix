@@ -29,7 +29,7 @@ pub fn run(pane: Option<&str>) -> Result<()> {
         StatusCheck::Error(e) => ("error", vec![e.clone()]),
     };
 
-    crate::wm_evt!(
+    crate::muxix_evt!(
         "agent.session",
         agent = "claude",
         pane = ?pane,

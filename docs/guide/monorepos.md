@@ -48,13 +48,13 @@ post_create:
 
 ### Environment variables
 
-Hooks receive `WM_CONFIG_DIR` pointing to the config directory in the new worktree:
+Hooks receive `MUXIX_CONFIG_DIR` pointing to the config directory in the new worktree:
 
 ```yaml
 # backend/.muxix.yaml
 post_create:
-  - echo "Config dir: $WM_CONFIG_DIR" # /path/to/worktree/backend
-  - echo "Worktree root: $WM_WORKTREE_PATH" # /path/to/worktree
+  - echo "Config dir: $MUXIX_CONFIG_DIR" # /path/to/worktree/backend
+  - echo "Worktree root: $MUXIX_WORKTREE_PATH" # /path/to/worktree
 ```
 
 ### No inheritance
@@ -88,7 +88,7 @@ find_port() {
 }
 
 # Hash the handle to get a deterministic port offset (0-99)
-hash=$(echo -n "$WM_HANDLE" | md5 | cut -c1-4)
+hash=$(echo -n "$MUXIX_HANDLE" | md5 | cut -c1-4)
 offset=$((16#$hash % 100))
 
 # Find available ports starting from the hash-based offset

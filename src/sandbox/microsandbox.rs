@@ -278,7 +278,7 @@ pub fn list_with_prefix(prefix: &str) -> Result<Vec<String>> {
 
 /// Build the *stable* sandbox name for a (worktree, agent) pair.
 ///
-/// Format: `wm-<worktree-handle>-<agent-slug>`.
+/// Format: `mx-<worktree-handle>-<agent-slug>`.
 ///
 /// The identity is intentionally stable across launches — it does NOT include
 /// the process id. This is what makes checkpoint/resume meaningful: re-opening
@@ -289,7 +289,7 @@ pub fn list_with_prefix(prefix: &str) -> Result<Vec<String>> {
 /// Different agents sharing one pane get *different* sandbox names, so swapping
 /// agents in a pane checkpoints one VM and resumes the other.
 pub fn sandbox_name(worktree_handle: &str, agent: &str) -> String {
-    format!("wm-{}-{}", slug(worktree_handle), slug(agent))
+    format!("mx-{}-{}", slug(worktree_handle), slug(agent))
 }
 
 /// Slugify a component for use in a sandbox name: lowercase alnum, others → `-`.
@@ -374,7 +374,7 @@ mod tests {
             sandbox_name("my-feature", "claude"),
             sandbox_name("my-feature", "claude")
         );
-        assert_eq!(sandbox_name("my-feature", "claude"), "wm-my-feature-claude");
+        assert_eq!(sandbox_name("my-feature", "claude"), "mx-my-feature-claude");
         // Different agents in the same worktree get distinct sandboxes.
         assert_ne!(
             sandbox_name("my-feature", "claude"),
@@ -392,19 +392,19 @@ mod tests {
     fn launch_command_create_branch_mounts_and_execs() {
         let cfg = MicroSandboxConfig::default();
         let cmd = launch_command(
-            "wm-proj-claude",
+            "mx-proj-claude",
             &PathBuf::from("/work/proj"),
             "claude --yolo",
             None,
             &cfg,
         );
-        assert!(cmd.contains("msb sandbox create 'wm-proj-claude'"), "{cmd}");
+        assert!(cmd.contains("msb sandbox create 'mx-proj-claude'"), "{cmd}");
         assert!(
-            cmd.contains("msb sandbox mount 'wm-proj-claude' '/work/proj' '/work/proj'"),
+            cmd.contains("msb sandbox mount 'mx-proj-claude' '/work/proj' '/work/proj'"),
             "{cmd}"
         );
         assert!(
-            cmd.contains("msb sandbox exec 'wm-proj-claude' -- bash -c"),
+            cmd.contains("msb sandbox exec 'mx-proj-claude' -- bash -c"),
             "{cmd}"
         );
         // The inner command is single-quoted for `bash -c`, so the workdir's
@@ -418,9 +418,9 @@ mod tests {
     #[test]
     fn launch_command_restore_branch_uses_snapshot() {
         let cfg = MicroSandboxConfig::default();
-        let snap = PathBuf::from("/snaps/wm-proj-claude-123.snap");
+        let snap = PathBuf::from("/snaps/mx-proj-claude-123.snap");
         let cmd = launch_command(
-            "wm-proj-claude",
+            "mx-proj-claude",
             &PathBuf::from("/work/proj"),
             "claude",
             Some(&snap),
@@ -428,7 +428,7 @@ mod tests {
         );
         assert!(
             cmd.contains(
-                "msb sandbox restore 'wm-proj-claude' --from '/snaps/wm-proj-claude-123.snap'"
+                "msb sandbox restore 'mx-proj-claude' --from '/snaps/mx-proj-claude-123.snap'"
             ),
             "{cmd}"
         );
@@ -436,6 +436,6 @@ mod tests {
             !cmd.contains("msb sandbox create"),
             "restore branch must not create: {cmd}"
         );
-        assert!(cmd.contains("msb sandbox exec 'wm-proj-claude'"), "{cmd}");
+        assert!(cmd.contains("msb sandbox exec 'mx-proj-claude'"), "{cmd}");
     }
 }

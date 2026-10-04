@@ -84,7 +84,7 @@ pub enum SandboxCommand {
         /// VM name to stop (if not provided, show interactive list)
         #[arg(conflicts_with = "all")]
         name: Option<String>,
-        /// Stop all muxix VMs (wm-* prefix)
+        /// Stop all muxix VMs (mx-* prefix)
         #[arg(long)]
         all: bool,
         /// Skip confirmation prompt
@@ -616,7 +616,7 @@ fn run_prune(force: bool) -> Result<()> {
     let mut vm_infos: Vec<VmInfo> = Vec::new();
 
     for instance in instances {
-        if !instance.name.starts_with("wm-") {
+        if !instance.name.starts_with("mx-") {
             continue;
         }
 
@@ -1007,8 +1007,8 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
             owned_envs.push(("http_proxy".into(), proxy_url));
             owned_envs.push(("NO_PROXY".into(), no_proxy.clone()));
             owned_envs.push(("no_proxy".into(), no_proxy));
-            owned_envs.push(("WM_PROXY_HOST".into(), rpc_host.clone()));
-            owned_envs.push(("WM_PROXY_PORT".into(), proxy_port.to_string()));
+            owned_envs.push(("MUXIX_PROXY_HOST".into(), rpc_host.clone()));
+            owned_envs.push(("MUXIX_PROXY_PORT".into(), proxy_port.to_string()));
         }
 
         let env_refs: Vec<(&str, &str)> = owned_envs
@@ -1029,7 +1029,7 @@ fn run_shell_container(exec: bool, command: Vec<String>, config: &Config) -> Res
 
         // Add container name for easier identification
         docker_args.insert(1, "--name".to_string());
-        docker_args.insert(2, format!("wm-shell-{}", std::process::id()));
+        docker_args.insert(2, format!("mx-shell-{}", std::process::id()));
 
         let runtime = config.sandbox.runtime();
         let runtime_bin = runtime.binary_name();

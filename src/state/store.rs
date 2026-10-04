@@ -338,7 +338,7 @@ impl StateStore {
     /// before `git worktree move` renders the old path non-existent).
     ///
     /// `old_full_base` / `new_full_base` are the prefixed window/session
-    /// base names (e.g. "wm-old-handle" / "wm-new-handle"). `-N` duplicate
+    /// base names (e.g. "mx-old-handle" / "mx-new-handle"). `-N` duplicate
     /// suffixes on window names are preserved.
     ///
     /// Returns the number of agent state files updated.
@@ -760,7 +760,7 @@ mod tests {
             pane_pid: 12345,
             command: "node".to_string(),
             updated_ts: 1234567890,
-            window_name: Some("wm-test".to_string()),
+            window_name: Some("mx-test".to_string()),
             session_name: Some("main".to_string()),
             boot_id: None,
             agent_kind: None,
@@ -1102,8 +1102,8 @@ mod tests {
         };
         let mut root_state = test_agent_state(root_key.clone());
         root_state.workdir = PathBuf::from("/repo/wt/old");
-        root_state.window_name = Some("wm-old".to_string());
-        root_state.session_name = Some("wm-old".to_string());
+        root_state.window_name = Some("mx-old".to_string());
+        root_state.session_name = Some("mx-old".to_string());
         store.upsert_agent(&root_state).unwrap();
 
         // Agent in a subdirectory of the worktree
@@ -1114,8 +1114,8 @@ mod tests {
         };
         let mut sub_state = test_agent_state(sub_key.clone());
         sub_state.workdir = PathBuf::from("/repo/wt/old/src/nested");
-        sub_state.window_name = Some("wm-old-2".to_string()); // duplicate suffix
-        sub_state.session_name = Some("wm-old".to_string());
+        sub_state.window_name = Some("mx-old-2".to_string()); // duplicate suffix
+        sub_state.session_name = Some("mx-old".to_string());
         store.upsert_agent(&sub_state).unwrap();
 
         // Unrelated agent in a different worktree
@@ -1126,32 +1126,32 @@ mod tests {
         };
         let mut other_state = test_agent_state(other_key.clone());
         other_state.workdir = PathBuf::from("/repo/wt/unrelated");
-        other_state.window_name = Some("wm-unrelated".to_string());
+        other_state.window_name = Some("mx-unrelated".to_string());
         store.upsert_agent(&other_state).unwrap();
 
         let migrated = store
             .migrate_worktree_paths(
                 &PathBuf::from("/repo/wt/old"),
                 &PathBuf::from("/repo/wt/new"),
-                "wm-old",
-                "wm-new",
+                "mx-old",
+                "mx-new",
             )
             .unwrap();
         assert_eq!(migrated, 2);
 
         let root_after = store.get_agent(&root_key).unwrap().unwrap();
         assert_eq!(root_after.workdir, PathBuf::from("/repo/wt/new"));
-        assert_eq!(root_after.window_name.as_deref(), Some("wm-new"));
-        assert_eq!(root_after.session_name.as_deref(), Some("wm-new"));
+        assert_eq!(root_after.window_name.as_deref(), Some("mx-new"));
+        assert_eq!(root_after.session_name.as_deref(), Some("mx-new"));
 
         let sub_after = store.get_agent(&sub_key).unwrap().unwrap();
         assert_eq!(sub_after.workdir, PathBuf::from("/repo/wt/new/src/nested"));
-        assert_eq!(sub_after.window_name.as_deref(), Some("wm-new-2"));
-        assert_eq!(sub_after.session_name.as_deref(), Some("wm-new"));
+        assert_eq!(sub_after.window_name.as_deref(), Some("mx-new-2"));
+        assert_eq!(sub_after.session_name.as_deref(), Some("mx-new"));
 
         let other_after = store.get_agent(&other_key).unwrap().unwrap();
         assert_eq!(other_after.workdir, PathBuf::from("/repo/wt/unrelated"));
-        assert_eq!(other_after.window_name.as_deref(), Some("wm-unrelated"));
+        assert_eq!(other_after.window_name.as_deref(), Some("mx-unrelated"));
     }
 
     #[test]

@@ -16,11 +16,6 @@ for running multiple AI agents in parallel without conflict.
 windowing, git for worktrees, your agent for coding — muxix orchestrates the
 rest.
 
-<!-- prettier-ignore -->
-::: tip New to muxix?
-Read the [introduction blog post](https://raine.dev/blog/introduction-to-workmux/) for a quick overview.
-:::
-
 ## Why muxix?
 
 **Parallel workflows.** Work on multiple features at the same time, each with
