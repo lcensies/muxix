@@ -26,6 +26,15 @@ description: Release notes and version history for muxix
 
 ### Breaking
 
+- **`muxix start` / `muxix project open` no longer open every worktree.** The new
+  `project_open` config selects which ones: `all` (previous behavior),
+  `unfinished` (agent stopped mid-work), `active` (default — any worktree an
+  agent ran in), or `recent` (touched within `project_open_days`, default 7).
+  Worktrees that never hosted a muxix agent are skipped by default; the run
+  reports how many it skipped. Override per invocation with
+  `--worktrees <all|unfinished|active|recent>`, or set `project_open: all` to
+  keep the old behavior. `muxix open <name>` is unaffected.
+
 - **The inherited `workmux` / `wm` names are gone.** Four surfaces change at
   once, with no compatibility aliases:
   - Default window/session prefix is `mx-` instead of `wm-`. An explicit

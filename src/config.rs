@@ -726,6 +726,15 @@ pub struct Config {
     #[serde(default)]
     pub project_mux: Option<ProjectMux>,
 
+    /// Which worktrees `muxix start` / `muxix project open` restore.
+    /// Default: `active` (only worktrees that have agent state).
+    #[serde(default)]
+    pub project_open: Option<ProjectOpenFilter>,
+
+    /// Window in days for `project_open: recent`. Default: 7.
+    #[serde(default)]
+    pub project_open_days: Option<u64>,
+
     #[serde(default)]
     pub post_create: Option<Vec<String>>,
 
@@ -2671,6 +2680,34 @@ pub enum ProjectMux {
     Session,
 }
 
+/// Which worktrees `muxix start` / `muxix project open` restore.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectOpenFilter {
+    /// Every worktree of the project.
+    All,
+    /// Worktrees whose agent state shows work stopped mid-flight: no
+    /// `completion` and a status other than `done`.
+    Unfinished,
+    /// Worktrees that have any agent state at all.
+    #[default]
+    Active,
+    /// Worktrees touched within `project_open_days` days.
+    Recent,
+}
+
+impl ProjectOpenFilter {
+    /// Name as written in config and `--worktrees`, for skip messages.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Unfinished => "unfinished",
+            Self::Active => "active",
+            Self::Recent => "recent",
+        }
+    }
+}
+
 /// Which way project records flow between muxix and an ADE.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -3611,6 +3648,11 @@ impl Config {
         self.mode.unwrap_or(MuxMode::Window)
     }
 
+    /// Window in days for `project_open: recent`. Default: 7.
+    pub fn project_open_days(&self) -> u64 {
+        self.project_open_days.unwrap_or(7)
+    }
+
     /// Create an example .muxix.yaml configuration file
     pub fn init() -> anyhow::Result<()> {
         use std::path::PathBuf;
@@ -3747,6 +3789,29 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   working: "🤖"
 #   waiting: "💬"
 #   done: "✅"
+
+#-------------------------------------------------------------------------------
+# Projects
+#-------------------------------------------------------------------------------
+
+# How `muxix start` multiplexes tracked projects.
+# Options: session (default) — one session per tracked project.
+# project_mux: session
+
+# Which worktrees `muxix start` and `muxix project open` restore.
+# Options:
+#   all        - every worktree of the project
+#   unfinished - worktrees whose agent stopped mid-work (no completion,
+#                status not done)
+#   active     - worktrees that have any agent state at all (default)
+#   recent     - worktrees touched within `project_open_days` days
+# The --worktrees <mode> flag always overrides this.
+# Default: active
+# project_open: active
+
+# Window in days for `project_open: recent`.
+# Default: 7
+# project_open_days: 7
 
 #-------------------------------------------------------------------------------
 # Agent & AI
@@ -4088,8 +4153,8 @@ mod tests {
     use super::{
         AgentIconConfig, AgentIconDetails, AllowedDomainDetails, AllowedDomainEntry, Config,
         ContainerConfig, ContainerDevice, EventsConfig, ExtraMount, LayoutConfig, LimaConfig,
-        NetworkConfig, NetworkPolicy, PaneConfig, SandboxConfig, SandboxRuntime, SandboxTarget,
-        SidebarHeight, SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode,
+        NetworkConfig, NetworkPolicy, PaneConfig, ProjectOpenFilter, SandboxConfig, SandboxRuntime,
+        SandboxTarget, SidebarHeight, SidebarPosition, SidebarWidth, SplitDirection, ToolchainMode,
         is_agent_command, split_first_token, validate_domain, validate_group_add_entry,
         validate_layouts_config,
     };
@@ -4190,6 +4255,28 @@ agent_profiles:
         // Zero terminal height must not divide a bogus value; returns 0.
         assert_eq!(SidebarHeight::Percent(50).resolve(0), 0);
         assert_eq!(SidebarHeight::Absolute(10).resolve(0), 10);
+    }
+
+    #[test]
+    fn project_open_parses_every_mode_and_defaults() {
+        for (yaml, want) in [
+            ("project_open: all", ProjectOpenFilter::All),
+            ("project_open: unfinished", ProjectOpenFilter::Unfinished),
+            ("project_open: active", ProjectOpenFilter::Active),
+            ("project_open: recent", ProjectOpenFilter::Recent),
+        ] {
+            let cfg: Config = serde_yaml::from_str(yaml).unwrap();
+            assert_eq!(cfg.project_open, Some(want), "{yaml}");
+            assert_eq!(want.as_str(), yaml.trim_start_matches("project_open: "));
+        }
+
+        let empty: Config = serde_yaml::from_str("{}").unwrap();
+        assert_eq!(empty.project_open, None);
+        assert_eq!(ProjectOpenFilter::default(), ProjectOpenFilter::Active);
+        assert_eq!(empty.project_open_days(), 7);
+
+        let days: Config = serde_yaml::from_str("project_open_days: 30").unwrap();
+        assert_eq!(days.project_open_days(), 30);
     }
 
     #[test]

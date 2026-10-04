@@ -1,5 +1,5 @@
 use crate::command::args::{MultiArgs, PromptArgs, RescueArgs, SetupFlags};
-use crate::config::MuxMode;
+use crate::config::{MuxMode, ProjectOpenFilter};
 use crate::{claude, command, config, git, nerdfont, projects};
 use anyhow::{Context, Result};
 use clap::error::{ContextKind, ContextValue, ErrorKind};
@@ -329,6 +329,25 @@ impl From<CliMuxMode> for MuxMode {
     }
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub(crate) enum CliProjectOpenFilter {
+    All,
+    Unfinished,
+    Active,
+    Recent,
+}
+
+impl From<CliProjectOpenFilter> for ProjectOpenFilter {
+    fn from(value: CliProjectOpenFilter) -> Self {
+        match value {
+            CliProjectOpenFilter::All => ProjectOpenFilter::All,
+            CliProjectOpenFilter::Unfinished => ProjectOpenFilter::Unfinished,
+            CliProjectOpenFilter::Active => ProjectOpenFilter::Active,
+            CliProjectOpenFilter::Recent => ProjectOpenFilter::Recent,
+        }
+    }
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Create a new worktree and tmux window
@@ -503,6 +522,10 @@ enum Commands {
         /// its previous conversation where possible
         #[arg(short = 'c', long = "continue")]
         continue_session: bool,
+
+        /// Which worktrees to open, overriding config `project_open`
+        #[arg(long, value_name = "FILTER")]
+        worktrees: Option<CliProjectOpenFilter>,
     },
 
     /// Merge a branch, then clean up the worktree and tmux window
@@ -1037,6 +1060,9 @@ pub enum ProjectCommands {
         /// Relaunch the last coding agent, resuming its previous conversation
         #[arg(short = 'c', long = "continue")]
         continue_session: bool,
+        /// Which worktrees to open, overriding config `project_open`
+        #[arg(long, value_name = "FILTER")]
+        worktrees: Option<CliProjectOpenFilter>,
     },
     /// Sync the project registry with configured ADEs
     Sync {
@@ -1338,12 +1364,20 @@ pub fn run() -> Result<()> {
             ProjectCommands::Open {
                 target,
                 continue_session,
-            } => projects::start::open(&target, continue_session),
+                worktrees,
+            } => projects::start::open(
+                &target,
+                continue_session,
+                worktrees.map(ProjectOpenFilter::from),
+            ),
             ProjectCommands::Sync { ade, dry_run } => {
                 projects::sync::cli_sync(ade.as_deref(), dry_run)
             }
         },
-        Commands::Start { continue_session } => projects::start::run(continue_session),
+        Commands::Start {
+            continue_session,
+            worktrees,
+        } => projects::start::run(continue_session, worktrees.map(ProjectOpenFilter::from)),
         Commands::Merge {
             name,
             into,

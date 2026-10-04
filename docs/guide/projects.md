@@ -56,6 +56,44 @@ The multiplexing strategy is configurable via `project_mux` in the global
 config; `session` (one session per project) is the default and currently the
 only strategy.
 
+## Which worktrees get opened
+
+`muxix start` and `muxix project open` do not restore every worktree. The
+`project_open` config key picks them:
+
+| mode | opens a worktree when |
+|---|---|
+| `all` | always |
+| `unfinished` | its agent stopped mid-work — no completion signal and a status other than `done` |
+| `active` **(default)** | an agent ran there at all, working or idle, finished or not |
+| `recent` | it was touched within `project_open_days` days (default `7`) |
+
+```yaml
+project_open: active
+project_open_days: 7
+```
+
+The evidence is muxix's own agent state (`~/.local/state/muxix/agents/`), so a
+worktree that never hosted a muxix agent — created by hand, or created before
+the state store existed — is skipped under every mode but `all`. `recent` adds
+the worktree's last commit time and git index mtime, so staged or committed work
+counts even with no agent state.
+
+Each run reports what it left out:
+
+```
+• my-app: skipped 3 worktree(s) (project_open: active)
+```
+
+Override the configured mode for one invocation:
+
+```bash
+muxix start --worktrees all
+muxix project open my-app --worktrees unfinished
+```
+
+`muxix open <name>` names a worktree explicitly and is never filtered.
+
 ## Base layouts
 
 The base windows of a project session are resolved in priority order:

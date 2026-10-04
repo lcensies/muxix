@@ -3,6 +3,7 @@
 //! Named `projects` (plural) to stay clear of `project_state`, the per-project
 //! journal in `.muxix/state`.
 
+pub mod open_filter;
 pub mod registry;
 pub mod start;
 pub mod sync;

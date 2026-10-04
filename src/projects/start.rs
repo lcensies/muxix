@@ -6,7 +6,8 @@
 //! `muxix project open <name>` does the same for a single tracked project
 //! and then focuses its session.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use tracing::info;
@@ -14,13 +15,15 @@ use tracing::info;
 use crate::command::resurrect::{
     ResumePlan, find_task_prompt, plan_resume, write_resurrect_prompt,
 };
-use crate::config::{Config, MuxMode};
+use crate::config::{Config, MuxMode, ProjectOpenFilter};
 use crate::multiplexer::types::{CreateSessionParams, CreateWindowInSessionParams, ResumeMode};
 use crate::multiplexer::{Multiplexer, create_backend, detect_backend};
+use crate::state::StateStore;
 use crate::util::canon_or_self;
 use crate::workflow::{self, SetupOptions, WorkflowContext};
 use crate::{config, git};
 
+use super::open_filter;
 use super::registry::{ProjectEntry, Registry};
 
 /// A window of a project's base session layout.
@@ -29,7 +32,7 @@ struct BaseWindow {
     command: Option<String>,
 }
 
-pub fn run(continue_session: bool) -> Result<()> {
+pub fn run(continue_session: bool, filter: Option<ProjectOpenFilter>) -> Result<()> {
     let registry = Registry::load()?;
     if registry.projects.is_empty() {
         println!("No tracked projects. Add one with 'muxix project add <dir>'.");
@@ -46,7 +49,7 @@ pub fn run(continue_session: bool) -> Result<()> {
             );
             continue;
         }
-        if let Err(e) = start_project(entry, continue_session) {
+        if let Err(e) = start_project(entry, continue_session, filter) {
             eprintln!("✗ Failed to start '{}': {:#}", entry.name, e);
             failed += 1;
         }
@@ -58,7 +61,11 @@ pub fn run(continue_session: bool) -> Result<()> {
 }
 
 /// Start one tracked project and focus its session.
-pub fn open(target: &str, continue_session: bool) -> Result<()> {
+pub fn open(
+    target: &str,
+    continue_session: bool,
+    filter: Option<ProjectOpenFilter>,
+) -> Result<()> {
     let registry = Registry::load()?;
     let Some(entry) = registry.find(target).cloned() else {
         bail!("No tracked project matches '{target}'. Add it with 'muxix project add <dir>'.");
@@ -70,7 +77,7 @@ pub fn open(target: &str, continue_session: bool) -> Result<()> {
             entry.root.display()
         );
     }
-    start_project(&entry, continue_session)?;
+    start_project(&entry, continue_session, filter)?;
     focus_session(&entry.name)
 }
 
@@ -88,7 +95,11 @@ fn focus_session(name: &str) -> Result<()> {
     Err(err).context("Failed to exec 'tmux attach-session'")
 }
 
-fn start_project(entry: &ProjectEntry, continue_session: bool) -> Result<()> {
+fn start_project(
+    entry: &ProjectEntry,
+    continue_session: bool,
+    filter: Option<ProjectOpenFilter>,
+) -> Result<()> {
     // Per-project context: config discovery, the project journal
     // (ProjectStateStore::open_project) and git helpers all resolve from cwd.
     std::env::set_current_dir(&entry.root)
@@ -147,13 +158,16 @@ fn start_project(entry: &ProjectEntry, continue_session: bool) -> Result<()> {
         return Ok(());
     }
     let context = WorkflowContext::new_in(&entry.root, cfg, mux, config_location)?;
-    open_worktree_windows(entry, &context, continue_session)
+    open_worktree_windows(entry, &context, continue_session, filter)
 }
 
+/// `filter` overrides the config's `project_open` when the caller passed
+/// `--worktrees`.
 fn open_worktree_windows(
     entry: &ProjectEntry,
     context: &WorkflowContext,
     continue_session: bool,
+    filter: Option<ProjectOpenFilter>,
 ) -> Result<()> {
     let canon_main = canon_or_self(&context.main_worktree_root);
     let agent_name = context
@@ -163,15 +177,47 @@ fn open_worktree_windows(
         .unwrap_or_else(|| "claude".to_string());
     let default_mode = context.config.mode();
 
-    for (path, _branch) in git::list_worktrees_in(Some(&entry.root))? {
+    let worktrees: Vec<(PathBuf, String)> = git::list_worktrees_in(Some(&entry.root))?
+        .into_iter()
+        .filter(|(path, _)| canon_or_self(path) != canon_main)
+        .collect();
+
+    let filter = filter.or(context.config.project_open).unwrap_or_default();
+    let days = context.config.project_open_days();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // One pass over the agent state store for the whole project; `all` needs none.
+    let states = if filter == ProjectOpenFilter::All {
+        HashMap::new()
+    } else {
+        open_filter::states_by_handle(
+            &StateStore::new()?,
+            context.mux.name(),
+            &context.mux.instance_id(),
+            worktrees.iter().map(|(path, _)| path.as_path()),
+        )?
+    };
+    let mut skipped = 0usize;
+
+    for (path, _branch) in worktrees {
         let canon_path = canon_or_self(&path);
-        if canon_path == canon_main {
-            continue;
-        }
         let handle = match path.file_name() {
             Some(n) => n.to_string_lossy().to_string(),
             None => continue,
         };
+
+        // newest_repo_ts spawns git, so only `recent` pays for it.
+        let repo_ts = (filter == ProjectOpenFilter::Recent)
+            .then(|| open_filter::newest_repo_ts(&path))
+            .flatten();
+        let worktree_states = states.get(&handle).map_or(&[][..], Vec::as_slice);
+        if !open_filter::keep(filter, days, worktree_states, repo_ts, now) {
+            info!(handle, filter = filter.as_str(), "start: worktree filtered");
+            skipped += 1;
+            continue;
+        }
 
         // Mirror workflow::open's mode resolution so we only attach a parent
         // session in window mode (a session-mode worktree keeps its own session).
@@ -198,6 +244,14 @@ fn open_worktree_windows(
                 entry.name, handle, e
             ),
         }
+    }
+    if skipped > 0 {
+        println!(
+            "• {}: skipped {} worktree(s) (project_open: {})",
+            entry.name,
+            skipped,
+            filter.as_str()
+        );
     }
     Ok(())
 }

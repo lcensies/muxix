@@ -5,8 +5,11 @@
   project instead of creating a worktree.
 * `muxix start` — creates one session per tracked project plus a window per
   worktree, and is idempotent on a second run.
+* `project_open` / `--worktrees` — which worktrees `start` restores.
 """
 
+import json
+import time
 from pathlib import Path
 
 import pytest
@@ -14,6 +17,7 @@ import pytest
 from .conftest import (
     MuxEnvironment,
     get_window_name,
+    get_worktree_path,
     run_muxix_add,
     run_muxix_command,
     write_muxix_config,
@@ -122,3 +126,58 @@ def test_start_skips_missing_project_dirs(
 
     result = run_muxix_command(env, muxix_exe_path, repo_path, "start")
     assert "no longer exists" in result.stdout + result.stderr
+
+
+def _seed_agent_state(env: MuxEnvironment, workdir: Path, pane_id: str) -> None:
+    """Write one agent state file claiming an agent ran in `workdir`.
+
+    `instance` must match `Multiplexer::instance_id`, which for tmux is the
+    socket path from `$TMUX`. The file name is irrelevant — the store scans
+    every `*.json` and reads the `pane_key` inside.
+    """
+    now = int(time.time())
+    state = {
+        "agent_id": f"seeded-{pane_id.strip('%')}",
+        "pane_key": {
+            "backend": "tmux",
+            "instance": str(env.socket_path),
+            "pane_id": pane_id,
+        },
+        "workdir": str(workdir),
+        "status": "waiting",
+        "status_ts": now,
+        "pane_title": None,
+        "pane_pid": 1,
+        "command": "node",
+        "updated_ts": now,
+    }
+    agents_dir = env.home_path / ".local" / "state" / "muxix" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    (agents_dir / f"seeded-{pane_id.strip('%')}.json").write_text(json.dumps(state))
+
+
+@pytest.mark.tmux_only
+def test_start_opens_only_worktrees_an_agent_ran_in(
+    mux_server: MuxEnvironment, muxix_exe_path: Path, repo_path: Path
+):
+    """Default `project_open: active`, plus the `--worktrees all` escape hatch."""
+    env = mux_server
+    project = repo_path.name
+    seeded, bare = "feat-seeded", "feat-bare"
+
+    write_muxix_config(repo_path)
+    run_muxix_command(env, muxix_exe_path, repo_path, f"project add {repo_path}")
+    for branch in (seeded, bare):
+        run_muxix_add(env, muxix_exe_path, repo_path, branch)
+        run_muxix_command(env, muxix_exe_path, repo_path, f"close {branch}")
+
+    _seed_agent_state(env, get_worktree_path(repo_path, seeded), "%901")
+
+    result = run_muxix_command(env, muxix_exe_path, repo_path, "start")
+    windows = _windows_of(env, project)
+    assert get_window_name(seeded) in windows
+    assert get_window_name(bare) not in windows
+    assert "skipped 1 worktree(s) (project_open: active)" in result.stdout
+
+    run_muxix_command(env, muxix_exe_path, repo_path, "start --worktrees all")
+    assert get_window_name(bare) in _windows_of(env, project)
