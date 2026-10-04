@@ -11,6 +11,7 @@ pub mod gemini;
 pub mod omp;
 pub mod opencode;
 pub mod pi;
+pub mod prime;
 pub mod spec;
 
 use anyhow::{Context, Result};
@@ -32,13 +33,14 @@ pub enum Agent {
     OpenCode,
     Pi,
     Omp,
+    Prime,
 }
 
 impl Agent {
     /// Every known coding agent, in display order. Keep exhaustive: code that
     /// must handle each agent (e.g. MCP support) iterates this, so a new variant
     /// surfaces everywhere it needs a decision.
-    pub const ALL: [Agent; 7] = [
+    pub const ALL: [Agent; 8] = [
         Agent::Claude,
         Agent::Codex,
         Agent::Copilot,
@@ -46,6 +48,7 @@ impl Agent {
         Agent::OpenCode,
         Agent::Pi,
         Agent::Omp,
+        Agent::Prime,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -57,6 +60,7 @@ impl Agent {
             Agent::OpenCode => "OpenCode",
             Agent::Pi => "pi",
             Agent::Omp => "omp",
+            Agent::Prime => "prime-agent",
         }
     }
 
@@ -74,6 +78,9 @@ impl Agent {
             Agent::OpenCode => "opencode",
             Agent::Pi => "pi",
             Agent::Omp => "omp",
+            // Matches the binary's own stem, which is what the three identity
+            // axes are keyed on — `prime` alone would miss `from_command`.
+            Agent::Prime => "prime-agent",
         }
     }
 
@@ -130,6 +137,7 @@ pub fn settings_target(agent: Agent) -> Option<(PathBuf, SettingsFormat)> {
     let path = match agent {
         Agent::Pi => pi::settings_file(),
         Agent::Omp => omp::settings_file(),
+        Agent::Prime => prime::settings_file(),
         Agent::Claude => claude::settings_file(),
         Agent::Gemini => gemini::settings_file(),
         Agent::OpenCode => opencode::settings_file(),
@@ -271,6 +279,18 @@ pub fn check_all() -> Vec<AgentCheck> {
         });
     }
 
+    if let Some(reason) = prime::detect() {
+        let status = match prime::check() {
+            Ok(s) => s,
+            Err(e) => StatusCheck::Error(e.to_string()),
+        };
+        results.push(AgentCheck {
+            agent: Agent::Prime,
+            reason,
+            status,
+        });
+    }
+
     results
 }
 
@@ -288,6 +308,7 @@ pub fn is_detected(agent: Agent) -> bool {
         Agent::OpenCode => opencode::detect().is_some(),
         Agent::Pi => pi::detect().is_some(),
         Agent::Omp => omp::detect().is_some(),
+        Agent::Prime => prime::detect().is_some(),
     }
 }
 
@@ -301,6 +322,7 @@ pub fn install(agent: Agent) -> Result<String> {
         Agent::OpenCode => opencode::install(),
         Agent::Pi => pi::install(),
         Agent::Omp => omp::install(),
+        Agent::Prime => prime::install(),
     }
 }
 
@@ -330,6 +352,8 @@ pub fn signal_support(agent: Agent) -> SignalSupport {
         Agent::Pi => SignalSupport::Native,
         // omp (oh-my-pi): pi-compatible extension (load + agent_end).
         Agent::Omp => SignalSupport::Native,
+        // prime-agent: the same pi extension, installed into ~/.prime/agent.
+        Agent::Prime => SignalSupport::Native,
         // No signal emission wired into these agents' configs yet.
         Agent::Gemini | Agent::Codex | Agent::Copilot => SignalSupport::FallbackOnly,
     }
@@ -468,6 +492,13 @@ pub fn bootstrap(
                 .map(|c| c.injection_method.clone())
                 .unwrap_or_default();
             omp::Bootstrapper::new_with_method(method).map(|b| Box::new(b) as _)
+        }
+        Agent::Prime => {
+            let method = config
+                .and_then(|c| c.pi.as_ref())
+                .map(|c| c.injection_method.clone())
+                .unwrap_or_default();
+            prime::bootstrapper(method).map(|b| Box::new(b) as _)
         }
         // Codex and Copilot have no plugin installer, so their instructions
         // file is the ONLY channel a declared prompt component (or a feature's
@@ -826,6 +857,17 @@ mod tests {
         let (copilot_path, copilot_format) = settings_target(Agent::Copilot).unwrap();
         assert!(copilot_path.ends_with("settings.json"), "{copilot_path:?}");
         assert_eq!(copilot_format, SettingsFormat::Json);
+    }
+
+    /// prime-agent is pi-shaped (JSON `settings.json`) but under its own dir,
+    /// so a settings patch declared for it must never land on pi's file.
+    #[test]
+    fn prime_settings_are_json_under_its_own_dir() {
+        let (path, format) = settings_target(Agent::Prime).unwrap();
+        assert!(path.ends_with("settings.json"), "{path:?}");
+        assert_eq!(format, SettingsFormat::Json);
+        let pi_path = settings_target(Agent::Pi).unwrap().0;
+        assert_ne!(path, pi_path);
     }
 
     #[test]

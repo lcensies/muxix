@@ -670,7 +670,9 @@ pub fn apply_theme_for_agent(agent: Agent, config: &BootstrapConfig) -> Result<O
         Agent::Claude => claude::set_theme(theme)?,
         Agent::Gemini => gemini::set_theme(theme)?,
         Agent::OpenCode => opencode::set_theme(theme)?,
-        Agent::Codex | Agent::Copilot | Agent::Pi | Agent::Omp => return Ok(None),
+        Agent::Codex | Agent::Copilot | Agent::Pi | Agent::Omp | Agent::Prime => {
+            return Ok(None);
+        }
     };
     Ok(changed.then(|| format!("Set {} theme to {theme}", agent.name())))
 }
@@ -1049,7 +1051,7 @@ fn opencode_tools_frontmatter(content: &str) -> String {
 /// Return the subagents directory for a given agent, or `None` if the agent
 /// has no native subagent support in a format muxix can write.
 pub fn subagents_dir(agent: Agent) -> Option<PathBuf> {
-    use crate::agent::setup::{copilot, gemini, omp, pi};
+    use crate::agent::setup::{copilot, gemini, omp, pi, prime};
     let home = home::home_dir()?;
     match agent {
         Agent::Claude => {
@@ -1061,6 +1063,7 @@ pub fn subagents_dir(agent: Agent) -> Option<PathBuf> {
         Agent::OpenCode => Some(home.join(".config/opencode/agent")),
         Agent::Pi => Some(pi::agent_dir()?.join("agents")),
         Agent::Omp => Some(omp::agent_dir()?.join("agents")),
+        Agent::Prime => Some(prime::agent_dir()?.join("agents")),
         Agent::Gemini => gemini::subagents_dir(),
         Agent::Copilot => copilot::subagents_dir(),
         // Codex custom agents are standalone *TOML config layers* under

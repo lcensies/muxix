@@ -14,7 +14,7 @@ use std::process::Command;
 use super::StatusCheck;
 
 /// The pi extension source, embedded at compile time.
-const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
+pub(super) const EXTENSION_SOURCE: &str = include_str!("../../../.pi/extensions/muxix-status.ts");
 
 /// How muxix injects the configured system prompt into pi.
 ///
@@ -81,8 +81,12 @@ pub fn declared_hook_target() -> Option<crate::command::setup::agent_hooks::Hook
     })
 }
 
-fn extension_path() -> Option<PathBuf> {
-    agent_dir().map(|d| d.join("extensions/muxix-status.ts"))
+/// Where the status extension lives inside a pi-compatible agent dir.
+///
+/// Takes the dir explicitly so forks (prime-agent) reuse pi's extension bodies
+/// against their own directory.
+pub(super) fn extension_path_in(agent_dir: &std::path::Path) -> PathBuf {
+    agent_dir.join("extensions/muxix-status.ts")
 }
 
 pub struct Bootstrapper {
@@ -104,6 +108,14 @@ impl Bootstrapper {
             agent_dir: d,
             injection_method: method,
         })
+    }
+
+    /// Bootstrapper for an explicit pi-compatible agent dir (prime-agent).
+    pub(super) fn new_in(agent_dir: PathBuf, method: PiInjectionMethod) -> Self {
+        Self {
+            agent_dir,
+            injection_method: method,
+        }
     }
 
     /// Path where the `BeforeAgentStart` method writes the inject content.
@@ -165,11 +177,15 @@ pub fn detect() -> Option<&'static str> {
 /// muxix was upgraded without a re-setup; existence alone would pin users to
 /// whichever version first ran setup.
 pub fn check() -> Result<StatusCheck> {
-    let Some(path) = extension_path() else {
+    let Some(dir) = agent_dir() else {
         return Ok(StatusCheck::NotInstalled);
     };
+    check_in(&dir)
+}
 
-    match fs::read_to_string(&path) {
+/// [`check`] against an explicit pi-compatible agent dir.
+pub(super) fn check_in(agent_dir: &std::path::Path) -> Result<StatusCheck> {
+    match fs::read_to_string(extension_path_in(agent_dir)) {
         Err(_) => Ok(StatusCheck::NotInstalled),
         Ok(body) if body == EXTENSION_SOURCE => Ok(StatusCheck::Installed),
         Ok(_) => Ok(StatusCheck::Stale {
@@ -193,6 +209,15 @@ pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
     let Some(dir) = agent_dir() else {
         return false;
     };
+    plugin_installed_in(&dir, spec, project_root)
+}
+
+/// [`plugin_installed`] against an explicit pi-compatible agent dir.
+pub(super) fn plugin_installed_in(
+    dir: &std::path::Path,
+    spec: &str,
+    project_root: &std::path::Path,
+) -> bool {
     let Ok(body) = fs::read_to_string(dir.join("settings.json")) else {
         return false;
     };
@@ -209,7 +234,7 @@ pub fn plugin_installed(spec: &str, project_root: &std::path::Path) -> bool {
         };
         return arr.iter().any(|v| {
             v.as_str()
-                .and_then(|s| super::spec::canonicalize_path_spec(s, &dir))
+                .and_then(|s| super::spec::canonicalize_path_spec(s, dir))
                 .is_some_and(|entry| entry == declared)
         });
     }
@@ -261,17 +286,25 @@ pub fn remove_plugin(spec: &str) -> Result<String> {
 /// Install muxix extension for pi.
 /// Returns a description of what was done.
 pub fn install() -> Result<String> {
-    let path =
-        extension_path().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let dir = agent_dir().ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    install_in(&dir, "pi")
+}
+
+/// [`install`] against an explicit pi-compatible agent dir. `agent_name` only
+/// shapes the messages, so a fork reports itself and not pi.
+pub(super) fn install_in(agent_dir: &std::path::Path, agent_name: &str) -> Result<String> {
+    let path = extension_path_in(agent_dir);
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).context("Failed to create pi extensions directory")?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {agent_name} extensions directory"))?;
     }
 
-    fs::write(&path, EXTENSION_SOURCE).context("Failed to write pi extension")?;
+    fs::write(&path, EXTENSION_SOURCE)
+        .with_context(|| format!("Failed to write {agent_name} extension"))?;
 
     Ok(format!(
-        "Installed extension to {}. Restart pi for it to take effect.",
+        "Installed extension to {}. Restart {agent_name} for it to take effect.",
         path.display()
     ))
 }

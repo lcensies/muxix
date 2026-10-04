@@ -278,11 +278,12 @@ pub fn undeclared_npm(
 }
 
 fn uninstall_plugin(agent: Agent, spec: &str) -> anyhow::Result<String> {
-    use crate::agent::setup::{claude, omp, opencode, pi};
+    use crate::agent::setup::{claude, omp, opencode, pi, prime};
     match agent {
         Agent::Claude => claude::uninstall_plugin(spec),
         Agent::Pi => pi::remove_plugin(spec),
         Agent::Omp => omp::remove_plugin(spec),
+        Agent::Prime => prime::remove_plugin(spec),
         Agent::OpenCode => opencode::uninstall_plugin(spec),
         _ => anyhow::bail!("no plugin uninstaller for {}", agent.name()),
     }

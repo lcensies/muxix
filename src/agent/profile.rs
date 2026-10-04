@@ -315,6 +315,30 @@ impl AgentProfile for OmpProfile {
     }
 }
 
+pub struct PrimeProfile;
+
+impl AgentProfile for PrimeProfile {
+    fn name(&self) -> &'static str {
+        "prime-agent"
+    }
+
+    fn needs_auto_status(&self) -> bool {
+        true
+    }
+
+    fn prompt_flag(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("prime-agent -p")
+    }
+
+    fn continue_flag(&self) -> Option<&'static str> {
+        Some("--continue")
+    }
+}
+
 pub struct KimiProfile;
 
 impl AgentProfile for KimiProfile {
@@ -368,6 +392,7 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &CodexProfile,
     &PiProfile,
     &OmpProfile,
+    &PrimeProfile,
     &KiroProfile,
     &VibeProfile,
     &KimiProfile,

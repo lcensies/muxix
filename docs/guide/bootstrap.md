@@ -37,18 +37,18 @@ Declarations are agent-agnostic; what an agent accepts is bounded by its own
 config surface. Anything an agent cannot take is reported as `skipped` with the
 reason — never silently dropped.
 
-| | claude | codex | copilot | gemini | opencode | pi | omp |
-|---|---|---|---|---|---|---|---|
-| `plugins` | ✅ | — ¹ | — ¹ | — ¹ | ✅ | ✅ | ✅ |
-| `skills` | ✅ | ✅ ² | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `subagents` | ✅ | — ³ | ✅ ⁴ | ✅ | ✅ | ✅ | ✅ |
-| `prompt_components` / `features` fallback | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `hooks` (+ skill hooks) | ✅ | ✅ | ✅ | ✅ | ✅ ⁵ | ✅ ⁵ | — ⁶ |
-| `mcp` | ✅ | ✅ ⁷ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `settings` patch | ✅ | — ⁸ | ✅ | ✅ | ✅ | ✅ | ✅ ⁹ |
-| `theme` | ✅ | — | — | ✅ | ✅ | — | — |
-| provider sync | — | ✅ | — | — | ✅ | — | — |
-| `agent_profiles` | ✅ | ✅ | ✅ | — ¹⁰ | — ¹⁰ | ✅ | ✅ |
+| | claude | codex | copilot | gemini | opencode | pi | omp | prime-agent |
+|---|---|---|---|---|---|---|---|---|
+| `plugins` | ✅ | — ¹ | — ¹ | — ¹ | ✅ | ✅ | ✅ | ✅ |
+| `skills` | ✅ | ✅ ² | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `subagents` | ✅ | — ³ | ✅ ⁴ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `prompt_components` / `features` fallback | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `hooks` (+ skill hooks) | ✅ | ✅ | ✅ | ✅ | ✅ ⁵ | ✅ ⁵ | — ⁶ | — ¹¹ |
+| `mcp` | ✅ | ✅ ⁷ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `settings` patch | ✅ | — ⁸ | ✅ | ✅ | ✅ | ✅ | ✅ ⁹ | ✅ |
+| `theme` | ✅ | — | — | ✅ | ✅ | — | — | — |
+| provider sync | — | ✅ | — | — | ✅ | — | — | — |
+| `agent_profiles` | ✅ | ✅ | ✅ | — ¹⁰ | — ¹⁰ | ✅ | ✅ | ✅ |
 
 1. No plugin installer CLI wired up; use a `features:` prompt-component
    fallback instead.
@@ -65,6 +65,9 @@ reason — never silently dropped.
 8. TOML (`~/.codex/config.toml`): a merge patch cannot express it.
 9. Applied to `config.yml` as YAML.
 10. No single config-dir redirect env var upstream.
+11. prime-agent keeps pi's `settings.json` shape, but the pi hooks compat plugin
+    resolving its own agent dir on the fork is unverified, so hooks report
+    `skipped` rather than writing one nothing is known to run.
 
 ::: tip Per-machine and per-org variation
 A bootstrap block does not have to be one-size-fits-all. Use
@@ -198,6 +201,7 @@ inside a feature), you can use either form:
 | OpenCode    | `opencode` | `opencode`       |
 | pi          | `pi`       | `pi`             |
 | omp         | `omp`      | `omp`            |
+| prime-agent | `prime-agent` | `prime-agent` |
 
 Matching is case- and whitespace-insensitive, and applies to every per-agent
 key: `agents:` entries, `features:` entries, and `default_provider`.
@@ -248,6 +252,7 @@ source of failed installs.
 | ----- | -------------------- | ------------------------------------------------------------------------- |
 | pi    | `pi install <spec>`  | `npm:@scope/pkg`, `git:github.com/user/repo`, `https://…`, `ssh://…`, `./path` |
 | omp   | `omp install <spec>` | bare npm spec (`pkg@1.2.3`, `@scope/pkg`), marketplace ref (`name@marketplace`), `./path` |
+| prime-agent | `prime-agent package install <spec>` | pi's scheme-prefixed specs (`npm:`, `git:`, `https:`, `./path`) — but `npm:` resolves against the **global** npm root, so pi's npm-installed plugins only load by absolute path |
 | Claude Code | `claude plugin install <plugin> --scope user` | `<plugin>@<marketplace>`, optionally prefixed with a marketplace source and `#` (see below) |
 | OpenCode | `opencode plugin <module> --global` | npm module name (`@scope/pkg`) |
 
@@ -625,6 +630,7 @@ express (JSON, or omp's YAML):
 
 | Copilot CLI | `~/.copilot/settings.json` (`COPILOT_HOME`)     |
 | omp         | `~/.omp/agent/config.yml` (**YAML**)           |
+| prime-agent | `~/.prime/agent/settings.json` (`PRIME_AGENT_CODING_AGENT_DIR`) |
 
 omp's store is YAML, so the patch is applied with the same RFC 7386 semantics
 and written back as YAML; pi's `settings.json` is a different file omp never

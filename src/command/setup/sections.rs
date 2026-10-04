@@ -295,7 +295,7 @@ fn plugin_items_for_agent(
     project_root: &Path,
     dry_run: bool,
 ) -> Vec<ItemResult> {
-    use crate::agent::setup::{claude, omp, opencode, pi};
+    use crate::agent::setup::{claude, omp, opencode, pi, prime};
 
     let mut out = Vec::new();
     let mut specs = config.plugins_for(check.agent);
@@ -320,6 +320,9 @@ fn plugin_items_for_agent(
         Agent::Pi => Some(Box::new(move |s: &str| {
             pi::plugin_installed(s, project_root)
         })),
+        Agent::Prime => Some(Box::new(move |s: &str| {
+            prime::plugin_installed(s, project_root)
+        })),
         Agent::OpenCode => Some(Box::new(opencode::plugin_installed)),
         Agent::Claude => Some(Box::new(claude::plugin_installed)),
         _ => None,
@@ -330,6 +333,7 @@ fn plugin_items_for_agent(
     let install: fn(&str) -> Result<String> = match check.agent {
         Agent::Pi => pi::install_plugin_from_url,
         Agent::Omp => omp::install_plugin_from_url,
+        Agent::Prime => prime::install_plugin_from_url,
         Agent::Claude => claude::install_plugin,
         Agent::OpenCode => opencode::install_plugin,
         Agent::Codex | Agent::Copilot | Agent::Gemini => {

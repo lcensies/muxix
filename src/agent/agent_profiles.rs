@@ -103,6 +103,9 @@ pub fn config_dir_env(agent_id: &str) -> Option<&'static str> {
         // default-profile agent dir (`config.yml` + agent data). muxix sets it
         // per-process, so profiling omp never disturbs pi.
         "omp" => Some("PI_CODING_AGENT_DIR"),
+        // prime-agent renames pi's var after its own app name
+        // (`piConfig.name` drives the `PRIME_AGENT_` prefix).
+        "prime-agent" => Some("PRIME_AGENT_CODING_AGENT_DIR"),
         // gemini (`~/.gemini`) and opencode (`OPENCODE_CONFIG` names a *file*,
         // and the data/state dir overrides are not in a release) expose no
         // single config-dir redirect.
@@ -175,6 +178,10 @@ pub fn session_dir_env(agent_id: &str) -> Option<&'static str> {
     match agent_id {
         // Pi's own precedence: --session-dir > PI_CODING_AGENT_SESSION_DIR > sessionDir setting.
         "pi" => Some("PI_CODING_AGENT_SESSION_DIR"),
+        // Same knob, fork-prefixed. prime-agent also flattens per-cwd session
+        // dirs on startup, so pointing it at the persistent tree keeps that
+        // migration out of the overlay entirely.
+        "prime-agent" => Some("PRIME_AGENT_SESSION_DIR"),
         // claude keeps transcripts under CLAUDE_CONFIG_DIR, codex under CODEX_HOME,
         // copilot under COPILOT_HOME (`session-state/`, `logs/`), and omp under its
         // agent dir (`sessions/`, `history.db`) which PI_CODING_AGENT_DIR moves.
@@ -463,7 +470,7 @@ fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfi
     };
 
     let instructions = match agent {
-        Agent::Pi | Agent::Omp => Some((pi_prompt_rel(), InstructionsStyle::Owned)),
+        Agent::Pi | Agent::Omp | Agent::Prime => Some((pi_prompt_rel(), InstructionsStyle::Owned)),
         // Claude reads `@muxix-bootstrap.md` from CLAUDE.md; the referenced file
         // is muxix's alone, and the reference resolves inside the overlay.
         Agent::Claude => Some((
@@ -488,7 +495,7 @@ fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfi
 
     DeltaShape {
         settings,
-        plugin_list: matches!(agent, Agent::Pi | Agent::Omp),
+        plugin_list: matches!(agent, Agent::Pi | Agent::Omp | Agent::Prime),
         instructions,
         skills,
     }
@@ -835,8 +842,13 @@ mod tests {
     }
 
     #[test]
-    fn session_dir_env_is_pi_only_and_data_lives_outside_the_overlay() {
+    fn session_dir_env_is_pi_shaped_and_data_lives_outside_the_overlay() {
         assert_eq!(session_dir_env("pi"), Some("PI_CODING_AGENT_SESSION_DIR"));
+        // prime-agent is pi's fork: same knob, its own prefix.
+        assert_eq!(
+            session_dir_env("prime-agent"),
+            Some("PRIME_AGENT_SESSION_DIR")
+        );
         // These keep transcripts under their redirected config dir, so there is
         // nothing extra to point at.
         // These keep sessions under a dir that config_dir_env already redirects,
@@ -875,6 +887,11 @@ mod tests {
         assert_eq!(config_dir_env("copilot"), Some("COPILOT_HOME"));
         // omp honors pi's var name, not an OMP_-prefixed one.
         assert_eq!(config_dir_env("omp"), Some("PI_CODING_AGENT_DIR"));
+        // prime-agent renames it after its own app name.
+        assert_eq!(
+            config_dir_env("prime-agent"),
+            Some("PRIME_AGENT_CODING_AGENT_DIR")
+        );
         // No single config-dir redirect upstream.
         assert_eq!(config_dir_env("opencode"), None);
         assert_eq!(config_dir_env("gemini"), None);

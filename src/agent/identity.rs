@@ -28,6 +28,7 @@ pub enum AgentKind {
     Gemini,
     Pi,
     Omp,
+    Prime,
     KiroCli,
     Vibe,
     Copilot,
@@ -44,6 +45,7 @@ impl AgentKind {
             AgentKind::Gemini => "gemini",
             AgentKind::Pi => "pi",
             AgentKind::Omp => "omp",
+            AgentKind::Prime => "prime-agent",
             AgentKind::KiroCli => "kiro-cli",
             AgentKind::Vibe => "vibe",
             AgentKind::Copilot => "copilot",
@@ -59,6 +61,7 @@ impl AgentKind {
             "gemini" => Some(AgentKind::Gemini),
             "pi" => Some(AgentKind::Pi),
             "omp" => Some(AgentKind::Omp),
+            "prime-agent" => Some(AgentKind::Prime),
             "kiro-cli" => Some(AgentKind::KiroCli),
             "vibe" => Some(AgentKind::Vibe),
             "copilot" => Some(AgentKind::Copilot),
@@ -76,6 +79,7 @@ impl AgentKind {
             AgentKind::Gemini => "G",
             AgentKind::Pi => "π",
             AgentKind::Omp => "ω",
+            AgentKind::Prime => "PA",
             AgentKind::KiroCli => "K",
             AgentKind::Vibe => "V",
             AgentKind::Copilot => "CP",
@@ -92,6 +96,7 @@ impl AgentKind {
             AgentKind::Gemini => "Gemini",
             AgentKind::Pi => "Pi",
             AgentKind::Omp => "oh-my-pi",
+            AgentKind::Prime => "prime-agent",
             AgentKind::KiroCli => "Kiro",
             AgentKind::Vibe => "Vibe",
             AgentKind::Copilot => "Copilot",
@@ -113,6 +118,8 @@ impl AgentKind {
             AgentKind::Vibe => Color::Rgb(0xff, 0x82, 0x05),
             AgentKind::Pi => Color::Rgb(0x96, 0xbb, 0xb5),
             AgentKind::Omp => Color::Rgb(0x96, 0xbb, 0xb5),
+            // prime-agent's own TUI theme primary (`theme/prime.json`).
+            AgentKind::Prime => Color::Rgb(0x7c, 0x6f, 0xaf),
             AgentKind::OpenCode => Color::Blue,
             AgentKind::KiroCli => return None,
         })
@@ -170,6 +177,11 @@ fn classify_by_title(title: &str) -> Option<AgentKind> {
     }
     if title.contains("Gemini") || title.contains('\u{25C7}') {
         return Some(AgentKind::Gemini);
+    }
+    // Before the bare π: prime-agent is a pi fork whose title is its own app
+    // name, and its launcher runs as `node`, so the title is the only signal.
+    if title.contains("prime-agent") {
+        return Some(AgentKind::Prime);
     }
     if title.contains('\u{03C0}') {
         return Some(AgentKind::Pi);
@@ -439,6 +451,18 @@ mod tests {
     fn generic_interpreter_no_matching_title_returns_none() {
         assert_eq!(classify("node", "random title"), None);
         assert_eq!(classify("Python", "no match"), None);
+    }
+
+    /// prime-agent's launcher runs as `node`, so only its title (`APP_NAME`)
+    /// distinguishes it from pi, whose title is the bare π.
+    #[test]
+    fn prime_agent_title_beats_pi() {
+        assert_eq!(
+            classify("node", "prime-agent - repo"),
+            Some("prime-agent".into())
+        );
+        assert_eq!(classify("node", "\u{03C0} - repo"), Some("pi".into()));
+        assert_eq!(classify("prime-agent", ""), Some("prime-agent".into()));
     }
 
     #[test]

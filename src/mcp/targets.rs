@@ -193,6 +193,28 @@ impl McpTarget for OmpTarget {
     }
 }
 
+/// prime-agent: a pi fork, so its only project-level MCP path is the same one
+/// pi takes — the project-root `.mcp.json` read by pi-mcp-adapter. prime's own
+/// `prime-agent mcp` store is user-level `settings.json`, which a per-project
+/// sync must not write.
+pub struct PrimeTarget;
+
+impl McpTarget for PrimeTarget {
+    fn agent(&self) -> Agent {
+        Agent::Prime
+    }
+    fn config_path(&self, repo_root: &Path) -> PathBuf {
+        repo_root.join(super::MCP_JSON_FILENAME)
+    }
+    fn merge(
+        &self,
+        existing: Option<&Value>,
+        servers: &BTreeMap<String, McpServerConfig>,
+    ) -> Value {
+        merge_mcp_json(existing, servers)
+    }
+}
+
 /// Copilot CLI: project-root `.mcp.json`, the same `{ "mcpServers": { … } }`
 /// shape Claude uses — Copilot reads that file (and `.github/mcp.json`) as its
 /// project-level MCP config, so this target converges the same file Claude/pi/omp
@@ -350,6 +372,7 @@ pub fn mcp_support(agent: Agent) -> McpSupport {
         Agent::Copilot => McpSupport::Supported(Box::new(CopilotTarget)),
         Agent::Pi => McpSupport::Supported(Box::new(PiTarget)),
         Agent::Omp => McpSupport::Supported(Box::new(OmpTarget)),
+        Agent::Prime => McpSupport::Supported(Box::new(PrimeTarget)),
     }
 }
 

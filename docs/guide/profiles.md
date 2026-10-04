@@ -269,6 +269,7 @@ Profiling needs a single env var that relocates the agent's whole config dir:
 | codex | `CODEX_HOME` | sessions live under it; **skills do not** (see below) |
 | copilot | `COPILOT_HOME` | config, customizations and session history together |
 | omp | `PI_CODING_AGENT_DIR` | omp honors pi's var name; muxix sets it per process |
+| prime-agent | `PRIME_AGENT_CODING_AGENT_DIR` | sessions redirected separately via `PRIME_AGENT_SESSION_DIR` |
 | gemini, opencode | — | no single config-dir redirect upstream; `muxix exec --profile` refuses |
 
 Per-key support follows the agent's own layout:
@@ -276,7 +277,7 @@ Per-key support follows the agent's own layout:
 | Key | Where it lands |
 |---|---|
 | `settings` | the agent's own settings file, in its format (`settings.json`, omp's `config.yml`); Codex (TOML) is reported as unsupported |
-| `add_plugins`, `exclude_plugins` | only pi/omp, whose plugin list is the `packages` array in that settings file |
+| `add_plugins`, `exclude_plugins` | only pi/omp/prime-agent, whose plugin list is the `packages` array in that settings file |
 | `add_skills`, `exclude_skills` | the overlay's `skills/`; **not Codex**, which reads user skills from `$HOME/.agents/skills`, outside `CODEX_HOME` |
 | `add_prompt_components`, `exclude_prompt_components`, `exclude_features` | the agent's instructions file: pi/omp `APPEND_SYSTEM.md` (or `muxix-pre-inject.md`), claude `muxix-bootstrap.md`, codex `AGENTS.md`, copilot `copilot-instructions.md` |
 | `exclude_paths` | any agent (raw path escape hatch) |

@@ -80,6 +80,11 @@ fn hook_target(agent: Agent) -> Option<HookTarget> {
         // in `config.yml`, so pointing at either file installs a hook nothing
         // will run. Reported as a skip until omp grows its own hook config.
         Agent::Omp => None,
+        // prime-agent keeps pi's `settings.json` shape, so pi's compat plugin
+        // could read hooks from it — but the plugin resolves its own agent dir
+        // and that pairing is unverified on the fork. Reported as a skip until
+        // it is, rather than writing a hook nothing is known to run.
+        Agent::Prime => None,
     }
 }
 

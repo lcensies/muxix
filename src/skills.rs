@@ -47,7 +47,7 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
 /// Return the skills base directory for a given agent.
 /// Returns None if the agent doesn't support skills.
 pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
-    use crate::agent::setup::{copilot, gemini, omp, pi};
+    use crate::agent::setup::{copilot, gemini, omp, pi, prime};
     let home = home::home_dir()?;
     match agent {
         Agent::Claude => {
@@ -59,6 +59,7 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
         Agent::OpenCode => Some(home.join(".config/opencode/skills")),
         Agent::Pi => Some(pi::agent_dir()?.join("skills")),
         Agent::Omp => Some(omp::agent_dir()?.join("skills")),
+        Agent::Prime => Some(prime::agent_dir()?.join("skills")),
         Agent::Gemini => Some(gemini::skills_dir()?),
         Agent::Copilot => copilot::skills_dir(),
         // Codex reads USER-scope skills from `$HOME/.agents/skills` — the shared

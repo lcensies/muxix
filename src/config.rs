@@ -2402,7 +2402,7 @@ impl SandboxConfig {
             let expanded = dir.replace("{agent}", agent);
             Some(crate::util::expand_tilde(&expanded))
         } else {
-            use crate::agent::setup::{copilot, omp, pi};
+            use crate::agent::setup::{copilot, omp, pi, prime};
             let home = home::home_dir()?;
             match agent {
                 "claude" => Some(home.join(".claude")),
@@ -2410,6 +2410,7 @@ impl SandboxConfig {
                 // relocated base is the base a profile overlays.
                 "copilot" => copilot::copilot_home(),
                 "omp" => omp::agent_dir(),
+                "prime-agent" => prime::agent_dir(),
                 "pi" => pi::agent_dir(),
                 "gemini" => Some(home.join(".gemini")),
                 "codex" => Some(home.join(".codex")),
