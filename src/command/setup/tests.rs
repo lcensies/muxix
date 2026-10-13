@@ -55,6 +55,20 @@ impl Drop for Scratch {
 
 // --- agent profiles: reconcile, drift, prune -------------------------------
 
+#[test]
+fn profiled_agent_setup_uses_base_instead_of_overlay() {
+    let home = PathBuf::from("/tmp/home");
+    let root = home.join(".local/state/muxix/agent-profiles");
+    let derived = root.join("corp/pi");
+    let resolved = super::sections::profile_base_dir(derived.clone(), "pi", &root, &home).unwrap();
+    assert_eq!(resolved, home.join(".pi/agent"));
+    assert_ne!(resolved.join("auth.json"), derived.join("auth.json"));
+    assert_eq!(
+        super::sections::profile_base_dir(home.join("custom/pi"), "pi", &root, &home).unwrap(),
+        home.join("custom/pi")
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn agent_profiles_reconcile_build_idempotence_and_prune() {

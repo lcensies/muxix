@@ -6,7 +6,7 @@
 //! disagree — they are the same code path.
 
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::report::{ItemResult, Outcome, Section, SetupReport};
 use crate::agent::setup::{self, Agent, StatusCheck};
@@ -1316,15 +1316,26 @@ pub fn deps(config: &Config, dry_run: bool) -> Vec<ItemResult> {
     out
 }
 
-/// Agent config profiles: reconcile the derived overlay dirs against the
-/// declared `agent_profiles:` set.
-///
-/// For every declared profile and every detected, profileable agent, rebuild
-/// the overlay (base ⊕ profile source ⊕ declarative deltas) when it has
-/// drifted. Profile dirs no longer declared are pruned — safe because the
-/// derived tree is reconstructable and the user-authored source tree is never
-/// touched. Deltas are generated for pi only; declaring them for another agent
-/// skips that agent's overlay rather than building it without them.
+pub(super) fn profile_base_dir(
+    base: PathBuf,
+    agent_id: &str,
+    root: &Path,
+    home: &Path,
+) -> Result<PathBuf, String> {
+    if !base.starts_with(root) {
+        return Ok(base);
+    }
+    let rel = match agent_id {
+        "pi" => ".pi/agent",
+        "omp" => ".omp/agent",
+        "prime-agent" => ".prime/agent",
+        "copilot" => ".copilot",
+        _ => return Err("base agent directory points into a derived profile".into()),
+    };
+    Ok(home.join(rel))
+}
+
+/// Reconcile derived overlay dirs against declared `agent_profiles:` set.
 pub fn agent_profiles(
     config: &Config,
     checks: &[setup::AgentCheck],
@@ -1399,6 +1410,19 @@ pub fn agent_profiles(
                     "no base config dir",
                 ));
                 continue;
+            };
+            // Profiled agents inherit their redirected config-dir env var.
+            // A child setup must not treat its own derived overlay as base.
+            let base = match (ap::build_root(), home::home_dir()) {
+                (Ok(root), Some(home)) => profile_base_dir(base, agent_id, &root, &home),
+                _ => Err("cannot resolve base agent directory".into()),
+            };
+            let base = match base {
+                Ok(base) => base,
+                Err(e) => {
+                    out.push(ItemResult::failed(sec, Some(agent.name()), name, e));
+                    continue;
+                }
             };
             let dest = match ap::build_dir(profile, agent_id) {
                 Ok(p) => p,
