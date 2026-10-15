@@ -114,7 +114,22 @@ pub fn execute(
         ade.stop(agent)?;
     }
 
-    let pane = crate::multiplexer::launch::open_argv_pane(mux, &plan.argv, &plan.cwd)?;
+    // Its own placement, not the view's: a resumed provider session owns a
+    // transcript and must not be closed by closing the view that launched it.
+    let (placement, window) = match ade.view() {
+        Some(v) => (
+            v.takeover_placement,
+            crate::command::ade_view::render_window_name(&v.window_name, agent),
+        ),
+        None => (crate::config::AdeViewPlacement::default(), None),
+    };
+    let pane = crate::multiplexer::launch::open_argv_pane(
+        mux,
+        &plan.argv,
+        &plan.cwd,
+        placement,
+        window.as_deref(),
+    )?;
     Ok(format!(
         "resumed {} session {} in pane {pane}; `muxix agents import {}` returns it to {}",
         plan.provider,

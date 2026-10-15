@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -127,7 +127,22 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
     };
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let pane = crate::multiplexer::launch::open_argv_pane(mux, &argv, &cwd)?;
+    // The view's own cwd decides nothing here: placement resolves the project
+    // from the session's directory, which is what keeps another project's
+    // session out of this project's windows.
+    let session_cwd = ade
+        .view_state(agent)
+        .ok()
+        .and_then(|s| s.cwd)
+        .unwrap_or_else(|| cwd.clone());
+    let window = render_window_name(&view.window_name, agent);
+    let pane = crate::multiplexer::launch::open_argv_pane(
+        mux,
+        &argv,
+        &session_cwd,
+        view.placement,
+        window.as_deref(),
+    )?;
 
     map.insert(wire, pane.clone());
     save_map(&map);
@@ -138,6 +153,21 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
         mux.display_message(&format!("opened {pane} for {} but could not focus it: {e}", agent.to_wire()));
     }
     Ok(pane)
+}
+
+/// Render the per-agent window name, or `None` to let the backend auto-name.
+///
+/// A template that renders blank yields `None` rather than an unnamed window
+/// that nothing can find again by name.
+pub fn render_window_name(template: &str, agent: &AgentRef) -> Option<String> {
+    if template.is_empty() {
+        return None;
+    }
+    let name = template
+        .replace("{id}", &agent.id)
+        .replace("{runtime}", &agent.runtime);
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 /// Shared, mutable state the render loop reads and the worker threads write.
@@ -181,10 +211,18 @@ pub fn run(wire_ref: &str) -> Result<()> {
             .spawn()
             .with_context(|| format!("{} {}", ade.command(), args.join(" ")))?;
         if let Some(out) = child.stdout.take() {
-            spawn_reader(out, Arc::clone(&live), tx.clone());
+            // The manager's own client times out against its daemon
+            // (DAEMON_REQUEST_TIMEOUT) and exits; without a marker the body just
+            // stops updating and the view looks live but frozen.
+            spawn_reader(
+                out,
+                Arc::clone(&live),
+                tx.clone(),
+                Some("-- the manager's log stream ended; reopen the view to follow again --"),
+            );
         }
         if let Some(err) = child.stderr.take() {
-            spawn_reader(err, Arc::clone(&live), tx.clone());
+            spawn_reader(err, Arc::clone(&live), tx.clone(), None);
         }
     }
 
@@ -235,6 +273,14 @@ pub fn run(wire_ref: &str) -> Result<()> {
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(Tick::Input(Event::Key(k))) if k.kind == KeyEventKind::Press => {
                 match k.code {
+                    // Raw mode means Ctrl-C arrives as a keypress, not SIGINT, so
+                    // without this the view cannot be left the way every other
+                    // terminal program is left.
+                    KeyCode::Char('c') | KeyCode::Char('C')
+                        if k.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        break;
+                    }
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('a') => {
                         client_action(&ade, &view.permit_args, &agent, &live, "approved");
@@ -268,7 +314,12 @@ pub fn run(wire_ref: &str) -> Result<()> {
     Ok(())
 }
 
-fn spawn_reader<R: io::Read + Send + 'static>(stream: R, live: Arc<Live>, tx: mpsc::Sender<Tick>) {
+fn spawn_reader<R: io::Read + Send + 'static>(
+    stream: R,
+    live: Arc<Live>,
+    tx: mpsc::Sender<Tick>,
+    end_notice: Option<&'static str>,
+) {
     std::thread::spawn(move || {
         use io::BufRead;
         let reader = io::BufReader::new(stream);
@@ -283,6 +334,12 @@ fn spawn_reader<R: io::Read + Send + 'static>(stream: R, live: Arc<Live>, tx: mp
             if tx.send(Tick::Redraw).is_err() {
                 break;
             }
+        }
+        if let Some(note) = end_notice {
+            if let Ok(mut body) = live.body.lock() {
+                body.push(note.to_string());
+            }
+            let _ = tx.send(Tick::Redraw);
         }
     });
 }
@@ -391,5 +448,30 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent() -> AgentRef {
+        AgentRef::from_wire("paseo:8b3c2bf4-7c21-4a09-80e2-c95bbce7894b")
+    }
+
+    #[test]
+    fn a_window_name_carries_the_agent_it_hosts() {
+        // One window per agent only works if the name identifies the agent;
+        // otherwise a second session reuses the first one's window.
+        let name = render_window_name("{runtime}-{id}", &agent()).unwrap();
+        assert_eq!(name, "paseo-8b3c2bf4-7c21-4a09-80e2-c95bbce7894b");
+    }
+
+    #[test]
+    fn a_blank_template_auto_names_instead_of_naming_nothing() {
+        // An empty or whitespace-only name would create a window no lookup can
+        // find again, which is worse than letting the backend name it.
+        assert_eq!(render_window_name("", &agent()), None);
+        assert_eq!(render_window_name("   ", &agent()), None);
     }
 }

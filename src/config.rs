@@ -2858,6 +2858,26 @@ impl AdeWorkspacesConfig {
     }
 }
 
+/// Where an ADE session's pane is placed.
+///
+/// Splitting whatever window happens to be current subdivides it until the panes
+/// are unreadable, and drops another project's session into this project's
+/// layout. A tmux session stands for a project and a window stands for an agent,
+/// which is the same shape `muxix open` gives a project.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AdeViewPlacement {
+    /// One window per agent, inside the tmux session named for its project.
+    /// Creates the project's session when it does not exist yet.
+    #[default]
+    Project,
+    /// One window per agent in the current session, without resolving a project.
+    Window,
+    /// Beside the current pane. Does not interact with windows or sessions, so
+    /// it is the only placement every backend can honour.
+    Split,
+}
+
 /// What selecting an ADE agent in a muxix TUI does.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -2914,6 +2934,18 @@ pub struct AdeViewConfig {
     /// What selecting the agent does.
     #[serde(default)]
     pub on_select: AdeViewOnSelect,
+    /// Where the session's pane is placed.
+    #[serde(default)]
+    pub placement: AdeViewPlacement,
+    /// Where a native takeover's pane is placed. Separate from `placement` so a
+    /// resumed provider session does not die with the read-only view that
+    /// launched it.
+    #[serde(default)]
+    pub takeover_placement: AdeViewPlacement,
+    /// Window name template for the per-agent window. `{id}` is the agent id,
+    /// `{runtime}` the manager's name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub window_name: String,
 }
 
 impl AdeViewConfig {
@@ -2948,6 +2980,13 @@ impl AdeViewConfig {
         if self.handle_field.is_empty() {
             self.handle_field = preset.handle_field.clone();
         }
+        if self.window_name.is_empty() {
+            self.window_name = preset.window_name.clone();
+        }
+        // `on_select` and the two placements are enums with a meaningful default,
+        // so there is no empty state to detect: a user value already won when
+        // serde parsed the block, and an absent key legitimately means the
+        // default. Copying the preset's over it would ignore an explicit choice.
         self
     }
 }
@@ -3157,6 +3196,9 @@ impl AdeConfig {
                 handle_file: "~/.paseo/agents/{cwd_slug}/{id}.json".to_string(),
                 handle_field: "persistence.nativeHandle".to_string(),
                 on_select: AdeViewOnSelect::Tui,
+                placement: AdeViewPlacement::Project,
+                takeover_placement: AdeViewPlacement::Project,
+                window_name: "{runtime}-{id}".to_string(),
             }),
         }
     }

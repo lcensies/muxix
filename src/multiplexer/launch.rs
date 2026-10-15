@@ -109,12 +109,118 @@ fn needs_subcommand(first_arg: Option<&str>, subcmd: &str) -> bool {
     }
 }
 
-/// Open a pane running `argv`, beside whichever pane is current.
+/// Open a pane running `argv` under `placement`.
 ///
 /// Shared by the ADE session view and native takeover so both land under the
-/// same placement, and so a backend without direct exec degrades to a quoted
+/// same policy, and so a backend without direct exec degrades to a quoted
 /// command line in one place rather than two.
+///
+/// Placement is advisory: a backend that cannot honour it falls back to a plain
+/// split rather than refusing to open the session at all.
 pub fn open_argv_pane(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    argv: &[String],
+    cwd: &std::path::Path,
+    placement: crate::config::AdeViewPlacement,
+    window_name: Option<&str>,
+) -> Result<String> {
+    use crate::config::AdeViewPlacement as P;
+
+    match placement {
+        P::Split => split_beside_current(mux, argv, cwd),
+        P::Window => match current_session_window(mux, argv, cwd, window_name) {
+            Ok(pane) => Ok(pane),
+            // No session to put a window in: the session view matters more than
+            // where it sits.
+            Err(_) => split_beside_current(mux, argv, cwd),
+        },
+        P::Project => match project_window(mux, argv, cwd, window_name) {
+            Ok(pane) => Ok(pane),
+            Err(_) => match current_session_window(mux, argv, cwd, window_name) {
+                Ok(pane) => Ok(pane),
+                Err(_) => split_beside_current(mux, argv, cwd),
+            },
+        },
+    }
+}
+
+/// One window per agent inside the tmux session named for the project owning
+/// `cwd`, creating that session when it does not exist yet.
+///
+/// This is the shape `muxix open` gives a project (`projects::start`), so an ADE
+/// session lands beside the project's own windows instead of inside whichever
+/// project the user happened to be looking at.
+fn project_window(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    argv: &[String],
+    cwd: &std::path::Path,
+    window_name: Option<&str>,
+) -> Result<String> {
+    let registry = crate::projects::registry::Registry::load()?;
+    let entry = cwd
+        .to_str()
+        .and_then(|p| registry.find(p))
+        .ok_or_else(|| anyhow!("{} belongs to no registered project", cwd.display()))?
+        .clone();
+
+    if !mux.session_exists(&entry.name)? {
+        mux.create_session(crate::multiplexer::CreateSessionParams {
+            prefix: "",
+            name: &entry.name,
+            cwd: &entry.root,
+            initial_window_name: None,
+        })?;
+    }
+
+    let pane = mux.create_window_in_session(crate::multiplexer::CreateWindowInSessionParams {
+        session_name: &entry.name,
+        name: window_name,
+        cwd,
+    })?;
+    run_in_pane(mux, &pane, argv)?;
+    // Best effort: the window exists either way, and a failed switch must not
+    // read as a failed open.
+    let _ = mux.switch_to_session("", &entry.name);
+    Ok(pane)
+}
+
+/// One window per agent in the session that is already current.
+fn current_session_window(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    argv: &[String],
+    cwd: &std::path::Path,
+    window_name: Option<&str>,
+) -> Result<String> {
+    let session = mux
+        .current_session()
+        .ok_or_else(|| anyhow!("not inside a session, so there is no window to add"))?;
+    let pane = mux.create_window_in_session(crate::multiplexer::CreateWindowInSessionParams {
+        session_name: &session,
+        name: window_name,
+        cwd,
+    })?;
+    run_in_pane(mux, &pane, argv)?;
+    Ok(pane)
+}
+
+/// Start `argv` in an already-created pane.
+///
+/// There is no create-window-with-argv primitive, so the window primitives take
+/// the same quoted-line path `projects::start` uses for layout commands.
+fn run_in_pane(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    pane: &str,
+    argv: &[String],
+) -> Result<()> {
+    let line = argv
+        .iter()
+        .map(|a| crate::shell::shell_quote(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+    mux.send_keys(pane, &line)
+}
+
+fn split_beside_current(
     mux: &dyn crate::multiplexer::Multiplexer,
     argv: &[String],
     cwd: &std::path::Path,

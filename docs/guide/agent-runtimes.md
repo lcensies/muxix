@@ -1,3 +1,7 @@
+---
+description: Who owns an agent process — muxix's own worktrees and panes, or an external agent manager whose sessions muxix can view, take over, and hand back
+---
+
 # Agent runtimes
 
 A *runtime* answers one question: **who owns the agent process**.
@@ -236,6 +240,9 @@ ade:
       handle_file:  "~/.paseo/agents/{cwd_slug}/{id}.json"
       handle_field: persistence.nativeHandle
       on_select:    tui   # default; also `ade` or `desktop`
+      placement:    project   # default; also `window` or `split`
+      takeover_placement: project
+      window_name:  "{runtime}-{id}"
 ```
 
 `state_args` renders the view's chrome — status, mode, model, pending
@@ -254,6 +261,32 @@ terminal's stdin, which a muxix-driven pane needs for itself.
 `log_args` in a plain pane, `desktop` runs `desktop_args` and opens no pane. An
 ADE with no `view` block reports that its sessions cannot be opened, rather than
 doing nothing.
+
+### Where a session's pane opens
+
+`placement` decides the pane's host, and the default mirrors the shape `muxix
+open` gives a project — a tmux session per project, a window per agent:
+
+| Value | Where the pane lands |
+|---|---|
+| `project` | One window per agent, in the tmux session named for the project owning the session's `cwd`. The session is created if missing. Default. |
+| `window` | One window per agent in the session that is already current, without resolving a project. |
+| `split` | Beside the current pane. The only placement every backend can honour. |
+
+The project comes from the **session's** working directory as the ADE reports
+it, not from the directory muxix was invoked in. That is what keeps another
+project's session out of this project's windows.
+
+`window_name` names the per-agent window (`{id}`, `{runtime}`). A template that
+renders blank lets the backend auto-name instead of creating a window no lookup
+can find again.
+
+`takeover_placement` is separate on purpose: a native takeover starts a provider
+process that owns a transcript, and closing a read-only view must not end it.
+
+Placement is advisory. A backend without session support, or a `cwd` belonging
+to no registered project, falls back — `project` → `window` → `split` — because
+where the session sits matters less than being able to open it at all.
 
 ### Taking a session over natively
 
