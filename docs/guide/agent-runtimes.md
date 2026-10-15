@@ -144,7 +144,7 @@ supporting another manager means another block of the same shape.
 ade:
   paseo:
     command: paseo
-    start_args: [agent, run, --json, --cwd, "{cwd}", "{prompt}"]
+    start_args: [agent, run, --json, --workspace, "{workspace}", --cwd, "{cwd}", "{prompt}"]
     send_args:  [agent, send, "{id}", "{text}"]
     list_args:  [agent, ls, --json]
     stop_args:  [agent, stop, "{id}"]
@@ -172,6 +172,50 @@ keeps zero protocol code here and survives their schema churn, at the cost of
 polled status instead of pushed events — the same trade muxix already makes
 with tmux and git. A streaming implementation can replace it behind the same
 trait without touching callers.
+
+## Workspaces
+
+An ADE's clients navigate by **workspace**, not by directory. Paseo's phone and
+web clients resolve an agent's workspace id against the host's workspace list,
+and an id that misses renders "Workspace unavailable" instead of the session. A
+worktree muxix just created is exactly the path no ADE has seen.
+
+So before handing over a worktree **muxix owns**, muxix resolves a workspace for
+it and passes the id to `start_args` as `{workspace}`:
+
+```yaml
+ade:
+  paseo:
+    workspaces:
+      list_args: [workspace, ls, --json]
+      add_args:  [workspace, create, --isolation, local, --path, "{root}", --title, "{name}", --json]
+      id_field:   workspaceId
+      root_field: cwd
+      ensure:     true   # default
+```
+
+Resolution lists first and matches the directory by canonical path, creating a
+workspace only on a miss. `paseo workspace create` returns a *new* workspace for
+a path it already tracks, so a create-per-handoff would pile up duplicates.
+
+Three cases leave this alone:
+
+- **The ADE made the worktree.** With `owns_worktree`, muxix passes no worktree
+  of its own and the ADE has already registered whatever it created — Paseo's
+  `--new-workspace worktree`, Orca's equivalent. Nothing is resolved.
+- **The ADE has no `workspaces` block,** or sets `ensure: false`. Starting an
+  agent then issues exactly one command, as before.
+- **Resolution fails.** The agent still starts; muxix warns with the directory
+  and the ADE's error. An unregistered agent runs fine, it just may not open in
+  the ADE's own clients — information, not a reason to refuse the work.
+
+`import` runs the same step for the session's directory. `paseo agent import`
+takes no workspace flag and resolves one from the path, so the workspace has to
+exist before the import rather than be named in it.
+
+This block is a stopgap shaped to what paseo 0.11 exposes. An ADE that grows
+first-class "adopt this worktree" support wants that instead; drop the block or
+set `ensure: false` when it does.
 
 ## Project sync
 

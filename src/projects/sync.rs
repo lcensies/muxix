@@ -679,6 +679,30 @@ mod merge_tests {
     }
 
     #[test]
+    fn an_ensure_only_workspaces_block_keeps_the_presets_commands() {
+        // Same merge trap as above, one block over: a user who only wants to
+        // turn workspace registration off must not lose the commands that
+        // perform it when they turn it back on.
+        let mut cfg = Config::default();
+        let mut user_block = AdeConfig::paseo();
+        user_block.workspaces = Some(crate::config::AdeWorkspacesConfig {
+            ensure: false,
+            ..Default::default()
+        });
+        cfg.ade.insert("paseo".to_string(), user_block);
+
+        let merged = effective_ades(&cfg);
+        let workspaces = merged
+            .get("paseo")
+            .and_then(|p| p.workspaces.as_ref())
+            .expect("preset must survive");
+        assert!(!workspaces.ensure);
+        assert!(!workspaces.list_args.is_empty(), "{workspaces:?}");
+        assert!(!workspaces.add_args.is_empty(), "{workspaces:?}");
+        assert_eq!(workspaces.id_field, "workspaceId");
+    }
+
+    #[test]
     fn an_unknown_ade_stands_on_its_own() {
         let mut cfg = Config::default();
         let mut custom = AdeConfig::paseo();

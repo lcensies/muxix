@@ -50,6 +50,100 @@ impl AdeRuntime {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
 
+    /// Resolve the ADE workspace for `dir`, creating one only when the ADE
+    /// does not already track that directory.
+    ///
+    /// `paseo workspace create` is not idempotent — it hands back a second
+    /// workspace for a path it already knows — so this lists first and matches
+    /// by canonical path.
+    fn ensure_workspace(&self, dir: &std::path::Path, name: &str) -> Result<Option<String>> {
+        let Some(ws) = self.cfg.workspaces.as_ref().filter(|w| w.ensure) else {
+            return Ok(None);
+        };
+        if ws.list_args.is_empty() || ws.add_args.is_empty() {
+            return Ok(None);
+        }
+        let want = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+
+        let listed = self.run(
+            &self
+                .args_for(&ws.list_args, &[])
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        )?;
+        let existing = serde_json::from_str::<Value>(listed.trim())
+            .ok()
+            .map(|v| match v {
+                Value::Array(a) => a,
+                Value::Object(o) => o
+                    .values()
+                    .find_map(|x| x.as_array().cloned())
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .find(|w| {
+                w.get(&ws.root_field)
+                    .and_then(|r| r.as_str())
+                    .map(|r| {
+                        let p = PathBuf::from(r);
+                        p.canonicalize().unwrap_or(p) == want
+                    })
+                    .unwrap_or(false)
+            })
+            .and_then(|w| {
+                w.get(&ws.id_field)
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string)
+            });
+        if let Some(id) = existing {
+            return Ok(Some(id));
+        }
+
+        let created = self.run(
+            &self
+                .args_for(
+                    &ws.add_args,
+                    &[("root", &want.to_string_lossy()), ("name", name)],
+                )
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        )?;
+        let id = serde_json::from_str::<Value>(created.trim())
+            .ok()
+            .and_then(|v| {
+                v.get(&ws.id_field)
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string)
+            })
+            .or_else(|| Some(created.trim().to_string()).filter(|s| !s.is_empty()));
+        Ok(id)
+    }
+
+    /// Resolve a workspace, or warn and carry on without one.
+    ///
+    /// The agent process is the valuable part and runs fine unregistered; what
+    /// is lost is reach from the ADE's remote clients, which the user needs to
+    /// know about rather than have the handoff refused over.
+    fn workspace_or_warn(&self, dir: &std::path::Path, name: &str) -> Option<String> {
+        match self.ensure_workspace(dir, name) {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!(
+                    "muxix: {} could not register a workspace for {}: {e}\n\
+                     the agent will run but may not open in {}'s own clients",
+                    self.name,
+                    dir.display(),
+                    self.name
+                );
+                None
+            }
+        }
+    }
+
     /// Parse the manager's JSON list output into agents.
     ///
     /// Accepts either a bare array or an object wrapping one, because managers
@@ -121,7 +215,7 @@ impl AdeRuntime {
     }
 
     fn args_for(&self, template: &[String], subs: &[(&str, &str)]) -> Vec<String> {
-        template
+        let rendered: Vec<String> = template
             .iter()
             .map(|a| {
                 let mut a = a.clone();
@@ -130,7 +224,21 @@ impl AdeRuntime {
                 }
                 a
             })
-            .collect()
+            .collect();
+
+        // `--workspace ""` is an argument error, so a flag whose value came out
+        // empty drops as a pair. A bare positional that renders empty is left
+        // alone: an empty prompt is still an argument the manager expects.
+        let mut out: Vec<String> = Vec::with_capacity(rendered.len());
+        for (i, arg) in rendered.iter().enumerate() {
+            let emptied = arg.is_empty() && !template[i].is_empty();
+            if emptied && out.last().is_some_and(|p| p.starts_with("--")) {
+                out.pop();
+                continue;
+            }
+            out.push(arg.clone());
+        }
+        out
     }
 }
 
@@ -177,12 +285,22 @@ impl AgentRuntime for AdeRuntime {
             .worktree
             .clone()
             .unwrap_or_else(|| req.project_root.clone());
+
+        // Only a directory muxix owns needs registering. When the ADE created
+        // the worktree itself it already knows the workspace, and a second one
+        // over the same path is the duplicate this avoids.
+        let workspace = match &req.worktree {
+            Some(wt) => self.workspace_or_warn(wt, &req.handle).unwrap_or_default(),
+            None => String::new(),
+        };
+
         let args = self.args_for(
             &self.cfg.start_args,
             &[
                 ("prompt", prompt.as_str()),
                 ("handle", req.handle.as_str()),
                 ("cwd", &cwd.to_string_lossy()),
+                ("workspace", workspace.as_str()),
                 ("agent", req.kind.as_deref().unwrap_or("")),
             ],
         );
@@ -240,12 +358,26 @@ impl AgentRuntime for AdeRuntime {
                 crate::agent::runtime::Feature::Import,
             ));
         }
+
+        // The adopting ADE resolves an imported session's workspace from its
+        // path (`paseo agent import` has no workspace flag), so the workspace
+        // has to exist before the import, not be named in it.
+        let name = session
+            .cwd
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| session.session_id.clone());
+        let workspace = self
+            .workspace_or_warn(&session.cwd, &name)
+            .unwrap_or_default();
+
         let args = self.args_for(
             &self.cfg.import_args,
             &[
                 ("session", session.session_id.as_str()),
                 ("provider", session.provider.as_str()),
                 ("cwd", &session.cwd.to_string_lossy()),
+                ("workspace", workspace.as_str()),
             ],
         );
         let stdout = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
@@ -393,9 +525,125 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "agent", "import", "sess_1", "--provider", "claude", "--cwd", "/tmp/wt",
+                "agent",
+                "import",
+                "sess_1",
+                "--provider",
+                "claude",
+                "--cwd",
+                "/tmp/wt",
                 "--json"
             ]
         );
+    }
+
+    /// An ADE stub: `echo` prints whatever template we hand it, which is the
+    /// JSON the real manager would have printed.
+    fn echoing(list: &str, add: &str) -> AdeRuntime {
+        let mut cfg = AdeConfig::paseo();
+        cfg.command = "echo".to_string();
+        cfg.workspaces = Some(crate::config::AdeWorkspacesConfig {
+            list_args: vec![list.to_string()],
+            add_args: vec![add.to_string()],
+            id_field: "workspaceId".to_string(),
+            root_field: "cwd".to_string(),
+            ensure: true,
+        });
+        AdeRuntime::new("paseo".to_string(), cfg)
+    }
+
+    #[test]
+    fn a_directory_the_ade_already_tracks_is_reused() {
+        let dir = std::env::temp_dir();
+        let canonical = dir.canonicalize().unwrap();
+        let r = echoing(
+            &format!(
+                r#"[{{"workspaceId":"wks_existing","cwd":"{}"}}]"#,
+                canonical.display()
+            ),
+            r#"{"workspaceId":"wks_created"}"#,
+        );
+        assert_eq!(
+            r.ensure_workspace(&dir, "fix-parser").unwrap().as_deref(),
+            Some("wks_existing"),
+            "a second workspace over a tracked path is the duplicate this avoids"
+        );
+    }
+
+    #[test]
+    fn an_unknown_directory_is_created_with_root_and_name() {
+        let dir = std::env::temp_dir();
+        let r = echoing("[]", r#"{"workspaceId":"{name} at {root}"}"#);
+        let id = r.ensure_workspace(&dir, "fix-parser").unwrap().unwrap();
+        let canonical = dir.canonicalize().unwrap();
+        assert_eq!(id, format!("fix-parser at {}", canonical.display()));
+    }
+
+    #[test]
+    fn an_ade_without_a_workspaces_block_resolves_nothing() {
+        let mut cfg = AdeConfig::paseo();
+        cfg.workspaces = None;
+        let r = AdeRuntime::new("plain".to_string(), cfg);
+        assert_eq!(
+            r.ensure_workspace(&std::env::temp_dir(), "x").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn ensure_false_resolves_nothing() {
+        let r = echoing("[]", r#"{"workspaceId":"wks_created"}"#);
+        let mut cfg = r.cfg.clone();
+        cfg.workspaces.as_mut().unwrap().ensure = false;
+        let r = AdeRuntime::new("paseo".to_string(), cfg);
+        assert_eq!(
+            r.ensure_workspace(&std::env::temp_dir(), "x").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn an_unresolved_workspace_drops_its_flag_rather_than_passing_empty() {
+        let r = runtime();
+        let args = r.args_for(
+            &r.cfg.start_args.clone(),
+            &[("prompt", "fix it"), ("cwd", "/tmp/wt"), ("workspace", "")],
+        );
+        assert!(!args.contains(&"--workspace".to_string()), "{args:?}");
+        assert!(!args.iter().any(String::is_empty), "{args:?}");
+
+        let with = r.args_for(
+            &r.cfg.start_args.clone(),
+            &[
+                ("prompt", "fix it"),
+                ("cwd", "/tmp/wt"),
+                ("workspace", "wks_1"),
+            ],
+        );
+        assert_eq!(
+            with,
+            vec![
+                "agent",
+                "run",
+                "--json",
+                "--workspace",
+                "wks_1",
+                "--cwd",
+                "/tmp/wt",
+                "fix it"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_prompt_is_still_passed() {
+        // Dropping empties is for flag pairs only. A positional the manager
+        // expects stays, blank or not.
+        let r = runtime();
+        let args = r.args_for(
+            &["agent".into(), "run".into(), "{prompt}".into()],
+            &[("prompt", "")],
+        );
+        assert_eq!(args, vec!["agent", "run", ""], "{args:?}");
     }
 }

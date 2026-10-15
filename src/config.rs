@@ -2803,6 +2803,61 @@ impl AdeProjectsConfig {
     }
 }
 
+/// How an ADE exposes the workspaces its clients navigate by.
+///
+/// A directory alone is not the handle a remote client opens; it resolves a
+/// workspace record. Handing over a path the ADE has never seen leaves an agent
+/// that lists fine and cannot be opened from a phone.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct AdeWorkspacesConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub list_args: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub add_args: Vec<String>,
+    /// JSON field holding a workspace's id.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id_field: String,
+    /// JSON field holding a workspace's directory -- the identity muxix matches on.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_field: String,
+    /// Resolve a workspace before starting or importing an agent.
+    #[serde(default = "default_true")]
+    pub ensure: bool,
+}
+
+impl Default for AdeWorkspacesConfig {
+    fn default() -> Self {
+        Self {
+            list_args: Vec::new(),
+            add_args: Vec::new(),
+            id_field: String::new(),
+            root_field: String::new(),
+            ensure: true,
+        }
+    }
+}
+
+impl AdeWorkspacesConfig {
+    /// Overlay this block on a preset, field by field. See
+    /// [`AdeProjectsConfig::merge_over`] for why this merges rather than
+    /// replaces.
+    pub fn merge_over(mut self, preset: &AdeWorkspacesConfig) -> AdeWorkspacesConfig {
+        if self.list_args.is_empty() {
+            self.list_args = preset.list_args.clone();
+        }
+        if self.add_args.is_empty() {
+            self.add_args = preset.add_args.clone();
+        }
+        if self.id_field.is_empty() {
+            self.id_field = preset.id_field.clone();
+        }
+        if self.root_field.is_empty() {
+            self.root_field = preset.root_field.clone();
+        }
+        self
+    }
+}
+
 /// Which of an ADE's own status names map onto each neutral status.
 ///
 /// `failed` is separate from `done` on purpose: a manager reporting an error
@@ -2856,6 +2911,10 @@ pub struct AdeConfig {
     pub owns_worktree: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projects: Option<AdeProjectsConfig>,
+    /// How this ADE exposes workspaces. Absent for an ADE that needs no help
+    /// mapping a directory to something its clients can open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspaces: Option<AdeWorkspacesConfig>,
 }
 
 /// Defaults to the paseo preset rather than an empty struct.
@@ -2901,6 +2960,10 @@ impl AdeConfig {
             (Some(mine), Some(theirs)) => Some(mine.merge_over(theirs)),
             (mine, theirs) => mine.or_else(|| theirs.cloned()),
         };
+        self.workspaces = match (self.workspaces.take(), preset.workspaces.as_ref()) {
+            (Some(mine), Some(theirs)) => Some(mine.merge_over(theirs)),
+            (mine, theirs) => mine.or_else(|| theirs.cloned()),
+        };
         self
     }
 
@@ -2909,7 +2972,16 @@ impl AdeConfig {
         let a = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
         AdeConfig {
             command: "paseo".to_string(),
-            start_args: a(&["agent", "run", "--json", "--cwd", "{cwd}", "{prompt}"]),
+            start_args: a(&[
+                "agent",
+                "run",
+                "--json",
+                "--workspace",
+                "{workspace}",
+                "--cwd",
+                "{cwd}",
+                "{prompt}",
+            ]),
             send_args: a(&["agent", "send", "{id}", "{text}"]),
             list_args: a(&["agent", "ls", "--json"]),
             stop_args: a(&["agent", "stop", "{id}"]),
@@ -2940,6 +3012,26 @@ impl AdeConfig {
                 name_field: "name".to_string(),
                 root_field: "root".to_string(),
                 sync: ProjectSyncConfig::default(),
+            }),
+            // Paseo can own a worktree itself (`--new-workspace worktree`), and
+            // then it registers the workspace too. This block is for the other
+            // direction: a worktree muxix owns, which paseo has never seen.
+            workspaces: Some(AdeWorkspacesConfig {
+                list_args: a(&["workspace", "ls", "--json"]),
+                add_args: a(&[
+                    "workspace",
+                    "create",
+                    "--isolation",
+                    "local",
+                    "--path",
+                    "{root}",
+                    "--title",
+                    "{name}",
+                    "--json",
+                ]),
+                id_field: "workspaceId".to_string(),
+                root_field: "cwd".to_string(),
+                ensure: true,
             }),
         }
     }
