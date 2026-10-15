@@ -796,6 +796,13 @@ enum Commands {
     #[command(hide = true, name = "_sidebar-run")]
     SidebarRun,
 
+    /// Run the ADE session view TUI (internal use)
+    #[command(hide = true, name = "_ade-view")]
+    AdeView {
+        /// Agent reference, e.g. `paseo:agt_1`
+        reference: String,
+    },
+
     /// Sync sidebar into a window (internal use, called by tmux hooks)
     #[command(hide = true, name = "_sidebar-sync")]
     SidebarSync {
@@ -1026,6 +1033,13 @@ enum Commands {
         /// Clear the activity label (kind `activity`).
         #[arg(long)]
         clear: bool,
+        /// The agent's own provider session id, as its extension knows it.
+        ///
+        /// Recorded against the pane whatever the signal kind. This is the id
+        /// the provider's CLI resumes and an ADE imports, so reporting it is
+        /// what lets a muxix-started session be handed to a phone and back.
+        #[arg(long)]
+        session_id: Option<String>,
     },
 
     /// Internal: emit an `agent.session` capability report (which muxix hooks
@@ -1081,6 +1095,26 @@ pub enum AgentsCommand {
     Stop {
         /// Agent reference as printed by `muxix agents`
         reference: String,
+    },
+    /// Resume an ADE session locally, in the provider's own CLI
+    Takeover {
+        /// Agent reference as printed by `muxix agents`
+        reference: String,
+        /// Stop the manager's agent first, so only one process writes the
+        /// session. Required while it still holds a writer: interrupting work
+        /// started on another device is never implied.
+        #[arg(long)]
+        stop_ade: bool,
+    },
+    /// Hand a local session to an agent manager, so its desktop, web and phone
+    /// clients can drive it. The session does not move.
+    Import {
+        /// Agent reference as printed by `muxix agents`
+        reference: String,
+        /// Which manager to import into. Required only when several are
+        /// configured, so a session is never handed to the wrong one.
+        #[arg(long)]
+        ade: Option<String>,
     },
 }
 
@@ -1355,6 +1389,13 @@ pub fn run() -> Result<()> {
         Commands::Agents { command, json } => match command {
             None => command::agents::run(json),
             Some(AgentsCommand::Stop { reference }) => command::agents::stop(&reference),
+            Some(AgentsCommand::Takeover {
+                reference,
+                stop_ade,
+            }) => command::agents::takeover(&reference, stop_ade),
+            Some(AgentsCommand::Import { reference, ade }) => {
+                command::agents::import(&reference, ade.as_deref())
+            }
         },
         Commands::Runtimes { json } => crate::agent::runtime::registry::print_runtimes(json),
         Commands::Project { command } => match command {
@@ -1530,6 +1571,7 @@ pub fn run() -> Result<()> {
             }
         },
         Commands::SidebarRun => command::sidebar::run_sidebar(),
+        Commands::AdeView { reference } => command::ade_view::run(&reference),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
         Commands::SidebarReflow { window } => command::sidebar::reflow(window.as_deref()),
         Commands::SidebarReflowAll => command::sidebar::reflow_all(),
@@ -1682,6 +1724,7 @@ pub fn run() -> Result<()> {
             feedback,
             label,
             clear,
+            session_id,
         } => command::signal::run(
             &kind,
             pane.as_deref(),
@@ -1689,6 +1732,7 @@ pub fn run() -> Result<()> {
             feedback.as_deref(),
             label.as_deref(),
             clear,
+            session_id.as_deref(),
         ),
         Commands::HooksReport { pane } => command::hooks_report::run(pane.as_deref()),
     }

@@ -685,6 +685,13 @@ impl Multiplexer for TmuxBackend {
         self.tmux_cmd(&["switch-client", "-t", pane_id])
     }
 
+    fn display_message(&self, text: &str) {
+        crate::muxix_evt!("ui.notice", text = text);
+        // Best effort: a toast that cannot be shown must not fail the action
+        // that produced it.
+        let _ = self.tmux_cmd(&["display-message", text]);
+    }
+
     fn kill_pane(&self, pane_id: &str) -> Result<()> {
         self.tmux_cmd(&["kill-pane", "-t", pane_id])
     }

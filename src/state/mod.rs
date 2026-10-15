@@ -102,6 +102,12 @@ pub fn persist_agent_update(
         .and_then(|e| e.pipeline_node_title.clone());
     // Same for the agent-authored activity label: only `signal activity` owns it.
     let activity = existing.as_ref().and_then(|e| e.activity.clone());
+    // Same for the provider session id: only the agent knows it, and it arrives
+    // on the signal channel. A hook-driven status update must never clear it, or
+    // the session would stop being importable after its next turn.
+    let provider_session_id = existing
+        .as_ref()
+        .and_then(|e| e.provider_session_id.clone());
     // Preserve completion: this path is a hook-driven status/title update, not
     // a launch or send, so it must never clear an agent's completion claim.
     let existing_completion = existing.as_ref().and_then(|e| e.completion.clone());
@@ -141,6 +147,7 @@ pub fn persist_agent_update(
         status: final_status,
         status_ts: Some(status_ts),
         pane_title,
+        provider_session_id,
         pane_pid: live_info.pid.unwrap_or(0),
         command: live_info.current_command.unwrap_or_default(),
         updated_ts: now,

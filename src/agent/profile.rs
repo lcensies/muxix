@@ -89,6 +89,19 @@ pub trait AgentProfile: Send + Sync {
         None
     }
 
+    /// CLI flag that resumes one *named* session, e.g. `--resume` for
+    /// `claude --resume <session-id>`.
+    ///
+    /// Distinct from [`AgentProfile::continue_flag`], which resumes the most
+    /// recent session and therefore cannot stand in for this: taking over a
+    /// specific ADE session with `--continue` would resume whichever session
+    /// happened to be last, silently working on the wrong transcript.
+    ///
+    /// `None` means takeover is refused for this agent rather than approximated.
+    fn resume_session_flag(&self) -> Option<&'static str> {
+        None
+    }
+
     /// CLI flag used to select a model override (e.g. `"--model"` for Claude,
     /// `"-m"` for Gemini). Returns `None` for agents that don't support this.
     ///
@@ -137,6 +150,11 @@ impl AgentProfile for ClaudeProfile {
 
     fn continue_flag(&self) -> Option<&'static str> {
         Some("--continue")
+    }
+
+    fn resume_session_flag(&self) -> Option<&'static str> {
+        // Verified against `claude --help`: `--resume <session-id>`.
+        Some("--resume")
     }
 
     fn model_flag(&self) -> Option<&'static str> {

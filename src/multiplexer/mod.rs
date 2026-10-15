@@ -250,6 +250,16 @@ pub trait Multiplexer: Send + Sync {
     /// switch by pane ID directly (tmux, WezTerm) ignore this parameter.
     fn switch_to_pane(&self, pane_id: &str, window_hint: Option<&str>) -> Result<()>;
 
+    /// Show a transient message to the user, outside any TUI's own layout.
+    ///
+    /// Used where a TUI action can fail and the failure has to be visible: a
+    /// selection that does nothing and reports nothing is indistinguishable
+    /// from a bug. The default records it in the event log, so a backend with
+    /// no message surface still leaves a trace rather than swallowing it.
+    fn display_message(&self, text: &str) {
+        crate::muxix_evt!("ui.notice", text = text);
+    }
+
     /// Whether jumping to a pane should exit the dashboard.
     /// Defaults to true. Override to return false to keep the dashboard open after jumping.
     fn should_exit_on_jump(&self) -> bool {

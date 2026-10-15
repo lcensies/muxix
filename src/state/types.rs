@@ -106,6 +106,19 @@ pub struct AgentState {
     /// Pane title (set by Claude Code to show session summary)
     pub pane_title: Option<String>,
 
+    /// The agent's own provider session id, when its extension reports one.
+    ///
+    /// This is the identifier the provider's CLI resumes (`claude --resume
+    /// <id>`) and the one an ADE imports, so it is what lets a session muxix
+    /// started be handed to a phone and back. Muxix cannot derive it: only the
+    /// agent process knows it, which is why it arrives on the status channel.
+    ///
+    /// `None` means it was never reported. It is never guessed: an ADE that
+    /// does not validate the id it is given would turn a wrong one into a junk
+    /// agent pointing at no session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+
     /// PID of the pane's shell process (for pane ID recycling detection).
     /// This is the shell PID, not the agent PID.
     pub pane_pid: u32,
@@ -392,6 +405,7 @@ mod tests {
             status: None,
             status_ts: None,
             pane_title: None,
+            provider_session_id: None,
             pane_pid: 1,
             command: "node".to_string(),
             updated_ts: 1234567890,

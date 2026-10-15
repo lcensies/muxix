@@ -217,6 +217,57 @@ This block is a stopgap shaped to what paseo 0.11 exposes. An ADE that grows
 first-class "adopt this worktree" support wants that instead; drop the block or
 set `ensure: false` when it does.
 
+## Viewing and driving an ADE session
+
+An ADE agent has no pane — `features().panes` is false — so there is nothing for
+muxix to switch to. Selecting one instead opens muxix's own read-only view of
+the session, built from the ADE's client-side commands:
+
+```yaml
+ade:
+  paseo:
+    view:
+      state_args:   [inspect, "{id}", --json]
+      log_args:     [agent, logs, "{id}", -f]
+      permit_args:  [permit, allow, "{id}"]
+      deny_args:    [permit, deny, "{id}"]
+      mode_args:    [agent, mode, "{id}", "{mode}"]
+      desktop_args: [agent, open, "{id}"]
+      handle_file:  "~/.paseo/agents/{cwd_slug}/{id}.json"
+      handle_field: persistence.nativeHandle
+      on_select:    tui   # default; also `ade` or `desktop`
+```
+
+`state_args` renders the view's chrome — status, mode, model, pending
+permissions. `log_args` output is embedded verbatim as the body: paseo's
+`logs --json` ignores the flag and emits the same human text either way, so
+muxix passes it through rather than scraping an undocumented format.
+
+**The view claims nothing.** Every entry above is a stateless call to the ADE's
+daemon, which is the only writer to a session — it owns the provider process's
+stdin, and each client asks it to write. So a muxix view is a peer of the phone
+and desktop clients, and all three can use one session at the same time. This is
+why `logs -f` is used rather than `attach`: attach claims the invoking
+terminal's stdin, which a muxix-driven pane needs for itself.
+
+`on_select` changes what selecting does: `tui` opens the muxix view, `ade` runs
+`log_args` in a plain pane, `desktop` runs `desktop_args` and opens no pane. An
+ADE with no `view` block reports that its sessions cannot be opened, rather than
+doing nothing.
+
+### Taking a session over natively
+
+A session is also a provider session on disk, so it can be resumed in the
+provider's own CLI — `claude --resume <handle>` — giving a native TUI instead of
+a view. `handle_file` plus `handle_field` say where to read that handle;
+`handle_args` takes precedence when an ADE reports it through its CLI instead.
+
+Takeover is opt-in because it is the one path that adds a **second** writer to an
+append-only transcript. It serializes writers for that session and hands the
+session back when the local agent exits, so any device can use it afterwards.
+Note that an `idle` agent is not an unattended one: the provider process stays
+resident between turns, so idle describes the turn, not the absence of a writer.
+
 ## Project sync
 
 ADEs usually track projects too, so muxix can keep its registry in agreement

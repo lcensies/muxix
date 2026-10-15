@@ -1,4 +1,6 @@
 pub mod add;
+pub mod ade_takeover;
+pub mod ade_view;
 pub mod agent_exec;
 pub mod agent_registry;
 pub mod agents;

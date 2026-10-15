@@ -2858,6 +2858,100 @@ impl AdeWorkspacesConfig {
     }
 }
 
+/// What selecting an ADE agent in a muxix TUI does.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AdeViewOnSelect {
+    /// Open muxix's own read-only view of the session. The default: it is the
+    /// surface muxix owns, and it claims nothing, so other devices keep working.
+    #[default]
+    Tui,
+    /// Run the ADE's own log command in a plain pane.
+    Ade,
+    /// Hand off to the ADE's desktop client and open no pane.
+    Desktop,
+}
+
+/// How muxix views and drives one of an ADE's sessions.
+///
+/// Every entry is a client-side call: muxix is a peer of the ADE's other
+/// clients, not an owner of the session. That is what lets a phone and a muxix
+/// pane use one session at the same time.
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+pub struct AdeViewConfig {
+    /// Agent state as JSON, for the view's chrome.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub state_args: Vec<String>,
+    /// Streaming session output, embedded verbatim as the view's body.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log_args: Vec<String>,
+    /// Approve a pending permission request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permit_args: Vec<String>,
+    /// Deny a pending permission request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny_args: Vec<String>,
+    /// Change the agent's operational mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mode_args: Vec<String>,
+    /// Open the session in the ADE's desktop client, for
+    /// [`AdeViewOnSelect::Desktop`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub desktop_args: Vec<String>,
+    /// Read the provider session handle from the ADE's CLI. Preferred over
+    /// `handle_file` when set, so an ADE that learns to report its own handle
+    /// retires the file read through config alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub handle_args: Vec<String>,
+    /// Read the handle from one of the ADE's own state files instead. Rendered
+    /// like any other template; `{cwd_slug}` is the agent's directory slugged.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub handle_file: String,
+    /// Dotted path to the handle within that JSON, e.g.
+    /// `persistence.nativeHandle`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub handle_field: String,
+    /// What selecting the agent does.
+    #[serde(default)]
+    pub on_select: AdeViewOnSelect,
+}
+
+impl AdeViewConfig {
+    /// Overlay this block on a preset, field by field. See
+    /// [`AdeProjectsConfig::merge_over`] for why this merges rather than
+    /// replaces.
+    pub fn merge_over(mut self, preset: &AdeViewConfig) -> AdeViewConfig {
+        if self.state_args.is_empty() {
+            self.state_args = preset.state_args.clone();
+        }
+        if self.log_args.is_empty() {
+            self.log_args = preset.log_args.clone();
+        }
+        if self.permit_args.is_empty() {
+            self.permit_args = preset.permit_args.clone();
+        }
+        if self.deny_args.is_empty() {
+            self.deny_args = preset.deny_args.clone();
+        }
+        if self.mode_args.is_empty() {
+            self.mode_args = preset.mode_args.clone();
+        }
+        if self.desktop_args.is_empty() {
+            self.desktop_args = preset.desktop_args.clone();
+        }
+        if self.handle_args.is_empty() {
+            self.handle_args = preset.handle_args.clone();
+        }
+        if self.handle_file.is_empty() {
+            self.handle_file = preset.handle_file.clone();
+        }
+        if self.handle_field.is_empty() {
+            self.handle_field = preset.handle_field.clone();
+        }
+        self
+    }
+}
+
 /// Which of an ADE's own status names map onto each neutral status.
 ///
 /// `failed` is separate from `done` on purpose: a manager reporting an error
@@ -2915,6 +3009,11 @@ pub struct AdeConfig {
     /// mapping a directory to something its clients can open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspaces: Option<AdeWorkspacesConfig>,
+    /// How muxix views and drives this ADE's sessions. Absent for an ADE whose
+    /// sessions muxix cannot open, in which case selecting one reports that
+    /// rather than silently doing nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<AdeViewConfig>,
 }
 
 /// Defaults to the paseo preset rather than an empty struct.
@@ -2961,6 +3060,10 @@ impl AdeConfig {
             (mine, theirs) => mine.or_else(|| theirs.cloned()),
         };
         self.workspaces = match (self.workspaces.take(), preset.workspaces.as_ref()) {
+            (Some(mine), Some(theirs)) => Some(mine.merge_over(theirs)),
+            (mine, theirs) => mine.or_else(|| theirs.cloned()),
+        };
+        self.view = match (self.view.take(), preset.view.as_ref()) {
             (Some(mine), Some(theirs)) => Some(mine.merge_over(theirs)),
             (mine, theirs) => mine.or_else(|| theirs.cloned()),
         };
@@ -3032,6 +3135,28 @@ impl AdeConfig {
                 id_field: "workspaceId".to_string(),
                 root_field: "cwd".to_string(),
                 ensure: true,
+            }),
+            view: Some(AdeViewConfig {
+                state_args: a(&["inspect", "{id}", "--json"]),
+                log_args: a(&["agent", "logs", "{id}", "-f"]),
+                permit_args: a(&["permit", "allow", "{id}"]),
+                deny_args: a(&["permit", "deny", "{id}"]),
+                mode_args: a(&["agent", "mode", "{id}", "{mode}"]),
+                desktop_args: a(&["agent", "open", "{id}"]),
+                // `agent logs -f` is used rather than `agent attach`: attach
+                // claims the invoking terminal's stdin, which a muxix-driven
+                // pane needs for itself. Neither claims the session -- paseo's
+                // daemon is the only writer, so a muxix view sits alongside the
+                // phone and desktop clients instead of displacing them.
+                //
+                // paseo 0.11.2 exposes no handle through its CLI: `inspect`
+                // omits it and reports an `Id` matching neither the agent id nor
+                // the handle, so the handle is read from the daemon's own state
+                // file until a release exposes it.
+                handle_args: Vec::new(),
+                handle_file: "~/.paseo/agents/{cwd_slug}/{id}.json".to_string(),
+                handle_field: "persistence.nativeHandle".to_string(),
+                on_select: AdeViewOnSelect::Tui,
             }),
         }
     }

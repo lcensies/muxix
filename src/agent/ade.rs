@@ -24,6 +24,7 @@ use crate::agent::runtime::{
 };
 use crate::config::AdeConfig;
 
+#[derive(Clone)]
 pub struct AdeRuntime {
     name: String,
     cfg: AdeConfig,
@@ -240,6 +241,199 @@ impl AdeRuntime {
         }
         out
     }
+
+    /// The ADE's executable, for callers that spawn it themselves (a streaming
+    /// view cannot go through [`AdeRuntime::run`], which waits for exit).
+    pub fn command(&self) -> &str {
+        &self.cfg.command
+    }
+
+    /// Run one rendered client command, returning its stdout.
+    pub fn run_client(&self, args: &[String]) -> Result<String> {
+        self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())
+    }
+
+    /// This ADE's view configuration, absent when it declares none.
+    pub fn view(&self) -> Option<&crate::config::AdeViewConfig> {
+        self.cfg.view.as_ref()
+    }
+
+    /// Render one of the view's command templates. Callers pass the template
+    /// from [`AdeRuntime::view`] so one renderer serves every client command
+    /// rather than a method per subcommand.
+    pub fn render_args(&self, template: &[String], subs: &[(&str, &str)]) -> Vec<String> {
+        self.args_for(template, subs)
+    }
+
+    /// The command that streams one session's output, for a view's body.
+    pub fn view_command(&self, agent: &AgentRef) -> Option<Vec<String>> {
+        let v = self.cfg.view.as_ref()?;
+        if v.log_args.is_empty() {
+            return None;
+        }
+        Some(self.args_for(&v.log_args, &[("id", agent.id.as_str())]))
+    }
+
+    /// One session's current state, for the chrome around a view.
+    pub fn view_state(&self, agent: &AgentRef) -> Result<AdeAgentState> {
+        let Some(v) = self.cfg.view.as_ref().filter(|v| !v.state_args.is_empty()) else {
+            bail!("runtime '{}' declares no session state command", self.name);
+        };
+        let args = self.args_for(&v.state_args, &[("id", agent.id.as_str())]);
+        let out = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+        let json: Value = serde_json::from_str(out.trim())
+            .map_err(|e| anyhow::anyhow!("{}: unparseable state output: {e}", self.cfg.command))?;
+
+        let status = json_get_ci(&json, &self.cfg.status_field)
+            .and_then(Value::as_str)
+            .map(|s| self.map_status(s))
+            .unwrap_or(RuntimeStatus::Unknown);
+
+        Ok(AdeAgentState {
+            status,
+            mode: json_get_ci(&json, "mode")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            model: json_get_ci(&json, "model")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            // Absent is zero pending, but a present non-array is not: that is a
+            // shape this code does not understand, and reporting "no pending
+            // permissions" would hide a prompt the session is blocked on.
+            pending_permissions: match json_get_ci(&json, "pendingPermissions") {
+                None | Some(Value::Null) => Some(0),
+                Some(Value::Array(a)) => Some(a.len()),
+                Some(_) => None,
+            },
+            cwd: json_get_ci(&json, "cwd")
+                .and_then(Value::as_str)
+                .map(PathBuf::from),
+            provider: json_get_ci(&json, "provider")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        })
+    }
+
+    /// The provider session handle for one agent — the id its own CLI resumes.
+    ///
+    /// `handle_args` wins when the ADE reports the handle itself; otherwise the
+    /// handle is read out of the ADE's own state file. A missing file, bad JSON,
+    /// or absent field is an error naming both path and field: an empty handle
+    /// passed onward would be worse than no handle, because an ADE that does not
+    /// validate what it is given turns it into a junk agent.
+    pub fn native_handle(&self, agent: &AgentRef, cwd: &std::path::Path) -> Result<String> {
+        let Some(v) = self.cfg.view.as_ref() else {
+            bail!("runtime '{}' declares no view block", self.name);
+        };
+        if v.handle_field.is_empty() {
+            bail!("runtime '{}' declares no handle_field", self.name);
+        }
+
+        let (json, source) = if !v.handle_args.is_empty() {
+            let args = self.args_for(&v.handle_args, &[("id", agent.id.as_str())]);
+            let out = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+            let source = format!("{} {}", self.cfg.command, args.join(" "));
+            let json = serde_json::from_str::<Value>(out.trim())
+                .map_err(|e| anyhow::anyhow!("{source}: unparseable output: {e}"))?;
+            (json, source)
+        } else if !v.handle_file.is_empty() {
+            let rendered = self
+                .args_for(
+                    std::slice::from_ref(&v.handle_file),
+                    &[
+                        ("id", agent.id.as_str()),
+                        ("cwd_slug", cwd_slug(cwd).as_str()),
+                    ],
+                )
+                .join("");
+            let path = crate::util::expand_tilde(&rendered);
+            let source = path.display().to_string();
+            let raw =
+                std::fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("{source}: {e}"))?;
+            let json = serde_json::from_str::<Value>(raw.trim())
+                .map_err(|e| anyhow::anyhow!("{source}: unparseable state file: {e}"))?;
+            (json, source)
+        } else {
+            bail!(
+                "runtime '{}' declares no handle source (handle_args or handle_file)",
+                self.name
+            );
+        };
+
+        json_dotted(&json, &v.handle_field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| anyhow::anyhow!("{source}: no '{}' in that output", v.handle_field))
+    }
+}
+
+/// One ADE session's state, for the chrome muxix renders around a view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdeAgentState {
+    pub status: RuntimeStatus,
+    pub mode: Option<String>,
+    pub model: Option<String>,
+    /// Pending permission requests, or `None` when the ADE reported that field
+    /// in a shape this code cannot count. `None` is not zero: a session blocked
+    /// on a prompt must not render as having nothing to answer.
+    pub pending_permissions: Option<usize>,
+    /// The session's working directory, as the ADE reports it. Needed both to
+    /// render a per-directory state path and to resume the session in the
+    /// directory it belongs to.
+    pub cwd: Option<PathBuf>,
+    /// The ADE's provider id (`claude`, `codex`, …), which selects the agent
+    /// profile whose resume flag takeover uses.
+    pub provider: Option<String>,
+}
+
+/// Look up a JSON key, exactly first and then ignoring case.
+///
+/// One ADE answers with different casing per subcommand — paseo's `agent ls`
+/// emits `status` while `inspect` emits `Status` — so a single configured field
+/// name has to match either. Exact wins, so a document carrying both keys is
+/// read the way its author meant.
+fn json_get_ci<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
+    let obj = v.as_object()?;
+    if let Some(found) = obj.get(key) {
+        return Some(found);
+    }
+    obj.iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, v)| v)
+}
+
+/// Walk a dotted path such as `persistence.nativeHandle`, case-insensitively at
+/// each step.
+fn json_dotted<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
+    path.split('.')
+        .filter(|s| !s.is_empty())
+        .try_fold(v, |cur, seg| json_get_ci(cur, seg))
+}
+
+/// Slug a directory the way an ADE keys its own per-directory state.
+///
+/// Paseo drops the leading separator and turns the rest into dashes:
+/// `/home/u/repos/muxix` becomes `home-u-repos-muxix`. Deliberately not the
+/// `slug` crate — that lowercases and strips dots, and these names keep both
+/// (`home-u-.paseo-worktrees-x` is a real directory).
+fn cwd_slug(dir: &std::path::Path) -> String {
+    dir.to_string_lossy()
+        .trim_start_matches('/')
+        .replace('/', "-")
+}
+
+/// Build the runtime for one configured ADE by name.
+///
+/// The registry hands out `Arc<dyn AgentRuntime>`, which cannot reach the view
+/// and handle methods — they are inherent to this type rather than widening the
+/// trait for one consumer.
+pub fn for_name(cfg: &crate::config::Config, name: &str) -> Option<AdeRuntime> {
+    crate::projects::sync::effective_ades(cfg)
+        .into_iter()
+        .find(|(n, _)| n == name)
+        .map(|(n, c)| AdeRuntime::new(n, c))
 }
 
 impl AgentRuntime for AdeRuntime {
@@ -645,5 +839,189 @@ mod tests {
             &[("prompt", "")],
         );
         assert_eq!(args, vec!["agent", "run", ""], "{args:?}");
+    }
+
+    fn handle_fixture() -> &'static str {
+        r#"{
+          "id": "cc842c69-3470-4ad5-bb93-a13e4dfbca86",
+          "provider": "claude",
+          "persistence": {
+            "provider": "claude",
+            "sessionId": "89430a6d-0049-4809-bf4d-a263bc6c4661",
+            "nativeHandle": "89430a6d-0049-4809-bf4d-a263bc6c4661"
+          }
+        }"#
+    }
+
+    /// Write a fixture at the exact path the preset template renders, so the
+    /// `{cwd_slug}` rendering is exercised rather than bypassed.
+    fn runtime_with_handle_file(dir: &std::path::Path, cwd: &str, body: &str) -> AdeRuntime {
+        let slug = cwd.trim_start_matches('/').replace('/', "-");
+        let agents = dir.join("agents").join(&slug);
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(agents.join("agt_1.json"), body).unwrap();
+        let mut cfg = AdeConfig::paseo();
+        let view = cfg.view.as_mut().unwrap();
+        view.handle_file = format!("{}/agents/{{cwd_slug}}/{{id}}.json", dir.display());
+        AdeRuntime::new("paseo".to_string(), cfg)
+    }
+
+    #[test]
+    fn native_handle_reads_the_dotted_field_from_the_state_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = runtime_with_handle_file(tmp.path(), "/home/u/repos/muxix", handle_fixture());
+        let handle = r
+            .native_handle(
+                &AgentRef::new("paseo", "agt_1"),
+                std::path::Path::new("/home/u/repos/muxix"),
+            )
+            .unwrap();
+        assert_eq!(handle, "89430a6d-0049-4809-bf4d-a263bc6c4661");
+    }
+
+    #[test]
+    fn a_missing_field_names_the_field_rather_than_returning_empty() {
+        // An ADE that does not validate an imported handle turns a blank one
+        // into a junk agent, so this must fail rather than yield "".
+        let tmp = tempfile::tempdir().unwrap();
+        let r = runtime_with_handle_file(tmp.path(), "/home/u/x", r#"{"persistence":{}}"#);
+        let err = r
+            .native_handle(
+                &AgentRef::new("paseo", "agt_1"),
+                std::path::Path::new("/home/u/x"),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("persistence.nativeHandle"), "{err}");
+    }
+
+    #[test]
+    fn an_empty_handle_is_not_a_handle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = runtime_with_handle_file(
+            tmp.path(),
+            "/home/u/x",
+            r#"{"persistence":{"nativeHandle":"   "}}"#,
+        );
+        assert!(
+            r.native_handle(
+                &AgentRef::new("paseo", "agt_1"),
+                std::path::Path::new("/home/u/x")
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_missing_state_file_names_the_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = runtime_with_handle_file(tmp.path(), "/home/u/x", handle_fixture());
+        // Same runtime, different cwd: the rendered path points at no fixture.
+        let err = r
+            .native_handle(
+                &AgentRef::new("paseo", "agt_1"),
+                std::path::Path::new("/home/u/elsewhere"),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("home-u-elsewhere"), "{err}");
+    }
+
+    #[test]
+    fn malformed_state_file_is_an_error_not_a_missing_handle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let r = runtime_with_handle_file(tmp.path(), "/home/u/x", "not json");
+        let err = r
+            .native_handle(
+                &AgentRef::new("paseo", "agt_1"),
+                std::path::Path::new("/home/u/x"),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unparseable state file"), "{err}");
+    }
+
+    #[test]
+    fn cwd_slug_keeps_dots_and_drops_the_leading_separator() {
+        // These are real paseo state directory names; the `slug` crate would
+        // lowercase and strip the dot and break the lookup.
+        assert_eq!(
+            cwd_slug(std::path::Path::new(
+                "/home/u/.paseo/worktrees/x-dry-dolphin"
+            )),
+            "home-u-.paseo-worktrees-x-dry-dolphin"
+        );
+        assert_eq!(cwd_slug(std::path::Path::new("/tmp")), "tmp");
+    }
+
+    #[test]
+    fn a_runtime_with_no_handle_source_refuses_rather_than_guessing() {
+        let mut cfg = AdeConfig::paseo();
+        let view = cfg.view.as_mut().unwrap();
+        view.handle_file.clear();
+        view.handle_args.clear();
+        let r = AdeRuntime::new("paseo".to_string(), cfg);
+        let err = r
+            .native_handle(&AgentRef::new("paseo", "a"), std::path::Path::new("/tmp"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no handle source"), "{err}");
+    }
+
+    #[test]
+    fn json_lookup_matches_either_casing_but_prefers_exact() {
+        // paseo's `agent ls` emits `status`, `inspect` emits `Status`.
+        let v: Value = serde_json::from_str(r#"{"Status":"idle"}"#).unwrap();
+        assert_eq!(json_get_ci(&v, "status").unwrap(), "idle");
+        let both: Value = serde_json::from_str(r#"{"status":"a","Status":"b"}"#).unwrap();
+        assert_eq!(json_get_ci(&both, "status").unwrap(), "a");
+    }
+
+    #[test]
+    fn view_command_renders_the_log_template() {
+        let r = runtime();
+        let args = r.view_command(&AgentRef::new("paseo", "agt_1")).unwrap();
+        assert_eq!(args, vec!["agent", "logs", "agt_1", "-f"], "{args:?}");
+    }
+
+    #[test]
+    fn view_command_is_absent_without_a_view_block() {
+        let mut cfg = AdeConfig::paseo();
+        cfg.view = None;
+        let r = AdeRuntime::new("paseo".to_string(), cfg);
+        assert!(r.view_command(&AgentRef::new("paseo", "a")).is_none());
+    }
+
+    #[test]
+    fn the_paseo_preset_views_without_claiming_stdin() {
+        // `attach` takes over the invoking terminal's stdin; a muxix-driven pane
+        // needs it. Swapping the preset to attach would silently break the pane.
+        let v = AdeConfig::paseo().view.unwrap();
+        assert!(!v.log_args.contains(&"attach".to_string()), "{v:?}");
+        assert_eq!(v.on_select, crate::config::AdeViewOnSelect::Tui);
+    }
+
+    #[test]
+    fn claude_resumes_a_named_session_not_merely_the_last_one() {
+        // `--continue` resumes whichever session was most recent, so using it
+        // for takeover would silently resume the wrong transcript.
+        let p = crate::agent::profile::resolve_profile(Some("claude"));
+        assert_eq!(p.resume_session_flag(), Some("--resume"));
+        assert_ne!(p.resume_session_flag(), p.continue_flag());
+    }
+
+    #[test]
+    fn an_unverified_provider_has_no_resume_flag() {
+        // paseo configures providers muxix has no verified resume flag for
+        // (`omp`, `antigravity`, `muse`). Takeover must refuse rather than
+        // borrow a neighbour's flag.
+        for provider in ["omp", "codex", "opencode"] {
+            let p = crate::agent::profile::resolve_profile(Some(provider));
+            assert_eq!(
+                p.resume_session_flag(),
+                None,
+                "{provider} gained a resume flag without being verified"
+            );
+        }
     }
 }

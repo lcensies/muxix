@@ -44,7 +44,14 @@ pub fn run(
     feedback: Option<&str>,
     label: Option<&str>,
     clear: bool,
+    session_id: Option<&str>,
 ) -> Result<()> {
+    // Additive: a report without a session id behaves exactly as before, so an
+    // agent whose extension has not been updated keeps working.
+    if let Some(id) = session_id {
+        record_provider_session_id(pane, id)?;
+    }
+
     match kind {
         // PANE-KEYED TURN SIGNALS (agent lifecycle hooks)
         "turn-done" | "needs-input" | "working" | "proceed" | "reject" | "session-ready" => {
@@ -56,6 +63,28 @@ pub fn run(
         "done" | "error" => run_completion_signal(kind, pane, feedback),
         other => Err(anyhow!("unknown signal kind {other:?}")),
     }
+}
+
+/// Record the agent's own provider session id against its pane.
+///
+/// Only the agent process knows this id, so it has to arrive from the agent
+/// side. It is what makes a muxix-started session importable into an ADE, and
+/// the same identifier an ADE reports back as its native handle — the two
+/// directions meet on one id.
+fn record_provider_session_id(pane: Option<&str>, session_id: &str) -> Result<()> {
+    let Some(pane) = pane.map(str::to_string).or_else(turn::current_pane) else {
+        // Advisory, like the activity label: no pane, nothing to attach it to.
+        return Ok(());
+    };
+    let mux = create_backend(detect_backend());
+    let key = crate::state::PaneKey {
+        backend: mux.name().to_string(),
+        instance: mux.instance_id(),
+        pane_id: pane.clone(),
+    };
+    crate::state::StateStore::new()?.set_provider_session_id(&key, session_id)?;
+    crate::muxix_evt!("signal.write", kind = "session-id", pane = %pane, side = "agent");
+    Ok(())
 }
 
 /// Set or clear the agent-authored activity label for a pane.
@@ -195,7 +224,7 @@ mod tests {
         let pane = "%wmtest-proceed-9001";
         let path = turn::proceed_path(pane);
         let _ = fs::remove_file(&path);
-        run("proceed", Some(pane), None, None, None, false).unwrap();
+        run("proceed", Some(pane), None, None, None, false, None).unwrap();
         let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["approved"], Value::Bool(true));
         let _ = fs::remove_file(&path);
@@ -206,7 +235,7 @@ mod tests {
         let pane = "%wmtest-reject-9002";
         let path = turn::proceed_path(pane);
         let _ = fs::remove_file(&path);
-        run("reject", Some(pane), None, Some("needs tests"), None, false).unwrap();
+        run("reject", Some(pane), None, Some("needs tests"), None, false, None).unwrap();
         let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["approved"], Value::Bool(false));
         assert_eq!(v["feedback"], Value::String("needs tests".into()));
@@ -215,7 +244,7 @@ mod tests {
 
     #[test]
     fn unknown_kind_errors() {
-        assert!(run("bogus", Some("%wmtest-x"), None, None, None, false).is_err());
+        assert!(run("bogus", Some("%wmtest-x"), None, None, None, false, None).is_err());
     }
 
     #[test]
@@ -225,8 +254,8 @@ mod tests {
         unsafe {
             std::env::remove_var("TMUX_PANE");
         }
-        assert!(run("done", None, None, None, None, false).is_err());
-        assert!(run("error", None, None, None, None, false).is_err());
+        assert!(run("done", None, None, None, None, false, None).is_err());
+        assert!(run("error", None, None, None, None, false, None).is_err());
     }
 
     #[test]
@@ -248,6 +277,7 @@ mod tests {
             Some("tests passed"),
             None,
             false,
+            None,
         )
         .unwrap();
         assert!(path.exists(), "Signal file should be created");

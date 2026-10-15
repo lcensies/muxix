@@ -135,6 +135,7 @@ mod tests {
             status: None,
             status_ts: None,
             pane_title: None,
+            provider_session_id: None,
             pane_pid: 1,
             command: "node".to_string(),
             updated_ts: 1,

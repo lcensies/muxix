@@ -103,6 +103,15 @@ export default function (pi: ExtensionAPI) {
   // This session's own worktree handle, resolved at session_start.
   let ownHandle: string | null = null;
 
+  // pi's own session id, captured at session_start.
+  //
+  // Only this process knows it, and it is what an ADE imports and what
+  // `pi --resume` would reopen, so reporting it is what lets a muxix-started
+  // session be handed to a phone and back. Read through the same optional
+  // chain other pi extensions use (`ctx.sessionManager.getSessionId()`), so a
+  // pi build without it degrades to reporting nothing rather than throwing.
+  let ownSessionId: string | null = null;
+
   // Child-worktree completion/waiting watcher (§6.4).
   let fsWatcher: fs.FSWatcher | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -228,6 +237,8 @@ export default function (pi: ExtensionAPI) {
   // (parent) session gets nudged when a child needs attention.
   pi.on("session_start", async (_event: any, ctx: any) => {
     try {
+      const sid = ctx?.sessionManager?.getSessionId?.();
+      ownSessionId = typeof sid === "string" && sid ? sid : null;
       ownHandle = findWorktreeHandle(ctx.cwd);
       if (ownHandle) {
         pi.setSessionName?.(ownHandle);
@@ -322,7 +333,12 @@ export default function (pi: ExtensionAPI) {
     running = false;
     setStatus("done");
     // Deterministic turn completion for the harness runner (vs content scraping).
-    pi.exec("muxix", ["signal", "turn-done"]).catch(() => {});
+    // The session id rides along when known: muxix records it against the pane
+    // and ignores the flag when absent, so an older muxix is unaffected.
+    const args = ownSessionId
+      ? ["signal", "turn-done", "--session-id", ownSessionId]
+      : ["signal", "turn-done"];
+    pi.exec("muxix", args).catch(() => {});
   });
 
   // Blocking extension UI prompts (ctx.ui.select/confirm/input/editor/custom)

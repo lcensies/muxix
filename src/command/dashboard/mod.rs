@@ -25,7 +25,7 @@
 
 mod actions;
 pub mod agent;
-mod ansi;
+pub mod ansi;
 mod app;
 mod bindings;
 mod diff;

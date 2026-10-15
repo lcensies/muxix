@@ -109,6 +109,47 @@ fn needs_subcommand(first_arg: Option<&str>, subcmd: &str) -> bool {
     }
 }
 
+/// Open a pane running `argv`, beside whichever pane is current.
+///
+/// Shared by the ADE session view and native takeover so both land under the
+/// same placement, and so a backend without direct exec degrades to a quoted
+/// command line in one place rather than two.
+pub fn open_argv_pane(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    argv: &[String],
+    cwd: &std::path::Path,
+) -> Result<String> {
+    let target = mux
+        .current_pane_id()
+        .or_else(|| mux.active_pane_id())
+        .ok_or_else(|| anyhow!("no current pane to open beside"))?;
+
+    if mux.supports_direct_exec() {
+        return mux.split_pane_argv(
+            &target,
+            &crate::multiplexer::SplitDirection::Horizontal,
+            cwd,
+            None,
+            Some(50),
+            argv,
+        );
+    }
+
+    let line = argv
+        .iter()
+        .map(|a| crate::shell::shell_quote(a))
+        .collect::<Vec<_>>()
+        .join(" ");
+    mux.split_pane(
+        &target,
+        &crate::multiplexer::SplitDirection::Horizontal,
+        cwd,
+        None,
+        Some(50),
+        Some(&line),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

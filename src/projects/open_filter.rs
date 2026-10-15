@@ -142,6 +142,7 @@ mod tests {
             status: Some(AgentStatus::Working),
             status_ts: Some(100),
             pane_title: None,
+            provider_session_id: None,
             pane_pid: 1,
             command: "node".to_string(),
             updated_ts: 100,

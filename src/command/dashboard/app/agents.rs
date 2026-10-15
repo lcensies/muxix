@@ -355,6 +355,21 @@ impl App {
     /// Switch to a pane and track the previous pane for toggle feature.
     /// This is the single source of truth for all pane switching.
     pub(crate) fn switch_to_pane_and_track(&mut self, target_pane_id: &str) {
+        // An ADE agent has no pane: its `pane_id` is the wire ref, which the
+        // multiplexer has never heard of. Open muxix's own session view
+        // instead of switching to a pane that cannot exist.
+        let reference = crate::agent::runtime::AgentRef::from_wire(target_pane_id);
+        if !reference.is_local() {
+            if let Err(e) = crate::command::ade_view::open_or_focus(self.mux.as_ref(), &reference) {
+                self.mux.display_message(&format!("{e}"));
+                return;
+            }
+            if self.mux.should_exit_on_jump() {
+                self.should_jump = true;
+            }
+            return;
+        }
+
         // Get the REAL current pane from the multiplexer (not UI state)
         let current_pane = self.mux.active_pane_id();
 
@@ -365,11 +380,8 @@ impl App {
             .iter()
             .find(|a| a.pane_id == target_pane_id)
             .map(|a| a.window_name.as_str());
-        if self
-            .mux
-            .switch_to_pane(target_pane_id, window_hint)
-            .is_err()
-        {
+        if let Err(e) = self.mux.switch_to_pane(target_pane_id, window_hint) {
+            self.mux.display_message(&format!("{e}"));
             return;
         }
 

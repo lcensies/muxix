@@ -789,8 +789,25 @@ impl SidebarApp {
         if let Some(idx) = self.list_state.selected()
             && let Some(agent) = self.agents.get(idx)
         {
+            // An ADE agent has no pane: its `pane_id` is the wire ref, which
+            // the multiplexer has never heard of. Switching to it could only
+            // fail, and discarding that failure is what made selecting one do
+            // nothing at all.
+            let reference = crate::agent::runtime::AgentRef::from_wire(&agent.pane_id);
+            if !reference.is_local() {
+                if let Err(e) =
+                    crate::command::ade_view::open_or_focus(self.mux.as_ref(), &reference)
+                {
+                    self.mux.display_message(&format!("{e}"));
+                }
+                super::daemon_ctrl::signal_daemon();
+                return;
+            }
+
             let pane_id = agent.pane_id.clone();
-            let _ = self.mux.switch_to_pane(&pane_id, None);
+            if let Err(e) = self.mux.switch_to_pane(&pane_id, None) {
+                self.mux.display_message(&format!("{e}"));
+            }
             // Signal daemon directly to bypass tmux hook round-trip latency
             super::daemon_ctrl::signal_daemon();
         }

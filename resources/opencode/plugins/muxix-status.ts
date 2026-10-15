@@ -37,7 +37,10 @@ export const MuxixStatusPlugin: Plugin = async ({ $ }) => {
       // Pane-keyed pipeline signal: lets the harness runner detect turn completion
       // deterministically instead of scraping the pane for an idle prompt.
       try {
-        await $`muxix signal turn-done`.quiet();
+        // Carries the provider session id muxix cannot derive: only this process
+        // knows it. It is what lets the session be handed to an ADE (and back),
+        // and muxix ignores it when absent, so an older muxix is unaffected.
+        await $`muxix signal turn-done --session-id ${sessionID}`.quiet();
       } catch {}
     }
   }

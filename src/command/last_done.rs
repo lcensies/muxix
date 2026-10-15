@@ -167,6 +167,7 @@ mod tests {
             status: Some(status),
             status_ts: Some(status_ts),
             pane_title: None,
+            provider_session_id: None,
             pane_pid: 1000,
             command: "node".to_string(),
             updated_ts,

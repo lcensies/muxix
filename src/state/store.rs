@@ -124,6 +124,28 @@ impl StateStore {
         write_atomic(&path, content.as_bytes())
     }
 
+    /// Record the agent's own provider session id on an existing agent state.
+    ///
+    /// No-ops when no state file exists for this pane, and ignores a blank id:
+    /// the identifier is only useful if it names a real session, and a wrong or
+    /// empty one would be handed to an ADE that does not validate it.
+    pub fn set_provider_session_id(&self, key: &PaneKey, session_id: &str) -> Result<()> {
+        let session_id = session_id.trim();
+        if session_id.is_empty() {
+            return Ok(());
+        }
+        let path = self.agent_path(key);
+        let Some(mut state) = read_agent_file(&path)? else {
+            return Ok(());
+        };
+        if state.provider_session_id.as_deref() == Some(session_id) {
+            return Ok(());
+        }
+        state.provider_session_id = Some(session_id.to_string());
+        let content = serde_json::to_string_pretty(&state)?;
+        write_atomic(&path, content.as_bytes())
+    }
+
     /// Read agent state by pane key.
     ///
     /// Returns None if the agent doesn't exist or the file is corrupted.
@@ -612,6 +634,9 @@ impl StateStore {
                 status: None,
                 status_ts: None,
                 pane_title: live.title.clone(),
+                // Reconciled from live panes, which cannot know a provider's
+                // own session id; only the agent reports that.
+                provider_session_id: None,
                 pane_pid: live.pid.unwrap_or(0),
                 command: live.current_command.clone().unwrap_or_default(),
                 updated_ts: now,
@@ -757,6 +782,7 @@ mod tests {
             status: Some(AgentStatus::Working),
             status_ts: Some(1234567890),
             pane_title: Some("Implementing feature X".to_string()),
+            provider_session_id: None,
             pane_pid: 12345,
             command: "node".to_string(),
             updated_ts: 1234567890,
@@ -812,6 +838,48 @@ mod tests {
         let (store, _dir) = test_store();
         let key = test_pane_key();
         store.set_activity(&key, Some("tf:review")).unwrap();
+        assert!(store.get_agent(&key).unwrap().is_none());
+    }
+
+    #[test]
+    fn set_provider_session_id_records_trims_and_ignores_blanks() {
+        let (store, _dir) = test_store();
+        let key = test_pane_key();
+        store.upsert_agent(&test_agent_state(key.clone())).unwrap();
+
+        store
+            .set_provider_session_id(&key, "  89430a6d-0049-4809-bf4d-a263bc6c4661  ")
+            .unwrap();
+        assert_eq!(
+            store
+                .get_agent(&key)
+                .unwrap()
+                .unwrap()
+                .provider_session_id
+                .as_deref(),
+            Some("89430a6d-0049-4809-bf4d-a263bc6c4661")
+        );
+
+        // A blank report must not erase a real id: an ADE does not validate the
+        // handle it is given, so an empty one would create a junk agent.
+        store.set_provider_session_id(&key, "   ").unwrap();
+        assert_eq!(
+            store
+                .get_agent(&key)
+                .unwrap()
+                .unwrap()
+                .provider_session_id
+                .as_deref(),
+            Some("89430a6d-0049-4809-bf4d-a263bc6c4661")
+        );
+    }
+
+    #[test]
+    fn set_provider_session_id_without_state_file_is_a_noop() {
+        // Advisory, like the activity label: never conjures an agent record.
+        let (store, _dir) = test_store();
+        let key = test_pane_key();
+        store.set_provider_session_id(&key, "abc").unwrap();
         assert!(store.get_agent(&key).unwrap().is_none());
     }
 
