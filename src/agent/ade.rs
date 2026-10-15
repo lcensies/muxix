@@ -188,7 +188,10 @@ impl AdeRuntime {
                         .get("provider")
                         .or_else(|| item.get("agent"))
                         .and_then(|x| x.as_str())
-                        .map(str::to_string),
+                        // `agent ls` reports provider and model as one field
+                        // (`pi/anthropic/claude-opus-5-5`) while `inspect` splits
+                        // them. Keep the provider, which is what selects a profile.
+                        .map(|s| s.split('/').next().unwrap_or(s).to_string()),
                 })
             })
             .collect())
@@ -623,6 +626,20 @@ mod tests {
     }
 
     #[test]
+    fn a_providers_model_is_not_mistaken_for_its_name() {
+        // `agent ls` reports one joined field (`pi/anthropic/claude-opus-5-5`)
+        // while `inspect` reports `Provider` and `Model` separately. The joined
+        // form selects no agent profile, so takeover would refuse a session it
+        // can actually resume.
+        let r = runtime();
+        let out = r#"[{"id":"a1","provider":"pi/anthropic/claude-opus-5-5"},
+                      {"id":"a2","provider":"claude"}]"#;
+        let agents = r.parse_agents(out).unwrap();
+        assert_eq!(agents[0].kind.as_deref(), Some("pi"));
+        assert_eq!(agents[1].kind.as_deref(), Some("claude"));
+    }
+
+    #[test]
     fn agents_parse_from_a_wrapped_array() {
         let r = runtime();
         let agents = r.parse_agents(r#"{"agents":[{"id":"a1"}]}"#).unwrap();
@@ -1007,6 +1024,16 @@ mod tests {
         // for takeover would silently resume the wrong transcript.
         let p = crate::agent::profile::resolve_profile(Some("claude"));
         assert_eq!(p.resume_session_flag(), Some("--resume"));
+        assert_ne!(p.resume_session_flag(), p.continue_flag());
+    }
+
+    #[test]
+    fn pi_resumes_by_session_path() {
+        // paseo's nativeHandle for a pi agent is the .jsonl path, and `--session`
+        // is the flag that accepts one. Without this, taking over any pi session
+        // is refused -- which is what happened on a real session.
+        let p = crate::agent::profile::resolve_profile(Some("pi"));
+        assert_eq!(p.resume_session_flag(), Some("--session"));
         assert_ne!(p.resume_session_flag(), p.continue_flag());
     }
 

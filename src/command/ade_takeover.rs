@@ -69,28 +69,12 @@ pub fn plan(ade: &AdeRuntime, agent: &AgentRef) -> Result<Takeover> {
     })
 }
 
-/// The message the session view shows for the takeover key.
-///
-/// This is the first of two presses, and it changes nothing: the text names what
-/// the second press will interrupt, which may be a turn running on someone
-/// else's device.
-pub fn offer(ade: &AdeRuntime, agent: &AgentRef) -> Result<String> {
-    let plan = plan(ade, agent)?;
-    if !plan.ade_holds_writer {
-        return Ok("session is closed; taking over resumes it locally".to_string());
-    }
-    Ok(format!(
-        "{} still holds this session; taking over stops its agent and interrupts \
-         any turn in flight",
-        ade.name()
-    ))
-}
-
 /// Take the session over for real.
 ///
-/// `stop_ade` is the serialization step. It is required whenever the ADE still
-/// holds a writer, and is never implied: interrupting work someone started on
-/// another device is the user's call, not a default.
+/// `stop_ade` is the serialization step, and it stops the manager's agent for
+/// this one id -- never every session on the host. On the command line it must be
+/// asked for with `--stop-ade`; the session view's takeover key passes it, since
+/// pressing a takeover key is itself the request.
 pub fn execute(
     ade: &AdeRuntime,
     agent: &AgentRef,
@@ -121,6 +105,12 @@ pub fn execute(
         // real fix needs a release/park primitive paseo does not expose; until
         // then, driving the session from another device after takeover can still
         // append to the same transcript.
+        //
+        // Do NOT reach for `agent archive` or `agent delete` to make this bite
+        // harder. The session must stay resumable in the manager afterwards, and
+        // archive has no inverse in paseo's CLI (`agent update` cannot unset it;
+        // `agent ls -a` only lists archived agents), while delete is a hard
+        // delete. Takeover is a loan, not a transfer.
         ade.stop(agent)?;
     }
 

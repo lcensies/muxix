@@ -131,7 +131,12 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
 
     map.insert(wire, pane.clone());
     save_map(&map);
-    mux.switch_to_pane(&pane, None)?;
+    // The pane exists by now, so a focus failure must not discard it. tmux answers
+    // `can't find pane: %N` when the launched command died before the switch
+    // landed, and throwing there would lose a pane the caller just recorded.
+    if let Err(e) = mux.switch_to_pane(&pane, None) {
+        mux.display_message(&format!("opened {pane} for {} but could not focus it: {e}", agent.to_wire()));
+    }
     Ok(pane)
 }
 
@@ -219,7 +224,6 @@ pub fn run(wire_ref: &str) -> Result<()> {
     // Resolved before the alternate screen, so a backend-detection failure is
     // readable instead of landing under a TUI.
     let mux = crate::multiplexer::create_backend(crate::multiplexer::detect_backend());
-    let mut arming = false;
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -230,9 +234,6 @@ pub fn run(wire_ref: &str) -> Result<()> {
         terminal.draw(|f| draw(f, &agent, &live))?;
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(Tick::Input(Event::Key(k))) if k.kind == KeyEventKind::Press => {
-                // Any other key cancels a half-confirmed takeover, so a stray E
-                // cannot sit armed until an unrelated keypress fires it.
-                let confirming = std::mem::take(&mut arming);
                 match k.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('a') => {
@@ -241,10 +242,10 @@ pub fn run(wire_ref: &str) -> Result<()> {
                     KeyCode::Char('d') => {
                         client_action(&ade, &view.deny_args, &agent, &live, "denied");
                     }
-                    // The second press is the consent `--stop-ade` carries on the
-                    // command line: it interrupts whatever the session is doing,
-                    // possibly on someone else's device.
-                    KeyCode::Char('E') if confirming => {
+                    // Same contract as `muxix agents takeover <ref> --stop-ade`:
+                    // one press takes the session, stopping the manager's agent
+                    // for this id alone and interrupting whatever it was doing.
+                    KeyCode::Char('E') => {
                         let msg = match crate::command::ade_takeover::execute(
                             &ade,
                             &agent,
@@ -256,14 +257,6 @@ pub fn run(wire_ref: &str) -> Result<()> {
                         };
                         set_notice(&live, msg);
                     }
-                    KeyCode::Char('E') => match crate::command::ade_takeover::offer(&ade, &agent)
-                    {
-                        Ok(m) => {
-                            set_notice(&live, format!("{m} -- press E again to do it"));
-                            arming = true;
-                        }
-                        Err(e) => set_notice(&live, format!("{e}")),
-                    },
                     _ => {}
                 }
             }

@@ -307,6 +307,17 @@ impl AgentProfile for PiProfile {
     fn continue_flag(&self) -> Option<&'static str> {
         Some("--continue")
     }
+
+    fn resume_session_flag(&self) -> Option<&'static str> {
+        // Verified against `pi --help`: `--session <path|id>`, which takes either
+        // a session file or a partial UUID. paseo's nativeHandle for a pi agent is
+        // the full .jsonl path, so it is passed through as-is.
+        //
+        // Not `--resume`: that one opens an interactive session picker. Not
+        // `--session-id`, which creates the session when it is missing and would
+        // turn a wrong handle into a new empty transcript.
+        Some("--session")
+    }
 }
 
 pub struct OmpProfile;
