@@ -2913,7 +2913,16 @@ impl AdeConfig {
             send_args: a(&["agent", "send", "{id}", "{text}"]),
             list_args: a(&["agent", "ls", "--json"]),
             stop_args: a(&["agent", "stop", "{id}"]),
-            import_args: a(&["agent", "ls", "--json"]),
+            import_args: a(&[
+                "agent",
+                "import",
+                "{session}",
+                "--provider",
+                "{provider}",
+                "--cwd",
+                "{cwd}",
+                "--json",
+            ]),
             id_field: "id".to_string(),
             status_field: "status".to_string(),
             status_map: AdeStatusMap {

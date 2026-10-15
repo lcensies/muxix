@@ -148,6 +148,7 @@ ade:
     send_args:  [agent, send, "{id}", "{text}"]
     list_args:  [agent, ls, --json]
     stop_args:  [agent, stop, "{id}"]
+    import_args: [agent, import, "{session}", --provider, "{provider}", --cwd, "{cwd}", --json]
     id_field: id
     status_field: status
     status_map:

@@ -376,4 +376,26 @@ mod tests {
         );
         assert_eq!(args, vec!["agent", "send", "a1", "hello"]);
     }
+
+    #[test]
+    fn preset_import_calls_the_managers_import_command() {
+        // A preset that imports by listing agents reports success without
+        // adopting anything.
+        let r = runtime();
+        let args = r.args_for(
+            &r.cfg.import_args.clone(),
+            &[
+                ("session", "sess_1"),
+                ("provider", "claude"),
+                ("cwd", "/tmp/wt"),
+            ],
+        );
+        assert_eq!(
+            args,
+            vec![
+                "agent", "import", "sess_1", "--provider", "claude", "--cwd", "/tmp/wt",
+                "--json"
+            ]
+        );
+    }
 }
