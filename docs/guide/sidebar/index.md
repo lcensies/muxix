@@ -127,6 +127,7 @@ the list. Requires `set -g mouse on` in your `~/.tmux.conf`.
 | `Ctrl+d`/`Ctrl+u` | Half page down/up               |
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
+| `d`     | Delete agent. Under tmux asks on the tmux prompt line (Enter or `y` confirms); elsewhere in the sidebar (Enter confirms). Any other key cancels. |
 | `q`     | Quit sidebar             |
 
 ### Sleeping agents
@@ -135,6 +136,39 @@ Press `z` to manually mark an agent as sleeping. Sleeping agents show a 💤 ico
 with dimmed colors and are pushed to the bottom of the list, regardless of their
 actual status. This is useful for temporarily deprioritizing agents you don't
 need to monitor. Press `z` again to wake them up.
+
+### Exited agents
+
+By default an agent is forgotten the moment its pane is gone. Set
+`persist_agents: true` to keep it instead, marked **exited** (⏏): its process
+is gone but its session is not, so it can still be resumed here or picked up
+from an agent manager's phone or desktop client. Exited is distinct from done,
+which is a finished turn with the process still running.
+
+```yaml
+persist_agents: true   # default: false
+```
+
+A manager's session you took over locally shows the takeover's live status while
+it runs, and **exited** once you quit it — even though the manager itself still
+reports `idle` — until the manager reports a turn running, say one sent from
+your phone. See
+[`on_takeover_exit`](/guide/agent-runtimes#taking-a-session-over-natively) to follow the
+manager's status instead.
+
+### Deleting agents
+
+Press `d` to delete the selected agent. A prompt names the agent and everywhere
+it will be removed from; **Enter** deletes and **any other key** cancels, so a
+stray Enter after moving the selection cannot delete the wrong one.
+
+- A local agent's record is removed, and its pane killed if it is still running.
+  An exited agent's pane is never killed: its pane id may since belong to
+  something else.
+- A manager's agent is deleted in the manager first, through its `delete_args`
+  (paseo: `agent delete`, a hard delete — gone from every device). If the
+  manager refuses, muxix keeps its own record, so nothing is forgotten here while
+  it still exists there. A manager with no `delete_args` keeps its copy.
 
 ## Agent navigation hotkeys
 

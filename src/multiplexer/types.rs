@@ -49,6 +49,11 @@ pub enum AgentStatus {
     Waiting,
     /// Agent has finished
     Done,
+    /// The agent's process is gone but its session is intact and resumable.
+    /// Distinct from `Done`, which is a finished turn with the process still
+    /// running. Only reached when `persist_agents` keeps the record, or for a
+    /// manager's session after a local takeover was quit.
+    Exited,
 }
 
 /// Information about a specific pane running a muxix agent

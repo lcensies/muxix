@@ -164,6 +164,7 @@ export default defineConfig({
           { text: "task", link: "/reference/commands/task" },
           { text: "dashboard", link: "/reference/commands/dashboard" },
           { text: "sidebar", link: "/reference/commands/sidebar" },
+          { text: "agents", link: "/reference/commands/agents" },
           { text: "init", link: "/reference/commands/init" },
           { text: "setup", link: "/reference/commands/setup" },
           { text: "bootstrap", link: "/reference/commands/bootstrap" },

@@ -32,6 +32,7 @@ Each agent row displays:
 | `Ctrl+d`/`Ctrl+u` | Half page down/up               |
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
+| `d`     | Delete agent. Under tmux asks on the tmux prompt line (Enter or `y` confirms); elsewhere in the sidebar (Enter confirms). Any other key cancels. |
 | `q`     | Quit sidebar             |
 
 ## Navigation commands

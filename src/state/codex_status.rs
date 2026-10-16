@@ -165,6 +165,11 @@ impl CodexPaneStatus {
                     AgentStatus::Working
                 }
             }
+            // Never sent by a hook; an exited process has no runs left to track.
+            AgentStatus::Exited => {
+                self.active.clear();
+                AgentStatus::Exited
+            }
         }
     }
 

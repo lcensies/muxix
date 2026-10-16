@@ -178,7 +178,10 @@ impl AdeRuntime {
                         .get("path")
                         .or_else(|| item.get("cwd"))
                         .and_then(|x| x.as_str())
-                        .map(PathBuf::from),
+                        // paseo reports `~/repos/x`. Unexpanded, no ancestor exists
+                        // on disk, so the project, branch and git status all fall
+                        // back to guesses (a worktree shown on a fake `main`).
+                        .map(crate::util::expand_tilde),
                     title: item
                         .get("title")
                         .or_else(|| item.get("name"))
@@ -210,12 +213,30 @@ impl AdeRuntime {
             (RuntimeStatus::Waiting, &self.cfg.status_map.waiting),
             (RuntimeStatus::Done, &self.cfg.status_map.done),
             (RuntimeStatus::Failed, &self.cfg.status_map.failed),
+            (RuntimeStatus::Exited, &self.cfg.status_map.exited),
         ] {
             if names.iter().any(|n| n.eq_ignore_ascii_case(&raw)) {
                 return neutral;
             }
         }
         RuntimeStatus::Unknown
+    }
+
+    /// The `import_args` command line for adopting `session`.
+    pub(crate) fn import_args_for(
+        &self,
+        session: &crate::agent::runtime::ExternalSession,
+        workspace: &str,
+    ) -> Vec<String> {
+        self.args_for(
+            &self.cfg.import_args,
+            &[
+                ("session", session.session_id.as_str()),
+                ("provider", session.provider.as_str()),
+                ("cwd", &session.cwd.to_string_lossy()),
+                ("workspace", workspace),
+            ],
+        )
     }
 
     fn args_for(&self, template: &[String], subs: &[(&str, &str)]) -> Vec<String> {
@@ -555,6 +576,17 @@ impl AgentRuntime for AdeRuntime {
                 crate::agent::runtime::Feature::Import,
             ));
         }
+        // Before any command runs: a rejected import must leave nothing behind,
+        // not even the workspace registered for it.
+        let accepted = &self.cfg.import_providers;
+        if !accepted.is_empty() && !accepted.contains(&session.provider) {
+            bail!(
+                "{} cannot import a '{}' session; it accepts: {}",
+                self.name,
+                session.provider,
+                accepted.join(", ")
+            );
+        }
 
         // The adopting ADE resolves an imported session's workspace from its
         // path (`paseo agent import` has no workspace flag), so the workspace
@@ -568,15 +600,7 @@ impl AgentRuntime for AdeRuntime {
             .workspace_or_warn(&session.cwd, &name)
             .unwrap_or_default();
 
-        let args = self.args_for(
-            &self.cfg.import_args,
-            &[
-                ("session", session.session_id.as_str()),
-                ("provider", session.provider.as_str()),
-                ("cwd", &session.cwd.to_string_lossy()),
-                ("workspace", workspace.as_str()),
-            ],
-        );
+        let args = self.import_args_for(session, &workspace);
         let stdout = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
         let id = match serde_json::from_str::<Value>(stdout.trim()) {
             Ok(v) => v
@@ -605,6 +629,32 @@ impl AgentRuntime for AdeRuntime {
     }
 }
 
+impl AdeRuntime {
+    /// Whether this manager can delete its agents.
+    pub fn can_delete(&self) -> bool {
+        !self.cfg.delete_args.is_empty()
+    }
+
+    /// Permanently delete an agent in the manager.
+    ///
+    /// Unlike [`AgentRuntime::stop`], a failure is returned: the caller removes
+    /// its own record only once the manager's copy is gone, so the agent is never
+    /// forgotten locally while it still exists there.
+    pub fn delete(&self, agent: &AgentRef) -> Result<()> {
+        if !self.can_delete() {
+            bail!("{} declares no delete_args", self.name());
+        }
+        // paseo matches the id as a *prefix* and treats it as optional, so a
+        // blank one would select every agent it has.
+        if agent.id.trim().is_empty() {
+            bail!("refusing to delete an agent with an empty id");
+        }
+        let args = self.args_for(&self.cfg.delete_args, &[("id", agent.id.as_str())]);
+        self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,6 +673,36 @@ mod tests {
         assert_eq!(agents[0].reference, AgentRef::new("paseo", "a1"));
         assert_eq!(agents[0].status, RuntimeStatus::Working);
         assert_eq!(agents[0].workdir, Some(PathBuf::from("/p")));
+    }
+
+    #[test]
+    fn delete_refuses_an_empty_id_rather_than_matching_every_agent() {
+        // paseo treats `delete`'s id as an optional *prefix*: rendered blank, the
+        // template would select every agent on the host.
+        let r = AdeRuntime::new("paseo".to_string(), AdeConfig::paseo());
+        assert!(r.can_delete());
+        for blank in ["", "   "] {
+            let err = r
+                .delete(&AgentRef::new("paseo", blank))
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("empty id"), "{blank:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_manager_without_delete_args_cannot_delete() {
+        // `AdeConfig::default()` is the paseo preset, so clear the template.
+        let r = AdeRuntime::new(
+            "other".to_string(),
+            AdeConfig {
+                delete_args: Vec::new(),
+                ..AdeConfig::paseo()
+            },
+        );
+        assert!(!r.can_delete());
+        let err = r.delete(&AgentRef::new("paseo", "agt_1")).unwrap_err().to_string();
+        assert!(err.contains("no delete_args"), "{err}");
     }
 
     #[test]
@@ -663,8 +743,11 @@ mod tests {
         let r = runtime();
         assert_eq!(r.map_status("initializing"), RuntimeStatus::Starting);
         assert_eq!(r.map_status("running"), RuntimeStatus::Working);
-        assert_eq!(r.map_status("idle"), RuntimeStatus::Waiting);
-        assert_eq!(r.map_status("closed"), RuntimeStatus::Done);
+        // `idle` is a finished turn, not a request for input: paseo has no
+        // needs-input state, so mapping idle to waiting flagged every session.
+        assert_eq!(r.map_status("idle"), RuntimeStatus::Done);
+        assert_ne!(r.map_status("idle"), RuntimeStatus::Waiting);
+        assert_eq!(r.map_status("closed"), RuntimeStatus::Exited);
         assert_eq!(r.map_status("error"), RuntimeStatus::Failed);
     }
 
@@ -718,6 +801,43 @@ mod tests {
             &[("id", "a1"), ("text", "hello")],
         );
         assert_eq!(args, vec!["agent", "send", "a1", "hello"]);
+    }
+
+    #[test]
+    fn import_refuses_a_provider_the_manager_does_not_run() {
+        // `command` would leave a marker if anything ran: the refusal must come
+        // before the workspace registration as well as the import itself.
+        let marker = std::env::temp_dir().join(format!("muxix-import-ran-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let mut cfg = AdeConfig::paseo();
+        cfg.command = "touch".to_string();
+        cfg.import_args = vec![marker.display().to_string()];
+        if let Some(ws) = cfg.workspaces.as_mut() {
+            ws.list_args = vec![marker.display().to_string()];
+        }
+        let r = AdeRuntime::new("paseo".to_string(), cfg);
+        let err = r
+            .import(&crate::agent::runtime::ExternalSession {
+                session_id: "s1".into(),
+                provider: "prime-agent".into(),
+                cwd: std::env::temp_dir(),
+                title: None,
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot import a 'prime-agent' session"), "{err}");
+        assert!(err.contains("claude, codex, copilot, opencode, pi, omp"), "{err}");
+        assert!(!marker.exists(), "a refused import ran a command");
+        // Baseline: an accepted provider does reach the stub, so the check above
+        // can fail.
+        let _ = r.import(&crate::agent::runtime::ExternalSession {
+            session_id: "s1".into(),
+            provider: "pi".into(),
+            cwd: std::env::temp_dir(),
+            title: None,
+        });
+        assert!(marker.exists(), "stub never ran; the refusal check proves nothing");
+        let _ = std::fs::remove_file(&marker);
     }
 
     #[test]

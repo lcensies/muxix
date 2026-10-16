@@ -56,9 +56,7 @@ pub fn plan(ade: &AdeRuntime, agent: &AgentRef) -> Result<Takeover> {
         )
     })?;
 
-    // A closed session has no writer left to serialize against. Every other
-    // state does, resident process and all.
-    let ade_holds_writer = state.status != RuntimeStatus::Done;
+    let ade_holds_writer = holds_writer(state.status);
 
     Ok(Takeover {
         argv: vec![provider.clone(), flag.to_string(), handle.clone()],
@@ -67,6 +65,58 @@ pub fn plan(ade: &AdeRuntime, agent: &AgentRef) -> Result<Takeover> {
         provider,
         ade_holds_writer,
     })
+}
+
+/// Hand the session's single writer over, so a native resume is not a second one.
+///
+/// Split out from [`execute`] because the session view serializes and then
+/// *becomes* the provider, with no pane to open in between.
+pub fn serialize(ade: &AdeRuntime, agent: &AgentRef, plan: &Takeover) -> Result<()> {
+    if plan.ade_holds_writer {
+        // ponytail: paseo's `agent stop` is a no-op for an idle agent, and its
+        // daemon keeps the provider process resident between turns, so this
+        // interrupts a turn in flight but does not evict the other writer. A real
+        // fix needs a release/park primitive paseo does not expose.
+        //
+        // Do NOT reach for `agent archive` or `agent delete` to make it bite
+        // harder: the session must stay resumable in the manager afterwards, and
+        // archive has no inverse in paseo's CLI while delete is a hard delete.
+        // Takeover is a loan, not a transfer.
+        ade.stop(agent)?;
+    }
+    Ok(())
+}
+
+/// Replace this process with the provider's own CLI.
+///
+/// The session then lives in the pane the view occupied, which is what makes a
+/// takeover bound to a pane: quitting the provider, or its crashing, ends the
+/// takeover and detaches, with nothing left behind to clean up. It also makes a
+/// second takeover of one session impossible, because the key that starts one
+/// belongs to a process that no longer exists.
+///
+/// Returns only on failure: on success this process is gone.
+#[cfg(unix)]
+pub fn exec_in_pane(argv: &[String], cwd: &std::path::Path) -> anyhow::Error {
+    use std::os::unix::process::CommandExt;
+
+    let Some((program, rest)) = argv.split_first() else {
+        return anyhow!("no command to run");
+    };
+    let err = std::process::Command::new(program)
+        .args(rest)
+        .current_dir(cwd)
+        .exec();
+    anyhow!("could not run {program}: {err}")
+}
+
+#[cfg(not(unix))]
+pub fn exec_in_pane(argv: &[String], _cwd: &std::path::Path) -> anyhow::Error {
+    anyhow!(
+        "taking a session over in place needs exec; use `muxix agents takeover` \
+         to open it in a pane instead ({:?})",
+        argv
+    )
 }
 
 /// Take the session over for real.
@@ -137,4 +187,33 @@ pub fn execute(
         agent.to_wire(),
         ade.name()
     ))
+}
+
+/// Whether the manager may still have a writer on a session in `status`.
+///
+/// Only an exited session (paseo `closed`) has none. `Done` is paseo's `idle`:
+/// a finished turn with the provider process still resident, so it counts.
+fn holds_writer(status: RuntimeStatus) -> bool {
+    status != RuntimeStatus::Exited
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_an_exited_session_is_free_of_a_manager_writer() {
+        assert!(!holds_writer(RuntimeStatus::Exited));
+        // Mapping paseo `idle` to Done must not drop the guard on a resident process.
+        for s in [
+            RuntimeStatus::Done,
+            RuntimeStatus::Working,
+            RuntimeStatus::Waiting,
+            RuntimeStatus::Starting,
+            RuntimeStatus::Failed,
+            RuntimeStatus::Unknown,
+        ] {
+            assert!(holds_writer(s), "{s:?}");
+        }
+    }
 }

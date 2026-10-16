@@ -74,6 +74,7 @@ fn status_label(status: Option<AgentStatus>) -> String {
         Some(AgentStatus::Working) => "working".to_string(),
         Some(AgentStatus::Waiting) => "waiting".to_string(),
         Some(AgentStatus::Done) => "done".to_string(),
+        Some(AgentStatus::Exited) => "exited".to_string(),
         None => "-".to_string(),
     }
 }

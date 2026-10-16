@@ -47,7 +47,28 @@ fn map_path() -> Result<PathBuf> {
     Ok(crate::xdg::state_dir()?.join("ade-views.json"))
 }
 
-fn load_map() -> BTreeMap<String, String> {
+/// A recorded view pane.
+///
+/// The pid is what makes the record trustworthy. Pane ids are recycled: a tmux
+/// server that restarted hands `%12` to something unrelated, and a map holding
+/// only the id would focus a stranger's shell instead of a session view.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ViewPane {
+    pane: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+    /// The view has since exec'd into the provider: this pane is a takeover.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    takeover: bool,
+}
+
+/// Records are per multiplexer instance, so one server's `%12` never answers for
+/// another's.
+fn view_key(wire: &str, mux: &dyn Multiplexer) -> String {
+    format!("{}@{}/{}", wire, mux.name(), mux.instance_id())
+}
+
+fn load_map() -> BTreeMap<String, ViewPane> {
     map_path()
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
@@ -55,7 +76,7 @@ fn load_map() -> BTreeMap<String, String> {
         .unwrap_or_default()
 }
 
-fn save_map(map: &BTreeMap<String, String>) {
+fn save_map(map: &BTreeMap<String, ViewPane>) {
     if let Ok(path) = map_path() {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -63,6 +84,158 @@ fn save_map(map: &BTreeMap<String, String>) {
         if let Ok(body) = serde_json::to_string_pretty(map) {
             let _ = std::fs::write(path, body);
         }
+    }
+}
+
+/// Is this recorded pane still the view we opened?
+///
+/// Same test `validate_agent_alive` applies to agent panes: the pane must exist
+/// and still be the process we recorded. A pane that merely exists proves
+/// nothing, because the id may have been handed to something else.
+fn still_our_view(mux: &dyn Multiplexer, recorded: &ViewPane) -> bool {
+    match mux.get_live_pane_info(&recorded.pane) {
+        Ok(Some(live)) => match (live.pid, recorded.pid) {
+            (Some(live_pid), Some(was)) => live_pid == was,
+            // A backend that exposes no pid cannot be checked this way; existence
+            // is the most that can be asserted there.
+            _ => true,
+        },
+        _ => false,
+    }
+}
+
+/// Record that this view's pane is about to become a takeover.
+///
+/// Written just before the exec, so the sidebar can tell the provider in this
+/// pane is that session rather than an unrelated local agent, and can tell when
+/// it is gone. Best effort: losing it costs status accuracy, not the takeover.
+fn mark_takeover(agent: &AgentRef) {
+    let mux = crate::multiplexer::create_backend(crate::multiplexer::detect_backend());
+    let Some(pane) = mux.current_pane_id() else {
+        return;
+    };
+    let pid = mux.get_live_pane_info(&pane).ok().flatten().and_then(|l| l.pid);
+    let mut map = load_map();
+    map.insert(
+        view_key(&agent.to_wire(), mux.as_ref()),
+        ViewPane {
+            pane,
+            pid,
+            takeover: true,
+        },
+    );
+    save_map(&map);
+}
+
+/// Whether a session whose takeover has ended still shows `exited`.
+///
+/// The mark lasts until the manager reports a turn running — one sent from a
+/// phone, say — because from then on the manager knows more about the session
+/// than the ended takeover does.
+///
+/// `Working` and `Waiting` both mean a turn is underway, the latter blocked
+/// mid-turn. An idle session reads `Done`, so it keeps the mark. (This relies on
+/// the status map sending an ADE's idle state to `done`: paseo's preset once
+/// sent `idle` to waiting, which would clear the mark on the first poll.)
+fn keeps_exited_mark(
+    mode: crate::config::AdeTakeoverExit,
+    manager_status: Option<crate::multiplexer::AgentStatus>,
+) -> bool {
+    use crate::multiplexer::AgentStatus;
+    mode == crate::config::AdeTakeoverExit::Exited
+        && !matches!(manager_status, Some(AgentStatus::Working | AgentStatus::Waiting))
+}
+
+/// Fold local takeovers into the status of the manager sessions they belong to.
+///
+/// The manager cannot report a takeover: paseo keeps its provider resident and
+/// says `idle` throughout. The provider a takeover exec'd is visible to muxix,
+/// though — reconcile adopts it as a local agent in the takeover's pane. So
+/// while the takeover runs, the session takes that agent's live status and the
+/// duplicate row is hidden; once it is gone, the duplicate's record is dropped
+/// and the session shows `exited` per `view.on_takeover_exit`.
+pub fn apply_takeovers(mux: &dyn Multiplexer, agents: &mut Vec<crate::multiplexer::AgentPane>) {
+    let mut map = load_map();
+    if !map.values().any(|r| r.takeover) {
+        return;
+    }
+    let cfg = Config::load(None).unwrap_or_default();
+    let mut changed = false;
+    // (pane, pid) of local rows that are a takeover's provider, not agents of
+    // their own. Matched on pid too, so a recycled pane id is never hidden.
+    let mut twins: Vec<(String, u32)> = Vec::new();
+
+    for i in 0..agents.len() {
+        let wire = agents[i].pane_id.clone();
+        let reference = AgentRef::from_wire(&wire);
+        if reference.is_local() {
+            continue;
+        }
+        let key = view_key(&wire, mux);
+        let Some(rec) = map.get(&key).cloned().filter(|r| r.takeover) else {
+            continue;
+        };
+        let twin = agents.iter().position(|a| {
+            a.pane_id == rec.pane && rec.pid.is_none_or(|pid| pid == a.pane_pid)
+        });
+        if let Some(t) = twin {
+            twins.push((agents[t].pane_id.clone(), agents[t].pane_pid));
+        }
+
+        if still_our_view(mux, &rec) {
+            if let Some(t) = twin {
+                let live = agents[t].status;
+                agents[i].status = live;
+            }
+            continue;
+        }
+
+        if twin.is_some() {
+            forget_twin(mux, &rec);
+        }
+        let mode = crate::agent::ade::for_name(&cfg, &reference.runtime)
+            .and_then(|a| a.view().map(|v| v.on_takeover_exit))
+            .unwrap_or_default();
+        if keeps_exited_mark(mode, agents[i].status) {
+            agents[i].status = Some(crate::multiplexer::AgentStatus::Exited);
+        } else {
+            map.remove(&key);
+            changed = true;
+        }
+    }
+
+    agents.retain(|a| !twins.contains(&(a.pane_id.clone(), a.pane_pid)));
+    if changed {
+        save_map(&map);
+    }
+}
+
+/// Drop the local record of a takeover's provider once the takeover is over.
+///
+/// It duplicates the manager's session, so keeping it — as `persist_agents`
+/// would — leaves a second, stale row for one session.
+fn forget_twin(mux: &dyn Multiplexer, rec: &ViewPane) {
+    if let Ok(store) = crate::state::StateStore::new() {
+        let _ = store.delete_agent(&crate::state::PaneKey {
+            backend: mux.name().to_string(),
+            instance: mux.instance_id(),
+            pane_id: rec.pane.clone(),
+        });
+    }
+}
+
+/// Forget the view recorded for `wire`, closing its pane if it is still ours.
+///
+/// Used when the session itself is deleted: a view or takeover left running
+/// would show a session that no longer exists.
+pub fn forget_view(mux: &dyn Multiplexer, wire: &str) {
+    let key = view_key(wire, mux);
+    let mut map = load_map();
+    if let Some(rec) = map.remove(&key) {
+        if still_our_view(mux, &rec) {
+            let _ = mux.kill_pane(&rec.pane);
+        }
+        save_map(&map);
     }
 }
 
@@ -98,14 +271,27 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
         return Ok(String::new());
     }
 
+    // Keyed by multiplexer instance, not by ref alone: a bare `%12` from a tmux
+    // server that has since restarted either does not exist or now belongs to an
+    // unrelated pane, and focusing someone else's pane is worse than reopening.
+    let key = view_key(&wire, mux);
     let mut map = load_map();
-    if let Some(pane) = map.get(&wire) {
-        // A pane the user closed is forgotten rather than focused.
-        if mux.capture_pane(pane, 1).is_some() {
-            mux.switch_to_pane(pane, None)?;
-            return Ok(pane.clone());
+    if let Some(recorded) = map.get(&key).cloned() {
+        // A pane the user closed -- or whose id now belongs to something else --
+        // is forgotten rather than focused.
+        if still_our_view(mux, &recorded) {
+            // Focusing is the point of reuse, but a focus that fails must not sink
+            // the open: tmux answers `no current client` when nothing is attached,
+            // and the already-streaming pane is still the right answer.
+            if let Err(e) = mux.switch_to_pane(&recorded.pane, None) {
+                mux.display_message(&format!(
+                    "{} is open but could not be focused: {e}",
+                    recorded.pane
+                ));
+            }
+            return Ok(recorded.pane);
         }
-        map.remove(&wire);
+        map.remove(&key);
     }
 
     let argv = match view.on_select {
@@ -144,7 +330,21 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
         window.as_deref(),
     )?;
 
-    map.insert(wire, pane.clone());
+    // Recorded with its pid, so a later selection can tell this pane from
+    // whatever inherits its id after a server restart.
+    let pid = mux
+        .get_live_pane_info(&pane)
+        .ok()
+        .flatten()
+        .and_then(|live| live.pid);
+    map.insert(
+        key,
+        ViewPane {
+            pane: pane.clone(),
+            pid,
+            takeover: false,
+        },
+    );
     save_map(&map);
     // The pane exists by now, so a focus failure must not discard it. tmux answers
     // `can't find pane: %N` when the launched command died before the switch
@@ -253,14 +453,14 @@ pub fn run(wire_ref: &str) -> Result<()> {
         });
     }
 
+    // Set when the takeover key fires. The exec happens after the loop, once the
+    // terminal has been handed back, so the provider starts on a clean screen.
+    let mut takeover: Option<crate::command::ade_takeover::Takeover> = None;
 
-    // Resolved before the alternate screen, so a backend-detection failure is
-    // readable instead of landing under a TUI.
-    let mux = crate::multiplexer::create_backend(crate::multiplexer::detect_backend());
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    let _guard = TerminalGuard;
+    let guard = TerminalGuard;
     let mut terminal = ratatui::Terminal::new(CrosstermBackend::new(stdout))?;
 
     loop {
@@ -283,20 +483,30 @@ pub fn run(wire_ref: &str) -> Result<()> {
                     KeyCode::Char('d') => {
                         client_action(&ade, &view.deny_args, &agent, &live, "denied");
                     }
-                    // Same contract as `muxix agents takeover <ref> --stop-ade`:
-                    // one press takes the session, stopping the manager's agent
-                    // for this id alone and interrupting whatever it was doing.
+                    // Takeover happens *in this pane*: the view serializes the
+                    // manager's writer and then becomes the provider itself.
+                    //
+                    // That binds the session to the pane -- quitting the provider
+                    // or its crashing ends the takeover and detaches -- and makes
+                    // a second takeover impossible, because the process holding
+                    // this key stops existing. Opening one in a pane of its own is
+                    // still available as `muxix agents takeover`.
                     KeyCode::Char('E') => {
-                        let msg = match crate::command::ade_takeover::execute(
-                            &ade,
-                            &agent,
-                            true,
-                            mux.as_ref(),
-                        ) {
-                            Ok(m) => m,
-                            Err(e) => format!("{e}"),
-                        };
-                        set_notice(&live, msg);
+                        match crate::command::ade_takeover::plan(&ade, &agent) {
+                            // A session muxix cannot resume leaves the view
+                            // running: it is still a usable client.
+                            Err(e) => set_notice(&live, format!("{e}")),
+                            Ok(plan) => {
+                                if let Err(e) =
+                                    crate::command::ade_takeover::serialize(&ade, &agent, &plan)
+                                {
+                                    set_notice(&live, format!("{e}"));
+                                } else {
+                                    takeover = Some(plan);
+                                    break;
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -314,6 +524,21 @@ pub fn run(wire_ref: &str) -> Result<()> {
         if let Some(child) = held.as_mut() {
             let _ = child.kill();
         }
+    }
+
+    // Hand the terminal back before the provider starts, since exec never runs
+    // Drop: the provider would otherwise inherit raw mode and the alternate
+    // screen, and paint over a view that is no longer there.
+    drop(terminal);
+    drop(guard);
+
+    if let Some(plan) = takeover {
+        mark_takeover(&agent);
+        // Only returns if the provider could not be started; on success this
+        // process has already been replaced by it.
+        return Err(crate::command::ade_takeover::exec_in_pane(
+            &plan.argv, &plan.cwd,
+        ));
     }
     Ok(())
 }
@@ -544,6 +769,7 @@ fn status_color(s: RuntimeStatus) -> Color {
         RuntimeStatus::Waiting => Color::Yellow,
         RuntimeStatus::Done => Color::Green,
         RuntimeStatus::Failed => Color::Red,
+        RuntimeStatus::Exited => Color::Gray,
         RuntimeStatus::Unknown => Color::DarkGray,
     }
 }
@@ -596,5 +822,21 @@ mod tests {
         // Misconfiguration (max < initial) must not turn into a fast retry loop
         // against a daemon that is already failing.
         assert_eq!(next_delay(5_000, 100), 5_000);
+    }
+
+    #[test]
+    fn a_quit_takeover_stays_exited_until_the_manager_is_busy_again() {
+        use crate::config::AdeTakeoverExit::{Exited, Manager};
+        use crate::multiplexer::AgentStatus::{Done, Waiting, Working};
+        // An idle session reads Done (paseo `idle`): the local session's end
+        // stays visible.
+        assert!(keeps_exited_mark(Exited, Some(Done)));
+        assert!(keeps_exited_mark(Exited, None));
+        // A turn from another device, running or blocked on a prompt, is newer
+        // than the takeover.
+        assert!(!keeps_exited_mark(Exited, Some(Working)));
+        assert!(!keeps_exited_mark(Exited, Some(Waiting)));
+        // Configured to follow the manager: never keep the mark.
+        assert!(!keeps_exited_mark(Manager, Some(Done)));
     }
 }

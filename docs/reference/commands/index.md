@@ -24,6 +24,7 @@ description: Complete reference for all muxix commands
 | [`path`](./path)               | Get the filesystem path of a worktree           |
 | [`dashboard`](./dashboard)     | TUI dashboard for monitoring agents             |
 | [`sidebar`](./sidebar)         | Live agent status sidebar in tmux               |
+| [`agents`](./agents)           | View, take over, and import manager sessions    |
 | [`config edit`](./config)      | Edit the global configuration file              |
 | [`init`](./init)               | Generate configuration file                     |
 | [`setup`](./setup)             | Install agent hooks, skills, plugins, and MCP   |

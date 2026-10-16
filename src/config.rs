@@ -100,6 +100,10 @@ pub struct StatusIcons {
     pub waiting: Option<String>,
     /// Icon shown when agent is done. Default: ✅
     pub done: Option<String>,
+    /// Icon shown when an agent's process has exited but its session is kept
+    /// (`persist_agents`). Default: ⏏
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exited: Option<String>,
 }
 
 impl StatusIcons {
@@ -113,6 +117,10 @@ impl StatusIcons {
 
     pub fn done(&self) -> &str {
         self.done.as_deref().unwrap_or("✅")
+    }
+
+    pub fn exited(&self) -> &str {
+        self.exited.as_deref().unwrap_or("⏏")
     }
 }
 
@@ -813,6 +821,13 @@ pub struct Config {
     /// Whether to use nerdfont icons (None = prompt user on first run)
     #[serde(default)]
     pub nerdfont: Option<bool>,
+
+    /// Keep an agent whose pane is gone, marked `exited`, instead of forgetting
+    /// it. Its provider session id survives with it, so the session can still be
+    /// resumed locally or from a manager's other devices. Off by default: the
+    /// agent list then grows until entries are deleted (`d` in the sidebar).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persist_agents: Option<bool>,
 
     /// Color theme for the dashboard
     #[serde(default)]
@@ -2886,6 +2901,22 @@ fn default_follow_max_delay_ms() -> u64 {
 }
 
 
+/// What a manager's session shows once a local takeover of it has been quit.
+///
+/// The manager usually still holds the session — paseo keeps the provider
+/// resident and reports `idle` — so its own status says nothing about the takeover
+/// having ended.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AdeTakeoverExit {
+    /// Show `exited` until the manager reports activity again (a turn sent from
+    /// another device), then follow the manager.
+    #[default]
+    Exited,
+    /// Show the manager's own status as soon as the takeover ends.
+    Manager,
+}
+
 /// What selecting an ADE agent in a muxix TUI does.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -2971,6 +3002,9 @@ pub struct AdeViewConfig {
     /// retried on a slow heartbeat instead of hammered.
     #[serde(default = "default_follow_max_delay_ms")]
     pub follow_reconnect_max_delay_ms: u64,
+    /// What a session shows after a local takeover of it is quit.
+    #[serde(default)]
+    pub on_takeover_exit: AdeTakeoverExit,
 }
 
 impl AdeViewConfig {
@@ -3034,6 +3068,9 @@ pub struct AdeStatusMap {
     pub done: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed: Vec<String>,
+    /// Process gone, session kept and resumable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exited: Vec<String>,
 }
 
 /// An agent-development-environment muxix drives through its CLI.
@@ -3054,9 +3091,18 @@ pub struct AdeConfig {
     pub list_args: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop_args: Vec<String>,
+    /// Permanently delete an agent. `{id}` is the agent id. Optional: without
+    /// it, deleting from muxix forgets its record and leaves the manager's copy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delete_args: Vec<String>,
     /// Adopt an already-running agent into muxix.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub import_args: Vec<String>,
+    /// Providers `import_args` accepts, by muxix agent kind (`claude`, `pi`, …).
+    /// Empty accepts any. The manager may not check this itself, and an import
+    /// with a provider it does not run can produce a broken agent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub import_providers: Vec<String>,
     /// JSON field holding an agent's id.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub id_field: String,
@@ -3105,7 +3151,9 @@ impl AdeConfig {
             (&mut self.send_args, &preset.send_args),
             (&mut self.list_args, &preset.list_args),
             (&mut self.stop_args, &preset.stop_args),
+            (&mut self.delete_args, &preset.delete_args),
             (&mut self.import_args, &preset.import_args),
+            (&mut self.import_providers, &preset.import_providers),
         ] {
             if mine.is_empty() {
                 *mine = theirs.clone();
@@ -3153,6 +3201,9 @@ impl AdeConfig {
             send_args: a(&["agent", "send", "{id}", "{text}"]),
             list_args: a(&["agent", "ls", "--json"]),
             stop_args: a(&["agent", "stop", "{id}"]),
+            // "interrupt if running, then hard-delete"; no confirmation flag
+            // exists, so it never blocks on a prompt.
+            delete_args: a(&["agent", "delete", "{id}"]),
             import_args: a(&[
                 "agent",
                 "import",
@@ -3163,13 +3214,22 @@ impl AdeConfig {
                 "{cwd}",
                 "--json",
             ]),
+            // `paseo provider ls` minus the providers muxix has no agent kind
+            // for (antigravity, muse).
+            import_providers: a(&["claude", "codex", "copilot", "opencode", "pi", "omp"]),
             id_field: "id".to_string(),
             status_field: "status".to_string(),
             status_map: AdeStatusMap {
                 starting: a(&["initializing"]),
                 working: a(&["running", "thinking"]),
-                waiting: a(&["idle", "waiting", "needs_input"]),
-                done: a(&["closed", "completed"]),
+                // paseo has no "needs input" lifecycle state: `idle` is a
+                // finished turn waiting for the next prompt, which is muxix's
+                // `done`. Mapping it to waiting made every idle session look
+                // blocked on a decision.
+                waiting: a(&["waiting", "needs_input"]),
+                done: a(&["idle", "completed"]),
+                // The agent's process is gone; its session is still resumable.
+                exited: a(&["closed"]),
                 failed: a(&["error"]),
             },
             owns_worktree: true,
@@ -3228,6 +3288,7 @@ impl AdeConfig {
                 follow_reconnect: true,
                 follow_reconnect_delay_ms: default_follow_delay_ms(),
                 follow_reconnect_max_delay_ms: default_follow_max_delay_ms(),
+                on_takeover_exit: AdeTakeoverExit::Exited,
             }),
         }
     }
@@ -4086,6 +4147,13 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   working: "🤖"
 #   waiting: "💬"
 #   done: "✅"
+#   exited: "⏏"
+
+# Keep an agent whose pane has gone, marked exited, instead of forgetting it.
+# Its session survives, so it can be resumed here or from a manager's other
+# devices; delete entries with `d` in the sidebar.
+# Default: false
+# persist_agents: false
 
 #-------------------------------------------------------------------------------
 # Projects

@@ -456,12 +456,33 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
     let inner = block.inner(area);
     f.render_widget(block, area);
     let list_area = render_template_error(f, app, inner);
+    let list_area = render_delete_prompt(f, app, list_area);
     app.list_area = list_area;
 
     match app.layout_mode {
         SidebarLayoutMode::Compact => render_compact_list(f, app, list_area),
         SidebarLayoutMode::Tiles => render_tile_list(f, app, list_area),
     }
+}
+
+/// The delete confirmation, drawn above the list so it cannot be missed.
+fn render_delete_prompt(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
+    let Some((_, prompt)) = &app.pending_delete else {
+        return area;
+    };
+    if area.height == 0 {
+        return area;
+    }
+    let height = wrapped_line_count(prompt, area.width as usize).min(area.height as usize) as u16;
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(height), Constraint::Min(0)])
+        .split(area);
+    let warning = Paragraph::new(prompt.as_str())
+        .style(Style::default().fg(app.palette.warning))
+        .wrap(Wrap { trim: false });
+    f.render_widget(warning, chunks[0]);
+    chunks[1]
 }
 
 fn render_template_error(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
@@ -949,6 +970,17 @@ pub(crate) fn status_icon_and_style(
                 vec![("\u{f0134}".to_string(), base_style)] // 󰄴 nf-md-check_circle
             } else {
                 tmux_style::parse_tmux_styles(app.status_icons.done(), base_style)
+            };
+            (spans, base_style)
+        }
+        // Dimmed like an idle row, but with a mark of its own: the session is
+        // kept and resumable, so it must not read as finished or as empty.
+        Some(AgentStatus::Exited) => {
+            let base_style = Style::default().fg(app.palette.dimmed);
+            let spans = if use_nf && app.status_icons.exited.is_none() {
+                vec![("\u{f0a7a}".to_string(), base_style)] // nf-md-power_plug_off
+            } else {
+                tmux_style::parse_tmux_styles(app.status_icons.exited(), base_style)
             };
             (spans, base_style)
         }

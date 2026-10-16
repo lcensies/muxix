@@ -803,6 +803,13 @@ enum Commands {
         reference: String,
     },
 
+    /// Delete an agent after a native confirmation (internal use)
+    #[command(hide = true, name = "_delete-agent")]
+    DeleteAgent {
+        /// Agent reference, as listed in the sidebar
+        reference: String,
+    },
+
     /// Sync sidebar into a window (internal use, called by tmux hooks)
     #[command(hide = true, name = "_sidebar-sync")]
     SidebarSync {
@@ -1116,6 +1123,13 @@ pub enum AgentsCommand {
         #[arg(long)]
         ade: Option<String>,
     },
+    /// Open the session view for a manager's agent, or focus it when already
+    /// open. Same action the sidebar performs on select, so it can be bound to a
+    /// key for quick switching.
+    View {
+        /// Agent reference as printed by `muxix agents`
+        reference: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1396,6 +1410,7 @@ pub fn run() -> Result<()> {
             Some(AgentsCommand::Import { reference, ade }) => {
                 command::agents::import(&reference, ade.as_deref())
             }
+            Some(AgentsCommand::View { reference }) => command::agents::view(&reference),
         },
         Commands::Runtimes { json } => crate::agent::runtime::registry::print_runtimes(json),
         Commands::Project { command } => match command {
@@ -1572,6 +1587,7 @@ pub fn run() -> Result<()> {
         },
         Commands::SidebarRun => command::sidebar::run_sidebar(),
         Commands::AdeView { reference } => command::ade_view::run(&reference),
+        Commands::DeleteAgent { reference } => command::agents::delete_by_ref(&reference),
         Commands::SidebarSync { window } => command::sidebar::sync(window.as_deref()),
         Commands::SidebarReflow { window } => command::sidebar::reflow(window.as_deref()),
         Commands::SidebarReflowAll => command::sidebar::reflow_all(),

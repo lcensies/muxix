@@ -315,6 +315,7 @@ impl App {
         // Fold them in so the dashboard shows the same set as the sidebar.
         let (foreign, _problems) = crate::agent::runtime::registry::foreign_agent_panes();
         self.all_agents.extend(foreign);
+        crate::command::ade_view::apply_takeovers(self.mux.as_ref(), &mut self.all_agents);
 
         // Load interrupted pane IDs from daemon runtime state
         if let Ok(store) = StateStore::new() {

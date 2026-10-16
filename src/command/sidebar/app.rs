@@ -198,6 +198,10 @@ pub struct SidebarApp {
     pub pending_count: Option<usize>,
     /// A `g` was pressed and awaits a second `g`.
     pub pending_g: bool,
+    /// An agent awaiting delete confirmation, with the prompt shown for it. The
+    /// row is captured when `d` is pressed, so a refresh that reorders the list
+    /// cannot change which agent Enter deletes.
+    pub pending_delete: Option<(AgentPane, String)>,
     /// Cached horizontal chip hitboxes for top bar mouse hit testing.
     pub horizontal_hitboxes: Vec<HitBox>,
     /// First agent index rendered in the horizontal top bar.
@@ -271,6 +275,7 @@ impl SidebarApp {
             project_headers: Vec::new(),
             pending_count: None,
             pending_g: false,
+            pending_delete: None,
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width: 24,
@@ -395,6 +400,7 @@ impl SidebarApp {
             project_headers: Vec::new(),
             pending_count: None,
             pending_g: false,
+            pending_delete: None,
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width,
@@ -783,6 +789,56 @@ impl SidebarApp {
             h += 1; // bottom separator
         }
         h
+    }
+
+    /// Ask to delete the selected agent. Nothing is removed until Enter.
+    pub fn begin_delete(&mut self) {
+        let Some(agent) = self
+            .list_state
+            .selected()
+            .and_then(|idx| self.agents.get(idx))
+            .cloned()
+        else {
+            return;
+        };
+        let question = crate::command::agents::delete_prompt(&agent);
+
+        // Natively first: tmux's own prompt sits on its prompt line, outside the
+        // sidebar's narrow pane, and stays until answered. The confirmed command
+        // re-resolves the row, so nothing captured here goes stale.
+        if let Ok(exe) = std::env::current_exe() {
+            let argv = vec![
+                exe.display().to_string(),
+                "_delete-agent".to_string(),
+                agent.pane_id.clone(),
+            ];
+            let native = format!("{question} (Enter/y delete, any other key cancels) ");
+            if matches!(self.mux.confirm_then_run(&native, &argv), Ok(true)) {
+                return;
+            }
+        }
+
+        // A backend with no native confirmation: ask in the sidebar itself.
+        let prompt = format!("{question}  Enter delete · any other key cancels");
+        self.pending_delete = Some((agent, prompt));
+    }
+
+    pub fn cancel_delete(&mut self) {
+        if self.pending_delete.take().is_some() {
+            self.mux.display_message("delete cancelled");
+        }
+    }
+
+    pub fn confirm_delete(&mut self) {
+        let Some((agent, _)) = self.pending_delete.take() else {
+            return;
+        };
+        let msg = match crate::command::agents::delete_agent(self.mux.as_ref(), &agent) {
+            Ok(m) => m,
+            Err(e) => format!("delete failed, nothing removed: {e}"),
+        };
+        self.mux.display_message(&msg);
+        super::daemon_ctrl::signal_daemon();
     }
 
     pub fn jump_to_selected(&mut self) {

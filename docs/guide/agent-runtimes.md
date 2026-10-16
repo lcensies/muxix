@@ -153,20 +153,24 @@ ade:
     list_args:  [agent, ls, --json]
     stop_args:  [agent, stop, "{id}"]
     import_args: [agent, import, "{session}", --provider, "{provider}", --cwd, "{cwd}", --json]
+    import_providers: [claude, codex, copilot, opencode, pi, omp]
     id_field: id
     status_field: status
     status_map:
       working: [running, thinking]
       waiting: [waiting, needs_input]
-      done:    [closed, completed]
+      done:    [idle, completed]
+      exited:  [closed]
       failed:  [error]
 ```
 
 Statuses map onto one neutral set: `starting`, `working`, `waiting`, `done`,
-`failed`, `unknown`. `failed` is separate from `done` on purpose — a manager
+`exited`, `failed`, `unknown`. `failed` is separate from `done` on purpose — a manager
 reporting an error must never render as successful completion. Paseo's real
 lifecycle states (`initializing`, `idle`, `running`, `error`, `closed`) are
-covered by the built-in preset.
+covered by the built-in preset. Paseo has no needs-input state: `idle` is a
+finished turn, so it maps to `done`, and `closed` (process gone, session still
+resumable) to `exited`.
 
 Paseo ships as a built-in preset; the block above only tweaks it. A state the
 map does not cover becomes `unknown` rather than a guess.
@@ -246,6 +250,7 @@ ade:
       follow_reconnect: true     # default
       follow_reconnect_delay_ms: 500
       follow_reconnect_max_delay_ms: 10000
+      on_takeover_exit: exited   # default; or `manager`
 ```
 
 `state_args` renders the view's chrome — status, mode, model, pending
@@ -335,6 +340,32 @@ append-only transcript. It serializes writers for that session and hands the
 session back when the local agent exits, so any device can use it afterwards.
 Note that an `idle` agent is not an unattended one: the provider process stays
 resident between turns, so idle describes the turn, not the absence of a writer.
+
+`muxix agents takeover` refuses while the manager may still hold a writer —
+every state but `exited` — unless `--stop-ade` is given; `E` in a view does that
+step itself. Stopping interrupts a turn in flight, so take over an **idle**
+session: paseo's `agent stop` is a no-op there and nothing is lost. A `working`
+one gets its turn cut off.
+
+Pressing `E` in a view takes over **in that pane**, and the session is bound to
+it: quitting the provider, or its crashing, ends the takeover. Because the
+manager keeps reporting `idle` throughout, muxix tracks the takeover itself.
+While it runs, the session shows the provider's live status; once it is quit,
+`view.on_takeover_exit` decides what it shows:
+
+| Value | After a takeover is quit |
+|---|---|
+| `exited` | `exited`, until the manager reports a turn underway (working, or waiting on a prompt) — one sent from another device — then the manager's status. Default. |
+| `manager` | The manager's own status straight away. |
+
+### Deleting a session
+
+`delete_args` lets muxix delete an agent in the manager when you delete it from
+the sidebar (`d`). The paseo preset uses `[agent, delete, "{id}"]`, a hard
+delete. The manager is asked first and muxix forgets its own record only once
+that succeeds; a manager with no `delete_args` keeps its copy. Muxix refuses
+to render a blank `{id}` into this template, since paseo treats the id as an
+optional prefix and a blank one would match every agent it has.
 
 ## Project sync
 

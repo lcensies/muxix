@@ -692,6 +692,31 @@ impl Multiplexer for TmuxBackend {
         let _ = self.tmux_cmd(&["display-message", text]);
     }
 
+    fn confirm_then_run(&self, prompt: &str, argv: &[String]) -> Result<bool> {
+        // The command is parsed twice — by tmux, then by `sh -c` for run-shell —
+        // so only tokens that need no quoting in either go through natively.
+        // Anything else falls back to the caller's own prompt rather than risk
+        // a mis-quoted delete.
+        let plain = |t: &String| {
+            !t.is_empty()
+                && t
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "/._:%@+=-".contains(c))
+        };
+        if argv.is_empty() || !argv.iter().all(plain) {
+            return Ok(false);
+        }
+        // `-b` so a confirmed command never blocks the client that answered.
+        let command = format!("run-shell -b '{}'", argv.join(" "));
+        // The prompt is expanded like status-left, where `#` starts a sequence.
+        let prompt = prompt.replace('#', "##");
+        // `-y`: Enter confirms as well as `y`; every other key cancels.
+        // `-b`: return at once. Without it the call blocks until answered,
+        // freezing the sidebar for as long as the prompt is open.
+        self.tmux_cmd(&["confirm-before", "-b", "-y", "-p", &prompt, &command])?;
+        Ok(true)
+    }
+
     fn kill_pane(&self, pane_id: &str) -> Result<()> {
         self.tmux_cmd(&["kill-pane", "-t", pane_id])
     }
@@ -1062,6 +1087,19 @@ fn inject_status_format(format: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn confirm_refuses_argv_that_would_need_quoting() {
+        // Declining returns before any tmux call, so this needs no server. A
+        // token with a quote, space or `;` could break out of run-shell's
+        // single quotes, so the caller must use its own prompt instead.
+        let t = TmuxBackend::new();
+        for bad in ["it's", "a b", "x;rm", "$(id)", ""] {
+            let argv = vec!["/bin/muxix".to_string(), bad.to_string()];
+            assert!(!t.confirm_then_run("q?", &argv).unwrap(), "{bad:?}");
+        }
+        assert!(!t.confirm_then_run("q?", &[]).unwrap());
+    }
 
     #[test]
     fn test_inject_status_format_standard() {

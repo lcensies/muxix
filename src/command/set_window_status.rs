@@ -85,6 +85,7 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
                 AgentStatus::Working => (config.status_icons.working(), false),
                 AgentStatus::Waiting => (config.status_icons.waiting(), true),
                 AgentStatus::Done => (config.status_icons.done(), true),
+                AgentStatus::Exited => (config.status_icons.exited(), true),
             };
 
             // Ensure the status format is applied so the icon actually shows up

@@ -228,6 +228,7 @@ done check, and sleeping indicator. Defaults depend on whether you have
 | Waiting  | 💬                    | nf-fa-comment      |
 | Done     | ✅                    | nf-md-check_circle |
 | Sleeping | 💤                    | nf-md-sleep        |
+| Exited   | ⏏                     | nf-md-power_plug_off |
 
 Override per state under top-level `status_icons`. Any value set here
 wins over both the emoji and nerdfont defaults, so you can mix and match.
@@ -238,6 +239,7 @@ status_icons:
   working: "🤖"
   waiting: "💬"
   done: "✅"
+  exited: "⏏"
 ```
 
 ## Examples

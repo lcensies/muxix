@@ -56,12 +56,14 @@ fn format_status_label(status: AgentStatus, config: &config::Config, use_icons: 
             AgentStatus::Working => config.status_icons.working().to_string(),
             AgentStatus::Waiting => config.status_icons.waiting().to_string(),
             AgentStatus::Done => config.status_icons.done().to_string(),
+            AgentStatus::Exited => config.status_icons.exited().to_string(),
         }
     } else {
         match status {
             AgentStatus::Working => "working".to_string(),
             AgentStatus::Waiting => "waiting".to_string(),
             AgentStatus::Done => "done".to_string(),
+            AgentStatus::Exited => "exited".to_string(),
         }
     }
 }

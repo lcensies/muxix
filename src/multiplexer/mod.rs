@@ -260,6 +260,16 @@ pub trait Multiplexer: Send + Sync {
         crate::muxix_evt!("ui.notice", text = text);
     }
 
+    /// Ask the user to confirm, natively, and run `argv` only if they do.
+    ///
+    /// Returns `Ok(true)` when the backend took over the prompt — the answer then
+    /// arrives later, out of band — and `Ok(false)` when it has no native
+    /// confirmation, so the caller asks in its own UI instead.
+    fn confirm_then_run(&self, prompt: &str, argv: &[String]) -> Result<bool> {
+        let _ = (prompt, argv);
+        Ok(false)
+    }
+
     /// Whether jumping to a pane should exit the dashboard.
     /// Defaults to true. Override to return false to keep the dashboard open after jumping.
     fn should_exit_on_jump(&self) -> bool {

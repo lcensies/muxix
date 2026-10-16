@@ -24,6 +24,7 @@ pub enum SidebarAction {
     ToggleSleeping,
     HalfPageDown,
     HalfPageUp,
+    DeleteSelected,
 }
 
 pub const SIDEBAR_BINDINGS: &[Binding<SidebarAction>] = &[
@@ -101,6 +102,14 @@ pub const SIDEBAR_BINDINGS: &[Binding<SidebarAction>] = &[
         palette: true,
         contexts: &[SIDEBAR],
     },
+    Binding {
+        action: Some(SidebarAction::DeleteSelected),
+        chords: &[K::key('d')],
+        hint: "d",
+        label: "Delete agent",
+        palette: true,
+        contexts: &[SIDEBAR],
+    },
 ];
 
 /// Apply a resolved sidebar action to the app.
@@ -118,12 +127,25 @@ pub fn apply_action(app: &mut SidebarApp, action: SidebarAction) {
         SidebarAction::ToggleSleeping => app.toggle_sleeping(),
         SidebarAction::HalfPageDown => app.half_page_down(),
         SidebarAction::HalfPageUp => app.half_page_up(),
+        SidebarAction::DeleteSelected => app.begin_delete(),
     }
 }
 
 /// Full key entry point: vim-style pending state (`gg`, count prefixes)
 /// resolved first, then the binding registry.
 pub fn handle_key(app: &mut SidebarApp, chord: K) {
+    // A pending delete owns the keyboard: only Enter confirms, and every other
+    // key cancels — so a stray Enter typed after moving the selection can never
+    // delete the wrong agent. Checked first because Esc is otherwise Quit.
+    if app.pending_delete.is_some() {
+        if chord == K::code(KeyCode::Enter) {
+            app.confirm_delete();
+        } else {
+            app.cancel_delete();
+        }
+        return;
+    }
+
     // `g` pending: a second `g` selects first; anything else cancels the
     // prefix and is processed normally.
     if app.pending_g {
@@ -209,6 +231,23 @@ mod tests {
 
     fn nav_app() -> SidebarApp {
         SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a", "/tmp/x/a", "/tmp/x/a"])
+    }
+
+    #[test]
+    fn a_pending_delete_is_cancelled_by_any_key_but_enter() {
+        // Only Enter confirms. Every other key cancels and is consumed, so Esc and
+        // q do not also close the sidebar, and j does not move the selection onto
+        // an agent that a following Enter would then delete.
+        for chord in [K::code(KeyCode::Esc), K::key('q'), K::key('j'), K::key('d')] {
+            let mut app = nav_app();
+            app.list_state.select(Some(0));
+            let agent = app.agents[0].clone();
+            app.pending_delete = Some((agent, "prompt".to_string()));
+            handle_key(&mut app, chord);
+            assert!(app.pending_delete.is_none(), "{chord:?}");
+            assert!(!app.should_quit, "{chord:?}");
+            assert_eq!(app.list_state.selected(), Some(0), "{chord:?}");
+        }
     }
 
     #[test]

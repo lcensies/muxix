@@ -77,7 +77,7 @@ pub(super) fn kill_daemon() {
 }
 
 /// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
-pub(super) fn signal_daemon() {
+pub(crate) fn signal_daemon() {
     if let Some(pid) = daemon_pid() {
         let _ = std::process::Command::new("kill")
             .args(["-USR1", &pid])

@@ -100,6 +100,8 @@ pub enum RuntimeStatus {
     /// Ended in failure. Distinct from `Done`: a manager that reports an error
     /// must not be rendered as successful completion.
     Failed,
+    /// The process is gone, the session is not. Neither success nor failure.
+    Exited,
     /// Reported something with no neutral equivalent. Never guessed at.
     Unknown,
 }
@@ -112,6 +114,7 @@ impl RuntimeStatus {
             RuntimeStatus::Waiting => "waiting",
             RuntimeStatus::Done => "done",
             RuntimeStatus::Failed => "failed",
+            RuntimeStatus::Exited => "exited",
             RuntimeStatus::Unknown => "unknown",
         }
     }
@@ -123,6 +126,7 @@ impl From<crate::multiplexer::AgentStatus> for RuntimeStatus {
             crate::multiplexer::AgentStatus::Working => RuntimeStatus::Working,
             crate::multiplexer::AgentStatus::Waiting => RuntimeStatus::Waiting,
             crate::multiplexer::AgentStatus::Done => RuntimeStatus::Done,
+            crate::multiplexer::AgentStatus::Exited => RuntimeStatus::Exited,
         }
     }
 }
@@ -270,6 +274,7 @@ impl RuntimeAgent {
                 RuntimeStatus::Working => Some(AgentStatus::Working),
                 RuntimeStatus::Waiting => Some(AgentStatus::Waiting),
                 RuntimeStatus::Done => Some(AgentStatus::Done),
+                RuntimeStatus::Exited => Some(AgentStatus::Exited),
                 // Starting, Failed, and Unknown have no pane-status equivalent.
                 // Leaving it unset renders neutrally instead of misreporting —
                 // a failed agent shown as Done would read as success.

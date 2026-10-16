@@ -28,6 +28,32 @@ pub struct StateStore {
     base_path: PathBuf,
 }
 
+/// What reconcile does with an agent whose process is gone.
+#[derive(Debug, PartialEq, Eq)]
+enum Retirement {
+    /// Delete the record: what happens without `persist_agents`.
+    Forget,
+    /// Keep the record and mark it exited.
+    MarkExited,
+    /// Kept and marked on an earlier pass; leave it untouched.
+    AlreadyExited,
+}
+
+fn retirement(persist: bool, status: Option<crate::multiplexer::AgentStatus>) -> Retirement {
+    match (persist, status) {
+        (false, _) => Retirement::Forget,
+        (true, Some(crate::multiplexer::AgentStatus::Exited)) => Retirement::AlreadyExited,
+        (true, _) => Retirement::MarkExited,
+    }
+}
+
+fn persist_agents_enabled() -> bool {
+    crate::config::Config::load(None)
+        .ok()
+        .and_then(|c| c.persist_agents)
+        .unwrap_or(false)
+}
+
 impl StateStore {
     /// Create a new StateStore using XDG_STATE_HOME.
     ///
@@ -456,6 +482,45 @@ impl StateStore {
         let _ = fs::remove_file(path);
     }
 
+    /// Deal with an agent whose process is gone: forget it, or keep it `Exited`.
+    ///
+    /// Keeping it retains the provider session id, which is what lets the session
+    /// be resumed here or adopted by a manager after the pane is gone. `persist`
+    /// is filled on first use so reconcile reads config only when it has to.
+    fn retire_agent(
+        &self,
+        mut state: AgentState,
+        mux: &dyn crate::multiplexer::Multiplexer,
+        persist: &mut Option<bool>,
+        kept: &mut Vec<crate::multiplexer::AgentPane>,
+    ) -> Result<()> {
+        let persist = *persist.get_or_insert_with(persist_agents_enabled);
+        match retirement(persist, state.status) {
+            Retirement::Forget => {
+                self.delete_agent(&state.pane_key)?;
+                let _ = mux.clear_status(&state.pane_key.pane_id);
+                return Ok(());
+            }
+            Retirement::MarkExited => {
+                state.status = Some(crate::multiplexer::AgentStatus::Exited);
+                state.status_ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs());
+                self.upsert_agent(&state)?;
+                let _ = mux.clear_status(&state.pane_key.pane_id);
+            }
+            // Already marked on an earlier tick: rewriting it every tick would
+            // churn the state file and its timestamps for nothing.
+            Retirement::AlreadyExited => {}
+        }
+        kept.push(state.to_agent_pane(
+            state.session_name.clone().unwrap_or_default(),
+            state.window_name.clone().unwrap_or_default(),
+        ));
+        Ok(())
+    }
+
     /// Load agents with reconciliation against live multiplexer state.
     ///
     /// Uses batched pane queries for performance, with backend-specific fallback validation.
@@ -479,6 +544,9 @@ impl StateStore {
         let current_boot_id = mux.server_boot_id().unwrap_or(None);
 
         let mut valid_agents = Vec::new();
+        // Read only when an agent has actually gone, so a tick with nothing dead
+        // costs no config load.
+        let mut persist: Option<bool> = None;
         let backend = mux.name();
         let instance = mux.instance_id();
 
@@ -517,9 +585,8 @@ impl StateStore {
                             "reconcile: preserving agent from previous server lifecycle for resurrect"
                         );
                     } else {
-                        info!(pane_id, "reconcile: removing agent, pane no longer exists");
-                        self.delete_agent(&state.pane_key)?;
-                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                        info!(pane_id, "reconcile: agent's pane no longer exists");
+                        self.retire_agent(state, mux, &mut persist, &mut valid_agents)?;
                     }
                 }
                 Some(live) if live.pid.is_some_and(|pid| pid != state.pane_pid) => {
@@ -535,10 +602,9 @@ impl StateStore {
                             pane_id,
                             stored_pid = state.pane_pid,
                             live_pid = live.pid.unwrap_or(0),
-                            "reconcile: removing agent, pane PID changed (pane ID recycled)"
+                            "reconcile: agent's pane PID changed (pane ID recycled)"
                         );
-                        self.delete_agent(&state.pane_key)?;
-                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                        self.retire_agent(state, mux, &mut persist, &mut valid_agents)?;
                     }
                 }
                 Some(live)
@@ -559,10 +625,12 @@ impl StateStore {
                             pane_id,
                             stored_command = state.command,
                             live_command = live.current_command.as_deref().unwrap_or(""),
-                            "reconcile: removing agent, foreground command changed"
+                            "reconcile: agent's foreground command changed (agent exited)"
                         );
-                        self.delete_agent(&state.pane_key)?;
-                        let _ = mux.clear_status(&state.pane_key.pane_id);
+                        // The usual way an agent ends: quit in its pane, which
+                        // drops back to the shell. The pane outlives it, so this
+                        // is the path `persist_agents` most needs to cover.
+                        self.retire_agent(state, mux, &mut persist, &mut valid_agents)?;
                     }
                 }
                 Some(live) => {
@@ -871,6 +939,22 @@ mod tests {
                 .provider_session_id
                 .as_deref(),
             Some("89430a6d-0049-4809-bf4d-a263bc6c4661")
+        );
+    }
+
+    #[test]
+    fn a_gone_agent_is_forgotten_unless_agents_persist() {
+        use crate::multiplexer::AgentStatus;
+        // Off must be today's behavior exactly, whatever the agent last reported.
+        for status in [None, Some(AgentStatus::Working), Some(AgentStatus::Exited)] {
+            assert_eq!(retirement(false, status), Retirement::Forget, "{status:?}");
+        }
+        // On keeps it, and a record already marked is not rewritten every tick.
+        assert_eq!(retirement(true, Some(AgentStatus::Working)), Retirement::MarkExited);
+        assert_eq!(retirement(true, None), Retirement::MarkExited);
+        assert_eq!(
+            retirement(true, Some(AgentStatus::Exited)),
+            Retirement::AlreadyExited
         );
     }
 

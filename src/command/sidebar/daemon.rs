@@ -1674,6 +1674,9 @@ pub fn run() -> Result<()> {
             // shows the work you started from your phone next to the work in
             // your panes.
             agents.extend(ade_agents(&mut last_ade_poll));
+            // A session taken over locally shows the takeover's status, not the
+            // manager's `idle`, and `exited` once it is quit.
+            crate::command::ade_view::apply_takeovers(mux.as_ref(), &mut agents);
 
             let (position, layout_mode) = {
                 let cfg = config.lock().unwrap();

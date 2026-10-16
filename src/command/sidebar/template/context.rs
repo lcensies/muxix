@@ -178,6 +178,7 @@ impl<'a> RowContext<'a> {
                 Some(AgentStatus::Working) => "Working".to_string(),
                 Some(AgentStatus::Waiting) => "Waiting".to_string(),
                 Some(AgentStatus::Done) => "Done".to_string(),
+                Some(AgentStatus::Exited) => "Exited".to_string(),
                 None => String::new(),
             },
             TokenId::Idx => (self.idx + 1).to_string(),

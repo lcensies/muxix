@@ -177,7 +177,7 @@ fn project_window(
         name: window_name,
         cwd,
     })?;
-    run_in_pane(mux, &pane, argv)?;
+    let pane = run_in_pane(mux, &pane, cwd, argv)?;
     // Best effort: the window exists either way, and a failed switch must not
     // read as a failed open.
     let _ = mux.switch_to_session("", &entry.name);
@@ -199,25 +199,32 @@ fn current_session_window(
         name: window_name,
         cwd,
     })?;
-    run_in_pane(mux, &pane, argv)?;
+    let pane = run_in_pane(mux, &pane, cwd, argv)?;
     Ok(pane)
 }
 
-/// Start `argv` in an already-created pane.
+/// Make `argv` the process of an already-created pane, replacing its shell.
 ///
-/// There is no create-window-with-argv primitive, so the window primitives take
-/// the same quoted-line path `projects::start` uses for layout commands.
+/// Typing the command into the window's shell instead would leave that shell as
+/// the pane's process: when the view (or the provider a takeover execs into it)
+/// exits, the pane drops back to a prompt and lives on under the pid muxix
+/// recorded, so the session still looks open and selecting it focuses a bare
+/// shell. Respawning ties the pane's lifetime to the command's.
 fn run_in_pane(
     mux: &dyn crate::multiplexer::Multiplexer,
     pane: &str,
+    cwd: &std::path::Path,
     argv: &[String],
-) -> Result<()> {
+) -> Result<String> {
+    if mux.supports_direct_exec() {
+        return mux.respawn_pane_argv(pane, cwd, argv);
+    }
     let line = argv
         .iter()
         .map(|a| crate::shell::shell_quote(a))
         .collect::<Vec<_>>()
         .join(" ");
-    mux.send_keys(pane, &line)
+    mux.respawn_pane(pane, cwd, Some(&line))
 }
 
 fn split_beside_current(

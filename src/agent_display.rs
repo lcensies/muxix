@@ -66,6 +66,15 @@ pub fn extract_project_name(path: &Path) -> String {
             return name.to_string_lossy().to_string();
         }
 
+        // A linked worktree has a `.git` *file* pointing into its main repo, so
+        // it belongs to that project rather than to its own directory name —
+        // which for an ADE-created worktree is a random word.
+        if git_path.is_file()
+            && let Some(name) = worktree_main_repo_name(&git_path)
+        {
+            return name;
+        }
+
         // Fallback: check for sibling pattern (project__worktrees/)
         if let Some(name) = ancestor.file_name() {
             let name_str = name.to_string_lossy();
@@ -82,6 +91,22 @@ pub fn extract_project_name(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string_lossy().to_string())
+}
+
+/// The main repository's directory name for a linked worktree's `.git` file.
+///
+/// Only the worktree shape, `gitdir: <repo>/.git/worktrees/<name>`, is accepted.
+/// A submodule's file points at `<parent>/.git/modules/<name>` and keeps being
+/// its own project.
+fn worktree_main_repo_name(git_file: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(git_file).ok()?;
+    let gitdir = Path::new(contents.trim().strip_prefix("gitdir:")?.trim());
+    let worktrees = gitdir.parent()?;
+    let dot_git = worktrees.parent()?;
+    if worktrees.file_name()? != "worktrees" || dot_git.file_name()? != ".git" {
+        return None;
+    }
+    Some(dot_git.parent()?.file_name()?.to_string_lossy().to_string())
 }
 
 /// Source of a sidebar label, used internally by `resolve_labels`.
@@ -398,6 +423,33 @@ mod tests {
         std::fs::create_dir_all(project_dir.join(".git")).unwrap();
 
         assert_eq!(extract_project_name(&worktree_dir), "myproject");
+    }
+
+    #[test]
+    fn a_worktree_outside_its_repo_belongs_to_the_main_repo() {
+        // An ADE puts worktrees under its own directory with random names
+        // (paseo: ~/.paseo/worktrees/<hash>/exciting-puma), so neither an
+        // enclosing `.git` dir nor a `__worktrees` suffix exists. The `.git` file
+        // is the only thing that names the project.
+        let temp = tempfile::TempDir::new().unwrap();
+        let repo = temp.path().join("muxix");
+        std::fs::create_dir_all(repo.join(".git").join("worktrees").join("exciting-puma")).unwrap();
+        let wt = temp.path().join("ade").join("2oxz0xh8").join("exciting-puma");
+        std::fs::create_dir_all(&wt).unwrap();
+        let gitdir = repo.join(".git").join("worktrees").join("exciting-puma");
+        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+        assert_eq!(extract_project_name(&wt), "muxix");
+    }
+
+    #[test]
+    fn a_submodule_is_not_mistaken_for_a_worktree() {
+        // A submodule's `.git` file points into `<parent>/.git/modules/`; it is
+        // its own project, and grouping it under the parent would be wrong.
+        let temp = tempfile::TempDir::new().unwrap();
+        let sub = temp.path().join("vendor-lib");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join(".git"), "gitdir: /x/parent/.git/modules/vendor-lib\n").unwrap();
+        assert_eq!(extract_project_name(&sub), "vendor-lib");
     }
 
     #[test]
