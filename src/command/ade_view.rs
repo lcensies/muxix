@@ -203,27 +203,22 @@ pub fn run(wire_ref: &str) -> Result<()> {
     // Session output. Streamed into scrollback verbatim: the ADE's `--json` is
     // a no-op on this subcommand, so there is no structured form to render and
     // scraping its text would be a parser for an undocumented format.
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let child_slot: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
     if let Some(args) = ade.view_command(&agent) {
-        let mut child = Command::new(ade.command())
-            .args(&args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("{} {}", ade.command(), args.join(" ")))?;
-        if let Some(out) = child.stdout.take() {
-            // The manager's own client times out against its daemon
-            // (DAEMON_REQUEST_TIMEOUT) and exits; without a marker the body just
-            // stops updating and the view looks live but frozen.
-            spawn_reader(
-                out,
-                Arc::clone(&live),
-                tx.clone(),
-                Some("-- the manager's log stream ended; reopen the view to follow again --"),
-            );
-        }
-        if let Some(err) = child.stderr.take() {
-            spawn_reader(err, Arc::clone(&live), tx.clone(), None);
-        }
+        let command = ade.command().to_string();
+        let follow = FollowPolicy {
+            reconnect: view.follow_reconnect,
+            delay_ms: view.follow_reconnect_delay_ms,
+            max_delay_ms: view.follow_reconnect_max_delay_ms,
+        };
+        let live = Arc::clone(&live);
+        let tx = tx.clone();
+        let stop = Arc::clone(&stop);
+        let slot = Arc::clone(&child_slot);
+        std::thread::spawn(move || {
+            follow_loop(&command, &args, follow, &live, &tx, &stop, &slot);
+        });
     }
 
     // Chrome. Polled because the ADE pushes no events; the same trade the rest
@@ -311,35 +306,146 @@ pub fn run(wire_ref: &str) -> Result<()> {
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+
+    // The follow loop would otherwise reconnect forever against a pane that is
+    // gone, leaving the manager's client running after the view is closed.
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Ok(mut held) = child_slot.lock() {
+        if let Some(child) = held.as_mut() {
+            let _ = child.kill();
+        }
+    }
     Ok(())
+}
+
+/// How the view reacts when the log stream dies.
+#[derive(Debug, Clone, Copy)]
+struct FollowPolicy {
+    reconnect: bool,
+    delay_ms: u64,
+    max_delay_ms: u64,
+}
+
+/// Keep the session's log stream alive for as long as the view is open.
+///
+/// The manager's client is not a durable stream: paseo's gives up on its own
+/// daemon after a hardcoded request timeout and exits with
+/// `DAEMON_REQUEST_TIMEOUT`. Nothing outside can lengthen that timeout, so the
+/// view treats an exit as expected and reconnects, backing off so a daemon that
+/// is genuinely down is retried on a heartbeat rather than hammered.
+///
+/// A stream that delivered output resets the backoff: that is the difference
+/// between a flaky request and a daemon that is not coming back.
+fn follow_loop(
+    command: &str,
+    args: &[String],
+    policy: FollowPolicy,
+    live: &Arc<Live>,
+    tx: &mpsc::Sender<Tick>,
+    stop: &Arc<std::sync::atomic::AtomicBool>,
+    slot: &Arc<Mutex<Option<std::process::Child>>>,
+) {
+    use std::sync::atomic::Ordering;
+
+    let mut delay = policy.delay_ms.max(1);
+    loop {
+        let spawned = Command::new(command)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+        let mut child = match spawned {
+            Ok(c) => c,
+            Err(e) => {
+                // The command itself is wrong (missing binary, bad args), which
+                // retrying cannot fix.
+                push_body(live, format!("-- cannot run {command}: {e} --"));
+                let _ = tx.send(Tick::Redraw);
+                return;
+            }
+        };
+
+        if let Some(err) = child.stderr.take() {
+            spawn_reader(err, Arc::clone(live), tx.clone());
+        }
+        let out = child.stdout.take();
+        // Published so closing the view can kill the stream instead of leaving
+        // the manager's client running against a pane that is gone.
+        if let Ok(mut held) = slot.lock() {
+            *held = Some(child);
+        }
+
+        let mut delivered = 0usize;
+        if let Some(out) = out {
+            use io::BufRead;
+            for line in io::BufReader::new(out).lines().map_while(Result::ok) {
+                delivered += 1;
+                push_body(live, line);
+                if tx.send(Tick::Redraw).is_err() {
+                    return;
+                }
+            }
+        }
+
+        // Reap it, so a view open for hours does not accumulate zombies.
+        let finished = slot.lock().ok().and_then(|mut held| held.take());
+        if let Some(mut child) = finished {
+            let _ = child.wait();
+        }
+
+        if stop.load(Ordering::Relaxed) || tx.send(Tick::Redraw).is_err() {
+            return;
+        }
+        if !policy.reconnect {
+            push_body(
+                live,
+                "-- the manager's log stream ended; reopen the view to follow again --".to_string(),
+            );
+            let _ = tx.send(Tick::Redraw);
+            return;
+        }
+
+        if delivered > 0 {
+            delay = policy.delay_ms.max(1);
+        }
+        push_body(live, format!("-- stream ended; reconnecting in {delay}ms --"));
+        let _ = tx.send(Tick::Redraw);
+        std::thread::sleep(Duration::from_millis(delay));
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        delay = next_delay(delay, policy.max_delay_ms);
+    }
+}
+
+/// Double the delay up to the ceiling.
+fn next_delay(current: u64, max: u64) -> u64 {
+    current.saturating_mul(2).min(max.max(current))
+}
+
+/// Append one line to the scrollback, trimming the oldest.
+fn push_body(live: &Arc<Live>, line: String) {
+    if let Ok(mut body) = live.body.lock() {
+        body.push(line);
+        let overflow = body.len().saturating_sub(SCROLLBACK);
+        if overflow > 0 {
+            body.drain(0..overflow);
+        }
+    }
 }
 
 fn spawn_reader<R: io::Read + Send + 'static>(
     stream: R,
     live: Arc<Live>,
     tx: mpsc::Sender<Tick>,
-    end_notice: Option<&'static str>,
 ) {
     std::thread::spawn(move || {
         use io::BufRead;
-        let reader = io::BufReader::new(stream);
-        for line in reader.lines().map_while(Result::ok) {
-            if let Ok(mut body) = live.body.lock() {
-                body.push(line);
-                let overflow = body.len().saturating_sub(SCROLLBACK);
-                if overflow > 0 {
-                    body.drain(0..overflow);
-                }
-            }
+        for line in io::BufReader::new(stream).lines().map_while(Result::ok) {
+            push_body(&live, line);
             if tx.send(Tick::Redraw).is_err() {
                 break;
             }
-        }
-        if let Some(note) = end_notice {
-            if let Ok(mut body) = live.body.lock() {
-                body.push(note.to_string());
-            }
-            let _ = tx.send(Tick::Redraw);
         }
     });
 }
@@ -473,5 +579,22 @@ mod tests {
         // find again, which is worse than letting the backend name it.
         assert_eq!(render_window_name("", &agent()), None);
         assert_eq!(render_window_name("   ", &agent()), None);
+    }
+
+    #[test]
+    fn the_reconnect_delay_doubles_up_to_a_ceiling() {
+        // A daemon that is down must be retried on a heartbeat, not hammered;
+        // and the ceiling must hold rather than overflow back to a tight loop.
+        assert_eq!(next_delay(500, 10_000), 1_000);
+        assert_eq!(next_delay(8_000, 10_000), 10_000);
+        assert_eq!(next_delay(10_000, 10_000), 10_000);
+        assert_eq!(next_delay(u64::MAX, 10_000), u64::MAX);
+    }
+
+    #[test]
+    fn a_ceiling_below_the_current_delay_never_shortens_it() {
+        // Misconfiguration (max < initial) must not turn into a fast retry loop
+        // against a daemon that is already failing.
+        assert_eq!(next_delay(5_000, 100), 5_000);
     }
 }

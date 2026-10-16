@@ -243,6 +243,9 @@ ade:
       placement:    project   # default; also `window` or `split`
       takeover_placement: project
       window_name:  "{runtime}-{id}"
+      follow_reconnect: true     # default
+      follow_reconnect_delay_ms: 500
+      follow_reconnect_max_delay_ms: 10000
 ```
 
 `state_args` renders the view's chrome — status, mode, model, pending
@@ -287,6 +290,38 @@ process that owns a transcript, and closing a read-only view must not end it.
 Placement is advisory. A backend without session support, or a `cwd` belonging
 to no registered project, falls back — `project` → `window` → `split` — because
 where the session sits matters less than being able to open it at all.
+
+### Surviving the manager's own timeouts
+
+The manager's log client is not a durable stream. paseo's gives up on its own
+daemon and exits:
+
+```
+Warning: failed to fetch existing timeline DaemonConnectionError: Timeout waiting for message (2000ms)
+  code: 'DAEMON_REQUEST_TIMEOUT'
+```
+
+That timeout is **not reachable from outside**: `paseo agent logs` has no flag
+for it, and nothing in the shipped client reads an environment variable for it
+(the only `PASEO_*TIMEOUT*` vars are for provider refresh and shell env). So the
+view does not try to ask for a longer one — it treats the exit as expected and
+reconnects:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `follow_reconnect` | `true` | Respawn the log command when it exits. |
+| `follow_reconnect_delay_ms` | `500` | First delay before reconnecting. |
+| `follow_reconnect_max_delay_ms` | `10000` | Ceiling for the doubling delay. |
+
+The delay doubles on each consecutive failure up to the ceiling, and a stream
+that delivered output resets it — that is the difference between one flaky
+request and a daemon that is not coming back. Each attempt appends a line to the
+body (`-- stream ended; reconnecting in 500ms --`), so a reconnecting view never
+looks like a live one.
+
+With `follow_reconnect: false` the view says the stream ended and stops, which
+is the old behavior. Closing the view kills the stream command, so the manager's
+client does not outlive the pane.
 
 ### Taking a session over natively
 

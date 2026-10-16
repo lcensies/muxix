@@ -2877,6 +2877,14 @@ pub enum AdeViewPlacement {
     /// it is the only placement every backend can honour.
     Split,
 }
+fn default_follow_delay_ms() -> u64 {
+    500
+}
+
+fn default_follow_max_delay_ms() -> u64 {
+    10_000
+}
+
 
 /// What selecting an ADE agent in a muxix TUI does.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
@@ -2946,6 +2954,23 @@ pub struct AdeViewConfig {
     /// `{runtime}` the manager's name.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub window_name: String,
+    /// Respawn the log stream when the manager's client exits.
+    ///
+    /// paseo's client gives up on its own daemon after a hardcoded request
+    /// timeout and exits (`DAEMON_REQUEST_TIMEOUT`). That timeout is not
+    /// reachable from outside -- `agent logs` has no flag for it and nothing in
+    /// the client reads an env var -- so the view survives it by reconnecting
+    /// rather than by asking for a longer one.
+    #[serde(default = "default_true")]
+    pub follow_reconnect: bool,
+    /// First reconnect delay, doubled on each consecutive failure up to
+    /// `follow_reconnect_max_delay_ms`. A stream that delivers output resets it.
+    #[serde(default = "default_follow_delay_ms")]
+    pub follow_reconnect_delay_ms: u64,
+    /// Ceiling for the doubling delay, so a daemon that is down for a while is
+    /// retried on a slow heartbeat instead of hammered.
+    #[serde(default = "default_follow_max_delay_ms")]
+    pub follow_reconnect_max_delay_ms: u64,
 }
 
 impl AdeViewConfig {
@@ -2983,10 +3008,11 @@ impl AdeViewConfig {
         if self.window_name.is_empty() {
             self.window_name = preset.window_name.clone();
         }
-        // `on_select` and the two placements are enums with a meaningful default,
-        // so there is no empty state to detect: a user value already won when
-        // serde parsed the block, and an absent key legitimately means the
-        // default. Copying the preset's over it would ignore an explicit choice.
+        // `on_select`, the placements and the follow knobs are scalars with a
+        // meaningful default, so there is no empty state to detect: a user value
+        // already won when serde parsed the block, and an absent key legitimately
+        // means the default. Copying the preset's over it would ignore an
+        // explicit choice, so the preset's values match the serde defaults.
         self
     }
 }
@@ -3199,6 +3225,9 @@ impl AdeConfig {
                 placement: AdeViewPlacement::Project,
                 takeover_placement: AdeViewPlacement::Project,
                 window_name: "{runtime}-{id}".to_string(),
+                follow_reconnect: true,
+                follow_reconnect_delay_ms: default_follow_delay_ms(),
+                follow_reconnect_max_delay_ms: default_follow_max_delay_ms(),
             }),
         }
     }
