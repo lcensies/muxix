@@ -32,6 +32,7 @@ pub enum AgentKind {
     KiroCli,
     Vibe,
     Copilot,
+    Hermes,
 }
 
 impl AgentKind {
@@ -49,6 +50,7 @@ impl AgentKind {
             AgentKind::KiroCli => "kiro-cli",
             AgentKind::Vibe => "vibe",
             AgentKind::Copilot => "copilot",
+            AgentKind::Hermes => "hermes",
         }
     }
 
@@ -65,6 +67,7 @@ impl AgentKind {
             "kiro-cli" => Some(AgentKind::KiroCli),
             "vibe" => Some(AgentKind::Vibe),
             "copilot" => Some(AgentKind::Copilot),
+            "hermes" => Some(AgentKind::Hermes),
             _ => None,
         }
     }
@@ -83,6 +86,7 @@ impl AgentKind {
             AgentKind::KiroCli => "K",
             AgentKind::Vibe => "V",
             AgentKind::Copilot => "CP",
+            AgentKind::Hermes => "\u{2624}",
         }
     }
 
@@ -100,6 +104,7 @@ impl AgentKind {
             AgentKind::KiroCli => "Kiro",
             AgentKind::Vibe => "Vibe",
             AgentKind::Copilot => "Copilot",
+            AgentKind::Hermes => "Hermes",
         }
     }
 
@@ -121,6 +126,9 @@ impl AgentKind {
             // prime-agent's own TUI theme primary (`theme/prime.json`).
             AgentKind::Prime => Color::Rgb(0x7c, 0x6f, 0xaf),
             AgentKind::OpenCode => Color::Blue,
+            // Hermes has no brand sheet; gold evokes its mark (the caduceus,
+            // \u{2624}) and stays distinct from every color above.
+            AgentKind::Hermes => Color::Rgb(0xd4, 0xaf, 0x37),
             AgentKind::KiroCli => return None,
         })
     }
@@ -357,6 +365,7 @@ mod tests {
         assert_eq!(classify("gemini", ""), Some("gemini".into()));
         assert_eq!(classify("pi", ""), Some("pi".into()));
         assert_eq!(classify("vibe", ""), Some("vibe".into()));
+        assert_eq!(classify("hermes", ""), Some("hermes".into()));
     }
 
     #[test]
@@ -492,6 +501,7 @@ mod tests {
             AgentKind::KiroCli,
             AgentKind::Vibe,
             AgentKind::Copilot,
+            AgentKind::Hermes,
         ];
         for kind in all {
             assert!(!kind.default_icon().is_empty(), "{:?} icon empty", kind);

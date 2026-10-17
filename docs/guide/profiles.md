@@ -270,6 +270,7 @@ Profiling needs a single env var that relocates the agent's whole config dir:
 | copilot | `COPILOT_HOME` | config, customizations and session history together |
 | omp | `PI_CODING_AGENT_DIR` | omp honors pi's var name; muxix sets it per process |
 | prime-agent | `PRIME_AGENT_CODING_AGENT_DIR` | sessions redirected separately via `PRIME_AGENT_SESSION_DIR` |
+| hermes | `HERMES_HOME` | whole home moves — config, state.db, sessions — no separate session redirect |
 | gemini, opencode | — | no single config-dir redirect upstream; `muxix exec --profile` refuses |
 
 Per-key support follows the agent's own layout:
@@ -281,6 +282,11 @@ Per-key support follows the agent's own layout:
 | `add_skills`, `exclude_skills` | the overlay's `skills/`; **not Codex**, which reads user skills from `$HOME/.agents/skills`, outside `CODEX_HOME` |
 | `add_prompt_components`, `exclude_prompt_components`, `exclude_features` | the agent's instructions file: pi/omp `APPEND_SYSTEM.md` (or `muxix-pre-inject.md`), claude `muxix-bootstrap.md`, codex `AGENTS.md`, copilot `copilot-instructions.md` |
 | `exclude_paths` | any agent (raw path escape hatch) |
+
+Hermes also keeps a sticky `~/.hermes/active_profile` naming a non-default
+profile. When set, it re-homes hermes to that profile's own directory and
+overrides the `HERMES_HOME` muxix sets for the invocation — clear or update it
+if a muxix profile unexpectedly has no effect on hermes.
 
 For a file muxix shares with you (codex `AGENTS.md`, copilot
 `copilot-instructions.md`) the overlay copy keeps the base file's own text and

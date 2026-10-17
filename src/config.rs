@@ -2426,7 +2426,7 @@ impl SandboxConfig {
             let expanded = dir.replace("{agent}", agent);
             Some(crate::util::expand_tilde(&expanded))
         } else {
-            use crate::agent::setup::{copilot, omp, pi, prime};
+            use crate::agent::setup::{copilot, hermes, omp, pi, prime};
             let home = home::home_dir()?;
             match agent {
                 "claude" => Some(home.join(".claude")),
@@ -2436,6 +2436,7 @@ impl SandboxConfig {
                 "omp" => omp::agent_dir(),
                 "prime-agent" => prime::agent_dir(),
                 "pi" => pi::agent_dir(),
+                "hermes" => hermes::agent_dir(),
                 "gemini" => Some(home.join(".gemini")),
                 "codex" => Some(home.join(".codex")),
                 "opencode" => Some(home.join(".local/share/opencode")),
@@ -4407,7 +4408,7 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #       default: ponytail
 #
 #   # Per-agent additions. Keys are agent display names, lowercased
-#   # ("claude code", "opencode", "pi", "omp", "codex", "gemini cli").
+#   # ("claude code", "opencode", "pi", "omp", "codex", "gemini cli", "hermes").
 #   agents:
 #     claude code:
 #       add_skills:

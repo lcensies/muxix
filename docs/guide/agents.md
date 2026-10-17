@@ -8,7 +8,7 @@ muxix is designed with AI agent workflows in mind. Run multiple agents in parall
 
 ## Agent integration
 
-When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`, muxix automatically injects the prompt into panes running the configured agent command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`, `pi`, or whatever you've set via the `agent` config or `--agent` flag) without requiring any `.muxix.yaml` changes:
+When you provide a prompt via `--prompt`, `--prompt-file`, or `--prompt-editor`, muxix automatically injects the prompt into panes running the configured agent command (e.g., `claude`, `codex`, `opencode`, `gemini`, `kiro-cli`, `vibe`, `pi`, `hermes`, or whatever you've set via the `agent` config or `--agent` flag) without requiring any `.muxix.yaml` changes:
 
 - Panes with a command matching the configured agent are automatically started with the given prompt.
 - You can keep your `.muxix.yaml` pane configuration simple (e.g., `panes: [{ command: "<agent>" }]`) and let muxix handle prompt injection at runtime.
@@ -92,7 +92,7 @@ Named agents are global-only for security. Define them in `~/.config/muxix/confi
 
 ## Per-pane agents
 
-muxix automatically recognizes built-in agent commands (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`, `pi`) in pane commands. This means prompt injection works without the `<agent>` placeholder or a matching `agent` config:
+muxix automatically recognizes built-in agent commands (`claude`, `gemini`, `codex`, `opencode`, `kiro-cli`, `vibe`, `pi`, `hermes`) in pane commands. This means prompt injection works without the `<agent>` placeholder or a matching `agent` config:
 
 ```yaml
 panes:

@@ -8,6 +8,7 @@ pub mod claude;
 pub mod codex;
 pub mod copilot;
 pub mod gemini;
+pub mod hermes;
 pub mod omp;
 pub mod opencode;
 pub mod pi;
@@ -34,13 +35,14 @@ pub enum Agent {
     Pi,
     Omp,
     Prime,
+    Hermes,
 }
 
 impl Agent {
     /// Every known coding agent, in display order. Keep exhaustive: code that
     /// must handle each agent (e.g. MCP support) iterates this, so a new variant
     /// surfaces everywhere it needs a decision.
-    pub const ALL: [Agent; 8] = [
+    pub const ALL: [Agent; 9] = [
         Agent::Claude,
         Agent::Codex,
         Agent::Copilot,
@@ -49,6 +51,7 @@ impl Agent {
         Agent::Pi,
         Agent::Omp,
         Agent::Prime,
+        Agent::Hermes,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -61,6 +64,7 @@ impl Agent {
             Agent::Pi => "pi",
             Agent::Omp => "omp",
             Agent::Prime => "prime-agent",
+            Agent::Hermes => "Hermes Agent",
         }
     }
 
@@ -81,6 +85,7 @@ impl Agent {
             // Matches the binary's own stem, which is what the three identity
             // axes are keyed on — `prime` alone would miss `from_command`.
             Agent::Prime => "prime-agent",
+            Agent::Hermes => "hermes",
         }
     }
 
@@ -142,11 +147,13 @@ pub fn settings_target(agent: Agent) -> Option<(PathBuf, SettingsFormat)> {
         Agent::Gemini => gemini::settings_file(),
         Agent::OpenCode => opencode::settings_file(),
         Agent::Copilot => copilot::settings_file(),
+        Agent::Hermes => hermes::settings_file(),
         Agent::Codex => None,
     }?;
-    // omp's store is YAML (`config.yml`); every other supported agent's is JSON.
+    // omp's store is YAML (`config.yml`); hermes' is also YAML (`config.yaml`);
+    // every other supported agent's is JSON.
     let format = match agent {
-        Agent::Omp => SettingsFormat::Yaml,
+        Agent::Omp | Agent::Hermes => SettingsFormat::Yaml,
         _ => SettingsFormat::Json,
     };
     Some((path, format))
@@ -291,6 +298,18 @@ pub fn check_all() -> Vec<AgentCheck> {
         });
     }
 
+    if let Some(reason) = hermes::detect() {
+        let status = match hermes::check() {
+            Ok(s) => s,
+            Err(e) => StatusCheck::Error(e.to_string()),
+        };
+        results.push(AgentCheck {
+            agent: Agent::Hermes,
+            reason,
+            status,
+        });
+    }
+
     results
 }
 
@@ -309,6 +328,7 @@ pub fn is_detected(agent: Agent) -> bool {
         Agent::Pi => pi::detect().is_some(),
         Agent::Omp => omp::detect().is_some(),
         Agent::Prime => prime::detect().is_some(),
+        Agent::Hermes => hermes::detect().is_some(),
     }
 }
 
@@ -323,6 +343,7 @@ pub fn install(agent: Agent) -> Result<String> {
         Agent::Pi => pi::install(),
         Agent::Omp => omp::install(),
         Agent::Prime => prime::install(),
+        Agent::Hermes => hermes::install(),
     }
 }
 
@@ -354,8 +375,12 @@ pub fn signal_support(agent: Agent) -> SignalSupport {
         Agent::Omp => SignalSupport::Native,
         // prime-agent: the same pi extension, installed into ~/.prime/agent.
         Agent::Prime => SignalSupport::Native,
-        // No signal emission wired into these agents' configs yet.
-        Agent::Gemini | Agent::Codex | Agent::Copilot => SignalSupport::FallbackOnly,
+        // No signal emission wired into these agents' configs yet. hermes' shell
+        // hooks only drive window status (`muxix set-window-status`), not the
+        // pane-keyed `muxix signal` pipeline protocol.
+        Agent::Gemini | Agent::Codex | Agent::Copilot | Agent::Hermes => {
+            SignalSupport::FallbackOnly
+        }
     }
 }
 
@@ -505,6 +530,7 @@ pub fn bootstrap(
         // prompt fallback) can reach them through.
         Agent::Codex => codex::Bootstrapper::new().map(|b| Box::new(b) as _),
         Agent::Copilot => copilot::Bootstrapper::new().map(|b| Box::new(b) as _),
+        Agent::Hermes => hermes::Bootstrapper::new().map(|b| Box::new(b) as _),
     };
     match b {
         Some(b) => {
@@ -785,11 +811,15 @@ mod tests {
                 "{}: no skills dir",
                 agent.name()
             );
-            assert!(
-                matches!(mcp_support(agent), McpSupport::Supported(_)),
-                "{}: no MCP target",
-                agent.name()
-            );
+            // MCP: a target for every agent, except where the agent's only
+            // store is user-level — then an explicit reason, never silence.
+            match mcp_support(agent) {
+                McpSupport::Supported(_) => {}
+                McpSupport::Unsupported(reason) => {
+                    assert_eq!(agent, Agent::Hermes, "{}: no MCP target", agent.name());
+                    assert!(!reason.is_empty(), "{}: empty reason", agent.name());
+                }
+            }
 
             // Subagents and settings may be unsupported, but only with a reason.
             if subagents_dir(agent).is_none() {
@@ -831,9 +861,11 @@ mod tests {
                     let (path, format) =
                         settings_target(agent).unwrap_or_else(|| panic!("{}", agent.name()));
                     match format {
-                        SettingsFormat::Yaml => assert_eq!(
-                            path.extension().and_then(|e| e.to_str()),
-                            Some("yml"),
+                        SettingsFormat::Yaml => assert!(
+                            matches!(
+                                path.extension().and_then(|e| e.to_str()),
+                                Some("yml") | Some("yaml")
+                            ),
                             "{path:?}"
                         ),
                         SettingsFormat::Json => assert_eq!(
@@ -857,6 +889,16 @@ mod tests {
         let (copilot_path, copilot_format) = settings_target(Agent::Copilot).unwrap();
         assert!(copilot_path.ends_with("settings.json"), "{copilot_path:?}");
         assert_eq!(copilot_format, SettingsFormat::Json);
+    }
+
+    #[test]
+    fn hermes_settings_are_yaml_under_its_own_home() {
+        // hermes' store is `config.yaml` (not omp's `config.yml`), so a patch
+        // declared for it is merged as YAML into hermes' own home.
+        let (path, format) = settings_target(Agent::Hermes).unwrap();
+        assert!(path.ends_with("config.yaml"), "{path:?}");
+        assert_eq!(format, SettingsFormat::Yaml);
+        assert_ne!(path, settings_target(Agent::Omp).unwrap().0);
     }
 
     /// prime-agent is pi-shaped (JSON `settings.json`) but under its own dir,

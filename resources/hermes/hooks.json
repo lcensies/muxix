@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "pre_llm_call": [{ "command": "muxix set-window-status working" }],
+    "post_tool_call": [{ "command": "muxix set-window-status working" }],
+    "pre_approval_request": [{ "command": "muxix set-window-status waiting" }],
+    "on_session_end": [{ "command": "muxix set-window-status done" }]
+  },
+  "hooks_auto_accept": true
+}

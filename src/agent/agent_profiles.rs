@@ -106,6 +106,9 @@ pub fn config_dir_env(agent_id: &str) -> Option<&'static str> {
         // prime-agent renames pi's var after its own app name
         // (`piConfig.name` drives the `PRIME_AGENT_` prefix).
         "prime-agent" => Some("PRIME_AGENT_CODING_AGENT_DIR"),
+        // hermes' own home redirect; its sessions live inside it too, so no
+        // separate session_dir_env arm is needed.
+        "hermes" => Some("HERMES_HOME"),
         // gemini (`~/.gemini`) and opencode (`OPENCODE_CONFIG` names a *file*,
         // and the data/state dir overrides are not in a release) expose no
         // single config-dir redirect.
@@ -482,6 +485,9 @@ fn delta_shape(agent: Agent, bootstrap: Option<&crate::bootstrap::BootstrapConfi
             PathBuf::from("copilot-instructions.md"),
             InstructionsStyle::Sentinel,
         )),
+        // hermes seeds SOUL.md itself and never overwrites it, so sharing it
+        // (sentinel region) rather than owning it outright is the safe choice.
+        Agent::Hermes => Some((PathBuf::from("SOUL.md"), InstructionsStyle::Sentinel)),
         // Not profilable (no config-dir redirect), so never reached.
         Agent::Gemini | Agent::OpenCode => None,
     };
@@ -849,12 +855,10 @@ mod tests {
             session_dir_env("prime-agent"),
             Some("PRIME_AGENT_SESSION_DIR")
         );
-        // These keep transcripts under their redirected config dir, so there is
-        // nothing extra to point at.
         // These keep sessions under a dir that config_dir_env already redirects,
         // so there is nothing extra to point at: claude/codex/copilot inside the
         // config dir, omp inside its agent dir.
-        for agent in ["claude", "codex", "copilot", "omp"] {
+        for agent in ["claude", "codex", "copilot", "omp", "hermes"] {
             assert_eq!(session_dir_env(agent), None, "{agent}");
             assert!(
                 config_dir_env(agent).is_some(),
@@ -887,6 +891,8 @@ mod tests {
         assert_eq!(config_dir_env("copilot"), Some("COPILOT_HOME"));
         // omp honors pi's var name, not an OMP_-prefixed one.
         assert_eq!(config_dir_env("omp"), Some("PI_CODING_AGENT_DIR"));
+        // hermes' whole home (config, state.db, sessions) moves with HERMES_HOME.
+        assert_eq!(config_dir_env("hermes"), Some("HERMES_HOME"));
         // prime-agent renames it after its own app name.
         assert_eq!(
             config_dir_env("prime-agent"),

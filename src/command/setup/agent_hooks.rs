@@ -85,6 +85,10 @@ fn hook_target(agent: Agent) -> Option<HookTarget> {
         // and that pairing is unverified on the fork. Reported as a skip until
         // it is, rather than writing a hook nothing is known to run.
         Agent::Prime => None,
+        // hermes' own `config.yaml` hooks (installed by `hermes::install`) are
+        // the muxix status hooks only; declared agent-agnostic hooks have no
+        // wired translation yet. Reported as a skip rather than guessed.
+        Agent::Hermes => None,
     }
 }
 

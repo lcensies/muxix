@@ -336,7 +336,9 @@ fn plugin_items_for_agent(
         Agent::Prime => prime::install_plugin_from_url,
         Agent::Claude => claude::install_plugin,
         Agent::OpenCode => opencode::install_plugin,
-        Agent::Codex | Agent::Copilot | Agent::Gemini => {
+        // No plugin installer: hermes' catalog takes curated names, not the
+        // URL/npm specs muxix declares (see the hermes-agent-support proposal).
+        Agent::Codex | Agent::Copilot | Agent::Gemini | Agent::Hermes => {
             for spec in &specs {
                 out.push(ItemResult::skipped(
                     Section::Plugins,

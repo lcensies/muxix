@@ -670,7 +670,7 @@ pub fn apply_theme_for_agent(agent: Agent, config: &BootstrapConfig) -> Result<O
         Agent::Claude => claude::set_theme(theme)?,
         Agent::Gemini => gemini::set_theme(theme)?,
         Agent::OpenCode => opencode::set_theme(theme)?,
-        Agent::Codex | Agent::Copilot | Agent::Pi | Agent::Omp | Agent::Prime => {
+        Agent::Codex | Agent::Copilot | Agent::Pi | Agent::Omp | Agent::Prime | Agent::Hermes => {
             return Ok(None);
         }
     };
@@ -1072,6 +1072,9 @@ pub fn subagents_dir(agent: Agent) -> Option<PathBuf> {
         // `install_subagents_for_agent` rather than written in a shape Codex
         // would reject.
         Agent::Codex => None,
+        // hermes has no on-disk subagent definitions at all — delegation is
+        // runtime-only.
+        Agent::Hermes => None,
     }
 }
 
@@ -1094,6 +1097,9 @@ pub fn subagents_unsupported_reason(agent: Agent) -> Option<&'static str> {
             "Codex custom agents are TOML config layers (~/.codex/agents/*.toml), \
              not markdown subagent documents",
         ),
+        Agent::Hermes => {
+            Some("hermes has no on-disk subagent definitions — delegation is runtime-only")
+        }
         _ => subagents_dir(agent)
             .is_none()
             .then_some("no subagents directory for this agent"),
@@ -1345,11 +1351,13 @@ mod tests {
     #[test]
     fn subagents_dir_covers_every_markdown_agent() {
         // Agents whose subagents are markdown-with-frontmatter get a directory;
-        // Codex (TOML config layers) is the only declared exception.
+        // Codex (TOML config layers) and hermes (runtime-only delegation, no
+        // on-disk definitions at all) are the declared exceptions.
         for agent in Agent::ALL {
             let dir = subagents_dir(agent);
             match agent {
                 Agent::Codex => assert!(dir.is_none(), "codex has no markdown subagent dir"),
+                Agent::Hermes => assert!(dir.is_none(), "hermes has no subagent dir"),
                 _ => assert!(dir.is_some(), "{} has no subagents dir", agent.name()),
             }
         }
@@ -1373,12 +1381,18 @@ mod tests {
     }
 
     #[test]
-    fn only_codex_reports_a_subagent_unsupported_reason() {
+    fn only_codex_and_hermes_report_a_subagent_unsupported_reason() {
         for agent in Agent::ALL {
             let reason = subagents_unsupported_reason(agent);
             match agent {
                 Agent::Codex => {
                     assert!(reason.is_some_and(|r| r.contains("TOML")), "{reason:?}")
+                }
+                Agent::Hermes => {
+                    assert!(
+                        reason.is_some_and(|r| r.contains("runtime-only")),
+                        "{reason:?}"
+                    )
                 }
                 _ => assert!(
                     reason.is_none(),

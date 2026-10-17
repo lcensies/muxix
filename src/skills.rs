@@ -47,7 +47,7 @@ pub const BUNDLED_SKILLS: &[BundledSkill] = &[
 /// Return the skills base directory for a given agent.
 /// Returns None if the agent doesn't support skills.
 pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
-    use crate::agent::setup::{copilot, gemini, omp, pi, prime};
+    use crate::agent::setup::{copilot, gemini, hermes, omp, pi, prime};
     let home = home::home_dir()?;
     match agent {
         Agent::Claude => {
@@ -62,6 +62,7 @@ pub fn skills_dir(agent: Agent) -> Option<PathBuf> {
         Agent::Prime => Some(prime::agent_dir()?.join("skills")),
         Agent::Gemini => Some(gemini::skills_dir()?),
         Agent::Copilot => copilot::skills_dir(),
+        Agent::Hermes => Some(hermes::agent_dir()?.join("skills")),
         // Codex reads USER-scope skills from `$HOME/.agents/skills` — the shared
         // cross-agent location, NOT a path under `CODEX_HOME`. A profile that
         // redirects `CODEX_HOME` therefore cannot isolate Codex's skills.

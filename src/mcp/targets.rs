@@ -373,6 +373,12 @@ pub fn mcp_support(agent: Agent) -> McpSupport {
         Agent::Pi => McpSupport::Supported(Box::new(PiTarget)),
         Agent::Omp => McpSupport::Supported(Box::new(OmpTarget)),
         Agent::Prime => McpSupport::Supported(Box::new(PrimeTarget)),
+        // hermes reads `mcp_servers:` only from its user-level `config.yaml`
+        // (upstream #69863 — no project-scoped file), so a per-project sync
+        // would leak one project's servers into every other project.
+        Agent::Hermes => {
+            McpSupport::Unsupported("MCP store is the user-level ~/.hermes/config.yaml")
+        }
     }
 }
 
@@ -623,18 +629,26 @@ mod tests {
 
     #[test]
     fn every_agent_has_an_mcp_target() {
-        // Every agent now has an adapter; `all_targets()` must list them all and
-        // no agent may report an "unsupported" reason.
+        // Every agent has an adapter except hermes, whose only MCP store is its
+        // user-level config.yaml: it must report a reason, never fall through
+        // silently.
         let supported: Vec<Agent> = all_targets().iter().map(|t| t.agent()).collect();
         for agent in Agent::ALL {
-            assert!(
+            assert_eq!(
                 supported.contains(&agent),
-                "{} has no MCP target",
+                agent != Agent::Hermes,
+                "{}: MCP target decision changed",
                 agent.name()
             );
         }
         for (agent, support) in support_overview() {
-            assert!(support.is_ok(), "{} reported unsupported", agent.name());
+            match agent {
+                Agent::Hermes => {
+                    let reason = support.expect_err("hermes must report unsupported");
+                    assert!(reason.contains("config.yaml"), "{reason}");
+                }
+                _ => assert!(support.is_ok(), "{} reported unsupported", agent.name()),
+            }
         }
     }
 

@@ -22,6 +22,7 @@ Muxix can display the status of the agent in your tmux window list, giving you a
 | Gemini CLI   | ✅ Supported                                                                |
 | omp          | ✅ Supported\*                                                              |
 | prime-agent  | ✅ Supported\*                                                              |
+| Hermes       | ✅ Supported\* (fallback-only)                                              |
 | Kiro         | [Tracking issue](https://github.com/kirodotdev/Kiro/issues/5440)            |
 | Mistral Vibe | [Tracking issue](https://github.com/mistralai/mistral-vibe/discussions/334) |
 
@@ -32,6 +33,7 @@ Muxix can display the status of the agent in your tmux window list, giving you a
 - **Pi**: No 💬 waiting state
 - **omp**: No 💬 waiting state; installs the same extension as pi into `~/.omp/agent/extensions/`
 - **prime-agent**: No 💬 waiting state; installs the same extension as pi into `~/.prime/agent/extensions/`
+- **Hermes**: status comes entirely from shell hooks written into `~/.hermes/config.yaml`; hermes is fallback-only for the `muxix signal` protocol, so these shell hooks are its only path to window status (see [Hermes setup](#hermes-setup))
 - **Kiro**: Hooks support is messy: requires a custom agent since the default can't be edited
 
 ## Status icons
@@ -48,7 +50,7 @@ Run `muxix setup` to automatically detect your agent CLIs and install status tra
 muxix setup
 ```
 
-This detects Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi, omp, and prime-agent by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Muxix will also prompt you on first run if it detects an agent without status tracking configured.
+This detects Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi, omp, prime-agent, and Hermes by checking for their configuration directories, then offers to install the appropriate hooks. For Claude Code, `CLAUDE_CONFIG_DIR` is respected when locating `settings.json`. Muxix will also prompt you on first run if it detects an agent without status tracking configured.
 
 Muxix automatically modifies your tmux `window-status-format` to display the status icons. This happens once per session and only affects the current tmux session (not your global config).
 
@@ -88,6 +90,14 @@ curl -o ~/.config/opencode/plugins/muxix-status.ts \
 ```
 
 Restart OpenCode for the plugin to take effect.
+
+## Hermes setup
+
+Hermes reports window status through shell hooks declared in `~/.hermes/config.yaml`: `pre_llm_call` and `post_tool_call` set `working`, `pre_approval_request` sets `waiting`, and `on_session_end` sets `done`. `muxix setup` merges a `hooks:` block running `muxix set-window-status` for those events into your `config.yaml`.
+
+Hermes gates every shell hook behind per-`(event, command)` first-use consent — an unapproved hook simply never fires, which would leave status permanently stale. To avoid that, `muxix setup` also sets `hooks_auto_accept: true` in `config.yaml`. This auto-approves **every** shell hook in that file, not just the ones muxix wrote, so review `config.yaml` if you rely on hermes' consent prompt for other hooks.
+
+Hermes does not implement the pipeline `muxix signal` protocol; it is a fallback-only agent that gets status exclusively through these shell hooks.
 
 ## Codex setup
 

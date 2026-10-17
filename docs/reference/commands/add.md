@@ -239,6 +239,7 @@ When an agent is configured, these commands are used automatically:
 | `opencode` | `opencode run`                                                           |
 | `kiro-cli` | `kiro-cli chat --no-interactive`                                         |
 | `pi`       | `pi -p`                                                                  |
+| `hermes`   | `hermes -z`                                                              |
 
 To override back to `llm` when an agent is configured, set `auto_name.command: "llm"`.
 

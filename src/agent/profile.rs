@@ -404,6 +404,40 @@ impl AgentProfile for CopilotProfile {
     }
 }
 
+pub struct HermesProfile;
+
+impl AgentProfile for HermesProfile {
+    fn name(&self) -> &'static str {
+        "hermes"
+    }
+
+    fn skip_permissions_flag(&self) -> Option<&'static str> {
+        Some("--yolo")
+    }
+
+    // `-q` seeds the first message and stays interactive on a TTY, unlike a
+    // one-shot `-p`-style flag.
+    fn prompt_flag(&self) -> Option<&'static str> {
+        Some("-q")
+    }
+
+    fn auto_name_command(&self) -> Option<&'static str> {
+        Some("hermes -z")
+    }
+
+    fn continue_flag(&self) -> Option<&'static str> {
+        Some("--continue")
+    }
+
+    fn resume_session_flag(&self) -> Option<&'static str> {
+        Some("--resume")
+    }
+
+    fn model_flag(&self) -> Option<&'static str> {
+        Some("--model")
+    }
+}
+
 pub struct DefaultProfile;
 
 impl AgentProfile for DefaultProfile {
@@ -426,6 +460,7 @@ static PROFILES: &[&dyn AgentProfile] = &[
     &VibeProfile,
     &KimiProfile,
     &CopilotProfile,
+    &HermesProfile,
 ];
 
 /// Check if a command matches a known agent profile.
