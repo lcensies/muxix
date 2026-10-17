@@ -116,8 +116,7 @@ pub const SIDEBAR_BINDINGS: &[Binding<SidebarAction>] = &[
 pub fn apply_action(app: &mut SidebarApp, action: SidebarAction) {
     match action {
         SidebarAction::Quit => {
-            app.quit_reason = Some("user keypress".to_string());
-            app.should_quit = true;
+            app.quit = Some(super::app::Quit::All("user keypress".to_string()));
         }
         SidebarAction::Next => app.next(),
         SidebarAction::Previous => app.previous(),
@@ -245,9 +244,16 @@ mod tests {
             app.pending_delete = Some((agent, "prompt".to_string()));
             handle_key(&mut app, chord);
             assert!(app.pending_delete.is_none(), "{chord:?}");
-            assert!(!app.should_quit, "{chord:?}");
+            assert!(app.quit.is_none(), "{chord:?}");
             assert_eq!(app.list_state.selected(), Some(0), "{chord:?}");
         }
+    }
+
+    #[test]
+    fn the_quit_key_shuts_every_sidebar_down() {
+        let mut app = nav_app();
+        handle_key(&mut app, K::key('q'));
+        assert!(matches!(app.quit, Some(super::super::app::Quit::All(_))));
     }
 
     #[test]

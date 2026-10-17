@@ -699,8 +699,7 @@ impl Multiplexer for TmuxBackend {
         // a mis-quoted delete.
         let plain = |t: &String| {
             !t.is_empty()
-                && t
-                    .chars()
+                && t.chars()
                     .all(|c| c.is_ascii_alphanumeric() || "/._:%@+=-".contains(c))
         };
         if argv.is_empty() || !argv.iter().all(plain) {

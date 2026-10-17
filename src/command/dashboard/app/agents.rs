@@ -187,7 +187,7 @@ impl App {
             match agent.status {
                 Some(AgentStatus::Waiting) => 0, // Waiting: needs input
                 Some(AgentStatus::Done) => 1,    // Done: needs review
-                Some(AgentStatus::Exited) => 4, // Exited: process gone, sort with stale
+                Some(AgentStatus::Exited) => 4,  // Exited: process gone, sort with stale
                 Some(AgentStatus::Working) => 2, // Working: no action needed
                 None => 3,                       // Unknown/other: lowest priority
             }
@@ -547,9 +547,11 @@ impl App {
             Some(AgentStatus::Done) => {
                 (self.config.status_icons.done(), self.palette.success, false)
             }
-            Some(AgentStatus::Exited) => {
-                (self.config.status_icons.exited(), self.palette.dimmed, false)
-            }
+            Some(AgentStatus::Exited) => (
+                self.config.status_icons.exited(),
+                self.palette.dimmed,
+                false,
+            ),
             None => ("", self.palette.text, false),
         };
 

@@ -12,7 +12,7 @@
 //! streams with `logs -f` rather than `attach`: attach claims the invoking
 //! terminal's stdin, which this pane needs for itself.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -114,7 +114,11 @@ fn mark_takeover(agent: &AgentRef) {
     let Some(pane) = mux.current_pane_id() else {
         return;
     };
-    let pid = mux.get_live_pane_info(&pane).ok().flatten().and_then(|l| l.pid);
+    let pid = mux
+        .get_live_pane_info(&pane)
+        .ok()
+        .flatten()
+        .and_then(|l| l.pid);
     let mut map = load_map();
     map.insert(
         view_key(&agent.to_wire(), mux.as_ref()),
@@ -143,7 +147,10 @@ fn keeps_exited_mark(
 ) -> bool {
     use crate::multiplexer::AgentStatus;
     mode == crate::config::AdeTakeoverExit::Exited
-        && !matches!(manager_status, Some(AgentStatus::Working | AgentStatus::Waiting))
+        && !matches!(
+            manager_status,
+            Some(AgentStatus::Working | AgentStatus::Waiting)
+        )
 }
 
 /// Fold local takeovers into the status of the manager sessions they belong to.
@@ -154,13 +161,35 @@ fn keeps_exited_mark(
 /// while the takeover runs, the session takes that agent's live status and the
 /// duplicate row is hidden; once it is gone, the duplicate's record is dropped
 /// and the session shows `exited` per `view.on_takeover_exit`.
-pub fn apply_takeovers(mux: &dyn Multiplexer, agents: &mut Vec<crate::multiplexer::AgentPane>) {
+///
+/// When the manager was listed successfully (`listed`), records of sessions it
+/// no longer has — deleted from another device — are dropped once their pane
+/// is no longer ours; a failed listing prunes nothing, since every session
+/// looks absent then.
+pub fn apply_takeovers(
+    mux: &dyn Multiplexer,
+    agents: &mut Vec<crate::multiplexer::AgentPane>,
+    listed: bool,
+) {
     let mut map = load_map();
+    let mut changed = false;
+    if listed {
+        let listed_wires: HashSet<String> = agents.iter().map(|a| a.pane_id.clone()).collect();
+        let suffix = format!("@{}/{}", mux.name(), mux.instance_id());
+        for key in unlisted_views(&map, &suffix, &listed_wires) {
+            if map.get(&key).is_some_and(|rec| !still_our_view(mux, rec)) {
+                map.remove(&key);
+                changed = true;
+            }
+        }
+    }
     if !map.values().any(|r| r.takeover) {
+        if changed {
+            save_map(&map);
+        }
         return;
     }
     let cfg = Config::load(None).unwrap_or_default();
-    let mut changed = false;
     // (pane, pid) of local rows that are a takeover's provider, not agents of
     // their own. Matched on pid too, so a recycled pane id is never hidden.
     let mut twins: Vec<(String, u32)> = Vec::new();
@@ -175,9 +204,9 @@ pub fn apply_takeovers(mux: &dyn Multiplexer, agents: &mut Vec<crate::multiplexe
         let Some(rec) = map.get(&key).cloned().filter(|r| r.takeover) else {
             continue;
         };
-        let twin = agents.iter().position(|a| {
-            a.pane_id == rec.pane && rec.pid.is_none_or(|pid| pid == a.pane_pid)
-        });
+        let twin = agents
+            .iter()
+            .position(|a| a.pane_id == rec.pane && rec.pid.is_none_or(|pid| pid == a.pane_pid));
         if let Some(t) = twin {
             twins.push((agents[t].pane_id.clone(), agents[t].pane_pid));
         }
@@ -208,6 +237,23 @@ pub fn apply_takeovers(mux: &dyn Multiplexer, agents: &mut Vec<crate::multiplexe
     if changed {
         save_map(&map);
     }
+}
+
+/// Keys of recorded views, on this multiplexer, whose session the manager no
+/// longer lists. Records for other multiplexer instances are not this
+/// instance's to judge.
+fn unlisted_views(
+    map: &BTreeMap<String, ViewPane>,
+    instance_suffix: &str,
+    listed_wires: &HashSet<String>,
+) -> Vec<String> {
+    map.keys()
+        .filter(|key| {
+            key.strip_suffix(instance_suffix)
+                .is_some_and(|wire| !listed_wires.contains(wire))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Drop the local record of a takeover's provider once the takeover is over.
@@ -350,7 +396,10 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
     // `can't find pane: %N` when the launched command died before the switch
     // landed, and throwing there would lose a pane the caller just recorded.
     if let Err(e) = mux.switch_to_pane(&pane, None) {
-        mux.display_message(&format!("opened {pane} for {} but could not focus it: {e}", agent.to_wire()));
+        mux.display_message(&format!(
+            "opened {pane} for {} but could not focus it: {e}",
+            agent.to_wire()
+        ));
     }
     Ok(pane)
 }
@@ -520,10 +569,10 @@ pub fn run(wire_ref: &str) -> Result<()> {
     // The follow loop would otherwise reconnect forever against a pane that is
     // gone, leaving the manager's client running after the view is closed.
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    if let Ok(mut held) = child_slot.lock() {
-        if let Some(child) = held.as_mut() {
-            let _ = child.kill();
-        }
+    if let Ok(mut held) = child_slot.lock()
+        && let Some(child) = held.as_mut()
+    {
+        let _ = child.kill();
     }
 
     // Hand the terminal back before the provider starts, since exec never runs
@@ -633,7 +682,10 @@ fn follow_loop(
         if delivered > 0 {
             delay = policy.delay_ms.max(1);
         }
-        push_body(live, format!("-- stream ended; reconnecting in {delay}ms --"));
+        push_body(
+            live,
+            format!("-- stream ended; reconnecting in {delay}ms --"),
+        );
         let _ = tx.send(Tick::Redraw);
         std::thread::sleep(Duration::from_millis(delay));
         if stop.load(Ordering::Relaxed) {
@@ -659,11 +711,7 @@ fn push_body(live: &Arc<Live>, line: String) {
     }
 }
 
-fn spawn_reader<R: io::Read + Send + 'static>(
-    stream: R,
-    live: Arc<Live>,
-    tx: mpsc::Sender<Tick>,
-) {
+fn spawn_reader<R: io::Read + Send + 'static>(stream: R, live: Arc<Live>, tx: mpsc::Sender<Tick>) {
     std::thread::spawn(move || {
         use io::BufRead;
         for line in io::BufReader::new(stream).lines().map_while(Result::ok) {
@@ -694,7 +742,7 @@ fn client_action(
     }
     let args = ade.render_args(template, &[("id", agent.id.as_str())]);
     match ade.run_client(&args) {
-        Ok(_) => set_notice(live, format!("{done}")),
+        Ok(_) => set_notice(live, done.to_string()),
         Err(e) => set_notice(live, format!("{e}")),
     }
 }
@@ -720,11 +768,12 @@ fn draw(f: &mut ratatui::Frame, agent: &AgentRef, live: &Arc<Live>) {
             status_label(s.status),
             Style::default().fg(status_color(s.status)),
         ));
-        for extra in [s.model.as_deref(), s.mode.as_deref()] {
-            if let Some(v) = extra {
-                chrome.push(Span::raw("  "));
-                chrome.push(Span::raw(v.to_string()));
-            }
+        for v in [s.model.as_deref(), s.mode.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            chrome.push(Span::raw("  "));
+            chrome.push(Span::raw(v.to_string()));
         }
         chrome.push(Span::raw("  "));
         chrome.push(match s.pending_permissions {
@@ -838,5 +887,26 @@ mod tests {
         assert!(!keeps_exited_mark(Exited, Some(Waiting)));
         // Configured to follow the manager: never keep the mark.
         assert!(!keeps_exited_mark(Manager, Some(Done)));
+    }
+
+    #[test]
+    fn only_this_instances_unlisted_sessions_are_candidates_for_pruning() {
+        let rec = |takeover| ViewPane {
+            pane: "%1".into(),
+            pid: Some(1),
+            takeover,
+        };
+        let map = BTreeMap::from([
+            ("paseo:gone@tmux/a".to_string(), rec(false)),
+            ("paseo:gone-takeover@tmux/a".to_string(), rec(true)),
+            ("paseo:here@tmux/a".to_string(), rec(false)),
+            // Another server's record: not ours to judge.
+            ("paseo:gone@tmux/b".to_string(), rec(false)),
+        ]);
+        let listed = HashSet::from(["paseo:here".to_string()]);
+        assert_eq!(
+            unlisted_views(&map, "@tmux/a", &listed),
+            vec!["paseo:gone-takeover@tmux/a", "paseo:gone@tmux/a"]
+        );
     }
 }

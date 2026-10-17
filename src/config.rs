@@ -2900,7 +2900,6 @@ fn default_follow_max_delay_ms() -> u64 {
     10_000
 }
 
-
 /// What a manager's session shows once a local takeover of it has been quit.
 ///
 /// The manager usually still holds the session — paseo keeps the provider
@@ -3199,7 +3198,9 @@ impl AdeConfig {
                 "{prompt}",
             ]),
             send_args: a(&["agent", "send", "{id}", "{text}"]),
-            list_args: a(&["agent", "ls", "--json"]),
+            // `-g`: every directory. Without it `ls` is scoped to the cwd the
+            // daemon happened to start in.
+            list_args: a(&["agent", "ls", "-g", "--json"]),
             stop_args: a(&["agent", "stop", "{id}"]),
             // "interrupt if running, then hard-delete"; no confirmation flag
             // exists, so it never blocks on a prompt.

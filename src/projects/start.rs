@@ -61,11 +61,7 @@ pub fn run(continue_session: bool, filter: Option<ProjectOpenFilter>) -> Result<
 }
 
 /// Start one tracked project and focus its session.
-pub fn open(
-    target: &str,
-    continue_session: bool,
-    filter: Option<ProjectOpenFilter>,
-) -> Result<()> {
+pub fn open(target: &str, continue_session: bool, filter: Option<ProjectOpenFilter>) -> Result<()> {
     let registry = Registry::load()?;
     let Some(entry) = registry.find(target).cloned() else {
         bail!("No tracked project matches '{target}'. Add it with 'muxix project add <dir>'.");

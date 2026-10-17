@@ -49,17 +49,61 @@ const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Agents owned by non-local runtimes, cached between polls.
 ///
-/// A failing or unavailable runtime yields nothing and leaves the previous list
-/// in place, so one bad call does not make agents flicker out of the sidebar.
-fn ade_agents(cache: &mut Option<(Instant, Vec<AgentPane>)>) -> Vec<AgentPane> {
-    if let Some((at, cached)) = cache
-        && at.elapsed() < ADE_POLL_INTERVAL
-    {
-        return cached.clone();
+/// A failing or unavailable runtime leaves the previous list in place, so one
+/// bad call (the manager's daemon restarting, say) does not make its sessions
+/// flicker out of the sidebar. The failure is logged once per distinct message.
+struct AdeAgents {
+    polled: Option<Instant>,
+    agents: Vec<AgentPane>,
+    last_problem: Option<String>,
+}
+
+impl AdeAgents {
+    fn new() -> Self {
+        Self {
+            polled: None,
+            agents: Vec::new(),
+            last_problem: None,
+        }
     }
-    let (panes, _problems) = crate::agent::runtime::registry::foreign_agent_panes();
-    *cache = Some((Instant::now(), panes.clone()));
-    panes
+
+    fn poll(&mut self) -> Vec<AgentPane> {
+        if let Some(at) = self.polled
+            && at.elapsed() < ADE_POLL_INTERVAL
+        {
+            return self.agents.clone();
+        }
+        let (panes, problems) = crate::agent::runtime::registry::foreign_agent_panes();
+        self.apply(Instant::now(), panes, problems)
+    }
+
+    fn apply(
+        &mut self,
+        now: Instant,
+        panes: Vec<AgentPane>,
+        problems: Vec<(String, String)>,
+    ) -> Vec<AgentPane> {
+        self.polled = Some(now);
+        if problems.is_empty() {
+            self.last_problem = None;
+            self.agents = panes;
+        } else {
+            let text = problems
+                .iter()
+                .map(|(name, why)| format!("{name}: {why}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            if self.last_problem.as_deref() != Some(&text) {
+                tracing::warn!(
+                    problems = %text,
+                    kept = self.agents.len(),
+                    "agent manager listing failed; keeping the last good list"
+                );
+                self.last_problem = Some(text);
+            }
+        }
+        self.agents.clone()
+    }
 }
 
 /// Compute socket path from instance_id.
@@ -1637,7 +1681,7 @@ pub fn run() -> Result<()> {
     let mut project_config_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
     // ADE listings shell out, so they run far less often than the tick.
-    let mut last_ade_poll: Option<(Instant, Vec<AgentPane>)> = None;
+    let mut ade = AdeAgents::new();
 
     while !term.load(Ordering::Relaxed) {
         // Coalesce dirty signals: SIGUSR1 sets the flag, we service it once
@@ -1673,10 +1717,14 @@ pub fn run() -> Result<()> {
             // them. Poll the runtimes for those and fold them in, so the sidebar
             // shows the work you started from your phone next to the work in
             // your panes.
-            agents.extend(ade_agents(&mut last_ade_poll));
+            agents.extend(ade.poll());
             // A session taken over locally shows the takeover's status, not the
             // manager's `idle`, and `exited` once it is quit.
-            crate::command::ade_view::apply_takeovers(mux.as_ref(), &mut agents);
+            crate::command::ade_view::apply_takeovers(
+                mux.as_ref(),
+                &mut agents,
+                ade.last_problem.is_none(),
+            );
 
             let (position, layout_mode) = {
                 let cfg = config.lock().unwrap();
@@ -2135,6 +2183,21 @@ mod tests {
         assert_eq!(entry.branch, "feature");
         assert_eq!(entry.summary.number, 123);
         assert!(dirty_flag.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_failed_manager_listing_keeps_the_last_good_rows() {
+        let mut ade = AdeAgents::new();
+        let t0 = Instant::now();
+        let good = vec![working_agent("paseo:a", 0)];
+        assert_eq!(ade.apply(t0, good.clone(), vec![]).len(), 1);
+        // The daemon is restarting: the rows stay, the problem is remembered.
+        let kept = ade.apply(t0, vec![], vec![("paseo".into(), "ECONNREFUSED".into())]);
+        assert_eq!(kept.len(), 1);
+        assert!(ade.last_problem.is_some());
+        // It is back: its rows replace the retained ones.
+        assert!(ade.apply(t0, vec![], vec![]).is_empty());
+        assert!(ade.last_problem.is_none());
     }
 
     #[test]

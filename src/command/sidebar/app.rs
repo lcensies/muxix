@@ -148,14 +148,33 @@ impl TemplateError {
     }
 }
 
+/// Why the sidebar is stopping, and how far the stop reaches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Quit {
+    /// The user quit: every instance shuts down and layouts are restored.
+    All(String),
+    /// Nothing but the sidebar is left in this window. Only this instance
+    /// exits, so the window can close; the others keep running. Shutting them
+    /// all down here is what made every sidebar vanish whenever a session
+    /// view was quit or a one-shot agent's window ended.
+    Window(String),
+}
+
+impl Quit {
+    pub fn reason(&self) -> &str {
+        match self {
+            Quit::All(r) | Quit::Window(r) => r,
+        }
+    }
+}
+
 /// Lightweight sidebar app state. No preview, git, PR, diff, or input mode.
 pub struct SidebarApp {
     pub mux: Arc<dyn Multiplexer>,
     pub agents: Vec<AgentPane>,
     pub has_loaded_snapshot: bool,
     pub list_state: ListState,
-    pub should_quit: bool,
-    pub quit_reason: Option<String>,
+    pub quit: Option<Quit>,
     pub palette: ThemePalette,
     pub status_icons: StatusIcons,
     pub spinner_frame: u8,
@@ -242,8 +261,7 @@ impl SidebarApp {
             agents: Vec::new(),
             has_loaded_snapshot: true,
             list_state: ListState::default(),
-            should_quit: false,
-            quit_reason: None,
+            quit: None,
             palette: ThemePalette::from_config(
                 &Config::default().theme,
                 crate::config::ThemeMode::Dark,
@@ -374,8 +392,7 @@ impl SidebarApp {
             agents: Vec::new(),
             has_loaded_snapshot: false,
             list_state: ListState::default(),
-            should_quit: false,
-            quit_reason: None,
+            quit: None,
             palette,
             status_icons,
             spinner_frame: 0,

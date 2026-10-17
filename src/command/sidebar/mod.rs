@@ -36,10 +36,10 @@ use anyhow::{Result, anyhow};
 use crate::cmd::Cmd;
 use crate::config::SidebarPosition;
 
-use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
 /// Ask the daemon to refresh now, e.g. after a command outside the sidebar
 /// changed the agent list.
 pub(crate) use self::daemon_ctrl::signal_daemon as refresh_daemon;
+use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
 use self::hooks::{install_hooks, remove_hooks};
 use self::panes::{
     create_sidebar_in_window, create_sidebars_in_all_windows, create_sidebars_in_session,

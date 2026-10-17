@@ -231,8 +231,14 @@ well. It uses a daemon + client architecture with event-driven rendering:
    `select-layout`. This preserves existing pane proportions (e.g. a 70/30 split
    stays 70/30).
 
-6. **Toggle off**: kills all sidebar panes, reflows content panes to fill the
-   freed space, stops the daemon, and removes hooks.
+6. **Toggle off** (`muxix sidebar` again, or `q` in any sidebar): kills all
+   sidebar panes, reflows content panes to fill the freed space, stops the
+   daemon, and removes hooks.
+
+7. **A window emptying out**: when the sidebar is the only pane left in its
+   window — the agent, session view or shell beside it ended — that one
+   sidebar exits so the window can close. Sidebars in other windows are not
+   affected.
 
 ### Resource usage
 

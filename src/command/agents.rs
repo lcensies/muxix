@@ -154,7 +154,11 @@ pub fn import(reference: &str, ade_name: Option<&str>) -> Result<()> {
 
     let imported = runtime.import(&import_session(&agent.to_wire(), &state)?)?;
 
-    println!("imported {} into {name} as {}", agent.to_wire(), imported.to_wire());
+    println!(
+        "imported {} into {name} as {}",
+        agent.to_wire(),
+        imported.to_wire()
+    );
     Ok(())
 }
 
@@ -257,9 +261,17 @@ pub fn delete_agent(
         };
         crate::command::ade_view::forget_view(mux, &reference.to_wire());
         return Ok(if remote {
-            format!("deleted {} in {} and muxix", reference.to_wire(), reference.runtime)
+            format!(
+                "deleted {} in {} and muxix",
+                reference.to_wire(),
+                reference.runtime
+            )
         } else {
-            format!("forgot {}; {} keeps it", reference.to_wire(), reference.runtime)
+            format!(
+                "forgot {}; {} keeps it",
+                reference.to_wire(),
+                reference.runtime
+            )
         });
     }
 
@@ -337,13 +349,20 @@ mod tests {
     #[test]
     fn import_refuses_an_agent_that_never_reported_its_session() {
         // The ADE would accept a made-up id and create an agent with no session.
-        let err = import_session("%7", &state(None, Some("pi"))).unwrap_err().to_string();
-        assert!(err.contains("never reported its provider session id"), "{err}");
+        let err = import_session("%7", &state(None, Some("pi")))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("never reported its provider session id"),
+            "{err}"
+        );
     }
 
     #[test]
     fn import_refuses_an_agent_of_unknown_kind() {
-        let err = import_session("%7", &state(Some("s1"), None)).unwrap_err().to_string();
+        let err = import_session("%7", &state(Some("s1"), None))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("which provider"), "{err}");
     }
 
@@ -360,7 +379,13 @@ mod tests {
         assert_eq!(
             args,
             [
-                "agent", "import", "/sessions/a.jsonl", "--provider", "pi", "--cwd", "/repo/wt",
+                "agent",
+                "import",
+                "/sessions/a.jsonl",
+                "--provider",
+                "pi",
+                "--cwd",
+                "/repo/wt",
                 "--json"
             ]
         );

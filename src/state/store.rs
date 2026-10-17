@@ -950,7 +950,10 @@ mod tests {
             assert_eq!(retirement(false, status), Retirement::Forget, "{status:?}");
         }
         // On keeps it, and a record already marked is not rewritten every tick.
-        assert_eq!(retirement(true, Some(AgentStatus::Working)), Retirement::MarkExited);
+        assert_eq!(
+            retirement(true, Some(AgentStatus::Working)),
+            Retirement::MarkExited
+        );
         assert_eq!(retirement(true, None), Retirement::MarkExited);
         assert_eq!(
             retirement(true, Some(AgentStatus::Exited)),

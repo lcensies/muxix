@@ -313,9 +313,13 @@ impl App {
             .unwrap_or_default();
         // Agents an ADE owns have no pane, so reconciliation never sees them.
         // Fold them in so the dashboard shows the same set as the sidebar.
-        let (foreign, _problems) = crate::agent::runtime::registry::foreign_agent_panes();
+        let (foreign, problems) = crate::agent::runtime::registry::foreign_agent_panes();
         self.all_agents.extend(foreign);
-        crate::command::ade_view::apply_takeovers(self.mux.as_ref(), &mut self.all_agents);
+        crate::command::ade_view::apply_takeovers(
+            self.mux.as_ref(),
+            &mut self.all_agents,
+            problems.is_empty(),
+        );
 
         // Load interrupted pane IDs from daemon runtime state
         if let Ok(store) = StateStore::new() {

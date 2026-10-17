@@ -235,7 +235,16 @@ mod tests {
         let pane = "%wmtest-reject-9002";
         let path = turn::proceed_path(pane);
         let _ = fs::remove_file(&path);
-        run("reject", Some(pane), None, Some("needs tests"), None, false, None).unwrap();
+        run(
+            "reject",
+            Some(pane),
+            None,
+            Some("needs tests"),
+            None,
+            false,
+            None,
+        )
+        .unwrap();
         let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(v["approved"], Value::Bool(false));
         assert_eq!(v["feedback"], Value::String("needs tests".into()));

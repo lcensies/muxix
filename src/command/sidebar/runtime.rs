@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use crate::multiplexer::{create_backend, detect_backend};
 
-use super::app::SidebarApp;
+use super::app::{Quit, SidebarApp};
 use super::client;
 use super::daemon_ctrl::ensure_daemon_running;
 use super::panes::shutdown_all_sidebars;
@@ -185,19 +185,30 @@ pub fn run_sidebar() -> Result<()> {
         // Process any pending resize whose debounce has elapsed
         app.process_pending_resize(&startup, startup_grace);
 
-        if app.should_quit {
+        if let Some(quit) = &app.quit {
             tracing::info!(
                 host_window = ?app.host_window_id(),
-                quit_reason = app.quit_reason.as_deref().unwrap_or("unknown"),
+                quit_reason = quit.reason(),
                 "sidebar-run quitting"
             );
-            shutdown_all_sidebars();
+            if matches!(quit, Quit::All(_)) {
+                shutdown_all_sidebars();
+            }
             break;
         }
     }
 
     // _guard handles cleanup on drop (including the normal exit path)
     Ok(())
+}
+
+/// The quit a snapshot forces: nothing but this sidebar is left in `window`.
+///
+/// A window missing from the counts is treated as still populated — a
+/// transient gap in tmux state must not close anything.
+fn last_pane_quit(window: &str, panes: Option<usize>) -> Option<Quit> {
+    (panes.unwrap_or(2) <= 1)
+        .then(|| Quit::Window(format!("last-pane: window {window} has <= 1 pane")))
 }
 
 fn process_event(
@@ -215,10 +226,8 @@ fn process_event(
                 // Check last-pane using snapshot data (with startup grace period)
                 if startup.elapsed() > startup_grace
                     && let Some(wid) = app.host_window_id()
-                    && snapshot.window_pane_counts.get(wid).copied().unwrap_or(2) <= 1
                 {
-                    app.quit_reason = Some(format!("last-pane: window {} has <= 1 pane", wid));
-                    app.should_quit = true;
+                    app.quit = last_pane_quit(wid, snapshot.window_pane_counts.get(wid).copied());
                 }
                 app.apply_snapshot(snapshot);
                 *needs_render = true;
@@ -253,5 +262,27 @@ fn process_event(
             *needs_clear = true;
         }
         AppEvent::Input(_) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_left_with_only_the_sidebar_quits_this_instance_alone() {
+        // Window-scoped, never `All`: shutting every sidebar down here is what
+        // made them all vanish whenever a session view was quit.
+        assert!(matches!(
+            last_pane_quit("@9", Some(1)),
+            Some(Quit::Window(_))
+        ));
+        assert!(matches!(
+            last_pane_quit("@9", Some(0)),
+            Some(Quit::Window(_))
+        ));
+        assert!(last_pane_quit("@9", Some(2)).is_none());
+        // Unknown window: tmux state may be mid-update; keep running.
+        assert!(last_pane_quit("@9", None).is_none());
     }
 }

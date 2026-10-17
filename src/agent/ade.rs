@@ -701,7 +701,10 @@ mod tests {
             },
         );
         assert!(!r.can_delete());
-        let err = r.delete(&AgentRef::new("paseo", "agt_1")).unwrap_err().to_string();
+        let err = r
+            .delete(&AgentRef::new("paseo", "agt_1"))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("no delete_args"), "{err}");
     }
 
@@ -825,8 +828,14 @@ mod tests {
             })
             .unwrap_err()
             .to_string();
-        assert!(err.contains("cannot import a 'prime-agent' session"), "{err}");
-        assert!(err.contains("claude, codex, copilot, opencode, pi, omp"), "{err}");
+        assert!(
+            err.contains("cannot import a 'prime-agent' session"),
+            "{err}"
+        );
+        assert!(
+            err.contains("claude, codex, copilot, opencode, pi, omp"),
+            "{err}"
+        );
         assert!(!marker.exists(), "a refused import ran a command");
         // Baseline: an accepted provider does reach the stub, so the check above
         // can fail.
@@ -836,7 +845,10 @@ mod tests {
             cwd: std::env::temp_dir(),
             title: None,
         });
-        assert!(marker.exists(), "stub never ran; the refusal check proves nothing");
+        assert!(
+            marker.exists(),
+            "stub never ran; the refusal check proves nothing"
+        );
         let _ = std::fs::remove_file(&marker);
     }
 
@@ -1127,6 +1139,14 @@ mod tests {
         cfg.view = None;
         let r = AdeRuntime::new("paseo".to_string(), cfg);
         assert!(r.view_command(&AgentRef::new("paseo", "a")).is_none());
+    }
+
+    #[test]
+    fn the_paseo_preset_lists_every_directory() {
+        // `agent ls` is scoped to the cwd unless told otherwise; the sidebar
+        // daemon's cwd is wherever it was first toggled on.
+        let l = AdeConfig::paseo().list_args;
+        assert!(l.contains(&"-g".to_string()), "{l:?}");
     }
 
     #[test]

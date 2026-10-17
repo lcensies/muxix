@@ -434,7 +434,11 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let repo = temp.path().join("muxix");
         std::fs::create_dir_all(repo.join(".git").join("worktrees").join("exciting-puma")).unwrap();
-        let wt = temp.path().join("ade").join("2oxz0xh8").join("exciting-puma");
+        let wt = temp
+            .path()
+            .join("ade")
+            .join("2oxz0xh8")
+            .join("exciting-puma");
         std::fs::create_dir_all(&wt).unwrap();
         let gitdir = repo.join(".git").join("worktrees").join("exciting-puma");
         std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
@@ -448,7 +452,11 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let sub = temp.path().join("vendor-lib");
         std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(sub.join(".git"), "gitdir: /x/parent/.git/modules/vendor-lib\n").unwrap();
+        std::fs::write(
+            sub.join(".git"),
+            "gitdir: /x/parent/.git/modules/vendor-lib\n",
+        )
+        .unwrap();
         assert_eq!(extract_project_name(&sub), "vendor-lib");
     }
 
