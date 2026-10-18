@@ -830,9 +830,15 @@ enum Commands {
     #[command(hide = true, name = "_sidebar-reflow-all")]
     SidebarReflowAll,
 
-    /// Run the sidebar daemon (internal use)
-    #[command(hide = true, name = "_sidebar-daemon")]
+    /// Run the muxix daemon (internal use)
+    #[command(hide = true, name = "_daemon")]
     SidebarDaemon,
+
+    /// Control the muxix daemon (sidebar snapshots, ADE project sync)
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommand,
+    },
 
     /// Show a TUI dashboard of all active muxix agents across all sessions
     Dashboard {
@@ -1130,6 +1136,16 @@ pub enum AgentsCommand {
         /// Agent reference as printed by `muxix agents`
         reference: String,
     },
+}
+
+#[derive(Subcommand, Debug, Clone, Copy)]
+pub enum DaemonCommand {
+    /// Start the daemon for this tmux server if it is not already running
+    Start,
+    /// Stop the daemon, even if background jobs are configured
+    Stop,
+    /// Show whether the daemon runs and which background jobs are configured
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1592,6 +1608,7 @@ pub fn run() -> Result<()> {
         Commands::SidebarReflow { window } => command::sidebar::reflow(window.as_deref()),
         Commands::SidebarReflowAll => command::sidebar::reflow_all(),
         Commands::SidebarDaemon => command::sidebar::run_daemon(),
+        Commands::Daemon { command } => command::sidebar::daemon_cli(command),
         Commands::Dashboard {
             preview_size,
             diff,

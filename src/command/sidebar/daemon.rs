@@ -1,4 +1,4 @@
-//! Sidebar daemon: single process that watches tmux and pushes snapshots to
+//! Muxix daemon: single process that watches tmux and pushes snapshots to
 //! clients. Event-driven: agent status hooks and tmux lifecycle hooks SIGUSR1
 //! us; a slow timer backstops stall detection and lost hook events.
 
@@ -109,7 +109,7 @@ impl AdeAgents {
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
     let safe_id = instance_id.replace(['/', '\\'], "-");
-    std::env::temp_dir().join(format!("muxix-sidebar-{}.sock", safe_id))
+    std::env::temp_dir().join(format!("muxix-daemon-{}.sock", safe_id))
 }
 
 /// Result of a batched tmux query.
@@ -119,6 +119,8 @@ struct TmuxState {
     pane_window_ids: HashMap<String, String>,
     active_pane_ids: HashSet<String>,
     window_pane_counts: HashMap<String, usize>,
+    /// `list-panes` itself failed: the tmux server has most likely exited.
+    server_gone: bool,
 }
 
 /// Query all sidebar-relevant tmux state in a single command.
@@ -126,8 +128,11 @@ fn query_tmux_state() -> TmuxState {
     let format = "#{pane_id}\t#{session_name}\t#{window_id}\t#{@muxix_pane_status}\t#{window_active}\t#{session_attached}\t#{pane_active}";
     let output = Cmd::new("tmux")
         .args(&["list-panes", "-a", "-F", format])
-        .run_and_capture_stdout()
-        .unwrap_or_default();
+        .run_and_capture_stdout();
+    // A failed list-panes almost always means the server is gone (tmux exits
+    // with its last session), which is the daemon's cue to exit too.
+    let server_gone = output.is_err();
+    let output = output.unwrap_or_default();
 
     let mut window_statuses = HashMap::new();
     let mut active_windows = HashSet::new();
@@ -184,6 +189,7 @@ fn query_tmux_state() -> TmuxState {
         pane_window_ids,
         active_pane_ids,
         window_pane_counts,
+        server_gone,
     }
 }
 
@@ -1594,7 +1600,7 @@ impl FreezeTracker {
     }
 }
 
-/// Run the sidebar daemon (headless, no TUI).
+/// Run the muxix daemon (headless, no TUI).
 pub fn run() -> Result<()> {
     let mux = create_backend(detect_backend());
     let instance_id = mux.instance_id();
@@ -1606,7 +1612,7 @@ pub fn run() -> Result<()> {
     let status_icons = config.lock().unwrap().status_icons.clone();
     let config_version = Arc::new(AtomicU64::new(0));
 
-    tracing::info!(instance_id = %instance_id, "sidebar daemon starting");
+    tracing::info!(instance_id = %instance_id, "muxix daemon starting");
 
     // Signal handlers for clean shutdown and dirty notification
     let term = Arc::new(AtomicBool::new(false));
@@ -1645,7 +1651,7 @@ pub fn run() -> Result<()> {
         .args(&[
             "set-option",
             "-g",
-            "@muxix_sidebar_daemon_pid",
+            "@muxix_daemon_pid",
             &std::process::id().to_string(),
         ])
         .run()?;
@@ -1668,6 +1674,8 @@ pub fn run() -> Result<()> {
     let mut dirty_pending = false;
     let mut last_agent_list = String::new();
     let mut last_health_log = Instant::now();
+    let mut last_sync: std::collections::BTreeMap<String, Instant> = Default::default();
+    let mut jobs_configured = config.lock().unwrap().background_jobs_configured();
     // Refresh is event-driven: agent status hooks and tmux lifecycle hooks
     // SIGUSR1 us. The timer only backstops stall detection (5s while agents
     // are working, since silence produces no events) and lost hooks (30s).
@@ -1708,6 +1716,18 @@ pub fn run() -> Result<()> {
 
             // ── Gather inputs ──
             let tmux_state = query_tmux_state();
+            if tmux_state.server_gone {
+                tracing::info!("muxix daemon exiting: tmux server gone");
+                break;
+            }
+            // Background jobs ride the tick whether or not a sidebar is open.
+            // Cloned out of the lock: sync shells out to the ADE and must not
+            // hold up the config watcher's reload meanwhile.
+            jobs_configured = {
+                let cfg = config.lock().unwrap().clone();
+                crate::projects::sync::sync_all_quiet(&cfg, &mut last_sync);
+                cfg.background_jobs_configured()
+            };
             let active_pane_ids = tmux_state.active_pane_ids.clone();
             let agents = StateStore::new()
                 .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
@@ -1880,18 +1900,19 @@ pub fn run() -> Result<()> {
             }
         }
 
-        // Track client activity for auto-exit
+        // Track client activity for auto-exit. With a job configured the daemon
+        // is the job's host, so losing the last sidebar client is not an exit.
         let cc = server.client_count();
-        if cc > 0 {
+        if cc > 0 || jobs_configured {
             last_client_seen = Instant::now();
         } else if last_client_seen.elapsed() > Duration::from_secs(10) {
-            tracing::info!("sidebar daemon exiting: no clients for 10s");
+            tracing::info!("muxix daemon exiting: no clients for 10s");
             break;
         }
 
         // Periodic health log (every 60s)
         if last_health_log.elapsed() >= Duration::from_secs(60) {
-            tracing::info!(clients = cc, "sidebar daemon alive");
+            tracing::info!(clients = cc, jobs = jobs_configured, "muxix daemon alive");
             last_health_log = Instant::now();
         }
 
@@ -1909,7 +1930,7 @@ pub fn run() -> Result<()> {
     }
 
     if term.load(Ordering::Relaxed) {
-        tracing::info!("sidebar daemon exiting: SIGTERM received");
+        tracing::info!("muxix daemon exiting: SIGTERM received");
     }
 
     // Thaw any frozen agents so they don't stay SIGSTOPed after daemon exit.
@@ -1921,7 +1942,7 @@ pub fn run() -> Result<()> {
         store.delete_runtime(&backend_name, &instance_id);
     }
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@muxix_sidebar_daemon_pid"])
+        .args(&["set-option", "-gu", "@muxix_daemon_pid"])
         .run();
     let _ = Cmd::new("tmux")
         .args(&["set-option", "-gu", "@muxix_sidebar_agents"])
@@ -2580,6 +2601,7 @@ mod tests {
                         pane_window_ids: HashMap::new(),
                         active_pane_ids: HashSet::new(),
                         window_pane_counts: HashMap::new(),
+                        server_gone: false,
                     },
                     captured_panes: captures,
                     now,

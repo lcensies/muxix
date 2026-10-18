@@ -155,7 +155,7 @@ pub struct App {
     pub status_message: Option<(String, std::time::Instant)>,
     /// Whether to show the "New: muxix sidebar" tip in the tab header
     pub show_sidebar_tip: bool,
-    /// Pane IDs of agents detected as interrupted by the sidebar daemon.
+    /// Pane IDs of agents detected as interrupted by the muxix daemon.
     pub interrupted_pane_ids: std::collections::HashSet<String>,
     /// Pending command palette state (shown in command palette modal)
     pub pending_command_palette: Option<CommandPaletteState>,

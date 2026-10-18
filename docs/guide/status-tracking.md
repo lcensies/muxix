@@ -186,7 +186,7 @@ set -g window-status-current-format '#I:#W#{?@muxix_status, #{@muxix_status},}#{
 
 When an agent is in "working" status but its pane output hasn't changed for 10 seconds, muxix automatically detects it as interrupted. This typically happens when a user presses Ctrl+C to stop an agent.
 
-The detection runs in the sidebar daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
+The detection runs in the muxix daemon. If the agent resumes producing output, the interrupted indicator clears automatically. The dashboard reads the detection results from a shared runtime file, so both views stay in sync.
 
 ## Jump to completed or waiting agents
 

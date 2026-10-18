@@ -1,4 +1,4 @@
-//! Unix socket client for receiving snapshots from the sidebar daemon.
+//! Unix socket client for receiving snapshots from the muxix daemon.
 
 use std::io::Read;
 use std::os::unix::net::UnixStream;

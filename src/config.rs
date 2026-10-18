@@ -924,7 +924,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ade: BTreeMap<String, AdeConfig>,
 
-    /// Daemon-level settings (sidebar daemon, auto-freeze, etc.).
+    /// Daemon-level settings (muxix daemon, auto-freeze, etc.).
     /// Global-only: project configs cannot override these.
     #[serde(default)]
     pub daemon: DaemonConfig,
@@ -2760,7 +2760,7 @@ pub enum SyncConflictPolicy {
 /// The defaults are deliberately timid: identity is the canonical root path,
 /// removals do not propagate, and names are not compared. Naive bidirectional
 /// sync is how registries lose entries or ping-pong forever.
-#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ProjectSyncConfig {
     #[serde(default)]
     pub direction: SyncDirection,
@@ -2772,6 +2772,25 @@ pub struct ProjectSyncConfig {
     /// Treat a differing display name as a conflict.
     #[serde(default)]
     pub names: bool,
+    /// How often the daemon re-runs this sync. Examples: "1m", "30s", "2h".
+    #[serde(default = "default_sync_interval")]
+    pub interval: IdleDuration,
+}
+
+fn default_sync_interval() -> IdleDuration {
+    IdleDuration(std::time::Duration::from_secs(60))
+}
+
+impl Default for ProjectSyncConfig {
+    fn default() -> Self {
+        Self {
+            direction: SyncDirection::default(),
+            conflict: SyncConflictPolicy::default(),
+            removals: false,
+            names: false,
+            interval: default_sync_interval(),
+        }
+    }
 }
 
 /// How an ADE exposes its project registry.
@@ -3418,6 +3437,19 @@ impl Config {
         self.providers
             .as_ref()
             .and_then(|registry| crate::model::resolve(registry, key))
+    }
+
+    /// Whether any config-driven periodic job wants the daemon alive without
+    /// sidebar clients. Today: ADE project sync with a direction other than
+    /// `off`.
+    pub fn background_jobs_configured(&self) -> bool {
+        crate::projects::sync::effective_ades(self)
+            .values()
+            .any(|ade| {
+                ade.projects
+                    .as_ref()
+                    .is_some_and(|p| p.sync.direction != SyncDirection::Off)
+            })
     }
 
     /// Load and merge global and project configurations.

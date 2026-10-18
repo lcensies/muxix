@@ -9,7 +9,7 @@
 //! Every entry point here is gated on the `include:` key actually being
 //! present. A config that does not use includes performs no extra filesystem
 //! or network work, which matters because config loading runs on every
-//! `muxix` invocation and inside the sidebar daemon's per-project loops.
+//! `muxix` invocation and inside the muxix daemon's per-project loops.
 
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};

@@ -387,6 +387,7 @@ ade:
         conflict: manual           # manual (default) | muxix | ade | newest
         removals: false            # default
         names: false               # default
+        interval: 1m               # default; how often the daemon re-syncs
 ```
 
 ```bash
@@ -394,8 +395,11 @@ muxix project sync --dry-run     # show adds, removes, conflicts
 muxix project sync --ade paseo
 ```
 
-Sync also runs on the system daemon's tick, rate-limited, and skipped entirely
-when every ADE has `direction: off`.
+Any direction other than `off` also makes sync a background job of the
+[muxix daemon](../reference/commands/daemon.md): it re-runs every `interval`,
+logs what it applied, and keeps the daemon alive even with no sidebar open. Start
+it with `muxix daemon start`, or let `muxix add` / `muxix open` / the agent
+status hooks start it on first use.
 
 ### Why the defaults are timid
 

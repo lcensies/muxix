@@ -11,9 +11,10 @@
 //! *and* a recorded last-synced set — "absent over there" alone can never be
 //! told apart from "newly added over here".
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -440,24 +441,42 @@ pub fn effective_ades(
     map
 }
 
-/// Run sync for every configured ADE, swallowing errors. Called from the daemon
-/// tick: a sync failure must never abort the tick or block dispatch.
-#[allow(dead_code)]
-pub fn sync_all_quiet() {
-    let cfg = match crate::config::Config::load(None) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    for (name, ade) in effective_ades(&cfg) {
-        let enabled = ade
-            .projects
-            .as_ref()
-            .is_some_and(|p| p.sync.direction != SyncDirection::Off);
-        if !enabled {
-            continue;
-        }
-        if let Err(e) = sync_one(&name, &ade, false) {
-            eprintln!("sync ({name}): {e}");
+/// ADEs whose sync is on and whose interval has elapsed since `last` ran them.
+fn due_ades(
+    cfg: &crate::config::Config,
+    last: &BTreeMap<String, Instant>,
+    now: Instant,
+) -> Vec<(String, AdeConfig)> {
+    effective_ades(cfg)
+        .into_iter()
+        .filter(|(name, ade)| {
+            let Some(p) = &ade.projects else { return false };
+            p.sync.direction != SyncDirection::Off
+                && last
+                    .get(name)
+                    .is_none_or(|at| now.duration_since(*at) >= p.sync.interval.as_duration())
+        })
+        .collect()
+}
+
+/// Run sync for every ADE that is due, swallowing errors. Called from the
+/// daemon tick: a sync failure must never abort the tick or block dispatch.
+pub fn sync_all_quiet(cfg: &crate::config::Config, last: &mut BTreeMap<String, Instant>) {
+    let now = Instant::now();
+    for (name, ade) in due_ades(cfg, last, now) {
+        last.insert(name.clone(), now);
+        match sync_one(&name, &ade, false) {
+            Ok(plan) if plan.is_empty() => {}
+            Ok(plan) => tracing::info!(
+                ade = %name,
+                add_to_muxix = plan.add_to_muxix.len(),
+                add_to_ade = plan.add_to_ade.len(),
+                remove_from_muxix = plan.remove_from_muxix.len(),
+                remove_from_ade = plan.remove_from_ade.len(),
+                conflicts = plan.conflicts.len(),
+                "project sync applied"
+            ),
+            Err(e) => tracing::warn!(ade = %name, error = %e, "project sync failed"),
         }
     }
 }
@@ -711,5 +730,59 @@ mod merge_tests {
         let merged = effective_ades(&cfg);
         assert_eq!(merged.get("other").unwrap().command, "other");
         assert!(merged.contains_key("paseo"), "presets stay available");
+    }
+
+    fn cfg_with_paseo_sync(direction: SyncDirection, interval_secs: u64) -> Config {
+        let mut cfg = Config::default();
+        let mut block = AdeConfig::paseo();
+        block.projects = Some(AdeProjectsConfig {
+            sync: ProjectSyncConfig {
+                direction,
+                interval: crate::config::IdleDuration(std::time::Duration::from_secs(
+                    interval_secs,
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        cfg.ade.insert("paseo".to_string(), block);
+        cfg
+    }
+
+    #[test]
+    fn no_jobs_by_default() {
+        let cfg = Config::default();
+        assert!(!cfg.background_jobs_configured());
+        assert!(due_ades(&cfg, &BTreeMap::new(), Instant::now()).is_empty());
+    }
+
+    #[test]
+    fn sync_on_is_a_background_job() {
+        let cfg = cfg_with_paseo_sync(SyncDirection::Pull, 60);
+        assert!(cfg.background_jobs_configured());
+        let due = due_ades(&cfg, &BTreeMap::new(), Instant::now());
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].0, "paseo");
+    }
+
+    #[test]
+    fn interval_parses_with_a_default() {
+        let p: AdeProjectsConfig = serde_yaml::from_str("sync: {direction: pull}").unwrap();
+        assert_eq!(p.sync.interval.as_duration().as_secs(), 60);
+        let p: AdeProjectsConfig =
+            serde_yaml::from_str("sync: {direction: pull, interval: 5m}").unwrap();
+        assert_eq!(p.sync.interval.as_duration().as_secs(), 300);
+    }
+
+    #[test]
+    fn an_ade_is_not_due_again_inside_its_interval() {
+        let cfg = cfg_with_paseo_sync(SyncDirection::Pull, 60);
+        let now = Instant::now();
+        let last = BTreeMap::from([("paseo".to_string(), now)]);
+        assert!(due_ades(&cfg, &last, now + std::time::Duration::from_secs(30)).is_empty());
+        assert_eq!(
+            due_ades(&cfg, &last, now + std::time::Duration::from_secs(60)).len(),
+            1
+        );
     }
 }

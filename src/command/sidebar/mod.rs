@@ -46,7 +46,7 @@ use self::panes::{
     find_sidebar_in_window, kill_all_sidebars_and_restore_layouts, kill_sidebars_in_session,
 };
 
-/// Poke the sidebar daemon for an immediate refresh. No-op when no daemon runs.
+/// Poke the muxix daemon for an immediate refresh. No-op when no daemon runs.
 /// Called from agent status hooks so the sidebar updates event-driven instead
 /// of waiting for the daemon's slow backstop sweep.
 pub fn poke_daemon() {
@@ -491,7 +491,7 @@ pub fn toggle() -> Result<()> {
     // If session-scoped sidebars are active, clean them up first
     if let SidebarScope::Sessions(_) = current_scope() {
         kill_all_sidebars_and_restore_layouts();
-        kill_daemon();
+        release_daemon(&config);
         remove_hooks();
         clear_sidebar_globals();
     }
@@ -508,7 +508,7 @@ pub fn toggle() -> Result<()> {
     if current_has_sidebar {
         // Current window has sidebar → toggle OFF globally
         kill_all_sidebars_and_restore_layouts();
-        kill_daemon();
+        release_daemon(&config);
         remove_hooks();
         clear_sidebar_globals();
         return Ok(());
@@ -534,6 +534,14 @@ pub fn toggle() -> Result<()> {
     create_sidebars_in_all_windows(&config)?;
 
     Ok(())
+}
+
+/// The sidebar is done with the daemon. Kill it unless a background job still
+/// needs it; `muxix daemon stop` is the unconditional form.
+fn release_daemon(config: &crate::config::Config) {
+    if !config.background_jobs_configured() {
+        kill_daemon();
+    }
 }
 
 /// Toggle the sidebar for the current tmux session only.
@@ -577,7 +585,7 @@ pub fn toggle_session() -> Result<()> {
             ids.remove(&session_id);
             if ids.is_empty() {
                 // Last session removed: full cleanup
-                kill_daemon();
+                release_daemon(&config);
                 remove_hooks();
                 clear_sidebar_globals();
             } else {
@@ -838,9 +846,64 @@ pub fn reflow(window_id: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Run the sidebar daemon (called by the hidden `_sidebar-daemon` command).
+/// Run the muxix daemon (called by the hidden `_daemon` command).
 pub fn run_daemon() -> Result<()> {
     daemon::run()
+}
+
+/// `muxix daemon start|stop|status`.
+pub fn daemon_cli(command: crate::cli::DaemonCommand) -> Result<()> {
+    use crate::cli::DaemonCommand;
+    match command {
+        DaemonCommand::Start => {
+            let sock = ensure_daemon_running()?;
+            println!("daemon running ({})", sock.display());
+        }
+        DaemonCommand::Stop => {
+            if daemon_ctrl::daemon_pid().is_none() {
+                println!("daemon not running");
+            } else {
+                kill_daemon();
+                println!("daemon stopped");
+            }
+        }
+        DaemonCommand::Status => {
+            match daemon_ctrl::daemon_pid() {
+                Some(pid) => println!("daemon running, pid {pid}"),
+                None => println!("daemon not running"),
+            }
+            let cfg = crate::config::Config::load(None).unwrap_or_default();
+            let jobs: Vec<String> = crate::projects::sync::effective_ades(&cfg)
+                .into_iter()
+                .filter_map(|(name, ade)| {
+                    let p = ade.projects?;
+                    (p.sync.direction != crate::config::SyncDirection::Off).then(|| {
+                        format!(
+                            "project sync {name} ({:?}, every {})",
+                            p.sync.direction, p.sync.interval
+                        )
+                    })
+                })
+                .collect();
+            if jobs.is_empty() {
+                println!("background jobs: none (daemon exits with the last sidebar)");
+            } else {
+                println!("background jobs: {}", jobs.join(", "));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Start the daemon when a background job needs one, from commands that are
+/// not the sidebar. A failure is logged, never the caller's problem.
+pub fn ensure_for_jobs(config: &crate::config::Config) {
+    if std::env::var("TMUX").is_err() || !config.background_jobs_configured() {
+        return;
+    }
+    if let Err(e) = ensure_daemon_running() {
+        tracing::warn!(error = %e, "could not start muxix daemon for background jobs");
+    }
 }
 
 /// Run the sidebar TUI (called by the hidden `_sidebar-run` command).

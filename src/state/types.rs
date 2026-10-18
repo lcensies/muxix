@@ -305,7 +305,7 @@ pub struct LastDoneCycleState {
     pub head_ts: Option<u64>,
 }
 
-/// Ephemeral runtime state produced by the sidebar daemon.
+/// Ephemeral runtime state produced by the muxix daemon.
 ///
 /// Persisted to `runtime/<backend>__<instance>.json` so that the dashboard
 /// (a separate process) can read daemon-derived signals without the daemon

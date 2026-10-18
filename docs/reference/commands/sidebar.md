@@ -100,14 +100,15 @@ changes take effect after toggling the sidebar off and on.
 
 ## How it works
 
-When enabled, a background daemon polls tmux state every 2 seconds and pushes
+When enabled, the [muxix daemon](./daemon.md) watches tmux state and pushes
 snapshots to each sidebar pane over a Unix socket. The sidebar creates a tmux
 pane on the configured edge of every existing window. A tmux hook
 (`after-new-window`) ensures newly created windows also get a sidebar
 automatically.
 
 Running `muxix sidebar` again disables the sidebar globally, killing all
-sidebar panes, the daemon, and removing hooks.
+sidebar panes and removing hooks. The daemon is stopped too unless a background
+job (ADE project sync) still needs it.
 
 ### Session-scoped mode
 

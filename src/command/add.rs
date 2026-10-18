@@ -239,6 +239,7 @@ pub fn run(
         multi.agent.first().map(|s| s.as_str()),
         config_override,
     )?;
+    crate::command::sidebar::ensure_for_jobs(&initial_config);
 
     // Resolve fork source if --fork is set
     let fork_source = if let Some(ref fork_arg) = fork {

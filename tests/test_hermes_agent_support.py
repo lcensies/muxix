@@ -360,7 +360,7 @@ def test_hermes_profiled_launch(mux_server: MuxEnvironment, muxix_exe_path, repo
     assert overlay.exists()
 
     fake_hermes = mux_server.fake_bin_dir / "hermes"
-    fake_hermes.write_text("#!/bin/sh\necho \"HERMES_HOME=$HERMES_HOME\"\n")
+    fake_hermes.write_text('#!/bin/sh\necho "HERMES_HOME=$HERMES_HOME"\n')
     fake_hermes.chmod(0o755)
     result = run_muxix_command(
         mux_server,

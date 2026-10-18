@@ -23,16 +23,16 @@ pub(super) fn ensure_daemon_running() -> Result<PathBuf> {
     let _ = std::fs::remove_file(&sock_path);
     spawn_daemon()?;
     if !wait_for_socket(&instance_id, Duration::from_secs(2)) {
-        return Err(anyhow!("Sidebar daemon failed to start"));
+        return Err(anyhow!("Muxix daemon failed to start"));
     }
     Ok(sock_path)
 }
 
-/// Spawn the sidebar daemon as a detached background process.
+/// Spawn the muxix daemon as a detached background process.
 fn spawn_daemon() -> Result<()> {
     let exe = std::env::current_exe()?;
     std::process::Command::new(exe)
-        .arg("_sidebar-daemon")
+        .arg("_daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -54,16 +54,16 @@ fn wait_for_socket(instance_id: &str, timeout: Duration) -> bool {
 }
 
 /// Read the daemon PID from the tmux global option.
-fn daemon_pid() -> Option<String> {
+pub(super) fn daemon_pid() -> Option<String> {
     Cmd::new("tmux")
-        .args(&["show-option", "-gqv", "@muxix_sidebar_daemon_pid"])
+        .args(&["show-option", "-gqv", "@muxix_daemon_pid"])
         .run_and_capture_stdout()
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
 
-/// Kill the sidebar daemon (sends SIGTERM, cleans up tmux option).
+/// Kill the muxix daemon (sends SIGTERM, cleans up tmux option).
 pub(super) fn kill_daemon() {
     if let Some(pid) = daemon_pid() {
         let _ = std::process::Command::new("kill")
@@ -72,7 +72,7 @@ pub(super) fn kill_daemon() {
             .status();
     }
     let _ = Cmd::new("tmux")
-        .args(&["set-option", "-gu", "@muxix_sidebar_daemon_pid"])
+        .args(&["set-option", "-gu", "@muxix_daemon_pid"])
         .run();
 }
 

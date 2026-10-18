@@ -199,6 +199,7 @@ pub fn run(
                 if let Err(e) = crate::command::sidebar::ensure_for_target(sidebar_target) {
                     tracing::debug!(error = %e, "open: sidebar setup skipped");
                 }
+                crate::command::sidebar::ensure_for_jobs(&context.config);
             }
             Err(e) => {
                 eprintln!("✗ {:#}", e);

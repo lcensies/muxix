@@ -101,8 +101,11 @@ pub fn run(cmd: SetWindowStatusCommand) -> Result<()> {
         }
     }
 
-    // Wake the sidebar daemon so status changes render immediately instead of
+    // Wake the muxix daemon so status changes render immediately instead of
     // on its next backstop sweep. This is also its updated_ts heartbeat.
+    // With a background job configured this also starts the daemon, so it
+    // comes up with the first agent of the day rather than the first sidebar.
+    crate::command::sidebar::ensure_for_jobs(&config);
     crate::command::sidebar::poke_daemon();
 
     Ok(())
