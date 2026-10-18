@@ -78,9 +78,21 @@ pub(super) fn kill_daemon() {
 
 /// Signal the daemon to do an immediate refresh, bypassing tmux hook latency.
 pub(crate) fn signal_daemon() {
+    signal("-USR1");
+}
+
+/// Tell the daemon its cached ADE listing is stale (an agent was deleted or
+/// started from here) and refresh. Without this the sidebar keeps showing a
+/// deleted session for the rest of the poll interval, and selecting it reopens
+/// a view on a session the manager no longer has.
+pub(crate) fn signal_daemon_ade_changed() {
+    signal("-USR2");
+}
+
+fn signal(sig: &str) {
     if let Some(pid) = daemon_pid() {
         let _ = std::process::Command::new("kill")
-            .args(["-USR1", &pid])
+            .args([sig, &pid])
             .stderr(std::process::Stdio::null())
             .status();
     }

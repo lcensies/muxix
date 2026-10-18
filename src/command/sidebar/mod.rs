@@ -39,6 +39,7 @@ use crate::config::SidebarPosition;
 /// Ask the daemon to refresh now, e.g. after a command outside the sidebar
 /// changed the agent list.
 pub(crate) use self::daemon_ctrl::signal_daemon as refresh_daemon;
+pub(crate) use self::daemon_ctrl::signal_daemon_ade_changed as refresh_daemon_ade;
 use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
 use self::hooks::{install_hooks, remove_hooks};
 use self::panes::{

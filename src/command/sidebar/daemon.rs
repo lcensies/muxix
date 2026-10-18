@@ -1617,8 +1617,12 @@ pub fn run() -> Result<()> {
     // Signal handlers for clean shutdown and dirty notification
     let term = Arc::new(AtomicBool::new(false));
     let dirty_flag = Arc::new(AtomicBool::new(false));
+    // SIGUSR2: the ADE listing changed (an agent was deleted or started here),
+    // so the next tick must not serve the cached one.
+    let ade_dirty = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
     signal_hook::flag::register(signal_hook::consts::SIGUSR1, dirty_flag.clone())?;
+    signal_hook::flag::register(signal_hook::consts::SIGUSR2, ade_dirty.clone())?;
 
     // Wake channel: replaces the 10ms spin loop. Producers send () to wake the
     // main loop immediately (SIGUSR1 uses the AtomicBool since signal handlers
@@ -1695,6 +1699,10 @@ pub fn run() -> Result<()> {
         // Coalesce dirty signals: SIGUSR1 sets the flag, we service it once
         // per debounce interval to prevent signal floods from causing CPU storms
         if dirty_flag.swap(false, Ordering::Relaxed) {
+            dirty_pending = true;
+        }
+        if ade_dirty.swap(false, Ordering::Relaxed) {
+            ade.polled = None;
             dirty_pending = true;
         }
 

@@ -255,6 +255,10 @@ pub fn delete_agent(
             // is never forgotten here while it still exists there.
             Some(ade) if ade.can_delete() => {
                 ade.delete(&reference)?;
+                // The daemon caches the manager's listing; left alone it would
+                // keep offering this session, and selecting it reopens a view
+                // that polls a session the manager no longer has.
+                crate::command::sidebar::refresh_daemon_ade();
                 true
             }
             _ => false,
