@@ -162,13 +162,31 @@ Press `d` to delete the selected agent. A prompt names the agent and everywhere
 it will be removed from; **Enter** deletes and **any other key** cancels, so a
 stray Enter after moving the selection cannot delete the wrong one.
 
-- A local agent's record is removed, and its pane killed if it is still running.
-  An exited agent's pane is never killed: its pane id may since belong to
-  something else.
-- A manager's agent is deleted in the manager first, through its `delete_args`
+Delete is final. The reference is recorded as deleted, and every path that
+lists, adopts, opens or restores agents honours that record — so a manager whose
+delete is asynchronous, or whose listing muxix has cached, cannot put the row
+back. The record is dropped once the thing it names is gone, so it does not
+accumulate.
+
+- A local agent's record is removed, and its pane killed whenever a live
+  process is still there. The *recorded* status is not consulted: a record reads
+  `Exited` as soon as the pane's foreground command stops matching, which also
+  happens while the agent is alive. What decides is whether the pane is still
+  the one this agent recorded (pane id **and** pid), so a recycled pane id is
+  never killed and a pane that is genuinely gone is not an error.
+- Deleting also clears what the agent would still be recognised by: its
+  multiplexer status markers, its pane-keyed signal files, and the session id
+  journalled for its worktree — so a later `muxix open --continue` starts fresh
+  instead of resuming the conversation you deleted. Stored task prompts
+  (`.muxix/PROMPT-*.md`) are left alone; they are your text, not an identity.
+- A manager's agent is deleted in the manager too, through its `delete_args`
   (paseo: `agent delete`, a hard delete — gone from every device). If the
-  manager refuses, muxix keeps its own record, so nothing is forgotten here while
-  it still exists there. A manager with no `delete_args` keeps its copy.
+  manager refuses, the failure is reported but the agent still disappears from
+  muxix: it was deleted here, and leaving the row visible is what reopened it.
+  A manager with no `delete_args` keeps its copy.
+- Activating a row the manager no longer lists reports that and opens nothing.
+  It used to create a session, a window and a view record for an agent that did
+  not exist.
 
 ## Agent navigation hotkeys
 

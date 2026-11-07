@@ -131,6 +131,8 @@ impl RuntimeRegistry {
     ) {
         let mut agents = Vec::new();
         let mut problems = Vec::new();
+        let store = crate::state::StateStore::new().ok();
+        let tombstoned = store.as_ref().map(|s| s.tombstones()).unwrap_or_default();
         for (name, runtime) in &self.runtimes {
             if !keep(name) {
                 continue;
@@ -140,7 +142,31 @@ impl RuntimeRegistry {
                 continue;
             }
             match runtime.list() {
-                Ok(mut found) => agents.append(&mut found),
+                Ok(found) => {
+                    // Prune against the raw listing, filter the rows we return:
+                    // a runtime that still reports a deleted agent keeps its
+                    // tombstone, and one that has stopped reporting it no
+                    // longer needs one.
+                    //
+                    // Not for LOCAL: a deleted local agent has no state file, so
+                    // it is never *listed* even while its pane is still running
+                    // the provider — pruning on that would drop the tombstone
+                    // that stops reconcile re-adopting the pane. Reconcile
+                    // prunes that namespace against live pane ids instead.
+                    if let Some(store) = &store
+                        && name != LOCAL
+                    {
+                        store.retain_tombstones(
+                            name,
+                            &found.iter().map(|a| a.reference.to_wire()).collect(),
+                        );
+                    }
+                    agents.extend(
+                        found
+                            .into_iter()
+                            .filter(|a| !tombstoned.contains(&a.reference.to_wire())),
+                    );
+                }
                 Err(e) => problems.push((name.clone(), e.to_string())),
             }
         }

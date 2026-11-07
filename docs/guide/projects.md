@@ -1,3 +1,7 @@
+---
+description: Track several project directories and launch them all at once, one session per project
+---
+
 # Projects
 
 Muxix can track multiple project directories and launch them all at once —
@@ -64,9 +68,16 @@ only strategy.
 | mode | opens a worktree when |
 |---|---|
 | `all` | always |
-| `unfinished` | its agent stopped mid-work — no completion signal and a status other than `done` |
-| `active` **(default)** | an agent ran there at all, working or idle, finished or not |
+| `unfinished` | a *live* agent record stopped mid-work — no completion signal and a status other than `done` |
+| `active` **(default)** | a *live* agent record exists, working or idle, finished or not |
 | `recent` | it was touched within `project_open_days` days (default `7`) |
+
+A record whose status is `Exited` is not a live one. With
+[`persist_agents`](/guide/status-tracking) every agent that ever finished leaves
+a permanent `Exited` record and nothing expires it, so counting those reopened
+every worktree an agent had ever run in — including ones whose agent had been
+deleted. `all` is unchanged: it never looked at agent state. `recent` judges an
+agent on its last real activity, not on when it was retired.
 
 ```yaml
 project_open: active

@@ -306,6 +306,20 @@ impl ProjectStateStore {
         })
     }
 
+    /// Forget the sessions journalled for `handle`, keeping the rest of the
+    /// record.
+    ///
+    /// Deleting an agent must not leave its session id behind: `muxix open -c`
+    /// and `muxix start --continue` resume by journalled id, which would revive
+    /// the conversation the user deleted.
+    pub fn forget_sessions(&self, handle: &str) -> Result<()> {
+        self.mutate(|state| {
+            if let Some(entry) = state.worktrees.get_mut(handle) {
+                entry.sessions.clear();
+            }
+        })
+    }
+
     /// Drop a worktree's record. Called when the worktree is removed, so the
     /// journal does not accumulate entries for worktrees that no longer exist.
     pub fn forget_worktree(&self, handle: &str) -> Result<()> {
@@ -340,6 +354,25 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = ProjectStateStore::with_dir(dir.path().join("state")).unwrap();
         (store, dir)
+    }
+
+    #[test]
+    fn forgetting_sessions_leaves_the_rest_of_the_record() {
+        let (store, _dir) = test_store();
+        store
+            .record_worktree("auth", Some("feat/auth"), Some("main"), Some("claude"))
+            .unwrap();
+        store.record_session("auth", "claude", "s1").unwrap();
+
+        store.forget_sessions("auth").unwrap();
+
+        let rec = store.get_worktree("auth").unwrap().unwrap();
+        assert!(rec.sessions.is_empty(), "the deleted conversation is gone");
+        assert_eq!(rec.branch.as_deref(), Some("feat/auth"));
+        assert_eq!(rec.parent.as_deref(), Some("main"));
+        // An unknown handle is not an error and conjures no record.
+        store.forget_sessions("nope").unwrap();
+        assert!(store.get_worktree("nope").unwrap().is_none());
     }
 
     #[test]

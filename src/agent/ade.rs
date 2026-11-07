@@ -119,8 +119,12 @@ impl AdeRuntime {
             .find(|w| {
                 w.get(&ws.root_field)
                     .and_then(|r| r.as_str())
+                    // The manager reports `~/repos/x`, which cannot canonicalize,
+                    // so a raw compare never matched and every create made a
+                    // second workspace for a directory it already tracked. Same
+                    // expansion the agent listing uses.
                     .map(|r| {
-                        let p = PathBuf::from(r);
+                        let p = crate::util::expand_tilde(r);
                         p.canonicalize().unwrap_or(p) == want
                     })
                     .unwrap_or(false)
@@ -748,6 +752,101 @@ mod tests {
             .lines()
             .filter(|l| l.contains(needle))
             .count()
+    }
+
+    /// A stub whose `workspace list` answers from `ws.json` and whose
+    /// `workspace create` is recorded, so a duplicate create is observable.
+    fn stub_workspaces(dir: &std::path::Path, log: &std::path::Path) -> AdeConfig {
+        let script = dir.join("stub-ws");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> {log}\n\
+                 if [ \"$2\" = list ]; then cat {dir}/ws.json; fi\n\
+                 if [ \"$2\" = create ]; then echo '{{\"id\":\"new-ws\"}}'; fi\n\
+                 exit 0\n",
+                log = log.display(),
+                dir = dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let a = |v: &[&str]| v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        let cfg = AdeConfig {
+            command: script.to_string_lossy().into_owned(),
+            workspaces: Some(crate::config::AdeWorkspacesConfig {
+                list_args: a(&["workspace", "list"]),
+                add_args: a(&["workspace", "create", "{root}"]),
+                id_field: "id".to_string(),
+                root_field: "path".to_string(),
+                ensure: true,
+            }),
+            ..AdeConfig::default()
+        };
+        // See `stub_cli`: burn the ETXTBSY window before the test reads the log.
+        for _ in 0..100 {
+            if Command::new(&cfg.command).status().is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::fs::write(log, "").unwrap();
+        cfg
+    }
+
+    #[test]
+    fn a_tilde_reported_workspace_is_matched_not_duplicated() {
+        let Some(home) = home::home_dir() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let r = AdeRuntime::new("stub".to_string(), stub_workspaces(dir.path(), &log));
+
+        // paseo reports workspace roots with `~`. Neither path need exist: what
+        // is being tested is that both sides get the same expansion.
+        let target = home.join("repos/muxix-tilde-dedup");
+        std::fs::write(
+            dir.path().join("ws.json"),
+            format!(
+                r#"[{{"id":"ws-1","path":"~/{}"}}]"#,
+                "repos/muxix-tilde-dedup"
+            ),
+        )
+        .unwrap();
+
+        let id = r.ensure_workspace(&target, "muxix-tilde-dedup").unwrap();
+        assert_eq!(
+            id.as_deref(),
+            Some("ws-1"),
+            "the existing workspace is reused"
+        );
+        assert_eq!(
+            invocations(&log, "workspace create"),
+            0,
+            "a second workspace for a tracked directory binds new agents to the wrong one"
+        );
+
+        // An absolute report matches too, and a genuinely new directory still
+        // gets created.
+        std::fs::write(
+            dir.path().join("ws.json"),
+            format!(r#"[{{"id":"ws-2","path":"{}"}}]"#, target.display()),
+        )
+        .unwrap();
+        assert_eq!(
+            r.ensure_workspace(&target, "x").unwrap().as_deref(),
+            Some("ws-2")
+        );
+        assert_eq!(invocations(&log, "workspace create"), 0);
+
+        let fresh = dir.path().join("brand-new");
+        assert_eq!(
+            r.ensure_workspace(&fresh, "brand-new").unwrap().as_deref(),
+            Some("new-ws")
+        );
+        assert_eq!(invocations(&log, "workspace create"), 1);
     }
 
     #[test]

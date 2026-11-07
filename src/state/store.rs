@@ -1,7 +1,7 @@
 //! Filesystem-based state persistence for agent state.
 
 use anyhow::{Context, Result};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -224,6 +224,82 @@ impl StateStore {
         self.clear_pane_sandbox(key);
 
         agent_result
+    }
+
+    // ── Tombstones: a deleted agent never comes back ────────────────────────
+
+    /// Path to the deleted-agent set.
+    fn tombstones_path(&self) -> PathBuf {
+        self.base_path.join("tombstones.json")
+    }
+
+    /// Agent references the user deleted.
+    ///
+    /// A delete is only as final as the listings that honour it: a manager
+    /// whose delete is asynchronous, or whose listing is cached, keeps
+    /// reporting the agent for a while, and every path that believes it puts
+    /// the row — and on activation a session, a window and a view — back.
+    ///
+    /// A missing or corrupt file reads as empty: failing closed here would
+    /// hide every live agent.
+    pub fn tombstones(&self) -> BTreeSet<String> {
+        fs::read_to_string(self.tombstones_path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn is_tombstoned(&self, wire: &str) -> bool {
+        self.tombstones().contains(wire)
+    }
+
+    /// Record that `wire` was deleted.
+    ///
+    /// Called before any manager call, so a manager that refuses, hangs or
+    /// deletes asynchronously cannot leave the row visible.
+    pub fn tombstone(&self, wire: &str) -> Result<()> {
+        let mut set = self.tombstones();
+        if !set.insert(wire.to_string()) {
+            return Ok(());
+        }
+        self.write_tombstones(&set)
+    }
+
+    /// Drop `runtime`'s tombstones that `observed` no longer reports, so the
+    /// set cannot grow without bound.
+    ///
+    /// Call this only after a *successful* listing: pruning on an unreachable
+    /// runtime would un-delete every agent it owns.
+    ///
+    /// shortcut: a local tombstone is a bare pane id with no multiplexer
+    /// instance in it, so two tmux servers share the namespace and one can
+    /// prune the other's. Upgrade when local refs carry their pane key.
+    pub fn retain_tombstones(&self, runtime: &str, observed: &HashSet<String>) {
+        let set = self.tombstones();
+        let kept: BTreeSet<String> = set
+            .iter()
+            .filter(|wire| {
+                crate::agent::runtime::AgentRef::from_wire(wire).runtime != runtime
+                    || observed.contains(*wire)
+            })
+            .cloned()
+            .collect();
+        if kept.len() != set.len()
+            && let Err(error) = self.write_tombstones(&kept)
+        {
+            warn!(error = %error, "failed to prune agent tombstones");
+        }
+    }
+
+    fn write_tombstones(&self, set: &BTreeSet<String>) -> Result<()> {
+        if set.is_empty() {
+            let _ = fs::remove_file(self.tombstones_path());
+            return Ok(());
+        }
+        write_atomic(
+            &self.tombstones_path(),
+            serde_json::to_string_pretty(set)?.as_bytes(),
+        )
     }
 
     /// Load global settings.
@@ -674,8 +750,15 @@ impl StateStore {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+        let tombstoned = self.tombstones();
         for (pane_id, live) in &live_panes {
             if stored_pane_ids.contains(pane_id) {
+                continue;
+            }
+            // A deleted agent whose pane survived the kill still runs a
+            // recognised provider command, so adoption would hand it a fresh
+            // agent id and put the row back one tick later.
+            if tombstoned.contains(pane_id) {
                 continue;
             }
             let Some(agent_kind) = crate::agent::identity::classify_agent_kind(
@@ -730,6 +813,15 @@ impl StateStore {
                 live.session.clone().unwrap_or_default(),
                 live.window.clone().unwrap_or_default(),
             ));
+        }
+
+        // Bounding the set: a local tombstone is only needed while its pane is
+        // still there to be re-adopted.
+        if !tombstoned.is_empty() {
+            self.retain_tombstones(
+                crate::agent::runtime::LOCAL,
+                &live_panes.keys().cloned().collect(),
+            );
         }
 
         Ok(valid_agents)
@@ -940,6 +1032,58 @@ mod tests {
                 .as_deref(),
             Some("89430a6d-0049-4809-bf4d-a263bc6c4661")
         );
+    }
+
+    #[test]
+    fn a_tombstone_survives_a_reread_and_is_keyed_by_reference() {
+        let (store, _dir) = test_store();
+        assert!(store.tombstones().is_empty());
+        assert!(!store.is_tombstoned("paseo:abc"));
+
+        store.tombstone("paseo:abc").unwrap();
+        store.tombstone("paseo:abc").unwrap();
+        store.tombstone("%7").unwrap();
+
+        assert!(store.is_tombstoned("paseo:abc"));
+        assert!(store.is_tombstoned("%7"));
+        assert!(!store.is_tombstoned("paseo:other"));
+        assert_eq!(store.tombstones().len(), 2, "re-recording is not a second");
+    }
+
+    #[test]
+    fn a_tombstone_is_dropped_once_its_runtime_stops_reporting_it() {
+        let (store, _dir) = test_store();
+        for wire in ["paseo:gone", "paseo:still-there", "%7"] {
+            store.tombstone(wire).unwrap();
+        }
+
+        // A manager whose delete is asynchronous still lists the agent: the
+        // tombstone has to outlive that or the row comes back.
+        let listed = HashSet::from(["paseo:gone".to_string(), "paseo:still-there".to_string()]);
+        store.retain_tombstones("paseo", &listed);
+        assert_eq!(store.tombstones().len(), 3);
+
+        // Once it has stopped listing it, the tombstone has nothing left to
+        // suppress — this is what bounds the set.
+        store.retain_tombstones("paseo", &HashSet::from(["paseo:still-there".to_string()]));
+        assert!(!store.is_tombstoned("paseo:gone"));
+        assert!(store.is_tombstoned("paseo:still-there"));
+        // Another runtime's pruning never touches these.
+        assert!(store.is_tombstoned("%7"), "local ref is paseo's to prune");
+
+        // Emptying the set removes the file rather than leaving `[]` behind.
+        store.retain_tombstones("paseo", &HashSet::new());
+        store.retain_tombstones(crate::agent::runtime::LOCAL, &HashSet::new());
+        assert!(store.tombstones().is_empty());
+        assert!(!store.tombstones_path().exists());
+    }
+
+    #[test]
+    fn a_corrupt_tombstone_file_reads_as_empty() {
+        // Failing closed here would hide every live agent in every listing.
+        let (store, _dir) = test_store();
+        fs::write(store.tombstones_path(), "{not json").unwrap();
+        assert!(store.tombstones().is_empty());
     }
 
     #[test]

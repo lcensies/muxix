@@ -564,9 +564,9 @@ def test_container_checkpoint_requires_criu(tmp_path):
     # Restrict PATH to the fake bin (+ git/tar) so a host-installed criu can't
     # accidentally satisfy the availability check.
     aux = {
-        os.path.dirname(shutil.which(b))
+        os.path.dirname(found)
         for b in ("git", "tar", "sh")
-        if shutil.which(b)
+        if (found := shutil.which(b))
     }
     minimal_path = os.pathsep.join([str(fake_bin), *sorted(aux)])
     result = run_wm(

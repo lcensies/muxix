@@ -1,3 +1,7 @@
+---
+description: Audit of pre-commit and git hook enforcement in the oh-my-claudecode repository
+---
+
 # oh-my-claudecode: Pre-Commit & Git Hook Configurations
 
 ## Summary

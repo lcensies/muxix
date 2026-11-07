@@ -26,6 +26,20 @@ description: Release notes and version history for muxix
 
 ### Breaking
 
+- **A deleted agent no longer comes back, and `Exited` agent state no longer
+  reopens a worktree.** `muxix start` and `muxix project open` stop restoring
+  worktrees whose only agent record is `Exited`, under both `active` (the
+  default) and `unfinished`; `recent` now judges an agent on its last activity
+  rather than on when it was retired. With `persist_agents: true` every agent
+  that ever finished leaves a permanent `Exited` record and nothing expires it,
+  so every worktree an agent had ever run in was being reopened — which is how
+  deleting a session and then creating a new one could instead reopen the old
+  agent. `--worktrees all` / `project_open: all` keep the previous behavior.
+  `muxix resurrect` skips `Exited` records too; `--include-exited` restores the
+  old permissiveness. Deleting an agent is now recorded durably and honoured by
+  every listing, adoption, open and restore path, so a manager with an
+  asynchronous delete or a cached listing cannot resurrect the row.
+
 - **`muxix start` / `muxix project open` no longer open every worktree.** The new
   `project_open` config selects which ones: `all` (previous behavior),
   `unfinished` (agent stopped mid-work), `active` (default — any worktree an

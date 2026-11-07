@@ -10,6 +10,23 @@ use crate::multiplexer::Multiplexer;
 use crate::state::{PaneKey, StateStore};
 use crate::util::canon_or_self;
 
+/// Is this record a restore candidate?
+///
+/// A tombstoned reference never is: the user deleted that agent, and a restore
+/// would relaunch it with `--fork-session` on the very conversation they threw
+/// away. An `Exited` one is not either by default — with `persist_agents` every
+/// agent that ever finished leaves one for ever, and nothing expires it.
+fn restorable(
+    agent: &crate::state::AgentState,
+    tombstoned: &std::collections::BTreeSet<String>,
+    include_exited: bool,
+) -> bool {
+    if tombstoned.contains(&agent.pane_key.pane_id) {
+        return false;
+    }
+    include_exited || agent.status != Some(crate::multiplexer::AgentStatus::Exited)
+}
+
 #[derive(Debug)]
 pub enum ResurrectAction {
     Restore,
@@ -38,7 +55,11 @@ pub struct ResurrectPlan {
 /// Loads raw (non-reconciled) agent states and cross-references them against
 /// existing git worktrees and live multiplexer state to determine which
 /// worktrees need restoration.
-pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> {
+pub fn plan(
+    store: &StateStore,
+    mux: &dyn Multiplexer,
+    include_exited: bool,
+) -> Result<ResurrectPlan> {
     let all_agents = store.list_all_agents()?;
     let backend = mux.name();
     let instance = mux.instance_id();
@@ -48,10 +69,17 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
         backend, instance, "resurrect:plan loading agent state files"
     );
 
+    // With `persist_agents`, every agent that ever finished leaves a permanent
+    // `Exited` record, and nothing expires it — so without this filter every
+    // one of them is a restore candidate for ever. A tombstone always wins:
+    // the user deleted that agent.
+    let tombstoned = store.tombstones();
+
     // Filter to current backend/instance
     let relevant: Vec<_> = all_agents
         .into_iter()
         .filter(|a| a.pane_key.backend == backend && a.pane_key.instance == instance)
+        .filter(|a| restorable(a, &tombstoned, include_exited))
         .collect();
 
     info!(
@@ -177,4 +205,58 @@ pub fn plan(store: &StateStore, mux: &dyn Multiplexer) -> Result<ResurrectPlan> 
         candidates,
         unmatched_states,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::multiplexer::AgentStatus;
+    use std::collections::BTreeSet;
+
+    fn record(pane_id: &str, status: Option<AgentStatus>) -> crate::state::AgentState {
+        let mut state: crate::state::AgentState = serde_json::from_value(serde_json::json!({
+            "agent_id": "a",
+            "pane_key": {"backend": "tmux", "instance": "/tmp/s", "pane_id": pane_id},
+            "workdir": "/repo/wt",
+            "pane_pid": 1,
+            "command": "node",
+            "updated_ts": 0,
+        }))
+        .unwrap();
+        state.status = status;
+        state
+    }
+
+    #[test]
+    fn restore_skips_exited_records_unless_asked() {
+        let none = BTreeSet::new();
+        assert!(restorable(
+            &record("%1", Some(AgentStatus::Working)),
+            &none,
+            false
+        ));
+        assert!(restorable(&record("%1", None), &none, false));
+        assert!(!restorable(
+            &record("%1", Some(AgentStatus::Exited)),
+            &none,
+            false
+        ));
+        assert!(restorable(
+            &record("%1", Some(AgentStatus::Exited)),
+            &none,
+            true
+        ));
+    }
+
+    #[test]
+    fn a_tombstone_beats_include_exited() {
+        let deleted = BTreeSet::from(["%1".to_string()]);
+        for status in [None, Some(AgentStatus::Working), Some(AgentStatus::Exited)] {
+            assert!(
+                !restorable(&record("%1", status), &deleted, true),
+                "{status:?}"
+            );
+        }
+        assert!(restorable(&record("%2", None), &deleted, false));
+    }
 }

@@ -200,15 +200,20 @@ fn target_is_live(mux: &dyn Multiplexer, name: &str, mode: config::MuxMode) -> b
         .unwrap_or(false)
 }
 
-pub fn run(dry_run: bool) -> Result<()> {
+pub fn run(dry_run: bool, include_exited: bool) -> Result<()> {
     let config = config::Config::load(None)?;
     let mux = create_backend(detect_backend());
     let store = StateStore::new()?;
 
-    let plan = plan(&store, mux.as_ref())?;
+    let plan = plan(&store, mux.as_ref(), include_exited)?;
 
     if plan.candidates.is_empty() && plan.unmatched_states == 0 {
         println!("No agent state files found. Nothing to restore.");
+        if !include_exited {
+            println!(
+                "(exited and deleted agents are skipped; --include-exited considers exited ones)"
+            );
+        }
         return Ok(());
     }
 

@@ -55,6 +55,15 @@ pub mod paths {
         std::env::temp_dir().join(format!("muxix-turn-{}.done", sanitize(pane)))
     }
 
+    /// Every signal file keyed by one pane.
+    ///
+    /// Deleting an agent clears these: a pane id is recycled, and a stale
+    /// approval or turn marker inherited by the next agent in that pane would
+    /// release a gate nobody approved.
+    pub fn pane_signal_files(pane: &str) -> [PathBuf; 2] {
+        [pane_proceed_signal(pane), turn_done_marker(pane)]
+    }
+
     /// Hook signal: agent has explicitly marked this node as done.
     /// Written by agent tool calls (e.g., `muxix signal done --stage implementation`).
     pub fn hook_signal(task_id: &str, node_id: &str) -> PathBuf {

@@ -69,16 +69,25 @@ pub fn keep(
     newest_repo_ts: Option<u64>,
     now: u64,
 ) -> bool {
+    // With `persist_agents`, a finished agent leaves a permanent record marked
+    // `Exited`. Nothing expires those, so counting them as live made every
+    // worktree that ever hosted an agent eligible for ever — and reopened the
+    // ones the user had deleted.
+    let live = |s: &AgentState| s.status != Some(AgentStatus::Exited);
     match filter {
         ProjectOpenFilter::All => true,
-        ProjectOpenFilter::Active => !states.is_empty(),
+        ProjectOpenFilter::Active => states.iter().any(live),
         ProjectOpenFilter::Unfinished => states
             .iter()
+            .filter(|s| live(s))
             .any(|s| s.completion.is_none() && s.status != Some(AgentStatus::Done)),
         ProjectOpenFilter::Recent => {
             let newest = states
                 .iter()
-                .flat_map(|s| [Some(s.updated_ts), s.status_ts])
+                // `retire_agent` stamps `status_ts` at retirement, so reading it
+                // for an exited agent makes dying look like activity. Last real
+                // activity is `updated_ts`, which retirement leaves alone.
+                .flat_map(|s| [Some(s.updated_ts), s.status_ts.filter(|_| live(s))])
                 .chain([newest_repo_ts])
                 .flatten()
                 .max();
@@ -249,6 +258,54 @@ mod tests {
         assert!(keep(ProjectOpenFilter::Unfinished, 7, &mixed, None, NOW));
         // Never-agent worktree: nothing unfinished to resume.
         assert!(!keep(ProjectOpenFilter::Unfinished, 7, &[], Some(NOW), NOW));
+    }
+
+    #[test]
+    fn exited_agent_state_does_not_make_a_worktree_eligible() {
+        // `persist_agents` leaves one of these behind for ever, so counting it
+        // as live reopened every worktree an agent had ever finished in —
+        // including ones the user deleted the agent from.
+        let exited = || one(|s| s.status = Some(AgentStatus::Exited));
+        for filter in [ProjectOpenFilter::Active, ProjectOpenFilter::Unfinished] {
+            assert!(!keep(filter, 7, &exited(), None, NOW), "{filter:?} exited");
+            assert!(!keep(filter, 7, &[], None, NOW), "{filter:?} never used");
+            assert!(keep(filter, 7, &one(|_| {}), None, NOW), "{filter:?} live");
+            // One live agent among exited ones still keeps the worktree.
+            let mut mixed = exited();
+            mixed.extend(one(|_| {}));
+            assert!(keep(filter, 7, &mixed, None, NOW), "{filter:?} mixed");
+        }
+        // `all` is unchanged: it never looked at agent state.
+        assert!(keep(ProjectOpenFilter::All, 7, &exited(), None, NOW));
+        assert!(keep(ProjectOpenFilter::All, 7, &[], None, NOW));
+    }
+
+    #[test]
+    fn recent_ignores_the_retirement_stamp() {
+        // `retire_agent` stamps `status_ts` when the agent dies, so reading it
+        // made an agent look *newer* the moment it exited.
+        assert!(!keep(
+            ProjectOpenFilter::Recent,
+            7,
+            &one(|s| {
+                s.status = Some(AgentStatus::Exited);
+                s.updated_ts = NOW - 8 * WEEK;
+                s.status_ts = Some(NOW);
+            }),
+            None,
+            NOW,
+        ));
+        // A live agent's status change is still activity.
+        assert!(keep(
+            ProjectOpenFilter::Recent,
+            7,
+            &one(|s| {
+                s.updated_ts = NOW - 8 * WEEK;
+                s.status_ts = Some(NOW);
+            }),
+            None,
+            NOW,
+        ));
     }
 
     #[test]

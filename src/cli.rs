@@ -493,6 +493,11 @@ enum Commands {
         /// Show what would be restored without doing it
         #[arg(long)]
         dry_run: bool,
+
+        /// Also consider agents whose last recorded status is `Exited`.
+        /// Deleted agents stay excluded either way.
+        #[arg(long)]
+        include_exited: bool,
     },
 
     /// List every agent, from every runtime that owns one
@@ -1415,7 +1420,10 @@ pub fn run() -> Result<()> {
             )
         }
         Commands::Close { name } => command::close::run(name.as_deref()),
-        Commands::Resurrect { dry_run } => command::resurrect::run(dry_run),
+        Commands::Resurrect {
+            dry_run,
+            include_exited,
+        } => command::resurrect::run(dry_run, include_exited),
         Commands::Agents { command, json } => match command {
             None => command::agents::run(json),
             Some(AgentsCommand::Stop { reference }) => command::agents::stop(&reference),

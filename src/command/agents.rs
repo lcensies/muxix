@@ -218,7 +218,7 @@ pub fn delete_prompt(agent: &crate::multiplexer::AgentPane) -> String {
     let name = agent.pane_title.as_deref().unwrap_or(&agent.window_name);
     if reference.is_local() {
         return if agent.status == Some(crate::multiplexer::AgentStatus::Exited) {
-            format!("Forget exited agent {name}?")
+            format!("Forget exited agent {name}? Kills its pane if it is still running.")
         } else {
             format!("Delete {name}? Kills its pane.")
         };
@@ -247,47 +247,101 @@ pub fn delete_agent(
     agent: &crate::multiplexer::AgentPane,
 ) -> Result<String> {
     let reference = crate::agent::runtime::AgentRef::from_wire(&agent.pane_id);
+    let wire = reference.to_wire();
+    let store = crate::state::StateStore::new()?;
+
+    // Before anything that can fail, hang or complete asynchronously: a delete
+    // the user confirmed must not leave the row listed, whatever answer the
+    // manager gives and whatever its cached listing still reports.
+    if let Err(error) = store.tombstone(&wire) {
+        tracing::warn!(%wire, error = %error, "failed to record a delete tombstone");
+    }
 
     if !reference.is_local() {
         let cfg = crate::config::Config::load(None).unwrap_or_default();
-        let remote = match crate::agent::ade::for_name(&cfg, &reference.runtime) {
-            // Manager first: if it refuses, muxix keeps its record, so the agent
-            // is never forgotten here while it still exists there.
-            Some(ade) if ade.can_delete() => {
-                ade.delete(&reference)?;
-                // The daemon caches the manager's listing; left alone it would
-                // keep offering this session, and selecting it reopens a view
-                // that polls a session the manager no longer has.
-                crate::command::sidebar::refresh_daemon_ade();
-                true
-            }
-            _ => false,
+        let deleted = match crate::agent::ade::for_name(&cfg, &reference.runtime) {
+            Some(ade) if ade.can_delete() => Some(ade.delete(&reference)),
+            _ => None,
         };
-        crate::command::ade_view::forget_view(mux, &reference.to_wire());
-        return Ok(if remote {
-            format!(
-                "deleted {} in {} and muxix",
-                reference.to_wire(),
+        crate::command::ade_view::forget_view(mux, &wire);
+        // Every arm, not only the successful delete: the daemon caches the
+        // manager's listing, and left alone it keeps offering this session for
+        // the cache's lifetime. Selecting that stale row is what created a
+        // project session and a view pane for an agent that no longer exists.
+        crate::command::sidebar::refresh_daemon_ade();
+        return Ok(match deleted {
+            Some(Ok(())) => format!("deleted {wire} in {} and muxix", reference.runtime),
+            Some(Err(e)) => format!(
+                "removed {wire} from muxix, but {} did not delete it: {e}",
                 reference.runtime
-            )
-        } else {
-            format!(
-                "forgot {}; {} keeps it",
-                reference.to_wire(),
-                reference.runtime
-            )
+            ),
+            None => format!("forgot {wire}; {} keeps it", reference.runtime),
         });
     }
 
-    if agent.status != Some(crate::multiplexer::AgentStatus::Exited) {
+    // The stored status is not trusted: a record reads `Exited` as soon as the
+    // pane's foreground command stops matching, which also happens while the
+    // provider is alive. Liveness of *this* agent's pane decides instead, so a
+    // recycled pane id is never killed and a falsely-exited agent still is.
+    if pane_is_this_agents(mux, &agent.pane_id, agent.pane_pid) {
         let _ = mux.kill_pane(&agent.pane_id);
     }
-    crate::state::StateStore::new()?.delete_agent(&crate::state::PaneKey {
+    store.delete_agent(&crate::state::PaneKey {
         backend: mux.name().to_string(),
         instance: mux.instance_id(),
         pane_id: agent.pane_id.clone(),
     })?;
+    clear_agent_identity(mux, agent);
     Ok(format!("deleted {}", agent.pane_id))
+}
+
+/// Is `pane_id` still the pane this agent recorded?
+fn pane_is_this_agents(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    pane_id: &str,
+    pane_pid: u32,
+) -> bool {
+    let Ok(live) = mux.get_all_live_pane_info() else {
+        return false;
+    };
+    pane_matches(live.get(pane_id), pane_pid)
+}
+
+/// Does `live` describe the pane that `pane_pid` was recorded in?
+///
+/// A pane id outlives the agent that ran in it and tmux reuses it, so "the pane
+/// exists" is not enough — the pid has to match too. A stored pid of 0 means the
+/// record was adopted before any pid was known, so the pane's existence is then
+/// the only evidence there is.
+fn pane_matches(live: Option<&crate::multiplexer::LivePaneInfo>, pane_pid: u32) -> bool {
+    live.is_some_and(|pane| pane_pid == 0 || pane.pid.is_none_or(|pid| pid == pane_pid))
+}
+
+/// Clear what a deleted agent would still be recognised by once its record is
+/// gone: the window status markers, its pane-keyed signal files, and the
+/// journalled session id a later `--continue` would resume.
+///
+/// Stored task prompts are deliberately left in place — they are the user's
+/// text, not an identity.
+fn clear_agent_identity(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    agent: &crate::multiplexer::AgentPane,
+) {
+    let _ = mux.clear_status(&agent.pane_id);
+    for path in crate::signals::paths::pane_signal_files(&agent.pane_id) {
+        let _ = std::fs::remove_file(path);
+    }
+    // Resolved from the agent's own worktree, not the cwd: delete may be run
+    // from a pane in another project, or in none. The journal is project-wide,
+    // so it has to be opened at the main worktree root the way
+    // `record_session` does.
+    if let Some(handle) = agent.path.file_name().and_then(|n| n.to_str())
+        && let Ok(root) = crate::git::get_main_worktree_root_in(Some(&agent.path))
+        && let Ok(journal) = crate::project_state::ProjectStateStore::open(&root)
+        && let Err(error) = journal.forget_sessions(handle)
+    {
+        tracing::debug!(handle, error = %error, "failed to clear journalled sessions");
+    }
 }
 
 /// `muxix _delete-agent <ref>` — what a native confirmation runs once accepted.
@@ -349,6 +403,35 @@ mod tests {
             "agent_kind": kind,
         }))
         .unwrap()
+    }
+
+    fn live(pid: Option<u32>) -> crate::multiplexer::LivePaneInfo {
+        crate::multiplexer::LivePaneInfo {
+            pid,
+            current_command: Some("zsh".to_string()),
+            working_dir: std::path::PathBuf::from("/repo/wt"),
+            title: None,
+            session: None,
+            window: None,
+        }
+    }
+
+    #[test]
+    fn delete_kills_a_falsely_exited_pane_and_spares_a_recycled_one() {
+        // The status is never consulted: a record reads `Exited` the moment the
+        // pane's foreground command stops matching, which also happens while
+        // the provider is alive and owns the pane.
+        assert!(pane_matches(Some(&live(Some(4242))), 4242), "same pane");
+        // The pane id outlives the agent and tmux reuses it. Killing it then
+        // would take down an unrelated process.
+        assert!(!pane_matches(Some(&live(Some(99))), 4242), "recycled id");
+        // A pane that is genuinely gone: nothing to kill, and delete must not
+        // treat that as an error.
+        assert!(!pane_matches(None, 4242), "pane gone");
+        // Backends that expose no pid, and records adopted before one was
+        // known, have only the pane's existence to go on.
+        assert!(pane_matches(Some(&live(None)), 4242));
+        assert!(pane_matches(Some(&live(Some(99))), 0));
     }
 
     #[test]

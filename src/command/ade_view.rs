@@ -350,6 +350,13 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
 
     let wire = agent.to_wire();
 
+    // A tombstoned ref has no view record left (delete forgets it), so without
+    // this the open below would *create* one — plus a window, and under
+    // `placement: project` a whole session — for an agent the user deleted.
+    if crate::state::StateStore::new().is_ok_and(|s| s.is_tombstoned(&wire)) {
+        bail!("{wire} was deleted and no longer exists");
+    }
+
     // Desktop hand-off opens no pane at all.
     if view.on_select == crate::config::AdeViewOnSelect::Desktop {
         if view.desktop_args.is_empty() {
@@ -382,6 +389,16 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
             return Ok(recorded.pane);
         }
         map.remove(&key);
+    }
+
+    // Past here we create. A ref the manager has stopped listing is gone even
+    // without a tombstone — a delete from another device, or one muxix never
+    // saw. An unreachable manager answers `Err`, which is not evidence of
+    // absence, so only a successful listing refuses.
+    if let Ok(listed) = crate::agent::runtime::AgentRuntime::list(&ade)
+        && !listed.iter().any(|a| a.reference == *agent)
+    {
+        bail!("{wire} is no longer listed by {}", agent.runtime);
     }
 
     let argv = match view.on_select {

@@ -1,3 +1,7 @@
+---
+description: Features added in wng that do not exist in upstream muxix
+---
+
 # wng — Extended Features over Muxix
 
 This document covers features **added in wng that do not exist in upstream muxix**.

@@ -16,6 +16,7 @@ import pytest
 
 from .conftest import (
     MuxEnvironment,
+    TmuxEnvironment,
     get_window_name,
     get_worktree_path,
     run_muxix_add,
@@ -128,13 +129,16 @@ def test_start_skips_missing_project_dirs(
     assert "no longer exists" in result.stdout + result.stderr
 
 
-def _seed_agent_state(env: MuxEnvironment, workdir: Path, pane_id: str) -> None:
+def _seed_agent_state(
+    env: MuxEnvironment, workdir: Path, pane_id: str, status: str = "waiting"
+) -> None:
     """Write one agent state file claiming an agent ran in `workdir`.
 
     `instance` must match `Multiplexer::instance_id`, which for tmux is the
     socket path from `$TMUX`. The file name is irrelevant — the store scans
     every `*.json` and reads the `pane_key` inside.
     """
+    assert isinstance(env, TmuxEnvironment), "the seeded backend must be tmux"
     now = int(time.time())
     state = {
         "agent_id": f"seeded-{pane_id.strip('%')}",
@@ -144,7 +148,7 @@ def _seed_agent_state(env: MuxEnvironment, workdir: Path, pane_id: str) -> None:
             "pane_id": pane_id,
         },
         "workdir": str(workdir),
-        "status": "waiting",
+        "status": status,
         "status_ts": now,
         "pane_title": None,
         "pane_pid": 1,
@@ -181,3 +185,35 @@ def test_start_opens_only_worktrees_an_agent_ran_in(
 
     run_muxix_command(env, muxix_exe_path, repo_path, "start --worktrees all")
     assert get_window_name(bare) in _windows_of(env, project)
+
+
+@pytest.mark.tmux_only
+def test_start_does_not_reopen_a_worktree_whose_agent_only_exited(
+    mux_server: MuxEnvironment, muxix_exe_path: Path, repo_path: Path
+):
+    """With `persist_agents`, a finished agent leaves a permanent `Exited`
+    record. Nothing expires it, so counting it as live reopened every worktree
+    an agent had ever run in — including ones the user deleted the agent from.
+    """
+    env = mux_server
+    project = repo_path.name
+    live, dead = "feat-live", "feat-dead"
+
+    write_muxix_config(repo_path)
+    run_muxix_command(env, muxix_exe_path, repo_path, f"project add {repo_path}")
+    for branch in (live, dead):
+        run_muxix_add(env, muxix_exe_path, repo_path, branch)
+        run_muxix_command(env, muxix_exe_path, repo_path, f"close {branch}")
+
+    _seed_agent_state(env, get_worktree_path(repo_path, live), "%911")
+    _seed_agent_state(env, get_worktree_path(repo_path, dead), "%912", status="exited")
+
+    result = run_muxix_command(env, muxix_exe_path, repo_path, "start")
+    windows = _windows_of(env, project)
+    assert get_window_name(live) in windows
+    assert get_window_name(dead) not in windows
+    assert "skipped 1 worktree(s) (project_open: active)" in result.stdout
+
+    # `--worktrees all` is still the way back to the old behavior.
+    run_muxix_command(env, muxix_exe_path, repo_path, "start --worktrees all")
+    assert get_window_name(dead) in _windows_of(env, project)
