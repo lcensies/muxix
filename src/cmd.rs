@@ -1,7 +1,13 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{debug, trace};
+
+/// Subprocesses this process has spawned. Reported by `muxix daemon status`,
+/// where a per-tick spawn regression is otherwise invisible without digging
+/// through `/proc/<pid>/task/*/children`.
+static SPAWNS: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 thread_local! {
@@ -10,9 +16,21 @@ thread_local! {
     static GIT_SPAWNS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+/// Count one subprocess spawn. Call this for a child launched directly rather
+/// than through [`Cmd`].
+pub fn count_spawn() {
+    SPAWNS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Total subprocesses spawned since this process started.
+pub fn spawns_total() -> u64 {
+    SPAWNS.load(Ordering::Relaxed)
+}
+
 /// Count one git process spawn. Call this for a git child that is launched
 /// directly rather than through [`Cmd`].
 pub fn count_git_spawn() {
+    count_spawn();
     #[cfg(test)]
     GIT_SPAWNS.with(|c| c.set(c.get() + 1));
 }
@@ -71,6 +89,8 @@ impl<'a> Cmd<'a> {
         trace!(command, args = ?args, workdir = ?workdir_display, "cmd:run start");
         if command == "git" {
             count_git_spawn();
+        } else {
+            count_spawn();
         }
 
         let mut cmd = Command::new(command);
@@ -119,6 +139,8 @@ impl<'a> Cmd<'a> {
         trace!(command, args = ?args, workdir = ?workdir_display, "cmd:check start");
         if command == "git" {
             count_git_spawn();
+        } else {
+            count_spawn();
         }
 
         let mut cmd = Command::new(command);

@@ -325,7 +325,8 @@ fn find_listed(
             .into_iter()
             .find(|a| a.pane_id == agent.id)
     } else {
-        crate::agent::runtime::registry::foreign_agent_panes()
+        let cfg = crate::config::Config::load(None).unwrap_or_default();
+        crate::agent::runtime::registry::foreign_agent_panes(&cfg)
             .0
             .into_iter()
             .find(|a| a.pane_id == agent.to_wire())

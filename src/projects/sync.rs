@@ -221,6 +221,7 @@ impl<'a> AdeProjects<'a> {
                     .replace("{name}", &p.name)
             })
             .collect();
+        crate::cmd::count_spawn();
         let out = Command::new(self.command).args(&args).output()?;
         if !out.status.success() {
             bail!(
@@ -240,6 +241,7 @@ impl<'a> ProjectRegistrySource for AdeProjects<'a> {
     }
 
     fn list(&self) -> Result<Vec<SyncProject>> {
+        crate::cmd::count_spawn();
         let out = Command::new(self.command)
             .args(&self.cfg.list_args)
             .output()
@@ -441,29 +443,41 @@ pub fn effective_ades(
     map
 }
 
+/// Whether any of these ADEs has project sync switched on.
+pub fn any_sync_on(ades: &BTreeMap<String, AdeConfig>) -> bool {
+    ades.values().any(|ade| {
+        ade.projects
+            .as_ref()
+            .is_some_and(|p| p.sync.direction != SyncDirection::Off)
+    })
+}
+
 /// ADEs whose sync is on and whose interval has elapsed since `last` ran them.
 fn due_ades(
-    cfg: &crate::config::Config,
+    ades: &BTreeMap<String, AdeConfig>,
     last: &BTreeMap<String, Instant>,
     now: Instant,
 ) -> Vec<(String, AdeConfig)> {
-    effective_ades(cfg)
-        .into_iter()
+    ades.iter()
         .filter(|(name, ade)| {
             let Some(p) = &ade.projects else { return false };
             p.sync.direction != SyncDirection::Off
                 && last
-                    .get(name)
+                    .get(*name)
                     .is_none_or(|at| now.duration_since(*at) >= p.sync.interval.as_duration())
         })
+        .map(|(name, ade)| (name.clone(), ade.clone()))
         .collect()
 }
 
 /// Run sync for every ADE that is due, swallowing errors. Called from the
 /// daemon tick: a sync failure must never abort the tick or block dispatch.
-pub fn sync_all_quiet(cfg: &crate::config::Config, last: &mut BTreeMap<String, Instant>) {
+///
+/// Takes the merged ADE map rather than the config, so a tick that also needs
+/// it for [`any_sync_on`] merges presets once.
+pub fn sync_all_quiet(ades: &BTreeMap<String, AdeConfig>, last: &mut BTreeMap<String, Instant>) {
     let now = Instant::now();
-    for (name, ade) in due_ades(cfg, last, now) {
+    for (name, ade) in due_ades(ades, last, now) {
         last.insert(name.clone(), now);
         match sync_one(&name, &ade, false) {
             Ok(plan) if plan.is_empty() => {}
@@ -753,14 +767,14 @@ mod merge_tests {
     fn no_jobs_by_default() {
         let cfg = Config::default();
         assert!(!cfg.background_jobs_configured());
-        assert!(due_ades(&cfg, &BTreeMap::new(), Instant::now()).is_empty());
+        assert!(due_ades(&effective_ades(&cfg), &BTreeMap::new(), Instant::now()).is_empty());
     }
 
     #[test]
     fn sync_on_is_a_background_job() {
         let cfg = cfg_with_paseo_sync(SyncDirection::Pull, 60);
         assert!(cfg.background_jobs_configured());
-        let due = due_ades(&cfg, &BTreeMap::new(), Instant::now());
+        let due = due_ades(&effective_ades(&cfg), &BTreeMap::new(), Instant::now());
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].0, "paseo");
     }
@@ -779,9 +793,21 @@ mod merge_tests {
         let cfg = cfg_with_paseo_sync(SyncDirection::Pull, 60);
         let now = Instant::now();
         let last = BTreeMap::from([("paseo".to_string(), now)]);
-        assert!(due_ades(&cfg, &last, now + std::time::Duration::from_secs(30)).is_empty());
+        assert!(
+            due_ades(
+                &effective_ades(&cfg),
+                &last,
+                now + std::time::Duration::from_secs(30)
+            )
+            .is_empty()
+        );
         assert_eq!(
-            due_ades(&cfg, &last, now + std::time::Duration::from_secs(60)).len(),
+            due_ades(
+                &effective_ades(&cfg),
+                &last,
+                now + std::time::Duration::from_secs(60)
+            )
+            .len(),
             1
         );
     }

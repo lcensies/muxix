@@ -5,6 +5,7 @@ use crate::cmd::Cmd;
 
 /// Check if a path is ignored by git (via .gitignore, global gitignore, etc.)
 pub fn is_path_ignored(repo_path: &Path, file_path: &str) -> bool {
+    crate::cmd::count_git_spawn();
     std::process::Command::new("git")
         .args(["check-ignore", "-q", file_path])
         .current_dir(repo_path)
@@ -65,6 +66,7 @@ pub fn get_repo_root_in(workdir: Option<&Path>) -> Result<PathBuf> {
 /// Get the root directory of the git repository containing the given path.
 /// Uses `git -C <dir>` to run git from the target directory.
 pub fn get_repo_root_for(dir: &Path) -> Result<PathBuf> {
+    crate::cmd::count_git_spawn();
     let output = std::process::Command::new("git")
         .args(["-C", &dir.to_string_lossy(), "rev-parse", "--show-toplevel"])
         .output()

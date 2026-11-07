@@ -873,6 +873,19 @@ pub fn daemon_cli(command: crate::cli::DaemonCommand) -> Result<()> {
                 Some(pid) => println!("daemon running, pid {pid}"),
                 None => println!("daemon not running"),
             }
+            let instance_id =
+                crate::multiplexer::create_backend(crate::multiplexer::detect_backend())
+                    .instance_id();
+            match daemon::TickStats::read(&instance_id) {
+                Some(stats) => println!(
+                    "last {}s: {} ticks, {} subprocesses, mean tick {}ms",
+                    stats.window.as_secs(),
+                    stats.ticks,
+                    stats.spawns,
+                    stats.mean_tick().map(|d| d.as_millis()).unwrap_or_default()
+                ),
+                None => println!("tick cost: not sampled yet"),
+            }
             let cfg = crate::config::Config::load(None).unwrap_or_default();
             let jobs: Vec<String> = crate::projects::sync::effective_ades(&cfg)
                 .into_iter()

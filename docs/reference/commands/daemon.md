@@ -10,7 +10,7 @@ One daemon per tmux server. It watches tmux and agent state, pushes snapshots to
 
 ```bash
 muxix daemon start    # start if not running (idempotent)
-muxix daemon status   # pid, and which background jobs are configured
+muxix daemon status   # pid, recent tick cost, and which background jobs are configured
 muxix daemon stop     # SIGTERM, even if jobs are configured
 ```
 
@@ -66,6 +66,28 @@ A sweep that finds a worktree clean with HEAD and its base unmoved costs one
 `git status`; the conflict check, branch diff, working-tree diff and
 untracked-file scan only re-run when their inputs have moved.
 
+## Tick cost
+
+`muxix daemon status` reports the last sampled minute:
+
+```
+daemon running, pid 408219
+last 60s: 12 ticks, 14 subprocesses, mean tick 8ms
+```
+
+A tick re-derives only what changed. The tmux options muxix writes itself, the
+ADE health probe, the ADE view map and the absence of a project config are all
+cached, so an idle tick costs the single `tmux list-panes` it needs to notice a
+pane change. A snapshot identical to the one clients already hold is not
+pushed, and the main loop blocks until its next real deadline rather than
+waking to re-check a flag.
+
+The sample is written once a minute, so a freshly started daemon reports
+`tick cost: not sampled yet`. Counted subprocesses are the ones muxix spawns
+through its own command helpers; a child of a child (an agent's own
+subprocesses) is not included.
+
 Internals: the daemon is the hidden `muxix _daemon` subcommand, its PID is the
-tmux global option `@muxix_daemon_pid`, and its socket is
-`$TMPDIR/muxix-daemon-<instance>.sock`.
+tmux global option `@muxix_daemon_pid`, its socket is
+`$TMPDIR/muxix-daemon-<instance>.sock`, and the tick sample sits beside it as
+`muxix-daemon-<instance>.stats`.

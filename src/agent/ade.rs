@@ -12,11 +12,23 @@
 //! use. Paseo ships as a default; another manager is a config block, and a
 //! manager that does not fit the shape is a new trait impl.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
 
 use anyhow::{Result, bail};
 use serde_json::Value;
+
+/// Cached `<ade> --version` results, keyed by command.
+///
+/// The probe answers a capability question — is this CLI installed and
+/// runnable — that cannot change under a running daemon, and for paseo it
+/// costs a full Electron boot (0.39s CPU measured). A failed listing clears
+/// the entry, so a manager that breaks mid-run is re-probed rather than
+/// assumed healthy.
+static HEALTH_CACHE: LazyLock<Mutex<HashMap<String, RuntimeHealth>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 use crate::agent::runtime::{
     AgentRef, AgentRuntime, RuntimeAgent, RuntimeFeatures, RuntimeHealth, RuntimeStatus,
@@ -35,7 +47,26 @@ impl AdeRuntime {
         Self { name, cfg }
     }
 
+    /// `<ade> --version`: installed and runnable, or why not.
+    fn probe_health(&self) -> RuntimeHealth {
+        // A missing CLI is the common case and must read as "unavailable",
+        // never as an agent failure.
+        crate::cmd::count_spawn();
+        match Command::new(&self.cfg.command).arg("--version").output() {
+            Ok(out) if out.status.success() => RuntimeHealth::Ok,
+            Ok(out) => RuntimeHealth::Unavailable(format!(
+                "`{} --version` failed: {}",
+                self.cfg.command,
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+            Err(e) => {
+                RuntimeHealth::Unavailable(format!("`{}` not runnable: {e}", self.cfg.command))
+            }
+        }
+    }
+
     fn run(&self, args: &[&str]) -> Result<String> {
+        crate::cmd::count_spawn();
         let out = Command::new(&self.cfg.command)
             .args(args)
             .output()
@@ -482,19 +513,16 @@ impl AgentRuntime for AdeRuntime {
     }
 
     fn health(&self) -> RuntimeHealth {
-        // A missing CLI is the common case and must read as "unavailable",
-        // never as an agent failure.
-        match Command::new(&self.cfg.command).arg("--version").output() {
-            Ok(out) if out.status.success() => RuntimeHealth::Ok,
-            Ok(out) => RuntimeHealth::Unavailable(format!(
-                "`{} --version` failed: {}",
-                self.cfg.command,
-                String::from_utf8_lossy(&out.stderr).trim()
-            )),
-            Err(e) => {
-                RuntimeHealth::Unavailable(format!("`{}` not runnable: {e}", self.cfg.command))
-            }
+        if let Ok(cache) = HEALTH_CACHE.lock()
+            && let Some(cached) = cache.get(&self.cfg.command)
+        {
+            return cached.clone();
         }
+        let health = self.probe_health();
+        if let Ok(mut cache) = HEALTH_CACHE.lock() {
+            cache.insert(self.cfg.command.clone(), health.clone());
+        }
+        health
     }
 
     fn start(&self, req: &StartRequest) -> Result<AgentRef> {
@@ -565,8 +593,17 @@ impl AgentRuntime for AdeRuntime {
 
     fn list(&self) -> Result<Vec<RuntimeAgent>> {
         let args = self.args_for(&self.cfg.list_args, &[]);
-        let stdout = self.run(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
-        self.parse_agents(&stdout)
+        let listed = self
+            .run(&args.iter().map(String::as_str).collect::<Vec<_>>())
+            .and_then(|stdout| self.parse_agents(&stdout));
+        if listed.is_err()
+            && let Ok(mut cache) = HEALTH_CACHE.lock()
+        {
+            // The cached probe said this CLI works; the listing says
+            // otherwise, so stop trusting the cache.
+            cache.remove(&self.cfg.command);
+        }
+        listed
     }
 
     fn import(&self, session: &crate::agent::runtime::ExternalSession) -> Result<AgentRef> {
@@ -662,6 +699,88 @@ mod tests {
 
     fn runtime() -> AdeRuntime {
         AdeRuntime::new("paseo".to_string(), AdeConfig::default())
+    }
+
+    /// A stand-in ADE CLI that records every invocation and can be made to
+    /// fail its listing, so the health cache can be observed from outside.
+    fn stub_cli(dir: &std::path::Path, log: &std::path::Path) -> AdeConfig {
+        let script = dir.join("stub-ade");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho \"$@\" >> {log}\n\
+                 if [ \"$1\" = list ] && [ -f {dir}/fail ]; then exit 1; fi\n\
+                 if [ \"$1\" = list ]; then echo '[]'; fi\n\
+                 exit 0\n",
+                log = log.display(),
+                dir = dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let cfg = AdeConfig {
+            command: script.to_string_lossy().into_owned(),
+            list_args: vec!["list".to_string()],
+            ..AdeConfig::default()
+        };
+        // A just-written executable can fail to exec with ETXTBSY while
+        // another test thread's fork still holds a write fd for it. Burn that
+        // window here, then clear the log, so the cached probe under test is
+        // taken from a script that is known to run.
+        for _ in 0..100 {
+            let ok = Command::new(&cfg.command)
+                .arg("--version")
+                .status()
+                .is_ok_and(|s| s.success());
+            if ok {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        std::fs::write(log, "").unwrap();
+        cfg
+    }
+
+    fn invocations(log: &std::path::Path, needle: &str) -> usize {
+        std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| l.contains(needle))
+            .count()
+    }
+
+    #[test]
+    fn a_healthy_runtime_is_probed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let r = AdeRuntime::new("stub".to_string(), stub_cli(dir.path(), &log));
+
+        for _ in 0..10 {
+            let health = r.health();
+            assert!(health.is_ok(), "{:?}", health.reason());
+            assert!(AgentRuntime::list(&r).is_ok());
+        }
+        assert_eq!(invocations(&log, "--version"), 1);
+    }
+
+    #[test]
+    fn a_failed_listing_rearms_the_probe() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let r = AdeRuntime::new("stub".to_string(), stub_cli(dir.path(), &log));
+
+        assert!(r.health().is_ok());
+        assert_eq!(invocations(&log, "--version"), 1);
+
+        std::fs::write(dir.path().join("fail"), "").unwrap();
+        assert!(AgentRuntime::list(&r).is_err());
+        assert!(r.health().is_ok());
+        assert_eq!(
+            invocations(&log, "--version"),
+            2,
+            "a failed listing invalidates the cached probe"
+        );
     }
 
     #[test]

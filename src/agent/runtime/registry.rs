@@ -114,9 +114,27 @@ impl RuntimeRegistry {
         Vec<crate::agent::runtime::RuntimeAgent>,
         Vec<(String, String)>,
     ) {
+        self.list_agents_from(|_| true)
+    }
+
+    /// As [`Self::list_agents`], restricted to the runtimes `keep` admits.
+    ///
+    /// Enumerating a runtime is not free — the local one re-reconciles the
+    /// whole state store against live panes — so a caller that will discard a
+    /// runtime's rows must be able to skip building them.
+    pub fn list_agents_from(
+        &self,
+        keep: impl Fn(&str) -> bool,
+    ) -> (
+        Vec<crate::agent::runtime::RuntimeAgent>,
+        Vec<(String, String)>,
+    ) {
         let mut agents = Vec::new();
         let mut problems = Vec::new();
         for (name, runtime) in &self.runtimes {
+            if !keep(name) {
+                continue;
+            }
             if let RuntimeHealth::Unavailable(reason) = runtime.health() {
                 problems.push((name.clone(), reason));
                 continue;
@@ -195,14 +213,12 @@ pub fn print_runtimes(json: bool) -> Result<()> {
 /// Shared by the sidebar and the dashboard so the two cannot drift on how a
 /// pane-less agent is rendered. Unavailable runtimes contribute nothing; their
 /// reasons are returned rather than swallowed.
-pub fn foreign_agent_panes() -> (Vec<crate::multiplexer::AgentPane>, Vec<(String, String)>) {
-    let cfg = crate::config::Config::load(None).unwrap_or_default();
-    let (agents, problems) = RuntimeRegistry::for_config(&cfg).list_agents();
-    let panes = agents
-        .iter()
-        .filter(|a| !a.reference.is_local())
-        .map(|a| a.to_agent_pane())
-        .collect();
+pub fn foreign_agent_panes(
+    cfg: &crate::config::Config,
+) -> (Vec<crate::multiplexer::AgentPane>, Vec<(String, String)>) {
+    let (agents, problems) =
+        RuntimeRegistry::for_config(cfg).list_agents_from(|name| name != LOCAL);
+    let panes = agents.iter().map(|a| a.to_agent_pane()).collect();
     (panes, problems)
 }
 
@@ -392,5 +408,64 @@ mod tests {
         let list = reg.list();
         let remote = list.iter().find(|r| r.name == "remote").unwrap();
         assert_eq!(remote.health.reason(), Some("not installed"));
+    }
+
+    /// A runtime that records how often it was enumerated.
+    struct Counting {
+        name: String,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AgentRuntime for Counting {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn features(&self) -> RuntimeFeatures {
+            RuntimeFeatures::NONE
+        }
+        fn health(&self) -> RuntimeHealth {
+            RuntimeHealth::Ok
+        }
+        fn start(&self, _: &StartRequest) -> Result<AgentRef> {
+            Ok(AgentRef::new(&self.name, "1"))
+        }
+        fn status(&self, _: &AgentRef) -> Result<RuntimeStatus> {
+            Ok(RuntimeStatus::Unknown)
+        }
+        fn list(&self) -> Result<Vec<RuntimeAgent>> {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(Vec::new())
+        }
+        fn stop(&self, _: &AgentRef) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_filtered_listing_never_enumerates_the_excluded_runtime() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut reg = RuntimeRegistry::new();
+        reg.register(Arc::new(Counting {
+            name: LOCAL.to_string(),
+            calls: calls.clone(),
+        }));
+        reg.register(Arc::new(Fake {
+            name: "remote".to_string(),
+            health: RuntimeHealth::Ok,
+            agents: vec!["a1".to_string()],
+        }));
+
+        let (agents, problems) = reg.list_agents_from(|name| name != LOCAL);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert_eq!(agents.len(), 1, "the remote runtime is still listed");
+        assert!(problems.is_empty(), "{problems:?}");
+
+        reg.list_agents();
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "an unfiltered listing still enumerates local"
+        );
     }
 }

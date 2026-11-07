@@ -910,6 +910,9 @@ impl SidebarApp {
             settings.sidebar_layout = Some(self.layout_mode.as_str().to_string());
             let _ = store.save_settings(&settings);
         }
+        // The daemon caches the option rather than re-reading it every tick,
+        // so the other sidebars only see the toggle if it is told.
+        super::daemon_ctrl::signal_daemon();
     }
 
     /// Toggle the sleeping state of the selected agent.

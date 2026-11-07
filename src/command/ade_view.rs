@@ -14,11 +14,11 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow, bail};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -68,12 +68,55 @@ fn view_key(wire: &str, mux: &dyn Multiplexer) -> String {
     format!("{}@{}/{}", wire, mux.name(), mux.instance_id())
 }
 
+/// The view map as last read, with the file stamp it was read at.
+///
+/// The daemon consults the map every tick and almost never finds it changed,
+/// so one `stat` stands in for a read plus a JSON parse.
+static MAP_CACHE: LazyLock<Mutex<BTreeMap<PathBuf, CachedMap>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+/// Modification time and size: enough to tell one version of the file from
+/// the next without reading it.
+type MapStamp = (SystemTime, u64);
+
+/// A parsed view map with the stamp of the file it came from.
+type CachedMap = (MapStamp, BTreeMap<String, ViewPane>);
+
+fn map_stamp(path: &Path) -> Option<MapStamp> {
+    let md = std::fs::metadata(path).ok()?;
+    Some((md.modified().ok()?, md.len()))
+}
+
+fn remember_map(path: &Path, map: &BTreeMap<String, ViewPane>) {
+    if let Some(stamp) = map_stamp(path)
+        && let Ok(mut cache) = MAP_CACHE.lock()
+    {
+        cache.insert(path.to_path_buf(), (stamp, map.clone()));
+    }
+}
+
 fn load_map() -> BTreeMap<String, ViewPane> {
-    map_path()
+    match map_path() {
+        Ok(path) => load_map_at(&path),
+        Err(_) => BTreeMap::new(),
+    }
+}
+
+fn load_map_at(path: &Path) -> BTreeMap<String, ViewPane> {
+    let stamp = map_stamp(path);
+    if let Some(stamp) = stamp.as_ref()
+        && let Ok(cache) = MAP_CACHE.lock()
+        && let Some((cached, map)) = cache.get(path)
+        && cached == stamp
+    {
+        return map.clone();
+    }
+    let map = std::fs::read_to_string(path)
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    remember_map(path, &map);
+    map
 }
 
 fn save_map(map: &BTreeMap<String, ViewPane>) {
@@ -82,7 +125,8 @@ fn save_map(map: &BTreeMap<String, ViewPane>) {
             let _ = std::fs::create_dir_all(dir);
         }
         if let Ok(body) = serde_json::to_string_pretty(map) {
-            let _ = std::fs::write(path, body);
+            let _ = std::fs::write(&path, body);
+            remember_map(&path, map);
         }
     }
 }
@@ -170,6 +214,7 @@ pub fn apply_takeovers(
     mux: &dyn Multiplexer,
     agents: &mut Vec<crate::multiplexer::AgentPane>,
     listed: bool,
+    cfg: &Config,
 ) {
     let mut map = load_map();
     let mut changed = false;
@@ -189,7 +234,6 @@ pub fn apply_takeovers(
         }
         return;
     }
-    let cfg = Config::load(None).unwrap_or_default();
     // (pane, pid) of local rows that are a takeover's provider, not agents of
     // their own. Matched on pid too, so a recycled pane id is never hidden.
     let mut twins: Vec<(String, u32)> = Vec::new();
@@ -222,7 +266,7 @@ pub fn apply_takeovers(
         if twin.is_some() {
             forget_twin(mux, &rec);
         }
-        let mode = crate::agent::ade::for_name(&cfg, &reference.runtime)
+        let mode = crate::agent::ade::for_name(cfg, &reference.runtime)
             .and_then(|a| a.view().map(|v| v.on_takeover_exit))
             .unwrap_or_default();
         if keeps_exited_mark(mode, agents[i].status) {
@@ -908,5 +952,45 @@ mod tests {
             unlisted_views(&map, "@tmux/a", &listed),
             vec!["paseo:gone-takeover@tmux/a", "paseo:gone@tmux/a"]
         );
+    }
+
+    fn write_map(path: &Path, pane: &str) {
+        let map = BTreeMap::from([(
+            "k".to_string(),
+            ViewPane {
+                pane: pane.to_string(),
+                pid: None,
+                takeover: false,
+            },
+        )]);
+        std::fs::write(path, serde_json::to_string(&map).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn an_unchanged_view_map_is_not_reread() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ade-views.json");
+        write_map(&path, "%1");
+        assert_eq!(load_map_at(&path).get("k").unwrap().pane, "%1");
+
+        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
+        // Same length, same mtime: indistinguishable from the cached version,
+        // so the cache must answer and the new bytes must go unseen.
+        write_map(&path, "%2");
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp)
+            .unwrap();
+        assert_eq!(
+            load_map_at(&path).get("k").unwrap().pane,
+            "%1",
+            "the cached map, not the rewritten file"
+        );
+
+        // A different size is a different file.
+        write_map(&path, "%1000");
+        assert_eq!(load_map_at(&path).get("k").unwrap().pane, "%1000");
     }
 }

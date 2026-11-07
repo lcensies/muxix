@@ -41,6 +41,10 @@ const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 /// needs sampling — an agent going silent produces no event.
 const WORKING_TICK_INTERVAL: Duration = Duration::from_secs(5);
 
+/// How long the daemon stays up after its last client, when no background job
+/// needs it. Also a loop deadline: the wait must not outlast it.
+const IDLE_EXIT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How long a working agent's pane content must be unchanged (with no RPC
 /// heartbeat) before it is marked interrupted. Also gates pane captures:
 /// agents with a heartbeat fresher than this cannot be marked interrupted,
@@ -67,13 +71,13 @@ impl AdeAgents {
         }
     }
 
-    fn poll(&mut self) -> Vec<AgentPane> {
+    fn poll(&mut self, cfg: &Config) -> Vec<AgentPane> {
         if let Some(at) = self.polled
             && at.elapsed() < ADE_POLL_INTERVAL
         {
             return self.agents.clone();
         }
-        let (panes, problems) = crate::agent::runtime::registry::foreign_agent_panes();
+        let (panes, problems) = crate::agent::runtime::registry::foreign_agent_panes(cfg);
         self.apply(Instant::now(), panes, problems)
     }
 
@@ -106,10 +110,79 @@ impl AdeAgents {
     }
 }
 
+/// How long the main loop may block: the soonest deadline it must wake for.
+///
+/// Signals arrive on the wake channel, so nothing here is a flag poll — an
+/// idle daemon sleeps until its next sweep.
+fn next_loop_wait(
+    since_refresh: Duration,
+    refresh_interval: Duration,
+    idle_exit_in: Option<Duration>,
+    health_log_in: Duration,
+) -> Duration {
+    let wait = refresh_interval
+        .saturating_sub(since_refresh)
+        .min(health_log_in);
+    match idle_exit_in {
+        Some(exit_in) => wait.min(exit_in),
+        None => wait,
+    }
+}
+
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
     let safe_id = instance_id.replace(['/', '\\'], "-");
     std::env::temp_dir().join(format!("muxix-daemon-{}.sock", safe_id))
+}
+
+/// Path of the daemon's tick-cost sample, written beside its socket.
+///
+/// A file rather than a socket request: `muxix daemon status` is a cold
+/// process that must report on a daemon it has no connection to, and the
+/// snapshot protocol is push-only.
+pub fn stats_path(instance_id: &str) -> PathBuf {
+    let safe_id = instance_id.replace(['/', '\\'], "-");
+    std::env::temp_dir().join(format!("muxix-daemon-{}.stats", safe_id))
+}
+
+/// One window of tick cost: how many subprocesses the daemon spawned, how many
+/// ticks ran, and how long they took in total.
+pub struct TickStats {
+    pub window: Duration,
+    pub spawns: u64,
+    pub ticks: u64,
+    pub tick_time: Duration,
+}
+
+impl TickStats {
+    fn write(&self, instance_id: &str) {
+        let body = format!(
+            "window_ms={} spawns={} ticks={} tick_ms={}\n",
+            self.window.as_millis(),
+            self.spawns,
+            self.ticks,
+            self.tick_time.as_millis()
+        );
+        let _ = std::fs::write(stats_path(instance_id), body);
+    }
+
+    pub fn read(instance_id: &str) -> Option<Self> {
+        let body = std::fs::read_to_string(stats_path(instance_id)).ok()?;
+        let field = |key: &str| -> Option<u64> {
+            body.split_whitespace()
+                .find_map(|kv| kv.strip_prefix(key)?.parse().ok())
+        };
+        Some(Self {
+            window: Duration::from_millis(field("window_ms=")?),
+            spawns: field("spawns=")?,
+            ticks: field("ticks=")?,
+            tick_time: Duration::from_millis(field("tick_ms=")?),
+        })
+    }
+
+    pub fn mean_tick(&self) -> Option<Duration> {
+        (self.ticks > 0).then(|| self.tick_time / self.ticks as u32)
+    }
 }
 
 /// Result of a batched tmux query.
@@ -198,6 +271,10 @@ struct SocketServer {
     clients: Arc<Mutex<Vec<UnixStream>>>,
     /// Cached last broadcast payload (length-prefixed) for immediate delivery to new clients.
     cached_payload: Arc<Mutex<Vec<u8>>>,
+    /// The snapshot the clients already hold, so an unchanged tick sends
+    /// nothing. Compared as a value, not as serialized bytes: hash-map
+    /// iteration order makes two serializations of equal state differ.
+    last_sent: Mutex<Option<super::snapshot::SidebarSnapshot>>,
 }
 
 impl SocketServer {
@@ -205,41 +282,30 @@ impl SocketServer {
         let listener = UnixListener::bind(path)?;
         // Restrict socket to owner only (prevent other local users from reading snapshots)
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-        listener.set_nonblocking(true)?;
+        // The listener stays blocking: the accept thread has nothing else to
+        // do, and process exit is what ends it. Polling it would be a second
+        // always-on wakeup for no gain.
         let clients: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::new()));
         let clients_clone = clients.clone();
         let cached_payload: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let cached_clone = cached_payload.clone();
 
         thread::spawn(move || {
-            loop {
-                match listener.accept() {
-                    Ok((mut stream, _)) => {
-                        // Clear inherited O_NONBLOCK from the listener.
-                        // Without this, write_all fails with WouldBlock when
-                        // the payload exceeds the socket buffer, and
-                        // set_write_timeout has no effect on non-blocking sockets.
-                        let _ = stream.set_nonblocking(false);
-                        let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
-                        // Send cached snapshot immediately so the client doesn't
-                        // wait for the next tick (no dirty_flag needed).
-                        // Clone under lock and drop before the blocking write to
-                        // avoid holding the mutex during I/O.
-                        let payload = cached_clone.lock().ok().map(|p| p.clone());
-                        let cache_ok = match payload {
-                            Some(ref p) if !p.is_empty() => stream.write_all(p).is_ok(),
-                            _ => true,
-                        };
-                        if cache_ok {
-                            let mut clients = clients_clone.lock().unwrap();
-                            clients.push(stream);
-                            tracing::debug!(clients = clients.len(), "sidebar client connected");
-                        }
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(_) => break,
+            while let Ok((mut stream, _)) = listener.accept() {
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+                // Send cached snapshot immediately so the client doesn't
+                // wait for the next tick (no dirty_flag needed).
+                // Clone under lock and drop before the blocking write to
+                // avoid holding the mutex during I/O.
+                let payload = cached_clone.lock().ok().map(|p| p.clone());
+                let cache_ok = match payload {
+                    Some(ref p) if !p.is_empty() => stream.write_all(p).is_ok(),
+                    _ => true,
+                };
+                if cache_ok {
+                    let mut clients = clients_clone.lock().unwrap();
+                    clients.push(stream);
+                    tracing::debug!(clients = clients.len(), "sidebar client connected");
                 }
             }
         });
@@ -247,10 +313,23 @@ impl SocketServer {
         Ok(Self {
             clients,
             cached_payload,
+            last_sent: Mutex::new(None),
         })
     }
 
-    fn broadcast(&self, snapshot: &super::snapshot::SidebarSnapshot) {
+    /// Push `snapshot` to every client unless it is the one they already hold.
+    ///
+    /// Returns whether anything was sent. Clients redraw only from a pushed
+    /// snapshot, so re-pushing an identical one is pure cost; a skipped push
+    /// still reaps closed connections, because the idle exit watches the
+    /// client count.
+    fn broadcast(&self, snapshot: &super::snapshot::SidebarSnapshot) -> bool {
+        if let Ok(last) = self.last_sent.lock()
+            && last.as_ref() == Some(snapshot)
+        {
+            self.prune_dead_clients();
+            return false;
+        }
         let data = match serde_json::to_vec(snapshot) {
             Ok(d) => d,
             Err(e) => {
@@ -258,7 +337,7 @@ impl SocketServer {
                 // would receive an empty snapshot instead of stale-but-valid
                 // data, and existing clients would get a bogus 0-byte payload.
                 tracing::warn!(error = %e, "sidebar broadcast: failed to serialize snapshot; skipping");
-                return;
+                return false;
             }
         };
         let len = (data.len() as u32).to_be_bytes();
@@ -286,6 +365,41 @@ impl SocketServer {
         }
         // Merge surviving clients back (append to preserve any new connections accepted during writes)
         self.clients.lock().unwrap().append(&mut clients);
+        if let Ok(mut last) = self.last_sent.lock() {
+            *last = Some(snapshot.clone());
+        }
+        true
+    }
+
+    /// Drop clients that have closed their end.
+    ///
+    /// A broadcast reaps them as a side effect of failing to write; a tick
+    /// that skips the broadcast still has to, because the daemon's idle exit
+    /// is driven by the client count.
+    fn prune_dead_clients(&self) {
+        let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
+        let before = clients.len();
+        clients.retain(|stream| {
+            use std::os::fd::AsRawFd;
+            let mut pfd = libc::pollfd {
+                fd: stream.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // The protocol is push-only, so a live client never has anything
+            // to read: readable, hung up or errored all mean it is gone.
+            let ready = unsafe { libc::poll(&mut pfd, 1, 0) };
+            ready == 0
+        });
+        let dropped = before.saturating_sub(clients.len());
+        if dropped > 0 {
+            tracing::info!(
+                dropped,
+                remaining = clients.len(),
+                "sidebar: clients disconnected"
+            );
+        }
+        self.clients.lock().unwrap().append(&mut clients);
     }
 
     fn client_count(&self) -> usize {
@@ -294,7 +408,7 @@ impl SocketServer {
 }
 
 /// Read the sidebar layout mode from tmux global, falling back to settings.json, then config.
-fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
+fn read_sidebar_layout_mode(config: &Config, store: &StateStore) -> Option<SidebarLayoutMode> {
     // Check tmux global first (set by toggle_layout_mode during this session)
     if let Ok(output) = Cmd::new("tmux")
         .args(&["show-option", "-gqv", "@muxix_sidebar_layout"])
@@ -308,9 +422,7 @@ fn read_sidebar_layout_mode(config: &Config) -> Option<SidebarLayoutMode> {
     }
 
     // Fall back to persisted setting (user toggled layout in a previous tmux session)
-    if let Ok(store) = StateStore::new()
-        && let Ok(settings) = store.load_settings()
-    {
+    if let Ok(settings) = store.load_settings() {
         match settings.sidebar_layout.as_deref() {
             Some("tiles") => return Some(SidebarLayoutMode::Tiles),
             Some("compact") => return Some(SidebarLayoutMode::Compact),
@@ -336,6 +448,44 @@ fn read_sleeping_panes() -> HashSet<String> {
         .ok()
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_default()
+}
+
+/// The sidebar's tmux global options, as last read.
+///
+/// Muxix writes all three itself and signals the daemon when it does, so
+/// querying them every tick asks tmux for answers it was already pushed.
+/// Re-read on a signalled tick, and once per sweep in case something outside
+/// muxix set them.
+struct TmuxOptions {
+    read_at: Option<Instant>,
+    position: SidebarPosition,
+    layout_mode: SidebarLayoutMode,
+    sleeping_pane_ids: HashSet<String>,
+}
+
+impl TmuxOptions {
+    fn new() -> Self {
+        Self {
+            read_at: None,
+            position: SidebarPosition::default(),
+            layout_mode: SidebarLayoutMode::default(),
+            sleeping_pane_ids: HashSet::new(),
+        }
+    }
+
+    fn is_stale(&self, signalled: bool, now: Instant) -> bool {
+        signalled
+            || self
+                .read_at
+                .is_none_or(|at| now.saturating_duration_since(at) >= SWEEP_INTERVAL)
+    }
+
+    fn refresh(&mut self, config: &Config, store: &StateStore, now: Instant) {
+        self.position = super::read_sidebar_position(config);
+        self.layout_mode = read_sidebar_layout_mode(config, store).unwrap_or_default();
+        self.sleeping_pane_ids = read_sleeping_panes();
+        self.read_at = Some(now);
+    }
 }
 
 /// Shared git status cache, updated by a background worker thread.
@@ -1638,6 +1788,23 @@ pub fn run() -> Result<()> {
     // git worker thread panics (which would spin the main loop at 100% CPU).
     let _wake_tx_keepalive = wake_tx.clone();
 
+    // The handlers above only set flags, which the main loop would have to
+    // poll. This thread turns the same signals into a wake, so the loop can
+    // block on the channel until there is real work.
+    {
+        let mut signals = signal_hook::iterator::Signals::new([
+            signal_hook::consts::SIGTERM,
+            signal_hook::consts::SIGUSR1,
+            signal_hook::consts::SIGUSR2,
+        ])?;
+        let wake_on_signal = wake_tx.clone();
+        thread::spawn(move || {
+            for _ in signals.forever() {
+                let _ = wake_on_signal.try_send(());
+            }
+        });
+    }
+
     let sock_path = socket_path(&instance_id);
     let _ = std::fs::remove_file(&sock_path); // Clean stale
     let server = SocketServer::bind(&sock_path)?;
@@ -1690,6 +1857,12 @@ pub fn run() -> Result<()> {
     let mut last_health_log = Instant::now();
     let mut last_sync: std::collections::BTreeMap<String, Instant> = Default::default();
     let mut jobs_configured = config.lock().unwrap().background_jobs_configured();
+    // Tick cost over the current reporting window, published for
+    // `muxix daemon status`.
+    let mut window_start = Instant::now();
+    let mut window_spawns = crate::cmd::spawns_total();
+    let mut window_ticks: u64 = 0;
+    let mut window_tick_time = Duration::ZERO;
     // Refresh is event-driven: agent status hooks and tmux lifecycle hooks
     // SIGUSR1 us. The timer only backstops stall detection (5s while agents
     // are working, since silence produces no events) and lost hooks (30s).
@@ -1697,13 +1870,18 @@ pub fn run() -> Result<()> {
     let debounce_interval = Duration::from_secs(1);
 
     // Cache of agent_path -> project_config_dir so we don't run the walk-up
-    // filesystem search on every tick. Misses (no config found) are NOT
-    // cached, so a newly-created `.muxix.yaml` in or above an agent's path
-    // is picked up on the next tick.
-    let mut project_config_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
+    // filesystem search (plus a `git rev-parse`) on every tick. A miss is
+    // cached too, as `None`: an agent in a tree with no `.muxix.yaml` is the
+    // common case and paid for the search every tick. Misses expire on the
+    // sweep, because a `.muxix.yaml` can appear in a directory the config
+    // watcher was never told to watch.
+    let mut project_config_cache: HashMap<PathBuf, Option<PathBuf>> = HashMap::new();
+    let mut project_config_cached_at = Instant::now();
+    let mut seen_config_version = config_version.load(Ordering::Relaxed);
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
     // ADE listings shell out, so they run far less often than the tick.
     let mut ade = AdeAgents::new();
+    let mut tmux_options = TmuxOptions::new();
 
     while !term.load(Ordering::Relaxed) {
         // Coalesce dirty signals: SIGUSR1 sets the flag, we service it once
@@ -1729,8 +1907,12 @@ pub fn run() -> Result<()> {
         let timer_expired = time_since_refresh >= refresh_interval;
 
         if debounce_cleared || timer_expired {
+            // Whether a producer asked for this tick, as opposed to the timer:
+            // the cue to re-read state only muxix itself writes.
+            let signalled = dirty_pending;
             dirty_pending = false;
             last_refresh = Instant::now();
+            let tick_began = last_refresh;
 
             // ── Gather inputs ──
             let tmux_state = query_tmux_state();
@@ -1738,40 +1920,40 @@ pub fn run() -> Result<()> {
                 tracing::info!("muxix daemon exiting: tmux server gone");
                 break;
             }
-            // Background jobs ride the tick whether or not a sidebar is open.
+            let Ok(store) = StateStore::new() else {
+                continue;
+            };
             // Cloned out of the lock: sync shells out to the ADE and must not
             // hold up the config watcher's reload meanwhile.
-            jobs_configured = {
-                let cfg = config.lock().unwrap().clone();
-                crate::projects::sync::sync_all_quiet(&cfg, &mut last_sync);
-                cfg.background_jobs_configured()
-            };
+            let cfg = config.lock().unwrap().clone();
+            // Background jobs ride the tick whether or not a sidebar is open.
+            let ades = crate::projects::sync::effective_ades(&cfg);
+            crate::projects::sync::sync_all_quiet(&ades, &mut last_sync);
+            jobs_configured = crate::projects::sync::any_sync_on(&ades);
             let active_pane_ids = tmux_state.active_pane_ids.clone();
-            let agents = StateStore::new()
-                .and_then(|store| store.load_reconciled_agents(mux.as_ref()))
-                .ok();
-            let Some(mut agents) = agents else { continue };
+            let Ok(mut agents) = store.load_reconciled_agents(mux.as_ref()) else {
+                continue;
+            };
             // Agents an ADE owns have no pane, so reconciliation never sees
             // them. Poll the runtimes for those and fold them in, so the sidebar
             // shows the work you started from your phone next to the work in
             // your panes.
-            agents.extend(ade.poll());
+            agents.extend(ade.poll(&cfg));
             // A session taken over locally shows the takeover's status, not the
             // manager's `idle`, and `exited` once it is quit.
             crate::command::ade_view::apply_takeovers(
                 mux.as_ref(),
                 &mut agents,
                 ade.last_problem.is_none(),
+                &cfg,
             );
 
-            let (position, layout_mode) = {
-                let cfg = config.lock().unwrap();
-                (
-                    super::read_sidebar_position(&cfg),
-                    read_sidebar_layout_mode(&cfg).unwrap_or_default(),
-                )
-            };
-            let sleeping_pane_ids = read_sleeping_panes();
+            if tmux_options.is_stale(signalled, last_refresh) {
+                tmux_options.refresh(&cfg, &store, last_refresh);
+            }
+            let position = tmux_options.position;
+            let layout_mode = tmux_options.layout_mode;
+            let sleeping_pane_ids = tmux_options.sleeping_pane_ids.clone();
             let git_statuses = git_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
             let pr_statuses = pr_cache.lock().ok().map(|c| c.clone()).unwrap_or_default();
             let now = Instant::now();
@@ -1804,9 +1986,7 @@ pub fn run() -> Result<()> {
             );
 
             // ── Apply side effects, then commit state ──
-            if let Ok(store) = StateStore::new()
-                && apply_tick_effects(&output, &store, &backend_name, &instance_id)
-            {
+            if apply_tick_effects(&output, &store, &backend_name, &instance_id) {
                 last_runtime_write = Instant::now();
             }
             last_interrupted = output.next_interrupted;
@@ -1873,20 +2053,28 @@ pub fn run() -> Result<()> {
                 .map(|a| a.path.clone())
                 .collect();
             project_config_cache.retain(|p, _| live_paths.contains(p));
+            // A reloaded config means a `.muxix.yaml` was added, changed or
+            // removed somewhere the watcher can see; the sweep covers the
+            // directories it cannot.
+            let version_now = config_version.load(Ordering::Relaxed);
+            if version_now != seen_config_version
+                || project_config_cached_at.elapsed() >= SWEEP_INTERVAL
+            {
+                seen_config_version = version_now;
+                project_config_cached_at = Instant::now();
+                project_config_cache.clear();
+            }
             let mut config_dirs: HashSet<PathBuf> = HashSet::new();
             for a in &output.snapshot.agents {
-                let dir = if let Some(d) = project_config_cache.get(&a.path) {
-                    Some(d.clone())
-                } else {
-                    let found = crate::config::find_project_config(&a.path)
-                        .ok()
-                        .flatten()
-                        .map(|loc| loc.config_dir);
-                    if let Some(ref d) = found {
-                        project_config_cache.insert(a.path.clone(), d.clone());
-                    }
-                    found
-                };
+                let dir = project_config_cache
+                    .entry(a.path.clone())
+                    .or_insert_with(|| {
+                        crate::config::find_project_config(&a.path)
+                            .ok()
+                            .flatten()
+                            .map(|loc| loc.config_dir)
+                    })
+                    .clone();
                 if let Some(d) = dir {
                     config_dirs.insert(d);
                 }
@@ -1916,6 +2104,9 @@ pub fn run() -> Result<()> {
                 }
                 last_agent_list = agent_list;
             }
+
+            window_ticks += 1;
+            window_tick_time += tick_began.elapsed();
         }
 
         // Track client activity for auto-exit. With a job configured the daemon
@@ -1923,27 +2114,45 @@ pub fn run() -> Result<()> {
         let cc = server.client_count();
         if cc > 0 || jobs_configured {
             last_client_seen = Instant::now();
-        } else if last_client_seen.elapsed() > Duration::from_secs(10) {
+        } else if last_client_seen.elapsed() > IDLE_EXIT_TIMEOUT {
             tracing::info!("muxix daemon exiting: no clients for 10s");
             break;
         }
 
-        // Periodic health log (every 60s)
-        if last_health_log.elapsed() >= Duration::from_secs(60) {
+        // Periodic health log (every 60s), which also publishes the window's
+        // tick cost for `muxix daemon status`.
+        let health_interval = Duration::from_secs(60);
+        if last_health_log.elapsed() >= health_interval {
             tracing::info!(clients = cc, jobs = jobs_configured, "muxix daemon alive");
             last_health_log = Instant::now();
+            let spawns_now = crate::cmd::spawns_total();
+            TickStats {
+                window: window_start.elapsed(),
+                spawns: spawns_now.saturating_sub(window_spawns),
+                ticks: window_ticks,
+                tick_time: window_tick_time,
+            }
+            .write(&instance_id);
+            window_start = Instant::now();
+            window_spawns = spawns_now;
+            window_ticks = 0;
+            window_tick_time = Duration::ZERO;
         }
 
-        // Block until woken by a producer or next refresh is due.
-        // SIGUSR1 sets dirty_flag (can't use channels from signal handlers),
-        // so we cap the wait at 100ms to check it, but otherwise block fully.
-        let wait = if dirty_pending {
-            debounce_interval.saturating_sub(last_refresh.elapsed())
-        } else {
-            refresh_interval
-                .saturating_sub(last_refresh.elapsed())
-                .min(Duration::from_millis(100))
-        };
+        // Block until woken or the soonest real deadline. Signals reach the
+        // wake channel through the forwarding thread, so no flag is polled.
+        let idle_exit_in = (cc == 0 && !jobs_configured)
+            .then(|| IDLE_EXIT_TIMEOUT.saturating_sub(last_client_seen.elapsed()));
+        let wait = next_loop_wait(
+            last_refresh.elapsed(),
+            if dirty_pending {
+                debounce_interval
+            } else {
+                refresh_interval
+            },
+            idle_exit_in,
+            health_interval.saturating_sub(last_health_log.elapsed()),
+        );
         let _ = wake_rx.recv_timeout(wait);
     }
 
@@ -1956,6 +2165,7 @@ pub fn run() -> Result<()> {
 
     // Cleanup
     let _ = std::fs::remove_file(&sock_path);
+    let _ = std::fs::remove_file(stats_path(&instance_id));
     if let Ok(store) = StateStore::new() {
         store.delete_runtime(&backend_name, &instance_id);
     }
@@ -2155,6 +2365,163 @@ mod tests {
     use crate::multiplexer::{AgentPane, AgentStatus};
     use std::cell::RefCell;
     use std::path::PathBuf;
+
+    mod tick_diet_tests {
+        use super::*;
+
+        #[test]
+        fn a_signalled_tick_rereads_the_cached_options() {
+            let now = Instant::now();
+            let mut opts = TmuxOptions::new();
+            assert!(opts.is_stale(false, now), "nothing read yet");
+            opts.read_at = Some(now);
+            assert!(!opts.is_stale(false, now), "an idle tick reuses the cache");
+            assert!(opts.is_stale(true, now), "a signal forces a re-read");
+        }
+
+        #[test]
+        fn an_unsignalled_change_is_picked_up_within_one_sweep() {
+            let now = Instant::now();
+            let mut opts = TmuxOptions::new();
+            opts.read_at = Some(now);
+            assert!(!opts.is_stale(false, now + SWEEP_INTERVAL / 2));
+            assert!(opts.is_stale(false, now + SWEEP_INTERVAL));
+        }
+
+        #[test]
+        fn an_idle_loop_waits_for_its_next_sweep() {
+            // No client countdown, health log far off: nothing to poll for.
+            let wait = next_loop_wait(
+                Duration::from_secs(1),
+                SWEEP_INTERVAL,
+                None,
+                Duration::from_secs(59),
+            );
+            assert_eq!(wait, SWEEP_INTERVAL - Duration::from_secs(1));
+        }
+
+        #[test]
+        fn the_wait_never_outlasts_the_idle_exit() {
+            let wait = next_loop_wait(
+                Duration::ZERO,
+                SWEEP_INTERVAL,
+                Some(Duration::from_secs(4)),
+                Duration::from_secs(59),
+            );
+            assert_eq!(wait, Duration::from_secs(4));
+        }
+
+        #[test]
+        fn a_past_deadline_does_not_wait() {
+            let wait = next_loop_wait(
+                SWEEP_INTERVAL * 2,
+                SWEEP_INTERVAL,
+                None,
+                Duration::from_secs(10),
+            );
+            assert_eq!(wait, Duration::ZERO);
+        }
+
+        #[test]
+        fn tick_stats_survive_the_round_trip() {
+            let id = format!("tick-stats-test-{}", std::process::id());
+            TickStats {
+                window: Duration::from_secs(60),
+                spawns: 7,
+                ticks: 4,
+                tick_time: Duration::from_millis(80),
+            }
+            .write(&id);
+            let read = TickStats::read(&id).expect("stats readable");
+            let _ = std::fs::remove_file(stats_path(&id));
+            assert_eq!(read.window, Duration::from_secs(60));
+            assert_eq!(read.spawns, 7);
+            assert_eq!(read.ticks, 4);
+            assert_eq!(read.mean_tick(), Some(Duration::from_millis(20)));
+        }
+
+        #[test]
+        fn no_sample_reads_as_absent() {
+            assert!(TickStats::read("no-such-daemon-instance").is_none());
+        }
+
+        fn empty_snapshot() -> crate::command::sidebar::snapshot::SidebarSnapshot {
+            crate::command::sidebar::snapshot::SidebarSnapshot {
+                position: crate::config::SidebarPosition::Left,
+                layout_mode: SidebarLayoutMode::default(),
+                active_windows: HashSet::new(),
+                active_pane_ids: HashSet::new(),
+                window_pane_counts: HashMap::new(),
+                git_statuses: HashMap::new(),
+                pr_statuses: HashMap::new(),
+                interrupted_pane_ids: HashSet::new(),
+                sleeping_pane_ids: HashSet::new(),
+                agents: Vec::new(),
+                config_version: 0,
+            }
+        }
+
+        /// Read one length-prefixed frame, or None if the socket is empty.
+        fn read_frame(stream: &mut UnixStream) -> Option<usize> {
+            use std::io::Read;
+            stream
+                .set_read_timeout(Some(Duration::from_millis(200)))
+                .unwrap();
+            let mut len = [0u8; 4];
+            stream.read_exact(&mut len).ok()?;
+            let len = u32::from_be_bytes(len) as usize;
+            let mut body = vec![0u8; len];
+            stream.read_exact(&mut body).ok()?;
+            Some(len)
+        }
+
+        #[test]
+        fn an_unchanged_snapshot_is_not_pushed_twice() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let server = SocketServer::bind(&sock).unwrap();
+            let mut client = UnixStream::connect(&sock).unwrap();
+            // Let the accept thread register the connection.
+            for _ in 0..100 {
+                if server.client_count() == 1 {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(server.client_count(), 1);
+
+            let snapshot = empty_snapshot();
+            assert!(server.broadcast(&snapshot), "first push goes out");
+            assert!(
+                !server.broadcast(&snapshot.clone()),
+                "an identical snapshot is not pushed again"
+            );
+            let mut changed = snapshot.clone();
+            changed.config_version = 1;
+            assert!(server.broadcast(&changed), "a changed field pushes again");
+
+            assert!(read_frame(&mut client).is_some());
+            assert!(read_frame(&mut client).is_some());
+            assert!(
+                read_frame(&mut client).is_none(),
+                "exactly two frames, not three"
+            );
+        }
+
+        #[test]
+        fn a_new_client_gets_the_current_snapshot_on_connect() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let server = SocketServer::bind(&sock).unwrap();
+            server.broadcast(&empty_snapshot());
+
+            let mut client = UnixStream::connect(&sock).unwrap();
+            assert!(
+                read_frame(&mut client).is_some(),
+                "the cached snapshot arrives without waiting for a tick"
+            );
+        }
+    }
 
     mod git_sweep_interval_tests {
         use super::*;

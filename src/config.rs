@@ -3350,8 +3350,15 @@ impl AdeConfig {
     }
 
     /// Every built-in preset, by name.
+    ///
+    /// Built once: the set is a compile-time constant, and `effective_ades`
+    /// asks for it on every daemon tick.
     pub fn presets() -> BTreeMap<String, AdeConfig> {
-        BTreeMap::from([("paseo".to_string(), AdeConfig::paseo())])
+        static PRESETS: std::sync::LazyLock<BTreeMap<String, AdeConfig>> =
+            std::sync::LazyLock::new(|| {
+                BTreeMap::from([("paseo".to_string(), AdeConfig::paseo())])
+            });
+        PRESETS.clone()
     }
 }
 
@@ -3478,13 +3485,7 @@ impl Config {
     /// sidebar clients. Today: ADE project sync with a direction other than
     /// `off`.
     pub fn background_jobs_configured(&self) -> bool {
-        crate::projects::sync::effective_ades(self)
-            .values()
-            .any(|ade| {
-                ade.projects
-                    .as_ref()
-                    .is_some_and(|p| p.sync.direction != SyncDirection::Off)
-            })
+        crate::projects::sync::any_sync_on(&crate::projects::sync::effective_ades(self))
     }
 
     /// Load and merge global and project configurations.

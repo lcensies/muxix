@@ -19,7 +19,7 @@ pub(crate) struct PrPathEntry {
 }
 
 /// A complete sidebar state snapshot, pushed from daemon to clients.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SidebarSnapshot {
     pub position: SidebarPosition,
     pub layout_mode: SidebarLayoutMode,
@@ -212,6 +212,36 @@ mod tests {
             pr_statuses,
             &HashSet::new(),
         )
+    }
+
+    #[test]
+    fn two_unchanged_ticks_build_equal_snapshots() {
+        // The daemon skips a push whose snapshot the clients already hold, so
+        // equality must survive being rebuilt from scratch — hash-map
+        // iteration order included.
+        let path = PathBuf::from("/repo");
+        let git = GitStatus {
+            branch: Some("feature".to_string()),
+            base_branch: "main".to_string(),
+            ..Default::default()
+        };
+        let inputs = || {
+            (
+                vec![agent("/repo")],
+                HashMap::from([(path.clone(), git.clone())]),
+                HashMap::from([(path.clone(), pr_entry("feature", 1))]),
+            )
+        };
+        let (a, b, c) = inputs();
+        let first = build(a, b, c);
+        let (a, b, c) = inputs();
+        let second = build(a, b, c);
+        assert_eq!(first, second);
+
+        let (a, b, c) = inputs();
+        let mut changed = build(a, b, c);
+        changed.config_version += 1;
+        assert_ne!(first, changed);
     }
 
     #[test]
