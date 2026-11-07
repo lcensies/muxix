@@ -411,6 +411,41 @@ pub struct DaemonConfig {
     /// Auto-freeze idle Done agents to reclaim CPU.
     #[serde(default)]
     pub auto_freeze: Option<AutoFreezeConfig>,
+
+    /// Periodic git status sweep in the daemon's git worker.
+    #[serde(default)]
+    pub git_poll: GitPollConfig,
+}
+
+/// Configuration for the daemon's periodic git status sweep.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GitPollConfig {
+    /// How often the daemon re-reads git status for every active worktree when
+    /// the filesystem watcher has reported nothing. Examples: "10s", "1m".
+    #[serde(default = "default_git_poll_interval")]
+    pub interval: IdleDuration,
+}
+
+fn default_git_poll_interval() -> IdleDuration {
+    IdleDuration(std::time::Duration::from_secs(10))
+}
+
+impl Default for GitPollConfig {
+    fn default() -> Self {
+        Self {
+            interval: default_git_poll_interval(),
+        }
+    }
+}
+
+impl GitPollConfig {
+    /// The sweep interval, with the 1s floor applied. A tighter sweep costs
+    /// more than it buys: real edits arrive through the filesystem watcher.
+    pub fn interval(&self) -> std::time::Duration {
+        self.interval
+            .as_duration()
+            .max(std::time::Duration::from_secs(1))
+    }
 }
 
 /// Configuration for the auto-freeze feature.

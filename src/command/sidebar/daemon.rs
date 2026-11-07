@@ -632,15 +632,9 @@ fn next_worker_timeout(
 /// Refresh git status for a worktree path, updating the cache.
 /// Returns true if the status actually changed (semantically, ignoring cached_at).
 fn refresh_git_status(path: &Path, cache: &GitCache) -> bool {
-    let new_status = crate::git::get_git_status(path, None);
-    let changed = cache
-        .lock()
-        .ok()
-        .map(|c| {
-            c.get(path)
-                .is_none_or(|old| !git_status_semantically_equal(old, &new_status))
-        })
-        .unwrap_or(true);
+    let prev = cache.lock().ok().and_then(|c| c.get(path).cloned());
+    let new_status = crate::git::get_git_status_cached(path, None, prev.as_ref());
+    let changed = prev.is_none_or(|old| !git_status_semantically_equal(&old, &new_status));
     if let Ok(mut c) = cache.lock() {
         c.insert(path.to_path_buf(), new_status);
     }
@@ -838,16 +832,36 @@ fn spawn_pr_worker(
     (path_cache, tx)
 }
 
+/// The periodic git sweep interval. Only the Linux-with-watcher arm is
+/// configurable (`daemon.git_poll.interval`): the other two are derived from
+/// what the watcher can see, not from cost.
+fn git_sweep_interval(has_watcher: bool, config: Option<&Config>) -> Duration {
+    if !has_watcher {
+        // No watcher available: poll frequently as the only change detection.
+        Duration::from_secs(2)
+    } else if platform_supports_worktree_watches() {
+        // macOS: worktree watches give instant detection, sweep is just a safety net.
+        Duration::from_secs(30)
+    } else {
+        // Linux: only .git metadata is watched, so working tree changes need
+        // polling. A refresh that finds nothing moved costs one git process.
+        config
+            .map(|c| c.daemon.git_poll.interval())
+            .unwrap_or_else(|| crate::config::GitPollConfig::default().interval())
+    }
+}
+
 /// Spawn a background thread that watches for git changes and updates the cache.
 ///
 /// Uses the `notify` crate for OS-level filesystem event detection (FSEvents on macOS).
 /// Watches .git internals and worktree roots for each active worktree. Events are
-/// debounced per-worktree (300ms) before triggering `get_git_status()`. A fallback
-/// sweep runs every 30s for edge cases where the watcher might miss events.
+/// debounced per-worktree (300ms) before triggering a refresh. A fallback
+/// sweep covers what the watcher cannot see; see `git_sweep_interval`.
 fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
     wake_tx: std::sync::mpsc::SyncSender<()>,
+    config: Arc<Mutex<Config>>,
 ) -> (GitCache, std::sync::mpsc::Sender<Vec<GitWorkerPath>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
@@ -904,20 +918,12 @@ fn spawn_git_worker(
         // Track unique active paths for fallback polling
         let mut unique_active: Vec<PathBuf> = Vec::new();
         let mut last_full_sweep = Instant::now();
-        let full_sweep_interval = if watcher.is_none() {
-            // No watcher available: poll frequently as the only change detection
-            Duration::from_secs(2)
-        } else if platform_supports_worktree_watches() {
-            // macOS: worktree watches give instant detection, sweep is just a safety net
-            Duration::from_secs(30)
-        } else {
-            // Linux: only .git metadata is watched, working tree changes need polling.
-            // 5s balances responsiveness with CPU cost (one git-status per worktree).
-            Duration::from_secs(5)
-        };
         let debounce_duration = Duration::from_millis(300);
 
         while !term.load(Ordering::Relaxed) {
+            // Re-read every pass so a config reload takes effect without a restart.
+            let full_sweep_interval =
+                git_sweep_interval(watcher.is_some(), config.lock().ok().as_deref());
             // Block on filesystem events (zero CPU when idle), or sleep briefly in poll mode
             if watcher.is_some() {
                 let timeout = next_worker_timeout(
@@ -1079,7 +1085,7 @@ fn spawn_git_worker(
                 }
             }
 
-            // Fallback full sweep (30s with watcher, 2s without; includes stale worktrees)
+            // Fallback full sweep (see `git_sweep_interval`; includes stale worktrees)
             if last_full_sweep.elapsed() >= full_sweep_interval {
                 last_full_sweep = Instant::now();
                 let sweep_paths: Vec<PathBuf> = if watcher.is_some() {
@@ -1646,8 +1652,12 @@ pub fn run() -> Result<()> {
     );
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
-    let (git_cache, git_path_tx) =
-        spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx.clone());
+    let (git_cache, git_path_tx) = spawn_git_worker(
+        term.clone(),
+        dirty_flag.clone(),
+        wake_tx.clone(),
+        config.clone(),
+    );
     let (pr_cache, pr_path_tx) = spawn_pr_worker(term.clone(), dirty_flag.clone(), wake_tx);
 
     // Store PID so toggle-off can kill us and hooks can signal us
@@ -2145,6 +2155,56 @@ mod tests {
     use crate::multiplexer::{AgentPane, AgentStatus};
     use std::cell::RefCell;
     use std::path::PathBuf;
+
+    mod git_sweep_interval_tests {
+        use super::*;
+        use crate::config::{GitPollConfig, IdleDuration};
+
+        #[cfg(not(target_os = "macos"))]
+        #[test]
+        fn defaults_to_ten_seconds() {
+            let config = Config::default();
+            assert_eq!(
+                git_sweep_interval(true, Some(&config)),
+                Duration::from_secs(10)
+            );
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        #[test]
+        fn honours_a_configured_interval() {
+            let mut config = Config::default();
+            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(30));
+            assert_eq!(
+                git_sweep_interval(true, Some(&config)),
+                Duration::from_secs(30)
+            );
+            // The worker re-reads the config every pass, so a reload is live.
+            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(60));
+            assert_eq!(
+                git_sweep_interval(true, Some(&config)),
+                Duration::from_secs(60)
+            );
+        }
+
+        #[test]
+        fn clamps_below_one_second() {
+            let poll = GitPollConfig {
+                interval: IdleDuration(Duration::from_millis(50)),
+            };
+            assert_eq!(poll.interval(), Duration::from_secs(1));
+        }
+
+        #[test]
+        fn a_missing_watcher_polls_every_two_seconds() {
+            let mut config = Config::default();
+            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(300));
+            assert_eq!(
+                git_sweep_interval(false, Some(&config)),
+                Duration::from_secs(2)
+            );
+        }
+    }
 
     fn working_agent(pane_id: &str, updated_ts: u64) -> AgentPane {
         AgentPane {
@@ -2916,13 +2976,48 @@ mod tests {
             '?'
         }
 
-        /// Spawn `bash -c 'sleep 9999 & wait $!'` so bash has a real child
-        /// process that proc_descendants() will find and FreezeTracker can SIGSTOP.
-        fn spawn_shell_with_child() -> std::process::Child {
-            std::process::Command::new("bash")
-                .args(["-c", "sleep 9999 & wait $!"])
-                .spawn()
-                .expect("failed to spawn bash")
+        /// A `bash -c 'sleep 9999 & wait $!'` fixture: bash with a real child
+        /// for `proc_descendants()` to find and `FreezeTracker` to SIGSTOP.
+        ///
+        /// It owns a process group and kills the whole group on `Drop`. Without
+        /// that, a panicking test leaks the `sleep`, which keeps the test
+        /// runner's inherited stdout open: cargo exits, and anything reading
+        /// that pipe to EOF (a shell pipeline, CI, an agent) blocks forever.
+        /// Null stdio keeps it out of the pipe in the first place.
+        struct ShellWithChild(std::process::Child);
+
+        impl ShellWithChild {
+            fn spawn() -> Self {
+                use std::os::unix::process::CommandExt;
+                Self(
+                    std::process::Command::new("bash")
+                        .args(["-c", "sleep 9999 & wait $!"])
+                        .process_group(0)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                        .expect("failed to spawn bash"),
+                )
+            }
+
+            fn id(&self) -> u32 {
+                self.0.id()
+            }
+        }
+
+        impl Drop for ShellWithChild {
+            fn drop(&mut self) {
+                // `process_group(0)` made bash its own group leader, so its pid
+                // is the pgid. SIGCONT first in case the test left the group
+                // frozen, then SIGKILL the group so `sleep` dies with bash.
+                let pgid = self.0.id() as i32;
+                unsafe {
+                    libc::killpg(pgid, libc::SIGCONT);
+                    libc::killpg(pgid, libc::SIGKILL);
+                }
+                let _ = self.0.wait();
+            }
         }
 
         /// Wait until the given PID has at least one child in /proc (bash needs
@@ -2960,7 +3055,7 @@ mod tests {
 
         #[test]
         fn freeze_stops_idle_done_agent() {
-            let mut child = spawn_shell_with_child();
+            let child = ShellWithChild::spawn();
             let shell_pid = child.id();
             wait_for_children(shell_pid);
 
@@ -2981,15 +3076,11 @@ mod tests {
                     "child {cpid} should be stopped after freeze"
                 );
             }
-
-            let _ = child.kill();
-            tracker.thaw_all(); // SIGCONT before wait so kill can be delivered
-            let _ = child.wait();
         }
 
         #[test]
         fn thaw_on_pane_focus() {
-            let mut child = spawn_shell_with_child();
+            let child = ShellWithChild::spawn();
             let shell_pid = child.id();
             wait_for_children(shell_pid);
             let children = proc_descendants(shell_pid);
@@ -3016,14 +3107,11 @@ mod tests {
                     "child {cpid} should be running after thaw-on-focus, got '{state}'"
                 );
             }
-
-            let _ = child.kill();
-            let _ = child.wait();
         }
 
         #[test]
         fn thaw_on_status_change_to_working() {
-            let mut child = spawn_shell_with_child();
+            let child = ShellWithChild::spawn();
             let shell_pid = child.id();
             wait_for_children(shell_pid);
             let children = proc_descendants(shell_pid);
@@ -3051,14 +3139,11 @@ mod tests {
                     "child {cpid} should be running after status→Working, got '{state}'"
                 );
             }
-
-            let _ = child.kill();
-            let _ = child.wait();
         }
 
         #[test]
         fn thaw_all_unfreezes_on_shutdown() {
-            let mut child = spawn_shell_with_child();
+            let child = ShellWithChild::spawn();
             let shell_pid = child.id();
             wait_for_children(shell_pid);
             let children = proc_descendants(shell_pid);
@@ -3081,14 +3166,11 @@ mod tests {
                     "child {cpid} still stopped after thaw_all, got '{state}'"
                 );
             }
-
-            let _ = child.kill();
-            let _ = child.wait();
         }
 
         #[test]
         fn frozen_entry_stores_window_metadata() {
-            let mut child = spawn_shell_with_child();
+            let child = ShellWithChild::spawn();
             let shell_pid = child.id();
             wait_for_children(shell_pid);
 
@@ -3108,10 +3190,6 @@ mod tests {
                 !entry.child_pids.is_empty(),
                 "should have recorded child PIDs"
             );
-
-            let _ = child.kill();
-            tracker.thaw_all();
-            let _ = child.wait();
         }
     }
 }

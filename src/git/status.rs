@@ -96,17 +96,33 @@ pub fn has_unstaged_changes(worktree_path: &Path) -> Result<bool> {
     Ok(!no_changes)
 }
 
-/// Parse git status porcelain v2 output to extract branch info and dirty state.
-/// Returns (branch_name, ahead, behind, is_dirty, has_upstream).
-fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, bool, bool) {
+/// Branch info and dirty state read out of `git status --porcelain=v2 --branch`.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ParsedStatus {
+    /// `None` when HEAD is detached.
+    branch: Option<String>,
+    ahead: usize,
+    behind: usize,
+    is_dirty: bool,
+    has_upstream: bool,
+    /// `None` in a repository with no commits yet (`# branch.oid (initial)`).
+    head_oid: Option<String>,
+}
+
+fn parse_porcelain_v2_status(output: &str) -> ParsedStatus {
     let mut branch_name: Option<String> = None;
     let mut ahead: usize = 0;
     let mut behind: usize = 0;
     let mut is_dirty = false;
     let mut has_upstream = false;
+    let mut head_oid: Option<String> = None;
 
     for line in output.lines() {
-        if let Some(rest) = line.strip_prefix("# branch.head ") {
+        if let Some(rest) = line.strip_prefix("# branch.oid ") {
+            if rest != "(initial)" {
+                head_oid = Some(rest.to_string());
+            }
+        } else if let Some(rest) = line.strip_prefix("# branch.head ") {
             // "(detached)" indicates detached HEAD state
             if rest != "(detached)" {
                 branch_name = Some(rest.to_string());
@@ -134,7 +150,14 @@ fn parse_porcelain_v2_status(output: &str) -> (Option<String>, usize, usize, boo
         }
     }
 
-    (branch_name, ahead, behind, is_dirty, has_upstream)
+    ParsedStatus {
+        branch: branch_name,
+        ahead,
+        behind,
+        is_dirty,
+        has_upstream,
+        head_oid,
+    }
 }
 
 /// Count lines in a file, treating it like git (text files only).
@@ -177,69 +200,42 @@ fn count_lines(path: &Path) -> std::io::Result<usize> {
     Ok(count)
 }
 
-/// Diff statistics returned by get_diff_stats.
-///
-/// Separates committed and uncommitted changes:
-/// - Committed: changes in base...HEAD (what's been committed on the branch)
-/// - Uncommitted: working tree changes + untracked files
-struct DiffStats {
-    /// Lines added in committed changes only (base...HEAD)
-    committed_added: usize,
-    /// Lines removed in committed changes only (base...HEAD)
-    committed_removed: usize,
-    /// Lines added in uncommitted changes (working tree + untracked)
-    uncommitted_added: usize,
-    /// Lines removed in uncommitted changes (working tree)
-    uncommitted_removed: usize,
+/// Parse `git diff --numstat` output into (added, removed). Binary files use
+/// "-" instead of counts, which fails to parse and contributes nothing.
+fn parse_numstat(output: &str) -> (usize, usize) {
+    let mut added = 0;
+    let mut removed = 0;
+    for line in output.lines() {
+        let mut parts = line.split_whitespace();
+        if let (Some(a), Some(r)) = (parts.next(), parts.next()) {
+            added += a.parse::<usize>().unwrap_or(0);
+            removed += r.parse::<usize>().unwrap_or(0);
+        }
+    }
+    (added, removed)
 }
 
-fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
-    let mut committed_added = 0;
-    let mut committed_removed = 0;
-    let mut uncommitted_added = 0;
-    let mut uncommitted_removed = 0;
-
-    // Helper to parse numstat output
-    let parse_numstat = |output: &str| -> (usize, usize) {
-        let mut a = 0;
-        let mut r = 0;
-        for line in output.lines() {
-            let mut parts = line.split_whitespace();
-            // Format: <added> <removed> <filename>
-            // Binary files use "-" instead of numbers (parse will fail, which is fine)
-            if let (Some(added), Some(removed)) = (parts.next(), parts.next()) {
-                a += added.parse::<usize>().unwrap_or(0);
-                r += removed.parse::<usize>().unwrap_or(0);
-            }
-        }
-        (a, r)
-    };
-
-    // 1. Committed changes (base...HEAD)
-    if let Ok(output) = bg_git()
+/// Lines added/removed by the commits on this branch (`<base>...HEAD`).
+fn committed_diff(worktree_path: &Path, base_ref: &str) -> (usize, usize) {
+    bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--numstat", &format!("{}...HEAD", base_ref)])
         .run_and_capture_stdout()
-    {
-        let (a, r) = parse_numstat(&output);
-        committed_added += a;
-        committed_removed += r;
-    }
+        .map(|out| parse_numstat(&out))
+        .unwrap_or((0, 0))
+}
 
-    // 2. Uncommitted changes (HEAD vs working tree)
-    // This covers both staged and unstaged changes to tracked files
-    if let Ok(output) = bg_git()
+/// Lines added/removed in the working tree: staged and unstaged changes to
+/// tracked files, plus every line of every untracked file.
+fn uncommitted_diff(worktree_path: &Path) -> (usize, usize) {
+    let (mut added, removed) = bg_git()
         .workdir(worktree_path)
         .args(&["diff", "--numstat", "HEAD"])
         .run_and_capture_stdout()
-    {
-        let (a, r) = parse_numstat(&output);
-        uncommitted_added += a;
-        uncommitted_removed += r;
-    }
+        .map(|out| parse_numstat(&out))
+        .unwrap_or((0, 0));
 
-    // 3. Untracked files (all lines count as added to uncommitted)
-    // Use -z to separate paths with null bytes, handling spaces/special chars correctly
+    // Use -z so paths with spaces or newlines survive.
     if let Ok(output) = bg_git()
         .workdir(worktree_path)
         .args(&["ls-files", "--others", "--exclude-standard", "-z"])
@@ -252,26 +248,21 @@ fn get_diff_stats(worktree_path: &Path, base_ref: &str) -> DiffStats {
 
             let full_path = worktree_path.join(file_path);
 
-            // Check for symlinks - treat as 1 line (the path) like git does
+            // Symlinks count as one line (the path), like git does.
             if let Ok(metadata) = std::fs::symlink_metadata(&full_path)
                 && metadata.file_type().is_symlink()
             {
-                uncommitted_added += 1;
+                added += 1;
                 continue;
             }
 
             if let Ok(lines) = count_lines(&full_path) {
-                uncommitted_added += lines;
+                added += lines;
             }
         }
     }
 
-    DiffStats {
-        committed_added,
-        committed_removed,
-        uncommitted_added,
-        uncommitted_removed,
-    }
+    (added, removed)
 }
 
 /// Check if a rebase is in progress by looking for rebase state directories in the git dir.
@@ -307,6 +298,46 @@ fn is_rebasing(worktree_path: &Path) -> bool {
 /// This is designed for dashboard display and prioritizes speed over completeness.
 /// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
 pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitStatus {
+    get_git_status_cached(worktree_path, main_branch, None)
+}
+
+/// Whether `prev`'s base branch can be reused instead of asking git for it.
+///
+/// The base comes from `branch.<b>.muxix-base` in the repository's local
+/// config, so any write to that file (`muxix set-base`, the dashboard's base
+/// picker) forces a fresh lookup. Comparing the config's mtime against the
+/// cached status's timestamp needs no extra field and no subprocess.
+///
+/// shortcut: ignores `config.worktree` (only written under
+/// `extensions.worktreeConfig`, which muxix never sets); revisit if muxix
+/// starts writing per-worktree config.
+fn cached_base_is_current(common_dir: Option<&Path>, prev: &GitStatus) -> bool {
+    if prev.base_branch.is_empty() {
+        return false;
+    }
+    let (Some(common_dir), Some(cached_at)) = (common_dir, prev.cached_at) else {
+        return false;
+    };
+    let Ok(modified) = std::fs::metadata(common_dir.join("config")).and_then(|m| m.modified())
+    else {
+        return false;
+    };
+    let config_secs = modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(u64::MAX);
+    // +1 covers the one-second granularity of `cached_at`.
+    config_secs + 1 < cached_at
+}
+
+/// Get git status, reusing values from `prev` whose inputs provably have not
+/// changed. A clean worktree whose HEAD and base have not moved costs exactly
+/// one git process; see the `git-status-polling` spec.
+pub fn get_git_status_cached(
+    worktree_path: &Path,
+    main_branch: Option<&str>,
+    prev: Option<&GitStatus>,
+) -> GitStatus {
     use std::time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -315,8 +346,8 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
 
     let is_rebasing = is_rebasing(worktree_path);
 
-    // Get branch info, ahead/behind, and dirty state in one command
-    let (branch, ahead, behind, is_dirty, has_upstream) = match bg_git()
+    // Get branch info, ahead/behind, dirty state and HEAD's oid in one command
+    let parsed = match bg_git()
         .workdir(worktree_path)
         .args(&["status", "--porcelain=v2", "--branch"])
         .run_and_capture_stdout()
@@ -331,6 +362,14 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
             };
         }
     };
+    let ParsedStatus {
+        branch,
+        ahead,
+        behind,
+        is_dirty,
+        has_upstream,
+        head_oid,
+    } = parsed;
 
     // If no branch (detached HEAD or error), return early with dirty state
     let branch = match branch {
@@ -342,164 +381,404 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
                 branch: None,
                 has_upstream,
                 is_rebasing,
+                head_oid,
                 ..Default::default()
             };
         }
     };
 
+    let common_dir = crate::git::common_dir_cached(worktree_path);
+
     // Determine base branch for conflict check and diff stats
-    // Priority: muxix-base config > configured main_branch > auto-detected default > "main"
-    let base_branch = get_branch_base_in(&branch, Some(worktree_path))
-        .ok()
-        .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
-        .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
-        .unwrap_or_else(|| "main".to_string());
+    // Priority: cached (while the local config is older than the cache) >
+    // muxix-base config > configured main_branch > auto-detected default > "main"
+    let base_branch = match prev.filter(|p| cached_base_is_current(common_dir.as_deref(), p)) {
+        Some(p) => p.base_branch.clone(),
+        None => get_branch_base_in(&branch, Some(worktree_path))
+            .ok()
+            .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
+            .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
+            .unwrap_or_else(|| "main".to_string()),
+    };
+
+    let base_oid = common_dir
+        .as_deref()
+        .and_then(|dir| crate::git::read_branch_oid(dir, &base_branch));
+
+    // A clean worktree has no working-tree diff and no untracked files, so
+    // those two commands can only report zero.
+    let (uncommitted_added, uncommitted_removed) = if is_dirty {
+        uncommitted_diff(worktree_path)
+    } else {
+        (0, 0)
+    };
 
     // On the base branch: no branch-level diff, but still show uncommitted changes
     if branch == base_branch {
-        let stats = get_diff_stats(worktree_path, &branch);
-
         return GitStatus {
             ahead,
             behind,
             is_dirty,
-            uncommitted_added: stats.uncommitted_added,
-            uncommitted_removed: stats.uncommitted_removed,
+            uncommitted_added,
+            uncommitted_removed,
             cached_at: now,
             base_branch,
             branch: Some(branch),
             has_upstream,
             is_rebasing,
+            head_oid,
+            base_oid,
             ..Default::default()
         };
     }
 
-    // Use local base branch for comparisons (clone since we need it in the return)
-    let base_ref = base_branch.clone();
+    // The conflict check and the `<base>...HEAD` diff depend only on the pair
+    // of commits being compared. Both unchanged means both answers stand.
+    let unmoved = prev.filter(|p| {
+        head_oid.is_some()
+            && base_oid.is_some()
+            && p.head_oid == head_oid
+            && p.base_oid == base_oid
+            && p.base_branch == base_branch
+    });
 
-    // Check for merge conflicts with base branch
-    // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
-    // Exit code 129 means unknown option (older Git) - treat as no conflict
-    let has_conflict = {
-        let status = Command::new("git")
-            .current_dir(worktree_path)
-            .args([
-                "--no-optional-locks",
-                "merge-tree",
-                "--write-tree",
-                &base_ref,
-                "HEAD",
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        matches!(status, Ok(s) if s.code() == Some(1))
+    let (has_conflict, lines_added, lines_removed) = match unmoved {
+        Some(p) => (p.has_conflict, p.lines_added, p.lines_removed),
+        None => {
+            // git merge-tree --write-tree returns exit code 1 on conflict (Git 2.38+)
+            // Exit code 129 means unknown option (older Git) - treat as no conflict
+            crate::cmd::count_git_spawn();
+            let status = Command::new("git")
+                .current_dir(worktree_path)
+                .args([
+                    "--no-optional-locks",
+                    "merge-tree",
+                    "--write-tree",
+                    &base_branch,
+                    "HEAD",
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            let has_conflict = matches!(status, Ok(s) if s.code() == Some(1));
+            let (added, removed) = committed_diff(worktree_path, &base_branch);
+            (has_conflict, added, removed)
+        }
     };
-
-    // Get diff stats (lines added/removed vs base)
-    let diff_stats = get_diff_stats(worktree_path, &base_ref);
 
     GitStatus {
         ahead,
         behind,
         has_conflict,
         is_dirty,
-        lines_added: diff_stats.committed_added,
-        lines_removed: diff_stats.committed_removed,
-        uncommitted_added: diff_stats.uncommitted_added,
-        uncommitted_removed: diff_stats.uncommitted_removed,
+        lines_added,
+        lines_removed,
+        uncommitted_added,
+        uncommitted_removed,
         cached_at: now,
         base_branch,
         branch: Some(branch),
         has_upstream,
         is_rebasing,
+        head_oid,
+        base_oid,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_porcelain_v2_status;
+    use super::*;
 
     #[test]
     fn test_parse_porcelain_v2_clean_repo() {
         let output = "# branch.oid abc123def456\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -0\n";
-        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("main".to_string()));
-        assert_eq!(ahead, 0);
-        assert_eq!(behind, 0);
-        assert!(!is_dirty);
-        assert!(has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("main".to_string()));
+        assert_eq!(got.ahead, 0);
+        assert_eq!(got.behind, 0);
+        assert!(!got.is_dirty);
+        assert!(got.has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_dirty_repo() {
         let output = "# branch.oid abc123\n# branch.head feature\n# branch.upstream origin/feature\n# branch.ab +1 -2\n1 .M N... 100644 100644 100644 abc123 def456 src/file.rs\n? untracked.txt\n";
-        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("feature".to_string()));
-        assert_eq!(ahead, 1);
-        assert_eq!(behind, 2);
-        assert!(is_dirty);
-        assert!(has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("feature".to_string()));
+        assert_eq!(got.ahead, 1);
+        assert_eq!(got.behind, 2);
+        assert!(got.is_dirty);
+        assert!(got.has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_no_upstream() {
         // When there's no upstream, branch.ab line is missing
         let output = "# branch.oid abc123\n# branch.head new-branch\n";
-        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("new-branch".to_string()));
-        assert_eq!(ahead, 0);
-        assert_eq!(behind, 0);
-        assert!(!is_dirty);
-        assert!(!has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("new-branch".to_string()));
+        assert_eq!(got.ahead, 0);
+        assert_eq!(got.behind, 0);
+        assert!(!got.is_dirty);
+        assert!(!got.has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_detached_head() {
         let output = "# branch.oid abc123\n# branch.head (detached)\n";
-        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, None);
-        assert_eq!(ahead, 0);
-        assert_eq!(behind, 0);
-        assert!(!is_dirty);
-        assert!(!has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, None);
+        assert_eq!(got.ahead, 0);
+        assert_eq!(got.behind, 0);
+        assert!(!got.is_dirty);
+        assert!(!got.has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_untracked_only() {
         let output = "# branch.oid abc123\n# branch.head main\n? untracked.txt\n";
-        let (branch, _ahead, _behind, is_dirty, _has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("main".to_string()));
-        assert!(is_dirty);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("main".to_string()));
+        assert!(got.is_dirty);
     }
 
     #[test]
     fn test_parse_porcelain_v2_renamed_file() {
         let output = "# branch.oid abc123\n# branch.head main\n2 R. N... 100644 100644 100644 abc123 def456 R100 old.rs\tnew.rs\n";
-        let (branch, _ahead, _behind, is_dirty, _has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("main".to_string()));
-        assert!(is_dirty);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("main".to_string()));
+        assert!(got.is_dirty);
     }
 
     #[test]
     fn test_parse_porcelain_v2_initial_commit() {
         // Repo created but no commits made yet
         let output = "# branch.oid (initial)\n# branch.head master\n";
-        let (branch, ahead, behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("master".to_string()));
-        assert_eq!(ahead, 0);
-        assert_eq!(behind, 0);
-        assert!(!is_dirty);
-        assert!(!has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("master".to_string()));
+        assert_eq!(got.ahead, 0);
+        assert_eq!(got.behind, 0);
+        assert!(!got.is_dirty);
+        assert!(!got.has_upstream);
     }
 
     #[test]
     fn test_parse_porcelain_v2_unmerged_conflict() {
         // Merge conflict (unmerged entry starting with 'u')
         let output = "# branch.oid abc123\n# branch.head feature\n# branch.upstream origin/feature\n# branch.ab +0 -0\nu UU N... 100644 100644 100644 100644 abc def ghi jkl src/conflict.rs\n";
-        let (branch, _ahead, _behind, is_dirty, has_upstream) = parse_porcelain_v2_status(output);
-        assert_eq!(branch, Some("feature".to_string()));
-        assert!(is_dirty);
-        assert!(has_upstream);
+        let got = parse_porcelain_v2_status(output);
+        assert_eq!(got.branch, Some("feature".to_string()));
+        assert!(got.is_dirty);
+        assert!(got.has_upstream);
+    }
+}
+
+#[cfg(test)]
+mod cached_refresh_tests {
+    use super::*;
+    use crate::cmd::take_git_spawns;
+    use std::process::Command as StdCommand;
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let out = StdCommand::new("git")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A repo on branch `feature` whose muxix-base is `main`, with one commit
+    /// on each. The local config is backdated so a cached base branch counts
+    /// as current (see `cached_base_is_current`).
+    fn repo_on_feature(temp: &tempfile::TempDir) -> std::path::PathBuf {
+        let dir = temp.path().join("repo");
+        std::fs::create_dir_all(&dir).unwrap();
+        run_git(&dir, &["init", "-b", "main"]);
+        run_git(&dir, &["config", "user.email", "t@example.invalid"]);
+        run_git(&dir, &["config", "user.name", "Test"]);
+        std::fs::write(dir.join("README.md"), "one\n").unwrap();
+        run_git(&dir, &["add", "."]);
+        run_git(&dir, &["commit", "-m", "initial"]);
+        run_git(&dir, &["checkout", "-b", "feature"]);
+        std::fs::write(dir.join("feature.txt"), "a\nb\n").unwrap();
+        run_git(&dir, &["add", "."]);
+        run_git(&dir, &["commit", "-m", "feature"]);
+        run_git(&dir, &["config", "branch.feature.muxix-base", "main"]);
+        backdate_config(&dir);
+        dir
+    }
+
+    fn backdate_config(dir: &Path) {
+        filetime::set_file_mtime(
+            dir.join(".git/config"),
+            filetime::FileTime::from_unix_time(0, 0),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn clean_unmoved_worktree_costs_one_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+
+        let first = get_git_status(&dir, None);
+        assert_eq!(first.branch.as_deref(), Some("feature"));
+        assert_eq!(first.base_branch, "main");
+        assert!(
+            first.head_oid.is_some(),
+            "HEAD oid comes from the status header"
+        );
+        assert!(first.base_oid.is_some(), "base oid comes from ref storage");
+        assert!(!first.is_dirty);
+        assert_eq!(first.lines_added, 2);
+
+        take_git_spawns();
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        assert_eq!(take_git_spawns(), 1);
+        assert_eq!(second.lines_added, first.lines_added);
+        assert_eq!(second.lines_removed, first.lines_removed);
+        assert_eq!(second.has_conflict, first.has_conflict);
+        assert_eq!(second.uncommitted_added, 0);
+        assert_eq!(second.uncommitted_removed, 0);
+        assert_eq!(second.head_oid, first.head_oid);
+        assert_eq!(second.base_oid, first.base_oid);
+    }
+
+    #[test]
+    fn dirty_unmoved_worktree_costs_three_processes() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+
+        std::fs::write(dir.join("feature.txt"), "a\nb\nc\n").unwrap();
+        std::fs::write(dir.join("new.txt"), "x\n").unwrap();
+
+        take_git_spawns();
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        // status + `diff --numstat HEAD` + `ls-files --others`
+        assert_eq!(take_git_spawns(), 3);
+        assert!(second.is_dirty);
+        assert_eq!(
+            second.uncommitted_added, 2,
+            "one tracked line + one untracked"
+        );
+        assert_eq!(second.lines_added, first.lines_added, "carried over");
+    }
+
+    #[test]
+    fn moved_head_recomputes_the_committed_diff() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+
+        std::fs::write(dir.join("feature.txt"), "a\nb\nc\nd\n").unwrap();
+        run_git(&dir, &["add", "."]);
+        run_git(&dir, &["commit", "-m", "more"]);
+        backdate_config(&dir);
+
+        take_git_spawns();
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        // status + merge-tree + `<base>...HEAD` diff; clean, so nothing else
+        assert_eq!(take_git_spawns(), 3);
+        assert_ne!(second.head_oid, first.head_oid);
+        assert_eq!(second.lines_added, 4);
+    }
+
+    #[test]
+    fn moved_base_recomputes_the_committed_diff() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+
+        // Advance main without touching feature.
+        run_git(&dir, &["checkout", "main"]);
+        std::fs::write(dir.join("README.md"), "one\ntwo\n").unwrap();
+        run_git(&dir, &["commit", "-am", "main moves"]);
+        run_git(&dir, &["checkout", "feature"]);
+        backdate_config(&dir);
+
+        take_git_spawns();
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        assert_eq!(take_git_spawns(), 3);
+        assert_eq!(second.head_oid, first.head_oid);
+        assert_ne!(second.base_oid, first.base_oid, "the base moved");
+    }
+
+    #[test]
+    fn a_fingerprintless_cache_entry_runs_every_step() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+
+        // What an entry written before this change deserializes to.
+        let legacy = GitStatus {
+            head_oid: None,
+            base_oid: None,
+            lines_added: 999,
+            ..first.clone()
+        };
+
+        take_git_spawns();
+        let refreshed = get_git_status_cached(&dir, None, Some(&legacy));
+        assert_eq!(take_git_spawns(), 3);
+        assert_eq!(refreshed.lines_added, first.lines_added);
+    }
+
+    #[test]
+    fn no_cache_matches_an_uncached_refresh() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let plain = get_git_status(&dir, None);
+        let cached = get_git_status_cached(&dir, None, None);
+        assert_eq!(
+            GitStatus {
+                cached_at: None,
+                ..plain
+            },
+            GitStatus {
+                cached_at: None,
+                ..cached
+            }
+        );
+    }
+
+    #[test]
+    fn a_rewritten_base_config_forces_a_fresh_lookup() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+        assert_eq!(first.base_branch, "main");
+
+        // `muxix set-base` writes the local config; its mtime is now newer
+        // than the cached status, so the base must be re-read.
+        run_git(&dir, &["branch", "other", "main"]);
+        run_git(&dir, &["config", "branch.feature.muxix-base", "other"]);
+
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        assert_eq!(second.base_branch, "other");
+    }
+
+    #[test]
+    fn detached_head_stops_after_the_status_call() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let head = StdCommand::new("git")
+            .current_dir(&dir)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        let head = String::from_utf8(head.stdout).unwrap().trim().to_string();
+        run_git(&dir, &["checkout", "--detach", &head]);
+
+        take_git_spawns();
+        let status = get_git_status(&dir, None);
+        assert_eq!(take_git_spawns(), 1);
+        assert_eq!(status.branch, None);
+        assert_eq!(status.head_oid.as_deref(), Some(head.as_str()));
     }
 }

@@ -53,4 +53,12 @@ pub struct GitStatus {
     /// Whether a rebase is currently in progress
     #[serde(default)]
     pub is_rebasing: bool,
+    /// HEAD's object id when this status was computed. `None` for an empty
+    /// repository, a detached HEAD, or an entry written before this field
+    /// existed; a refresh with no HEAD oid cannot skip any work.
+    #[serde(default)]
+    pub head_oid: Option<String>,
+    /// The base branch's object id when this status was computed.
+    #[serde(default)]
+    pub base_oid: Option<String>,
 }

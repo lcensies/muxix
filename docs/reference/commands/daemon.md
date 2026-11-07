@@ -44,6 +44,28 @@ spawned only when the connect fails.
 Logs go to `~/.local/state/muxix/muxix.log`; sync results appear as
 `project sync applied` / `project sync failed` lines.
 
+## Git polling
+
+Git status is event-driven: a filesystem watcher on each active worktree
+triggers a refresh 300ms after the last event, so edits show up promptly. On
+Linux the watcher only sees `.git` metadata, not working-tree writes, so a
+periodic sweep backstops it.
+
+```yaml
+daemon:
+  git_poll:
+    interval: 10s   # default; values below 1s are clamped to 1s
+```
+
+The knob sets that sweep and nothing else: the 300ms debounce is fixed, and so
+are the two derived intervals (2s when no watcher is available at all, 30s on
+macOS where the watcher sees the whole worktree). A change takes effect on the
+running daemon — no restart.
+
+A sweep that finds a worktree clean with HEAD and its base unmoved costs one
+`git status`; the conflict check, branch diff, working-tree diff and
+untracked-file scan only re-run when their inputs have moved.
+
 Internals: the daemon is the hidden `muxix _daemon` subcommand, its PID is the
 tmux global option `@muxix_daemon_pid`, and its socket is
 `$TMPDIR/muxix-daemon-<instance>.sock`.

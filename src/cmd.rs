@@ -3,6 +3,26 @@ use std::path::Path;
 use std::process::{Command, Output};
 use tracing::{debug, trace};
 
+#[cfg(test)]
+thread_local! {
+    /// Git processes spawned on this thread. Lets a test assert how much work
+    /// a code path does; thread-local so parallel tests cannot perturb it.
+    static GIT_SPAWNS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Count one git process spawn. Call this for a git child that is launched
+/// directly rather than through [`Cmd`].
+pub fn count_git_spawn() {
+    #[cfg(test)]
+    GIT_SPAWNS.with(|c| c.set(c.get() + 1));
+}
+
+/// Read and reset this thread's git spawn count.
+#[cfg(test)]
+pub fn take_git_spawns() -> usize {
+    GIT_SPAWNS.with(|c| c.replace(0))
+}
+
 /// A builder for executing shell commands with unified error handling
 pub struct Cmd<'a> {
     command: &'a str,
@@ -49,6 +69,9 @@ impl<'a> Cmd<'a> {
         let workdir_display = workdir.map(|p| p.display().to_string());
 
         trace!(command, args = ?args, workdir = ?workdir_display, "cmd:run start");
+        if command == "git" {
+            count_git_spawn();
+        }
 
         let mut cmd = Command::new(command);
         if let Some(dir) = workdir {
@@ -94,6 +117,9 @@ impl<'a> Cmd<'a> {
         } = self;
         let workdir_display = workdir.map(|p| p.display().to_string());
         trace!(command, args = ?args, workdir = ?workdir_display, "cmd:check start");
+        if command == "git" {
+            count_git_spawn();
+        }
 
         let mut cmd = Command::new(command);
         if let Some(dir) = workdir {

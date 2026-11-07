@@ -97,8 +97,14 @@ install-dev:
 unit-tests:
     #!/usr/bin/env bash
     set -euo pipefail
-    output=$(cargo test --bin muxix --quiet 2>&1) || { echo "$output"; exit 1; }
-    echo "$output" | tail -1
+    # Redirect to a file rather than capturing: a leaked test child holding the
+    # runner's stdout open makes a command substitution block forever after
+    # cargo has already exited.
+    log=$(mktemp)
+    trap 'rm -f "$log"' EXIT
+    cargo test --bin muxix --quiet >"$log" 2>&1 || { cat "$log"; exit 1; }
+    awk 'NF { last = $0 } END { print last }' "$log"
+    scripts/check-no-leaked-sleep.sh
 
 # Run ruff linter on Python tests
 ruff-check:
