@@ -11,10 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{
-    AgentIcons, Config, ConfirmStyle, NewAgentConfig, Placement, SidebarPosition, SidebarWidth,
-    StatusIcons,
-};
+use crate::config::{AgentIcons, Config, Placement, SidebarPosition, SidebarWidth, StatusIcons};
 use crate::git::GitStatus;
 use crate::github::PrSummary;
 use ratatui::style::Color;
@@ -260,10 +257,6 @@ pub struct SidebarApp {
     pub pending_g: bool,
     /// Current input mode: normal, a delete band, or an open modal.
     pub mode: SidebarMode,
-    /// How a delete is confirmed: native prompt or in-pane popup.
-    pub confirm_style: ConfirmStyle,
-    /// Defaults prefilled into the create-agent form.
-    pub new_agent: NewAgentConfig,
     /// Cached horizontal chip hitboxes for top bar mouse hit testing.
     pub horizontal_hitboxes: Vec<HitBox>,
     /// First agent index rendered in the horizontal top bar.
@@ -337,8 +330,6 @@ impl SidebarApp {
             pending_count: None,
             pending_g: false,
             mode: SidebarMode::Normal,
-            confirm_style: ConfirmStyle::default(),
-            new_agent: NewAgentConfig::default(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width: 24,
@@ -463,8 +454,6 @@ impl SidebarApp {
             pending_count: None,
             pending_g: false,
             mode: SidebarMode::Normal,
-            confirm_style: config.sidebar.confirm_style.unwrap_or_default(),
-            new_agent: config.sidebar.new_agent.clone(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width,
@@ -867,7 +856,7 @@ impl SidebarApp {
         };
         let question = crate::command::agents::delete_prompt(&agent);
 
-        if use_popup_confirm(self.confirm_style, self.position) {
+        if use_popup_confirm(self.position) {
             self.mode = SidebarMode::Modal {
                 modal: Modal::confirm("Delete agent", vec![question], true),
                 intent: ModalIntent::DeleteAgent(Box::new(agent)),
@@ -957,10 +946,6 @@ impl SidebarApp {
             .iter()
             .map(|p| p.as_str().to_string())
             .collect();
-        let placement_idx = Placement::ALL
-            .iter()
-            .position(|p| *p == self.new_agent.placement())
-            .unwrap_or(0);
         self.mode = SidebarMode::Modal {
             modal: Modal::form(
                 "New agent",
@@ -982,12 +967,12 @@ impl SidebarApp {
                     ModalField::Choice {
                         label: "Placement",
                         options: placements,
-                        idx: placement_idx,
+                        idx: 0,
                     },
                     ModalField::Choice {
                         label: "Worktree",
                         options: vec!["yes".to_string(), "no".to_string()],
-                        idx: usize::from(!self.new_agent.worktree()),
+                        idx: 0,
                     },
                 ],
             ),
@@ -1031,11 +1016,14 @@ impl SidebarApp {
             return;
         }
         let split_from = (placement == Placement::Pane)
-            .then(|| self.selected_agent().map(|a| a.pane_id.clone()))
+            .then(|| {
+                self.selected_agent()
+                    .and_then(|a| local_pane_id(&a.pane_id))
+            })
             .flatten();
         if placement == Placement::Pane && split_from.is_none() {
             self.mux
-                .display_message("pane placement needs a selected agent to split");
+                .display_message("pane placement needs a selected agent in a real pane to split");
             return;
         }
 
@@ -1550,12 +1538,22 @@ fn detect_host_window() -> (Option<String>, Option<String>) {
     (session, window_id)
 }
 
+/// The multiplexer pane id behind a sidebar row, if it has one.
+///
+/// A manager-owned row carries a wire reference ("paseo:abc") rather than a
+/// pane: splitting it would hand the multiplexer a target it cannot resolve.
+fn local_pane_id(pane_id: &str) -> Option<String> {
+    crate::agent::runtime::AgentRef::from_wire(pane_id)
+        .is_local()
+        .then(|| pane_id.to_string())
+}
+
 /// Whether a delete is confirmed by the centered popup.
 ///
-/// The top position is 1-5 rows: a centered dialog cannot fit it, so it keeps
-/// the one-line band whatever the configured style is.
-fn use_popup_confirm(style: ConfirmStyle, position: SidebarPosition) -> bool {
-    style == ConfirmStyle::Popup && position != SidebarPosition::Top
+/// The top position is 1-5 rows: a centered dialog cannot fit it, so it falls
+/// back to the multiplexer's own prompt or the one-line band.
+fn use_popup_confirm(position: SidebarPosition) -> bool {
+    position != SidebarPosition::Top
 }
 
 /// The main worktree root that owns `path`.
@@ -1927,21 +1925,10 @@ mod tests {
     }
 
     #[test]
-    fn the_popup_confirm_is_opt_in_and_never_used_in_the_top_position() {
-        assert!(!use_popup_confirm(
-            ConfirmStyle::Native,
-            SidebarPosition::Left
-        ));
-        assert!(!use_popup_confirm(
-            ConfirmStyle::Native,
-            SidebarPosition::Top
-        ));
-        assert!(use_popup_confirm(
-            ConfirmStyle::Popup,
-            SidebarPosition::Left
-        ));
+    fn the_popup_confirm_is_never_used_in_the_top_position() {
+        assert!(use_popup_confirm(SidebarPosition::Left));
         assert!(
-            !use_popup_confirm(ConfirmStyle::Popup, SidebarPosition::Top),
+            !use_popup_confirm(SidebarPosition::Top),
             "a centered dialog cannot fit 1-5 rows"
         );
     }
@@ -1949,7 +1936,6 @@ mod tests {
     #[test]
     fn the_delete_popup_captures_the_row_it_opened_on() {
         let mut app = SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a"]);
-        app.confirm_style = ConfirmStyle::Popup;
         app.list_state.select(Some(1));
         let target = app.agents[1].pane_id.clone();
 
@@ -1970,7 +1956,6 @@ mod tests {
     #[test]
     fn cancelling_the_delete_popup_removes_nothing() {
         let mut app = SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a"]);
-        app.confirm_style = ConfirmStyle::Popup;
         app.list_state.select(Some(0));
         app.begin_delete();
         let SidebarMode::Modal { modal, .. } = &mut app.mode else {
@@ -1991,7 +1976,6 @@ mod tests {
         let mut app = SidebarApp::test_with_agents(&["/tmp/x/a"]);
         app.open_action_list();
         app.open_create_form();
-        app.confirm_style = ConfirmStyle::Popup;
         app.begin_delete();
         let SidebarMode::Modal { modal, .. } = &app.mode else {
             panic!("expected a modal");
@@ -2003,12 +1987,18 @@ mod tests {
     }
 
     #[test]
-    fn the_create_form_prefills_placement_and_worktree_from_config() {
+    fn only_a_real_pane_can_be_split() {
+        assert_eq!(local_pane_id("%7").as_deref(), Some("%7"));
+        assert_eq!(
+            local_pane_id("paseo:abc"),
+            None,
+            "a manager row has no pane for tmux to split"
+        );
+    }
+
+    #[test]
+    fn the_create_form_defaults_to_a_window_with_a_worktree() {
         let mut app = SidebarApp::test_with_agents(&["/tmp/x/a"]);
-        app.new_agent = NewAgentConfig {
-            placement: Some(Placement::Pane),
-            worktree: Some(false),
-        };
         app.list_state.select(Some(0));
         app.open_create_form();
 
@@ -2020,8 +2010,8 @@ mod tests {
             panic!("expected the create form");
         };
         assert_eq!(fields.len(), 5);
-        assert_eq!(fields[3].value(), "pane");
-        assert_eq!(fields[4].value(), "no");
+        assert_eq!(fields[3].value(), "window");
+        assert_eq!(fields[4].value(), "yes");
         assert_eq!(
             fields[2].value(),
             "",

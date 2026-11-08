@@ -311,8 +311,14 @@ pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitSta
 /// shortcut: ignores `config.worktree` (only written under
 /// `extensions.worktreeConfig`, which muxix never sets); revisit if muxix
 /// starts writing per-worktree config.
-fn cached_base_is_current(common_dir: Option<&Path>, prev: &GitStatus) -> bool {
+fn cached_base_is_current(common_dir: Option<&Path>, prev: &GitStatus, branch: &str) -> bool {
     if prev.base_branch.is_empty() {
+        return false;
+    }
+    // The base is per-branch (`branch.<b>.muxix-base`), and a checkout rewrites
+    // HEAD without touching the config file, so the mtime alone would carry the
+    // old branch's base into the new one.
+    if prev.branch.as_deref() != Some(branch) {
         return false;
     }
     let (Some(common_dir), Some(cached_at)) = (common_dir, prev.cached_at) else {
@@ -387,19 +393,20 @@ pub fn get_git_status_cached(
         }
     };
 
-    let common_dir = crate::git::common_dir_cached(worktree_path);
+    let common_dir = crate::git::resolve_common_dir(worktree_path);
 
     // Determine base branch for conflict check and diff stats
     // Priority: cached (while the local config is older than the cache) >
     // muxix-base config > configured main_branch > auto-detected default > "main"
-    let base_branch = match prev.filter(|p| cached_base_is_current(common_dir.as_deref(), p)) {
-        Some(p) => p.base_branch.clone(),
-        None => get_branch_base_in(&branch, Some(worktree_path))
-            .ok()
-            .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
-            .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
-            .unwrap_or_else(|| "main".to_string()),
-    };
+    let base_branch =
+        match prev.filter(|p| cached_base_is_current(common_dir.as_deref(), p, &branch)) {
+            Some(p) => p.base_branch.clone(),
+            None => get_branch_base_in(&branch, Some(worktree_path))
+                .ok()
+                .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
+                .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
+                .unwrap_or_else(|| "main".to_string()),
+        };
 
     let base_oid = common_dir
         .as_deref()
@@ -761,6 +768,29 @@ mod cached_refresh_tests {
 
         let second = get_git_status_cached(&dir, None, Some(&first));
         assert_eq!(second.base_branch, "other");
+    }
+
+    #[test]
+    fn a_branch_switch_forces_a_fresh_base_lookup() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let first = get_git_status(&dir, None);
+        assert_eq!(first.base_branch, "main");
+
+        // A second branch with its own base, recorded while the config is
+        // still backdated: a checkout rewrites HEAD only, so the mtime guard
+        // cannot see the switch.
+        run_git(&dir, &["branch", "release", "main"]);
+        run_git(&dir, &["checkout", "-b", "release-x", "main"]);
+        run_git(&dir, &["config", "branch.release-x.muxix-base", "release"]);
+        backdate_config(&dir);
+
+        let second = get_git_status_cached(&dir, None, Some(&first));
+        assert_eq!(second.branch.as_deref(), Some("release-x"));
+        assert_eq!(
+            second.base_branch, "release",
+            "the base is per-branch and must be re-read after a checkout"
+        );
     }
 
     #[test]

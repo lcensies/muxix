@@ -135,56 +135,6 @@ pub fn socket_path(instance_id: &str) -> PathBuf {
     std::env::temp_dir().join(format!("muxix-daemon-{}.sock", safe_id))
 }
 
-/// Path of the daemon's tick-cost sample, written beside its socket.
-///
-/// A file rather than a socket request: `muxix daemon status` is a cold
-/// process that must report on a daemon it has no connection to, and the
-/// snapshot protocol is push-only.
-pub fn stats_path(instance_id: &str) -> PathBuf {
-    let safe_id = instance_id.replace(['/', '\\'], "-");
-    std::env::temp_dir().join(format!("muxix-daemon-{}.stats", safe_id))
-}
-
-/// One window of tick cost: how many subprocesses the daemon spawned, how many
-/// ticks ran, and how long they took in total.
-pub struct TickStats {
-    pub window: Duration,
-    pub spawns: u64,
-    pub ticks: u64,
-    pub tick_time: Duration,
-}
-
-impl TickStats {
-    fn write(&self, instance_id: &str) {
-        let body = format!(
-            "window_ms={} spawns={} ticks={} tick_ms={}\n",
-            self.window.as_millis(),
-            self.spawns,
-            self.ticks,
-            self.tick_time.as_millis()
-        );
-        let _ = std::fs::write(stats_path(instance_id), body);
-    }
-
-    pub fn read(instance_id: &str) -> Option<Self> {
-        let body = std::fs::read_to_string(stats_path(instance_id)).ok()?;
-        let field = |key: &str| -> Option<u64> {
-            body.split_whitespace()
-                .find_map(|kv| kv.strip_prefix(key)?.parse().ok())
-        };
-        Some(Self {
-            window: Duration::from_millis(field("window_ms=")?),
-            spawns: field("spawns=")?,
-            ticks: field("ticks=")?,
-            tick_time: Duration::from_millis(field("tick_ms=")?),
-        })
-    }
-
-    pub fn mean_tick(&self) -> Option<Duration> {
-        (self.ticks > 0).then(|| self.tick_time / self.ticks as u32)
-    }
-}
-
 /// Result of a batched tmux query.
 struct TmuxState {
     window_statuses: HashMap<String, Option<String>>,
@@ -371,7 +321,7 @@ impl SocketServer {
         true
     }
 
-    /// Drop clients that have closed their end.
+    /// Drop clients that have closed their end. See [`client_is_gone`].
     ///
     /// A broadcast reaps them as a side effect of failing to write; a tick
     /// that skips the broadcast still has to, because the daemon's idle exit
@@ -379,18 +329,7 @@ impl SocketServer {
     fn prune_dead_clients(&self) {
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
         let before = clients.len();
-        clients.retain(|stream| {
-            use std::os::fd::AsRawFd;
-            let mut pfd = libc::pollfd {
-                fd: stream.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            // The protocol is push-only, so a live client never has anything
-            // to read: readable, hung up or errored all mean it is gone.
-            let ready = unsafe { libc::poll(&mut pfd, 1, 0) };
-            ready == 0
-        });
+        clients.retain(|stream| !client_is_gone(stream));
         let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
             tracing::info!(
@@ -404,6 +343,32 @@ impl SocketServer {
 
     fn client_count(&self) -> usize {
         self.clients.lock().unwrap().len()
+    }
+}
+
+/// Has this client closed its end?
+///
+/// The protocol is push-only, so a live client never has anything to read:
+/// readable, hung up or errored all mean it is gone. `poll` is not restarted
+/// after a signal on Linux whatever `SA_RESTART` says, and the daemon is
+/// SIGUSR1'd by every agent-status hook, so an interrupted poll has to be
+/// retried rather than counted as a hangup.
+fn client_is_gone(stream: &std::os::unix::net::UnixStream) -> bool {
+    use std::os::fd::AsRawFd;
+    loop {
+        let mut pfd = libc::pollfd {
+            fd: stream.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let ready = unsafe { libc::poll(&mut pfd, 1, 0) };
+        if ready < 0 {
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return true;
+        }
+        return ready > 0;
     }
 }
 
@@ -982,10 +947,8 @@ fn spawn_pr_worker(
     (path_cache, tx)
 }
 
-/// The periodic git sweep interval. Only the Linux-with-watcher arm is
-/// configurable (`daemon.git_poll.interval`): the other two are derived from
-/// what the watcher can see, not from cost.
-fn git_sweep_interval(has_watcher: bool, config: Option<&Config>) -> Duration {
+/// The periodic git sweep interval, derived from what the watcher can see.
+fn git_sweep_interval(has_watcher: bool) -> Duration {
     if !has_watcher {
         // No watcher available: poll frequently as the only change detection.
         Duration::from_secs(2)
@@ -995,9 +958,7 @@ fn git_sweep_interval(has_watcher: bool, config: Option<&Config>) -> Duration {
     } else {
         // Linux: only .git metadata is watched, so working tree changes need
         // polling. A refresh that finds nothing moved costs one git process.
-        config
-            .map(|c| c.daemon.git_poll.interval())
-            .unwrap_or_else(|| crate::config::GitPollConfig::default().interval())
+        Duration::from_secs(10)
     }
 }
 
@@ -1011,7 +972,6 @@ fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
     wake_tx: std::sync::mpsc::SyncSender<()>,
-    config: Arc<Mutex<Config>>,
 ) -> (GitCache, std::sync::mpsc::Sender<Vec<GitWorkerPath>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
@@ -1071,9 +1031,7 @@ fn spawn_git_worker(
         let debounce_duration = Duration::from_millis(300);
 
         while !term.load(Ordering::Relaxed) {
-            // Re-read every pass so a config reload takes effect without a restart.
-            let full_sweep_interval =
-                git_sweep_interval(watcher.is_some(), config.lock().ok().as_deref());
+            let full_sweep_interval = git_sweep_interval(watcher.is_some());
             // Block on filesystem events (zero CPU when idle), or sleep briefly in poll mode
             if watcher.is_some() {
                 let timeout = next_worker_timeout(
@@ -1819,12 +1777,8 @@ pub fn run() -> Result<()> {
     );
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
-    let (git_cache, git_path_tx) = spawn_git_worker(
-        term.clone(),
-        dirty_flag.clone(),
-        wake_tx.clone(),
-        config.clone(),
-    );
+    let (git_cache, git_path_tx) =
+        spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx.clone());
     let (pr_cache, pr_path_tx) = spawn_pr_worker(term.clone(), dirty_flag.clone(), wake_tx);
 
     // Store PID so toggle-off can kill us and hooks can signal us
@@ -1857,12 +1811,6 @@ pub fn run() -> Result<()> {
     let mut last_health_log = Instant::now();
     let mut last_sync: std::collections::BTreeMap<String, Instant> = Default::default();
     let mut jobs_configured = config.lock().unwrap().background_jobs_configured();
-    // Tick cost over the current reporting window, published for
-    // `muxix daemon status`.
-    let mut window_start = Instant::now();
-    let mut window_spawns = crate::cmd::spawns_total();
-    let mut window_ticks: u64 = 0;
-    let mut window_tick_time = Duration::ZERO;
     // Refresh is event-driven: agent status hooks and tmux lifecycle hooks
     // SIGUSR1 us. The timer only backstops stall detection (5s while agents
     // are working, since silence produces no events) and lost hooks (30s).
@@ -1912,7 +1860,6 @@ pub fn run() -> Result<()> {
             let signalled = dirty_pending;
             dirty_pending = false;
             last_refresh = Instant::now();
-            let tick_began = last_refresh;
 
             // ── Gather inputs ──
             let tmux_state = query_tmux_state();
@@ -2104,9 +2051,6 @@ pub fn run() -> Result<()> {
                 }
                 last_agent_list = agent_list;
             }
-
-            window_ticks += 1;
-            window_tick_time += tick_began.elapsed();
         }
 
         // Track client activity for auto-exit. With a job configured the daemon
@@ -2119,24 +2063,11 @@ pub fn run() -> Result<()> {
             break;
         }
 
-        // Periodic health log (every 60s), which also publishes the window's
-        // tick cost for `muxix daemon status`.
+        // Periodic health log (every 60s).
         let health_interval = Duration::from_secs(60);
         if last_health_log.elapsed() >= health_interval {
             tracing::info!(clients = cc, jobs = jobs_configured, "muxix daemon alive");
             last_health_log = Instant::now();
-            let spawns_now = crate::cmd::spawns_total();
-            TickStats {
-                window: window_start.elapsed(),
-                spawns: spawns_now.saturating_sub(window_spawns),
-                ticks: window_ticks,
-                tick_time: window_tick_time,
-            }
-            .write(&instance_id);
-            window_start = Instant::now();
-            window_spawns = spawns_now;
-            window_ticks = 0;
-            window_tick_time = Duration::ZERO;
         }
 
         // Block until woken or the soonest real deadline. Signals reach the
@@ -2165,7 +2096,6 @@ pub fn run() -> Result<()> {
 
     // Cleanup
     let _ = std::fs::remove_file(&sock_path);
-    let _ = std::fs::remove_file(stats_path(&instance_id));
     if let Ok(store) = StateStore::new() {
         store.delete_runtime(&backend_name, &instance_id);
     }
@@ -2422,29 +2352,6 @@ mod tests {
             assert_eq!(wait, Duration::ZERO);
         }
 
-        #[test]
-        fn tick_stats_survive_the_round_trip() {
-            let id = format!("tick-stats-test-{}", std::process::id());
-            TickStats {
-                window: Duration::from_secs(60),
-                spawns: 7,
-                ticks: 4,
-                tick_time: Duration::from_millis(80),
-            }
-            .write(&id);
-            let read = TickStats::read(&id).expect("stats readable");
-            let _ = std::fs::remove_file(stats_path(&id));
-            assert_eq!(read.window, Duration::from_secs(60));
-            assert_eq!(read.spawns, 7);
-            assert_eq!(read.ticks, 4);
-            assert_eq!(read.mean_tick(), Some(Duration::from_millis(20)));
-        }
-
-        #[test]
-        fn no_sample_reads_as_absent() {
-            assert!(TickStats::read("no-such-daemon-instance").is_none());
-        }
-
         fn empty_snapshot() -> crate::command::sidebar::snapshot::SidebarSnapshot {
             crate::command::sidebar::snapshot::SidebarSnapshot {
                 position: crate::config::SidebarPosition::Left,
@@ -2496,6 +2403,11 @@ mod tests {
                 !server.broadcast(&snapshot.clone()),
                 "an identical snapshot is not pushed again"
             );
+            assert_eq!(
+                server.client_count(),
+                1,
+                "the skipped push must not reap a live client"
+            );
             let mut changed = snapshot.clone();
             changed.config_version = 1;
             assert!(server.broadcast(&changed), "a changed field pushes again");
@@ -2506,6 +2418,16 @@ mod tests {
                 read_frame(&mut client).is_none(),
                 "exactly two frames, not three"
             );
+        }
+
+        #[test]
+        fn only_a_closed_peer_counts_as_gone() {
+            // An interrupted poll (the daemon is SIGUSR1'd by every
+            // agent-status hook) must not read as a hangup.
+            let (ours, theirs) = UnixStream::pair().unwrap();
+            assert!(!client_is_gone(&ours), "the peer is still open");
+            drop(theirs);
+            assert!(client_is_gone(&ours));
         }
 
         #[test]
@@ -2525,51 +2447,16 @@ mod tests {
 
     mod git_sweep_interval_tests {
         use super::*;
-        use crate::config::{GitPollConfig, IdleDuration};
 
         #[cfg(not(target_os = "macos"))]
         #[test]
-        fn defaults_to_ten_seconds() {
-            let config = Config::default();
-            assert_eq!(
-                git_sweep_interval(true, Some(&config)),
-                Duration::from_secs(10)
-            );
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        #[test]
-        fn honours_a_configured_interval() {
-            let mut config = Config::default();
-            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(30));
-            assert_eq!(
-                git_sweep_interval(true, Some(&config)),
-                Duration::from_secs(30)
-            );
-            // The worker re-reads the config every pass, so a reload is live.
-            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(60));
-            assert_eq!(
-                git_sweep_interval(true, Some(&config)),
-                Duration::from_secs(60)
-            );
-        }
-
-        #[test]
-        fn clamps_below_one_second() {
-            let poll = GitPollConfig {
-                interval: IdleDuration(Duration::from_millis(50)),
-            };
-            assert_eq!(poll.interval(), Duration::from_secs(1));
+        fn a_watched_linux_worktree_sweeps_every_ten_seconds() {
+            assert_eq!(git_sweep_interval(true), Duration::from_secs(10));
         }
 
         #[test]
         fn a_missing_watcher_polls_every_two_seconds() {
-            let mut config = Config::default();
-            config.daemon.git_poll.interval = IdleDuration(Duration::from_secs(300));
-            assert_eq!(
-                git_sweep_interval(false, Some(&config)),
-                Duration::from_secs(2)
-            );
+            assert_eq!(git_sweep_interval(false), Duration::from_secs(2));
         }
     }
 

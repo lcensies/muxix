@@ -682,7 +682,6 @@ struct RepoContext {
 /// This delegates repo resolution to `gh` so it works correctly with forks,
 /// `gh repo set-default`, and GitHub Enterprise.
 fn get_repo_context(repo_root: &Path) -> Result<(String, String, String)> {
-    crate::cmd::count_spawn();
     let output = Command::new("gh")
         .current_dir(repo_root)
         .args(["repo", "view", "--json", "owner,name,url"])
@@ -741,7 +740,6 @@ fn list_prs_for_branches_graphql(
     }))
     .context("JSON serialize")?;
 
-    crate::cmd::count_spawn();
     let mut child = Command::new("gh")
         .current_dir(repo_root)
         .args(["api", "graphql", "--hostname", &hostname, "--input", "-"])
@@ -826,7 +824,6 @@ fn list_prs_for_branches_rest(
     let mut map = HashMap::new();
 
     for branch in branches {
-        crate::cmd::count_spawn();
         let output = match Command::new("gh")
             .current_dir(repo_root)
             .args([

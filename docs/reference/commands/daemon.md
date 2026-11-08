@@ -10,7 +10,7 @@ One daemon per tmux server. It watches tmux and agent state, pushes snapshots to
 
 ```bash
 muxix daemon start    # start if not running (idempotent)
-muxix daemon status   # pid, recent tick cost, and which background jobs are configured
+muxix daemon status   # pid and which background jobs are configured
 muxix daemon stop     # SIGTERM, even if jobs are configured
 ```
 
@@ -51,29 +51,15 @@ triggers a refresh 300ms after the last event, so edits show up promptly. On
 Linux the watcher only sees `.git` metadata, not working-tree writes, so a
 periodic sweep backstops it.
 
-```yaml
-daemon:
-  git_poll:
-    interval: 10s   # default; values below 1s are clamped to 1s
-```
-
-The knob sets that sweep and nothing else: the 300ms debounce is fixed, and so
-are the two derived intervals (2s when no watcher is available at all, 30s on
-macOS where the watcher sees the whole worktree). A change takes effect on the
-running daemon — no restart.
+The sweep interval follows what the watcher can see: 10s on Linux, 30s on
+macOS where the watcher sees the whole worktree, and 2s when no watcher is
+available at all. The 300ms debounce is fixed.
 
 A sweep that finds a worktree clean with HEAD and its base unmoved costs one
 `git status`; the conflict check, branch diff, working-tree diff and
 untracked-file scan only re-run when their inputs have moved.
 
 ## Tick cost
-
-`muxix daemon status` reports the last sampled minute:
-
-```
-daemon running, pid 408219
-last 60s: 12 ticks, 14 subprocesses, mean tick 8ms
-```
 
 A tick re-derives only what changed. The tmux options muxix writes itself, the
 ADE health probe, the ADE view map and the absence of a project config are all
@@ -82,12 +68,6 @@ pane change. A snapshot identical to the one clients already hold is not
 pushed, and the main loop blocks until its next real deadline rather than
 waking to re-check a flag.
 
-The sample is written once a minute, so a freshly started daemon reports
-`tick cost: not sampled yet`. Counted subprocesses are the ones muxix spawns
-through its own command helpers; a child of a child (an agent's own
-subprocesses) is not included.
-
 Internals: the daemon is the hidden `muxix _daemon` subcommand, its PID is the
-tmux global option `@muxix_daemon_pid`, its socket is
-`$TMPDIR/muxix-daemon-<instance>.sock`, and the tick sample sits beside it as
-`muxix-daemon-<instance>.stats`.
+tmux global option `@muxix_daemon_pid`, and its socket is
+`$TMPDIR/muxix-daemon-<instance>.sock`.

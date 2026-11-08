@@ -17,8 +17,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
-use std::sync::{Arc, LazyLock, Mutex};
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -68,33 +68,6 @@ fn view_key(wire: &str, mux: &dyn Multiplexer) -> String {
     format!("{}@{}/{}", wire, mux.name(), mux.instance_id())
 }
 
-/// The view map as last read, with the file stamp it was read at.
-///
-/// The daemon consults the map every tick and almost never finds it changed,
-/// so one `stat` stands in for a read plus a JSON parse.
-static MAP_CACHE: LazyLock<Mutex<BTreeMap<PathBuf, CachedMap>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
-
-/// Modification time and size: enough to tell one version of the file from
-/// the next without reading it.
-type MapStamp = (SystemTime, u64);
-
-/// A parsed view map with the stamp of the file it came from.
-type CachedMap = (MapStamp, BTreeMap<String, ViewPane>);
-
-fn map_stamp(path: &Path) -> Option<MapStamp> {
-    let md = std::fs::metadata(path).ok()?;
-    Some((md.modified().ok()?, md.len()))
-}
-
-fn remember_map(path: &Path, map: &BTreeMap<String, ViewPane>) {
-    if let Some(stamp) = map_stamp(path)
-        && let Ok(mut cache) = MAP_CACHE.lock()
-    {
-        cache.insert(path.to_path_buf(), (stamp, map.clone()));
-    }
-}
-
 fn load_map() -> BTreeMap<String, ViewPane> {
     match map_path() {
         Ok(path) => load_map_at(&path),
@@ -103,20 +76,10 @@ fn load_map() -> BTreeMap<String, ViewPane> {
 }
 
 fn load_map_at(path: &Path) -> BTreeMap<String, ViewPane> {
-    let stamp = map_stamp(path);
-    if let Some(stamp) = stamp.as_ref()
-        && let Ok(cache) = MAP_CACHE.lock()
-        && let Some((cached, map)) = cache.get(path)
-        && cached == stamp
-    {
-        return map.clone();
-    }
-    let map = std::fs::read_to_string(path)
+    std::fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-    remember_map(path, &map);
-    map
+        .unwrap_or_default()
 }
 
 fn save_map(map: &BTreeMap<String, ViewPane>) {
@@ -126,7 +89,6 @@ fn save_map(map: &BTreeMap<String, ViewPane>) {
         }
         if let Ok(body) = serde_json::to_string_pretty(map) {
             let _ = std::fs::write(&path, body);
-            remember_map(&path, map);
         }
     }
 }
@@ -984,30 +946,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unchanged_view_map_is_not_reread() {
+    fn a_rewritten_view_map_is_read_back() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("ade-views.json");
         write_map(&path, "%1");
         assert_eq!(load_map_at(&path).get("k").unwrap().pane, "%1");
-
-        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
-        // Same length, same mtime: indistinguishable from the cached version,
-        // so the cache must answer and the new bytes must go unseen.
+        // Another muxix process can rewrite it between reads.
         write_map(&path, "%2");
-        std::fs::File::options()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_modified(stamp)
-            .unwrap();
-        assert_eq!(
-            load_map_at(&path).get("k").unwrap().pane,
-            "%1",
-            "the cached map, not the rewritten file"
-        );
-
-        // A different size is a different file.
-        write_map(&path, "%1000");
-        assert_eq!(load_map_at(&path).get("k").unwrap().pane, "%1000");
+        assert_eq!(load_map_at(&path).get("k").unwrap().pane, "%2");
     }
 }

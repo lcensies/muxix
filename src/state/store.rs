@@ -1,7 +1,7 @@
 //! Filesystem-based state persistence for agent state.
 
 use anyhow::{Context, Result};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -233,7 +233,7 @@ impl StateStore {
         self.base_path.join("tombstones.json")
     }
 
-    /// Agent references the user deleted.
+    /// Agent references the user deleted, with expired local ones dropped.
     ///
     /// A delete is only as final as the listings that honour it: a manager
     /// whose delete is asynchronous, or whose listing is cached, keeps
@@ -243,9 +243,27 @@ impl StateStore {
     /// A missing or corrupt file reads as empty: failing closed here would
     /// hide every live agent.
     pub fn tombstones(&self) -> BTreeSet<String> {
-        fs::read_to_string(self.tombstones_path())
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        let now = now_secs();
+        self.tombstone_entries()
+            .into_iter()
+            .filter(|(wire, created)| !local_tombstone_expired(wire, *created, now))
+            .map(|(wire, _)| wire)
+            .collect()
+    }
+
+    /// The raw set: reference -> when it was recorded.
+    fn tombstone_entries(&self) -> BTreeMap<String, u64> {
+        let Ok(raw) = fs::read_to_string(self.tombstones_path()) else {
+            return BTreeMap::new();
+        };
+        if let Ok(stamped) = serde_json::from_str::<BTreeMap<String, u64>>(&raw) {
+            return stamped;
+        }
+        // The unstamped array this file used to be: keep the entries rather
+        // than resurrecting everything they were deleted to hide.
+        let now = now_secs();
+        serde_json::from_str::<BTreeSet<String>>(&raw)
+            .map(|set| set.into_iter().map(|wire| (wire, now)).collect())
             .unwrap_or_default()
     }
 
@@ -258,8 +276,9 @@ impl StateStore {
     /// Called before any manager call, so a manager that refuses, hangs or
     /// deletes asynchronously cannot leave the row visible.
     pub fn tombstone(&self, wire: &str) -> Result<()> {
-        let mut set = self.tombstones();
-        if !set.insert(wire.to_string()) {
+        let _guard = self.lock_tombstones();
+        let mut set = self.tombstone_entries();
+        if set.insert(wire.to_string(), now_secs()).is_some() {
             return Ok(());
         }
         self.write_tombstones(&set)
@@ -275,14 +294,15 @@ impl StateStore {
     /// instance in it, so two tmux servers share the namespace and one can
     /// prune the other's. Upgrade when local refs carry their pane key.
     pub fn retain_tombstones(&self, runtime: &str, observed: &HashSet<String>) {
-        let set = self.tombstones();
-        let kept: BTreeSet<String> = set
+        let _guard = self.lock_tombstones();
+        let set = self.tombstone_entries();
+        let kept: BTreeMap<String, u64> = set
             .iter()
-            .filter(|wire| {
+            .filter(|(wire, _)| {
                 crate::agent::runtime::AgentRef::from_wire(wire).runtime != runtime
                     || observed.contains(*wire)
             })
-            .cloned()
+            .map(|(wire, created)| (wire.clone(), *created))
             .collect();
         if kept.len() != set.len()
             && let Err(error) = self.write_tombstones(&kept)
@@ -291,7 +311,20 @@ impl StateStore {
         }
     }
 
-    fn write_tombstones(&self, set: &BTreeSet<String>) -> Result<()> {
+    /// Serialize the whole read-modify-write. `tombstone` runs in the deleting
+    /// CLI or sidebar and `retain_tombstones` in the daemon, so an atomic write
+    /// alone would let a prune overwrite a delete it never read.
+    fn lock_tombstones(&self) -> Option<crate::git::DirLock> {
+        match crate::git::DirLock::acquire(&self.base_path) {
+            Ok(lock) => Some(lock),
+            Err(error) => {
+                warn!(error = %error, "tombstone lock unavailable; writing unserialized");
+                None
+            }
+        }
+    }
+
+    fn write_tombstones(&self, set: &BTreeMap<String, u64>) -> Result<()> {
         if set.is_empty() {
             let _ = fs::remove_file(self.tombstones_path());
             return Ok(());
@@ -828,6 +861,27 @@ impl StateStore {
     }
 }
 
+/// How long a local (pane-id) tombstone blocks re-adoption.
+///
+/// A manager reference ("paseo:abc") is unique and never expires — it is
+/// pruned when the manager stops listing it. A local one is a bare pane id,
+/// and tmux restarts numbering at `%0` on a new server, so a tombstone whose
+/// own pane outlived the kill would otherwise block whatever pane inherits
+/// that id forever: never adopted, so never listed, so never pruned.
+const LOCAL_TOMBSTONE_TTL: u64 = 60 * 60;
+
+fn local_tombstone_expired(wire: &str, created: u64, now: u64) -> bool {
+    crate::agent::runtime::AgentRef::from_wire(wire).is_local()
+        && now.saturating_sub(created) > LOCAL_TOMBSTONE_TTL
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 fn tmux_auto_renamed_windows(
     live_panes: &std::collections::HashMap<String, crate::multiplexer::LivePaneInfo>,
 ) -> HashSet<String> {
@@ -1048,6 +1102,37 @@ mod tests {
         assert!(store.is_tombstoned("%7"));
         assert!(!store.is_tombstoned("paseo:other"));
         assert_eq!(store.tombstones().len(), 2, "re-recording is not a second");
+    }
+
+    #[test]
+    fn a_stale_local_tombstone_stops_blocking_its_pane_id() {
+        let (store, _dir) = test_store();
+        // A pane that outlived its kill keeps its tombstone (the prune only
+        // drops ones whose pane is gone), and tmux hands `%3` out again on a
+        // new server: without an expiry the next agent there is invisible.
+        fs::write(
+            store.tombstones_path(),
+            serde_json::json!({"%3": 0, "paseo:abc": 0}).to_string(),
+        )
+        .unwrap();
+
+        assert!(!store.is_tombstoned("%3"), "expired");
+        assert!(
+            store.is_tombstoned("paseo:abc"),
+            "a manager reference is unique and never expires"
+        );
+        assert!(!local_tombstone_expired(
+            "%3",
+            100,
+            100 + LOCAL_TOMBSTONE_TTL
+        ));
+    }
+
+    #[test]
+    fn tombstones_written_as_a_bare_array_still_read() {
+        let (store, _dir) = test_store();
+        fs::write(store.tombstones_path(), r#"["paseo:abc"]"#).unwrap();
+        assert!(store.is_tombstoned("paseo:abc"));
     }
 
     #[test]

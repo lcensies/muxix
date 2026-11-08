@@ -283,7 +283,7 @@ pub fn delete_agent(
     // pane's foreground command stops matching, which also happens while the
     // provider is alive. Liveness of *this* agent's pane decides instead, so a
     // recycled pane id is never killed and a falsely-exited agent still is.
-    if pane_is_this_agents(mux, &agent.pane_id, agent.pane_pid) {
+    if pane_should_be_killed(mux.get_all_live_pane_info(), &agent.pane_id, agent.pane_pid) {
         let _ = mux.kill_pane(&agent.pane_id);
     }
     store.delete_agent(&crate::state::PaneKey {
@@ -295,16 +295,28 @@ pub fn delete_agent(
     Ok(format!("deleted {}", agent.pane_id))
 }
 
-/// Is `pane_id` still the pane this agent recorded?
-fn pane_is_this_agents(
-    mux: &dyn crate::multiplexer::Multiplexer,
+/// Is `pane_id` still the pane this agent recorded, and so the pane to kill?
+///
+/// An unanswerable query is not evidence either way, and the two mistakes are
+/// not symmetric: skipping the kill leaves the agent running in a pane that is
+/// now tombstoned, so muxix will never adopt or list it again. A failed query
+/// therefore kills.
+fn pane_should_be_killed(
+    live: Result<std::collections::HashMap<String, crate::multiplexer::LivePaneInfo>>,
     pane_id: &str,
     pane_pid: u32,
 ) -> bool {
-    let Ok(live) = mux.get_all_live_pane_info() else {
-        return false;
-    };
-    pane_matches(live.get(pane_id), pane_pid)
+    match live {
+        Ok(live) => pane_matches(live.get(pane_id), pane_pid),
+        Err(error) => {
+            tracing::warn!(
+                pane_id,
+                error = %error,
+                "could not list panes while deleting; killing the recorded pane anyway"
+            );
+            true
+        }
+    }
 }
 
 /// Does `live` describe the pane that `pane_pid` was recorded in?
@@ -432,6 +444,25 @@ mod tests {
         // known, have only the pane's existence to go on.
         assert!(pane_matches(Some(&live(None)), 4242));
         assert!(pane_matches(Some(&live(Some(99))), 0));
+    }
+
+    #[test]
+    fn an_unanswerable_pane_query_still_kills() {
+        // Left unkilled, the agent keeps running in a pane that this delete
+        // has just tombstoned: never re-adopted, never listed again.
+        assert!(pane_should_be_killed(
+            Err(anyhow::anyhow!("tmux server reloading")),
+            "%7",
+            4242
+        ));
+        assert!(!pane_should_be_killed(
+            Ok(std::collections::HashMap::from([(
+                "%7".to_string(),
+                live(Some(99))
+            )])),
+            "%7",
+            4242
+        ));
     }
 
     #[test]

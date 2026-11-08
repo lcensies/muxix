@@ -221,7 +221,6 @@ impl<'a> AdeProjects<'a> {
                     .replace("{name}", &p.name)
             })
             .collect();
-        crate::cmd::count_spawn();
         let out = Command::new(self.command).args(&args).output()?;
         if !out.status.success() {
             bail!(
@@ -241,7 +240,6 @@ impl<'a> ProjectRegistrySource for AdeProjects<'a> {
     }
 
     fn list(&self) -> Result<Vec<SyncProject>> {
-        crate::cmd::count_spawn();
         let out = Command::new(self.command)
             .args(&self.cfg.list_args)
             .output()

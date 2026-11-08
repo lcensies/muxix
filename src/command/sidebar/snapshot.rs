@@ -134,6 +134,19 @@ pub fn build_snapshot(
         })
         .collect();
 
+    // Drop the bookkeeping fields no client renders. `cached_at` is re-stamped
+    // on every git refresh, so carrying it would make each snapshot differ from
+    // the last and defeat the broadcast's de-duplication.
+    let git_statuses = git_statuses
+        .into_iter()
+        .map(|(path, mut status)| {
+            status.cached_at = None;
+            status.head_oid = None;
+            status.base_oid = None;
+            (path, status)
+        })
+        .collect();
+
     SidebarSnapshot {
         position,
         layout_mode,
@@ -242,6 +255,33 @@ mod tests {
         let mut changed = build(a, b, c);
         changed.config_version += 1;
         assert_ne!(first, changed);
+    }
+
+    #[test]
+    fn a_restamped_git_cache_still_builds_an_equal_snapshot() {
+        // `cached_at` is rewritten on every git refresh even when nothing
+        // moved, and no client renders it: left in the snapshot it would make
+        // the daemon re-push on every sweep.
+        let path = PathBuf::from("/repo");
+        let git = |at: u64| GitStatus {
+            branch: Some("feature".to_string()),
+            base_branch: "main".to_string(),
+            cached_at: Some(at),
+            head_oid: Some("aaa".to_string()),
+            base_oid: Some("bbb".to_string()),
+            ..Default::default()
+        };
+        let first = build(
+            vec![agent("/repo")],
+            HashMap::from([(path.clone(), git(100))]),
+            HashMap::new(),
+        );
+        let second = build(
+            vec![agent("/repo")],
+            HashMap::from([(path, git(130))]),
+            HashMap::new(),
+        );
+        assert_eq!(first, second);
     }
 
     #[test]

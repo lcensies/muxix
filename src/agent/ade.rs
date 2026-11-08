@@ -20,13 +20,13 @@ use std::sync::{LazyLock, Mutex};
 use anyhow::{Result, bail};
 use serde_json::Value;
 
-/// Cached `<ade> --version` results, keyed by command.
+/// Successful `<ade> --version` probes, keyed by command.
 ///
-/// The probe answers a capability question — is this CLI installed and
-/// runnable — that cannot change under a running daemon, and for paseo it
-/// costs a full Electron boot (0.39s CPU measured). A failed listing clears
-/// the entry, so a manager that breaks mid-run is re-probed rather than
-/// assumed healthy.
+/// For paseo the probe costs a full Electron boot (0.39s CPU measured), so a
+/// working CLI is taken on trust until a listing fails and clears the entry.
+/// A *failed* probe is never cached: nothing else would ever clear it (a
+/// runtime reporting unavailable is never asked to list), and a manager
+/// installed after the daemon started has to be able to appear.
 static HEALTH_CACHE: LazyLock<Mutex<HashMap<String, RuntimeHealth>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -51,7 +51,6 @@ impl AdeRuntime {
     fn probe_health(&self) -> RuntimeHealth {
         // A missing CLI is the common case and must read as "unavailable",
         // never as an agent failure.
-        crate::cmd::count_spawn();
         match Command::new(&self.cfg.command).arg("--version").output() {
             Ok(out) if out.status.success() => RuntimeHealth::Ok,
             Ok(out) => RuntimeHealth::Unavailable(format!(
@@ -66,7 +65,6 @@ impl AdeRuntime {
     }
 
     fn run(&self, args: &[&str]) -> Result<String> {
-        crate::cmd::count_spawn();
         let out = Command::new(&self.cfg.command)
             .args(args)
             .output()
@@ -523,7 +521,9 @@ impl AgentRuntime for AdeRuntime {
             return cached.clone();
         }
         let health = self.probe_health();
-        if let Ok(mut cache) = HEALTH_CACHE.lock() {
+        if health.is_ok()
+            && let Ok(mut cache) = HEALTH_CACHE.lock()
+        {
             cache.insert(self.cfg.command.clone(), health.clone());
         }
         health
@@ -880,6 +880,26 @@ mod tests {
             2,
             "a failed listing invalidates the cached probe"
         );
+    }
+
+    #[test]
+    fn an_ade_installed_after_the_first_probe_is_seen() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let missing = dir.path().join("not-installed-yet");
+        let cfg = AdeConfig {
+            command: missing.to_string_lossy().into_owned(),
+            list_args: vec!["list".to_string()],
+            ..AdeConfig::default()
+        };
+        let r = AdeRuntime::new("stub".to_string(), cfg);
+        assert!(!r.health().is_ok(), "an absent CLI probes as unavailable");
+
+        // Nothing asks an unavailable runtime to list, so a cached failure
+        // would never be cleared.
+        let installed = stub_cli(dir.path(), &log);
+        std::fs::rename(&installed.command, &missing).unwrap();
+        assert!(r.health().is_ok(), "the probe must be re-run");
     }
 
     #[test]

@@ -42,10 +42,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -105,8 +101,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- scalar override
 main_branch: null
 base_branch: null
@@ -151,10 +145,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -214,8 +204,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global only
 main_branch: null
 base_branch: null
@@ -260,10 +248,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -323,8 +307,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- project only
 main_branch: null
 base_branch: null
@@ -369,10 +351,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: true
 theme:
   scheme: Default
@@ -432,8 +410,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- project windows overrides global panes
 main_branch: null
 base_branch: null
@@ -487,10 +463,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -550,8 +522,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- project panes overrides global windows
 main_branch: null
 base_branch: null
@@ -603,10 +573,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -666,8 +632,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global windows inherited when project sets no layout
 main_branch: null
 base_branch: null
@@ -721,10 +685,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -784,8 +744,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- layouts extend
 main_branch: null
 base_branch: null
@@ -848,10 +806,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -911,8 +865,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- layouts collision
 main_branch: null
 base_branch: null
@@ -966,10 +918,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1029,8 +977,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- layouts global only
 main_branch: null
 base_branch: null
@@ -1084,10 +1030,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1147,8 +1089,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- mcp extend and override
 main_branch: null
 base_branch: null
@@ -1193,10 +1133,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1263,8 +1199,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- placeholder lists expand
 main_branch: null
 base_branch: null
@@ -1313,10 +1247,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1376,8 +1306,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- files placeholder
 main_branch: null
 base_branch: null
@@ -1425,10 +1353,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1488,8 +1412,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox nested per-field
 main_branch: null
 base_branch: null
@@ -1534,10 +1456,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1597,8 +1515,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox lima merge
 main_branch: null
 base_branch: null
@@ -1643,10 +1559,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1706,8 +1618,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox lima fallback
 main_branch: null
 base_branch: null
@@ -1752,10 +1662,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1815,8 +1721,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox toolchain project overrides
 main_branch: null
 base_branch: null
@@ -1861,10 +1765,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1924,8 +1824,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox toolchain falls back to global
 main_branch: null
 base_branch: null
@@ -1970,10 +1868,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2033,8 +1927,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox lima skip_default_provision
 main_branch: null
 base_branch: null
@@ -2079,10 +1971,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2142,8 +2030,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox lima skip_default_provision project overrides
 main_branch: null
 base_branch: null
@@ -2188,10 +2074,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2251,8 +2133,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- theme custom falls back to global
 main_branch: null
 base_branch: null
@@ -2297,10 +2177,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2376,8 +2252,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sandbox container resources
 main_branch: null
 base_branch: null
@@ -2422,10 +2296,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2485,8 +2355,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: excluded_files project ignored
 main_branch: null
 base_branch: null
@@ -2531,10 +2399,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2595,8 +2459,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: excluded_files project only
 main_branch: null
 base_branch: null
@@ -2641,10 +2503,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2704,8 +2562,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: container devices
 main_branch: null
 base_branch: null
@@ -2750,10 +2606,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2814,8 +2666,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: container group_add
 main_branch: null
 base_branch: null
@@ -2860,10 +2710,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2924,8 +2770,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: sandbox env and network
 main_branch: null
 base_branch: null
@@ -2970,10 +2814,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3035,8 +2875,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: host_commands and extra_mounts
 main_branch: null
 base_branch: null
@@ -3081,10 +2919,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3146,8 +2980,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: agents map
 main_branch: null
 base_branch: null
@@ -3192,10 +3024,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3257,8 +3085,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: auto_name command
 main_branch: null
 base_branch: null
@@ -3307,10 +3133,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3370,8 +3192,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- auto_name project only
 main_branch: null
 base_branch: null
@@ -3420,10 +3240,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3483,8 +3299,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- global-only: provision
 main_branch: null
 base_branch: null
@@ -3529,10 +3343,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3592,8 +3402,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 provision:
   server_url: https://a.example.com
   token_path: null
@@ -3649,10 +3457,6 @@ sidebar:
     codex:
       icon: X
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3712,8 +3516,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- sidebar templates replace wholesale
 main_branch: null
 base_branch: null
@@ -3761,10 +3563,6 @@ sidebar:
     horizontal: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3824,8 +3622,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- theme custom replace wholesale
 main_branch: null
 base_branch: null
@@ -3870,10 +3666,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Mossfire
@@ -3949,8 +3741,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- theme scheme default sentinel
 main_branch: null
 base_branch: null
@@ -3995,10 +3785,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Mossfire
@@ -4058,8 +3844,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- theme scheme real override
 main_branch: null
 base_branch: null
@@ -4104,10 +3888,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Lasergrid
@@ -4167,8 +3947,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- events project overrides
 main_branch: null
 base_branch: null
@@ -4213,10 +3991,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4278,8 +4052,6 @@ events:
   - turn.poll
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- events empty project list inherits
 main_branch: null
 base_branch: null
@@ -4324,10 +4096,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4388,8 +4156,6 @@ events:
   - pane.probe
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- worktree_naming sentinel
 main_branch: null
 base_branch: null
@@ -4434,10 +4200,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4497,8 +4259,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- worktree_naming real override
 main_branch: null
 base_branch: null
@@ -4543,10 +4303,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4606,8 +4362,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- bootstrap replaced wholesale
 main_branch: null
 base_branch: null
@@ -4652,10 +4406,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4718,8 +4468,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- bootstrap global only
 main_branch: null
 base_branch: null
@@ -4764,10 +4512,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4830,8 +4574,6 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- agent_defs and prompt_defs extend
 main_branch: null
 base_branch: null
@@ -4876,10 +4618,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4947,8 +4685,6 @@ prompt_defs:
     content: u
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s
 --- status_icons and dashboard per-field
 main_branch: null
 base_branch: null
@@ -4993,10 +4729,6 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
-  confirm_style: null
-  new_agent:
-    placement: null
-    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -5056,5 +4788,3 @@ events:
   disable: []
 daemon:
   auto_freeze: null
-  git_poll:
-    interval: 10s

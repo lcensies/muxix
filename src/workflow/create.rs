@@ -89,6 +89,18 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         );
     }
 
+    // A split pane is not a named target, but a worktree records one and
+    // cleanup, close and open all resolve the agent by that name. Recording a
+    // window that was never created leaves the pane running after `muxix
+    // remove` has torn its worktree down, so refuse before any git state.
+    if options.placement == Placement::Pane {
+        return Err(anyhow!(
+            "Pane placement cannot create a worktree: a split pane has no \
+             window or session name for remove/close to find.\n\
+             Hint: add --no-worktree to run the agent at the repository root."
+        ));
+    }
+
     info!(
         branch = branch_name,
         handle = handle,
@@ -433,7 +445,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     // Acquire an exclusive lock to serialize .git/config writes across parallel
     // muxix processes. Without this, concurrent `muxix add` commands race on
     // git's config.lock file and fail with "could not lock config file".
-    let _config_lock = git::GitConfigLock::acquire(&context.git_common_dir)
+    let _config_lock = git::DirLock::acquire(&context.git_common_dir)
         .context("Failed to acquire git config lock")?;
 
     // Store the base branch before checkout so observers that see the worktree
@@ -1375,6 +1387,32 @@ mod tests {
             "unhelpful error: {err}"
         );
         assert!(mux.calls().is_empty(), "nothing may be created");
+    }
+
+    #[test]
+    fn pane_placement_with_a_worktree_is_refused_before_any_git_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        let before = git::list_worktrees_in(Some(&repo)).unwrap();
+        let (ctx, mux) = ctx_in(&repo, "tmux", Config::default());
+        let err = create(
+            &ctx,
+            create_args("feature", quiet_options(Placement::Pane, Some("%7")), true),
+        )
+        .err()
+        .expect("a split pane has no window name for remove/close to find");
+        assert!(
+            err.to_string().contains("cannot create a worktree"),
+            "unhelpful error: {err}"
+        );
+        assert!(mux.calls().is_empty(), "nothing may be created");
+        assert_eq!(
+            git::list_worktrees_in(Some(&repo)).unwrap(),
+            before,
+            "no worktree or branch may be left behind"
+        );
     }
 
     #[test]

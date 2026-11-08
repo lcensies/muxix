@@ -125,33 +125,13 @@ pub fn get_git_common_dir_in(workdir: Option<&Path>) -> Result<PathBuf> {
     Ok(abs_path)
 }
 
-/// Memoized worktree path -> git common dir. A worktree's common dir never
-/// changes while the worktree exists, and the daemon resolves it on every
-/// sweep for every worktree.
-static COMMON_DIRS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<PathBuf, PathBuf>>,
-> = std::sync::LazyLock::new(Default::default);
-
 /// Resolve a worktree's git common dir (where `refs/` and `packed-refs` live)
 /// without spawning git. Returns `None` if the path is not a worktree.
 ///
 /// - `.git` is a directory: that directory is the common dir.
 /// - `.git` is a file (linked worktree): follow `gitdir:`, then its
 ///   `commondir` pointer.
-pub fn common_dir_cached(worktree_path: &Path) -> Option<PathBuf> {
-    if let Ok(cache) = COMMON_DIRS.lock()
-        && let Some(hit) = cache.get(worktree_path)
-    {
-        return Some(hit.clone());
-    }
-    let resolved = resolve_common_dir(worktree_path)?;
-    if let Ok(mut cache) = COMMON_DIRS.lock() {
-        cache.insert(worktree_path.to_path_buf(), resolved.clone());
-    }
-    Some(resolved)
-}
-
-fn resolve_common_dir(worktree_path: &Path) -> Option<PathBuf> {
+pub fn resolve_common_dir(worktree_path: &Path) -> Option<PathBuf> {
     let dot_git = worktree_path.join(".git");
     if dot_git.is_dir() {
         return Some(dot_git);
@@ -295,7 +275,7 @@ mod ref_tests {
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("plain");
         std::fs::create_dir_all(repo.join(".git")).unwrap();
-        assert_eq!(common_dir_cached(&repo), Some(repo.join(".git")));
+        assert_eq!(resolve_common_dir(&repo), Some(repo.join(".git")));
     }
 
     #[test]
@@ -308,12 +288,12 @@ mod ref_tests {
         let wt = temp.path().join("wt");
         std::fs::create_dir_all(&wt).unwrap();
         std::fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
-        assert_eq!(common_dir_cached(&wt), Some(main));
+        assert_eq!(resolve_common_dir(&wt), Some(main));
     }
 
     #[test]
     fn common_dir_of_non_worktree_is_none() {
         let temp = tempfile::tempdir().unwrap();
-        assert_eq!(common_dir_cached(temp.path()), None);
+        assert_eq!(resolve_common_dir(temp.path()), None);
     }
 }

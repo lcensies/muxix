@@ -73,14 +73,6 @@ sidebar:
 
   # Layout mode for the left sidebar: "compact" or "tiles" (default)
   layout: tiles
-
-  # How 'd' asks: "native" (default) or "popup"
-  confirm_style: native
-
-  # Prefilled into the create form that 'a' opens
-  new_agent:
-    placement: window # "window" (default), "session" or "pane"
-    worktree: true
 ```
 
 For a horizontal top bar:
@@ -200,40 +192,34 @@ accumulate.
 
 ### The confirmation popup
 
-By default the delete prompt is the multiplexer's own: under tmux it appears on
-the prompt line, outside the sidebar pane, and stays until answered. Set
-`confirm_style: popup` to get a centered dialog drawn inside the sidebar pane
-instead; the native prompt is then never invoked.
+The delete prompt is a centered dialog drawn inside the sidebar pane. The agent
+is captured when the dialog opens, so a refresh that reorders the list cannot
+retarget the delete. `Enter` or `y` deletes, every other key cancels.
 
-```yaml
-sidebar:
-  confirm_style: popup
-```
-
-The agent is captured when the dialog opens, so a refresh that reorders the list
-cannot retarget the delete. `Enter` or `y` deletes, every other key cancels. The
-`top` position is one to five rows tall — too short for a dialog — so it keeps
-the one-line prompt band whatever the style is.
+The `top` position is one to five rows tall — too short for a dialog — so it
+asks with the multiplexer's own prompt (under tmux, the prompt line) or, on a
+backend with none, a one-line band in the bar itself.
 
 ### Creating an agent
 
 Press `a` to create a new agent without leaving the sidebar. A form opens in the
-pane, prefilled from the selected row and from `sidebar.new_agent`:
+pane, prefilled from the selected row:
 
 | Field | Prefilled with |
 | ----- | -------------- |
 | Branch | empty — type the branch to create |
 | Repository | the selected agent's repository, re-derived from its pane's working directory |
 | Agent | empty, so the repository's own [`agent_rules`](/guide/agents) choose the profile |
-| Placement | `sidebar.new_agent.placement` |
-| Worktree | `sidebar.new_agent.worktree` |
+| Placement | `window` |
+| Worktree | `yes` |
 
 `Tab` and `Shift+Tab` move between fields, `←`/`→` cycle a choice field, `Enter`
 submits and `Esc` cancels. The form still opens with nothing selected, with the
 repository field empty — it is required, so fill it in.
 
 Placement `pane` splits the selected agent's pane instead of opening a window,
-so it needs a selected row. Worktree `no` runs the agent on the repository
+so it needs a selected local row and cannot create a worktree — set worktree to
+`no` with it. Worktree `no` runs the agent on the repository
 root's existing checkout: no branch and no worktree are created, and no branch
 name is required. File operations and `post_create` hooks are skipped in that
 case, since they exist to provision a fresh checkout, and what was skipped is

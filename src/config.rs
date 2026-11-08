@@ -300,44 +300,6 @@ pub struct SidebarConfig {
     /// When "session", plain `wng sidebar` activates only the current session.
     /// Use `wng sidebar --global` to force global scope regardless of this setting.
     pub default_scope: Option<SidebarDefaultScope>,
-
-    /// How a delete is confirmed: the multiplexer's native prompt (default) or
-    /// a centered popup drawn inside the sidebar pane.
-    pub confirm_style: Option<ConfirmStyle>,
-
-    /// Defaults for the sidebar's create-agent form.
-    #[serde(default)]
-    pub new_agent: NewAgentConfig,
-}
-
-/// How the sidebar asks for delete confirmation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ConfirmStyle {
-    /// The multiplexer's own prompt (tmux `confirm-before`), outside the pane.
-    #[default]
-    Native,
-    /// A centered modal drawn inside the sidebar pane.
-    Popup,
-}
-
-/// Defaults prefilled into the sidebar's create-agent form.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct NewAgentConfig {
-    /// Where the new agent is placed. Default: window.
-    pub placement: Option<Placement>,
-    /// Whether to create a git worktree for it. Default: true.
-    pub worktree: Option<bool>,
-}
-
-impl NewAgentConfig {
-    pub fn placement(&self) -> Placement {
-        self.placement.unwrap_or_default()
-    }
-
-    pub fn worktree(&self) -> bool {
-        self.worktree.unwrap_or(true)
-    }
 }
 
 /// Sidebar pane position.
@@ -449,41 +411,6 @@ pub struct DaemonConfig {
     /// Auto-freeze idle Done agents to reclaim CPU.
     #[serde(default)]
     pub auto_freeze: Option<AutoFreezeConfig>,
-
-    /// Periodic git status sweep in the daemon's git worker.
-    #[serde(default)]
-    pub git_poll: GitPollConfig,
-}
-
-/// Configuration for the daemon's periodic git status sweep.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct GitPollConfig {
-    /// How often the daemon re-reads git status for every active worktree when
-    /// the filesystem watcher has reported nothing. Examples: "10s", "1m".
-    #[serde(default = "default_git_poll_interval")]
-    pub interval: IdleDuration,
-}
-
-fn default_git_poll_interval() -> IdleDuration {
-    IdleDuration(std::time::Duration::from_secs(10))
-}
-
-impl Default for GitPollConfig {
-    fn default() -> Self {
-        Self {
-            interval: default_git_poll_interval(),
-        }
-    }
-}
-
-impl GitPollConfig {
-    /// The sweep interval, with the 1s floor applied. A tighter sweep costs
-    /// more than it buys: real edits arrive through the filesystem watcher.
-    pub fn interval(&self) -> std::time::Duration {
-        self.interval
-            .as_duration()
-            .max(std::time::Duration::from_secs(1))
-    }
 }
 
 /// Configuration for the auto-freeze feature.
@@ -4466,16 +4393,6 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
 #   layout: tiles
 #
-#   # How 'd' asks for confirmation: "native" (default, the multiplexer's own
-#   # prompt line) or "popup" (a centered modal inside the sidebar pane).
-#   # The top position always uses the one-line band: a modal cannot fit it.
-#   confirm_style: native
-#
-#   # Defaults prefilled into the create-agent form ('a').
-#   new_agent:
-#     placement: window   # window | session | pane
-#     worktree: true
-#
 #   horizontal:
 #     item_width: 24  # horizontal chip width in columns, clamped 12-80
 #
@@ -4717,23 +4634,6 @@ mod tests {
             assert_eq!(p.as_str().parse::<Placement>().unwrap(), p);
         }
         assert!("nope".parse::<Placement>().is_err());
-    }
-
-    #[test]
-    fn new_agent_defaults_to_a_window_with_a_worktree() {
-        use super::{ConfirmStyle, NewAgentConfig, Placement};
-        let defaults = NewAgentConfig::default();
-        assert_eq!(defaults.placement(), Placement::Window);
-        assert!(defaults.worktree());
-        assert_eq!(ConfirmStyle::default(), ConfirmStyle::Native);
-        // An empty `sidebar:` block must not opt anyone into the popup.
-        let cfg: Config = serde_yaml::from_str("sidebar: {}").unwrap();
-        assert_eq!(
-            cfg.sidebar.confirm_style.unwrap_or_default(),
-            ConfirmStyle::Native
-        );
-        assert_eq!(cfg.sidebar.new_agent.placement(), Placement::Window);
-        assert!(cfg.sidebar.new_agent.worktree());
     }
 
     #[test]

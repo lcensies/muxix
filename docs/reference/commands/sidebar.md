@@ -32,7 +32,7 @@ Each agent row displays:
 | `Ctrl+d`/`Ctrl+u` | Half page down/up               |
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
-| `d`     | Delete agent. Under tmux asks on the tmux prompt line (Enter or `y` confirms); elsewhere in the sidebar (Enter confirms). Any other key cancels. With `confirm_style: popup` a centered dialog in the pane asks instead. |
+| `d`     | Delete agent. A centered dialog in the pane asks (Enter confirms, `Esc` cancels). A top bar is too short for one, so it asks on the tmux prompt line (Enter or `y` confirms) or, with no native prompt, in a one-line band. |
 | `a`     | New agent. Opens a form in the pane: branch, repository, agent profile, placement, worktree. `Tab`/`Shift+Tab` move between fields, `←`/`→` cycle a choice, `Enter` submits, `Esc` cancels. |
 | `?`     | Show actions. A filterable list of the keys above; type to filter, `Enter` runs. |
 | `q`     | Quit sidebar             |
@@ -74,23 +74,14 @@ sidebar:
   width: 40 # left width in columns (default: "10%", clamped 25-50)
   # width: "15%"
   layout: tiles # left only: "compact" or "tiles" (default)
-  confirm_style: native # "native" (default) or "popup"
-  new_agent:
-    placement: window # "window" (default), "session" or "pane"
-    worktree: true # default: true
 ```
 
-`confirm_style` picks how `d` asks. `native` (the default) uses the
-multiplexer's own prompt — under tmux that is the prompt line, outside the
-sidebar's narrow pane. `popup` draws a centered dialog inside the pane instead
-and never invokes the native prompt. `position: top` is one to five rows tall,
-too short for a dialog, so it keeps the one-line prompt band either way.
-
-`new_agent` prefills the create form that `a` opens. `placement: pane` splits
-the selected agent's pane rather than opening a window, so it needs a selected
-row. `worktree: false` runs the new agent at the repository root with no branch
-and no worktree, like [`muxix add --no-worktree`](./add.md); worktree-targeted
-file operations and `post_create` hooks are skipped and reported.
+The create form that `a` opens starts on placement `window` and worktree
+`yes`. `placement: pane` splits the selected agent's pane rather than opening a
+window, so it needs a selected row and cannot create a worktree. Worktree `no`
+runs the new agent at the repository root with no branch and no worktree, like
+[`muxix add --no-worktree`](./add.md); worktree-targeted file operations and
+`post_create` hooks are skipped and reported.
 
 For a horizontal top bar:
 
