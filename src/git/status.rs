@@ -294,13 +294,6 @@ fn is_rebasing(worktree_path: &Path) -> bool {
     git_dir.join("rebase-merge").is_dir() || git_dir.join("rebase-apply").is_dir()
 }
 
-/// Get git status for a worktree (ahead/behind, conflicts, dirty state, diff stats).
-/// This is designed for dashboard display and prioritizes speed over completeness.
-/// Uses `git status --porcelain=v2 --branch` to get most info in a single command.
-pub fn get_git_status(worktree_path: &Path, main_branch: Option<&str>) -> GitStatus {
-    get_git_status_cached(worktree_path, main_branch, None)
-}
-
 /// Whether `prev`'s base branch can be reused instead of asking git for it.
 ///
 /// The base comes from `branch.<b>.muxix-base` in the repository's local
@@ -633,7 +626,7 @@ mod cached_refresh_tests {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
 
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
         assert_eq!(first.branch.as_deref(), Some("feature"));
         assert_eq!(first.base_branch, "main");
         assert!(
@@ -660,7 +653,7 @@ mod cached_refresh_tests {
     fn dirty_unmoved_worktree_costs_three_processes() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
 
         std::fs::write(dir.join("feature.txt"), "a\nb\nc\n").unwrap();
         std::fs::write(dir.join("new.txt"), "x\n").unwrap();
@@ -681,7 +674,7 @@ mod cached_refresh_tests {
     fn moved_head_recomputes_the_committed_diff() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
 
         std::fs::write(dir.join("feature.txt"), "a\nb\nc\nd\n").unwrap();
         run_git(&dir, &["add", "."]);
@@ -700,7 +693,7 @@ mod cached_refresh_tests {
     fn moved_base_recomputes_the_committed_diff() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
 
         // Advance main without touching feature.
         run_git(&dir, &["checkout", "main"]);
@@ -720,7 +713,7 @@ mod cached_refresh_tests {
     fn a_fingerprintless_cache_entry_runs_every_step() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
 
         // What an entry written before this change deserializes to.
         let legacy = GitStatus {
@@ -736,29 +729,35 @@ mod cached_refresh_tests {
         assert_eq!(refreshed.lines_added, first.lines_added);
     }
 
+    /// The dashboard's refresh feeds `prev` from `git_status_cache.json`, so
+    /// the fingerprint has to survive a save/load round-trip — a dropped or
+    /// rewritten field would make the skip silently never fire.
     #[test]
-    fn no_cache_matches_an_uncached_refresh() {
+    fn a_cache_entry_from_disk_still_costs_one_process() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let plain = get_git_status(&dir, None);
-        let cached = get_git_status_cached(&dir, None, None);
-        assert_eq!(
-            GitStatus {
-                cached_at: None,
-                ..plain
-            },
-            GitStatus {
-                cached_at: None,
-                ..cached
-            }
-        );
+        let first = get_git_status_cached(&dir, None, None);
+
+        let cache_file = temp.path().join("git_status_cache.json");
+        let mut cache = std::collections::HashMap::new();
+        cache.insert(dir.clone(), first.clone());
+        crate::git::cache::save_status_cache_at(&cache_file, &cache);
+        let loaded = crate::git::cache::load_status_cache_at(&cache_file);
+        assert_eq!(loaded.get(&dir), Some(&first), "entry round-trips intact");
+
+        take_git_spawns();
+        let second = get_git_status_cached(&dir, None, loaded.get(&dir));
+        assert_eq!(take_git_spawns(), 1);
+        assert_eq!(second.lines_added, first.lines_added);
+        assert_eq!(second.head_oid, first.head_oid);
+        assert_eq!(second.base_oid, first.base_oid);
     }
 
     #[test]
     fn a_rewritten_base_config_forces_a_fresh_lookup() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
         assert_eq!(first.base_branch, "main");
 
         // `muxix set-base` writes the local config; its mtime is now newer
@@ -774,7 +773,7 @@ mod cached_refresh_tests {
     fn a_branch_switch_forces_a_fresh_base_lookup() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);
-        let first = get_git_status(&dir, None);
+        let first = get_git_status_cached(&dir, None, None);
         assert_eq!(first.base_branch, "main");
 
         // A second branch with its own base, recorded while the config is
@@ -806,7 +805,7 @@ mod cached_refresh_tests {
         run_git(&dir, &["checkout", "--detach", &head]);
 
         take_git_spawns();
-        let status = get_git_status(&dir, None);
+        let status = get_git_status_cached(&dir, None, None);
         assert_eq!(take_git_spawns(), 1);
         assert_eq!(status.branch, None);
         assert_eq!(status.head_oid.as_deref(), Some(head.as_str()));

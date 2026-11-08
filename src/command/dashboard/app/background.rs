@@ -33,6 +33,16 @@ impl App {
                 paths.push(wt.path.clone());
             }
         }
+        // Pair each path with the status we already hold (from the on-disk
+        // cache or an earlier sweep) so an unmoved clean worktree costs one
+        // git process instead of 5-7.
+        let paths: Vec<(PathBuf, Option<git::GitStatus>)> = paths
+            .into_iter()
+            .map(|p| {
+                let prev = self.git_statuses.get(&p).cloned();
+                (p, prev)
+            })
+            .collect();
 
         std::thread::spawn(move || {
             // Reset flag when thread completes (even on panic)
@@ -44,8 +54,9 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            for path in paths {
-                let status = git::get_git_status(&path, main_branch.as_deref());
+            for (path, prev) in paths {
+                let status =
+                    git::get_git_status_cached(&path, main_branch.as_deref(), prev.as_ref());
                 let _ = tx.send(AppEvent::GitStatus(path, status));
             }
         });
