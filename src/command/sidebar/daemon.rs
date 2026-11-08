@@ -399,9 +399,21 @@ fn query_tmux_state() -> TmuxState {
     }
 }
 
+/// A connected client. Snapshot pushes and request replies are written from
+/// different threads, so the write half is shared under a mutex: two frames
+/// must never interleave on one socket.
+type Client = Arc<Mutex<UnixStream>>;
+
+/// What a request handler needs to answer `GetGitStatuses`.
+#[derive(Clone)]
+struct GitRequests {
+    cache: GitCache,
+    prioritise: PrioritiseQueue,
+}
+
 /// Unix socket server for broadcasting snapshots to clients.
 struct SocketServer {
-    clients: Arc<Mutex<Vec<UnixStream>>>,
+    clients: Arc<Mutex<Vec<Client>>>,
     /// Cached last broadcast payload (length-prefixed) for immediate delivery to new clients.
     cached_payload: Arc<Mutex<Vec<u8>>>,
     /// The snapshot the clients already hold, so an unchanged tick sends
@@ -411,14 +423,14 @@ struct SocketServer {
 }
 
 impl SocketServer {
-    fn bind(path: &Path) -> std::io::Result<Self> {
+    fn bind(path: &Path, git: GitRequests) -> std::io::Result<Self> {
         let listener = UnixListener::bind(path)?;
         // Restrict socket to owner only (prevent other local users from reading snapshots)
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         // The listener stays blocking: the accept thread has nothing else to
         // do, and process exit is what ends it. Polling it would be a second
         // always-on wakeup for no gain.
-        let clients: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
         let clients_clone = clients.clone();
         let cached_payload: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let cached_clone = cached_payload.clone();
@@ -435,11 +447,20 @@ impl SocketServer {
                     Some(ref p) if !p.is_empty() => stream.write_all(p).is_ok(),
                     _ => true,
                 };
-                if cache_ok {
+                if !cache_ok {
+                    continue;
+                }
+                let Ok(reader) = stream.try_clone() else {
+                    continue;
+                };
+                let client: Client = Arc::new(Mutex::new(stream));
+                {
                     let mut clients = clients_clone.lock().unwrap();
-                    clients.push(stream);
+                    clients.push(client.clone());
                     tracing::debug!(clients = clients.len(), "sidebar client connected");
                 }
+                let git = git.clone();
+                thread::spawn(move || serve_requests(reader, &client, &git));
             }
         });
 
@@ -485,8 +506,10 @@ impl SocketServer {
         // Take clients out of mutex to avoid holding lock during writes
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
         let before = clients.len();
-        clients
-            .retain_mut(|stream| stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok());
+        clients.retain(|client| match client.lock() {
+            Ok(mut stream) => stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok(),
+            Err(_) => false,
+        });
         let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
             tracing::info!(
@@ -512,7 +535,10 @@ impl SocketServer {
     fn prune_dead_clients(&self) {
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
         let before = clients.len();
-        clients.retain(|stream| !client_is_gone(stream));
+        clients.retain(|client| match client.lock() {
+            Ok(stream) => !client_is_gone(&stream),
+            Err(_) => false,
+        });
         let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
             tracing::info!(
@@ -531,27 +557,80 @@ impl SocketServer {
 
 /// Has this client closed its end?
 ///
-/// The protocol is push-only, so a live client never has anything to read:
-/// readable, hung up or errored all mean it is gone. `poll` is not restarted
-/// after a signal on Linux whatever `SA_RESTART` says, and the daemon is
-/// SIGUSR1'd by every agent-status hook, so an interrupted poll has to be
-/// retried rather than counted as a hangup.
+/// Clients send requests, so readable does not mean gone — only a zero-length
+/// read does. A non-destructive peek distinguishes the two: 0 is the peer's
+/// orderly shutdown, `EAGAIN` is a live idle client, and a pending request
+/// byte is a live busy one. `recv` is not restarted after a signal on Linux
+/// whatever `SA_RESTART` says, and the daemon is SIGUSR1'd by every
+/// agent-status hook, so `EINTR` has to be retried rather than counted as a
+/// hangup.
 fn client_is_gone(stream: &std::os::unix::net::UnixStream) -> bool {
     use std::os::fd::AsRawFd;
+    let mut byte = 0u8;
     loop {
-        let mut pfd = libc::pollfd {
-            fd: stream.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
+        let n = unsafe {
+            libc::recv(
+                stream.as_raw_fd(),
+                std::ptr::from_mut(&mut byte).cast(),
+                1,
+                libc::MSG_PEEK | libc::MSG_DONTWAIT,
+            )
         };
-        let ready = unsafe { libc::poll(&mut pfd, 1, 0) };
-        if ready < 0 {
-            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
-                continue;
-            }
+        if n == 0 {
             return true;
         }
-        return ready > 0;
+        if n > 0 {
+            return false;
+        }
+        return match std::io::Error::last_os_error().kind() {
+            std::io::ErrorKind::Interrupted => continue,
+            std::io::ErrorKind::WouldBlock => false,
+            _ => true,
+        };
+    }
+}
+
+/// Serve request frames from one client until it stops speaking.
+///
+/// An unparseable frame (corrupt JSON, or a payload variant this daemon does
+/// not know) is skipped: the connection and its snapshot stream stay up. A
+/// frame header past the cap means the stream is desynced, so reading stops —
+/// the client stays registered and keeps receiving pushes.
+fn serve_requests(mut reader: UnixStream, client: &Client, git: &GitRequests) {
+    use super::protocol::{DaemonRequest, DaemonResponse, RequestPayload, ResponsePayload};
+
+    while let Some(frame) = super::protocol::read_frame(&mut reader) {
+        let Ok(request) = serde_json::from_slice::<DaemonRequest>(&frame) else {
+            tracing::debug!("daemon: ignoring unrecognised request frame");
+            continue;
+        };
+        let response = match request.payload {
+            RequestPayload::GetGitStatuses { paths, prioritise } => {
+                if prioritise && let Ok(mut queue) = git.prioritise.lock() {
+                    queue.extend(paths.iter().cloned());
+                }
+                // Served from the live cache, never by spawning git. Unknown
+                // paths are simply absent from the reply.
+                let statuses = match git.cache.lock() {
+                    Ok(cache) => paths
+                        .into_iter()
+                        .filter_map(|p| cache.get(&p).cloned().map(|s| (p, s)))
+                        .collect(),
+                    Err(_) => HashMap::new(),
+                };
+                ResponsePayload::GitStatuses(statuses)
+            }
+        };
+        let response = DaemonResponse {
+            id: request.id,
+            payload: response,
+        };
+        let Ok(mut stream) = client.lock() else {
+            return;
+        };
+        if super::protocol::write_frame(&mut *stream, &response).is_err() {
+            return; // Client went away mid-reply; the broadcast will reap it.
+        }
     }
 }
 
@@ -638,6 +717,10 @@ impl TmuxOptions {
 
 /// Shared git status cache, updated by a background worker thread.
 type GitCache = Arc<Mutex<HashMap<PathBuf, GitStatus>>>;
+
+/// Paths a client asked to have refreshed early, drained by the git worker on
+/// its next pass instead of waiting for the sweep.
+type PrioritiseQueue = Arc<Mutex<HashSet<PathBuf>>>;
 
 /// Resolve the .git directory for a worktree path.
 /// For linked worktrees, .git is a file containing "gitdir: /path/to/real/gitdir".
@@ -927,6 +1010,24 @@ fn next_worker_timeout(
     min_wait.min(Duration::from_secs(1))
 }
 
+/// Drain the prioritise queue, keeping only paths the worker already tracks.
+///
+/// The cache only ever holds tracked paths, so a hint for anything else buys
+/// nothing — and an unfiltered list would be an unbounded number of git spawns
+/// on a client's say-so.
+fn take_prioritised(queue: &PrioritiseQueue, tracked: &HashMap<PathBuf, bool>) -> Vec<PathBuf> {
+    let Ok(mut queue) = queue.lock() else {
+        return Vec::new();
+    };
+    if queue.is_empty() {
+        return Vec::new();
+    }
+    std::mem::take(&mut *queue)
+        .into_iter()
+        .filter(|p| tracked.contains_key(p))
+        .collect()
+}
+
 /// Refresh git status for a worktree path, updating the cache.
 /// Returns true if the status actually changed (semantically, ignoring cached_at).
 fn refresh_git_status(path: &Path, cache: &GitCache) -> bool {
@@ -1155,6 +1256,7 @@ fn spawn_git_worker(
     term: Arc<AtomicBool>,
     dirty_flag: Arc<AtomicBool>,
     wake_tx: std::sync::mpsc::SyncSender<()>,
+    prioritise: PrioritiseQueue,
 ) -> (GitCache, std::sync::mpsc::Sender<Vec<GitWorkerPath>>) {
     let cache: GitCache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
@@ -1356,6 +1458,18 @@ fn spawn_git_worker(
                 }
             }
 
+            let mut any_changed = false;
+
+            // A client asked for these by name, so refresh them now — past the
+            // debounce, and past the stale-agent skip.
+            let hinted = take_prioritised(&prioritise, &path_stale);
+            for path in &hinted {
+                pending_worktrees.remove(path);
+                if refresh_git_status(path, &cache_clone) {
+                    any_changed = true;
+                }
+            }
+
             // Process debounce-ready worktrees (skip stale ones, they only refresh on sweep)
             let now = Instant::now();
             let ready: Vec<PathBuf> = pending_worktrees
@@ -1364,7 +1478,6 @@ fn spawn_git_worker(
                 .map(|(path, _)| path.clone())
                 .collect();
 
-            let mut any_changed = false;
             for path in &ready {
                 pending_worktrees.remove(path);
                 let is_stale = path_stale.get(path).copied().unwrap_or(false);
@@ -1946,10 +2059,6 @@ pub fn run() -> Result<()> {
         });
     }
 
-    let sock_path = socket_path(&instance_id);
-    let _ = std::fs::remove_file(&sock_path); // Clean stale
-    let server = SocketServer::bind(&sock_path)?;
-
     // Config watcher: bumps config_version on global / project .muxix.yaml changes.
     let config_paths_tx = spawn_config_watcher(
         term.clone(),
@@ -1960,8 +2069,25 @@ pub fn run() -> Result<()> {
     );
 
     // Background git status worker (shares dirty_flag for immediate broadcast on changes)
-    let (git_cache, git_path_tx) =
-        spawn_git_worker(term.clone(), dirty_flag.clone(), wake_tx.clone());
+    let prioritise: PrioritiseQueue = Arc::new(Mutex::new(HashSet::new()));
+    let (git_cache, git_path_tx) = spawn_git_worker(
+        term.clone(),
+        dirty_flag.clone(),
+        wake_tx.clone(),
+        prioritise.clone(),
+    );
+
+    // Bound after the git worker: the accept thread answers status requests
+    // from its cache.
+    let sock_path = socket_path(&instance_id);
+    let _ = std::fs::remove_file(&sock_path); // Clean stale
+    let server = SocketServer::bind(
+        &sock_path,
+        GitRequests {
+            cache: git_cache.clone(),
+            prioritise,
+        },
+    )?;
     let (pr_cache, pr_path_tx) = spawn_pr_worker(term.clone(), dirty_flag.clone(), wake_tx);
 
     // Store PID so toggle-off can kill us and hooks can signal us
@@ -2512,7 +2638,7 @@ mod tests {
             assert_eq!(wait, Duration::ZERO);
         }
 
-        fn empty_snapshot() -> crate::command::sidebar::snapshot::SidebarSnapshot {
+        pub(super) fn empty_snapshot() -> crate::command::sidebar::snapshot::SidebarSnapshot {
             crate::command::sidebar::snapshot::SidebarSnapshot {
                 position: crate::config::SidebarPosition::Left,
                 layout_mode: SidebarLayoutMode::default(),
@@ -2528,8 +2654,8 @@ mod tests {
             }
         }
 
-        /// Read one length-prefixed frame, or None if the socket is empty.
-        fn read_frame(stream: &mut UnixStream) -> Option<usize> {
+        /// Read one length-prefixed frame body, or None if the socket is empty.
+        pub(super) fn read_frame(stream: &mut UnixStream) -> Option<Vec<u8>> {
             use std::io::Read;
             stream
                 .set_read_timeout(Some(Duration::from_millis(200)))
@@ -2539,23 +2665,34 @@ mod tests {
             let len = u32::from_be_bytes(len) as usize;
             let mut body = vec![0u8; len];
             stream.read_exact(&mut body).ok()?;
-            Some(len)
+            Some(body)
+        }
+
+        fn no_git_requests() -> GitRequests {
+            GitRequests {
+                cache: Arc::new(Mutex::new(HashMap::new())),
+                prioritise: Arc::new(Mutex::new(HashSet::new())),
+            }
+        }
+
+        pub(super) fn wait_for_clients(server: &SocketServer, want: usize) {
+            for _ in 0..200 {
+                if server.client_count() == want {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(server.client_count(), want);
         }
 
         #[test]
         fn an_unchanged_snapshot_is_not_pushed_twice() {
             let dir = tempfile::tempdir().unwrap();
             let sock = dir.path().join("d.sock");
-            let server = SocketServer::bind(&sock).unwrap();
+            let server = SocketServer::bind(&sock, no_git_requests()).unwrap();
             let mut client = UnixStream::connect(&sock).unwrap();
             // Let the accept thread register the connection.
-            for _ in 0..100 {
-                if server.client_count() == 1 {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(10));
-            }
-            assert_eq!(server.client_count(), 1);
+            wait_for_clients(&server, 1);
 
             let snapshot = empty_snapshot();
             assert!(server.broadcast(&snapshot), "first push goes out");
@@ -2582,7 +2719,7 @@ mod tests {
 
         #[test]
         fn only_a_closed_peer_counts_as_gone() {
-            // An interrupted poll (the daemon is SIGUSR1'd by every
+            // An interrupted syscall (the daemon is SIGUSR1'd by every
             // agent-status hook) must not read as a hangup.
             let (ours, theirs) = UnixStream::pair().unwrap();
             assert!(!client_is_gone(&ours), "the peer is still open");
@@ -2591,16 +2728,242 @@ mod tests {
         }
 
         #[test]
+        fn a_client_with_a_request_in_flight_is_not_gone() {
+            // Clients can speak now, so readable no longer implies hangup.
+            let (ours, mut theirs) = UnixStream::pair().unwrap();
+            theirs.write_all(b"\0\0\0\x02{}").unwrap();
+            assert!(
+                !client_is_gone(&ours),
+                "a pending request must not read as a hangup"
+            );
+        }
+
+        #[test]
         fn a_new_client_gets_the_current_snapshot_on_connect() {
             let dir = tempfile::tempdir().unwrap();
             let sock = dir.path().join("d.sock");
-            let server = SocketServer::bind(&sock).unwrap();
+            let server = SocketServer::bind(&sock, no_git_requests()).unwrap();
             server.broadcast(&empty_snapshot());
 
             let mut client = UnixStream::connect(&sock).unwrap();
             assert!(
                 read_frame(&mut client).is_some(),
                 "the cached snapshot arrives without waiting for a tick"
+            );
+        }
+    }
+
+    mod request_tests {
+        use super::tick_diet_tests::{empty_snapshot, read_frame, wait_for_clients};
+        use super::*;
+        use crate::command::sidebar::protocol::{
+            DaemonRequest, DaemonResponse, RequestPayload, ResponsePayload, write_frame,
+        };
+
+        fn fingerprinted(lines_added: usize) -> GitStatus {
+            GitStatus {
+                lines_added,
+                head_oid: Some("head-oid".to_string()),
+                base_oid: Some("base-oid".to_string()),
+                cached_at: Some(42),
+                ..Default::default()
+            }
+        }
+
+        /// A server whose cache holds `/wt/a`, plus its prioritise queue.
+        fn server_with_cache(sock: &Path) -> (SocketServer, PrioritiseQueue) {
+            let cache: GitCache = Arc::new(Mutex::new(HashMap::from([(
+                PathBuf::from("/wt/a"),
+                fingerprinted(3),
+            )])));
+            let prioritise: PrioritiseQueue = Arc::new(Mutex::new(HashSet::new()));
+            let server = SocketServer::bind(
+                sock,
+                GitRequests {
+                    cache,
+                    prioritise: prioritise.clone(),
+                },
+            )
+            .unwrap();
+            (server, prioritise)
+        }
+
+        fn ask(stream: &mut UnixStream, id: u64, paths: &[&str], prioritise: bool) {
+            write_frame(
+                stream,
+                &DaemonRequest {
+                    id,
+                    payload: RequestPayload::GetGitStatuses {
+                        paths: paths.iter().map(PathBuf::from).collect(),
+                        prioritise,
+                    },
+                },
+            )
+            .unwrap();
+        }
+
+        /// Read frames until one parses as a response, or give up.
+        fn next_response(stream: &mut UnixStream) -> Option<DaemonResponse> {
+            for _ in 0..10 {
+                let frame = read_frame(stream)?;
+                if let Ok(resp) = serde_json::from_slice::<DaemonResponse>(&frame) {
+                    return Some(resp);
+                }
+            }
+            None
+        }
+
+        fn statuses(resp: &DaemonResponse) -> &HashMap<PathBuf, GitStatus> {
+            match &resp.payload {
+                ResponsePayload::GitStatuses(s) => s,
+            }
+        }
+
+        #[test]
+        fn known_paths_are_answered_from_the_cache_with_their_fingerprint() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let (server, _) = server_with_cache(&sock);
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            ask(&mut client, 9, &["/wt/a", "/wt/unknown"], false);
+            let resp = next_response(&mut client).expect("a reply");
+
+            assert_eq!(resp.id, 9, "the reply carries the request id");
+            let got = statuses(&resp);
+            assert_eq!(got.len(), 1, "an unknown path is omitted, not an error");
+            let a = &got[&PathBuf::from("/wt/a")];
+            assert_eq!(a.lines_added, 3);
+            // The consumer needs the fingerprint to reuse this as `prev`;
+            // only the snapshot path strips it.
+            assert_eq!(a.head_oid.as_deref(), Some("head-oid"));
+            assert_eq!(a.base_oid.as_deref(), Some("base-oid"));
+            assert_eq!(a.cached_at, Some(42));
+        }
+
+        #[test]
+        fn a_hint_is_drained_down_to_the_paths_the_worker_tracks() {
+            let queue: PrioritiseQueue = Arc::new(Mutex::new(HashSet::from([
+                PathBuf::from("/wt/a"),
+                PathBuf::from("/wt/elsewhere"),
+            ])));
+            let tracked = HashMap::from([(PathBuf::from("/wt/a"), false)]);
+
+            assert_eq!(
+                take_prioritised(&queue, &tracked),
+                vec![PathBuf::from("/wt/a")]
+            );
+            assert!(
+                take_prioritised(&queue, &tracked).is_empty(),
+                "the queue is drained, so one hint cannot refresh forever"
+            );
+        }
+
+        #[test]
+        fn a_prioritise_hint_queues_the_paths() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let (server, prioritise) = server_with_cache(&sock);
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            ask(&mut client, 1, &["/wt/a", "/wt/b"], true);
+            next_response(&mut client).expect("a reply");
+
+            let queued = prioritise.lock().unwrap().clone();
+            assert_eq!(
+                queued,
+                HashSet::from([PathBuf::from("/wt/a"), PathBuf::from("/wt/b")]),
+                "the hint names every requested path, cached or not"
+            );
+        }
+
+        #[test]
+        fn a_snapshot_pushed_mid_request_interleaves_with_the_reply() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let (server, _) = server_with_cache(&sock);
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            ask(&mut client, 4, &["/wt/a"], false);
+            assert!(server.broadcast(&empty_snapshot()));
+
+            let mut saw_snapshot = false;
+            let mut saw_reply = false;
+            while let Some(frame) = read_frame(&mut client) {
+                if let Ok(resp) = serde_json::from_slice::<DaemonResponse>(&frame) {
+                    assert_eq!(resp.id, 4);
+                    saw_reply = true;
+                } else {
+                    serde_json::from_slice::<crate::command::sidebar::snapshot::SidebarSnapshot>(
+                        &frame,
+                    )
+                    .expect("a frame is either a reply or a snapshot");
+                    saw_snapshot = true;
+                }
+                if saw_snapshot && saw_reply {
+                    break;
+                }
+            }
+            assert!(
+                saw_reply && saw_snapshot,
+                "both frames arrived, in any order"
+            );
+        }
+
+        #[test]
+        fn a_malformed_frame_is_ignored_without_dropping_the_connection() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let (server, _) = server_with_cache(&sock);
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            let junk = b"not json at all";
+            client
+                .write_all(&(junk.len() as u32).to_be_bytes())
+                .unwrap();
+            client.write_all(junk).unwrap();
+            // A well-formed frame with an unknown payload variant is equally
+            // unparseable, and equally harmless.
+            write_frame(
+                &mut client,
+                &serde_json::json!({"id": 1, "payload": {"Whatever": {}}}),
+            )
+            .unwrap();
+
+            ask(&mut client, 2, &["/wt/a"], false);
+            let resp = next_response(&mut client).expect("the connection still serves requests");
+            assert_eq!(resp.id, 2);
+            assert_eq!(server.client_count(), 1, "the client was not reaped");
+        }
+
+        #[test]
+        fn a_client_that_disconnects_mid_request_is_reaped() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let (server, _) = server_with_cache(&sock);
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            ask(&mut client, 1, &["/wt/a"], false);
+            drop(client);
+
+            // The reply write and the EOF race; either way the peer is gone
+            // once the handler has drained the request.
+            for _ in 0..200 {
+                server.prune_dead_clients();
+                if server.client_count() == 0 {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(server.client_count(), 0);
+            assert!(
+                server.broadcast(&empty_snapshot()),
+                "the server still serves other clients"
             );
         }
     }

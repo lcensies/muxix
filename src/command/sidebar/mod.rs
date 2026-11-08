@@ -14,6 +14,7 @@
 //! - `hooks` - tmux hook installation and removal
 //! - `layout_tree` - tmux layout tree parser, reflow, and sidebar removal
 //! - `panes` - sidebar pane creation, destruction, and shutdown
+//! - `protocol` - framed request/response messages on the daemon socket
 //! - `runtime` - TUI event loop
 //! - `snapshot` - snapshot data types and builder
 //! - `ui` - ratatui rendering (compact and tile layouts)
@@ -26,6 +27,7 @@ mod hooks;
 mod keymap;
 mod layout_tree;
 mod panes;
+mod protocol;
 mod runtime;
 mod snapshot;
 mod template;
