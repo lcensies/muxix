@@ -46,8 +46,6 @@ impl SnapshotHandle {
     /// `None` means no answer — not connected, the daemon went away, or it did
     /// not reply in time. Callers compute the statuses themselves in that case.
     /// Paths the daemon knows nothing about are absent from the map.
-    // Used by the dashboard once it consumes the daemon (group 5).
-    #[allow(dead_code)]
     pub fn request_git_statuses(
         &self,
         paths: Vec<PathBuf>,
@@ -175,11 +173,11 @@ fn read_loop(
     }
 }
 
+/// A daemon stand-in for tests on either side of the socket.
 #[cfg(test)]
-mod tests {
+pub(crate) mod testing {
     use super::*;
     use std::collections::HashSet;
-    use std::io::Write;
     use std::os::unix::net::UnixListener;
 
     fn empty_snapshot() -> SidebarSnapshot {
@@ -198,10 +196,14 @@ mod tests {
         }
     }
 
-    /// A daemon stand-in: pushes one snapshot on connect, then answers
-    /// `GetGitStatuses` with one entry for `/wt/a`. After `replies` answers it
-    /// shuts down, closing the connection as an exiting daemon would.
-    fn fake_daemon(listener: UnixListener, replies: usize) {
+    /// Pushes one snapshot on connect, then answers every `GetGitStatuses`
+    /// with `statuses`. After `replies` answers it shuts down, closing the
+    /// connection as an exiting daemon would.
+    pub(crate) fn fake_daemon(
+        listener: UnixListener,
+        replies: usize,
+        statuses: HashMap<PathBuf, GitStatus>,
+    ) {
         thread::spawn(move || {
             let mut left = replies;
             while let Ok((mut stream, _)) = listener.accept() {
@@ -211,19 +213,11 @@ mod tests {
                     let Ok(request) = serde_json::from_slice::<DaemonRequest>(&frame) else {
                         continue;
                     };
-                    let statuses = HashMap::from([(
-                        PathBuf::from("/wt/a"),
-                        GitStatus {
-                            lines_added: 7,
-                            head_oid: Some("head-oid".to_string()),
-                            ..Default::default()
-                        },
-                    )]);
                     let _ = write_frame(
                         &mut stream,
                         &DaemonResponse {
                             id: request.id,
-                            payload: ResponsePayload::GitStatuses(statuses),
+                            payload: ResponsePayload::GitStatuses(statuses.clone()),
                         },
                     );
                     left -= 1;
@@ -233,6 +227,25 @@ mod tests {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testing::fake_daemon;
+    use super::*;
+    use std::os::unix::net::UnixListener;
+
+    /// What `fake_daemon` answers with below: one known path, fingerprint kept.
+    fn one_status() -> HashMap<PathBuf, GitStatus> {
+        HashMap::from([(
+            PathBuf::from("/wt/a"),
+            GitStatus {
+                lines_added: 7,
+                head_oid: Some("head-oid".to_string()),
+                ..Default::default()
+            },
+        )])
     }
 
     /// Requests race the background connect, so retry until the socket is up.
@@ -254,7 +267,7 @@ mod tests {
     fn a_reply_is_correlated_while_snapshots_keep_arriving() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("d.sock");
-        fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX);
+        fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, one_status());
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
         let handle = connect(&sock, wake_tx);
@@ -296,7 +309,7 @@ mod tests {
         let sock = dir.path().join("d.sock");
         // One answer, then the fake daemon closes the connection and its
         // listener; removing the socket leaves nothing to reconnect to.
-        fake_daemon(UnixListener::bind(&sock).unwrap(), 1);
+        fake_daemon(UnixListener::bind(&sock).unwrap(), 1, one_status());
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
         let handle = connect(&sock, wake_tx);

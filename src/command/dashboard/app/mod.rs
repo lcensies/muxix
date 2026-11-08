@@ -75,6 +75,16 @@ pub struct App {
     last_git_fetch: std::time::Instant,
     /// Flag to track if a git fetch is in progress (prevents thread pile-up)
     pub is_git_fetching: Arc<AtomicBool>,
+    /// Connection to the muxix daemon, which serves git status from the cache
+    /// it already maintains. Reconnects on its own, so it may be dead.
+    daemon: Arc<crate::command::sidebar::SnapshotHandle>,
+    /// Kept alive only so the daemon reader thread survives its first pushed
+    /// snapshot; the dashboard itself does not consume snapshots.
+    daemon_wake_rx: mpsc::Receiver<()>,
+    /// Whether the next git fetch asks the daemon to refresh its paths early.
+    git_prioritise: bool,
+    /// Worktree selection the prioritise hint was last sent for.
+    prioritised_worktree: Option<PathBuf>,
     /// PR info indexed by repo root, then branch name
     pr_statuses: HashMap<PathBuf, HashMap<String, PrSummary>>,
     /// Last PR fetch time
@@ -211,6 +221,11 @@ impl App {
         let pr_statuses = crate::github::load_pr_cache();
         let hide_stale = load_hide_stale();
         let last_pane_id = load_last_pane_id();
+        let (daemon_wake_tx, daemon_wake_rx) = mpsc::sync_channel(1);
+        let daemon = Arc::new(crate::command::sidebar::connect_daemon(
+            &crate::command::sidebar::daemon_socket_path(&mux.instance_id()),
+            daemon_wake_tx,
+        ));
 
         let mut app = Self {
             mux,
@@ -235,6 +250,12 @@ impl App {
             // Set to past to trigger immediate fetch on first refresh
             last_git_fetch: std::time::Instant::now() - Duration::from_secs(60),
             is_git_fetching: Arc::new(AtomicBool::new(false)),
+            daemon,
+            daemon_wake_rx,
+            // A freshly opened dashboard wants its paths refreshed now, not on
+            // the daemon's next sweep.
+            git_prioritise: true,
+            prioritised_worktree: None,
             pr_statuses,
             // Set to past to trigger immediate fetch on first refresh
             last_pr_fetch: std::time::Instant::now() - PR_FETCH_INTERVAL,
@@ -375,6 +396,17 @@ impl App {
             && let Some(ref session) = self.launch_session
         {
             self.all_agents.retain(|a| a.session == *session);
+        }
+
+        // The dashboard ignores pushed snapshots, but a full wake channel would
+        // only cost the daemon reader a blocked send, so keep it empty.
+        while self.daemon_wake_rx.try_recv().is_ok() {}
+
+        // A different worktree is selected, so hint its path to the daemon on
+        // the next fetch rather than forcing one per keystroke.
+        if self.prioritised_worktree != self.selected_worktree_path {
+            self.prioritised_worktree = self.selected_worktree_path.clone();
+            self.git_prioritise = true;
         }
 
         // Trigger background git status fetch every 5 seconds

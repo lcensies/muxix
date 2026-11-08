@@ -4,16 +4,52 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use crate::command::sidebar::SnapshotHandle;
 use crate::git;
 
 use super::super::agent;
 use super::App;
 use super::types::AppEvent;
 
+/// How long a git status query waits for the daemon. It answers from memory,
+/// so a reply that is this late is not coming and we compute locally instead.
+const DAEMON_GIT_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Emit a git status for each path: the daemon's when it answers, computed
+/// locally otherwise, so `muxix dashboard` still works with no daemon running.
+///
+/// `prioritise` asks the daemon to refresh the named paths early. The statuses
+/// it returns carry their fingerprint, so they are usable as the next sweep's
+/// `prev` (unlike the ones pushed in sidebar snapshots, which are stripped).
+fn resolve_git_statuses(
+    daemon: &SnapshotHandle,
+    paths: Vec<(PathBuf, Option<git::GitStatus>)>,
+    main_branch: Option<&str>,
+    prioritise: bool,
+    mut emit: impl FnMut(PathBuf, git::GitStatus),
+) {
+    let from_daemon = daemon
+        .request_git_statuses(
+            paths.iter().map(|(p, _)| p.clone()).collect(),
+            prioritise,
+            DAEMON_GIT_TIMEOUT,
+        )
+        .unwrap_or_default();
+
+    for (path, prev) in paths {
+        let status = match from_daemon.get(&path) {
+            Some(status) => status.clone(),
+            None => git::get_git_status_cached(&path, main_branch, prev.as_ref()),
+        };
+        emit(path, status);
+    }
+}
+
 impl App {
     /// Spawn a background thread to fetch git status for all agent worktrees
-    pub(super) fn spawn_git_status_fetch(&self) {
+    pub(super) fn spawn_git_status_fetch(&mut self) {
         // Skip if a fetch is already in progress (prevents thread pile-up)
         if self
             .is_git_fetching
@@ -43,6 +79,8 @@ impl App {
                 (p, prev)
             })
             .collect();
+        let daemon = self.daemon.clone();
+        let prioritise = std::mem::take(&mut self.git_prioritise);
 
         std::thread::spawn(move || {
             // Reset flag when thread completes (even on panic)
@@ -54,11 +92,15 @@ impl App {
             }
             let _reset = ResetFlag(is_fetching);
 
-            for (path, prev) in paths {
-                let status =
-                    git::get_git_status_cached(&path, main_branch.as_deref(), prev.as_ref());
-                let _ = tx.send(AppEvent::GitStatus(path, status));
-            }
+            resolve_git_statuses(
+                &daemon,
+                paths,
+                main_branch.as_deref(),
+                prioritise,
+                |path, status| {
+                    let _ = tx.send(AppEvent::GitStatus(path, status));
+                },
+            );
         });
     }
 
@@ -198,5 +240,123 @@ impl App {
         });
 
         true
+    }
+}
+
+#[cfg(test)]
+mod git_status_source_tests {
+    use super::*;
+    use crate::cmd::take_git_spawns;
+    use crate::command::sidebar::{connect_daemon, daemon_testing::fake_daemon};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::sync::mpsc;
+
+    /// The one status the fake daemon serves, for `path`.
+    fn served(path: &std::path::Path) -> HashMap<PathBuf, git::GitStatus> {
+        HashMap::from([(
+            path.to_path_buf(),
+            git::GitStatus {
+                lines_added: 7,
+                head_oid: Some("head-oid".to_string()),
+                ..Default::default()
+            },
+        )])
+    }
+
+    /// Statuses for one path, as the background thread would collect them.
+    fn resolve_one(daemon: &SnapshotHandle, path: &std::path::Path) -> git::GitStatus {
+        let mut got = Vec::new();
+        resolve_git_statuses(
+            daemon,
+            vec![(path.to_path_buf(), None)],
+            None,
+            true,
+            |_, status| got.push(status),
+        );
+        assert_eq!(got.len(), 1, "one status per requested path");
+        got.pop().unwrap()
+    }
+
+    #[test]
+    fn a_daemon_answer_costs_the_dashboard_no_git_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("d.sock");
+        let wt = dir.path().to_path_buf();
+        fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, served(&wt));
+
+        let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
+        let daemon = connect_daemon(&sock, wake_tx);
+        // Requests race the background connect, so retry until it answers.
+        for _ in 0..100 {
+            if resolve_one(&daemon, &wt).lines_added == 7 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        take_git_spawns();
+        let status = resolve_one(&daemon, &wt);
+        assert_eq!(status.lines_added, 7, "the daemon's status was used");
+        assert_eq!(
+            status.head_oid.as_deref(),
+            Some("head-oid"),
+            "the fingerprint survives, so it can serve as the next prev"
+        );
+        assert_eq!(
+            take_git_spawns(),
+            0,
+            "no git process for a path the daemon answered for"
+        );
+    }
+
+    #[test]
+    fn without_a_daemon_the_dashboard_computes_statuses_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
+        let daemon = connect_daemon(&dir.path().join("absent.sock"), wake_tx);
+
+        take_git_spawns();
+        let status = resolve_one(&daemon, dir.path());
+        assert_ne!(status.lines_added, 7, "nothing served this status");
+        assert!(
+            take_git_spawns() > 0,
+            "with no daemon the dashboard runs git itself"
+        );
+    }
+
+    #[test]
+    fn a_daemon_that_dies_mid_session_falls_back_to_local_computation() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("d.sock");
+        let wt = dir.path().to_path_buf();
+        // One answer, then the fake daemon closes; removing the socket leaves
+        // nothing to reconnect to.
+        fake_daemon(UnixListener::bind(&sock).unwrap(), 1, served(&wt));
+
+        let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
+        let daemon = connect_daemon(&sock, wake_tx);
+        for _ in 0..100 {
+            if resolve_one(&daemon, &wt).lines_added == 7 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::fs::remove_file(&sock).unwrap();
+        // The reader only notices the hangup once it reads, so wait for the
+        // connection to actually be gone.
+        for _ in 0..200 {
+            if UnixStream::connect(&sock).is_err() && resolve_one(&daemon, &wt).lines_added != 7 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        take_git_spawns();
+        let status = resolve_one(&daemon, &wt);
+        assert_ne!(status.lines_added, 7, "the dead daemon served nothing");
+        assert!(
+            take_git_spawns() > 0,
+            "the dashboard keeps working by running git itself"
+        );
     }
 }
