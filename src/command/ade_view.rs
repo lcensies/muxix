@@ -44,7 +44,14 @@ const SCROLLBACK: usize = 4000;
 /// Where the ref → view-pane mapping lives, so a second selection focuses the
 /// pane already streaming a session instead of spawning another viewer.
 fn map_path() -> Result<PathBuf> {
-    Ok(crate::xdg::state_dir()?.join("ade-views.json"))
+    Ok(map_path_in(&crate::xdg::state_dir()?))
+}
+
+/// The same file, under a state directory passed in — so a caller holding a
+/// [`crate::state::StateStore`] writes the map beside that store's records
+/// instead of the process-wide one.
+fn map_path_in(state_dir: &Path) -> PathBuf {
+    state_dir.join("ade-views.json")
 }
 
 /// A recorded view pane.
@@ -84,12 +91,16 @@ fn load_map_at(path: &Path) -> BTreeMap<String, ViewPane> {
 
 fn save_map(map: &BTreeMap<String, ViewPane>) {
     if let Ok(path) = map_path() {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(body) = serde_json::to_string_pretty(map) {
-            let _ = std::fs::write(&path, body);
-        }
+        save_map_at(&path, map);
+    }
+}
+
+fn save_map_at(path: &Path, map: &BTreeMap<String, ViewPane>) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(body) = serde_json::to_string_pretty(map) {
+        let _ = std::fs::write(path, body);
     }
 }
 
@@ -280,14 +291,15 @@ fn forget_twin(mux: &dyn Multiplexer, rec: &ViewPane) {
 ///
 /// Used when the session itself is deleted: a view or takeover left running
 /// would show a session that no longer exists.
-pub fn forget_view(mux: &dyn Multiplexer, wire: &str) {
+pub fn forget_view(mux: &dyn Multiplexer, store: &crate::state::StateStore, wire: &str) {
     let key = view_key(wire, mux);
-    let mut map = load_map();
+    let path = map_path_in(store.dir());
+    let mut map = load_map_at(&path);
     if let Some(rec) = map.remove(&key) {
         if still_our_view(mux, &rec) {
             let _ = mux.kill_pane(&rec.pane);
         }
-        save_map(&map);
+        save_map_at(&path, &map);
     }
 }
 
@@ -296,8 +308,24 @@ pub fn forget_view(mux: &dyn Multiplexer, wire: &str) {
 /// Returns the pane now showing the session. Errors are returned rather than
 /// swallowed: a selection that silently does nothing is the bug this replaces.
 pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> {
+    let store = crate::state::StateStore::new()
+        .context("muxix's state directory is unusable, so a view cannot be recorded")?;
     let cfg = Config::load(None).unwrap_or_default();
-    let ade = crate::agent::ade::for_name(&cfg, &agent.runtime).ok_or_else(|| {
+    open_or_focus_in(mux, agent, &store, &cfg)
+}
+
+/// As [`open_or_focus`], against a given store and config.
+///
+/// Both are passed in rather than read here: the tombstone gate and the view
+/// map both live in the store, so a test drives this without moving the
+/// process's state directory or depending on the user's config.
+fn open_or_focus_in(
+    mux: &dyn Multiplexer,
+    agent: &AgentRef,
+    store: &crate::state::StateStore,
+    cfg: &Config,
+) -> Result<String> {
+    let ade = crate::agent::ade::for_name(cfg, &agent.runtime).ok_or_else(|| {
         anyhow!(
             "'{}' is not a configured agent manager, so its sessions cannot be opened",
             agent.runtime
@@ -315,7 +343,7 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
     // A tombstoned ref has no view record left (delete forgets it), so without
     // this the open below would *create* one — plus a window, and under
     // `placement: project` a whole session — for an agent the user deleted.
-    if crate::state::StateStore::new().is_ok_and(|s| s.is_tombstoned(&wire)) {
+    if store.is_tombstoned(&wire) {
         bail!("{wire} was deleted and no longer exists");
     }
 
@@ -334,7 +362,8 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
     // server that has since restarted either does not exist or now belongs to an
     // unrelated pane, and focusing someone else's pane is worse than reopening.
     let key = view_key(&wire, mux);
-    let mut map = load_map();
+    let map_file = map_path_in(store.dir());
+    let mut map = load_map_at(&map_file);
     if let Some(recorded) = map.get(&key).cloned() {
         // A pane the user closed -- or whose id now belongs to something else --
         // is forgotten rather than focused.
@@ -414,7 +443,7 @@ pub fn open_or_focus(mux: &dyn Multiplexer, agent: &AgentRef) -> Result<String> 
             takeover: false,
         },
     );
-    save_map(&map);
+    save_map_at(&map_file, &map);
     // The pane exists by now, so a focus failure must not discard it. tmux answers
     // `can't find pane: %N` when the launched command died before the switch
     // landed, and throwing there would lose a pane the caller just recorded.
@@ -861,6 +890,116 @@ mod tests {
 
     fn agent() -> AgentRef {
         AgentRef::from_wire("paseo:8b3c2bf4-7c21-4a09-80e2-c95bbce7894b")
+    }
+
+    /// A stub manager whose `list` answers from `list.json`, with a view block
+    /// placed beside the current pane — the one placement that needs neither a
+    /// session nor the project registry.
+    fn stub_with_view(dir: &std::path::Path) -> Config {
+        let script = dir.join("stub-ade");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = list ]; then cat {}/list.json; exit 0; fi\nexit 1\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let mut cfg = Config::default();
+        cfg.ade.insert(
+            "stub".to_string(),
+            crate::config::AdeConfig {
+                command: script.to_string_lossy().into_owned(),
+                list_args: vec!["list".to_string()],
+                view: Some(crate::config::AdeViewConfig {
+                    placement: crate::config::AdeViewPlacement::Split,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        cfg
+    }
+
+    fn test_store() -> (crate::state::StateStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::state::StateStore::with_path(dir.path().to_path_buf()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn a_tombstoned_reference_is_refused_instead_of_recreated() {
+        // A deleted session has no view record left, so opening it would
+        // *create* one -- plus a window, and under `placement: project` a whole
+        // session -- for an agent the user deleted.
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = stub_with_view(dir.path());
+        let (store, _state) = test_store();
+        store.tombstone("stub:a1").unwrap();
+        let mux = crate::multiplexer::testing::FakeMux::default().with_current_pane("%1");
+
+        let err = open_or_focus_in(&mux, &AgentRef::from_wire("stub:a1"), &store, &cfg)
+            .expect_err("a deleted session must not open")
+            .to_string();
+
+        assert!(err.contains("stub:a1 was deleted"), "{err}");
+        assert!(
+            mux.calls().is_empty(),
+            "nothing may be created: {:?}",
+            mux.calls()
+        );
+    }
+
+    #[test]
+    fn a_reference_the_manager_no_longer_lists_is_refused() {
+        // Deleted from another device, or a delete muxix never saw: gone even
+        // without a tombstone.
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = stub_with_view(dir.path());
+        std::fs::write(dir.path().join("list.json"), r#"[{"id":"someone-else"}]"#).unwrap();
+        let (store, _state) = test_store();
+        let mux = crate::multiplexer::testing::FakeMux::default().with_current_pane("%1");
+
+        let err = open_or_focus_in(&mux, &AgentRef::from_wire("stub:a1"), &store, &cfg)
+            .expect_err("an unlisted session must not open")
+            .to_string();
+
+        assert!(err.contains("stub:a1 is no longer listed by stub"), "{err}");
+        assert!(
+            mux.calls().is_empty(),
+            "nothing may be created: {:?}",
+            mux.calls()
+        );
+    }
+
+    #[test]
+    fn a_listed_reference_still_opens_and_is_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = stub_with_view(dir.path());
+        std::fs::write(dir.path().join("list.json"), r#"[{"id":"a1"}]"#).unwrap();
+        let (store, _state) = test_store();
+        let mux = crate::multiplexer::testing::FakeMux::default().with_current_pane("%1");
+
+        let pane = open_or_focus_in(&mux, &AgentRef::from_wire("stub:a1"), &store, &cfg).unwrap();
+
+        assert_eq!(pane, "pane-2");
+        assert_eq!(
+            mux.calls(),
+            vec![
+                "split_pane".to_string(),
+                "switch_to_pane pane-2".to_string()
+            ]
+        );
+        // Recorded, so a second selection focuses this pane instead of
+        // spawning another viewer.
+        let map = load_map_at(&map_path_in(store.dir()));
+        assert_eq!(
+            map.get("stub:a1@tmux/test").map(|r| r.pane.as_str()),
+            Some("pane-2"),
+            "{map:?}"
+        );
     }
 
     #[test]

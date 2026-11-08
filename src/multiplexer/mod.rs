@@ -10,6 +10,8 @@ pub mod handle;
 pub mod handshake;
 pub mod kitty;
 pub mod launch;
+#[cfg(test)]
+pub mod testing;
 pub mod tmux;
 pub mod types;
 pub mod util;

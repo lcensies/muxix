@@ -129,10 +129,26 @@ impl RuntimeRegistry {
         Vec<crate::agent::runtime::RuntimeAgent>,
         Vec<(String, String)>,
     ) {
+        self.list_agents_in(crate::state::StateStore::new().ok().as_ref(), keep)
+    }
+
+    /// As [`Self::list_agents_from`], against a given store.
+    ///
+    /// The store is passed in rather than opened here so the tombstone filter
+    /// is reachable from a test without moving the whole process's state
+    /// directory. `None` means there is no usable state directory, in which
+    /// case nothing is filtered and nothing is pruned.
+    fn list_agents_in(
+        &self,
+        store: Option<&crate::state::StateStore>,
+        keep: impl Fn(&str) -> bool,
+    ) -> (
+        Vec<crate::agent::runtime::RuntimeAgent>,
+        Vec<(String, String)>,
+    ) {
         let mut agents = Vec::new();
         let mut problems = Vec::new();
-        let store = crate::state::StateStore::new().ok();
-        let tombstoned = store.as_ref().map(|s| s.tombstones()).unwrap_or_default();
+        let tombstoned = store.map(|s| s.tombstones()).unwrap_or_default();
         for (name, runtime) in &self.runtimes {
             if !keep(name) {
                 continue;
@@ -153,7 +169,7 @@ impl RuntimeRegistry {
                     // the provider — pruning on that would drop the tombstone
                     // that stops reconcile re-adopting the pane. Reconcile
                     // prunes that namespace against live pane ids instead.
-                    if let Some(store) = &store
+                    if let Some(store) = store
                         && name != LOCAL
                     {
                         store.retain_tombstones(
@@ -384,6 +400,38 @@ mod tests {
         assert!(refs.contains(&"remote:a1".to_string()), "{refs:?}");
         assert!(refs.contains(&"remote:a2".to_string()), "{refs:?}");
         assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    /// A store of its own, so the tombstone set under test is not the
+    /// process's.
+    fn test_store() -> (crate::state::StateStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::state::StateStore::with_path(dir.path().to_path_buf()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn a_tombstoned_agent_is_filtered_from_a_stale_listing() {
+        // A manager that has not noticed the delete yet keeps reporting the
+        // session. Listing it again is what put the deleted row back on screen.
+        let (store, _dir) = test_store();
+        store.tombstone("remote:a1").unwrap();
+        let mut reg = RuntimeRegistry::new();
+        reg.register(fake_local());
+        reg.register(Arc::new(Fake {
+            name: "remote".to_string(),
+            health: RuntimeHealth::Ok,
+            agents: vec!["a1".to_string(), "a2".to_string()],
+        }));
+
+        let (agents, problems) = reg.list_agents_in(Some(&store), |_| true);
+        let refs: Vec<String> = agents.iter().map(|a| a.reference.to_wire()).collect();
+        assert_eq!(refs, vec!["remote:a2".to_string()], "{refs:?}");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(
+            store.is_tombstoned("remote:a1"),
+            "a runtime that still reports the agent must keep its tombstone"
+        );
     }
 
     #[test]

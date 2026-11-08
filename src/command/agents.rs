@@ -246,9 +246,29 @@ pub fn delete_agent(
     mux: &dyn crate::multiplexer::Multiplexer,
     agent: &crate::multiplexer::AgentPane,
 ) -> Result<String> {
+    let store = crate::state::StateStore::new()?;
+    let cfg = crate::config::Config::load(None).unwrap_or_default();
+    delete_agent_in(mux, agent, &store, &cfg, &|| {
+        crate::command::sidebar::refresh_daemon_ade()
+    })
+}
+
+/// As [`delete_agent`], against a given store and config, telling
+/// `invalidate_cache` to drop the daemon's cached listing.
+///
+/// Everything a delete reaches outside the multiplexer is passed in: the state
+/// store, the manager definitions, and the daemon signal — the last because it
+/// resolves the daemon's pid from the live tmux server, which a test must not
+/// touch.
+fn delete_agent_in(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    agent: &crate::multiplexer::AgentPane,
+    store: &crate::state::StateStore,
+    cfg: &crate::config::Config,
+    invalidate_cache: &dyn Fn(),
+) -> Result<String> {
     let reference = crate::agent::runtime::AgentRef::from_wire(&agent.pane_id);
     let wire = reference.to_wire();
-    let store = crate::state::StateStore::new()?;
 
     // Before anything that can fail, hang or complete asynchronously: a delete
     // the user confirmed must not leave the row listed, whatever answer the
@@ -258,17 +278,16 @@ pub fn delete_agent(
     }
 
     if !reference.is_local() {
-        let cfg = crate::config::Config::load(None).unwrap_or_default();
-        let deleted = match crate::agent::ade::for_name(&cfg, &reference.runtime) {
+        let deleted = match crate::agent::ade::for_name(cfg, &reference.runtime) {
             Some(ade) if ade.can_delete() => Some(ade.delete(&reference)),
             _ => None,
         };
-        crate::command::ade_view::forget_view(mux, &wire);
+        crate::command::ade_view::forget_view(mux, store, &wire);
         // Every arm, not only the successful delete: the daemon caches the
         // manager's listing, and left alone it keeps offering this session for
         // the cache's lifetime. Selecting that stale row is what created a
         // project session and a view pane for an agent that no longer exists.
-        crate::command::sidebar::refresh_daemon_ade();
+        invalidate_cache();
         return Ok(match deleted {
             Some(Ok(())) => format!("deleted {wire} in {} and muxix", reference.runtime),
             Some(Err(e)) => format!(
@@ -365,34 +384,53 @@ fn clear_agent_identity(
 /// in a view-mode pane — and reports through the status line instead.
 pub fn delete_by_ref(reference: &str) -> Result<()> {
     let mux = crate::multiplexer::create_backend(crate::multiplexer::detect_backend());
-    let msg = match find_listed(mux.as_ref(), reference) {
-        None => format!("{reference} is no longer listed; nothing deleted"),
-        Some(row) => match delete_agent(mux.as_ref(), &row) {
-            Ok(m) => m,
-            Err(e) => format!("delete failed, nothing removed: {e}"),
-        },
+    let cfg = crate::config::Config::load(None).unwrap_or_default();
+    // Still reported through the status line rather than as an exit status: a
+    // failing process here puts tmux's own error in a view-mode pane.
+    let msg = match crate::state::StateStore::new() {
+        Err(e) => format!("delete failed, nothing removed: {e}"),
+        Ok(store) => delete_by_ref_in(mux.as_ref(), reference, &store, &cfg, &|| {
+            crate::command::sidebar::refresh_daemon_ade()
+        }),
     };
     mux.display_message(&msg);
     crate::command::sidebar::refresh_daemon();
     Ok(())
 }
 
+/// What [`delete_by_ref`] reports, against a given store and config.
+fn delete_by_ref_in(
+    mux: &dyn crate::multiplexer::Multiplexer,
+    reference: &str,
+    store: &crate::state::StateStore,
+    cfg: &crate::config::Config,
+    invalidate_cache: &dyn Fn(),
+) -> String {
+    match find_listed(mux, reference, store, cfg) {
+        None => format!("{reference} is no longer listed; nothing deleted"),
+        Some(row) => match delete_agent_in(mux, &row, store, cfg, invalidate_cache) {
+            Ok(m) => m,
+            Err(e) => format!("delete failed, nothing removed: {e}"),
+        },
+    }
+}
+
 /// The listed row for `reference`, as reconcile or the manager sees it now.
 fn find_listed(
     mux: &dyn crate::multiplexer::Multiplexer,
     reference: &str,
+    store: &crate::state::StateStore,
+    cfg: &crate::config::Config,
 ) -> Option<crate::multiplexer::AgentPane> {
     let agent = crate::agent::runtime::AgentRef::from_wire(reference);
     if agent.is_local() {
-        crate::state::StateStore::new()
-            .ok()?
+        store
             .load_reconciled_agents(mux)
             .ok()?
             .into_iter()
             .find(|a| a.pane_id == agent.id)
     } else {
-        let cfg = crate::config::Config::load(None).unwrap_or_default();
-        crate::agent::runtime::registry::foreign_agent_panes(&cfg)
+        crate::agent::runtime::registry::foreign_agent_panes(cfg)
             .0
             .into_iter()
             .find(|a| a.pane_id == agent.to_wire())
@@ -402,6 +440,7 @@ fn find_listed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::multiplexer::testing::FakeMux;
 
     fn state(session: Option<&str>, kind: Option<&str>) -> crate::state::AgentState {
         serde_json::from_value(serde_json::json!({
@@ -463,6 +502,246 @@ mod tests {
             "%7",
             4242
         ));
+
+        // The same through the whole delete, against a backend whose pane
+        // query is unanswerable.
+        let (store, _dir) = test_store();
+        let wt = tempfile::tempdir().unwrap();
+        let state = local_state(wt.path(), "%7", 4242, "claude");
+        store.upsert_agent(&state).unwrap();
+        let mux = FakeMux::default().failing_pane_query();
+        delete_agent_in(
+            &mux,
+            &row(&state),
+            &store,
+            &crate::config::Config::default(),
+            &|| {},
+        )
+        .unwrap();
+        assert!(mux.calls().contains(&"kill_pane %7".to_string()));
+    }
+
+    /// A store of its own, so no test reads or writes the process's state.
+    fn test_store() -> (crate::state::StateStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::state::StateStore::with_path(dir.path().to_path_buf()).unwrap();
+        (store, dir)
+    }
+
+    /// A local record keyed the way [`FakeMux`] reports itself, so the store
+    /// and the double agree on which pane it is.
+    fn local_state(
+        workdir: &std::path::Path,
+        pane_id: &str,
+        pid: u32,
+        command: &str,
+    ) -> crate::state::AgentState {
+        serde_json::from_value(serde_json::json!({
+            "pane_key": {"backend": "tmux", "instance": "test", "pane_id": pane_id},
+            "workdir": workdir,
+            "pane_pid": pid,
+            "command": command,
+            "updated_ts": 0,
+            "agent_kind": "claude",
+        }))
+        .unwrap()
+    }
+
+    /// A stand-in manager CLI. Every subcommand fails, so a delete that reaches
+    /// it reports the manager's refusal; `list_args` answers from `list.json`.
+    fn stub_ade(dir: &std::path::Path, ade: crate::config::AdeConfig) -> crate::config::Config {
+        let script = dir.join("stub-ade");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = list ]; then cat {}/list.json; exit 0; fi\n\
+                 echo 'no such agent' >&2\nexit 1\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        let mut cfg = crate::config::Config::default();
+        cfg.ade.insert(
+            "stub".to_string(),
+            crate::config::AdeConfig {
+                command: script.to_string_lossy().into_owned(),
+                list_args: vec!["list".to_string()],
+                ..ade
+            },
+        );
+        cfg
+    }
+
+    fn row(state: &crate::state::AgentState) -> crate::multiplexer::AgentPane {
+        state.to_agent_pane(String::new(), String::new())
+    }
+
+    #[test]
+    fn a_falsely_exited_agent_does_not_come_back_after_a_reconcile() {
+        // The record reads `Exited` because the pane's foreground command
+        // changed, while the provider is in fact alive and owns the pane.
+        let (store, _dir) = test_store();
+        let wt = tempfile::tempdir().unwrap();
+        let mut state = local_state(wt.path(), "%7", 4242, "node");
+        state.status = Some(crate::multiplexer::AgentStatus::Exited);
+        store.upsert_agent(&state).unwrap();
+        let mux = FakeMux::default().with_pane("%7", Some(4242), "claude");
+
+        let msg = delete_agent_in(
+            &mux,
+            &row(&state),
+            &store,
+            &crate::config::Config::default(),
+            &|| {},
+        )
+        .unwrap();
+
+        assert_eq!(msg, "deleted %7");
+        assert!(
+            mux.calls().contains(&"kill_pane %7".to_string()),
+            "the live provider's pane must die: {:?}",
+            mux.calls()
+        );
+        // The double keeps the pane listed, which is the case that matters: a
+        // kill that did not take still leaves a provider pane behind, and
+        // reconcile would otherwise adopt it and put the row back.
+        assert!(
+            store.load_reconciled_agents(&mux).unwrap().is_empty(),
+            "the deleted row reappeared"
+        );
+    }
+
+    #[test]
+    fn delete_clears_the_identities_a_new_agent_would_inherit() {
+        let (store, _dir) = test_store();
+        let wt = tempfile::tempdir().unwrap();
+        let prompt = wt.path().join(".muxix/PROMPT-task.md");
+        std::fs::create_dir_all(prompt.parent().unwrap()).unwrap();
+        std::fs::write(&prompt, "the user's text").unwrap();
+
+        // A pane id no real agent would hold: the signal files live in the
+        // shared temp dir, keyed by pane id alone.
+        let pane = "%99991";
+        let signals = crate::signals::paths::pane_signal_files(pane);
+        for path in &signals {
+            std::fs::write(path, "{}").unwrap();
+        }
+
+        let state = local_state(wt.path(), pane, 4242, "claude");
+        store.upsert_agent(&state).unwrap();
+        let mux = FakeMux::default().with_pane(pane, Some(4242), "claude");
+
+        delete_agent_in(
+            &mux,
+            &row(&state),
+            &store,
+            &crate::config::Config::default(),
+            &|| {},
+        )
+        .unwrap();
+
+        assert!(
+            mux.calls().contains(&format!("clear_status {pane}")),
+            "a status glyph left on the window outlives the agent: {:?}",
+            mux.calls()
+        );
+        for path in &signals {
+            assert!(
+                !path.exists(),
+                "{} would release a gate for the next agent in this pane",
+                path.display()
+            );
+        }
+        assert!(prompt.exists(), "the user's prompt is not an identity");
+        assert!(
+            store.get_agent(&state.pane_key).unwrap().is_none(),
+            "the record must be gone"
+        );
+    }
+
+    #[test]
+    fn a_failing_manager_delete_still_removes_the_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _state_dir) = test_store();
+        let cfg = stub_ade(
+            dir.path(),
+            crate::config::AdeConfig {
+                delete_args: vec!["delete".to_string(), "{id}".to_string()],
+                ..Default::default()
+            },
+        );
+        let refreshed = std::cell::Cell::new(false);
+        let state = local_state(dir.path(), "stub:a1", 0, "");
+        let msg = delete_agent_in(&FakeMux::default(), &row(&state), &store, &cfg, &|| {
+            refreshed.set(true)
+        })
+        .unwrap();
+
+        assert!(
+            refreshed.get(),
+            "the daemon's cached listing must be dropped"
+        );
+        assert!(
+            msg.contains("removed stub:a1 from muxix, but stub did not delete it"),
+            "the user has to be told the manager refused: {msg}"
+        );
+        assert!(
+            store.is_tombstoned("stub:a1"),
+            "a failed manager delete must not leave the row listed"
+        );
+    }
+
+    #[test]
+    fn the_forget_only_arm_tombstones_and_invalidates_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _state_dir) = test_store();
+        // A manager that cannot delete: muxix forgets its own row and says so.
+        let cfg = stub_ade(
+            dir.path(),
+            crate::config::AdeConfig {
+                delete_args: Vec::new(),
+                ..Default::default()
+            },
+        );
+        let refreshed = std::cell::Cell::new(false);
+        let state = local_state(dir.path(), "stub:a1", 0, "");
+        let msg = delete_agent_in(&FakeMux::default(), &row(&state), &store, &cfg, &|| {
+            refreshed.set(true)
+        })
+        .unwrap();
+
+        assert_eq!(msg, "forgot stub:a1; stub keeps it");
+        assert!(store.is_tombstoned("stub:a1"));
+        assert!(
+            refreshed.get(),
+            "without this the daemon keeps offering the row from its cached listing"
+        );
+    }
+
+    #[test]
+    fn the_in_pane_confirm_path_deletes_what_is_listed_and_nothing_else() {
+        // What a native tmux confirmation runs once accepted. The row is looked
+        // up again here, because the agent may have gone while the question was
+        // on screen.
+        let (store, _dir) = test_store();
+        let wt = tempfile::tempdir().unwrap();
+        let state = local_state(wt.path(), "%7", 4242, "claude");
+        store.upsert_agent(&state).unwrap();
+        let mux = FakeMux::default().with_pane("%7", Some(4242), "claude");
+        let cfg = crate::config::Config::default();
+
+        let gone = delete_by_ref_in(&mux, "%404", &store, &cfg, &|| {});
+        assert_eq!(gone, "%404 is no longer listed; nothing deleted");
+        assert!(!store.is_tombstoned("%404"), "nothing may be recorded");
+        assert!(mux.calls().is_empty(), "{:?}", mux.calls());
+
+        let refreshed = std::cell::Cell::new(false);
+        let deleted = delete_by_ref_in(&mux, "%7", &store, &cfg, &|| refreshed.set(true));
+        assert_eq!(deleted, "deleted %7");
+        assert!(store.is_tombstoned("%7"));
+        assert!(mux.calls().contains(&"kill_pane %7".to_string()));
     }
 
     #[test]

@@ -73,6 +73,12 @@ impl StateStore {
         Ok(Self { base_path })
     }
 
+    /// The state directory this store owns, for state files kept beside the
+    /// agent records rather than inside them (the ADE view map).
+    pub fn dir(&self) -> &Path {
+        &self.base_path
+    }
+
     /// Path to agents directory.
     fn agents_dir(&self) -> PathBuf {
         self.base_path.join("agents")
@@ -1161,6 +1167,38 @@ mod tests {
         store.retain_tombstones(crate::agent::runtime::LOCAL, &HashSet::new());
         assert!(store.tombstones().is_empty());
         assert!(!store.tombstones_path().exists());
+    }
+
+    #[test]
+    fn reconcile_refuses_to_adopt_a_tombstoned_pane() {
+        // A deleted agent whose pane outlived the kill still runs a recognised
+        // provider, so adoption would hand it a fresh agent id and put the row
+        // back one tick later.
+        let mux =
+            crate::multiplexer::testing::FakeMux::default().with_pane("%7", Some(4242), "claude");
+
+        let (adopting, _d1) = test_store();
+        let rows = adopting.load_reconciled_agents(&mux).unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.pane_id.as_str()).collect::<Vec<_>>(),
+            vec!["%7"],
+            "control: an untracked provider pane is adopted"
+        );
+
+        let (deleted, _d2) = test_store();
+        deleted.tombstone("%7").unwrap();
+        assert!(
+            deleted.load_reconciled_agents(&mux).unwrap().is_empty(),
+            "a tombstoned pane must not be adopted"
+        );
+        assert!(
+            deleted.list_all_agents().unwrap().is_empty(),
+            "nor written back as a record"
+        );
+        assert!(
+            deleted.is_tombstoned("%7"),
+            "the tombstone is still needed while the pane is there to re-adopt"
+        );
     }
 
     #[test]
