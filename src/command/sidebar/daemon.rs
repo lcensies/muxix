@@ -129,6 +129,189 @@ fn next_loop_wait(
     }
 }
 
+/// Maps each agent's working directory to the project-config directory that
+/// governs it, caching both hits and misses.
+///
+/// `find_project_config` walks ancestors and shells out to git, and most
+/// worktrees have no `.muxix.yaml` at all, so a miss must be cached too or
+/// every agent costs a walk on every tick.
+struct ProjectConfigDirs {
+    cache: HashMap<PathBuf, Option<PathBuf>>,
+    cached_at: Instant,
+    seen_version: u64,
+}
+
+impl ProjectConfigDirs {
+    fn new(version: u64, now: Instant) -> Self {
+        Self {
+            cache: HashMap::new(),
+            cached_at: now,
+            seen_version: version,
+        }
+    }
+
+    /// The set of config dirs covering `paths`, resolving only what is not
+    /// already cached.
+    ///
+    /// The whole cache is dropped when the config version moves (a `.muxix.yaml`
+    /// the watcher can see was added, changed or removed) or once per sweep (to
+    /// catch the directories it cannot see).
+    fn dirs_with(
+        &mut self,
+        paths: &[PathBuf],
+        version_now: u64,
+        now: Instant,
+        resolve: &dyn Fn(&Path) -> Option<PathBuf>,
+    ) -> HashSet<PathBuf> {
+        let live: HashSet<&PathBuf> = paths.iter().collect();
+        self.cache.retain(|p, _| live.contains(p));
+
+        if version_now != self.seen_version || now.duration_since(self.cached_at) >= SWEEP_INTERVAL
+        {
+            self.seen_version = version_now;
+            self.cached_at = now;
+            self.cache.clear();
+        }
+
+        let mut dirs = HashSet::new();
+        for path in paths {
+            let dir = self
+                .cache
+                .entry(path.clone())
+                .or_insert_with(|| resolve(path))
+                .clone();
+            if let Some(d) = dir {
+                dirs.insert(d);
+            }
+        }
+        dirs
+    }
+}
+
+fn project_config_dir_of(path: &Path) -> Option<PathBuf> {
+    crate::config::find_project_config(path)
+        .ok()
+        .flatten()
+        .map(|loc| loc.config_dir)
+}
+
+#[cfg(test)]
+mod project_config_dirs_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// Resolver that records every path it was asked about.
+    fn counting(
+        hits: &RefCell<Vec<PathBuf>>,
+        answer: Option<PathBuf>,
+    ) -> impl Fn(&Path) -> Option<PathBuf> + '_ {
+        move |p: &Path| {
+            hits.borrow_mut().push(p.to_path_buf());
+            answer.clone()
+        }
+    }
+
+    #[test]
+    fn a_worktree_with_no_project_config_is_resolved_once_not_once_per_tick() {
+        let t0 = Instant::now();
+        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let resolve = counting(&hits, None);
+        let paths = vec![PathBuf::from("/wt/a")];
+
+        for i in 0..10 {
+            let out = dirs.dirs_with(&paths, 0, t0 + Duration::from_secs(i), &resolve);
+            assert!(out.is_empty(), "a miss contributes no config dir");
+        }
+
+        assert_eq!(
+            hits.borrow().len(),
+            1,
+            "the miss must be cached, not re-walked"
+        );
+    }
+
+    #[test]
+    fn a_config_appearing_later_is_picked_up_when_the_version_moves() {
+        let t0 = Instant::now();
+        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let paths = vec![PathBuf::from("/wt/a")];
+
+        let misses = RefCell::new(Vec::new());
+        assert!(
+            dirs.dirs_with(&paths, 0, t0, &counting(&misses, None))
+                .is_empty()
+        );
+
+        // The watcher saw a .muxix.yaml appear and bumped the version.
+        let found = RefCell::new(Vec::new());
+        let out = dirs.dirs_with(
+            &paths,
+            1,
+            t0 + Duration::from_secs(1),
+            &counting(&found, Some(PathBuf::from("/wt/a"))),
+        );
+        assert_eq!(found.borrow().len(), 1, "a version bump must re-resolve");
+        assert_eq!(out, HashSet::from([PathBuf::from("/wt/a")]));
+    }
+
+    #[test]
+    fn the_sweep_re_resolves_what_the_watcher_cannot_see() {
+        let t0 = Instant::now();
+        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let paths = vec![PathBuf::from("/wt/a")];
+        let hits = RefCell::new(Vec::new());
+        let resolve = counting(&hits, None);
+
+        dirs.dirs_with(&paths, 0, t0, &resolve);
+        dirs.dirs_with(
+            &paths,
+            0,
+            t0 + SWEEP_INTERVAL - Duration::from_millis(1),
+            &resolve,
+        );
+        assert_eq!(hits.borrow().len(), 1, "still inside the sweep window");
+
+        dirs.dirs_with(&paths, 0, t0 + SWEEP_INTERVAL, &resolve);
+        assert_eq!(hits.borrow().len(), 2, "the sweep expires the cache");
+    }
+
+    #[test]
+    fn a_departed_agents_entry_is_dropped() {
+        let t0 = Instant::now();
+        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let resolve = counting(&hits, None);
+
+        dirs.dirs_with(&[PathBuf::from("/wt/a")], 0, t0, &resolve);
+        // /wt/a's agent is gone; only /wt/b remains.
+        dirs.dirs_with(&[PathBuf::from("/wt/b")], 0, t0, &resolve);
+        assert_eq!(dirs.cache.len(), 1);
+        assert!(dirs.cache.contains_key(&PathBuf::from("/wt/b")));
+    }
+
+    #[test]
+    fn two_agents_sharing_a_config_dir_yield_one_entry() {
+        let t0 = Instant::now();
+        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let resolve = counting(&hits, Some(PathBuf::from("/repo")));
+
+        let out = dirs.dirs_with(
+            &[PathBuf::from("/repo/a"), PathBuf::from("/repo/b")],
+            0,
+            t0,
+            &resolve,
+        );
+        assert_eq!(hits.borrow().len(), 2, "each path is resolved");
+        assert_eq!(
+            out,
+            HashSet::from([PathBuf::from("/repo")]),
+            "deduped by dir"
+        );
+    }
+}
+
 /// Compute socket path from instance_id.
 pub fn socket_path(instance_id: &str) -> PathBuf {
     let safe_id = instance_id.replace(['/', '\\'], "-");
@@ -1823,9 +2006,8 @@ pub fn run() -> Result<()> {
     // common case and paid for the search every tick. Misses expire on the
     // sweep, because a `.muxix.yaml` can appear in a directory the config
     // watcher was never told to watch.
-    let mut project_config_cache: HashMap<PathBuf, Option<PathBuf>> = HashMap::new();
-    let mut project_config_cached_at = Instant::now();
-    let mut seen_config_version = config_version.load(Ordering::Relaxed);
+    let mut project_config_dirs =
+        ProjectConfigDirs::new(config_version.load(Ordering::Relaxed), Instant::now());
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
     // ADE listings shell out, so they run far less often than the tick.
     let mut ade = AdeAgents::new();
@@ -1992,40 +2174,18 @@ pub fn run() -> Result<()> {
             let _ = pr_path_tx.send(pr_entries);
 
             // Update config watcher with current project-config dirs.
-            // find_project_config does fs walks, so cache by agent path.
-            let live_paths: HashSet<PathBuf> = output
+            let agent_paths: Vec<PathBuf> = output
                 .snapshot
                 .agents
                 .iter()
                 .map(|a| a.path.clone())
                 .collect();
-            project_config_cache.retain(|p, _| live_paths.contains(p));
-            // A reloaded config means a `.muxix.yaml` was added, changed or
-            // removed somewhere the watcher can see; the sweep covers the
-            // directories it cannot.
-            let version_now = config_version.load(Ordering::Relaxed);
-            if version_now != seen_config_version
-                || project_config_cached_at.elapsed() >= SWEEP_INTERVAL
-            {
-                seen_config_version = version_now;
-                project_config_cached_at = Instant::now();
-                project_config_cache.clear();
-            }
-            let mut config_dirs: HashSet<PathBuf> = HashSet::new();
-            for a in &output.snapshot.agents {
-                let dir = project_config_cache
-                    .entry(a.path.clone())
-                    .or_insert_with(|| {
-                        crate::config::find_project_config(&a.path)
-                            .ok()
-                            .flatten()
-                            .map(|loc| loc.config_dir)
-                    })
-                    .clone();
-                if let Some(d) = dir {
-                    config_dirs.insert(d);
-                }
-            }
+            let config_dirs = project_config_dirs.dirs_with(
+                &agent_paths,
+                config_version.load(Ordering::Relaxed),
+                Instant::now(),
+                &project_config_dir_of,
+            );
             if config_dirs != last_config_dirs {
                 let _ = config_paths_tx.send(config_dirs.clone());
                 last_config_dirs = config_dirs;
