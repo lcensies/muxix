@@ -10,6 +10,7 @@ use ratatui::{
 
 use crate::command::dashboard::app::{App, TaskFormField, TaskModal};
 use crate::tasks::types::{STATUS_DONE, STATUS_FAILED, STATUS_IN_PROGRESS, STATUS_TODO};
+use crate::tui::centered_rect;
 
 fn status_icon(status: &str) -> (&'static str, Color) {
     match status {
@@ -19,25 +20,6 @@ fn status_icon(status: &str) -> (&'static str, Color) {
         STATUS_FAILED => ("✗", Color::Red),
         _ => ("?", Color::DarkGray),
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let v = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(v[1])[1]
 }
 
 pub fn render_task_table(f: &mut Frame, app: &mut App, area: Rect) {

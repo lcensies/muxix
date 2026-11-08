@@ -147,6 +147,20 @@ pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
 
 /// Render the command palette modal centered on the frame.
 pub fn render<A>(f: &mut Frame, state: &PaletteState<A>, theme: &ThemePalette) {
+    render_in(f, f.area(), state, theme, "Command Palette");
+}
+
+/// Render the palette centered inside `area` under `title`.
+///
+/// Sized from `area`, so a 25-column sidebar pane gets a popup that fits it
+/// instead of the dashboard's 40-70 column clamp.
+pub fn render_in<A>(
+    f: &mut Frame,
+    area: Rect,
+    state: &PaletteState<A>,
+    theme: &ThemePalette,
+    title: &str,
+) {
     let bold = |s: &str| {
         Span::styled(
             s.to_string(),
@@ -157,15 +171,13 @@ pub fn render<A>(f: &mut Frame, state: &PaletteState<A>, theme: &ThemePalette) {
 
     let filtered = state.filtered();
 
-    let area = f.area();
     let width = (area.width * 3 / 5).clamp(40, 70);
     let height = (area.height * 2 / 5).clamp(10, 25);
-    // overhead: filter + blank + blank_after_items + footer + borders(2)
-    let overhead: u16 = 6;
-    let max_visible: usize = height.saturating_sub(overhead) as usize;
-
     let popup_width = width.min(area.width);
     let popup_height = height.min(area.height);
+    // overhead: filter + blank + blank_after_items + footer + borders(2)
+    let overhead: u16 = 6;
+    let max_visible: usize = popup_height.saturating_sub(overhead) as usize;
     let inner_width = popup_width.saturating_sub(2) as usize;
 
     let mut lines: Vec<Line> = Vec::new();
@@ -252,8 +264,8 @@ pub fn render<A>(f: &mut Frame, state: &PaletteState<A>, theme: &ThemePalette) {
     ]));
 
     let popup_area = Rect {
-        x: area.width.saturating_sub(popup_width) / 2,
-        y: area.height.saturating_sub(popup_height) / 2,
+        x: area.x + area.width.saturating_sub(popup_width) / 2,
+        y: area.y + area.height.saturating_sub(popup_height) / 2,
         width: popup_width,
         height: popup_height,
     };
@@ -264,7 +276,7 @@ pub fn render<A>(f: &mut Frame, state: &PaletteState<A>, theme: &ThemePalette) {
         .title(Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled(
-                "Command Palette",
+                title.to_string(),
                 Style::default()
                     .fg(theme.header)
                     .add_modifier(Modifier::BOLD),

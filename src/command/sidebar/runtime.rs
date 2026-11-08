@@ -234,13 +234,14 @@ fn process_event(
             }
         }
         AppEvent::Input(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-            let chord = crate::tui::chord::KeyChord::from_event(key);
-            super::keymap::handle_key(app, chord);
+            super::keymap::handle_key_event(app, key);
             *needs_render = true;
         }
         AppEvent::Input(Event::Mouse(mouse)) => {
             match mouse.kind {
-                MouseEventKind::Down(MouseButton::Left) => {
+                // An open modal owns input: a click must not move the
+                // selection out from under it.
+                MouseEventKind::Down(MouseButton::Left) if app.mode.is_normal() => {
                     if let Some(idx) = app.hit_test(mouse.column, mouse.row) {
                         app.select_index(idx);
                         app.jump_to_selected();

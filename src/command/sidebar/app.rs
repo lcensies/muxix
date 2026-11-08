@@ -11,7 +11,10 @@ use std::time::{Duration, Instant};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{AgentIcons, Config, SidebarPosition, SidebarWidth, StatusIcons};
+use crate::config::{
+    AgentIcons, Config, ConfirmStyle, NewAgentConfig, Placement, SidebarPosition, SidebarWidth,
+    StatusIcons,
+};
 use crate::git::GitStatus;
 use crate::github::PrSummary;
 use ratatui::style::Color;
@@ -23,6 +26,9 @@ use crate::multiplexer::{AgentPane, Multiplexer};
 
 use crate::ui::theme::ThemePalette;
 
+use crate::tui::modal::{Modal, ModalField};
+
+use super::keymap::SidebarAction;
 use super::snapshot::SidebarSnapshot;
 use super::template::parser::{ParseError, Token, parse_line};
 
@@ -67,6 +73,41 @@ enum SelectionMode {
 pub struct ResolvedAgentIcons {
     pub icons: BTreeMap<String, String>,
     pub colors: BTreeMap<String, Option<Color>>,
+}
+
+/// What a sidebar modal is for. The target is captured when the modal opens,
+/// so a refresh that reorders the list cannot retarget it.
+pub enum ModalIntent {
+    DeleteAgent(Box<AgentPane>),
+    CreateAgent,
+    Actions,
+}
+
+/// Sidebar input mode. Anything but `Normal` owns the keyboard, which is why
+/// it is checked before the binding registry: `Esc` must close the mode rather
+/// than quit the sidebar.
+pub enum SidebarMode {
+    Normal,
+    /// The one-line confirmation band, used in the top position and on
+    /// backends with no native prompt. Carries the prompt text to draw.
+    PendingDelete(Box<AgentPane>, String),
+    Modal {
+        intent: ModalIntent,
+        modal: Modal<SidebarAction>,
+    },
+}
+
+impl SidebarMode {
+    pub fn is_normal(&self) -> bool {
+        matches!(self, Self::Normal)
+    }
+
+    pub fn pending_delete(&self) -> Option<(&AgentPane, &str)> {
+        match self {
+            Self::PendingDelete(agent, prompt) => Some((agent, prompt.as_str())),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,10 +258,12 @@ pub struct SidebarApp {
     pub pending_count: Option<usize>,
     /// A `g` was pressed and awaits a second `g`.
     pub pending_g: bool,
-    /// An agent awaiting delete confirmation, with the prompt shown for it. The
-    /// row is captured when `d` is pressed, so a refresh that reorders the list
-    /// cannot change which agent Enter deletes.
-    pub pending_delete: Option<(AgentPane, String)>,
+    /// Current input mode: normal, a delete band, or an open modal.
+    pub mode: SidebarMode,
+    /// How a delete is confirmed: native prompt or in-pane popup.
+    pub confirm_style: ConfirmStyle,
+    /// Defaults prefilled into the create-agent form.
+    pub new_agent: NewAgentConfig,
     /// Cached horizontal chip hitboxes for top bar mouse hit testing.
     pub horizontal_hitboxes: Vec<HitBox>,
     /// First agent index rendered in the horizontal top bar.
@@ -293,7 +336,9 @@ impl SidebarApp {
             project_headers: Vec::new(),
             pending_count: None,
             pending_g: false,
-            pending_delete: None,
+            mode: SidebarMode::Normal,
+            confirm_style: ConfirmStyle::default(),
+            new_agent: NewAgentConfig::default(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width: 24,
@@ -417,7 +462,9 @@ impl SidebarApp {
             project_headers: Vec::new(),
             pending_count: None,
             pending_g: false,
-            pending_delete: None,
+            mode: SidebarMode::Normal,
+            confirm_style: config.sidebar.confirm_style.unwrap_or_default(),
+            new_agent: config.sidebar.new_agent.clone(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width,
@@ -808,17 +855,25 @@ impl SidebarApp {
         h
     }
 
-    /// Ask to delete the selected agent. Nothing is removed until Enter.
+    /// Ask to delete the selected agent. Nothing is removed until confirmed.
     pub fn begin_delete(&mut self) {
-        let Some(agent) = self
-            .list_state
-            .selected()
-            .and_then(|idx| self.agents.get(idx))
-            .cloned()
-        else {
+        if !self.mode.is_normal() {
+            return;
+        }
+        let Some(agent) = self.selected_agent().cloned() else {
+            self.mux
+                .display_message("no agent selected: nothing to delete");
             return;
         };
         let question = crate::command::agents::delete_prompt(&agent);
+
+        if use_popup_confirm(self.confirm_style, self.position) {
+            self.mode = SidebarMode::Modal {
+                modal: Modal::confirm("Delete agent", vec![question], true),
+                intent: ModalIntent::DeleteAgent(Box::new(agent)),
+            };
+            return;
+        }
 
         // Natively first: tmux's own prompt sits on its prompt line, outside the
         // sidebar's narrow pane, and stays until answered. The confirmed command
@@ -836,26 +891,176 @@ impl SidebarApp {
         }
 
         // A backend with no native confirmation: ask in the sidebar itself.
-        let prompt = format!("{question}  Enter delete · any other key cancels");
-        self.pending_delete = Some((agent, prompt));
+        let prompt = format!("{question}  Enter delete \u{b7} any other key cancels");
+        self.mode = SidebarMode::PendingDelete(Box::new(agent), prompt);
     }
 
     pub fn cancel_delete(&mut self) {
-        if self.pending_delete.take().is_some() {
+        if self.mode.pending_delete().is_some() {
+            self.mode = SidebarMode::Normal;
             self.mux.display_message("delete cancelled");
         }
     }
 
     pub fn confirm_delete(&mut self) {
-        let Some((agent, _)) = self.pending_delete.take() else {
+        let SidebarMode::PendingDelete(agent, _) =
+            std::mem::replace(&mut self.mode, SidebarMode::Normal)
+        else {
             return;
         };
-        let msg = match crate::command::agents::delete_agent(self.mux.as_ref(), &agent) {
+        self.delete_agent_now(&agent);
+    }
+
+    pub fn delete_agent_now(&mut self, agent: &AgentPane) {
+        let msg = match crate::command::agents::delete_agent(self.mux.as_ref(), agent) {
             Ok(m) => m,
             Err(e) => format!("delete failed, nothing removed: {e}"),
         };
         self.mux.display_message(&msg);
         super::daemon_ctrl::signal_daemon();
+    }
+
+    pub fn selected_agent(&self) -> Option<&AgentPane> {
+        self.list_state
+            .selected()
+            .and_then(|idx| self.agents.get(idx))
+    }
+
+    /// Open the action list over the sidebar's own bindings.
+    pub fn open_action_list(&mut self) {
+        if !self.mode.is_normal() {
+            return;
+        }
+        self.mode = SidebarMode::Modal {
+            modal: Modal::ActionList {
+                title: "Sidebar actions",
+                state: crate::tui::palette::PaletteState::from_bindings(
+                    super::keymap::SIDEBAR_BINDINGS,
+                    super::keymap::SIDEBAR,
+                ),
+            },
+            intent: ModalIntent::Actions,
+        };
+    }
+
+    /// Open the create-agent form, prefilled from the selected row and config.
+    pub fn open_create_form(&mut self) {
+        if !self.mode.is_normal() {
+            return;
+        }
+        let repo = self
+            .selected_agent()
+            .and_then(|a| repo_root_for(&a.path))
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        let placements: Vec<String> = Placement::ALL
+            .iter()
+            .map(|p| p.as_str().to_string())
+            .collect();
+        let placement_idx = Placement::ALL
+            .iter()
+            .position(|p| *p == self.new_agent.placement())
+            .unwrap_or(0);
+        self.mode = SidebarMode::Modal {
+            modal: Modal::form(
+                "New agent",
+                vec![
+                    ModalField::Text {
+                        label: "Branch",
+                        value: String::new(),
+                    },
+                    ModalField::Text {
+                        label: "Repository",
+                        value: repo,
+                    },
+                    // Left empty on purpose: an explicit agent disables the
+                    // repository's own `agent_rules`.
+                    ModalField::Text {
+                        label: "Agent (blank = rules)",
+                        value: String::new(),
+                    },
+                    ModalField::Choice {
+                        label: "Placement",
+                        options: placements,
+                        idx: placement_idx,
+                    },
+                    ModalField::Choice {
+                        label: "Worktree",
+                        options: vec!["yes".to_string(), "no".to_string()],
+                        idx: usize::from(!self.new_agent.worktree()),
+                    },
+                ],
+            ),
+            intent: ModalIntent::CreateAgent,
+        };
+    }
+
+    /// Start creating an agent from submitted form values, off the event loop.
+    pub fn submit_create(&mut self, values: &[String]) {
+        let branch = values
+            .first()
+            .cloned()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let repo = values
+            .get(1)
+            .cloned()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let agent = values
+            .get(2)
+            .cloned()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let placement = values
+            .get(3)
+            .and_then(|p| p.parse::<Placement>().ok())
+            .unwrap_or_default();
+        let worktree = values.get(4).map(|w| w == "yes").unwrap_or(true);
+
+        if repo.is_empty() {
+            self.mux.display_message("a repository is required");
+            return;
+        }
+        if worktree && branch.is_empty() {
+            self.mux
+                .display_message("a branch name is required when creating a worktree");
+            return;
+        }
+        let split_from = (placement == Placement::Pane)
+            .then(|| self.selected_agent().map(|a| a.pane_id.clone()))
+            .flatten();
+        if placement == Placement::Pane && split_from.is_none() {
+            self.mux
+                .display_message("pane placement needs a selected agent to split");
+            return;
+        }
+
+        let mux = self.mux.clone();
+        let reporter = self.mux.clone();
+        self.mux.display_message(&format!(
+            "creating {}...",
+            if branch.is_empty() { &repo } else { &branch }
+        ));
+        std::thread::spawn(move || {
+            let outcome = create_agent_in(
+                mux,
+                PathBuf::from(&repo),
+                &branch,
+                (!agent.is_empty()).then_some(agent.as_str()),
+                placement,
+                split_from,
+                worktree,
+            );
+            match outcome {
+                Ok(name) => reporter.display_message(&format!("created {name}")),
+                Err(e) => reporter.display_message(&format!("create failed: {e}")),
+            }
+            super::daemon_ctrl::signal_daemon();
+        });
     }
 
     pub fn jump_to_selected(&mut self) {
@@ -883,6 +1088,11 @@ impl SidebarApp {
             }
             // Signal daemon directly to bypass tmux hook round-trip latency
             super::daemon_ctrl::signal_daemon();
+        } else {
+            // Reachable from the action list, where the action can be picked
+            // with an empty list.
+            self.mux
+                .display_message("no agent selected: nothing to jump to");
         }
     }
 
@@ -1340,6 +1550,79 @@ fn detect_host_window() -> (Option<String>, Option<String>) {
     (session, window_id)
 }
 
+/// Whether a delete is confirmed by the centered popup.
+///
+/// The top position is 1-5 rows: a centered dialog cannot fit it, so it keeps
+/// the one-line band whatever the configured style is.
+fn use_popup_confirm(style: ConfirmStyle, position: SidebarPosition) -> bool {
+    style == ConfirmStyle::Popup && position != SidebarPosition::Top
+}
+
+/// The main worktree root that owns `path`.
+///
+/// A sidebar row carries only the pane's cwd, so the repository has to be
+/// re-derived: git's common dir is `<main worktree>/.git`, whichever worktree
+/// the pane sits in. One `git rev-parse` on an explicit keypress, not a hot
+/// path, so it walks up from a pane that was `cd`'d into a subdirectory
+/// instead of using the daemon's root-only cache.
+pub fn repo_root_for(path: &std::path::Path) -> Option<PathBuf> {
+    let common = crate::git::get_git_common_dir_in(Some(path)).ok()?;
+    let root = common.parent()?;
+    Some(std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()))
+}
+
+/// Create an agent in `repo`. Runs on a worker thread, never the event loop.
+#[allow(clippy::too_many_arguments)]
+fn create_agent_in(
+    mux: Arc<dyn Multiplexer>,
+    repo: PathBuf,
+    branch: &str,
+    agent: Option<&str>,
+    placement: Placement,
+    split_from: Option<String>,
+    worktree: bool,
+) -> Result<String> {
+    use crate::workflow;
+
+    let (config, config_location) = Config::load_with_location_from(&repo, None)?;
+    let ctx = workflow::WorkflowContext::new_in(&repo, config.clone(), mux, config_location)?;
+    let handle = if worktree {
+        crate::naming::derive_handle(branch, None, &config)?
+    } else {
+        // No worktree means no branch to name the window after; the repo does.
+        crate::naming::derive_handle(
+            repo.file_name().and_then(|n| n.to_str()).unwrap_or("repo"),
+            None,
+            &config,
+        )?
+    };
+
+    let mut options = workflow::types::SetupOptions::new(true, true, true);
+    options.focus_window = false;
+    options.placement = placement;
+    options.split_from_pane = split_from;
+
+    let result = workflow::create(
+        &ctx,
+        workflow::CreateArgs {
+            branch_name: branch,
+            handle: &handle,
+            base_branch: None,
+            remote_branch: None,
+            pr_number: None,
+            prompt: None,
+            options,
+            mode_override: None,
+            agent,
+            is_explicit_name: false,
+            prompt_file_only: false,
+            fork_source: None,
+            worktree,
+        },
+    )?;
+    Ok(result.resolved_handle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1641,5 +1924,156 @@ mod tests {
                 message: "unknown token 'pr_status' at column 1".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn the_popup_confirm_is_opt_in_and_never_used_in_the_top_position() {
+        assert!(!use_popup_confirm(
+            ConfirmStyle::Native,
+            SidebarPosition::Left
+        ));
+        assert!(!use_popup_confirm(
+            ConfirmStyle::Native,
+            SidebarPosition::Top
+        ));
+        assert!(use_popup_confirm(
+            ConfirmStyle::Popup,
+            SidebarPosition::Left
+        ));
+        assert!(
+            !use_popup_confirm(ConfirmStyle::Popup, SidebarPosition::Top),
+            "a centered dialog cannot fit 1-5 rows"
+        );
+    }
+
+    #[test]
+    fn the_delete_popup_captures_the_row_it_opened_on() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a"]);
+        app.confirm_style = ConfirmStyle::Popup;
+        app.list_state.select(Some(1));
+        let target = app.agents[1].pane_id.clone();
+
+        app.begin_delete();
+        // A later refresh moves the selection off the captured row.
+        app.list_state.select(Some(0));
+
+        let SidebarMode::Modal {
+            intent: ModalIntent::DeleteAgent(agent),
+            ..
+        } = &app.mode
+        else {
+            panic!("popup style must open a confirm modal");
+        };
+        assert_eq!(agent.pane_id, target);
+    }
+
+    #[test]
+    fn cancelling_the_delete_popup_removes_nothing() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/a", "/tmp/x/a"]);
+        app.confirm_style = ConfirmStyle::Popup;
+        app.list_state.select(Some(0));
+        app.begin_delete();
+        let SidebarMode::Modal { modal, .. } = &mut app.mode else {
+            panic!("expected a modal");
+        };
+        assert!(matches!(
+            modal.handle_key(&crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Esc,
+                crossterm::event::KeyModifiers::NONE,
+            )),
+            crate::tui::modal::ModalOutcome::Cancel
+        ));
+        assert_eq!(app.agents.len(), 2, "cancel must delete nothing");
+    }
+
+    #[test]
+    fn only_one_modal_opens_at_a_time() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/a"]);
+        app.open_action_list();
+        app.open_create_form();
+        app.confirm_style = ConfirmStyle::Popup;
+        app.begin_delete();
+        let SidebarMode::Modal { modal, .. } = &app.mode else {
+            panic!("expected a modal");
+        };
+        assert!(
+            matches!(modal, Modal::ActionList { .. }),
+            "the first modal stays open"
+        );
+    }
+
+    #[test]
+    fn the_create_form_prefills_placement_and_worktree_from_config() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/a"]);
+        app.new_agent = NewAgentConfig {
+            placement: Some(Placement::Pane),
+            worktree: Some(false),
+        };
+        app.list_state.select(Some(0));
+        app.open_create_form();
+
+        let SidebarMode::Modal {
+            modal: Modal::Form { fields, .. },
+            ..
+        } = &app.mode
+        else {
+            panic!("expected the create form");
+        };
+        assert_eq!(fields.len(), 5);
+        assert_eq!(fields[3].value(), "pane");
+        assert_eq!(fields[4].value(), "no");
+        assert_eq!(
+            fields[2].value(),
+            "",
+            "the agent profile is left to the repository's agent_rules"
+        );
+    }
+
+    #[test]
+    fn the_create_form_prefills_the_repository_from_the_selected_row() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(&repo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let nested = repo.join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        // A row carries only the pane's cwd, so the repository is re-derived.
+        let mut app = SidebarApp::test_with_agents(&[nested.to_str().unwrap()]);
+        app.list_state.select(Some(0));
+        app.open_create_form();
+
+        let SidebarMode::Modal {
+            modal: Modal::Form { fields, .. },
+            ..
+        } = &app.mode
+        else {
+            panic!("expected the create form");
+        };
+        assert_eq!(
+            std::fs::canonicalize(fields[1].value()).unwrap(),
+            std::fs::canonicalize(&repo).unwrap()
+        );
+    }
+
+    #[test]
+    fn the_create_form_opens_with_no_selection_and_an_empty_repository() {
+        let mut app = SidebarApp::test_with_agents(&[]);
+        app.open_create_form();
+        let SidebarMode::Modal {
+            modal: Modal::Form { fields, .. },
+            ..
+        } = &app.mode
+        else {
+            panic!("the form opens with nothing selected");
+        };
+        assert_eq!(fields[1].value(), "", "no row to derive a repository from");
     }
 }

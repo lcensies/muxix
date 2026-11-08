@@ -300,6 +300,44 @@ pub struct SidebarConfig {
     /// When "session", plain `wng sidebar` activates only the current session.
     /// Use `wng sidebar --global` to force global scope regardless of this setting.
     pub default_scope: Option<SidebarDefaultScope>,
+
+    /// How a delete is confirmed: the multiplexer's native prompt (default) or
+    /// a centered popup drawn inside the sidebar pane.
+    pub confirm_style: Option<ConfirmStyle>,
+
+    /// Defaults for the sidebar's create-agent form.
+    #[serde(default)]
+    pub new_agent: NewAgentConfig,
+}
+
+/// How the sidebar asks for delete confirmation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ConfirmStyle {
+    /// The multiplexer's own prompt (tmux `confirm-before`), outside the pane.
+    #[default]
+    Native,
+    /// A centered modal drawn inside the sidebar pane.
+    Popup,
+}
+
+/// Defaults prefilled into the sidebar's create-agent form.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct NewAgentConfig {
+    /// Where the new agent is placed. Default: window.
+    pub placement: Option<Placement>,
+    /// Whether to create a git worktree for it. Default: true.
+    pub worktree: Option<bool>,
+}
+
+impl NewAgentConfig {
+    pub fn placement(&self) -> Placement {
+        self.placement.unwrap_or_default()
+    }
+
+    pub fn worktree(&self) -> bool {
+        self.worktree.unwrap_or(true)
+    }
 }
 
 /// Sidebar pane position.
@@ -1484,6 +1522,68 @@ pub enum MuxMode {
     Window,
     /// Create new tmux sessions for each worktree
     Session,
+}
+
+/// Where a newly created agent is placed.
+///
+/// A superset of [`MuxMode`]: `MuxMode` keeps its own wire format so existing
+/// `mode:` config and `--mode` keep working, and `Pane` is the value it cannot
+/// express.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Placement {
+    /// A new window in the current session (default).
+    #[default]
+    Window,
+    /// A new session (tmux only).
+    Session,
+    /// A pane split from a reference pane, in the same window.
+    Pane,
+}
+
+impl Placement {
+    pub const ALL: [Placement; 3] = [Placement::Window, Placement::Session, Placement::Pane];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Window => "window",
+            Self::Session => "session",
+            Self::Pane => "pane",
+        }
+    }
+
+    /// The closest [`MuxMode`]. `Pane` maps to `Window` because a split pane
+    /// lives in a window, and everything keyed on the mode (cleanup, open,
+    /// `muxix list`) must treat it as one.
+    pub fn mux_mode(self) -> MuxMode {
+        match self {
+            Self::Session => MuxMode::Session,
+            Self::Window | Self::Pane => MuxMode::Window,
+        }
+    }
+}
+
+impl From<MuxMode> for Placement {
+    fn from(mode: MuxMode) -> Self {
+        match mode {
+            MuxMode::Window => Self::Window,
+            MuxMode::Session => Self::Session,
+        }
+    }
+}
+
+impl std::str::FromStr for Placement {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "window" => Ok(Self::Window),
+            "session" => Ok(Self::Session),
+            "pane" => Ok(Self::Pane),
+            other => Err(format!(
+                "unknown placement {other:?}: expected window, session or pane"
+            )),
+        }
+    }
 }
 
 /// Strategy for deriving worktree/window names from branch names
@@ -4366,6 +4466,16 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
 #   layout: tiles
 #
+#   # How 'd' asks for confirmation: "native" (default, the multiplexer's own
+#   # prompt line) or "popup" (a centered modal inside the sidebar pane).
+#   # The top position always uses the one-line band: a modal cannot fit it.
+#   confirm_style: native
+#
+#   # Defaults prefilled into the create-agent form ('a').
+#   new_agent:
+#     placement: window   # window | session | pane
+#     worktree: true
+#
 #   horizontal:
 #     item_width: 24  # horizontal chip width in columns, clamped 12-80
 #
@@ -4593,6 +4703,38 @@ mod tests {
         is_agent_command, split_first_token, validate_domain, validate_group_add_entry,
         validate_layouts_config,
     };
+
+    #[test]
+    fn placement_is_a_superset_of_the_existing_mux_mode() {
+        use super::{MuxMode, Placement};
+        assert_eq!(Placement::default(), Placement::Window);
+        assert_eq!(Placement::from(MuxMode::Window), Placement::Window);
+        assert_eq!(Placement::from(MuxMode::Session), Placement::Session);
+        // Everything keyed on the mode must read a split pane as a window.
+        assert_eq!(Placement::Pane.mux_mode(), MuxMode::Window);
+        assert_eq!(Placement::Session.mux_mode(), MuxMode::Session);
+        for p in Placement::ALL {
+            assert_eq!(p.as_str().parse::<Placement>().unwrap(), p);
+        }
+        assert!("nope".parse::<Placement>().is_err());
+    }
+
+    #[test]
+    fn new_agent_defaults_to_a_window_with_a_worktree() {
+        use super::{ConfirmStyle, NewAgentConfig, Placement};
+        let defaults = NewAgentConfig::default();
+        assert_eq!(defaults.placement(), Placement::Window);
+        assert!(defaults.worktree());
+        assert_eq!(ConfirmStyle::default(), ConfirmStyle::Native);
+        // An empty `sidebar:` block must not opt anyone into the popup.
+        let cfg: Config = serde_yaml::from_str("sidebar: {}").unwrap();
+        assert_eq!(
+            cfg.sidebar.confirm_style.unwrap_or_default(),
+            ConfirmStyle::Native
+        );
+        assert_eq!(cfg.sidebar.new_agent.placement(), Placement::Window);
+        assert!(cfg.sidebar.new_agent.worktree());
+    }
 
     #[test]
     fn agent_profile_deltas_roundtrip() {

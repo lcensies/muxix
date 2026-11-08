@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::MuxMode;
+use crate::config::{MuxMode, Placement};
 use crate::github::PrSummary;
 use crate::multiplexer::conversation::{ConversationForker, SessionInfo};
 use crate::multiplexer::types::ResumeMode;
@@ -27,6 +27,9 @@ pub struct CreateArgs<'a> {
     pub prompt_file_only: bool,
     /// Fork a conversation from another worktree into this one
     pub fork_source: Option<ForkSource>,
+    /// Create a git worktree for the agent. When false the agent runs at the
+    /// repository root and no branch is created.
+    pub worktree: bool,
 }
 
 /// Result of creating a worktree
@@ -120,8 +123,11 @@ pub struct SetupOptions {
     pub config_root: Option<PathBuf>,
     /// If true, open existing worktree instead of failing when it already exists.
     pub open_if_exists: bool,
-    /// Mode for tmux operations: window (default) or session
-    pub mode: MuxMode,
+    /// Where the agent is placed: a new window (default), session, or a pane
+    /// split from `split_from_pane`.
+    pub placement: Placement,
+    /// Reference pane to split when `placement` is `Pane`.
+    pub split_from_pane: Option<String>,
     /// Custom window target name for window mode.
     pub target_window_name: Option<String>,
     /// Custom session target name for session mode.
@@ -145,7 +151,8 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            mode: MuxMode::default(),
+            placement: Placement::default(),
+            split_from_pane: None,
             target_window_name: None,
             target_session_name: None,
             window_session_name: None,
@@ -164,7 +171,8 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            mode: MuxMode::default(),
+            placement: Placement::default(),
+            split_from_pane: None,
             target_window_name: None,
             target_session_name: None,
             window_session_name: None,
@@ -189,7 +197,8 @@ impl SetupOptions {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            mode: MuxMode::default(),
+            placement: Placement::default(),
+            split_from_pane: None,
             target_window_name: None,
             target_session_name: None,
             window_session_name: None,
@@ -197,15 +206,21 @@ impl SetupOptions {
         }
     }
 
+    /// The multiplexer mode this placement behaves as. A split pane lives in a
+    /// window, so everything keyed on the mode treats `Pane` as `Window`.
+    pub fn mode(&self) -> MuxMode {
+        self.placement.mux_mode()
+    }
+
     pub fn primary_mux_target_name<'a>(&'a self, handle: &'a str) -> &'a str {
-        match self.mode {
+        match self.mode() {
             MuxMode::Window => self.target_window_name.as_deref().unwrap_or(handle),
             MuxMode::Session => self.target_session_name.as_deref().unwrap_or(handle),
         }
     }
 
     pub fn has_explicit_primary_mux_target(&self) -> bool {
-        match self.mode {
+        match self.mode() {
             MuxMode::Window => self.target_window_name.is_some(),
             MuxMode::Session => self.target_session_name.is_some(),
         }

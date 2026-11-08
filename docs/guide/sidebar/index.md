@@ -73,6 +73,14 @@ sidebar:
 
   # Layout mode for the left sidebar: "compact" or "tiles" (default)
   layout: tiles
+
+  # How 'd' asks: "native" (default) or "popup"
+  confirm_style: native
+
+  # Prefilled into the create form that 'a' opens
+  new_agent:
+    placement: window # "window" (default), "session" or "pane"
+    worktree: true
 ```
 
 For a horizontal top bar:
@@ -128,6 +136,8 @@ the list. Requires `set -g mouse on` in your `~/.tmux.conf`.
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
 | `d`     | Delete agent. Under tmux asks on the tmux prompt line (Enter or `y` confirms); elsewhere in the sidebar (Enter confirms). Any other key cancels. |
+| `a`     | New agent (create form)  |
+| `?`     | Show actions             |
 | `q`     | Quit sidebar             |
 
 ### Sleeping agents
@@ -187,6 +197,58 @@ accumulate.
 - Activating a row the manager no longer lists reports that and opens nothing.
   It used to create a session, a window and a view record for an agent that did
   not exist.
+
+### The confirmation popup
+
+By default the delete prompt is the multiplexer's own: under tmux it appears on
+the prompt line, outside the sidebar pane, and stays until answered. Set
+`confirm_style: popup` to get a centered dialog drawn inside the sidebar pane
+instead; the native prompt is then never invoked.
+
+```yaml
+sidebar:
+  confirm_style: popup
+```
+
+The agent is captured when the dialog opens, so a refresh that reorders the list
+cannot retarget the delete. `Enter` or `y` deletes, every other key cancels. The
+`top` position is one to five rows tall — too short for a dialog — so it keeps
+the one-line prompt band whatever the style is.
+
+### Creating an agent
+
+Press `a` to create a new agent without leaving the sidebar. A form opens in the
+pane, prefilled from the selected row and from `sidebar.new_agent`:
+
+| Field | Prefilled with |
+| ----- | -------------- |
+| Branch | empty — type the branch to create |
+| Repository | the selected agent's repository, re-derived from its pane's working directory |
+| Agent | empty, so the repository's own [`agent_rules`](/guide/agents) choose the profile |
+| Placement | `sidebar.new_agent.placement` |
+| Worktree | `sidebar.new_agent.worktree` |
+
+`Tab` and `Shift+Tab` move between fields, `←`/`→` cycle a choice field, `Enter`
+submits and `Esc` cancels. The form still opens with nothing selected, with the
+repository field empty — it is required, so fill it in.
+
+Placement `pane` splits the selected agent's pane instead of opening a window,
+so it needs a selected row. Worktree `no` runs the agent on the repository
+root's existing checkout: no branch and no worktree are created, and no branch
+name is required. File operations and `post_create` hooks are skipped in that
+case, since they exist to provision a fresh checkout, and what was skipped is
+reported. It is the same path as
+[`muxix add --no-worktree`](/reference/commands/add).
+
+Creation runs on a background thread, so the sidebar stays responsive, and the
+outcome — the created handle or the error — is reported when it finishes.
+
+### The action list
+
+Press `?` for a filterable list of the sidebar's own actions, built from the same
+binding table as the keys above. Type to filter, `Enter` runs the selected
+action. An action that needs a selected agent reports that and does nothing when
+nothing is selected.
 
 ## Agent navigation hotkeys
 

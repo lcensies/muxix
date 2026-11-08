@@ -194,6 +194,7 @@ pub fn run(
     fork: Option<String>,
     wait: bool,
     mode_override: Option<MuxMode>,
+    worktree: bool,
     config_override: Option<&std::path::Path>,
 ) -> Result<()> {
     // Inside a sandbox guest, route through RPC to the host supervisor
@@ -212,6 +213,9 @@ pub fn run(
         }
         if parent_session.is_some() {
             bail!("--parent-session is not supported from inside a sandbox");
+        }
+        if !worktree {
+            bail!("--no-worktree is not supported from inside a sandbox");
         }
         return run_add_via_rpc(
             branch_name,
@@ -291,7 +295,7 @@ pub fn run(
     let mut options = SetupOptions::new(!setup.no_hooks, !setup.no_file_ops, !setup.no_pane_cmds);
     options.focus_window = !setup.background;
     options.open_if_exists = setup.open_if_exists;
-    options.mode = mode;
+    options.placement = mode.into();
 
     // If using --auto-name and config has auto_name.background = true, run in background
     if auto_name && options.focus_window {
@@ -573,6 +577,7 @@ pub fn run(
         layout: layout.as_deref(),
         fork_source,
         config_override,
+        worktree,
     };
     plan.execute()
 }
@@ -713,6 +718,8 @@ struct CreationPlan<'a> {
     layout: Option<&'a str>,
     fork_source: Option<crate::workflow::types::ForkSource>,
     config_override: Option<&'a std::path::Path>,
+    /// Create a git worktree per spec. False runs at the repository root.
+    worktree: bool,
 }
 
 impl<'a> CreationPlan<'a> {
@@ -733,7 +740,7 @@ impl<'a> CreationPlan<'a> {
         let mut created_targets = Vec::new();
         // Track currently active targets for --max-concurrent
         let mut active_targets: Vec<String> = Vec::new();
-        let mode = self.options.mode;
+        let mode = self.options.mode();
         let mode_override = self.mode_override;
 
         for (i, spec) in self.specs.iter().enumerate() {
@@ -848,6 +855,7 @@ impl<'a> CreationPlan<'a> {
                     is_explicit_name: self.explicit_name.is_some(),
                     prompt_file_only: self.prompt_file_only,
                     fork_source: fork_for_spec,
+                    worktree: self.worktree,
                 },
             )
             .with_context(|| {

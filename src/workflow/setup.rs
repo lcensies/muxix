@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{MuxMode, WindowConfig};
+use crate::config::{Placement, WindowConfig};
 use crate::multiplexer::{
     CreateSessionParams, CreateWindowInSessionParams, CreateWindowParams, Multiplexer,
     PaneSetupOptions,
@@ -211,17 +211,60 @@ pub fn setup_environment(
 
     let target_window_name = options.target_window_name.as_deref().unwrap_or(handle);
     let target_session_name = options.target_session_name.as_deref().unwrap_or(handle);
-    let mux_target_full_name = match options.mode {
-        MuxMode::Window => crate::multiplexer::util::prefixed(prefix, target_window_name),
-        MuxMode::Session => crate::multiplexer::util::prefixed(prefix, target_session_name),
+    let mux_target_full_name = match options.placement {
+        Placement::Window | Placement::Pane => {
+            crate::multiplexer::util::prefixed(prefix, target_window_name)
+        }
+        Placement::Session => crate::multiplexer::util::prefixed(prefix, target_session_name),
     };
 
     // Track the focus and zoom pane across all windows
     let mut focus_pane_id: Option<String> = None;
     let mut zoom_pane_id: Option<String> = None;
 
-    match options.mode {
-        MuxMode::Window => {
+    match options.placement {
+        Placement::Pane => {
+            // Split the reference pane and then let `setup_panes` apply the
+            // panes config to the new pane, exactly as window mode does.
+            let reference = options.split_from_pane.as_deref().ok_or_else(|| {
+                anyhow!("Pane placement needs a pane to split from, and none was given.")
+            })?;
+            let panes = window_plans[0].panes.as_deref().unwrap_or(&[]);
+            let resolved_panes = resolve_pane_configuration(panes, config, agent);
+
+            let initial_pane_id = mux
+                .split_pane(
+                    reference,
+                    &config::SplitDirection::Vertical,
+                    effective_working_dir,
+                    None,
+                    None,
+                    None,
+                )
+                .context("Failed to split pane")?;
+            info!(
+                branch = branch_name,
+                handle = handle,
+                reference = %reference,
+                pane_id = %initial_pane_id,
+                "setup_environment:pane split"
+            );
+
+            let result = mux
+                .setup_panes(
+                    &initial_pane_id,
+                    &resolved_panes,
+                    effective_working_dir,
+                    pane_setup_options,
+                    config,
+                    agent,
+                )
+                .context("Failed to setup panes")?;
+
+            focus_pane_id = Some(result.focus_pane_id);
+            zoom_pane_id = result.zoom_pane_id;
+        }
+        Placement::Window => {
             // Window mode: single window, use panes config (window_plans always has 1 entry)
             let panes = window_plans[0].panes.as_deref().unwrap_or(&[]);
             let resolved_panes = resolve_pane_configuration(panes, config, agent);
@@ -279,7 +322,7 @@ pub fn setup_environment(
             focus_pane_id = Some(result.focus_pane_id);
             zoom_pane_id = result.zoom_pane_id;
         }
-        MuxMode::Session => {
+        Placement::Session => {
             let session_full_name = crate::multiplexer::util::prefixed(prefix, target_session_name);
 
             for (i, window_plan) in window_plans.iter().enumerate() {
@@ -358,15 +401,18 @@ pub fn setup_environment(
 
     // Focus the configured pane and optionally switch to the window/session.
     if options.focus_window {
-        match options.mode {
-            MuxMode::Window => {
+        match options.placement {
+            // A split pane is already in the current window: selecting it is
+            // all the focus it needs.
+            Placement::Pane => mux.select_pane(&focus_pane_id)?,
+            Placement::Window => {
                 // select_pane automatically selects the containing window in tmux.
                 mux.select_pane(&focus_pane_id)?;
                 if options.window_session_name.is_none() {
                     mux.select_window(prefix, target_window_name)?;
                 }
             }
-            MuxMode::Session => {
+            Placement::Session => {
                 // switch_to_pane switches the client directly to the pane,
                 // which also selects the correct window within the session.
                 // Using select_pane + switch_to_session would lose the window
@@ -391,7 +437,7 @@ pub fn setup_environment(
         resolved_handle: handle.to_string(),
         mux_target_full_name,
         focus_pane_id,
-        mode: options.mode,
+        mode: options.mode(),
     })
 }
 
@@ -779,7 +825,8 @@ mod tests {
             working_dir: None,
             config_root: None,
             open_if_exists: false,
-            mode: crate::config::MuxMode::default(),
+            placement: Placement::default(),
+            split_from_pane: None,
             target_window_name: None,
             target_session_name: None,
             window_session_name: None,

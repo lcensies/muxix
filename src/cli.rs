@@ -420,6 +420,10 @@ enum Commands {
         #[arg(short = 's', long, conflicts_with = "mode")]
         session: bool,
 
+        /// Run the agent at the repository root instead of creating a worktree
+        #[arg(long = "no-worktree")]
+        no_worktree: bool,
+
         /// Use an alternate config file for this invocation (still merges with global config)
         #[arg(long, value_hint = clap::ValueHint::FilePath)]
         config: Option<PathBuf>,
@@ -1340,6 +1344,7 @@ pub fn run() -> Result<()> {
             wait,
             mode,
             session,
+            no_worktree,
             config,
         } => {
             // Sugar: `muxix add <existing-repo-dir>` tracks the project
@@ -1387,6 +1392,7 @@ pub fn run() -> Result<()> {
                 fork,
                 wait,
                 mode_override,
+                !no_worktree,
                 config.as_deref(),
             )
         }

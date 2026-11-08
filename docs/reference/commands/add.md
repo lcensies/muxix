@@ -40,6 +40,7 @@ muxix add <branch-name> [flags]
 | `-s, --session`                | Shorthand for `--mode session`. Cannot be combined with `--mode`.                                                                                                                                                                                                       |
 | `--config <path>`              | Use an alternate config file for this invocation. Still merges with global config. Useful for per-command config overrides like `muxix add feat/my-branch --config .muxix.window.yaml`.                                                                             |
 | `--fork`                       | Fork the last conversation from the current worktree into the new one. The agent resumes with the forked conversation context. Use `--fork=<session-id>` to fork a specific session (prefix matching supported). Currently supports Claude Code.                        |
+| `--no-worktree`                | Run the agent at the repository root instead of creating a worktree. No branch and no worktree are created, and file operations and `post_create` hooks are skipped (what was skipped is printed) because they target a fresh checkout. The multiplexer target is still created and named from the handle. Not supported inside a sandbox. Same as the sidebar's create form with worktree turned off. |
 
 ## Skip options
 
@@ -144,6 +145,9 @@ muxix add docs-update --no-hooks --no-file-ops --no-pane-cmds
 
 # Skip just the file operations (e.g., you don't need node_modules)
 muxix add quick-fix --no-file-ops
+
+# No worktree at all: run the agent on the repository root checkout
+muxix add scratch --no-worktree
 ```
 
 ```bash [Scripting with --wait]

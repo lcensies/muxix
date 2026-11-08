@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 
-use crate::config::MuxMode;
+use crate::config::{MuxMode, Placement};
 use crate::multiplexer::MuxHandle;
 use crate::{git, spinner};
 use tracing::{debug, info, warn};
@@ -74,7 +74,20 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         is_explicit_name,
         prompt_file_only,
         fork_source,
+        worktree,
     } = args;
+
+    if !worktree {
+        return create_at_repo_root(
+            context,
+            branch_name,
+            handle,
+            prompt,
+            options,
+            prompt_file_only,
+            agent,
+        );
+    }
 
     info!(
         branch = branch_name,
@@ -89,7 +102,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
         anyhow::bail!("Cannot specify both 'panes' and 'windows' in configuration.");
     }
     if let Some(windows) = &context.config.windows {
-        if options.mode != MuxMode::Session {
+        if options.mode() != MuxMode::Session {
             anyhow::bail!(
                 "'windows' configuration requires 'mode: session'. \
                  Either add 'mode: session' to your config or use --session flag."
@@ -105,7 +118,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     context.ensure_mux_running()?;
 
     // Validate backend supports session mode before creating any git state
-    if options.mode == MuxMode::Session && context.mux.name() != "tmux" {
+    if options.mode() == MuxMode::Session && context.mux.name() != "tmux" {
         return Err(anyhow!(
             "Session mode (--mode session / --session) is only supported with tmux.\n\
              Current backend: {}. Use window mode instead.",
@@ -118,7 +131,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     let explicit_target_name = options.has_explicit_primary_mux_target();
     let target = MuxHandle::new(
         context.mux.as_ref(),
-        options.mode,
+        options.mode(),
         &context.prefix,
         requested_target_name,
     );
@@ -177,7 +190,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
         let suffixed_target = MuxHandle::new(
             context.mux.as_ref(),
-            options.mode,
+            options.mode(),
             &context.prefix,
             &current_target_name,
         );
@@ -214,7 +227,8 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             working_dir: options.working_dir.clone(),
             config_root: options.config_root.clone(),
             open_if_exists: false,
-            mode: options.mode,
+            placement: options.placement,
+            split_from_pane: options.split_from_pane.clone(),
             target_window_name: options.target_window_name.clone(),
             target_session_name: options.target_session_name.clone(),
             window_session_name: options.window_session_name.clone(),
@@ -243,7 +257,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
             target.kind(),
             MuxHandle::new(
                 context.mux.as_ref(),
-                options.mode,
+                options.mode(),
                 &context.prefix,
                 &current_target_name,
             )
@@ -452,7 +466,7 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
 
     // Store the tmux mode in git config for cleanup and reopen operations.
     // This allows remove/close/merge/open to know whether to kill a window or session.
-    let mode_str = match options.mode {
+    let mode_str = match options.mode() {
         MuxMode::Session => "session",
         MuxMode::Window => "window",
     };
@@ -658,6 +672,126 @@ pub fn create(context: &WorkflowContext, args: CreateArgs) -> Result<CreateResul
     Ok(result)
 }
 
+/// Create an agent at the repository root, with no worktree and no branch.
+///
+/// Everything that only makes sense for a fresh worktree is skipped: branch
+/// creation, file operations (the repository root already *is* the source they
+/// copy from) and post-create hooks (they provision a new checkout). What was
+/// skipped is printed, because a user who configured hooks would otherwise see
+/// them silently not run.
+fn create_at_repo_root(
+    context: &WorkflowContext,
+    branch_name: &str,
+    handle: &str,
+    prompt: Option<&crate::prompt::Prompt>,
+    mut options: SetupOptions,
+    prompt_file_only: bool,
+    agent: Option<&str>,
+) -> Result<CreateResult> {
+    let root = context.main_worktree_root.clone();
+    info!(handle = handle, path = %root.display(), "create:start (no worktree)");
+
+    if context.config.panes.is_some() && context.config.windows.is_some() {
+        anyhow::bail!("Cannot specify both 'panes' and 'windows' in configuration.");
+    }
+
+    context.ensure_mux_running()?;
+
+    if options.placement == Placement::Session && context.mux.name() != "tmux" {
+        return Err(anyhow!(
+            "Session mode (--mode session / --session) is only supported with tmux.\n\
+             Current backend: {}. Use window mode instead.",
+            context.mux.name()
+        ));
+    }
+    if options.placement == Placement::Pane && options.split_from_pane.is_none() {
+        return Err(anyhow!(
+            "Pane placement needs a pane to split from, and none was given."
+        ));
+    }
+
+    // A split pane is not a named target, so there is nothing to collide with.
+    if options.placement != Placement::Pane {
+        let target = MuxHandle::new(
+            context.mux.as_ref(),
+            options.mode(),
+            &context.prefix,
+            options.primary_mux_target_name(handle),
+        );
+        if target.exists()? {
+            return Err(anyhow!(
+                "A {} {} named '{}' already exists.\n\
+                 Hint: use --name or --target-name to specify a unique name.",
+                context.mux.name(),
+                target.kind(),
+                target.full_name()
+            ));
+        }
+    }
+
+    let mut skipped: Vec<&str> = Vec::new();
+    let files = &context.config.files;
+    if options.run_file_ops
+        && (files.copy.as_ref().is_some_and(|c| !c.is_empty())
+            || files.symlink.as_ref().is_some_and(|s| !s.is_empty()))
+    {
+        skipped.push("file operations");
+    }
+    if options.run_hooks
+        && context
+            .config
+            .post_create
+            .as_ref()
+            .is_some_and(|h| !h.is_empty())
+    {
+        skipped.push("post-create hooks");
+    }
+    if !skipped.is_empty() {
+        eprintln!(
+            "muxix: no worktree requested; skipping {} (they target a fresh worktree)",
+            skipped.join(" and ")
+        );
+    }
+    options.run_file_ops = false;
+    options.run_hooks = false;
+
+    let prompt_file_path = match prompt {
+        Some(p) if !prompt_file_only => {
+            Some(setup::write_prompt_file(Some(&root), branch_name, p)?)
+        }
+        Some(p) => {
+            setup::write_prompt_file(Some(&root), branch_name, p)?;
+            None
+        }
+        None => None,
+    };
+
+    let options = SetupOptions {
+        prompt_file_path,
+        working_dir: Some(root.clone()),
+        config_root: Some(context.config_source_dir.clone()),
+        ..options
+    };
+
+    let mut result = setup::setup_environment(
+        context.mux.as_ref(),
+        branch_name,
+        handle,
+        &root,
+        &context.config,
+        &options,
+        agent,
+        None,
+    )?;
+    crate::state::persist_agent_completion(context.mux.as_ref(), &result.focus_pane_id, None);
+    // The agent runs on whatever the repository root has checked out.
+    result.branch_name = git::get_current_branch_in(&root)
+        .map(|b| b.trim().to_string())
+        .unwrap_or_else(|_| branch_name.to_string());
+    info!(handle = handle, path = %root.display(), "create:completed (no worktree)");
+    Ok(result)
+}
+
 /// Create a new worktree and move uncommitted changes from the current worktree into it.
 pub fn create_with_changes(
     branch_name: &str,
@@ -702,7 +836,7 @@ pub fn create_with_changes(
     info!(branch = branch_name, "create_with_changes: changes stashed");
 
     // Capture mode before moving options (needed for rollback cleanup)
-    let mode = options.mode;
+    let mode = options.mode();
 
     // 2. Create new worktree
     let create_result = match create(
@@ -720,6 +854,7 @@ pub fn create_with_changes(
             is_explicit_name: false,
             prompt_file_only: false,
             fork_source: None,
+            worktree: true,
         },
     ) {
         Ok(result) => result,
@@ -806,11 +941,34 @@ mod tests {
 
     static CWD_LOCK: Mutex<()> = Mutex::new(());
 
-    struct TestMux;
+    /// Records the calls the placement arms are distinguished by.
+    struct TestMux {
+        backend: &'static str,
+        log: Mutex<Vec<String>>,
+    }
+
+    impl Default for TestMux {
+        fn default() -> Self {
+            Self {
+                backend: "tmux",
+                log: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl TestMux {
+        fn record(&self, what: &str) {
+            self.log.lock().unwrap().push(what.to_string());
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.log.lock().unwrap().clone()
+        }
+    }
 
     impl Multiplexer for TestMux {
         fn name(&self) -> &'static str {
-            "tmux"
+            self.backend
         }
 
         fn is_running(&self) -> Result<bool> {
@@ -830,10 +988,12 @@ mod tests {
         }
 
         fn create_window(&self, _params: CreateWindowParams) -> Result<String> {
+            self.record("create_window");
             Ok("pane-1".to_string())
         }
 
         fn create_session(&self, _params: CreateSessionParams) -> Result<String> {
+            self.record("create_session");
             Ok("pane-1".to_string())
         }
 
@@ -1008,6 +1168,7 @@ mod tests {
             _percentage: Option<u8>,
             _command: Option<&str>,
         ) -> Result<String> {
+            self.record("split_pane");
             Ok("pane-2".to_string())
         }
 
@@ -1088,8 +1249,13 @@ mod tests {
         std::env::set_current_dir(&non_repo).unwrap();
         {
             let config = Config::default();
-            let ctx =
-                WorkflowContext::new_in(&repo_b, config.clone(), Arc::new(TestMux), None).unwrap();
+            let ctx = WorkflowContext::new_in(
+                &repo_b,
+                config.clone(),
+                Arc::new(TestMux::default()),
+                None,
+            )
+            .unwrap();
             let mut options = SetupOptions::new(false, false, false);
             options.focus_window = false;
             let result = create(
@@ -1107,6 +1273,7 @@ mod tests {
                     is_explicit_name: false,
                     prompt_file_only: false,
                     fork_source: None,
+                    worktree: true,
                 },
             )
             .unwrap();
@@ -1123,5 +1290,141 @@ mod tests {
             );
         };
         std::env::set_current_dir(original_cwd).unwrap();
+    }
+
+    /// A context whose repo is a fresh git repo, with the given backend.
+    fn ctx_in(
+        repo: &Path,
+        backend: &'static str,
+        config: Config,
+    ) -> (WorkflowContext, Arc<TestMux>) {
+        let mux = Arc::new(TestMux {
+            backend,
+            log: Mutex::new(Vec::new()),
+        });
+        let ctx = WorkflowContext::new_in(repo, config, mux.clone(), None).unwrap();
+        (ctx, mux)
+    }
+
+    fn create_args<'a>(branch: &'a str, options: SetupOptions, worktree: bool) -> CreateArgs<'a> {
+        CreateArgs {
+            branch_name: branch,
+            handle: "agent",
+            base_branch: None,
+            remote_branch: None,
+            pr_number: None,
+            prompt: None,
+            options,
+            mode_override: None,
+            agent: None,
+            is_explicit_name: false,
+            prompt_file_only: false,
+            fork_source: None,
+            worktree,
+        }
+    }
+
+    fn quiet_options(placement: Placement, split_from: Option<&str>) -> SetupOptions {
+        let mut options = SetupOptions::new(false, false, false);
+        options.focus_window = false;
+        options.placement = placement;
+        options.split_from_pane = split_from.map(str::to_string);
+        options
+    }
+
+    #[test]
+    fn each_placement_uses_its_own_multiplexer_call() {
+        let temp = tempfile::tempdir().unwrap();
+        for (placement, split_from, expected) in [
+            (Placement::Window, None, "create_window"),
+            (Placement::Session, None, "create_session"),
+            (Placement::Pane, Some("%7"), "split_pane"),
+        ] {
+            let repo = temp.path().join(format!("repo-{}", placement.as_str()));
+            std::fs::create_dir_all(&repo).unwrap();
+            init_repo(&repo);
+            let (ctx, mux) = ctx_in(&repo, "tmux", Config::default());
+            create(
+                &ctx,
+                create_args("", quiet_options(placement, split_from), false),
+            )
+            .unwrap();
+            assert_eq!(
+                mux.calls(),
+                vec![expected.to_string()],
+                "placement {placement:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pane_placement_with_no_reference_pane_creates_nothing() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        let (ctx, mux) = ctx_in(&repo, "tmux", Config::default());
+        let err = create(
+            &ctx,
+            create_args("", quiet_options(Placement::Pane, None), false),
+        )
+        .err()
+        .expect("pane placement without a reference pane must fail");
+        assert!(
+            err.to_string().contains("pane to split from"),
+            "unhelpful error: {err}"
+        );
+        assert!(mux.calls().is_empty(), "nothing may be created");
+    }
+
+    #[test]
+    fn session_placement_is_refused_on_a_backend_without_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        let (ctx, mux) = ctx_in(&repo, "kitty", Config::default());
+        let err = create(
+            &ctx,
+            create_args("", quiet_options(Placement::Session, None), false),
+        )
+        .err()
+        .expect("session mode is tmux-only");
+        assert!(
+            err.to_string().contains("only supported with tmux"),
+            "wrong error: {err}"
+        );
+        assert!(mux.calls().is_empty());
+    }
+
+    #[test]
+    fn creating_without_a_worktree_runs_at_the_repository_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+
+        // A hook that would fail if it ran: worktree-targeted hooks must be
+        // skipped, not run at the repository root.
+        let config = Config {
+            post_create: Some(vec!["exit 17".to_string()]),
+            ..Default::default()
+        };
+        let (ctx, _mux) = ctx_in(&repo, "tmux", config);
+
+        let mut options = quiet_options(Placement::Window, None);
+        options.run_hooks = true;
+        options.run_file_ops = true;
+        // No branch name at all: none is needed with no worktree.
+        let result = create(&ctx, create_args("", options, false)).unwrap();
+
+        assert_eq!(result.worktree_path, repo);
+        assert_eq!(result.post_create_hooks_run, 0, "hooks must be skipped");
+        assert_eq!(result.branch_name, "main", "reports the checked-out branch");
+        assert_eq!(
+            git::list_worktrees_in(Some(&repo)).unwrap().len(),
+            1,
+            "no worktree may be added"
+        );
     }
 }

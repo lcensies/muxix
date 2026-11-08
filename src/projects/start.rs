@@ -222,7 +222,7 @@ fn open_worktree_windows(
 
         let mut options = SetupOptions::new(false, false, continue_session);
         options.focus_window = false;
-        options.mode = mode;
+        options.placement = mode.into();
         if mode == MuxMode::Window {
             options.window_session_name = Some(entry.name.clone());
         }

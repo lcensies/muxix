@@ -781,7 +781,7 @@ impl App {
         };
 
         let mut options = workflow::types::SetupOptions::new(false, false, true);
-        options.mode = self.config.mode();
+        options.placement = self.config.mode().into();
         let agent_name = self
             .config
             .agent
@@ -1228,7 +1228,7 @@ impl App {
                 let handle = crate::naming::derive_handle(&local_branch, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
-                options.mode = config.mode();
+                options.placement = config.mode().into();
 
                 let result = workflow::create(
                     &ctx,
@@ -1245,6 +1245,7 @@ impl App {
                         is_explicit_name: false,
                         prompt_file_only: false,
                         fork_source: None,
+                        worktree: true,
                     },
                 )?;
                 Ok(result.branch_name)
@@ -1290,7 +1291,7 @@ impl App {
                 let handle = crate::naming::derive_handle(&name, None, &config)?;
                 let mut options = workflow::types::SetupOptions::new(true, true, true);
                 options.focus_window = false;
-                options.mode = config.mode();
+                options.placement = config.mode().into();
 
                 let result = workflow::create(
                     &ctx,
@@ -1307,6 +1308,7 @@ impl App {
                         is_explicit_name: false,
                         prompt_file_only: false,
                         fork_source: None,
+                        worktree: true,
                     },
                 )?;
                 Ok(result.branch_name)

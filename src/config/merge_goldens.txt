@@ -42,6 +42,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -147,6 +151,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -252,6 +260,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -357,6 +369,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: true
 theme:
   scheme: Default
@@ -471,6 +487,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -583,6 +603,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -697,6 +721,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -765,18 +793,18 @@ worktree_dir: null
 window_prefix: null
 panes: null
 layouts:
-  tall:
+  wide:
     panes:
-    - command: b
+    - command: a
       focus: false
       split: null
       size: null
       percentage: null
       target: null
       zoom: false
-  wide:
+  tall:
     panes:
-    - command: a
+    - command: b
       focus: false
       split: null
       size: null
@@ -820,6 +848,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -934,6 +966,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1048,6 +1084,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1153,6 +1193,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1269,6 +1313,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1377,6 +1425,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1482,6 +1534,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1587,6 +1643,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1692,6 +1752,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1797,6 +1861,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -1902,6 +1970,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2007,6 +2079,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2112,6 +2188,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2217,6 +2297,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2338,6 +2422,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2443,6 +2531,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2549,6 +2641,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2654,6 +2750,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2760,6 +2860,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2866,6 +2970,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -2973,6 +3081,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3080,6 +3192,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3191,6 +3307,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3300,6 +3420,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3405,6 +3529,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3521,6 +3649,10 @@ sidebar:
     codex:
       icon: X
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3629,6 +3761,10 @@ sidebar:
     horizontal: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -3734,6 +3870,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Mossfire
@@ -3855,6 +3995,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Mossfire
@@ -3960,6 +4104,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Lasergrid
@@ -4065,6 +4213,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4172,6 +4324,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4278,6 +4434,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4383,6 +4543,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4488,6 +4652,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4596,6 +4764,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4704,6 +4876,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default
@@ -4817,6 +4993,10 @@ sidebar:
   templates: null
   agent_icons: null
   default_scope: null
+  confirm_style: null
+  new_agent:
+    placement: null
+    worktree: null
 nerdfont: null
 theme:
   scheme: Default

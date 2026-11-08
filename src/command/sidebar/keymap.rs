@@ -7,7 +7,8 @@ use crate::tui::Binding;
 use crate::tui::chord::KeyChord as K;
 use crossterm::event::KeyCode;
 
-use super::app::SidebarApp;
+use super::app::{ModalIntent, SidebarApp, SidebarMode};
+use crate::tui::modal::ModalOutcome;
 
 /// Canonical context name for the sidebar (single context).
 pub const SIDEBAR: &str = "sidebar";
@@ -25,6 +26,8 @@ pub enum SidebarAction {
     HalfPageDown,
     HalfPageUp,
     DeleteSelected,
+    NewAgent,
+    ShowActions,
 }
 
 pub const SIDEBAR_BINDINGS: &[Binding<SidebarAction>] = &[
@@ -110,6 +113,23 @@ pub const SIDEBAR_BINDINGS: &[Binding<SidebarAction>] = &[
         palette: true,
         contexts: &[SIDEBAR],
     },
+    Binding {
+        action: Some(SidebarAction::NewAgent),
+        chords: &[K::key('a')],
+        hint: "a",
+        label: "New agent",
+        palette: true,
+        contexts: &[SIDEBAR],
+    },
+    Binding {
+        action: Some(SidebarAction::ShowActions),
+        chords: &[K::key('?')],
+        hint: "?",
+        label: "Show actions",
+        // Opening the action list from inside the action list buys nothing.
+        palette: false,
+        contexts: &[SIDEBAR],
+    },
 ];
 
 /// Apply a resolved sidebar action to the app.
@@ -127,6 +147,46 @@ pub fn apply_action(app: &mut SidebarApp, action: SidebarAction) {
         SidebarAction::HalfPageDown => app.half_page_down(),
         SidebarAction::HalfPageUp => app.half_page_up(),
         SidebarAction::DeleteSelected => app.begin_delete(),
+        SidebarAction::NewAgent => app.open_create_form(),
+        SidebarAction::ShowActions => app.open_action_list(),
+    }
+}
+
+/// Key entry point for the event loop.
+///
+/// An open modal owns the keyboard, so it is served before the vim prefixes
+/// and the binding registry: `Esc` must close it rather than quit the sidebar,
+/// and a bound key must not also fire its action underneath.
+pub fn handle_key_event(app: &mut SidebarApp, key: crossterm::event::KeyEvent) {
+    if let SidebarMode::Modal { modal, .. } = &mut app.mode {
+        let outcome = modal.handle_key(&key);
+        apply_modal_outcome(app, outcome);
+        return;
+    }
+    handle_key(app, K::from_event(key));
+}
+
+fn apply_modal_outcome(app: &mut SidebarApp, outcome: ModalOutcome<SidebarAction>) {
+    match outcome {
+        ModalOutcome::Consumed => {}
+        ModalOutcome::Cancel => app.mode = SidebarMode::Normal,
+        ModalOutcome::Confirmed => {
+            if let SidebarMode::Modal {
+                intent: ModalIntent::DeleteAgent(agent),
+                ..
+            } = std::mem::replace(&mut app.mode, SidebarMode::Normal)
+            {
+                app.delete_agent_now(&agent);
+            }
+        }
+        ModalOutcome::Submit(values) => {
+            app.mode = SidebarMode::Normal;
+            app.submit_create(&values);
+        }
+        ModalOutcome::Run(action) => {
+            app.mode = SidebarMode::Normal;
+            apply_action(app, action);
+        }
     }
 }
 
@@ -136,7 +196,7 @@ pub fn handle_key(app: &mut SidebarApp, chord: K) {
     // A pending delete owns the keyboard: only Enter confirms, and every other
     // key cancels — so a stray Enter typed after moving the selection can never
     // delete the wrong agent. Checked first because Esc is otherwise Quit.
-    if app.pending_delete.is_some() {
+    if app.mode.pending_delete().is_some() {
         if chord == K::code(KeyCode::Enter) {
             app.confirm_delete();
         } else {
@@ -241,9 +301,9 @@ mod tests {
             let mut app = nav_app();
             app.list_state.select(Some(0));
             let agent = app.agents[0].clone();
-            app.pending_delete = Some((agent, "prompt".to_string()));
+            app.mode = SidebarMode::PendingDelete(Box::new(agent), "prompt".to_string());
             handle_key(&mut app, chord);
-            assert!(app.pending_delete.is_none(), "{chord:?}");
+            assert!(app.mode.pending_delete().is_none(), "{chord:?}");
             assert!(app.quit.is_none(), "{chord:?}");
             assert_eq!(app.list_state.selected(), Some(0), "{chord:?}");
         }
@@ -317,6 +377,99 @@ mod tests {
         app.select_last();
         handle_key(&mut app, K::key('j'));
         assert_eq!(app.list_state.selected(), Some(0));
+    }
+
+    fn event_for(chord: crate::tui::chord::KeyChord) -> KeyEvent {
+        KeyEvent::new(chord.code, chord.mods)
+    }
+
+    fn bound_chords() -> Vec<crate::tui::chord::KeyChord> {
+        SIDEBAR_BINDINGS
+            .iter()
+            .flat_map(|b| b.chords.iter().copied())
+            .collect()
+    }
+
+    #[test]
+    fn the_new_bindings_resolve() {
+        assert_eq!(
+            lookup(SIDEBAR_BINDINGS, SIDEBAR, K::key('a')),
+            Some(SidebarAction::NewAgent)
+        );
+        assert_eq!(
+            lookup(SIDEBAR_BINDINGS, SIDEBAR, K::key('?')),
+            Some(SidebarAction::ShowActions)
+        );
+    }
+
+    #[test]
+    fn an_open_modal_swallows_every_bound_key() {
+        for chord in bound_chords() {
+            // Enter submits the form rather than jumping to an agent; the
+            // submit path is covered in `crate::tui::modal`.
+            if chord == K::code(KeyCode::Enter) {
+                continue;
+            }
+            let mut app = nav_app();
+            app.list_state.select(Some(0));
+            let layout = app.layout_mode;
+            app.open_create_form();
+
+            handle_key_event(&mut app, event_for(chord));
+
+            assert!(app.quit.is_none(), "{chord:?} must not quit the sidebar");
+            assert_eq!(
+                app.list_state.selected(),
+                Some(0),
+                "{chord:?} must not move the selection"
+            );
+            assert_eq!(app.layout_mode, layout, "{chord:?} must not act underneath");
+            if chord == K::code(KeyCode::Esc) {
+                assert!(app.mode.is_normal(), "Esc closes the modal");
+            } else {
+                assert!(
+                    matches!(app.mode, SidebarMode::Modal { .. }),
+                    "{chord:?} must leave the modal open"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_action_list_shows_exactly_the_palette_bindings() {
+        let mut app = nav_app();
+        app.open_action_list();
+        let SidebarMode::Modal {
+            modal: crate::tui::modal::Modal::ActionList { state, .. },
+            ..
+        } = &app.mode
+        else {
+            panic!("expected the action list");
+        };
+        let shown: Vec<&str> = state.commands.iter().map(|c| c.label).collect();
+        let expected: Vec<&str> = SIDEBAR_BINDINGS
+            .iter()
+            .filter(|b| b.palette && b.contexts.contains(&SIDEBAR))
+            .map(|b| b.label)
+            .collect();
+        assert_eq!(shown, expected);
+        assert!(
+            !shown.contains(&"Show actions"),
+            "the action list does not list itself"
+        );
+    }
+
+    #[test]
+    fn filtering_the_action_list_and_accepting_runs_that_action() {
+        let mut app = nav_app();
+        let layout = app.layout_mode;
+        app.open_action_list();
+        for c in "toggle la".chars() {
+            handle_key_event(&mut app, event_for(K::key(c)));
+        }
+        handle_key_event(&mut app, event_for(K::code(KeyCode::Enter)));
+        assert!(app.mode.is_normal(), "accepting closes the list");
+        assert_ne!(app.layout_mode, layout, "the filtered action ran");
     }
 
     #[allow(non_snake_case)]

@@ -59,9 +59,9 @@ pub fn open(
         .to_string();
 
     // Resolve mode using canonical base_handle (not the CLI-provided name which may be a branch).
-    // Precedence: CLI override > stored git metadata > config default (from options.mode)
+    // Precedence: CLI override > stored git metadata > config default (from options.mode())
     let stored_mode = git::get_worktree_mode_opt_in(&base_handle, Some(&context.execution_dir));
-    let mode = mode_override.or(stored_mode).unwrap_or(options.mode);
+    let mode = mode_override.or(stored_mode).unwrap_or(options.mode());
     if mode == MuxMode::Session && options.window_session_name.is_some() {
         anyhow::bail!("--parent-session requires window mode");
     }
@@ -176,7 +176,7 @@ pub fn open(
 
     // Update options with the resolved mode
     let options = SetupOptions {
-        mode,
+        placement: mode.into(),
         target_window_name: if mode == MuxMode::Window {
             target_window_name.clone()
         } else {

@@ -463,11 +463,21 @@ pub fn render_sidebar(f: &mut Frame, app: &mut SidebarApp) {
         SidebarLayoutMode::Compact => render_compact_list(f, app, list_area),
         SidebarLayoutMode::Tiles => render_tile_list(f, app, list_area),
     }
+
+    render_modal_overlay(f, app, area);
+}
+
+/// Draw the open modal over the list, if any. The list stays rendered around
+/// it; only the modal's own rect is cleared.
+fn render_modal_overlay(f: &mut Frame, app: &SidebarApp, area: Rect) {
+    if let crate::command::sidebar::app::SidebarMode::Modal { modal, .. } = &app.mode {
+        crate::tui::modal::render(f, area, modal, &app.palette);
+    }
 }
 
 /// The delete confirmation, drawn above the list so it cannot be missed.
 fn render_delete_prompt(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
-    let Some((_, prompt)) = &app.pending_delete else {
+    let Some((_, prompt)) = app.mode.pending_delete() else {
         return area;
     };
     if area.height == 0 {
@@ -478,7 +488,7 @@ fn render_delete_prompt(f: &mut Frame, app: &SidebarApp, area: Rect) -> Rect {
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(height), Constraint::Min(0)])
         .split(area);
-    let warning = Paragraph::new(prompt.as_str())
+    let warning = Paragraph::new(prompt)
         .style(Style::default().fg(app.palette.warning))
         .wrap(Wrap { trim: false });
     f.render_widget(warning, chunks[0]);

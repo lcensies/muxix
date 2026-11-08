@@ -106,7 +106,7 @@ pub fn run(
 
         // Construct setup options (pane commands always run on open)
         let mut options = SetupOptions::new(run_hooks, force_files, true);
-        options.mode = preliminary_mode;
+        options.placement = preliminary_mode.into();
         options.prompt_file_path = prompt_file_path;
         if continue_session {
             // Prefer resuming the exact session id when the agent's store is
