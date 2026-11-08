@@ -127,7 +127,7 @@ the list. Requires `set -g mouse on` in your `~/.tmux.conf`.
 | `Ctrl+d`/`Ctrl+u` | Half page down/up               |
 | `v`     | Toggle layout mode       |
 | `z`     | Toggle sleeping on agent |
-| `d`     | Delete agent. Under tmux asks on the tmux prompt line (Enter or `y` confirms); elsewhere in the sidebar (Enter confirms). Any other key cancels. |
+| `d`     | Delete agent. A centered dialog in the pane asks (Enter confirms, any other key cancels). |
 | `a`     | New agent (create form)  |
 | `?`     | Show actions             |
 | `q`     | Quit sidebar             |
@@ -200,6 +200,9 @@ The `top` position is one to five rows tall — too short for a dialog — so it
 asks with the multiplexer's own prompt (under tmux, the prompt line) or, on a
 backend with none, a one-line band in the bar itself.
 
+Set `sidebar.confirm_style: native` to use that prompt everywhere instead of the
+dialog; the default is `popup`.
+
 ### Creating an agent
 
 Press `a` to create a new agent without leaving the sidebar. A form opens in the
@@ -210,8 +213,8 @@ pane, prefilled from the selected row:
 | Branch | empty — type the branch to create |
 | Repository | the selected agent's repository, re-derived from its pane's working directory |
 | Agent | empty, so the repository's own [`agent_rules`](/guide/agents) choose the profile |
-| Placement | `window` |
-| Worktree | `yes` |
+| Placement | `sidebar.new_agent.placement` (default `window`) |
+| Worktree | `sidebar.new_agent.worktree` (default `yes`) |
 
 `Tab` and `Shift+Tab` move between fields, `←`/`→` cycle a choice field, `Enter`
 submits and `Esc` cancels. The form still opens with nothing selected, with the

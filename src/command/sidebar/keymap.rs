@@ -169,22 +169,23 @@ pub fn handle_key_event(app: &mut SidebarApp, key: crossterm::event::KeyEvent) {
 fn apply_modal_outcome(app: &mut SidebarApp, outcome: ModalOutcome<SidebarAction>) {
     match outcome {
         ModalOutcome::Consumed => {}
-        ModalOutcome::Cancel => app.mode = SidebarMode::Normal,
+        ModalOutcome::Cancel => app.mode = SidebarMode::normal(),
         ModalOutcome::Confirmed => {
             if let SidebarMode::Modal {
                 intent: ModalIntent::DeleteAgent(agent),
                 ..
-            } = std::mem::replace(&mut app.mode, SidebarMode::Normal)
+            } = std::mem::replace(&mut app.mode, SidebarMode::normal())
             {
                 app.delete_agent_now(&agent);
             }
         }
         ModalOutcome::Submit(values) => {
-            app.mode = SidebarMode::Normal;
-            app.submit_create(&values);
+            app.mode = SidebarMode::normal();
+            // The worker reports for itself; the loop does not wait on it.
+            let _ = app.submit_create(&values);
         }
         ModalOutcome::Run(action) => {
-            app.mode = SidebarMode::Normal;
+            app.mode = SidebarMode::normal();
             apply_action(app, action);
         }
     }
@@ -207,15 +208,16 @@ pub fn handle_key(app: &mut SidebarApp, chord: K) {
 
     // `g` pending: a second `g` selects first; anything else cancels the
     // prefix and is processed normally.
-    if app.pending_g {
-        app.pending_g = false;
+    let count = app.mode.count();
+    if matches!(app.mode, SidebarMode::PendingG { .. }) {
+        app.mode = SidebarMode::Normal { count };
         if chord == K::key('g') {
-            app.pending_count = None;
+            app.mode = SidebarMode::normal();
             app.select_first();
             return;
         }
     } else if chord == K::key('g') {
-        app.pending_g = true;
+        app.mode = SidebarMode::PendingG { count };
         return;
     }
 
@@ -223,14 +225,17 @@ pub fn handle_key(app: &mut SidebarApp, chord: K) {
     if let crossterm::event::KeyCode::Char(c) = chord.code
         && chord.mods.is_empty()
         && c.is_ascii_digit()
-        && (c != '0' || app.pending_count.is_some())
+        && (c != '0' || count.is_some())
     {
         let d = c as usize - '0' as usize;
-        app.pending_count = Some(app.pending_count.unwrap_or(0).saturating_mul(10) + d);
+        app.mode = SidebarMode::Normal {
+            count: Some(count.unwrap_or(0).saturating_mul(10) + d),
+        };
         return;
     }
 
-    if let Some(n) = app.pending_count.take() {
+    if let Some(n) = count {
+        app.mode = SidebarMode::normal();
         if chord == K::key('j') || chord == K::code(KeyCode::Down) {
             app.move_down(n);
             return;
@@ -321,9 +326,9 @@ mod tests {
         let mut app = nav_app();
         app.select_last();
         handle_key(&mut app, K::key('g'));
-        assert!(app.pending_g);
+        assert!(matches!(app.mode, SidebarMode::PendingG { .. }));
         handle_key(&mut app, K::key('g'));
-        assert!(!app.pending_g);
+        assert!(app.mode.is_normal());
         assert_eq!(app.list_state.selected(), Some(0));
     }
 
@@ -333,7 +338,7 @@ mod tests {
         app.list_state.select(Some(0));
         handle_key(&mut app, K::key('g'));
         handle_key(&mut app, K::key('j'));
-        assert!(!app.pending_g);
+        assert!(app.mode.is_normal());
         assert_eq!(app.list_state.selected(), Some(1));
     }
 
@@ -342,13 +347,13 @@ mod tests {
         let mut app = nav_app();
         app.list_state.select(Some(0));
         handle_key(&mut app, K::key('2'));
-        assert_eq!(app.pending_count, Some(2));
+        assert_eq!(app.mode.count(), Some(2));
         handle_key(&mut app, K::key('j'));
-        assert_eq!(app.pending_count, None);
+        assert_eq!(app.mode.count(), None);
         assert_eq!(app.list_state.selected(), Some(2));
         handle_key(&mut app, K::key('1'));
         handle_key(&mut app, K::key('0'));
-        assert_eq!(app.pending_count, Some(10));
+        assert_eq!(app.mode.count(), Some(10));
         handle_key(&mut app, K::key('k'));
         assert_eq!(app.list_state.selected(), Some(0));
     }
@@ -367,7 +372,7 @@ mod tests {
         let layout = app.layout_mode;
         handle_key(&mut app, K::key('3'));
         handle_key(&mut app, K::key('v'));
-        assert_eq!(app.pending_count, None);
+        assert_eq!(app.mode.count(), None);
         assert_ne!(app.layout_mode, layout);
     }
 

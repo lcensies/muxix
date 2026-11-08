@@ -74,10 +74,18 @@ sidebar:
   width: 40 # left width in columns (default: "10%", clamped 25-50)
   # width: "15%"
   layout: tiles # left only: "compact" or "tiles" (default)
+  confirm_style: popup # "popup" (default) or "native"
+  new_agent:
+    placement: window # "window" (default), "session" or "pane"
+    worktree: true # default
 ```
 
-The create form that `a` opens starts on placement `window` and worktree
-`yes`. `placement: pane` splits the selected agent's pane rather than opening a
+`confirm_style: native` asks on the multiplexer's own prompt line instead of the
+in-pane dialog. `position: top` is one to five rows, too short for a dialog, so
+it uses the native prompt whatever the style says.
+
+The create form that `a` opens starts on `new_agent.placement` and
+`new_agent.worktree`. `placement: pane` splits the selected agent's pane rather than opening a
 window, so it needs a selected row and cannot create a worktree. Worktree `no`
 runs the new agent at the repository root with no branch and no worktree, like
 [`muxix add --no-worktree`](./add.md); worktree-targeted file operations and

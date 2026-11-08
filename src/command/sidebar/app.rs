@@ -11,7 +11,10 @@ use std::time::{Duration, Instant};
 
 use crate::agent_display::{extract_project_name, extract_worktree_name, resolve_labels};
 use crate::cmd::Cmd;
-use crate::config::{AgentIcons, Config, Placement, SidebarPosition, SidebarWidth, StatusIcons};
+use crate::config::{
+    AgentIcons, Config, NewAgentConfig, Placement, SidebarConfirmStyle, SidebarPosition,
+    SidebarWidth, StatusIcons,
+};
 use crate::git::GitStatus;
 use crate::github::PrSummary;
 use ratatui::style::Color;
@@ -84,7 +87,13 @@ pub enum ModalIntent {
 /// it is checked before the binding registry: `Esc` must close the mode rather
 /// than quit the sidebar.
 pub enum SidebarMode {
-    Normal,
+    /// Ordinary input, carrying any vim-style count prefix typed so far
+    /// (`2` in `2j`). A count is an argument to the next key rather than a
+    /// mode, so it rides along instead of blocking the binding registry.
+    Normal { count: Option<usize> },
+    /// A `g` was pressed and awaits a second `g`. The count survives the
+    /// prefix: `3g` then `j` still moves three rows.
+    PendingG { count: Option<usize> },
     /// The one-line confirmation band, used in the top position and on
     /// backends with no native prompt. Carries the prompt text to draw.
     PendingDelete(Box<AgentPane>, String),
@@ -95,8 +104,20 @@ pub enum SidebarMode {
 }
 
 impl SidebarMode {
+    pub fn normal() -> Self {
+        Self::Normal { count: None }
+    }
+
     pub fn is_normal(&self) -> bool {
-        matches!(self, Self::Normal)
+        matches!(self, Self::Normal { .. })
+    }
+
+    /// The count prefix typed so far, if any.
+    pub fn count(&self) -> Option<usize> {
+        match self {
+            Self::Normal { count } | Self::PendingG { count } => *count,
+            _ => None,
+        }
     }
 
     pub fn pending_delete(&self) -> Option<(&AgentPane, &str)> {
@@ -251,10 +272,10 @@ pub struct SidebarApp {
     /// Per-agent project divider: `Some(name)` on the first agent of each
     /// project group. All `None` when a single project is present.
     pub project_headers: Vec<Option<String>>,
-    /// Accumulated vim-style count prefix (e.g. `2` in `2j`).
-    pub pending_count: Option<usize>,
-    /// A `g` was pressed and awaits a second `g`.
-    pub pending_g: bool,
+    /// How a delete is confirmed, from `sidebar.confirm_style`.
+    pub confirm_style: SidebarConfirmStyle,
+    /// Prefilled values for the create form, from `sidebar.new_agent`.
+    pub new_agent: NewAgentConfig,
     /// Current input mode: normal, a delete band, or an open modal.
     pub mode: SidebarMode,
     /// Cached horizontal chip hitboxes for top bar mouse hit testing.
@@ -327,9 +348,9 @@ impl SidebarApp {
             agent_icons: ResolvedAgentIcons::default(),
             tile_heights: Vec::new(),
             project_headers: Vec::new(),
-            pending_count: None,
-            pending_g: false,
-            mode: SidebarMode::Normal,
+            confirm_style: SidebarConfirmStyle::default(),
+            new_agent: NewAgentConfig::default(),
+            mode: SidebarMode::normal(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width: 24,
@@ -451,9 +472,9 @@ impl SidebarApp {
             agent_icons,
             tile_heights: Vec::new(),
             project_headers: Vec::new(),
-            pending_count: None,
-            pending_g: false,
-            mode: SidebarMode::Normal,
+            confirm_style: config.sidebar.confirm_style.unwrap_or_default(),
+            new_agent: config.sidebar.new_agent.clone(),
+            mode: SidebarMode::normal(),
             horizontal_hitboxes: Vec::new(),
             first_visible_agent_idx: 0,
             horizontal_item_width,
@@ -618,6 +639,8 @@ impl SidebarApp {
         self.agent_icons = ResolvedAgentIcons::from_config(cfg.sidebar.agent_icons.as_ref());
         self.horizontal_item_width = cfg.sidebar.horizontal.item_width();
         self.current_width = cfg.sidebar.width.clone();
+        self.confirm_style = cfg.sidebar.confirm_style.unwrap_or_default();
+        self.new_agent = cfg.sidebar.new_agent.clone();
     }
 
     pub fn host_window_id(&self) -> Option<&str> {
@@ -856,7 +879,7 @@ impl SidebarApp {
         };
         let question = crate::command::agents::delete_prompt(&agent);
 
-        if use_popup_confirm(self.position) {
+        if use_popup_confirm(self.position, self.confirm_style) {
             self.mode = SidebarMode::Modal {
                 modal: Modal::confirm("Delete agent", vec![question], true),
                 intent: ModalIntent::DeleteAgent(Box::new(agent)),
@@ -886,14 +909,14 @@ impl SidebarApp {
 
     pub fn cancel_delete(&mut self) {
         if self.mode.pending_delete().is_some() {
-            self.mode = SidebarMode::Normal;
+            self.mode = SidebarMode::normal();
             self.mux.display_message("delete cancelled");
         }
     }
 
     pub fn confirm_delete(&mut self) {
         let SidebarMode::PendingDelete(agent, _) =
-            std::mem::replace(&mut self.mode, SidebarMode::Normal)
+            std::mem::replace(&mut self.mode, SidebarMode::normal())
         else {
             return;
         };
@@ -946,6 +969,11 @@ impl SidebarApp {
             .iter()
             .map(|p| p.as_str().to_string())
             .collect();
+        let configured = self.new_agent.placement();
+        let placement_idx = Placement::ALL
+            .iter()
+            .position(|p| *p == configured)
+            .unwrap_or(0);
         self.mode = SidebarMode::Modal {
             modal: Modal::form(
                 "New agent",
@@ -967,12 +995,12 @@ impl SidebarApp {
                     ModalField::Choice {
                         label: "Placement",
                         options: placements,
-                        idx: 0,
+                        idx: placement_idx,
                     },
                     ModalField::Choice {
                         label: "Worktree",
                         options: vec!["yes".to_string(), "no".to_string()],
-                        idx: 0,
+                        idx: usize::from(!self.new_agent.worktree()),
                     },
                 ],
             ),
@@ -981,74 +1009,44 @@ impl SidebarApp {
     }
 
     /// Start creating an agent from submitted form values, off the event loop.
-    pub fn submit_create(&mut self, values: &[String]) {
-        let branch = values
-            .first()
-            .cloned()
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        let repo = values
-            .get(1)
-            .cloned()
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        let agent = values
-            .get(2)
-            .cloned()
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-        let placement = values
-            .get(3)
-            .and_then(|p| p.parse::<Placement>().ok())
-            .unwrap_or_default();
-        let worktree = values.get(4).map(|w| w == "yes").unwrap_or(true);
-
-        if repo.is_empty() {
-            self.mux.display_message("a repository is required");
-            return;
-        }
-        if worktree && branch.is_empty() {
-            self.mux
-                .display_message("a branch name is required when creating a worktree");
-            return;
-        }
-        let split_from = (placement == Placement::Pane)
-            .then(|| {
-                self.selected_agent()
-                    .and_then(|a| local_pane_id(&a.pane_id))
-            })
-            .flatten();
-        if placement == Placement::Pane && split_from.is_none() {
-            self.mux
-                .display_message("pane placement needs a selected agent in a real pane to split");
-            return;
-        }
+    ///
+    /// Returns the worker's handle, so a caller (and a test) can tell a
+    /// spawned create from a form that was refused outright.
+    pub fn submit_create(&mut self, values: &[String]) -> Option<std::thread::JoinHandle<()>> {
+        let pane_to_split = self
+            .selected_agent()
+            .and_then(|a| local_pane_id(&a.pane_id));
+        let req = match parse_create_form(values, pane_to_split) {
+            Ok(req) => req,
+            Err(msg) => {
+                self.mux.display_message(&msg);
+                return None;
+            }
+        };
 
         let mux = self.mux.clone();
         let reporter = self.mux.clone();
         self.mux.display_message(&format!(
             "creating {}...",
-            if branch.is_empty() { &repo } else { &branch }
+            if req.branch.is_empty() {
+                &req.repo
+            } else {
+                &req.branch
+            }
         ));
-        std::thread::spawn(move || {
+        Some(std::thread::spawn(move || {
             let outcome = create_agent_in(
                 mux,
-                PathBuf::from(&repo),
-                &branch,
-                (!agent.is_empty()).then_some(agent.as_str()),
-                placement,
-                split_from,
-                worktree,
+                PathBuf::from(&req.repo),
+                &req.branch,
+                (!req.agent.is_empty()).then_some(req.agent.as_str()),
+                req.placement,
+                req.split_from,
+                req.worktree,
             );
-            match outcome {
-                Ok(name) => reporter.display_message(&format!("created {name}")),
-                Err(e) => reporter.display_message(&format!("create failed: {e}")),
-            }
+            reporter.display_message(&create_report(outcome));
             super::daemon_ctrl::signal_daemon();
-        });
+        }))
     }
 
     pub fn jump_to_selected(&mut self) {
@@ -1550,10 +1548,10 @@ fn local_pane_id(pane_id: &str) -> Option<String> {
 
 /// Whether a delete is confirmed by the centered popup.
 ///
-/// The top position is 1-5 rows: a centered dialog cannot fit it, so it falls
-/// back to the multiplexer's own prompt or the one-line band.
-fn use_popup_confirm(position: SidebarPosition) -> bool {
-    position != SidebarPosition::Top
+/// The top position is 1-5 rows: a centered dialog cannot fit it, so it keeps
+/// the multiplexer's own prompt or the one-line band whatever the style says.
+fn use_popup_confirm(position: SidebarPosition, style: SidebarConfirmStyle) -> bool {
+    style == SidebarConfirmStyle::Popup && position != SidebarPosition::Top
 }
 
 /// The main worktree root that owns `path`.
@@ -1567,6 +1565,67 @@ pub fn repo_root_for(path: &std::path::Path) -> Option<PathBuf> {
     let common = crate::git::get_git_common_dir_in(Some(path)).ok()?;
     let root = common.parent()?;
     Some(std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()))
+}
+
+/// A submitted create form, resolved. `Err` carries the line to report.
+struct CreateRequest {
+    branch: String,
+    repo: String,
+    agent: String,
+    placement: Placement,
+    worktree: bool,
+    split_from: Option<String>,
+}
+
+/// Validate the form's values. `pane_to_split` is the selected row's pane, the
+/// only thing `Placement::Pane` can split.
+fn parse_create_form(
+    values: &[String],
+    pane_to_split: Option<String>,
+) -> Result<CreateRequest, String> {
+    let field = |i: usize| {
+        values
+            .get(i)
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
+    let branch = field(0);
+    let repo = field(1);
+    let agent = field(2);
+    let placement = values
+        .get(3)
+        .and_then(|p| p.parse::<Placement>().ok())
+        .unwrap_or_default();
+    let worktree = values.get(4).map(|w| w == "yes").unwrap_or(true);
+
+    if repo.is_empty() {
+        return Err("a repository is required".to_string());
+    }
+    if worktree && branch.is_empty() {
+        return Err("a branch name is required when creating a worktree".to_string());
+    }
+    let split_from = match placement {
+        Placement::Pane => Some(pane_to_split.ok_or_else(|| {
+            "pane placement needs a selected agent in a real pane to split".to_string()
+        })?),
+        _ => None,
+    };
+    Ok(CreateRequest {
+        branch,
+        repo,
+        agent,
+        placement,
+        worktree,
+        split_from,
+    })
+}
+
+/// The line the worker reports when the create finishes.
+fn create_report(outcome: Result<String>) -> String {
+    match outcome {
+        Ok(name) => format!("created {name}"),
+        Err(e) => format!("create failed: {e}"),
+    }
 }
 
 /// Create an agent in `repo`. Runs on a worker thread, never the event loop.
@@ -1925,12 +1984,19 @@ mod tests {
     }
 
     #[test]
-    fn the_popup_confirm_is_never_used_in_the_top_position() {
-        assert!(use_popup_confirm(SidebarPosition::Left));
+    fn the_confirm_style_decides_the_prompt_except_in_the_top_position() {
+        use SidebarConfirmStyle::{Native, Popup};
+        assert_eq!(SidebarConfirmStyle::default(), Popup);
+        assert!(use_popup_confirm(SidebarPosition::Left, Popup));
         assert!(
-            !use_popup_confirm(SidebarPosition::Top),
+            !use_popup_confirm(SidebarPosition::Left, Native),
+            "native keeps the multiplexer's own prompt"
+        );
+        assert!(
+            !use_popup_confirm(SidebarPosition::Top, Popup),
             "a centered dialog cannot fit 1-5 rows"
         );
+        assert!(!use_popup_confirm(SidebarPosition::Top, Native));
     }
 
     #[test]
@@ -2017,6 +2083,106 @@ mod tests {
             "",
             "the agent profile is left to the repository's agent_rules"
         );
+    }
+
+    fn form_values(branch: &str, repo: &str, placement: &str, worktree: &str) -> Vec<String> {
+        vec![
+            branch.to_string(),
+            repo.to_string(),
+            String::new(),
+            placement.to_string(),
+            worktree.to_string(),
+        ]
+    }
+
+    #[test]
+    fn a_refused_create_form_never_spawns_a_worker() {
+        for (values, pane, reason) in [
+            (form_values("feat", "   ", "window", "yes"), None, "no repo"),
+            (
+                form_values("", "/tmp/repo", "window", "yes"),
+                None,
+                "no branch",
+            ),
+            (
+                form_values("feat", "/tmp/repo", "pane", "no"),
+                None,
+                "no pane to split",
+            ),
+        ] {
+            assert!(
+                parse_create_form(&values, pane).is_err(),
+                "{reason} must be refused"
+            );
+        }
+        // Pane placement resolves once there is a pane to split.
+        let req = parse_create_form(
+            &form_values("feat", "/tmp/repo", "pane", "no"),
+            Some("%3".into()),
+        )
+        .expect("a real pane is splittable");
+        assert_eq!(req.split_from.as_deref(), Some("%3"));
+        assert!(!req.worktree);
+    }
+
+    #[test]
+    fn submitting_the_create_form_runs_off_the_event_loop() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = SidebarApp::test_with_agents(&[]);
+        let handle = app
+            .submit_create(&form_values(
+                "feat",
+                &temp.path().display().to_string(),
+                "window",
+                "yes",
+            ))
+            .expect("the create must run on a worker thread");
+        // Only the test waits for it; the event loop returned already.
+        handle.join().unwrap();
+        assert!(app.mode.is_normal());
+    }
+
+    #[test]
+    fn a_failing_create_reports_and_leaves_nothing_behind() {
+        // Not a git repository: the create fails before any window or
+        // worktree can exist.
+        let temp = tempfile::tempdir().unwrap();
+        let outcome = create_agent_in(
+            Arc::new(crate::multiplexer::TmuxBackend::new()),
+            temp.path().to_path_buf(),
+            "feat",
+            None,
+            Placement::Window,
+            None,
+            true,
+        );
+        assert!(outcome.is_err(), "a non-repository cannot be created in");
+        assert!(create_report(outcome).starts_with("create failed: "));
+        assert_eq!(
+            std::fs::read_dir(temp.path()).unwrap().count(),
+            0,
+            "nothing may be left behind"
+        );
+    }
+
+    #[test]
+    fn the_create_form_prefills_placement_and_worktree_from_configuration() {
+        let mut app = SidebarApp::test_with_agents(&["/tmp/x/a"]);
+        app.new_agent = NewAgentConfig {
+            placement: Some(Placement::Session),
+            worktree: Some(false),
+        };
+        app.open_create_form();
+
+        let SidebarMode::Modal {
+            modal: Modal::Form { fields, .. },
+            ..
+        } = &app.mode
+        else {
+            panic!("expected the create form");
+        };
+        assert_eq!(fields[3].value(), "session");
+        assert_eq!(fields[4].value(), "no");
     }
 
     #[test]

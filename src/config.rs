@@ -300,6 +300,44 @@ pub struct SidebarConfig {
     /// When "session", plain `wng sidebar` activates only the current session.
     /// Use `wng sidebar --global` to force global scope regardless of this setting.
     pub default_scope: Option<SidebarDefaultScope>,
+
+    /// How a delete is confirmed: "popup" (centered dialog in the pane,
+    /// default) or "native" (the multiplexer's own prompt line).
+    pub confirm_style: Option<SidebarConfirmStyle>,
+
+    /// Defaults the sidebar's create-agent form opens with.
+    #[serde(default)]
+    pub new_agent: NewAgentConfig,
+}
+
+/// How the sidebar asks for confirmation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarConfirmStyle {
+    /// The multiplexer's own prompt, outside the sidebar pane.
+    Native,
+    /// A centered dialog drawn inside the sidebar pane.
+    #[default]
+    Popup,
+}
+
+/// Prefilled values for the sidebar's create-agent form.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct NewAgentConfig {
+    /// Where a new agent is placed: window (default), session or pane.
+    pub placement: Option<Placement>,
+    /// Whether the form starts with worktree creation on. Default: true.
+    pub worktree: Option<bool>,
+}
+
+impl NewAgentConfig {
+    pub fn placement(&self) -> Placement {
+        self.placement.unwrap_or_default()
+    }
+
+    pub fn worktree(&self) -> bool {
+        self.worktree.unwrap_or(true)
+    }
 }
 
 /// Sidebar pane position.
@@ -4392,6 +4430,16 @@ pub const EXAMPLE_PROJECT_CONFIG: &str = r#"# muxix project configuration
 #   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
 #   # Default: "tiles". Can be toggled at runtime with 'v' key.
 #   layout: tiles
+#
+#   # How 'd' confirms: "popup" (centered dialog inside the pane, default) or
+#   # "native" (the multiplexer's own prompt line). position: top always uses
+#   # the native prompt — 1-5 rows cannot hold a dialog.
+#   confirm_style: popup
+#
+#   # Defaults the create form ('a') opens with.
+#   new_agent:
+#     placement: window   # window | session | pane
+#     worktree: true
 #
 #   horizontal:
 #     item_width: 24  # horizontal chip width in columns, clamped 12-80
