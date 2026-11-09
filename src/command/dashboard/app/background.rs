@@ -24,14 +24,16 @@ const DAEMON_GIT_TIMEOUT: Duration = Duration::from_millis(500);
 /// config may be layered differently (a profile, a `--config`), and a cached
 /// reply can predate a config change. A status against another base must not
 /// be mixed with the locally computed ones — a row would otherwise flip
-/// between the two as its path enters and leaves the daemon's tracked set. An
-/// empty `base_branch` is a detached HEAD, where no base took part in the
-/// numbers.
+/// between the two as its path enters and leaves the daemon's tracked set.
+///
+/// Only a base taken from the computing process's `main_branch` can disagree;
+/// one from the branch's own `muxix-base` (which `muxix add` writes on nearly
+/// every worktree) or from the repository's default branch is what we would
+/// resolve too, so rejecting it would re-spawn the git processes the daemon
+/// exists to remove.
 fn base_is_ours(status: &git::GitStatus, main_branch: Option<&str>) -> bool {
-    match main_branch.filter(|s| !s.is_empty()) {
-        None => true,
-        Some(main) => status.base_branch.is_empty() || status.base_branch == main,
-    }
+    !status.base_from_main_branch
+        || main_branch.filter(|s| !s.is_empty()) == Some(status.base_branch.as_str())
 }
 
 /// Emit a git status for each path: the daemon's when it answers, computed
@@ -346,8 +348,11 @@ mod git_status_source_tests {
         let sock = dir.path().join("d.sock");
         let wt = dir.path().to_path_buf();
         let mut statuses = served(&wt);
-        // A reply that predates this dashboard's config change.
-        statuses.get_mut(&wt).unwrap().base_branch = "master".to_string();
+        // A reply that predates this dashboard's config change: the daemon
+        // resolved the base from the `main_branch` it knew.
+        let status = statuses.get_mut(&wt).unwrap();
+        status.base_branch = "master".to_string();
+        status.base_from_main_branch = true;
         fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, statuses);
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
@@ -363,6 +368,31 @@ mod git_status_source_tests {
         assert!(
             take_git_spawns() > 0,
             "the dashboard recomputes it against its own base"
+        );
+    }
+
+    #[test]
+    fn a_reply_against_a_muxix_base_costs_the_dashboard_no_git_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("d.sock");
+        let wt = dir.path().to_path_buf();
+        let mut statuses = served(&wt);
+        // A stacked worktree: its base is `branch.<b>.muxix-base`, which both
+        // sides prefer over any configured `main_branch`.
+        statuses.get_mut(&wt).unwrap().base_branch = "feature-a".to_string();
+        fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, statuses);
+
+        let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
+        let daemon = connect_daemon(&sock, wake_tx);
+        wait_for_daemon(&daemon, &wt, Some("main"));
+
+        take_git_spawns();
+        let status = resolve_one_against(&daemon, &wt, Some("main"));
+        assert_eq!(status.lines_added, 7, "the daemon's status was used");
+        assert_eq!(
+            take_git_spawns(),
+            0,
+            "a base from muxix-base is ours too, so nothing is recomputed"
         );
     }
 

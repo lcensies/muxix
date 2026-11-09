@@ -391,14 +391,21 @@ pub fn get_git_status_cached(
     // Determine base branch for conflict check and diff stats
     // Priority: cached (while the local config is older than the cache) >
     // muxix-base config > configured main_branch > auto-detected default > "main"
-    let base_branch =
+    let (base_branch, base_from_main_branch) =
         match prev.filter(|p| cached_base_is_current(common_dir.as_deref(), p, &branch)) {
-            Some(p) => p.base_branch.clone(),
-            None => get_branch_base_in(&branch, Some(worktree_path))
-                .ok()
-                .or_else(|| main_branch.filter(|s| !s.is_empty()).map(|s| s.to_string()))
-                .or_else(|| get_default_branch_in(Some(worktree_path)).ok())
-                .unwrap_or_else(|| "main".to_string()),
+            Some(p) => (p.base_branch.clone(), p.base_from_main_branch),
+            None => match get_branch_base_in(&branch, Some(worktree_path)).ok() {
+                Some(base) => (base, false),
+                None => match main_branch.filter(|s| !s.is_empty()) {
+                    Some(main) => (main.to_string(), true),
+                    None => (
+                        get_default_branch_in(Some(worktree_path))
+                            .ok()
+                            .unwrap_or_else(|| "main".to_string()),
+                        false,
+                    ),
+                },
+            },
         };
 
     let base_oid = common_dir
@@ -423,6 +430,7 @@ pub fn get_git_status_cached(
             uncommitted_removed,
             cached_at: now,
             base_branch,
+            base_from_main_branch,
             branch: Some(branch),
             has_upstream,
             is_rebasing,
@@ -477,6 +485,7 @@ pub fn get_git_status_cached(
         uncommitted_removed,
         cached_at: now,
         base_branch,
+        base_from_main_branch,
         branch: Some(branch),
         has_upstream,
         is_rebasing,
@@ -762,6 +771,17 @@ mod cached_refresh_tests {
             status.base_branch, "main",
             "branch.<b>.muxix-base wins over the configured main_branch"
         );
+        assert!(
+            !status.base_from_main_branch,
+            "a muxix-base is what every process resolves, whatever its config"
+        );
+
+        // Without a muxix-base the caller's own main_branch decides, so a
+        // status computed elsewhere may not agree.
+        run_git(&dir, &["config", "--unset", "branch.feature.muxix-base"]);
+        let status = get_git_status_cached(&dir, Some("other"), None);
+        assert_eq!(status.base_branch, "other");
+        assert!(status.base_from_main_branch);
     }
 
     #[test]

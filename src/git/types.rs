@@ -61,4 +61,10 @@ pub struct GitStatus {
     /// The base branch's object id when this status was computed.
     #[serde(default)]
     pub base_oid: Option<String>,
+    /// Whether `base_branch` came from the caller's configured `main_branch`
+    /// rather than from the branch's own `muxix-base` or the repository's
+    /// default branch. Only then does the base depend on who computed the
+    /// status, so only then can another process's reply disagree with ours.
+    #[serde(default)]
+    pub base_from_main_branch: bool,
 }
