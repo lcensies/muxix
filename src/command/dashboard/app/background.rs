@@ -19,13 +19,14 @@ const DAEMON_GIT_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Was `status` computed against the base this dashboard's config asks for?
 ///
-/// The daemon has no `main_branch` of its own, so for a worktree with no
-/// `branch.<name>.muxix-base` it falls back to git's auto-detected default. If
-/// that disagrees with the configured `main_branch`, its +/- and ahead/behind
-/// are against another base and must not be mixed with the locally computed
-/// ones — a row would otherwise flip between the two as its path enters and
-/// leaves the daemon's tracked set. An empty `base_branch` is a detached HEAD,
-/// where no base took part in the numbers.
+/// The daemon resolves `main_branch` per worktree from the project config
+/// governing it, so it usually agrees. It can still differ: this dashboard's
+/// config may be layered differently (a profile, a `--config`), and a cached
+/// reply can predate a config change. A status against another base must not
+/// be mixed with the locally computed ones — a row would otherwise flip
+/// between the two as its path enters and leaves the daemon's tracked set. An
+/// empty `base_branch` is a detached HEAD, where no base took part in the
+/// numbers.
 fn base_is_ours(status: &git::GitStatus, main_branch: Option<&str>) -> bool {
     match main_branch.filter(|s| !s.is_empty()) {
         None => true,
@@ -345,7 +346,7 @@ mod git_status_source_tests {
         let sock = dir.path().join("d.sock");
         let wt = dir.path().to_path_buf();
         let mut statuses = served(&wt);
-        // The daemon has no main_branch, so it took git's detected default.
+        // A reply that predates this dashboard's config change.
         statuses.get_mut(&wt).unwrap().base_branch = "master".to_string();
         fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, statuses);
 

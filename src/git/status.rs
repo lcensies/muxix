@@ -754,6 +754,17 @@ mod cached_refresh_tests {
     }
 
     #[test]
+    fn muxix_base_outranks_a_configured_main_branch() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        let status = get_git_status_cached(&dir, Some("other"), None);
+        assert_eq!(
+            status.base_branch, "main",
+            "branch.<b>.muxix-base wins over the configured main_branch"
+        );
+    }
+
+    #[test]
     fn a_rewritten_base_config_forces_a_fresh_lookup() {
         let temp = tempfile::tempdir().unwrap();
         let dir = repo_on_feature(&temp);

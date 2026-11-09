@@ -129,19 +129,27 @@ fn next_loop_wait(
     }
 }
 
-/// Maps each agent's working directory to the project-config directory that
-/// governs it, caching both hits and misses.
+/// The project config governing a path: the directory it lives in (what the
+/// config watcher needs) and the `main_branch` it sets (what git stats need).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GoverningConfig {
+    dir: PathBuf,
+    main_branch: Option<String>,
+}
+
+/// Maps each agent's working directory to the project config that governs it,
+/// caching both hits and misses.
 ///
 /// `find_project_config` walks ancestors and shells out to git, and most
 /// worktrees have no `.muxix.yaml` at all, so a miss must be cached too or
 /// every agent costs a walk on every tick.
-struct ProjectConfigDirs {
-    cache: HashMap<PathBuf, Option<PathBuf>>,
+struct ProjectConfigs {
+    cache: HashMap<PathBuf, Option<GoverningConfig>>,
     cached_at: Instant,
     seen_version: u64,
 }
 
-impl ProjectConfigDirs {
+impl ProjectConfigs {
     fn new(version: u64, now: Instant) -> Self {
         Self {
             cache: HashMap::new(),
@@ -150,19 +158,19 @@ impl ProjectConfigDirs {
         }
     }
 
-    /// The set of config dirs covering `paths`, resolving only what is not
-    /// already cached.
+    /// The config governing each of `paths`, resolving only what is not already
+    /// cached. The returned map is pruned to exactly `paths`.
     ///
     /// The whole cache is dropped when the config version moves (a `.muxix.yaml`
     /// the watcher can see was added, changed or removed) or once per sweep (to
     /// catch the directories it cannot see).
-    fn dirs_with(
+    fn resolve_all(
         &mut self,
         paths: &[PathBuf],
         version_now: u64,
         now: Instant,
-        resolve: &dyn Fn(&Path) -> Option<PathBuf>,
-    ) -> HashSet<PathBuf> {
+        resolve: &dyn Fn(&Path) -> Option<GoverningConfig>,
+    ) -> &HashMap<PathBuf, Option<GoverningConfig>> {
         let live: HashSet<&PathBuf> = paths.iter().collect();
         self.cache.retain(|p, _| live.contains(p));
 
@@ -173,38 +181,78 @@ impl ProjectConfigDirs {
             self.cache.clear();
         }
 
-        let mut dirs = HashSet::new();
         for path in paths {
-            let dir = self
-                .cache
+            self.cache
                 .entry(path.clone())
-                .or_insert_with(|| resolve(path))
-                .clone();
-            if let Some(d) = dir {
-                dirs.insert(d);
-            }
+                .or_insert_with(|| resolve(path));
         }
-        dirs
+        &self.cache
     }
 }
 
-fn project_config_dir_of(path: &Path) -> Option<PathBuf> {
-    crate::config::find_project_config(path)
-        .ok()
+/// The config dirs to watch, deduped.
+fn config_dirs_of(governing: &HashMap<PathBuf, Option<GoverningConfig>>) -> HashSet<PathBuf> {
+    governing
+        .values()
         .flatten()
-        .map(|loc| loc.config_dir)
+        .map(|c| c.dir.clone())
+        .collect()
+}
+
+/// The `main_branch` the project config governing `path` sets, falling back to
+/// the daemon's global config.
+fn main_branch_for(
+    governing: &HashMap<PathBuf, Option<GoverningConfig>>,
+    path: &PathBuf,
+    global: Option<&str>,
+) -> Option<String> {
+    governing
+        .get(path)
+        .and_then(|c| c.as_ref())
+        .and_then(|c| c.main_branch.clone())
+        .or_else(|| global.map(str::to_string))
+        .filter(|b| !b.is_empty())
+}
+
+/// Resolve the project config governing `path`, reading only `main_branch` out
+/// of it.
+///
+/// One daemon serves worktrees from many projects, so there is no single
+/// `main_branch`; a full `Config::load` per path per tick is the cost
+/// `ProjectConfigs` exists to avoid.
+///
+/// shortcut: reads the file's top-level `main_branch` only, so a `main_branch`
+/// set under a `profiles:` overlay is missed; revisit if the daemon ever needs
+/// profile-aware config.
+fn governing_config_of(path: &Path) -> Option<GoverningConfig> {
+    let loc = crate::config::find_project_config(path).ok().flatten()?;
+    let main_branch = std::fs::read_to_string(&loc.config_path)
+        .ok()
+        .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok())
+        .and_then(|v| v.get("main_branch")?.as_str().map(str::to_string));
+    Some(GoverningConfig {
+        dir: loc.config_dir,
+        main_branch,
+    })
 }
 
 #[cfg(test)]
-mod project_config_dirs_tests {
+mod project_configs_tests {
     use super::*;
     use std::cell::RefCell;
+
+    fn governing(dir: &str, main_branch: Option<&str>) -> Option<GoverningConfig> {
+        Some(GoverningConfig {
+            dir: PathBuf::from(dir),
+            main_branch: main_branch.map(str::to_string),
+        })
+    }
 
     /// Resolver that records every path it was asked about.
     fn counting(
         hits: &RefCell<Vec<PathBuf>>,
-        answer: Option<PathBuf>,
-    ) -> impl Fn(&Path) -> Option<PathBuf> + '_ {
+        answer: Option<GoverningConfig>,
+    ) -> impl Fn(&Path) -> Option<GoverningConfig> + '_ {
         move |p: &Path| {
             hits.borrow_mut().push(p.to_path_buf());
             answer.clone()
@@ -214,14 +262,17 @@ mod project_config_dirs_tests {
     #[test]
     fn a_worktree_with_no_project_config_is_resolved_once_not_once_per_tick() {
         let t0 = Instant::now();
-        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
         let resolve = counting(&hits, None);
         let paths = vec![PathBuf::from("/wt/a")];
 
         for i in 0..10 {
-            let out = dirs.dirs_with(&paths, 0, t0 + Duration::from_secs(i), &resolve);
-            assert!(out.is_empty(), "a miss contributes no config dir");
+            let out = cfgs.resolve_all(&paths, 0, t0 + Duration::from_secs(i), &resolve);
+            assert!(
+                config_dirs_of(out).is_empty(),
+                "a miss contributes no config dir"
+            );
         }
 
         assert_eq!(
@@ -234,37 +285,36 @@ mod project_config_dirs_tests {
     #[test]
     fn a_config_appearing_later_is_picked_up_when_the_version_moves() {
         let t0 = Instant::now();
-        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let mut cfgs = ProjectConfigs::new(0, t0);
         let paths = vec![PathBuf::from("/wt/a")];
 
         let misses = RefCell::new(Vec::new());
         assert!(
-            dirs.dirs_with(&paths, 0, t0, &counting(&misses, None))
-                .is_empty()
+            config_dirs_of(cfgs.resolve_all(&paths, 0, t0, &counting(&misses, None))).is_empty()
         );
 
         // The watcher saw a .muxix.yaml appear and bumped the version.
         let found = RefCell::new(Vec::new());
-        let out = dirs.dirs_with(
+        let out = cfgs.resolve_all(
             &paths,
             1,
             t0 + Duration::from_secs(1),
-            &counting(&found, Some(PathBuf::from("/wt/a"))),
+            &counting(&found, governing("/wt/a", None)),
         );
         assert_eq!(found.borrow().len(), 1, "a version bump must re-resolve");
-        assert_eq!(out, HashSet::from([PathBuf::from("/wt/a")]));
+        assert_eq!(config_dirs_of(out), HashSet::from([PathBuf::from("/wt/a")]));
     }
 
     #[test]
     fn the_sweep_re_resolves_what_the_watcher_cannot_see() {
         let t0 = Instant::now();
-        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let mut cfgs = ProjectConfigs::new(0, t0);
         let paths = vec![PathBuf::from("/wt/a")];
         let hits = RefCell::new(Vec::new());
         let resolve = counting(&hits, None);
 
-        dirs.dirs_with(&paths, 0, t0, &resolve);
-        dirs.dirs_with(
+        cfgs.resolve_all(&paths, 0, t0, &resolve);
+        cfgs.resolve_all(
             &paths,
             0,
             t0 + SWEEP_INTERVAL - Duration::from_millis(1),
@@ -272,32 +322,32 @@ mod project_config_dirs_tests {
         );
         assert_eq!(hits.borrow().len(), 1, "still inside the sweep window");
 
-        dirs.dirs_with(&paths, 0, t0 + SWEEP_INTERVAL, &resolve);
+        cfgs.resolve_all(&paths, 0, t0 + SWEEP_INTERVAL, &resolve);
         assert_eq!(hits.borrow().len(), 2, "the sweep expires the cache");
     }
 
     #[test]
     fn a_departed_agents_entry_is_dropped() {
         let t0 = Instant::now();
-        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
         let resolve = counting(&hits, None);
 
-        dirs.dirs_with(&[PathBuf::from("/wt/a")], 0, t0, &resolve);
+        cfgs.resolve_all(&[PathBuf::from("/wt/a")], 0, t0, &resolve);
         // /wt/a's agent is gone; only /wt/b remains.
-        dirs.dirs_with(&[PathBuf::from("/wt/b")], 0, t0, &resolve);
-        assert_eq!(dirs.cache.len(), 1);
-        assert!(dirs.cache.contains_key(&PathBuf::from("/wt/b")));
+        let out = cfgs.resolve_all(&[PathBuf::from("/wt/b")], 0, t0, &resolve);
+        assert_eq!(out.len(), 1);
+        assert!(out.contains_key(&PathBuf::from("/wt/b")));
     }
 
     #[test]
     fn two_agents_sharing_a_config_dir_yield_one_entry() {
         let t0 = Instant::now();
-        let mut dirs = ProjectConfigDirs::new(0, t0);
+        let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
-        let resolve = counting(&hits, Some(PathBuf::from("/repo")));
+        let resolve = counting(&hits, governing("/repo", None));
 
-        let out = dirs.dirs_with(
+        let out = cfgs.resolve_all(
             &[PathBuf::from("/repo/a"), PathBuf::from("/repo/b")],
             0,
             t0,
@@ -305,9 +355,73 @@ mod project_config_dirs_tests {
         );
         assert_eq!(hits.borrow().len(), 2, "each path is resolved");
         assert_eq!(
-            out,
+            config_dirs_of(out),
             HashSet::from([PathBuf::from("/repo")]),
             "deduped by dir"
+        );
+    }
+
+    #[test]
+    fn the_main_branch_a_worktree_is_governed_by_costs_one_resolve() {
+        let t0 = Instant::now();
+        let mut cfgs = ProjectConfigs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let resolve = counting(&hits, governing("/repo", Some("trunk")));
+        let paths = vec![PathBuf::from("/repo/a")];
+
+        for i in 0..10 {
+            let out = cfgs.resolve_all(&paths, 0, t0 + Duration::from_secs(i), &resolve);
+            assert_eq!(
+                main_branch_for(out, &paths[0], Some("global")).as_deref(),
+                Some("trunk"),
+                "the project config outranks the global one"
+            );
+        }
+        assert_eq!(
+            hits.borrow().len(),
+            1,
+            "the steady-state tick must not re-resolve"
+        );
+    }
+
+    #[test]
+    fn a_path_with_no_project_main_branch_falls_back_to_the_global_one() {
+        let t0 = Instant::now();
+        let mut cfgs = ProjectConfigs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let unset = PathBuf::from("/repo/a");
+        let out = cfgs.resolve_all(
+            std::slice::from_ref(&unset),
+            0,
+            t0,
+            &counting(&hits, governing("/repo", None)),
+        );
+        assert_eq!(
+            main_branch_for(out, &unset, Some("trunk")).as_deref(),
+            Some("trunk")
+        );
+
+        let missing = PathBuf::from("/wt/b");
+        let out = cfgs.resolve_all(
+            std::slice::from_ref(&missing),
+            0,
+            t0,
+            &counting(&hits, None),
+        );
+        assert_eq!(
+            main_branch_for(out, &missing, Some("trunk")).as_deref(),
+            Some("trunk"),
+            "no project config at all still honours the global main_branch"
+        );
+        assert_eq!(
+            main_branch_for(out, &missing, None),
+            None,
+            "nothing configured leaves the base to git's own detection"
+        );
+        assert_eq!(
+            main_branch_for(out, &missing, Some("")),
+            None,
+            "an empty main_branch is not a base"
         );
     }
 }
@@ -1081,9 +1195,9 @@ fn take_prioritised(queue: &PrioritiseQueue, tracked: &HashMap<PathBuf, bool>) -
 
 /// Refresh git status for a worktree path, updating the cache.
 /// Returns true if the status actually changed (semantically, ignoring cached_at).
-fn refresh_git_status(path: &Path, cache: &GitCache) -> bool {
+fn refresh_git_status(path: &Path, main_branch: Option<&str>, cache: &GitCache) -> bool {
     let prev = cache.lock().ok().and_then(|c| c.get(path).cloned());
-    let new_status = crate::git::get_git_status_cached(path, None, prev.as_ref());
+    let new_status = crate::git::get_git_status_cached(path, main_branch, prev.as_ref());
     let changed = prev.is_none_or(|old| !git_status_semantically_equal(&old, &new_status));
     if let Ok(mut c) = cache.lock() {
         c.insert(path.to_path_buf(), new_status);
@@ -1097,6 +1211,9 @@ struct GitWorkerPath {
     /// Whether this agent is stale (idle > threshold). Stale agents only
     /// get git status on the full sweep, not on every poll cycle.
     is_stale: bool,
+    /// The `main_branch` governing this path, resolved by the main loop: one
+    /// daemon serves many projects, so the worker has no config of its own.
+    main_branch: Option<String>,
 }
 
 /// Info about an active agent path sent to the PR worker.
@@ -1361,6 +1478,8 @@ fn spawn_git_worker(
         let mut pending_worktrees: HashMap<PathBuf, Instant> = HashMap::new();
         // Stale status per path (true = all agents at path are stale)
         let mut path_stale: HashMap<PathBuf, bool> = HashMap::new();
+        // Configured main_branch per path, as resolved by the main loop
+        let mut path_main: HashMap<PathBuf, Option<String>> = HashMap::new();
         // Track unique active paths for fallback polling
         let mut unique_active: Vec<PathBuf> = Vec::new();
         let mut last_full_sweep = Instant::now();
@@ -1438,11 +1557,13 @@ fn spawn_git_worker(
             if paths_changed {
                 // Deduplicate paths. A path is stale only if ALL agents at that path are stale.
                 path_stale.clear();
+                path_main.clear();
                 for entry in &active_entries {
                     let e = path_stale.entry(entry.path.clone()).or_insert(true);
                     if !entry.is_stale {
                         *e = false;
                     }
+                    path_main.insert(entry.path.clone(), entry.main_branch.clone());
                 }
                 unique_active = path_stale.keys().cloned().collect();
                 unique_active.sort();
@@ -1516,7 +1637,11 @@ fn spawn_git_worker(
             let hinted = take_prioritised(&prioritise, &path_stale);
             for path in &hinted {
                 pending_worktrees.remove(path);
-                if refresh_git_status(path, &cache_clone) {
+                if refresh_git_status(
+                    path,
+                    path_main.get(path).and_then(|b| b.as_deref()),
+                    &cache_clone,
+                ) {
                     any_changed = true;
                 }
             }
@@ -1535,7 +1660,11 @@ fn spawn_git_worker(
                 if is_stale {
                     continue;
                 }
-                if refresh_git_status(path, &cache_clone) {
+                if refresh_git_status(
+                    path,
+                    path_main.get(path).and_then(|b| b.as_deref()),
+                    &cache_clone,
+                ) {
                     any_changed = true;
                 }
             }
@@ -1550,7 +1679,11 @@ fn spawn_git_worker(
                 };
                 for path in &sweep_paths {
                     pending_worktrees.remove(path);
-                    if refresh_git_status(path, &cache_clone) {
+                    if refresh_git_status(
+                        path,
+                        path_main.get(path).and_then(|b| b.as_deref()),
+                        &cache_clone,
+                    ) {
                         any_changed = true;
                     }
                 }
@@ -2177,14 +2310,14 @@ pub fn run() -> Result<()> {
     let mut any_working = true;
     let debounce_interval = Duration::from_secs(1);
 
-    // Cache of agent_path -> project_config_dir so we don't run the walk-up
-    // filesystem search (plus a `git rev-parse`) on every tick. A miss is
-    // cached too, as `None`: an agent in a tree with no `.muxix.yaml` is the
-    // common case and paid for the search every tick. Misses expire on the
-    // sweep, because a `.muxix.yaml` can appear in a directory the config
-    // watcher was never told to watch.
-    let mut project_config_dirs =
-        ProjectConfigDirs::new(config_version.load(Ordering::Relaxed), Instant::now());
+    // Cache of agent_path -> governing project config so we don't run the
+    // walk-up filesystem search (plus a `git rev-parse`) and a YAML read on
+    // every tick. A miss is cached too, as `None`: an agent in a tree with no
+    // `.muxix.yaml` is the common case and paid for the search every tick.
+    // Misses expire on the sweep, because a `.muxix.yaml` can appear in a
+    // directory the config watcher was never told to watch.
+    let mut project_configs =
+        ProjectConfigs::new(config_version.load(Ordering::Relaxed), Instant::now());
     let mut last_config_dirs: HashSet<PathBuf> = HashSet::new();
     // ADE listings shell out, so they run far less often than the tick.
     let mut ade = AdeAgents::new();
@@ -2317,7 +2450,23 @@ pub fn run() -> Result<()> {
                 .iter()
                 .any(|a| a.status == Some(AgentStatus::Working));
 
-            // Update git worker with current agent paths and stale status
+            // Resolve the project config governing each agent path once: the
+            // config watcher needs the dirs, the git worker needs each path's
+            // main_branch.
+            let agent_paths: Vec<PathBuf> = output
+                .snapshot
+                .agents
+                .iter()
+                .map(|a| a.path.clone())
+                .collect();
+            let governing = project_configs.resolve_all(
+                &agent_paths,
+                config_version.load(Ordering::Relaxed),
+                Instant::now(),
+                &governing_config_of,
+            );
+
+            // Update git worker with current agent paths, stale status and base
             let stale_threshold = 60 * 60; // 1 hour, matches sidebar UI
             let entries: Vec<GitWorkerPath> = output
                 .snapshot
@@ -2329,6 +2478,7 @@ pub fn run() -> Result<()> {
                         .status_ts
                         .map(|ts| now_ts.saturating_sub(ts) > stale_threshold)
                         .unwrap_or(false),
+                    main_branch: main_branch_for(governing, &a.path, cfg.main_branch.as_deref()),
                 })
                 .collect();
             let _ = git_path_tx.send(entries);
@@ -2351,18 +2501,7 @@ pub fn run() -> Result<()> {
             let _ = pr_path_tx.send(pr_entries);
 
             // Update config watcher with current project-config dirs.
-            let agent_paths: Vec<PathBuf> = output
-                .snapshot
-                .agents
-                .iter()
-                .map(|a| a.path.clone())
-                .collect();
-            let config_dirs = project_config_dirs.dirs_with(
-                &agent_paths,
-                config_version.load(Ordering::Relaxed),
-                Instant::now(),
-                &project_config_dir_of,
-            );
+            let config_dirs = config_dirs_of(governing);
             if config_dirs != last_config_dirs {
                 let _ = config_paths_tx.send(config_dirs.clone());
                 last_config_dirs = config_dirs;
