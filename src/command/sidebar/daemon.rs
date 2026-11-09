@@ -129,22 +129,23 @@ fn next_loop_wait(
     }
 }
 
-/// The project config governing a path: the directory it lives in (what the
-/// config watcher needs) and the `main_branch` it sets (what git stats need).
+/// The config governing a path: the directory the project config lives in
+/// (what the config watcher needs) and the `main_branch` that resolves there
+/// (what git stats need).
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct GoverningConfig {
-    dir: PathBuf,
+    /// `None` when no `.muxix.yaml` governs the path: nothing to watch.
+    dir: Option<PathBuf>,
     main_branch: Option<String>,
 }
 
-/// Maps each agent's working directory to the project config that governs it,
-/// caching both hits and misses.
+/// Maps each agent's working directory to the config that governs it.
 ///
-/// `find_project_config` walks ancestors and shells out to git, and most
-/// worktrees have no `.muxix.yaml` at all, so a miss must be cached too or
-/// every agent costs a walk on every tick.
+/// Resolving one anchors a full config load at that path, which walks
+/// ancestors and shells out to git, so the answer must be cached or every
+/// agent costs a load on every tick.
 struct ProjectConfigs {
-    cache: HashMap<PathBuf, Option<GoverningConfig>>,
+    cache: HashMap<PathBuf, GoverningConfig>,
     cached_at: Instant,
     seen_version: u64,
 }
@@ -169,8 +170,8 @@ impl ProjectConfigs {
         paths: &[PathBuf],
         version_now: u64,
         now: Instant,
-        resolve: &dyn Fn(&Path) -> Option<GoverningConfig>,
-    ) -> &HashMap<PathBuf, Option<GoverningConfig>> {
+        resolve: &dyn Fn(&Path) -> GoverningConfig,
+    ) -> &HashMap<PathBuf, GoverningConfig> {
         let live: HashSet<&PathBuf> = paths.iter().collect();
         self.cache.retain(|p, _| live.contains(p));
 
@@ -191,49 +192,51 @@ impl ProjectConfigs {
 }
 
 /// The config dirs to watch, deduped.
-fn config_dirs_of(governing: &HashMap<PathBuf, Option<GoverningConfig>>) -> HashSet<PathBuf> {
-    governing
-        .values()
-        .flatten()
-        .map(|c| c.dir.clone())
-        .collect()
+fn config_dirs_of(governing: &HashMap<PathBuf, GoverningConfig>) -> HashSet<PathBuf> {
+    governing.values().filter_map(|c| c.dir.clone()).collect()
 }
 
-/// The `main_branch` the project config governing `path` sets, falling back to
-/// the daemon's global config.
+/// The `main_branch` that resolves for `path`.
 fn main_branch_for(
-    governing: &HashMap<PathBuf, Option<GoverningConfig>>,
+    governing: &HashMap<PathBuf, GoverningConfig>,
     path: &PathBuf,
-    global: Option<&str>,
 ) -> Option<String> {
     governing
         .get(path)
-        .and_then(|c| c.as_ref())
         .and_then(|c| c.main_branch.clone())
-        .or_else(|| global.map(str::to_string))
         .filter(|b| !b.is_empty())
 }
 
-/// Resolve the project config governing `path`, reading only `main_branch` out
-/// of it.
+/// Resolve the config governing `path`: where its project config lives and the
+/// `main_branch` that resolves there.
 ///
-/// One daemon serves worktrees from many projects, so there is no single
-/// `main_branch`; a full `Config::load` per path per tick is the cost
-/// `ProjectConfigs` exists to avoid.
-///
-/// shortcut: reads the file's top-level `main_branch` only, so a `main_branch`
-/// set under a `profiles:` overlay is missed; revisit if the daemon ever needs
-/// profile-aware config.
-fn governing_config_of(path: &Path) -> Option<GoverningConfig> {
-    let loc = crate::config::find_project_config(path).ok().flatten()?;
-    let main_branch = std::fs::read_to_string(&loc.config_path)
-        .ok()
-        .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok())
-        .and_then(|v| v.get("main_branch")?.as_str().map(str::to_string));
-    Some(GoverningConfig {
-        dir: loc.config_dir,
-        main_branch,
-    })
+/// One daemon serves worktrees from many projects, and the daemon's CWD is
+/// whichever worktree first ran `muxix sidebar`, so the load must be anchored
+/// at `path` -- a CWD-anchored one would hand one project's `main_branch` to
+/// every other project's git stats.
+fn governing_config_of(path: &Path) -> GoverningConfig {
+    match crate::config::Config::load_with_location_from(path, None) {
+        Ok((cfg, loc)) => GoverningConfig {
+            dir: loc.map(|l| l.config_dir),
+            main_branch: cfg.main_branch,
+        },
+        Err(e) => {
+            // Every client loading this path fails the same way, so the honest
+            // answer is no main_branch (git detects the base per worktree).
+            // Keep watching the dir so fixing the file bumps the version.
+            tracing::warn!(
+                path = %path.display(),
+                "config load failed, auto-detecting this worktree's base: {e:#}"
+            );
+            GoverningConfig {
+                dir: crate::config::find_project_config(path)
+                    .ok()
+                    .flatten()
+                    .map(|l| l.config_dir),
+                main_branch: None,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -241,18 +244,26 @@ mod project_configs_tests {
     use super::*;
     use std::cell::RefCell;
 
-    fn governing(dir: &str, main_branch: Option<&str>) -> Option<GoverningConfig> {
-        Some(GoverningConfig {
-            dir: PathBuf::from(dir),
+    fn governing(dir: &str, main_branch: Option<&str>) -> GoverningConfig {
+        GoverningConfig {
+            dir: Some(PathBuf::from(dir)),
             main_branch: main_branch.map(str::to_string),
-        })
+        }
+    }
+
+    /// No project config governs the path.
+    fn ungoverned() -> GoverningConfig {
+        GoverningConfig {
+            dir: None,
+            main_branch: None,
+        }
     }
 
     /// Resolver that records every path it was asked about.
     fn counting(
         hits: &RefCell<Vec<PathBuf>>,
-        answer: Option<GoverningConfig>,
-    ) -> impl Fn(&Path) -> Option<GoverningConfig> + '_ {
+        answer: GoverningConfig,
+    ) -> impl Fn(&Path) -> GoverningConfig + '_ {
         move |p: &Path| {
             hits.borrow_mut().push(p.to_path_buf());
             answer.clone()
@@ -264,7 +275,7 @@ mod project_configs_tests {
         let t0 = Instant::now();
         let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
-        let resolve = counting(&hits, None);
+        let resolve = counting(&hits, ungoverned());
         let paths = vec![PathBuf::from("/wt/a")];
 
         for i in 0..10 {
@@ -290,7 +301,8 @@ mod project_configs_tests {
 
         let misses = RefCell::new(Vec::new());
         assert!(
-            config_dirs_of(cfgs.resolve_all(&paths, 0, t0, &counting(&misses, None))).is_empty()
+            config_dirs_of(cfgs.resolve_all(&paths, 0, t0, &counting(&misses, ungoverned())))
+                .is_empty()
         );
 
         // The watcher saw a .muxix.yaml appear and bumped the version.
@@ -311,7 +323,7 @@ mod project_configs_tests {
         let mut cfgs = ProjectConfigs::new(0, t0);
         let paths = vec![PathBuf::from("/wt/a")];
         let hits = RefCell::new(Vec::new());
-        let resolve = counting(&hits, None);
+        let resolve = counting(&hits, ungoverned());
 
         cfgs.resolve_all(&paths, 0, t0, &resolve);
         cfgs.resolve_all(
@@ -331,7 +343,7 @@ mod project_configs_tests {
         let t0 = Instant::now();
         let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
-        let resolve = counting(&hits, None);
+        let resolve = counting(&hits, ungoverned());
 
         cfgs.resolve_all(&[PathBuf::from("/wt/a")], 0, t0, &resolve);
         // /wt/a's agent is gone; only /wt/b remains.
@@ -372,9 +384,9 @@ mod project_configs_tests {
         for i in 0..10 {
             let out = cfgs.resolve_all(&paths, 0, t0 + Duration::from_secs(i), &resolve);
             assert_eq!(
-                main_branch_for(out, &paths[0], Some("global")).as_deref(),
+                main_branch_for(out, &paths[0]).as_deref(),
                 Some("trunk"),
-                "the project config outranks the global one"
+                "the main_branch resolved for the path is the one used"
             );
         }
         assert_eq!(
@@ -385,43 +397,96 @@ mod project_configs_tests {
     }
 
     #[test]
-    fn a_path_with_no_project_main_branch_falls_back_to_the_global_one() {
+    fn one_projects_main_branch_does_not_leak_into_another_project() {
         let t0 = Instant::now();
         let mut cfgs = ProjectConfigs::new(0, t0);
         let hits = RefCell::new(Vec::new());
-        let unset = PathBuf::from("/repo/a");
+        let a = PathBuf::from("/a/wt");
+        let b = PathBuf::from("/b/wt");
+
+        // One daemon, two projects: /a sets a main_branch, /b sets none.
+        let resolve = |p: &Path| {
+            hits.borrow_mut().push(p.to_path_buf());
+            if p.starts_with("/a") {
+                governing("/a", Some("trunk"))
+            } else {
+                ungoverned()
+            }
+        };
+        let out = cfgs.resolve_all(&[a.clone(), b.clone()], 0, t0, &resolve);
+
+        assert_eq!(main_branch_for(out, &a).as_deref(), Some("trunk"));
+        assert_eq!(
+            main_branch_for(out, &b),
+            None,
+            "a project with no main_branch leaves the base to git's own detection"
+        );
+    }
+
+    #[test]
+    fn an_empty_main_branch_is_not_a_base() {
+        let t0 = Instant::now();
+        let mut cfgs = ProjectConfigs::new(0, t0);
+        let hits = RefCell::new(Vec::new());
+        let path = PathBuf::from("/repo/a");
         let out = cfgs.resolve_all(
-            std::slice::from_ref(&unset),
+            std::slice::from_ref(&path),
             0,
             t0,
-            &counting(&hits, governing("/repo", None)),
+            &counting(&hits, governing("/repo", Some(""))),
         );
-        assert_eq!(
-            main_branch_for(out, &unset, Some("trunk")).as_deref(),
-            Some("trunk")
+        assert_eq!(main_branch_for(out, &path), None);
+    }
+
+    fn repo_with_project_config(temp: &tempfile::TempDir, yaml: &str) -> PathBuf {
+        let repo = temp.path().canonicalize().unwrap();
+        for args in [
+            &["init", "-q"][..],
+            &["config", "user.email", "t@example.com"][..],
+            &["config", "user.name", "t"][..],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .current_dir(&repo)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        std::fs::write(repo.join(".muxix.yaml"), yaml).unwrap();
+        repo
+    }
+
+    #[test]
+    fn a_main_branch_behind_a_default_profile_is_resolved() {
+        let temp = tempfile::tempdir().unwrap();
+        // `main_branch` reachable only through the loader's profile overlay --
+        // a top-level read of the file would miss it.
+        let repo = repo_with_project_config(
+            &temp,
+            "default_profile: work\nprofiles:\n  work:\n    main_branch: trunk\n",
         );
 
-        let missing = PathBuf::from("/wt/b");
-        let out = cfgs.resolve_all(
-            std::slice::from_ref(&missing),
-            0,
-            t0,
-            &counting(&hits, None),
+        let governing = governing_config_of(&repo);
+        assert_eq!(governing.dir.as_deref(), Some(repo.as_path()));
+        assert_eq!(governing.main_branch.as_deref(), Some("trunk"));
+    }
+
+    #[test]
+    fn a_broken_project_config_yields_no_main_branch_but_stays_watched() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = repo_with_project_config(&temp, "main_branch: 123\n");
+
+        let governing = governing_config_of(&repo);
+        assert_eq!(
+            governing.main_branch, None,
+            "a config no client can load must not silently pick a base"
         );
         assert_eq!(
-            main_branch_for(out, &missing, Some("trunk")).as_deref(),
-            Some("trunk"),
-            "no project config at all still honours the global main_branch"
-        );
-        assert_eq!(
-            main_branch_for(out, &missing, None),
-            None,
-            "nothing configured leaves the base to git's own detection"
-        );
-        assert_eq!(
-            main_branch_for(out, &missing, Some("")),
-            None,
-            "an empty main_branch is not a base"
+            governing.dir.as_deref(),
+            Some(repo.as_path()),
+            "still watched, so fixing the file bumps the config version"
         );
     }
 }
@@ -2489,7 +2554,7 @@ pub fn run() -> Result<()> {
                         .status_ts
                         .map(|ts| now_ts.saturating_sub(ts) > stale_threshold)
                         .unwrap_or(false),
-                    main_branch: main_branch_for(governing, &a.path, cfg.main_branch.as_deref()),
+                    main_branch: main_branch_for(governing, &a.path),
                 })
                 .collect();
             let _ = git_path_tx.send(entries);
