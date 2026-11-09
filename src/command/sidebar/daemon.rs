@@ -735,14 +735,15 @@ fn client_is_gone(stream: &std::os::unix::net::UnixStream) -> bool {
 
 /// Does `poll` report this socket's peer as gone?
 ///
-/// `events = 0`: `POLLHUP`, `POLLERR` and `POLLNVAL` are returned whatever is
-/// requested, so this asks only about the hangup and ignores readability.
+/// Only the hangup bits are read; `POLLIN` is requested because macOS turns
+/// `events` into kqueue filters and registers none at all for `events = 0`, so
+/// a hangup there would never be reported.
 fn peer_hung_up(stream: &std::os::unix::net::UnixStream) -> bool {
     use std::os::fd::AsRawFd;
     loop {
         let mut fd = libc::pollfd {
             fd: stream.as_raw_fd(),
-            events: 0,
+            events: libc::POLLIN,
             revents: 0,
         };
         if unsafe { libc::poll(&mut fd, 1, 0) } < 0 {
