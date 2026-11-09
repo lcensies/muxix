@@ -628,7 +628,14 @@ impl SocketServer {
                 evict(&stream);
                 false
             }
-            Err(_) => false,
+            // A panic under the guard may have left a partial frame behind, so
+            // this connection is done — but dropping it without the shutdown
+            // leaves the socket open under the `serve_requests` thread's
+            // `Arc`, and the client renders a frozen snapshot forever.
+            Err(poisoned) => {
+                evict(&poisoned.into_inner());
+                false
+            }
         });
         let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
@@ -663,7 +670,10 @@ impl SocketServer {
                 evict(&stream);
                 false
             }
-            Err(_) => false,
+            Err(poisoned) => {
+                evict(&poisoned.into_inner());
+                false
+            }
         });
         let dropped = before.saturating_sub(clients.len());
         if dropped > 0 {
@@ -2966,6 +2976,42 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             panic!("the daemon still counts a closed client, so it can never idle out");
+        }
+
+        /// A panic under a client's guard must not leave the socket open: the
+        /// `serve_requests` thread holds an `Arc` and is parked in a read, so
+        /// without the shutdown the peer never gets its EOF, never reconnects,
+        /// and renders a frozen snapshot forever.
+        #[test]
+        fn a_poisoned_client_is_still_evicted() {
+            use std::io::Read;
+
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let server = SocketServer::bind(&sock, no_git_requests()).unwrap();
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            let handle = server.clients.lock().unwrap()[0].clone();
+            thread::spawn(move || {
+                let _guard = handle.lock().unwrap();
+                panic!("writer panicked under the guard");
+            })
+            .join()
+            .expect_err("the spawned thread must panic to poison the mutex");
+
+            server.broadcast(&empty_snapshot());
+            assert_eq!(server.client_count(), 0, "a poisoned client is dropped");
+
+            client
+                .set_read_timeout(Some(Duration::from_millis(500)))
+                .unwrap();
+            let mut buf = [0u8; 1];
+            assert_eq!(
+                client.read(&mut buf).ok(),
+                Some(0),
+                "the socket was shut down, so the peer reads EOF and reconnects"
+            );
         }
 
         #[test]
