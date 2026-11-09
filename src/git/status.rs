@@ -403,10 +403,14 @@ pub fn get_git_status_cached(
     // Determine base branch for conflict check and diff stats
     // Priority: cached (while the local config is older than the cache) >
     // muxix-base config > configured main_branch > auto-detected default > "main"
-    let (base_branch, base_from_main_branch) = match prev
+    //
+    // Everything below the muxix-base turns on whether *this* process has a
+    // `main_branch`, so it is flagged as config-derived: a process configured
+    // differently resolves a different base.
+    let (base_branch, base_from_config) = match prev
         .filter(|p| cached_base_is_current(common_dir.as_deref(), p, &branch, main_branch))
     {
-        Some(p) => (p.base_branch.clone(), p.base_from_main_branch),
+        Some(p) => (p.base_branch.clone(), p.base_from_config),
         None => match get_branch_base_in(&branch, Some(worktree_path)).ok() {
             Some(base) => (base, false),
             None => match main_branch.filter(|s| !s.is_empty()) {
@@ -415,7 +419,7 @@ pub fn get_git_status_cached(
                     get_default_branch_in(Some(worktree_path))
                         .ok()
                         .unwrap_or_else(|| "main".to_string()),
-                    false,
+                    true,
                 ),
             },
         },
@@ -443,7 +447,7 @@ pub fn get_git_status_cached(
             uncommitted_removed,
             cached_at: now,
             base_branch,
-            base_from_main_branch,
+            base_from_config,
             branch: Some(branch),
             has_upstream,
             is_rebasing,
@@ -498,7 +502,7 @@ pub fn get_git_status_cached(
         uncommitted_removed,
         cached_at: now,
         base_branch,
-        base_from_main_branch,
+        base_from_config,
         branch: Some(branch),
         has_upstream,
         is_rebasing,
@@ -785,7 +789,7 @@ mod cached_refresh_tests {
             "branch.<b>.muxix-base wins over the configured main_branch"
         );
         assert!(
-            !status.base_from_main_branch,
+            !status.base_from_config,
             "a muxix-base is what every process resolves, whatever its config"
         );
 
@@ -794,7 +798,7 @@ mod cached_refresh_tests {
         run_git(&dir, &["config", "--unset", "branch.feature.muxix-base"]);
         let status = get_git_status_cached(&dir, Some("other"), None);
         assert_eq!(status.base_branch, "other");
-        assert!(status.base_from_main_branch);
+        assert!(status.base_from_config);
     }
 
     #[test]
@@ -809,7 +813,7 @@ mod cached_refresh_tests {
         // own main_branch and left in the on-disk status cache.
         let stale = get_git_status_cached(&dir, Some("master"), None);
         assert_eq!(stale.base_branch, "master");
-        assert!(stale.base_from_main_branch);
+        assert!(stale.base_from_config);
 
         // The config is older than that status, so the mtime guard alone would
         // carry "master" into a caller configured for "main".
@@ -818,6 +822,34 @@ mod cached_refresh_tests {
             fresh.base_branch, "main",
             "a base from another process's main_branch must be re-resolved"
         );
+    }
+
+    #[test]
+    fn a_cached_auto_detected_base_is_re_resolved_for_a_configured_caller() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        run_git(&dir, &["config", "--unset", "branch.feature.muxix-base"]);
+        run_git(&dir, &["branch", "trunk", "main"]);
+        backdate_config(&dir);
+
+        // What a process with no main_branch of its own computed: the base is
+        // git's detected default, not what a caller configured for `trunk`
+        // would resolve.
+        let detected = get_git_status_cached(&dir, None, None);
+        assert_eq!(detected.base_branch, "main");
+
+        let fresh = get_git_status_cached(&dir, Some("trunk"), Some(&detected));
+        assert_eq!(
+            fresh.base_branch, "trunk",
+            "a base another process auto-detected must not outrank our main_branch"
+        );
+
+        // The reverse is free: a caller with no main_branch would have
+        // detected the same base, so the cached one stands.
+        take_git_spawns();
+        let reused = get_git_status_cached(&dir, None, Some(&detected));
+        assert_eq!(reused.base_branch, "main");
+        assert_eq!(take_git_spawns(), 1, "nothing beyond the status call");
     }
 
     #[test]

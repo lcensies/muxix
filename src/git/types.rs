@@ -61,25 +61,83 @@ pub struct GitStatus {
     /// The base branch's object id when this status was computed.
     #[serde(default)]
     pub base_oid: Option<String>,
-    /// Whether `base_branch` came from the caller's configured `main_branch`
-    /// rather than from the branch's own `muxix-base` or the repository's
-    /// default branch. Only then does the base depend on who computed the
-    /// status, so only then can another process's reply disagree with ours.
-    #[serde(default)]
-    pub base_from_main_branch: bool,
+    /// Whether `base_branch` depended on the computing process's config --
+    /// its `main_branch`, or the repository default it auto-detected because
+    /// it had none. Only the branch's own `muxix-base` is independent of who
+    /// computed the status, so only `false` makes a reply unconditionally ours.
+    ///
+    /// Missing from an entry written before this field existed, where the
+    /// provenance is unknown; `true` then costs one re-resolve instead of
+    /// granting that entry blanket trust.
+    #[serde(default = "default_true")]
+    pub base_from_config: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl GitStatus {
-    /// Would a process configured with `main_branch` have resolved the same
-    /// base branch this status was computed against?
+    /// Would a process configured with `main_branch` accept the base branch
+    /// this status was computed against?
     ///
-    /// A base taken from the branch's own `muxix-base` or from the
-    /// repository's default branch is what every process resolves; only one
-    /// taken from the computing process's `main_branch` can disagree with
-    /// ours. Numbers computed against another base must not be shown or
-    /// reused as a cache.
+    /// A base taken from the branch's own `muxix-base` is what every process
+    /// resolves. A config-derived one is ours only if it is the `main_branch`
+    /// we asked for -- or if we have none, in which case we would have taken
+    /// the computing process's answer anyway. Numbers computed against another
+    /// base must not be shown or reused as a cache.
     pub fn base_matches(&self, main_branch: Option<&str>) -> bool {
-        !self.base_from_main_branch
-            || main_branch.filter(|s| !s.is_empty()) == Some(self.base_branch.as_str())
+        !self.base_from_config
+            || main_branch
+                .filter(|s| !s.is_empty())
+                .is_none_or(|m| m == self.base_branch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GitStatus;
+
+    #[test]
+    fn a_cache_entry_with_no_provenance_is_not_trusted() {
+        let legacy: GitStatus =
+            serde_json::from_str(r#"{"ahead":0,"behind":0,"has_conflict":false,"is_dirty":false,"lines_added":1,"lines_removed":0,"base_branch":"main"}"#)
+                .unwrap();
+        assert!(
+            legacy.base_from_config,
+            "an entry written before the field existed has unknown provenance"
+        );
+        assert!(
+            !legacy.base_matches(Some("trunk")),
+            "it must be re-resolved for a caller configured elsewhere"
+        );
+        assert!(legacy.base_matches(Some("main")));
+    }
+
+    #[test]
+    fn an_auto_detected_base_is_not_ours_when_we_configured_another_one() {
+        let status = GitStatus {
+            base_branch: "master".to_string(),
+            base_from_config: true,
+            ..Default::default()
+        };
+        assert!(
+            !status.base_matches(Some("trunk")),
+            "we would resolve trunk; master is another process's answer"
+        );
+        assert!(
+            status.base_matches(None),
+            "with no main_branch of our own we would have detected the same"
+        );
+
+        let muxix_base = GitStatus {
+            base_branch: "feature-a".to_string(),
+            base_from_config: false,
+            ..Default::default()
+        };
+        assert!(
+            muxix_base.base_matches(Some("trunk")),
+            "a muxix-base outranks every config"
+        );
     }
 }

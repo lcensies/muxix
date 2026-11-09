@@ -340,7 +340,7 @@ mod git_status_source_tests {
         // resolved the base from the `main_branch` it knew.
         let status = statuses.get_mut(&wt).unwrap();
         status.base_branch = "master".to_string();
-        status.base_from_main_branch = true;
+        status.base_from_config = true;
         fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, statuses);
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
