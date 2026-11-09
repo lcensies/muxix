@@ -68,3 +68,18 @@ pub struct GitStatus {
     #[serde(default)]
     pub base_from_main_branch: bool,
 }
+
+impl GitStatus {
+    /// Would a process configured with `main_branch` have resolved the same
+    /// base branch this status was computed against?
+    ///
+    /// A base taken from the branch's own `muxix-base` or from the
+    /// repository's default branch is what every process resolves; only one
+    /// taken from the computing process's `main_branch` can disagree with
+    /// ours. Numbers computed against another base must not be shown or
+    /// reused as a cache.
+    pub fn base_matches(&self, main_branch: Option<&str>) -> bool {
+        !self.base_from_main_branch
+            || main_branch.filter(|s| !s.is_empty()) == Some(self.base_branch.as_str())
+    }
+}

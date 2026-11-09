@@ -17,25 +17,6 @@ use super::types::AppEvent;
 /// so a reply that is this late is not coming and we compute locally instead.
 const DAEMON_GIT_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Was `status` computed against the base this dashboard's config asks for?
-///
-/// The daemon resolves `main_branch` per worktree from the project config
-/// governing it, so it usually agrees. It can still differ: this dashboard's
-/// config may be layered differently (a profile, a `--config`), and a cached
-/// reply can predate a config change. A status against another base must not
-/// be mixed with the locally computed ones — a row would otherwise flip
-/// between the two as its path enters and leaves the daemon's tracked set.
-///
-/// Only a base taken from the computing process's `main_branch` can disagree;
-/// one from the branch's own `muxix-base` (which `muxix add` writes on nearly
-/// every worktree) or from the repository's default branch is what we would
-/// resolve too, so rejecting it would re-spawn the git processes the daemon
-/// exists to remove.
-fn base_is_ours(status: &git::GitStatus, main_branch: Option<&str>) -> bool {
-    !status.base_from_main_branch
-        || main_branch.filter(|s| !s.is_empty()) == Some(status.base_branch.as_str())
-}
-
 /// Emit a git status for each path: the daemon's when it answers, computed
 /// locally otherwise, so `muxix dashboard` still works with no daemon running.
 ///
@@ -58,8 +39,15 @@ fn resolve_git_statuses(
         .unwrap_or_default();
 
     for (path, prev) in paths {
+        // The daemon resolves `main_branch` per worktree from the project
+        // config governing it, so it usually agrees. It can still differ: this
+        // dashboard's config may be layered differently (a profile, a
+        // `--config`), and a cached reply can predate a config change. A
+        // status against another base must not be mixed with the locally
+        // computed ones — a row would otherwise flip between the two as its
+        // path enters and leaves the daemon's tracked set.
         let status = match from_daemon.get(&path) {
-            Some(status) if base_is_ours(status, main_branch) => status.clone(),
+            Some(status) if status.base_matches(main_branch) => status.clone(),
             _ => git::get_git_status_cached(&path, main_branch, prev.as_ref()),
         };
         emit(path, status);

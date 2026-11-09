@@ -304,8 +304,20 @@ fn is_rebasing(worktree_path: &Path) -> bool {
 /// shortcut: ignores `config.worktree` (only written under
 /// `extensions.worktreeConfig`, which muxix never sets); revisit if muxix
 /// starts writing per-worktree config.
-fn cached_base_is_current(common_dir: Option<&Path>, prev: &GitStatus, branch: &str) -> bool {
+fn cached_base_is_current(
+    common_dir: Option<&Path>,
+    prev: &GitStatus,
+    branch: &str,
+    main_branch: Option<&str>,
+) -> bool {
     if prev.base_branch.is_empty() {
+        return false;
+    }
+    // `prev` may come from the on-disk cache, which holds statuses computed by
+    // another process (a daemon, an older build) against its own
+    // `main_branch`. Reusing one would show numbers against a base this caller
+    // never asked for, and the config mtime would keep it alive indefinitely.
+    if !prev.base_matches(main_branch) {
         return false;
     }
     // The base is per-branch (`branch.<b>.muxix-base`), and a checkout rewrites
@@ -391,22 +403,23 @@ pub fn get_git_status_cached(
     // Determine base branch for conflict check and diff stats
     // Priority: cached (while the local config is older than the cache) >
     // muxix-base config > configured main_branch > auto-detected default > "main"
-    let (base_branch, base_from_main_branch) =
-        match prev.filter(|p| cached_base_is_current(common_dir.as_deref(), p, &branch)) {
-            Some(p) => (p.base_branch.clone(), p.base_from_main_branch),
-            None => match get_branch_base_in(&branch, Some(worktree_path)).ok() {
-                Some(base) => (base, false),
-                None => match main_branch.filter(|s| !s.is_empty()) {
-                    Some(main) => (main.to_string(), true),
-                    None => (
-                        get_default_branch_in(Some(worktree_path))
-                            .ok()
-                            .unwrap_or_else(|| "main".to_string()),
-                        false,
-                    ),
-                },
+    let (base_branch, base_from_main_branch) = match prev
+        .filter(|p| cached_base_is_current(common_dir.as_deref(), p, &branch, main_branch))
+    {
+        Some(p) => (p.base_branch.clone(), p.base_from_main_branch),
+        None => match get_branch_base_in(&branch, Some(worktree_path)).ok() {
+            Some(base) => (base, false),
+            None => match main_branch.filter(|s| !s.is_empty()) {
+                Some(main) => (main.to_string(), true),
+                None => (
+                    get_default_branch_in(Some(worktree_path))
+                        .ok()
+                        .unwrap_or_else(|| "main".to_string()),
+                    false,
+                ),
             },
-        };
+        },
+    };
 
     let base_oid = common_dir
         .as_deref()
@@ -782,6 +795,29 @@ mod cached_refresh_tests {
         let status = get_git_status_cached(&dir, Some("other"), None);
         assert_eq!(status.base_branch, "other");
         assert!(status.base_from_main_branch);
+    }
+
+    #[test]
+    fn a_cached_base_from_another_main_branch_is_not_reused() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = repo_on_feature(&temp);
+        run_git(&dir, &["config", "--unset", "branch.feature.muxix-base"]);
+        run_git(&dir, &["branch", "master", "main"]);
+        backdate_config(&dir);
+
+        // What another process (a daemon, an older build) computed against its
+        // own main_branch and left in the on-disk status cache.
+        let stale = get_git_status_cached(&dir, Some("master"), None);
+        assert_eq!(stale.base_branch, "master");
+        assert!(stale.base_from_main_branch);
+
+        // The config is older than that status, so the mtime guard alone would
+        // carry "master" into a caller configured for "main".
+        let fresh = get_git_status_cached(&dir, Some("main"), Some(&stale));
+        assert_eq!(
+            fresh.base_branch, "main",
+            "a base from another process's main_branch must be re-resolved"
+        );
     }
 
     #[test]
