@@ -95,23 +95,40 @@ pub fn connect(socket_path: &Path, wake_tx: mpsc::SyncSender<()>) -> SnapshotHan
     SnapshotHandle { latest, requests }
 }
 
+const MIN_BACKOFF: Duration = Duration::from_millis(50);
+const MAX_BACKOFF: Duration = Duration::from_secs(2);
+/// How long a connection has to last to count as stable.
+const STABLE_AFTER: Duration = Duration::from_secs(5);
+
+/// How long to wait before the next connect attempt.
+///
+/// `lifetime` is how long the connection just made lasted, or `None` when the
+/// connect itself failed. Only a connection that lasted resets the delay:
+/// short-lived ones (a daemon that accepts then closes) keep backing off to
+/// prevent synchronised churn, and a failed connect has to as well or the
+/// common standalone case — no daemon at all — spins at 20 wakeups a second
+/// forever.
+fn next_backoff(prev: Duration, lifetime: Option<Duration>) -> Duration {
+    match lifetime {
+        Some(lifetime) if lifetime > STABLE_AFTER => MIN_BACKOFF,
+        _ => (prev * 2).min(MAX_BACKOFF),
+    }
+}
+
 fn connection_loop(
     path: &Path,
     latest: &Latest,
     requests: &Requests,
     wake_tx: &mpsc::SyncSender<()>,
 ) {
-    let min_backoff = Duration::from_millis(50);
-    let max_backoff = Duration::from_secs(2);
     // PID-based jitter to prevent 12 clients from phase-locking reconnects
     let jitter = Duration::from_millis((std::process::id() % 100) as u64);
-    let mut backoff = min_backoff;
+    let mut backoff = MIN_BACKOFF;
 
     loop {
         let connected_at = Instant::now();
 
-        if let Ok(stream) = UnixStream::connect(path) {
-            backoff = min_backoff;
+        let lifetime = if let Ok(stream) = UnixStream::connect(path) {
             // Publish the write half so requests can go out, and withdraw it
             // when the connection ends so an in-flight request fails fast
             // instead of waiting out its timeout.
@@ -128,14 +145,12 @@ fn connection_loop(
             if ended.is_err() {
                 break; // Wake channel closed, main thread exited
             }
-            // Only reset backoff if connection was stable (lasted >5s).
-            // Short-lived connections (daemon accept-then-close) keep
-            // exponential backoff to prevent synchronized churn.
-            if connected_at.elapsed() <= Duration::from_secs(5) {
-                backoff = (backoff * 2).min(max_backoff);
-            }
-        }
+            Some(connected_at.elapsed())
+        } else {
+            None
+        };
 
+        backoff = next_backoff(backoff, lifetime);
         thread::sleep(backoff + jitter);
     }
 }
@@ -261,6 +276,29 @@ mod tests {
             thread::sleep(Duration::from_millis(20));
         }
         None
+    }
+
+    #[test]
+    fn a_failed_connect_backs_off_instead_of_spinning() {
+        let mut backoff = MIN_BACKOFF;
+        assert!(
+            next_backoff(backoff, None) > backoff,
+            "no daemon must not leave the thread waking every {MIN_BACKOFF:?}"
+        );
+        for _ in 0..10 {
+            backoff = next_backoff(backoff, None);
+        }
+        assert_eq!(backoff, MAX_BACKOFF, "growth is capped");
+
+        assert_eq!(
+            next_backoff(MAX_BACKOFF, Some(STABLE_AFTER + Duration::from_secs(1))),
+            MIN_BACKOFF,
+            "a connection that lasted resets the delay"
+        );
+        assert!(
+            next_backoff(MIN_BACKOFF, Some(Duration::from_millis(1))) > MIN_BACKOFF,
+            "an accept-then-close daemon keeps backing off"
+        );
     }
 
     #[test]

@@ -507,7 +507,13 @@ impl SocketServer {
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
         let before = clients.len();
         clients.retain(|client| match client.lock() {
-            Ok(mut stream) => stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok(),
+            Ok(mut stream) => {
+                if stream.write_all(&len).is_ok() && stream.write_all(&data).is_ok() {
+                    return true;
+                }
+                evict(&stream);
+                false
+            }
             Err(_) => false,
         });
         let dropped = before.saturating_sub(clients.len());
@@ -536,7 +542,13 @@ impl SocketServer {
         let mut clients = std::mem::take(&mut *self.clients.lock().unwrap());
         let before = clients.len();
         clients.retain(|client| match client.lock() {
-            Ok(stream) => !client_is_gone(&stream),
+            Ok(stream) => {
+                if !client_is_gone(&stream) {
+                    return true;
+                }
+                evict(&stream);
+                false
+            }
             Err(_) => false,
         });
         let dropped = before.saturating_sub(clients.len());
@@ -555,6 +567,17 @@ impl SocketServer {
     }
 }
 
+/// Drop a client for good: shut the socket down rather than waiting for the
+/// last `Arc` to go.
+///
+/// The accepted stream has a 100ms write timeout, so a stalled peer can leave
+/// a half-written frame behind; the shutdown stops the client from reading the
+/// remains as framing, hands it its EOF, and unparks the thread sitting in
+/// [`serve_requests`] (which holds an `Arc`, so the drop alone would not).
+fn evict(stream: &std::os::unix::net::UnixStream) {
+    let _ = stream.shutdown(std::net::Shutdown::Both);
+}
+
 /// Has this client closed its end?
 ///
 /// Clients send requests, so readable does not mean gone — only a zero-length
@@ -564,6 +587,12 @@ impl SocketServer {
 /// whatever `SA_RESTART` says, and the daemon is SIGUSR1'd by every
 /// agent-status hook, so `EINTR` has to be retried rather than counted as a
 /// hangup.
+///
+/// Queued bytes do not mean the peer is still there: a desynced stream (see
+/// [`serve_requests`]) leaves them unread forever, so a corpse would peek as a
+/// busy client and keep the daemon's idle exit from ever firing. `poll` still
+/// separates the two — it reports `POLLHUP` for a closed peer whether or not
+/// data is pending — so the peek only decides between idle and busy.
 fn client_is_gone(stream: &std::os::unix::net::UnixStream) -> bool {
     use std::os::fd::AsRawFd;
     let mut byte = 0u8;
@@ -580,13 +609,35 @@ fn client_is_gone(stream: &std::os::unix::net::UnixStream) -> bool {
             return true;
         }
         if n > 0 {
-            return false;
+            return peer_hung_up(stream);
         }
         return match std::io::Error::last_os_error().kind() {
             std::io::ErrorKind::Interrupted => continue,
             std::io::ErrorKind::WouldBlock => false,
             _ => true,
         };
+    }
+}
+
+/// Does `poll` report this socket's peer as gone?
+///
+/// `events = 0`: `POLLHUP`, `POLLERR` and `POLLNVAL` are returned whatever is
+/// requested, so this asks only about the hangup and ignores readability.
+fn peer_hung_up(stream: &std::os::unix::net::UnixStream) -> bool {
+    use std::os::fd::AsRawFd;
+    loop {
+        let mut fd = libc::pollfd {
+            fd: stream.as_raw_fd(),
+            events: 0,
+            revents: 0,
+        };
+        if unsafe { libc::poll(&mut fd, 1, 0) } < 0 {
+            return match std::io::Error::last_os_error().kind() {
+                std::io::ErrorKind::Interrupted => continue,
+                _ => false, // Can't tell; leave the client registered.
+            };
+        }
+        return fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0;
     }
 }
 
@@ -2736,6 +2787,45 @@ mod tests {
                 !client_is_gone(&ours),
                 "a pending request must not read as a hangup"
             );
+        }
+
+        #[test]
+        fn a_closed_client_is_gone_even_with_bytes_left_unread() {
+            // A desynced stream leaves bytes queued forever. If those read as
+            // a busy client the daemon never reaches an idle client count and
+            // never exits.
+            let (ours, mut theirs) = UnixStream::pair().unwrap();
+            theirs.write_all(b"\0\0\0\x02{}").unwrap();
+            drop(theirs);
+            assert!(client_is_gone(&ours));
+        }
+
+        #[test]
+        fn a_dead_client_with_queued_bytes_is_pruned() {
+            let dir = tempfile::tempdir().unwrap();
+            let sock = dir.path().join("d.sock");
+            let server = SocketServer::bind(&sock, no_git_requests()).unwrap();
+            let mut client = UnixStream::connect(&sock).unwrap();
+            wait_for_clients(&server, 1);
+
+            // An over-cap length prefix: `serve_requests` stops reading and
+            // the body stays queued on the daemon's side.
+            client
+                .write_all(
+                    &((crate::command::sidebar::protocol::MAX_FRAME + 1) as u32).to_be_bytes(),
+                )
+                .unwrap();
+            client.write_all(b"{}").unwrap();
+            drop(client);
+
+            for _ in 0..200 {
+                server.prune_dead_clients();
+                if server.client_count() == 0 {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            panic!("the daemon still counts a closed client, so it can never idle out");
         }
 
         #[test]

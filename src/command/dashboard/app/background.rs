@@ -17,6 +17,22 @@ use super::types::AppEvent;
 /// so a reply that is this late is not coming and we compute locally instead.
 const DAEMON_GIT_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// Was `status` computed against the base this dashboard's config asks for?
+///
+/// The daemon has no `main_branch` of its own, so for a worktree with no
+/// `branch.<name>.muxix-base` it falls back to git's auto-detected default. If
+/// that disagrees with the configured `main_branch`, its +/- and ahead/behind
+/// are against another base and must not be mixed with the locally computed
+/// ones — a row would otherwise flip between the two as its path enters and
+/// leaves the daemon's tracked set. An empty `base_branch` is a detached HEAD,
+/// where no base took part in the numbers.
+fn base_is_ours(status: &git::GitStatus, main_branch: Option<&str>) -> bool {
+    match main_branch.filter(|s| !s.is_empty()) {
+        None => true,
+        Some(main) => status.base_branch.is_empty() || status.base_branch == main,
+    }
+}
+
 /// Emit a git status for each path: the daemon's when it answers, computed
 /// locally otherwise, so `muxix dashboard` still works with no daemon running.
 ///
@@ -40,8 +56,8 @@ fn resolve_git_statuses(
 
     for (path, prev) in paths {
         let status = match from_daemon.get(&path) {
-            Some(status) => status.clone(),
-            None => git::get_git_status_cached(&path, main_branch, prev.as_ref()),
+            Some(status) if base_is_ours(status, main_branch) => status.clone(),
+            _ => git::get_git_status_cached(&path, main_branch, prev.as_ref()),
         };
         emit(path, status);
     }
@@ -265,16 +281,36 @@ mod git_status_source_tests {
 
     /// Statuses for one path, as the background thread would collect them.
     fn resolve_one(daemon: &SnapshotHandle, path: &std::path::Path) -> git::GitStatus {
+        resolve_one_against(daemon, path, None)
+    }
+
+    /// As [`resolve_one`], for a dashboard with `main_branch` configured.
+    fn resolve_one_against(
+        daemon: &SnapshotHandle,
+        path: &std::path::Path,
+        main_branch: Option<&str>,
+    ) -> git::GitStatus {
         let mut got = Vec::new();
         resolve_git_statuses(
             daemon,
             vec![(path.to_path_buf(), None)],
-            None,
+            main_branch,
             true,
             |_, status| got.push(status),
         );
         assert_eq!(got.len(), 1, "one status per requested path");
         got.pop().unwrap()
+    }
+
+    /// Retry until the background connect is up and the daemon answers.
+    fn wait_for_daemon(daemon: &SnapshotHandle, path: &std::path::Path, main_branch: Option<&str>) {
+        for _ in 0..100 {
+            if resolve_one_against(daemon, path, main_branch).lines_added == 7 {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("the fake daemon never answered");
     }
 
     #[test]
@@ -286,13 +322,7 @@ mod git_status_source_tests {
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
         let daemon = connect_daemon(&sock, wake_tx);
-        // Requests race the background connect, so retry until it answers.
-        for _ in 0..100 {
-            if resolve_one(&daemon, &wt).lines_added == 7 {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        wait_for_daemon(&daemon, &wt, None);
 
         take_git_spawns();
         let status = resolve_one(&daemon, &wt);
@@ -306,6 +336,32 @@ mod git_status_source_tests {
             take_git_spawns(),
             0,
             "no git process for a path the daemon answered for"
+        );
+    }
+
+    #[test]
+    fn a_reply_computed_against_another_base_is_not_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("d.sock");
+        let wt = dir.path().to_path_buf();
+        let mut statuses = served(&wt);
+        // The daemon has no main_branch, so it took git's detected default.
+        statuses.get_mut(&wt).unwrap().base_branch = "master".to_string();
+        fake_daemon(UnixListener::bind(&sock).unwrap(), usize::MAX, statuses);
+
+        let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
+        let daemon = connect_daemon(&sock, wake_tx);
+        wait_for_daemon(&daemon, &wt, Some("master"));
+
+        take_git_spawns();
+        let status = resolve_one_against(&daemon, &wt, Some("develop"));
+        assert_ne!(
+            status.lines_added, 7,
+            "a status against another base must not be shown next to local ones"
+        );
+        assert!(
+            take_git_spawns() > 0,
+            "the dashboard recomputes it against its own base"
         );
     }
 
@@ -335,12 +391,7 @@ mod git_status_source_tests {
 
         let (wake_tx, _wake_rx) = mpsc::sync_channel(1);
         let daemon = connect_daemon(&sock, wake_tx);
-        for _ in 0..100 {
-            if resolve_one(&daemon, &wt).lines_added == 7 {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        wait_for_daemon(&daemon, &wt, None);
         std::fs::remove_file(&sock).unwrap();
         // The reader only notices the hangup once it reads, so wait for the
         // connection to actually be gone.

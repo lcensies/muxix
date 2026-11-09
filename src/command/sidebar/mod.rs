@@ -40,11 +40,11 @@ use crate::config::SidebarPosition;
 
 #[cfg(test)]
 pub(crate) use self::client::testing as daemon_testing;
-/// Ask the daemon to refresh now, e.g. after a command outside the sidebar
-/// changed the agent list.
 /// The dashboard asks the daemon for git statuses instead of running its own.
 pub(crate) use self::client::{SnapshotHandle, connect as connect_daemon};
 pub(crate) use self::daemon::socket_path as daemon_socket_path;
+/// Ask the daemon to refresh now, e.g. after a command outside the sidebar
+/// changed the agent list.
 pub(crate) use self::daemon_ctrl::signal_daemon as refresh_daemon;
 pub(crate) use self::daemon_ctrl::signal_daemon_ade_changed as refresh_daemon_ade;
 use self::daemon_ctrl::{ensure_daemon_running, kill_daemon, signal_daemon};
